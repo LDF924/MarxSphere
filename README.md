@@ -145,6 +145,27 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 - **记忆管理**：记忆统计/归档/冲突检测/向量化/睡眠学习报告
 - **写作语料库**：文本范例 / 核心概念 / 论证逻辑 / 词汇句式四大子库
 
+### 🛠 自研 Skill 体系（10 个，全部开源）
+
+MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆盖"文献获取 → 转换 → 清洗 → 入库 → 检索 → 推理 → 科研调度"全流水线：
+
+| Skill | 功能 | 在流水线中的位置 |
+|---|---|---|
+| **cnki** | 知网批量下载（PDF + 引文网络：参考文献/引证/共引/同被引）| ① 文献获取 |
+| **pdf2obsidian** | PDF 批量转换 Obsidian（1化6：original/摘要/术语表/问答/index/信息 + MinerU 集成）| ② 转换 |
+| **md-clean** | 论文 MD 清洗（6化4：裁剪 frontmatter、剔除 index/信息文件）| ③ 清洗（入库准备） |
+| **marx-ingest-all** | 三库一键入库（PG + Graphiti + Cognee 同步）| ④ 入库 |
+| **marx-cognee-ingest** | Cognee 批量入库（30 篇/批、断点续传、完整性校验、成本估算）| ④ 入库 |
+| **marx-graphiti-ingest** | Graphiti 批量入库（6 阶段：实体抽取/蒸馏/向量化/消歧/超边，原子 checkpoint + 34 坑审计）| ④ 入库 |
+| **marx-cognee** | Cognee 知识图谱检索（17 种策略：HYBRID/语义/图遍历…）| ⑤ 检索 |
+| **marx-graphiti** | Graphiti 知识检索（五层蒸馏 + 社区发现 + 超边推理，23 个 MCP 工具）| ⑤ 检索 |
+| **marx-sag** | SAG 推理工作台（52 步链路 + token 采集 + 评测，30 题均值 0.870 基线）| ⑥ 推理 |
+| **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 65 场景 + 103 技能统一调度）| ⑦ 科研调度 |
+
+**流水线全景**：`cnki 获取 → pdf2obsidian 转换 → md-clean 清洗 → marx-*-ingest 三库入库 → marx-cognee/marx-graphiti 检索 → marx-sag 推理 → marx-agent 调度`
+
+**技能系统（Web 端）**：技能注册表 192 项 + 触发词 + Skillify 固化 + 自动更新检测 + GitHub 发现。
+
 ### 📊 评测体系（多源融合的实证验证）
 
 **评测方法**：双轨评测（规则评分 + LLM judge 三轮回合取中位数）、53 题 4 类题型（概念定义 16 / 事实检索 14 / 多跳推理 14 / 政策评估 9）、31 评分项 + overall。
