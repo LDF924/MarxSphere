@@ -208,9 +208,16 @@
 ## 10. 运行验证
 
 ### 截图
-- `docs/assets/sag-chat.png` — 对话检索界面
-- `docs/assets/sag-documents.png` — 文档处理界面
+- `docs/assets/sag-home.png` — 首页（马克思语录 + 数据总览 + 推理动画）
+- `docs/assets/sag-chat.png` — 对话界面
+- `docs/assets/sag-reason.png` — 52 步推理链路
+- `docs/assets/sag-ask.png` — Ask 18 步检索流水线
+- `docs/assets/sag-literature.png` — 文献库
 - `docs/assets/sag-graph.png` — 知识图谱探索
+- `docs/assets/sag-scenarios.png` — 科研场景工作台
+- `docs/assets/sag-empirical-research.png` — 实证研究工作台
+- `docs/assets/sag-agent-console.png` — Agent 控制台
+- `docs/assets/sag-eval.png` — 评测工作台
 - `docs/assets/marxsphere-architecture-20260811.png` — 系统架构图
 
 ### 评测指标

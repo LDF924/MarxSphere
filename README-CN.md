@@ -228,7 +228,7 @@ MIT License — 见 [LICENSE](LICENSE)。
 | 🔧 接口文档（HTTP API / MCP） | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
 | 🖥 桌面端安装包 | `npm run build:desktop` → `release/MarxSphere Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
-| 📊 运行截图 | [docs/assets/](docs/assets/)（对话/文档/图谱/架构 4 张） |
+| 📊 运行截图 | [docs/assets/](docs/assets/)（首页/对话/推理/Ask/文献/图谱/场景/实证/Agent/评测 10 张） |
 | 📈 评测报告样例 | `cross_judge_report.md` / `significance_report.md` / `tp_report.md` / `kappa_report.md` |
 | ✅ 单元测试 | `npm test`（154 项） |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` |
