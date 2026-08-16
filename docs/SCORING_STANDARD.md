@@ -1,18 +1,18 @@
-# MarxSphere RAGAS v3 评测标准 (2026-07-28 V41)
+# MarxSphere RAGAS v3 评测标准 (2026-08-06 V96)
 
 ## 架构总览
 
 | 属性 | 值 |
 |------|-----|
-| 评测脚本 | scripts/eval-22-metrics.ts (1059行) |
-| 版本 | V41 (新增 A9 context_json_contamination) |
-| 指标数 | 28 (A=9, B=9, C=3, D=7) |
+| 评测脚本 | scripts/eval-32-metrics.ts |
+| 版本 | V96 (A1-A12 + B1-B9 + C1-C3 + D1-D7) |
+| 指标数 | 31 评分项 (A=12, B=9, C=3, D=7) + overall 综合分 |
 | 维度权重 | A:0.40 B:0.35 C:0.25 D:0.00(纯观测) |
 | LLM Judge | DeepSeek v4-flash + DashScope qwen-plus fallback |
 | 并发控制 | 3并发 + semaphore + 指数退避 |
 | 融合策略 | 5种可切换: rule_only, llm_only, max(默认), min, avg |
 
-## A维度: 检索质量 (9指标, w=0.40)
+## A维度: 检索质量 (12指标, w=0.40)
 
 | 指标 | 编号 | 评测方式 | 得分范围 | 双轨 |
 |------|------|---------|---------|------|
@@ -25,6 +25,9 @@
 | context_diversity | A7 | 去YAML+取中部200字去重比例 | 0-1 | rule+llm |
 | cross_doc_coverage | A8 | 检索覆盖的论文来源数 (min(1, count/5)) | 0-1 | rule+llm |
 | context_json_contamination | A9 [V41新增] | fusedContext中JSON/YAML/元数据噪音行占比 | 0-1 | rule+llm |
+| paper_hit | A10 [V96新增] | 论文命中 — fusedContext是否含目标论文标题片段 | 0-1 | rule |
+| paper_recall_at_k | A11 [V96新增] | 论文召回率 — 检索原始chunk中目标论文占比 | 0-1 | rule |
+| source_grounded | A12 [V96新增] | 溯源达标 — 答案引用目标论文(0否认/0.5未提/1引用) | 0-1 | rule |
 
 ## B维度: 答案质量 (9指标, w=0.35)
 
@@ -81,17 +84,17 @@ mergeScore(rule_score, llm_score):
 ## 评测入口
 
 ```bash
-# 全量 50 题
-npx tsx scripts/eval-22-metrics.ts
+# 全量 53 题
+npx tsx scripts/eval-32-metrics.ts
 
 # 指定题目
-EVAL_QUESTIONS=Q01,Q05,Q09 npx tsx scripts/eval-22-metrics.ts
+EVAL_QUESTIONS=Q01,Q05,Q09 npx tsx scripts/eval-32-metrics.ts
 
 # 指定维度
-EVAL_DIMS=A npx tsx scripts/eval-22-metrics.ts
+EVAL_DIMS=A npx tsx scripts/eval-32-metrics.ts
 
 # 切换融合策略
-EVAL_MERGE_POLICY=llm_only npx tsx scripts/eval-22-metrics.ts
+EVAL_MERGE_POLICY=llm_only npx tsx scripts/eval-32-metrics.ts
 ```
 
 ## 关键常量
