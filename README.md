@@ -36,16 +36,42 @@
 
 **17 种检索策略**：HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜索 / 文献蒸馏等
 
-**四源混合检索架构**（`Ask 18 步` + `52 步推理`共用）：
+### 🔬 52 步推理链路完整架构（SAG + Graphiti + Cognee + PG 四源 + 超边知识层）
 
-| 检索源 | 内容 | 调用 |
+**核心定位**：事件中心的多源混合检索增强生成（Multi-Source Hybrid RAG），超越 HyperGraphRAG 的超边知识层。
+
+**四源检索**：
+
+| 检索源 | 内容 | 代码依据 |
 |---|---|---|
-| **SAG 事件检索** | 事件中心结构（chunk→event→entities）、图遍历 2 层展开、SQL 递归多跳 | `search-service.ts`（RRF 三臂融合：内容向量/标题向量/BM25） |
-| **Graphiti** | 超边检索（`search_hyperedges`）+ 社区 + 实体精炼 | `inference-service.ts:736` |
-| **Cognee** | HYBRID_COMPLETION 论文切片召回（17 路粗检索） | `cognee_search` |
-| **PG pgvector** | 向量 1024 维 + 全文检索（BM25）+ SQL 多跳 | 内容/标题向量臂 |
+| **SAG 事件检索** | 事件中心结构（chunk→event→entities）、图遍历 2 层展开、SQL 递归多跳、RRF 三臂融合（内容向量/标题向量/BM25） | `search-service.ts` |
+| **Cognee** | HYBRID_COMPLETION 论文切片召回（17 路粗检索：向量/词法/图遍历/三元组/摘要/子问题/时序/实体直查…） | `inference-service.ts` stage2 |
+| **Graphiti** | 实体精炼 / 概念搜索 / 文献蒸馏 / 领域知识 / 实体邻居 / 段落回溯 / 论文溯源 / DeepWalk / 关系查询 | `inference-service.ts` stage3 |
+| **超边知识层**（V166+，超越 HyperGraphRAG） | 超边向量检索 / 超边实体导向 / 超边 BM25 / 三路 RRF 融合 / 时间衰减 | `inference-service.ts` stage3.5 |
+| **PG pgvector** | 向量 1024 维 + CHUNKS 词法 + 全文检索 + SQL 多跳 | `inference-service.ts` stage2/4 |
 
-融合链路：多臂召回 → 加权 RRF（意图调 k + Compiled Truth ×2.0 boost）→ Cosine 重打分 → Boost 链 → 去重 → LLM 重排 → 回取切片 → 生成（带编号引用溯源）。
+**52 步完整链路**（template 模式；adaptive 模式由 LLM 动态选算子）：
+
+```
+Stage 0-1 分类+大纲（4步）: 问题分类 → 意图识别 → 术语变体 → 拆分子问题
+Stage 2   Cognee 粗检索（14步）: 实体抽取 → Cognee HYBRID → RAG补全 → 图遍历
+          → 关系三元组 → 摘要检索 → 子问题推理 → 上下文扩展
+          → 时序分析(触发) → PG实体补漏 → PG向量 → CHUNKS词法 → 语义检索 → 实体直查
+Stage 3   Graphiti 精炼（9步）: 实体精炼 → 概念搜索 → 文献蒸馏 → 领域知识 → 实体邻居
+          → 段落回溯 → 论文溯源(触发) → DeepWalk扩展(触发) → 关系查询(触发)
+Stage 3.5 超边知识层（5步, V166+）: 超边向量检索 → 超边实体导向 → 超边BM25
+          → 三路RRF融合 → 时间衰减
+Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE扩展(触发) → 意图调配额
+          → 三臂RRF → Cosine重打分 → Boost链 → 超边配额(触发) → LLM重排 → 压缩段落
+          → COT推理(触发) → Agentic搜索(触发) → 生成假设 → 自评校验 → 置信评估
+          → 溯源标注 → 回写知识页(触发) → 失败降级(触发) → 快速回退(触发) → 响应返回
+```
+
+**融合链路**：多臂召回 → 加权 RRF（意图调 k + Compiled Truth ×2.0 boost）→ Cosine 重打分 → Boost 链 → 去重 → LLM 重排 → 回取切片 → 生成（带编号引用溯源）。
+
+**21 个可消融算子**：检索栈 12 个（compiled_truth/title/cosine/dedup/alias/relational/expansion/graph_traversal/multi_query/rerank 等）+ 推理链路 9 个（outline/expand/candidate_papers/cognee_arm/graphiti_arm/pg_arm/entity_extract/hypothesis/evaluate）——消融实验可逐项验证各组件贡献。
+
+**推理模式**：template（固定 52 步，评测基线口径）/ adaptive（LLM 动态选算子，短问题 4-6 步快速回答）。
 
 ### 📚 科研场景工作台（66 场景 · 8 大阶段）
 
