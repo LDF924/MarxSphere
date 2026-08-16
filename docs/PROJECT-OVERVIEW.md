@@ -206,7 +206,7 @@ curl -X POST http://localhost:4173/api/agent/tasks \
 
 ### 系统架构图
 
-![MarxSphere 系统架构](assets/marxsphere-architecture-20260811.png)
+![MarxSphere 系统架构](assets/marxsphere-architecture.svg)
 
 （更多架构细节：`ARCHITECTURE.md` / `docs/AGENT-CAPABILITIES.md` / `docs/AGENT-ARCHITECTURE-NEXT.md`）
 
