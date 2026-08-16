@@ -83,7 +83,7 @@ AGENT_IDENTITY=...               AGENT_TOOL_WHITELIST=...  AGENT_NET_WHITELIST=.
 |---|---|
 | OpenAI Codex | 工具 registry/parallel、3级沙箱、guardian 策略、compact 预算、approval modes、AGENTS.md、网络审批、分派追踪、turn 元数据、prewarm |
 | DeepSeek Harness | goal-round checkpoint、subagent 调外部Agent、hooks、preset、apply_patch、todo、spill、subprocess、session-query、feedback、credentials |
-| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、65 科研场景 |
+| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、66 科研场景 |
 
 ## 十、验证状态（2026-08-16）
 

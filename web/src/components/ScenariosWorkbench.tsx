@@ -248,7 +248,7 @@ export const ScenariosWorkbench: FC<Props> = ({ guide, onBack, onNavigate }) => 
           </div>
         </div>
 
-        {/* 右：文献阅读器（全部 65 个场景统一，独立大栏）——检索文献→原文所见即所得标注 */}
+        {/* 右：文献阅读器（全部 66 个场景统一，独立大栏）——检索文献→原文所见即所得标注 */}
         <div className="min-h-0 overflow-y-auto border-t border-border/50 p-3 xl:border-l xl:border-t-0">
           <DocumentReader storageKeyPrefix={`doc-${guide.id}`} />
         </div>
