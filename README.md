@@ -136,6 +136,6 @@ MIT License — 见 [LICENSE](LICENSE)。
 
 ## 合规披露
 
-📋 [开源合规披露](docs/OPEN-SOURCE-DISCLOSURE.md) — 完整披露：运行依赖 / 风险提示（模型幻觉、数据缺失、接口异常）/ 商业 API 使用与费用 / 闭源模型与替代方案 / Agent 框架 / 多模态能力 / 运行验证。
+📋 [开源合规披露](docs/OPEN-SOURCE-DISCLOSURE.md) — 完整披露：运行依赖 / 风险提示（模型幻觉、数据缺失、接口异常）/ 商业 API 使用与费用 / 闭源模型与替代方案 / Agent 框架 / 多模态能力 / 运行验证 / **数据治理（数据来源与授权、知识库构建与错误处理、用户数据脱敏与删除、Agent 上下文与记忆管理）**。
 
 > ⚠️ **重要提示**：本系统依赖商业 LLM/Embedding API（按 token 计费），所有 AI 生成内容**可能产生幻觉**，研究结论须核验原始文献。详见 [披露文档](docs/OPEN-SOURCE-DISCLOSURE.md) 第 2、4、5 节。
