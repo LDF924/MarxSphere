@@ -1,8 +1,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { pool, closePool } from "./pool.js";
 import { logger } from "../observability/logger.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // V397 桌面端: 迁移目录用 SAG_ROOT（根目录）而非模块路径推导 —
 // 编译到 dist 后 __dirname 变成 dist/src/db, 推导会指向不存在的 dist/migrations
 const rootDir = process.env.SAG_ROOT || path.resolve(__dirname, "../..");

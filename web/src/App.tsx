@@ -2025,19 +2025,23 @@ function MainWorkspaceTabs(props: {
     <div
       ref={containerRef}
       className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1"
-      onMouseLeave={() => setOpenKey(null)}
     >
       {categories.map((cat, idx) => {
         const active = currentCategory?.key === cat.key;
         return (
-          <div key={cat.key} className="relative shrink-0" onMouseEnter={() => setOpenKey(cat.key)}>
+          <div
+            key={cat.key}
+            className="relative shrink-0"
+            onMouseEnter={() => setOpenKey(cat.key)}
+            onMouseLeave={() => setOpenKey(null)}
+          >
             <button
               type="button"
               className={cn(
                 "nav-pill flex items-center gap-1",
                 active && "nav-pill-active"
               )}
-              onClick={() => setOpenKey((k) => (k === cat.key ? null : cat.key))}
+              onClick={() => setOpenKey(cat.key)}
               aria-haspopup="menu"
               aria-expanded={openKey === cat.key}
             >
@@ -2054,7 +2058,7 @@ function MainWorkspaceTabs(props: {
             {openKey === cat.key ? (
               <div
                 className={cn(
-                  "mega-menu-panel absolute top-full z-50 mt-2 min-w-44 max-w-[calc(100vw-16px)] rounded-lg border border-white/10 bg-card p-2 shadow-[0_8px_30px_rgba(0,0,0,0.55)]",
+                  "mega-menu-panel absolute top-full z-50 min-w-44 max-w-[calc(100vw-16px)] rounded-lg border border-white/10 bg-card pb-2 pl-2 pr-2 pt-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.55)]",
                   // 右侧分类（文档/后台等）面板右对齐，防窄屏右侧溢出；左侧分类左对齐
                   idx >= 4 ? "right-0" : "left-0"
                 )}
@@ -2076,7 +2080,7 @@ function MainWorkspaceTabs(props: {
                         isActive && "bg-accent/60 font-medium text-primary"
                       )}
                       onClick={() => {
-                        setOpenKey(null);
+                        // 点击子项后保持面板展开（用户要求）
                         props.onChange(item.value);
                       }}
                     >
