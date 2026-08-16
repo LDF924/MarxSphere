@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Zleap AI" width="220" />
+  <img src="docs/assets/marx-logo-512.png" alt="MarxSphere" width="200" />
 </p>
 
-# SAG
+# MarxSphere 马研星环
 
 **语言**：简体中文 | [English](README.md)
 
-> **SAG:** 可以在大规模动态数据上运行的图谱检索技术
+> **MarxSphere:** AI 驱动的马克思主义理论研究科研中枢（基于 SAG 事件中心检索构建）
 > 
 > **Paper:** [https://arxiv.org/abs/2606.15971](https://arxiv.org/abs/2606.15971)
 

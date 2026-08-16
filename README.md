@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="MarxSphere" width="220" />
+  <img src="docs/assets/marx-logo-512.png" alt="MarxSphere" width="200" />
 </p>
 
 # MarxSphere 马研星环
