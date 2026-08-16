@@ -221,8 +221,8 @@
 - `docs/assets/marxsphere-architecture.svg` — 系统架构图（7 层完整架构）
 
 ### 评测指标
-- `SCORING_STANDARD.md` — 32 项评测指标定义
-- `cross_judge_report.md` / `significance_report.md` / `tp_report.md` — 评测报告样例
+- `docs/SCORING_STANDARD.md` — 32 项评测指标定义
+- `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
 - 154 项单元测试（`npm test`）
 
 ---
