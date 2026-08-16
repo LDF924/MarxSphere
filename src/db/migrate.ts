@@ -1,0 +1,67 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { pool, closePool } from "./pool.js";
+import { logger } from "../observability/logger.js";
+
+// V397 桌面端: 迁移目录用 SAG_ROOT（根目录）而非模块路径推导 —
+// 编译到 dist 后 __dirname 变成 dist/src/db, 推导会指向不存在的 dist/migrations
+const rootDir = process.env.SAG_ROOT || path.resolve(__dirname, "../..");
+const migrationsDir = path.join(rootDir, "migrations");
+
+export async function migrate(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`
+      create table if not exists schema_migrations (
+        name text primary key,
+        applied_at timestamptz not null default now()
+      )
+    `);
+    await client.query("commit");
+
+    const files = (await fs.readdir(migrationsDir))
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+
+    for (const file of files) {
+      const alreadyApplied = await client.query(
+        "select 1 from schema_migrations where name = $1",
+        [file]
+      );
+      if (alreadyApplied.rowCount && alreadyApplied.rowCount > 0) {
+        logger.info({ migration: file }, "migration already applied");
+        continue;
+      }
+
+      const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
+      await client.query("begin");
+      try {
+        await client.query(sql);
+        await client.query("insert into schema_migrations (name) values ($1)", [file]);
+        await client.query("commit");
+        logger.info({ migration: file }, "migration applied");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
+// Windows 下 tsx 的 process.argv[1] 是反斜杠路径、import.meta.url 是正斜杠 URL——
+// 直接比较永不相等导致 migrate() 从不执行。用 pathToFileURL 规范化后比较。
+import { pathToFileURL } from "node:url";
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  migrate()
+    .then(async () => closePool())
+    .catch(async (error: unknown) => {
+      logger.error({ error }, "migration failed");
+      await closePool();
+      process.exit(1);
+    });
+}
+

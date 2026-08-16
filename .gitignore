@@ -1,0 +1,72 @@
+# 技能更新检测基线（运行时生成）
+data/
+.env
+batch-ingest-log.json
+
+# V266: 构建产物与依赖（防误提交）
+dist/
+node_modules/
+web/dist/
+
+# V266: Obsidian 本地状态
+.obsidian/
+
+# V266: 环境与密钥
+.env.bak
+.env.v89-before
+
+# V266: 运行时日志与快照
+eval_22metrics.json
+skillify-tracking.json
+mode.json
+*.v*-ok
+*.v*-before
+*.tmp.ts
+
+# V283: 误提交的无关文件
+web-tsc-errors*.txt
+web/dist.bak-v167/
+.obsidian/
+
+# V285: 评测运行产物（临时快照，历史归档在 eval-archive/）
+eval_32metrics.json
+eval_32metrics_dual.json
+eval_32metrics_dual_summary.json
+eval_32metrics_perq.json
+# V388: 评测日志/逐题产物
+eval_onebyone*
+eval_q*.log
+eval_run_20260812*
+sag_server*.log
+eval_watchdog.log
+
+# V285: 数据恢复中间产物（recovery/ 会话工作区，勿提交）
+recovered-data/
+recovery/
+tmp-scripts/
+
+# V343: 运行时设置与备份
+memory-settings.json
+batch-ingest-log.json.backup-*
+compact-vhdx.ps1
+
+# V348: 安全+配额改造备份（勿提交）
+*.v348-*
+*.v347-*
+
+# Python 缓存 + 问卷中间产物
+__pycache__/
+*.pyc
+.pipeline/
+
+# V397: 桌面端构建产物
+release/
+/resources/
+.cache/
+electron/dist/
+build/icon.ico
+
+# V398: 开源补充
+.env.bak
+.env.v*
+*.local.json

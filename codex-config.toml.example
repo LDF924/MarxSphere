@@ -1,0 +1,13 @@
+# Codex CLI MCP 接入 MarxSphere 示例（~/.codex/config.toml）
+# 需要 SAG 服务在跑（MARXSPHERE_PREVIEW=1 npx tsx src/index.ts）
+# 外部部署时填 SAG_API_TOKEN（MarxSphere 设置页 → 对外 API 令牌）
+
+[mcp_servers.sag]
+command = "npx"
+args = ["tsx", "scripts/sag-mcp-server.ts"]
+env = { SAG_API_URL = "http://localhost:4173" }
+
+# 外部部署（服务器 + 多用户）时取消注释并填 Token：
+# [mcp_servers.sag.env]
+# SAG_API_URL = "https://your-server.example.com"
+# SAG_API_TOKEN = "sag_xxxxxxxx"

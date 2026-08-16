@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MarxSphere 初始化</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: radial-gradient(1200px 600px at 50% -10%, #1e293b, #0b1120 60%); color: #e2e8f0; font-family: system-ui, "Microsoft YaHei", sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { width: 600px; max-height: 92vh; overflow-y: auto; background: #111a2e; border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 32px 36px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+  h1 { font-size: 22px; margin-bottom: 6px; color: #fbbf24; }
+  .sub { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 14px; }
+  .row .label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .badge { font-size: 12px; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+  .ok { background: rgba(52,211,153,.15); color: #34d399; }
+  .warn { background: rgba(251,191,36,.15); color: #fbbf24; }
+  .bad { background: rgba(248,113,113,.15); color: #f87171; }
+  .btn { background: #1e3a5f; color: #e2e8f0; border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  .btn:hover { background: #25476f; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #0b1120; border: none; font-weight: 700; }
+  label { display: block; font-size: 12px; color: #94a3b8; margin: 14px 0 6px; }
+  input, select { width: 100%; background: #0d1526; border: 1px solid rgba(255,255,255,.12); color: #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none; }
+  input:focus, select:focus { border-color: #fbbf24; }
+  .section { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); }
+  .section-title { font-size: 13px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px; }
+  .hint { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.6; }
+  .err { color: #f87171; font-size: 13px; margin-top: 10px; min-height: 18px; line-height: 1.5; }
+  .ok-msg { color: #34d399; font-size: 13px; margin-top: 10px; }
+  button.save { margin-top: 22px; width: 100%; background: linear-gradient(180deg, #fbbf24, #f59e0b); color: #0b1120; border: none; border-radius: 10px; padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  button.save:disabled { opacity: .5; cursor: not-allowed; }
+  .py-row { display: flex; gap: 8px; align-items: center; }
+  .py-row input { flex: 1; }
+  .py-check { font-size: 11px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>MarxSphere 马研星环</h1>
+  <p class="sub">桌面端初始化 — 自动检测本机环境，一键补齐缺失组件（配置仅保存到本机）</p>
+
+  <div class="section">
+    <div class="section-title">① 数据库（PostgreSQL + pgvector，必需）</div>
+    <div class="row"><span class="label">🛢 PostgreSQL（5540/5432）</span><span id="pg" class="badge warn">检测中…</span></div>
+    <div id="pg-actions" style="display:none; padding: 8px 0 4px;">
+      <button id="btn-pg-setup" class="btn btn-primary">🚀 一键启动 PostgreSQL（Docker）</button>
+      <div class="hint">自动检测 Docker → 启动 pgvector/pgvector:pg16 容器 → 等待就绪。<br>若未装 Docker：请安装 Docker Desktop 后重试，或自行安装 PostgreSQL 16 + pgvector 扩展。</div>
+    </div>
+    <div id="pg-status" class="err"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">② 知识图谱（Neo4j，可选 — 未就绪时推理降级）</div>
+    <div class="row"><span class="label">🕸 Neo4j Graphiti（11001）</span><span id="neo4j-11001" class="badge warn">检测中…</span></div>
+    <div class="row"><span class="label">🕸 Neo4j Cognee（11003）</span><span id="neo4j-11003" class="badge warn">检测中…</span></div>
+    <div class="hint">未检测到不影响使用：推理将自动降级为 PG 向量检索，图谱增强功能暂不可用。</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">③ Python 环境（可选 — 推理 MCP / 实证分析用）</div>
+    <div class="row"><span class="label">🐍 Cognee Python（MCP 池）</span><span id="pycognee" class="badge warn">检测中…</span></div>
+    <div class="py-row" style="margin: 6px 0;">
+      <input id="cogneePy" placeholder="自动检测失败时手动填写 python 路径，如 C:/Python312/python.exe">
+      <button id="btn-cognee-check" class="btn">验证</button>
+      <span id="cognee-check" class="py-check"></span>
+    </div>
+    <div class="row"><span class="label">🐍 实证分析 Python</span><span id="pyempirical" class="badge warn">检测中…</span></div>
+    <div class="py-row" style="margin: 6px 0;">
+      <input id="empiricalPy" placeholder="自动检测失败时手动填写，可留空跳过">
+      <button id="btn-empirical-check" class="btn">验证</button>
+      <span id="empirical-check" class="py-check"></span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">④ AI 模型密钥（必需）</div>
+    <label>LLM API Key</label>
+    <input id="llmKey" type="password" placeholder="sk-...（如 DeepSeek / 阿里云百炼 / OpenAI 兼容）">
+    <label>LLM Base URL（可选）</label>
+    <input id="llmBase" placeholder="https://api.deepseek.com/v1（默认阿里云 MaaS 兼容接口）">
+    <label>Embedding API Key（可选，默认与 LLM 相同）</label>
+    <input id="embedKey" type="password" placeholder="可留空">
+  </div>
+
+  <button id="save" class="save" disabled>保存并启动 MarxSphere</button>
+  <div id="err" class="err"></div>
+  <p class="hint">提示：所有配置仅保存在本机（%APPDATA%\MarxSphere\sag-root\.env），不会上传。卸载时保留，可手动删除完全清除。</p>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let probe = null;
+  const setBadge = (id, ok, text) => {
+    const el = $(id);
+    el.textContent = text;
+    el.className = "badge " + (ok ? "ok" : (text.includes("降级") || text.includes("可留空") ? "warn" : "bad"));
+  };
+
+  async function refreshProbe() {
+    probe = await window.sagDesktop.probe();
+    const pgOk = probe["pg:5540"] || probe["pg:5432"];
+    setBadge("pg", pgOk, pgOk ? "✓ 已就绪" : "✗ 未检测到");
+    $("pg-actions").style.display = pgOk ? "none" : "block";
+    $("btn-pg-setup").disabled = false;
+    setBadge("neo4j-11001", probe["neo4j:11001"], probe["neo4j:11001"] ? "✓ 已就绪" : "○ 未检测（降级）");
+    setBadge("neo4j-11003", probe["neo4j:11003"], probe["neo4j:11003"] ? "✓ 已就绪" : "○ 未检测（降级）");
+    const cg = probe["py:cognee"]?.[0] || probe["py:system"]?.[0] || "";
+    setBadge("pycognee", !!cg, cg ? "✓ " + cg.split("/").slice(-3).join("/") : "✗ 未检测（可手填）");
+    if (cg) $("cogneePy").value = cg;
+    const em = probe["py:empirical"]?.[0] || "";
+    setBadge("pyempirical", !!em, em ? "✓ " + em.split("/").slice(-3).join("/") : "○ 未检测（可留空）");
+    if (em) $("empiricalPy").value = em;
+    if (probe.envExists) $("err").textContent = "检测到已保存的配置，直接点击保存启动即可（或覆盖配置）。";
+    else $("err").textContent = "";
+    $("save").disabled = !pgOk;
+    if (!pgOk) $("err").textContent = "数据库未就绪 — 点击上方「一键启动 PostgreSQL」或自行配置数据库。";
+  }
+
+  // 一键启动 PG
+  $("btn-pg-setup").addEventListener("click", async () => {
+    const btn = $("btn-pg-setup");
+    btn.disabled = true; btn.textContent = "正在启动数据库…（约 1-2 分钟）";
+    $("pg-status").className = "err";
+    $("pg-status").textContent = "";
+    try {
+      const r = await window.sagDesktop.dbSetup();
+      if (r.ok) {
+        $("pg-status").className = "ok-msg";
+        $("pg-status").textContent = "✓ PostgreSQL 已就绪（端口 " + r.port + "）";
+        await refreshProbe();
+      } else {
+        $("pg-status").textContent = r.error;
+      }
+    } catch (e) {
+      $("pg-status").textContent = "启动失败: " + e.message;
+    }
+    btn.disabled = false; btn.textContent = "🚀 一键启动 PostgreSQL（Docker）";
+  });
+
+  // Python 路径验证
+  async function verifyPython(inputId, resultId, label) {
+    const p = $(inputId).value.trim();
+    if (!p) { $(resultId).textContent = ""; return; }
+    $(resultId).textContent = "验证中…";
+    const r = await window.sagDesktop.pyCheck(p);
+    $(resultId).textContent = r.ok ? "✓ " + (r.version || "OK") : "✗ " + (r.error || "不可用");
+    $(resultId).style.color = r.ok ? "#34d399" : "#f87171";
+  }
+  $("btn-cognee-check").addEventListener("click", () => verifyPython("cogneePy", "cognee-check", "Cognee"));
+  $("btn-empirical-check").addEventListener("click", () => verifyPython("empiricalPy", "empirical-check", "实证"));
+
+  // 保存并启动
+  $("save").addEventListener("click", async () => {
+    const key = $("llmKey").value.trim();
+    if (!key && !probe?.envExists) { $("err").textContent = "请填写 LLM API Key"; return; }
+    const pgPort = probe["pg:5540"] ? 5540 : 5432;
+    $("save").disabled = true;
+    $("save").textContent = "正在保存并启动…";
+    try {
+      const r = await window.sagDesktop.saveEnv({
+        llmApiKey: key || undefined,
+        llmBaseUrl: $("llmBase").value.trim() || undefined,
+        embeddingApiKey: $("embedKey").value.trim() || undefined,
+        cogneePython: $("cogneePy").value.trim() || undefined,
+        empiricalPython: $("empiricalPy").value.trim() || undefined,
+        pgPort,
+      });
+      await window.sagDesktop.restartBackend();
+      $("err").className = "ok-msg";
+      $("err").textContent = "配置已保存，正在启动 MarxSphere…";
+    } catch (e) {
+      $("err").className = "err";
+      $("err").textContent = "保存失败: " + e.message;
+      $("save").disabled = false;
+      $("save").textContent = "保存并启动 MarxSphere";
+    }
+  });
+
+  refreshProbe().catch((e) => {
+    // 区分 preload 未加载 vs 探测失败
+    const bridge = window.sagDesktop;
+    $("err").textContent = bridge
+      ? "环境检测失败（" + String(e?.message || e).slice(0, 80) + "），请稍后重试。"
+      : "初始化失败：安全桥未加载（sagDesktop 不可用）。请重新安装或重启应用。";
+    console.error("[onboarding] probe 失败:", e);
+  });
+</script>
+</body>
+</html>

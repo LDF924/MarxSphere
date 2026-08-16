@@ -1,0 +1,534 @@
+/* cosmos.css — MarxSphere 玻璃拟态宇宙风视觉层
+ * 流动宇宙渐变 + 星尘粒子 + 玻璃卡片 + 光效
+ * 2026-08-07 finesse 升级：图谱深色变量 / 导航分组色点 / 金色呼吸选中态
+ */
+
+/* ─── 动态宇宙 Canvas（finesse 2026-08-07：星场漂移 + 星云 + 视差，位于渐变之上、水印之下）─── */
+.universe-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: -2; /* cosmos-bg(-3) 之上、graph-watermark(-1) 之下 */
+  pointer-events: none;
+}
+
+/* 图谱深色兼容变量（ReactFlow/d3 节点用，浅色兜底值保留）─── */
+:root {
+  --graph-node-border: hsl(0 0% 100% / 0.12);
+  --graph-node-bg: hsl(222 47% 12% / 0.92);
+  --graph-node-bg-alt: hsl(222 45% 16% / 0.92);
+  --graph-node-fg: hsl(210 20% 92%);
+  --graph-edge: hsl(210 25% 45% / 0.4);
+  --graph-minimap-mask: hsl(222 47% 7% / 0.75);
+}
+
+/* ─── 视图切换过渡：上滑微动（V394最终修复: 动画不含opacity变化）
+   原动画含 opacity:0→1, 浏览器在后台/面板不可见时冻结CSS动画于起始态,
+   元素永久停在 opacity:0 → 内容不可见且合成层残留白色蒙版矩形。
+   现在只动 transform(translateY 6px→0), 动画冻结时元素仍完全可见 */
+.view-fade-in {
+  animation: view-fade-in 0.22s ease-out backwards;
+}
+@keyframes view-fade-in {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* 消息气泡入场（V394修复: 去掉opacity动画, 同 view-fade-in 防动画冻结时透明蒙版） */
+.message-pop-in {
+  animation: message-pop-in 0.18s ease-out backwards;
+}
+@keyframes message-pop-in {
+  from {
+    transform: translateY(4px) scale(0.99);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── 静态宇宙渐变背景（无动画，径向渐变 + 图谱水印）─── */
+.cosmos-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none; /* 背景层必须穿透鼠标事件，否则拦截文字选择 */
+  /* V394修复: 原 z-index:-3 负层级在 GPU 合成异常时与内容层错乱产生白色蒙版; 改0+内容层isolation隔离 */
+  /* 紫罗兰调深空（Index 风格）：深紫黑底 + 青→靛→紫山峰地平线 + 靛蓝光晕 */
+  background:
+    radial-gradient(60vw 60vw at 12% -10%, hsl(214 60% 30% / 0.55), transparent 70%),
+    radial-gradient(55vw 55vw at 88% 108%, hsl(255 40% 25% / 0.45), transparent 70%),
+    radial-gradient(40vw 40vw at 70% 25%, hsl(200 40% 22% / 0.35), transparent 70%),
+    hsl(222 47% 5%);
+}
+
+/* 山峰地平线（Index alpine gradient：青→靛→紫，底部巨峰剪影） */
+.cosmos-bg .cosmos-alpine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* 底部 55%：青→靛→紫 渐变地平线，如暮色山脊（高对比，肉眼可见） */
+  background:
+    /* 山峰剪影（锯齿多边形，深紫黑） */
+    linear-gradient(168deg, transparent 78%, hsl(262 70% 10% / 0.9) 78.5%, hsl(262 75% 6% / 0.95) 100%),
+    /* 青→靛→紫 主渐变带（底部 45% 起） */
+    linear-gradient(180deg, transparent 52%, hsl(190 80% 55% / 0.22) 56%, hsl(235 80% 62% / 0.2) 62%, hsl(270 80% 58% / 0.16) 70%, hsl(262 70% 30% / 0.4) 82%, hsl(262 75% 12% / 0.9) 96%);
+}
+
+/* 第二层山峰（更近的剪影，增强层次） */
+.cosmos-bg .cosmos-ridge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(172deg, transparent 84%, hsl(262 60% 8% / 0.6) 84.5%, transparent 86%),
+    linear-gradient(175deg, transparent 88%, hsl(262 55% 5% / 0.5) 88.5%, transparent 90%),
+    linear-gradient(160deg, transparent 82%, hsl(262 65% 9% / 0.55) 82.5%, transparent 84.5%);
+}
+
+/* 大颗亮星（Index 风格：纯白 2px + 光晕，box-shadow 多重星技巧——必渲染） */
+.cosmos-bg .cosmos-bright-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    /* 亮星（2px 纯白 + 光晕） */
+    radial-gradient(2px 2px at 8% 12%, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(1.5px 1.5px at 18% 32%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(2.5px 2.5px at 27% 8%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 36% 22%, rgba(220, 225, 255, 0.85), transparent),
+    radial-gradient(2px 2px at 45% 14%, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(1px 1px at 52% 28%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(2.5px 2.5px at 61% 9%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 70% 19%, rgba(210, 220, 255, 0.8), transparent),
+    radial-gradient(2px 2px at 79% 26%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 88% 13%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(2px 2px at 94% 31%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 13% 48%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(2px 2px at 33% 55%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 56% 62%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(2.5px 2.5px at 77% 50%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1.5px 1.5px at 92% 58%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(2px 2px at 23% 68%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 48% 74%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 68% 66%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 85% 72%, rgba(255, 255, 255, 0.7), transparent);
+  opacity: 0.9;
+  animation: cosmos-stars-twinkle 6s ease-in-out infinite;
+}
+
+@keyframes cosmos-stars-twinkle {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.55; }
+}
+
+/* 角落低透明度静态图谱水印（SVG，无动画） */
+.cosmos-bg .cosmos-graph-watermark {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'%3E%3Cg fill='none' stroke='%23aab8d8' stroke-width='0.6'%3E%3Cpath d='M120 80 L180 130 L260 100 L320 180 L240 220 L150 180 L120 80 Z'/%3E%3Cpath d='M260 100 L340 60 L420 110 L380 190 L320 180'/%3E%3Cpath d='M420 110 L500 90 L560 160 L480 210 L380 190'/%3E%3Cpath d='M560 160 L640 140 L700 220 L600 260 L480 210'/%3E%3Cpath d='M180 130 L220 210 L180 300 L100 260 L150 180'/%3E%3Cpath d='M340 60 L380 150 L340 240 L260 220 L320 180'/%3E%3Cpath d='M500 90 L540 180 L500 270 L420 240 L420 110'/%3E%3Cpath d='M640 140 L680 230 L640 320 L560 280 L560 160'/%3E%3Cpath d='M120 300 L200 330 L260 400 L180 430 L100 380 L120 300'/%3E%3Cpath d='M380 240 L420 310 L380 390 L300 360 L340 240'/%3E%3Cpath d='M560 280 L620 340 L580 430 L500 400 L540 270'/%3E%3Ccircle cx='120' cy='80' r='5' fill='%23aab8d8'/%3E%3Ccircle cx='340' cy='60' r='6' fill='%23aab8d8'/%3E%3Ccircle cx='500' cy='90' r='5' fill='%23aab8d8'/%3E%3Ccircle cx='640' cy='140' r='7' fill='%23aab8d8'/%3E%3Ccircle cx='260' cy='220' r='5' fill='%23aab8d8'/%3E%3Ccircle cx='420' cy='240' r='6' fill='%23aab8d8'/%3E%3Ccircle cx='560' cy='280' r='5' fill='%23aab8d8'/%3E%3Ccircle cx='180' cy='430' r='6' fill='%23aab8d8'/%3E%3Ccircle cx='380' cy='390' r='5' fill='%23aab8d8'/%3E%3Ccircle cx='580' cy='430' r='7' fill='%23aab8d8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: bottom right;
+  background-size: 60% auto;
+}
+
+/* 金色星环光带（顶部中央） */
+.cosmos-bg .cosmos-ring {
+  position: absolute;
+  top: -15%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90vw;
+  height: 45vh;
+  border-radius: 50%;
+  border: 1px solid hsl(43 96% 60% / 0.12);
+  box-shadow:
+    0 0 40px hsl(43 96% 60% / 0.08),
+    inset 0 0 40px hsl(43 96% 60% / 0.05);
+  animation: cosmos-ring-pulse 8s ease-in-out infinite;
+}
+
+@keyframes cosmos-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(5%, 8%) scale(1.15); }
+  100% { transform: translate(-4%, -6%) scale(1.05); }
+}
+
+@keyframes cosmos-ring-pulse {
+  0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
+}
+
+/* 星尘粒子 */
+.cosmos-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 8% 22%, hsl(43 96% 80% / 0.8), transparent),
+    radial-gradient(1px 1px at 22% 8%, hsl(210 100% 80% / 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 34% 78%, hsl(43 96% 70% / 0.7), transparent),
+    radial-gradient(1px 1px at 42% 35%, hsl(210 100% 90% / 0.6), transparent),
+    radial-gradient(2px 2px at 58% 12%, hsl(43 96% 75% / 0.6), transparent),
+    radial-gradient(1px 1px at 67% 45%, hsl(210 100% 85% / 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 75% 68%, hsl(43 96% 80% / 0.6), transparent),
+    radial-gradient(1px 1px at 85% 25%, hsl(210 100% 90% / 0.5), transparent),
+    radial-gradient(2px 2px at 92% 55%, hsl(43 96% 70% / 0.5), transparent),
+    radial-gradient(1px 1px at 15% 60%, hsl(210 100% 80% / 0.6), transparent);
+  animation: cosmos-twinkle 5s ease-in-out infinite alternate;
+}
+
+@keyframes cosmos-twinkle {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* ─── 玻璃拟态 ─── */
+.glass {
+  position: relative;
+  background: hsl(222 40% 14% / 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid hsl(217 30% 45% / 0.25);
+  box-shadow:
+    0 8px 32px hsl(222 50% 0% / 0.35),
+    inset 0 1px 0 hsl(217 30% 80% / 0.08);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass:hover {
+  border-color: hsl(217 30% 55% / 0.35);
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 40px hsl(222 50% 0% / 0.4),
+    inset 0 1px 0 hsl(217 30% 80% / 0.1);
+}
+
+/* 玻璃高亮光边（顶部） */
+.glass::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(43 96% 70% / 0.4), transparent);
+}
+
+/* 金色星光点缀（卡片角落） */
+.glass::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 48px;
+  height: 48px;
+  background: radial-gradient(circle at top right, hsl(43 96% 60% / 0.15), transparent 70%);
+  border-radius: 0 8px 0 0;
+}
+
+/* ─── 胶囊导航（finesse 升级：hairline 边框 + 金色呼吸选中态 + 分组色点）─── */
+.nav-pill {
+  position: relative;
+  border-radius: 9999px;
+  padding: 5px 12px;
+  font-size: 0.8125rem;
+  color: hsl(210 20% 75%);
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+  border: 1px solid hsl(0 0% 100% / 0.06);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  user-select: none;
+}
+
+.nav-pill:hover {
+  color: hsl(210 30% 96%);
+  background: hsl(217 30% 30% / 0.35);
+  border-color: hsl(0 0% 100% / 0.1);
+  transform: translateY(-1px);
+}
+
+.nav-pill:active {
+  transform: translateY(0);
+}
+
+.nav-pill-active {
+  color: hsl(43 96% 88%);
+  background: linear-gradient(180deg, hsl(217 35% 26% / 0.75), hsl(217 35% 20% / 0.85));
+  border-color: hsl(43 96% 60% / 0.35);
+  box-shadow: 0 0 0 1px hsl(43 96% 60% / 0.08), 0 2px 14px hsl(43 96% 60% / 0.14), inset 0 1px 0 hsl(0 0% 100% / 0.06);
+}
+
+/* 分组色点（导航 tab 分组标识：核心对话/文献/知识/政策/技能/后台） */
+.nav-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.nav-pill:hover .nav-dot,
+.nav-pill-active .nav-dot {
+  opacity: 1;
+}
+
+/* ─── Mega Menu 面板（V397: 悬停展开分类导航）─── */
+.mega-menu-panel {
+  animation: mega-menu-in 0.16s ease-out backwards;
+}
+@keyframes mega-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 品牌星环 logo */
+.brand-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, hsl(213 60% 50% / 0.5), hsl(255 45% 30% / 0.4));
+  border: 1px solid hsl(43 96% 60% / 0.3);
+  box-shadow: 0 0 16px hsl(43 96% 60% / 0.2), inset 0 0 10px hsl(255 50% 40% / 0.3);
+}
+
+.brand-ring::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px dashed hsl(43 96% 60% / 0.25);
+  animation: cosmos-spin 12s linear infinite;
+}
+
+@keyframes cosmos-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ─── MarxLogo：马克思头像 + 银河环绕 ─── */
+.marx-logo {
+  position: relative;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 32% 30%, hsl(213 55% 42% / 0.55), hsl(255 45% 22% / 0.6));
+  border: 1px solid hsl(43 96% 62% / 0.35);
+  box-shadow: 0 0 18px hsl(43 96% 60% / 0.18), inset 0 0 12px hsl(255 50% 30% / 0.35);
+  overflow: hidden;
+}
+
+.marx-logo-orbit {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  animation: cosmos-spin 16s linear infinite;
+}
+
+.marx-logo-face {
+  position: relative;
+  z-index: 1;
+  width: 72%;
+  height: 72%;
+  filter: drop-shadow(0 1px 2px hsl(0 0% 0% / 0.4));
+}
+
+/* 悬停：轨道加速 + 微光增强 */
+.marx-logo:hover .marx-logo-orbit {
+  animation-duration: 6s;
+}
+.marx-logo:hover {
+  box-shadow: 0 0 26px hsl(43 96% 60% / 0.3), inset 0 0 14px hsl(255 50% 35% / 0.4);
+}
+
+/* ─── SymbolLogo：品牌 logo（图片 /marx-logo.png）─── */
+.symbol-logo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid hsl(43 96% 62% / 0.45);
+  box-shadow: 0 0 16px hsl(43 96% 60% / 0.25), inset 0 0 10px hsl(255 50% 30% / 0.3);
+  background: hsl(222 47% 7%);
+  flex-shrink: 0;
+}
+.symbol-logo-img {
+  display: block;
+}
+
+/* 悬停微光增强 */
+.symbol-logo:hover {
+  box-shadow: 0 0 26px hsl(43 96% 60% / 0.4), inset 0 0 14px hsl(255 50% 35% / 0.4);
+}
+
+/* 锤子：左上斜置 */
+.symbol-hammer {
+  position: absolute;
+  top: 22%;
+  left: 30%;
+  transform: rotate(-35deg);
+  z-index: 2;
+}
+.symbol-hammer-head {
+  width: 13%;
+  height: 7%;
+  min-width: 12px;
+  min-height: 5px;
+  border-radius: 2px;
+  background: hsl(0 0% 85%);
+  box-shadow: 0 1px 3px hsl(0 0% 0% / 0.5);
+}
+.symbol-hammer-handle {
+  width: 4%;
+  min-width: 3.5px;
+  height: 26%;
+  min-height: 14px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: linear-gradient(hsl(28 60% 45%), hsl(25 55% 38%));
+}
+
+/* 镰刀：右下斜置 + 弧形刃 */
+.symbol-sickle {
+  position: absolute;
+  top: 24%;
+  right: 26%;
+  transform: rotate(38deg);
+  z-index: 2;
+}
+.symbol-sickle-blade {
+  width: 34%;
+  height: 8%;
+  min-width: 22px;
+  min-height: 6px;
+  border-radius: 90% 20% 40% 10% / 70% 20% 60% 20%;
+  background: linear-gradient(120deg, hsl(0 0% 92%), hsl(0 0% 70%));
+  transform: skewX(-18deg);
+  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.4);
+}
+.symbol-sickle-handle {
+  width: 4%;
+  min-width: 3.5px;
+  height: 22%;
+  min-height: 12px;
+  margin: -2px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(hsl(28 60% 45%), hsl(25 55% 38%));
+}
+
+/* 下方一双手托举（简化手型） */
+.symbol-hands {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 46%;
+  height: 18%;
+  z-index: 3;
+}
+.symbol-hand {
+  position: absolute;
+  bottom: 0;
+  width: 26%;
+  height: 14%;
+  border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+  background: hsl(30 40% 78%);
+  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.3);
+}
+.symbol-hand-left {
+  left: 10%;
+  transform: rotate(-12deg);
+}
+.symbol-hand-right {
+  right: 10%;
+  transform: rotate(12deg);
+}
+
+/* 麦穗点缀（两侧） */
+.symbol-wheat {
+  position: absolute;
+  bottom: 14%;
+  width: 10%;
+  height: 16%;
+  border-radius: 70% 30% 70% 30%;
+  background: linear-gradient(hsl(45 70% 60%), hsl(38 65% 50%));
+  z-index: 1;
+}
+.symbol-wheat-left {
+  left: 16%;
+  transform: rotate(18deg);
+}
+.symbol-wheat-right {
+  right: 16%;
+  transform: rotate(-18deg);
+}
+
+/* 玻璃表格/列表行 */
+.glass-row {
+  background: hsl(222 40% 16% / 0.35);
+  border: 1px solid hsl(217 30% 40% / 0.15);
+  transition: all 0.2s ease;
+}
+
+.glass-row:hover {
+  background: hsl(217 30% 28% / 0.4);
+  border-color: hsl(43 96% 60% / 0.2);
+  transform: translateY(-1px);
+}
+
+/* ─── 金色光晕字符（首页马克思名言）─── */
+.golden-char {
+  display: inline-block;
+  color: hsl(43 96% 72%);
+  text-shadow:
+    0 0 6px hsl(43 96% 60% / 0.7),
+    0 0 12px hsl(43 96% 55% / 0.4),
+    0 0 20px hsl(43 96% 50% / 0.25);
+  transition: all 0.3s ease;
+  cursor: default;
+}
+.golden-char:hover {
+  color: hsl(48 100% 90%);
+  text-shadow:
+    0 0 8px hsl(43 100% 70% / 0.9),
+    0 0 16px hsl(43 100% 65% / 0.6),
+    0 0 28px hsl(43 100% 60% / 0.4);
+  transform: translateY(-1px);
+}
+.golden-char-dash {
+  display: inline-block;
+  color: hsl(43 90% 60% / 0.8);
+  margin: 0 0.2em;
+  text-shadow: 0 0 6px hsl(43 96% 55% / 0.5);
+}
+
+/* ─── 检索步骤逐步点亮动画（GBrain 12 步教学台）─── */
+@keyframes step-light-up {
+  0% { background: rgba(34, 197, 94, 0.35); border-color: rgb(34, 197, 94); }
+  100% { background: transparent; border-color: var(--border, #e4e4e7); }
+}
+.step-light-up {
+  animation: step-light-up 0.6s ease-out;
+}

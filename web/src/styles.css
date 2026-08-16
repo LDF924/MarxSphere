@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* MarxSphere 马研星环 — 宇宙深邃主题（深空 + 星光金）*/
+  --background: 222 47% 7%;
+  --foreground: 210 40% 96%;
+  --muted: 217 33% 15%;
+  --muted-foreground: 215 20% 62%;
+  --accent: 222 35% 20%;
+  --accent-foreground: 210 40% 96%;
+  --primary: 214 55% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 222 40% 18%;
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  --ring: 214 55% 55%;
+  --radius: 0.625rem;
+  /* 深色玻璃感卡片 */
+  --card: 222 45% 12%;
+  --card-foreground: 210 40% 96%;
+  /* 统一阴影层级 */
+  --shadow-xs: 0 1px 2px hsl(222 50% 0% / 0.4);
+  --shadow-sm: 0 2px 6px hsl(222 50% 0% / 0.4);
+  --shadow-md: 0 4px 12px hsl(222 50% 0% / 0.5);
+  --shadow-lg: 0 8px 24px hsl(222 50% 0% / 0.55);
+  /* 统一间距刻度 */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  /* 更雅致的字体栈：正文圆润无衬线，中文优先微软雅黑/思源 */
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.015em;
+  line-height: 1.65;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* 背景层统一由 cosmos.css 的 .cosmos-bg 负责（2026-08-07）：
+ * 原 body::before/::after 深空渐变 + 星尘（z:-2/-1）会盖住 cosmos-bg(z:-3)，
+ * 导致山峰/亮星层不可见——已移除，避免层叠遮挡 */
+
+/* 学术编辑感：选中态用高对比靛蓝（深色背景上必须清晰可见） */
+::selection {
+  background: hsl(214 55% 48% / 0.85);
+  color: #fff;
+}
+
+/* 全局允许选中复制（覆盖第三方组件可能的 select-none） */
+html,
+body,
+#root,
+button,
+a,
+span,
+div,
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+pre,
+code,
+input,
+textarea,
+select {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 细滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+pre,
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+/* 标题衬线：学术典籍感，用于大标题/品牌名 */
+.font-display {
+  font-family: "Georgia", "Times New Roman", "STSong", "SimSun", serif;
+  letter-spacing: 0.02em;
+}
+
+/* 副标题：轻量优雅 */
+.font-display-light {
+  font-family: "Georgia", "STKaiti", "KaiTi", serif;
+  letter-spacing: 0.03em;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}

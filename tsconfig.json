@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "downlevelIteration": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@pdf2obsidian/core": ["vendor/pdf2obsidian/packages/core/dist/index.js"],
+      "@pdf2obsidian/pipeline": ["vendor/pdf2obsidian/packages/pipeline/dist/index.js"],
+      "@pdf2obsidian/providers": ["vendor/pdf2obsidian/packages/providers/dist/index.js"],
+      "@pdf2obsidian/tasks": ["vendor/pdf2obsidian/packages/tasks/dist/index.js"]
+    }
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "vitest.config.ts", "vite.config.ts"],
+  "exclude": ["dist", "node_modules", "vendor"]
+}

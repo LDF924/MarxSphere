@@ -1,0 +1,56 @@
+# electron-builder.yml — MarxSphere 桌面端 NSIS 打包配置
+appId: com.marxsphere.desktop
+productName: MarxSphere
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - electron/dist/**/*
+
+extraResources:
+  # 主资源（electron-builder 默认排除 node_modules, 需单独条目）
+  - from: resources/sag/dist
+    to: sag/dist
+    filter:
+      - "**/*"
+  - from: resources/sag/scripts
+    to: sag/scripts
+    filter:
+      - "**/*"
+  - from: resources/sag/migrations
+    to: sag/migrations
+    filter:
+      - "**/*"
+  - from: resources/sag/data
+    to: sag/data
+    filter:
+      - "**/*"
+  - from: resources/sag/web
+    to: sag/web
+    filter:
+      - "**/*"
+  - from: resources/sag/node_modules.zip
+    to: sag/node_modules.zip
+  - from: resources/sag/docker-compose.yml
+    to: sag/docker-compose.yml
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MarxSphere
+  installerLanguages:
+    - zh_CN
+  include: build/installer.nsh
+
+# 排除 node_modules（后端 dist 已编译, 依赖在 dist 内 node_modules 由 extraResources 携带）
+npmRebuild: false
