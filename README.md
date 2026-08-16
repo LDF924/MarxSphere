@@ -186,18 +186,19 @@ HTTP_PORT=4173
 ## 目录结构
 
 ```text
-src/
-  ai/                 LLM/Embedding/Rerank 客户端
-  api/                HTTP API + 推理链路
-  services/           Agent / 实证 / 知识图谱 / 评测服务
-  db/                 连接、迁移、仓储、向量工具
-web/
-  src/                React WebUI（33 视图 · Mega Menu 导航）
-electron/             桌面端主进程 / 引导页
-scripts/              Python runner / 评测脚本 / 工具脚本
-migrations/           PostgreSQL schema（80+ 迁移）
-test/                 单元测试（154 项）
-docs/                 文档
+src/                 后端源码（AI/API/服务/数据库）
+web/                 前端源码（33 视图 · Mega Menu 导航）
+electron/            桌面端主进程 / 引导页
+scripts/             Python runner / 评测脚本 / 工具脚本 / 启动脚本
+evaluation/          评测资产（评测结果 / 金标集 / 历史归档）
+reports/             评测报告（7 份）
+knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
+docs/                文档（架构 / 规格 / 披露 / 使用说明）
+migrations/          PostgreSQL schema（80+ 迁移）
+plugins/             Agent 插件目录
+test/                单元测试（154 项）
+vendor/              第三方组件（pdf2obsidian）
+data/                运行时数据（金标候选等）
 ```
 
 ## 测试
