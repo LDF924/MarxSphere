@@ -1,0 +1,12 @@
+{
+  "okTemplate": 1,
+  "okAdaptive": 1,
+  "total": 1,
+  "avgDurationTemplate": 232947,
+  "avgDurationAdaptive": 13821,
+  "avgConfidenceTemplate": 0,
+  "avgConfidenceAdaptive": 0,
+  "avgEvalTemplate": 0.95,
+  "avgEvalAdaptive": 0.75,
+  "avgPlanOps": 6
+}

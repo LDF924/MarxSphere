@@ -1,5 +1,10 @@
 # 技能更新检测基线（运行时生成）
 data/
+# 评测金标数据（公开评测资产, 放行）
+!data/gold_candidates.json
+!data/judge_gold.json
+!data/trajectory_prefix_candidates.json
+!data/trajectory_prefix_gold.json
 .env
 batch-ingest-log.json
 
@@ -29,10 +34,10 @@ web/dist.bak-v167/
 .obsidian/
 
 # V285: 评测运行产物（临时快照，历史归档在 eval-archive/）
-eval_32metrics.json
-eval_32metrics_dual.json
-eval_32metrics_dual_summary.json
-eval_32metrics_perq.json
+!eval_32metrics.json
+!eval_32metrics_dual.json
+!eval_32metrics_dual_summary.json
+!eval_32metrics_perq.json
 # V388: 评测日志/逐题产物
 eval_onebyone*
 eval_q*.log

@@ -1,0 +1,1889 @@
+[
+  {
+    "question_id": "Q01",
+    "question_type": "概念定义",
+    "question": "根据该论文，政府和社会资本合作（PPP）模式的本质属性是什么？",
+    "gold_answer": "PPP模式不是一种简单的融资手段，而是政府与市场深度融合的治理模式创新。",
+    "paper_id": "0d2627f0f64a",
+    "hypothesis": "根据检索到的多篇论文，政府和社会资本合作（PPP）模式的本质属性被一致界定为**公私伙伴关系**，其核心是一种**治理理念或治理机制**，而非单纯的融资工具或变相举债渠道。具体而言，PPP的本质属性包含以下四个维度：\n\n1. **治理属性优先于融资功能**：论文《以新机制规范政府和社会资本合作》明确指出，PPP本质上是“治理”理念而非单纯“融资”功能，要求“PPP参与各方之间是平等的民商事关系”，权责利由契约载明并受法治保障，需实现“共建、共治、共享”的协同治理[来源：Cognee分块 - 《以新机制规范政府和社会资本合作》问答第6条]。该论文的摘要也强调“本文界定‘政府和社会资本合作’（PPP）本质为公私伙伴关系，强调其治理属性而非单纯融资工具”[来源：Cognee分块 - 《以新机制规范政府和社会资本合作》摘要第1条]。\n\n2. **风险共担与利益共享的长期契约关系**：论文《规范推进我国政府与社会资本合作(PPP)模式研究》界定PPP模式为“政府与社会资本在公共服务供给中建立的平等伙伴关系”，其本质是“风险共担、利益共享的长期合作机制”[来源：Cognee分块 - 《规范推进我国政府与社会资本合作(PPP)模式研究》摘要第1条]。论文《新机制下规范发展政府和社会资本合作的建议》也将其归纳为“政府与社会资本在基础设施和公共服务领域通过特许经营等模式建立的长期契约关系”[来源：Cognee分块 - 《新机制下规范发展政府和社会资本合作的建议》摘要第1条]。\n\n3. **政府与市场深度融合的治理模式创新**：论文《规范发展政府和社会资本合作（PPP）模式为绿色发展增动力添活力》将PPP界定为“政府与市场深度融合的治理模式创新”，强调其在生态文明建设中兼具制度供给、风险分担与绩效激励三重功能[来源：Cognee分块 - 《规范发展政府和社会资本合作（PPP）模式为绿色发展增动力添活力》摘要第1条]。\n\n4. **回归公私合作的本源**：在PG实体中，“回归PPP本源”被强调为“私人部门承担真实经营风险并获取市场化回报，而非变相政府融资”[来源：PG实体 - 回归PPP本源]。\n\n此外，Cognee语义检索结果综合指出：“根据该论文，政府和社会资本合作（PPP）模式的本质属性是**治理理念而非单纯融资功能**，其本质为**公私伙伴关系**，强调**风险共担、利益共享的长期契约关系**，核心在于**共建、共治、共享**的协同治理”[来源：Cognee语义检索]。\n\n综上所述，这些结论在多篇论文中高度一致，没有发现矛盾或推测成分，全部属于**确定结论**。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 5261,
+      "stage2_coarse": 21891,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 32,
+      "stage3_refine": 63868,
+      "stage4_fusion": 1,
+      "stage4_total": 59,
+      "stage4_infer": 11071,
+      "evaluating": 2616
+    },
+    "entity_names": [
+      "政府社会资本合作",
+      "模式本质属性",
+      "PPP本源",
+      "《关于规范实施政府和社会资本合作新机制的指导意见》",
+      "《关于推广运用政府和社会资本合作模式有关问题的通知》",
+      "《政府和社会资本合作项目财政管理暂行办法》",
+      "回归PPP本源",
+      "ppp模式",
+      "PPP模式",
+      "政府和社会资本合作（ppp）模式",
+      "2016年ppp政策",
+      "公私合作制（ppp）",
+      "垃圾治理ppp项目",
+      "关于进一步做好政府和社会资本合作新机制项目规范实施工作的通知",
+      "ppp新机制",
+      "关于规范政府和社会资本合作存量项目建设和运营的指导意见",
+      "ppp项目",
+      "关于规范实施政府和社会资本合作新机制的指导意见",
+      "政府和社会资本合作新机制",
+      "ppp本源"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"acfcef47-3e88-56cf-bb1b-d978d1bbe354\",\n    \"created_at\": 1783770537075,\n    \"updated_at\": 1783770537075,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据该论文，政府和社会资本合作（PPP）模式的本质属性是**治理理念而非单纯融资功能**，其本质为**公私伙伴关系**，强调**风险共担、利益共享的长期契约关系**，核心在于**共建、共治、共享**的协同治理[来源:1, 来源:6]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"政府和社会资本合作（PPP）模式的本质属性是风险共担、收益共享、全生命周期管理的长期契约关系，强调政府与社会资本基于合同的平等合作关系，而非单纯融资工具[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "type",
+            "description",
+            "engine"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "type",
+            "description",
+            "engine"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "type",
+            "description",
+            "engine"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.25,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 21891,
+      "stage3_latency_ms": 63868,
+      "stage4_latency_ms": 59,
+      "end_to_end_latency_ms": 105076,
+      "overall_22": 0.8394736842105263
+    }
+  },
+  {
+    "question_id": "Q02",
+    "question_type": "事实检索",
+    "question": "根据该论文，马克思对资本本质的界定与古典政治经济学家的根本区别是什么？",
+    "gold_answer": "古典政治经济学家将资本理解为永恒、非历史的‘可感知的物’（物质资财），而马克思揭示资本在物的掩盖下本质上是‘历史发展到一定阶段上的社会生产关系’。",
+    "paper_id": "30cfcd5cec87",
+    "hypothesis": "根据检索到的多篇论文，马克思对资本本质的界定与古典政治经济学家的根本区别在于一个“物”与“关系”的维度转换。古典政治经济学家将资本“物化”和“永恒化”，而马克思则透过物的表象，揭示了资本作为一种“社会生产关系”的本质，并强调其历史性、社会性和阶级性。\n\n**确定结论**\n\n1.  **根本区别：资本是“物”还是“社会关系”**\n    *   **古典政治经济学家的观点：** 将资本视为一种“可感知的物质资财”或“物”。例如，亚当·斯密在《国富论》中将资本看作为了生产获利而积蓄起来的“物质资产”。他们对资本的认识停留在其物质形态层面，如货币、机器、厂房、原材料等，认为资本是自然的、永恒的、非历史的范畴。\n    *   **马克思的观点：** 马克思运用政治经济学批判的“抽象力”，穿透了物的表象，指出“资本不是物，而是一定的、社会的、属于一定历史社会形态的生产关系，后者体现在一个物上，并赋予这个物以独特的社会性质”。马克思明确指出，资本的本质是“以物为中介的一种特殊社会关系”，即“资本雇佣劳动的关系”。这意味着，货币、生产资料等只有在特定的社会历史条件下，即当它们被用于剥削雇佣劳动并创造剩余价值时，才成为资本。\n\n2.  **历史性与永恒性的对立**\n    *   古典政治经济学家从生产的一般过程出发，将资本视为一切生产过程的必要因素，从而将其永恒化。他们认为资本从人类社会的开端便存在，并将永远存在下去。\n    *   马克思则从历史唯物主义出发，认为资本是“历史发展到一定阶段上的社会生产关系”。它产生于特定的历史前提——劳动力成为商品，即市场上出现出卖自己劳动力的“自由工人”。因此，资本是一个历史范畴，有其产生、发展和灭亡的过程，并非永恒存在。\n\n3.  **视角的转换：从“物”到“人”与“关系”**\n    *   古典政治经济学的视角局限于“物”与“物”的关系，关注的是财富的积累和分配。\n    *   马克思的视角转向了人与人的关系，揭示了在物的掩盖下，资本家和工人之间剥削与被剥削的阶级关系。资本的核心不是物的自然属性，而是它所承载的社会权力，即资本家凭借对生产资料的占有，无偿占有工人创造的剩余价值的权力。\n\n**推测**\n\n本次搜索未发现与上述“确定结论”相矛盾的推测性信息。所有高置信度的来源均一致指向马克思对资本本质的界定与古典政治经济学家的根本区别在于“关系”与“物质”的对立。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 6434,
+      "stage2_coarse": 26132,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 34722,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 180025,
+      "stage4_total": 180041,
+      "stage4_infer": 17023,
+      "evaluating": 2108
+    },
+    "entity_names": [
+      "规范和引导资本",
+      "健康发展的内在逻辑",
+      "本文是否采用实证研究",
+      "本文未采用实证研究",
+      "其研究方法属于理论",
+      "核心是运用马克思主义",
+      "原著出发进行逻辑",
+      "思辨性理论研究",
+      "论文指出马克思的研究",
+      "是一切社会关系",
+      "无定价能力等特征",
+      "导致其对资本",
+      "行为规律的分析",
+      "脱离真实经济关系",
+      "社会资本",
+      "实践的实证分析",
+      "等具体政策",
+      "亦未对其展开实证分析",
+      "全文聚焦于马克思主义",
+      "即作为生产要素的资本"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"ea910d4e-3584-53f2-b4f7-f366d92eb640\",\n    \"created_at\": 1783776675392,\n    \"updated_at\": 1783776675392,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 8107,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"sentence_end\",\n    \"created_at\": 1783451130024,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"8962c322-a3de-5050-9280-f9f023b1d515\",\n    \"type\": \"Docume"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"马克思对资本本质的界定与古典政治经济学家的根本区别在于：古典政治经济学将资本物化为“可感知的物质资财”（如亚当·斯密所称“为获利而积蓄起来的物质资产”），而马克思则运用“抽象力”穿透物的表象，揭示资本“是以物为中介的一种特殊社会关系”，即“资本雇佣劳动的关系”，强调其历史性、社会性和阶级性[来源:6]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"马克思对资本本质的界定与古典政治经济学家的根本区别在于：马克思揭示资本的本质是“历史发展到一定阶段上的社会生产关系”，而非古典政治经济学家所认为的“可感知的物”[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": [
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        }
+      ]
+    },
+    "metrics": {
+      "entity_recall": 0,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.3,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 0.3,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 26132,
+      "stage3_latency_ms": 34722,
+      "stage4_latency_ms": 180041,
+      "end_to_end_latency_ms": 266644,
+      "overall_22": 0.7684210526315788
+    }
+  },
+  {
+    "question_id": "Q03",
+    "question_type": "多跳推理",
+    "question": "根据论文内容，庆阳市农村信用社2009年末资本充足率下降7.65个百分点的直接原因是什么？请结合不良贷款变化与加权风险资产增长情况推理得出。",
+    "gold_answer": "因不良贷款余额大幅增加（增长68.56%）及加权风险资产总额激增（增长82.8%），导致风险加权资产增速远超资本净额增速（资本净额仅增长28.00%），从而拉低资本充足率。",
+    "paper_id": "a5e25b9931f7",
+    "hypothesis": "根据论文《规范地方法人金融机构资本构成对策的调查思考——以甘肃省庆阳市为例》中的明确数据，庆阳市农村信用社2009年末资本充足率下降7.65个百分点的直接原因是：**加权风险资产总额的增速（82.8%）远超资本净额的增速（28.00%），导致资本对风险的覆盖能力被被动稀释；同时，不良贷款余额大幅增加（增长68.56%）进一步推高了加权风险资产规模，并可能通过拨备计提侵蚀资本净额，从而加剧了资本充足率的下降。**\n\n具体推理过程如下：\n\n[Step 1] 前提与数据来源：\n论文原文明确披露了2009年末庆阳市农村信用社的关键财务数据：\n- 资本净额69,581.32万元，比年初增加15,222.21万元，增长28.00%；\n- 加权风险资产总额389,567.92万元，比年初增加176,477.79万元，增长82.8%；\n- 不良贷款余额77,043.26万元，比年初增加31,336.57万元，增长68.56%，占各项贷款余额的15.51%，比年初提高3.44个百分点。\n（以上数据均来源于Cognee原始分块，id: 3e239f59-875e-53be-b968-d2a9838f9f2b，对应论文正文描述）\n\n[Step 2] 中间推导：\n资本充足率 = 资本净额 / 加权风险资产总额。从上述数据计算期初期末的变动趋势：\n- 资本净额增速（28.00%）仅为加权风险资产增速（82.8%）的约三分之一；\n- 分子（资本净额）增长相对缓慢，而分母（加权风险资产）急剧膨胀，直接导致比值下降；\n- 不良贷款增长68.56%是加权风险资产扩张的重要驱动因素（不良贷款通常被赋予更高风险权重，其增加直接推高加权风险资产总额）；同时不良贷款增加也意味着需要计提更多贷款损失准备，这会减少资本净额（资本净额中需扣除拨备缺口），进一步压低资本充足率。\n（此推导依据Cognee分块数据和资本充足率计算公式，属于确定性推理）\n\n[Step 3] 结论：\n**直接原因：加权风险资产增速（82.8%）远超资本净额增速（28.00%），形成巨大的增速差，导致资本充足率被被动稀释。不良贷款余额大幅增加（+68.56%）既是加权风险资产扩张的重要推手，也通过拨备压力间接侵蚀资本，但核心矛盾是风险资产扩张速度远快于资本补充速度。**\n此结论与Cognee语义检索返回的结论一致：“加权风险资产总额增速（82.8%）远超资本净额增速（28.00%），而不良贷款余额大幅增加（+68.56%）进一步加剧了资本消耗与风险资产扩张的失衡”。（来源：Cognee语义检索，文本1）\n\n需要注意的是，Cognee分块数据为原文直接摘录，置信度最高，属于**确定结论**；本文未采用Graphiti精炼实体，因其相关内容与问题不直接相关；Cognee语义检索为LLM对片段的语义匹配，置信度中等，但此处与原始分块结论吻合，可相互验证。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 6124,
+      "stage2_coarse": 32969,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 2,
+      "stage3_refine": 36196,
+      "stage4_fusion": 1,
+      "s4_cot_ms": 180006,
+      "stage4_total": 180033,
+      "stage4_infer": 15322,
+      "evaluating": 2373
+    },
+    "entity_names": [
+      "积极加大贷款营销策略",
+      "社资本构成结构及变化",
+      "用联社各项存款余额",
+      "各项贷款余额",
+      "比年初增加",
+      "不良贷款余额",
+      "占各项贷款余额",
+      "所有者权益贷方余额",
+      "资本净额",
+      "加权风险资产总额",
+      "资本充足率",
+      "行资本构成结构及变化",
+      "市金融机构资本净额",
+      "较成立初期增长",
+      "核心资本充足率",
+      "一般风险",
+      "未分配利润",
+      "不良贷款",
+      "市农村信用社不良贷款",
+      "按四级分类余额"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"3e239f59-875e-53be-b968-d2a9838f9f2b\",\n    \"created_at\": 1783776675659,\n    \"updated_at\": 1783776675659,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据论文内容，庆阳市农村信用社2009年末资本充足率下降7.65个百分点的直接原因是：**加权风险资产总额增速（82.8%）远超资本净额增速（28.00%），而不良贷款余额大幅增加（+68.56%）进一步加剧了资本消耗与风险资产扩张的失衡**。\\n\\n具体推理如下：\\n- 不良贷款余额比年初增加31336.57万元，增长68.56%，导致拨备计提压力增大、资本被持续侵蚀；\\n- 加权风险资产总额比年初增加176477.79万元，增长82.8%，增幅显著高于贷款总额增速（31.2%），表明风险资产扩张速度异常加快；\\n- 资本净额虽增加15222.21万元（"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"直接原因是加权风险资产增速（82.8%）远超资本净额增速（28.00%），而不良贷款余额增长68.56%加剧了风险资产扩张，导致资本充足率被动稀释[来源:3]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.8,
+      "pgvector_hit": 0.7,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 1,
+      "reasoning_depth": 0.7,
+      "actual_hops": 3,
+      "stage2_latency_ms": 32969,
+      "stage3_latency_ms": 36196,
+      "stage4_latency_ms": 180033,
+      "end_to_end_latency_ms": 273194,
+      "overall_22": 0.9052631578947368
+    }
+  },
+  {
+    "question_id": "Q04",
+    "question_type": "政策评估",
+    "question": "《关于加强对工商资本租赁农地监管和风险防范的意见》明确禁止哪些违法违规行为？",
+    "gold_answer": "禁止擅自改变农业用途、严重破坏或污染租赁农地等违法违规行为。",
+    "paper_id": "84308f485ff2",
+    "hypothesis": "{\n  \"content\": \"《关于加强对工商资本租赁农地监管和风险防范的意见》（2015年4月由农业部、中央农办、国土资源部、国家工商总局四部门联合发布）明确禁止以下四类违法违规行为，并设定了相关的执行机制与惩戒措施。\\n\\n### 一、擅自改变农业用途\\n**法律依据：** 该《意见》确立“农地农用”核心监管原则，强调租赁农地必须保持农业用途属性。[来源：Cognee分块-术语表（四部门发文规范工商资本租赁农地 引导工商资本有序下乡）] 具体禁止行为包括：将租赁农地转为非农建设、房地产开发、生态破坏性项目，以及擅自用于建房、挖沙、取土、建坟、堆放固体废弃物等非耕作用途。[来源：Cognee分块-术语表-耕地‘非农化’定义] 执行机制：一经发现，责令限期整改，并依法追究相关责任；同时启动企业信用信息公示系统实施联合惩戒。[来源：Cognee分块-问答（四部门发文规范工商资本下乡，防范耕地“非农化”）] \\n\\n### 二、严重破坏或污染租赁农地\\n**法律依据：** 《意见》明确禁止“严重破坏或污染租赁农地”的违法违规行为。[来源：Cognee分块-原文（四部门发文规范工商资本租赁农地，引导工商资本有序下乡.original）] 具体包括：过度施用化肥农药、超强度耕作、忽视地力培育等掠夺性经营行为，以及直接排放污染物导致耕地质量等级下降。[来源：Cognee分块-术语表-掠夺性经营] 执行机制：指导租地企业合理使用投入品，防止掠夺性经营；对违规行为责令限期整改，并纳入失信联合惩戒范围。[来源：Cognee分块-问答（规范工商资本下乡 防范耕地“非农化”）] \\n\\n### 三、耕地“非农化”\\n**法律依据：** 《意见》要求“采取坚决措施严禁耕地‘非农化’”。[来源：Cognee分块-原文（规范工商资本下乡，防范耕地“非农化”.original）] 禁止行为包括：违反土地管理法规，将耕地转变为非农业用途（如建设厂房、挖塘养鱼、发展林果业等）。执行机制：强化用途管制，通过停发农业补贴、停止产业扶持政策、公示失信信息及法律追责进行刚性约束。[来源：Cognee分块-问答（四部门发文规范工商资本租赁农地 引导工商资本有序下乡）] \\n\\n### 四、借政府或基层组织强迫农户流转农地\\n**法律依据：** 《意见》明确“严禁工商资本借政府或基层组织通过下指标、定任务等方式强迫农户流转农地”。[来源：Cognee分块-原文（四部门发文规范工商资本下乡，防范耕地“非农化”.original）] 该禁令旨在防止行政权力越位，维护农民主体地位。执行机制：违反者由上级部门查处，涉及基层组织的追究行政责任；同时该行为被列为分级备案重点监控对象。[来源：Cognee分块-问答（四部门发文规范工商资本租赁农地 引导工商资本有序下乡）] \\n\\n### 补充说明：限制性措施（非直接禁止）\\n《意见》另要求“限制工商资本长时间、大面积租赁农地”，并设定面积上限控制，这属于监管性要求而非绝对禁止行为。[来源：Cognee分块-原文] 此外，对撂荒耕地可停发补贴，对失信企业实施联合惩戒，这些属于事中事后监管措施。[来源：Cognee分块-问答] \\n\\n**推理链：** 法律依据《关于加强对工商资本租赁农地监管和风险防范的意见》→ 禁止行为类别（土地用途违规、生态破坏、行政强迫）→ 具体条款（原文第三点“禁止擅自改变农业用途”等）→ 执行机制（备案、审查、限期整改、联合惩戒、信用公示）。\\n\\n**政策时间线：** 该《意见》是对2014年《关于引导农村土地经营权有序流转发展农业适度规模经营的意见》（中办发〔2014〕61号）中“上限控制”原则的具体落地，后续被2019年《关于建立健全城乡融合发展体制机制和政策体系的意见》等政策延续强化。[来源：Cognee分块-摘要（规范工商资本下乡 防范耕地“非农化”）]\",\n  \"confidence\": 0.95,\n  \"citations\": [\n    \"Cognee分块-原文（四部门发文规范工商资本租赁农地，引导工商资本有序下乡.original）\",\n    \"Cognee分块-术语表（四部门发文规范工商资本租赁农地 引导工商资本有序下乡）\",\n    \"Cog",
+    "confidence": 0.6,
+    "timings": {
+      "outlining": 6474,
+      "stage2_coarse": 13131,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 31287,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 180019,
+      "stage4_total": 180028,
+      "stage4_infer": 22031,
+      "evaluating": 3258
+    },
+    "entity_names": [
+      "关于加强工商资本租赁农地监管风险防范意见",
+      "明确禁止哪些违法违规行为",
+      "关于加强对工商资本租赁农地监管和风险防范的意见",
+      "并用于农业生产的制度",
+      "循农地农用原则和监管",
+      "确立的核心监管",
+      "分级备案制度",
+      "组流转须逐级向上备案",
+      "的行政监管",
+      "和暗箱操作的关键制度",
+      "格审查与项目审核制度",
+      "响进行前置审查的制度",
+      "风险保障金制度",
+      "由地方政府监管",
+      "的专项资金制度",
+      "合法权益的兜底性制度",
+      "指违反土地管理法规",
+      "明令禁止",
+      "被列为备案监管",
+      "是用途监管"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"c740ac29-4987-5ddf-8aa5-c370c25dd96a\",\n    \"created_at\": 1783761070973,\n    \"updated_at\": 1783761070973,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"《关于加强对工商资本租赁农地监管和风险防范的意见》明确禁止以下违法违规行为：\\n\\n1. **擅自改变农业用途**（如转为非农建设、房地产开发、生态破坏性项目）[来源:3]；  \\n2. **严重破坏或污染租赁农地**[来源:3]；  \\n3. **借政府或基层组织通过下指标、定任务等方式强迫农户流转农地**[来源:3]；  \\n4. **耕地“非农化”**（如建房、挖沙、取土、建坟、堆放固体废弃物等）[来源:3]；  \\n5. **掠夺性经营**（如过度施用化肥农药、超强度耕作损害地力）[来源:3]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"《关于加强对工商资本租赁农地监管和风险防范的意见》明确禁止擅自改变农业用途、严重破坏或污染租赁农地等违法违规行为[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "type",
+            "description",
+            "engine"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.6666666666666666,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 0.95,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 13131,
+      "stage3_latency_ms": 31287,
+      "stage4_latency_ms": 180028,
+      "end_to_end_latency_ms": 279606,
+      "overall_22": 0.8219298245614034
+    }
+  },
+  {
+    "question_id": "Q05",
+    "question_type": "概念定义_2",
+    "question": "根据该论文，马克思对资本的‘内容规定’和‘形式规定’分别指什么？",
+    "gold_answer": "内容规定：资本是能够带来剩余价值的价值，能否实现价值增殖是判断其是否属于资本的唯一标准；形式规定：资本本质上是一种抽象的且具有异化性质的生产关系，只在一定的社会历史条件与生产力基础上生成和发展。",
+    "paper_id": "8f76bacb489d",
+    "hypothesis": "```json\n{\n  \"content\": \"根据提供的论文检索上下文，马克思对资本的“内容规定”和“形式规定”的阐释是理解资本本质的核心。综合多篇文献，可以明确以下结论：\\n\\n**1. 确定结论：资本的内容规定与形式规定**\\n\\n- **资本的内容规定（物质要素）：** 资本的内容是指构成其物质基础的要素。具体而言，包括**生产原料、生产工具和无对象的劳动**。这些是资本在生产过程中赖以存在的实体和物质条件。马克思指出，“生产原料、生产工具和无对象的劳动——作为资本自身的实体和形式，它们的统一和相互关系构成了资本的内容，即资本本身”。简而言之，资本的“内容规定”回答了“资本由什么物质构成”的问题，它代表了资本的生产力载体。从生产力的角度看，内容更为根本。\\n- **资本的形式规定（社会形式）：** 资本的形式是指其社会规定性，即资本所体现的特定社会生产关系。这指的是**资本家与工人之间的人格化生产关系**。资本这个概念“显然是一种关系，而且只能是生产关系”。当这些物质要素被置于特定的社会关系中，即生产资料的所有者（资本家）与除了劳动力外一无所有的工人（雇佣劳动者）相结合，从而产生剩余价值时，资本才真正地、现实地存在。马克思强调“资本家只是作为人格化的资本执行职能”，而工人则是被并入资本的无对象的劳动。因此，“形式规定”回答了“资本为何是资本”的本质问题，即其社会属性。\\n\\n**2. 确定结论：内容与形式的辩证关系**\\n\\n资本的内容与形式是“对立统一、相辅相成”的关系，缺一不可。没有物质要素（内容），资本就失去了生产的基础；没有社会关系（形式），物质要素就仅仅是物，而不是资本。正如论文所指出的，“资本是以物质要素为内容，以社会规定性为形式的自为存在、自我增殖的价值”。资本正是通过这种内容与形式的统一，才成为一个能自我增殖的有机体。\\n\\n**3. 推理与综合**\\n\\n- **价值增殖是核心：** 资本“内容规定”的一个核心功能是承载价值增殖。从另一篇论文的解读看，资本的内容规定也指向其本质是“能够带来剩余价值的价值”，即一种能够自行增殖的价值。这与物质要素的表述是统一的——物质要素是价值增殖过程的承载者。\\n- **形式是特定的社会关系：** 资本的形式规定不是任何形式的社会关系，而是特定的、历史的社会形态（即资本主义或商品生产条件下的生产关系）。论文明确指出，这种形式规定的核心是“资本家与工人之间的人格化生产关系”，即资本与雇佣劳动的关系。\\n- **人格化的必要性：** 资本的物质要素必须通过“人格化”才能实现其职能。资本家的意识和意志执行了资本自我增殖的职能，工人则作为“人格化的劳动”被吸收进这个生产过程。这使得资本的关系成为一种活生生的、能动的关系。\\n\\n**总结：** 马克思对资本的“内容规定”指的是其作为生产力的物质要素（生产原料、工具、无对象的劳动），而“形式规定”则是指其作为生产关系的特定社会形式（资本家与雇佣工人之间的关系）。二者缺一不可，共同构成了资本这一历史性的、自我增殖的价值范畴，其中内容更根本，但形式赋予了内容以资本的特性。\",\n  \"confidence\": \"高\",\n  \"citations\": [\n    \"来源: Cognee 原始分块 | 论文《规范和引导资本健康发展的政治经济学分析》 | 内容: 明确指出“资本是以物质要素为内容，以社会规定性为形式的自为存在、自我增殖的价值。”，并详细阐述了生产原料、生产工具和无对象的劳动构成资本的物质要素（内容），资本家与工人之间的人格化生产关系构成其社会形式（形式）。\",\n    \"来源: Cognee 原始分块 | 论文《规范和引导资本健康发展的政治经济学分析》 | 内容: 阐述“资本的这两个物质要素——生产原料、生产工具和无对象的劳动——作为资本自身的实体和形式，它们的统一和相互关系构成了资本的内容，即资本本身。”\",\n    \"来源: Cognee 原始分块 | 论文《规范和引导资本健康发展的政治经济学分析》 | 内容: 指出“资本显然是关系，而且只能是生产关系。” 并强调“资本家只是作为人格化的资本执行职能”。\",\n    \"来源: Cognee 原始分块 | 论文《论以唯物史观的资本观为指导规范和引导各类资本健康发展》 | 内容: 指出“资本的本质不是物质生产资料本身，而是物质生产资料的资本主义的社会形式或资本主义生产过程中的社会关系。”\",\n    \"来源: Cognee 语义检索 | 检索结果 | 内容: 概括为“马克思对资本的‘内容规定’指生产原料、生产工具和无对象的劳动等物质要素；‘形式规定’指资本家与工人之间的人格化生产关系（社会规定性）”。此来源与原始分块结论一致，可作补充。\",\n    \"来源: Cognee 原始分块 | 论文《社会主义市场经济中的资本：存在依据、功能定位和规范路径》问答 | 内容: 进一步阐释“从内容规定看，资本是‘能够带来剩余价值的价值’”；“从形式规定看，资本本质上是‘一定的、社会的、属于一定历史社会形态的生产关系’”。此来源深化了“内容规定”的内涵，即价值增殖是核心内容。\"\n  ],\n  \"reasoning\": \"问题的核心是区分和理解马克思资本概念中的“内容”与“形式”两个维度。最直接、最权威的答案来自Cognee原始分块中论文《规范和引导资本健康发展的政治经济学分析》的原文，该文明确将物质要素（生产原料、工具、劳动）定义为内容，将社会关系（资本家与工人的人格化关系）定义为形式。另一篇论文《论以唯物史观的资本观...》也从侧面佐证了资本的本质是社会形式而非物质本身。Graphiti精炼实体和领域知识部分主要涉及资本下乡、农业等具体应用领域，与资本的本质理论“内容规定”与“形式规定”的理论探讨不直接相关，故未采用。Cognee语义检索提供了一条概括性的结果，与原始分块结论一致，但置信度中等，作为补充。论文溯源部分虽然标题相关，但未提供具体内容。通过综合分析，可以确定“内容规定”是物质要素，“形式规定”是生产关系，并且二者对立统一",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 8157,
+      "stage2_coarse": 16500,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 39063,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 180019,
+      "stage4_total": 180033,
+      "stage4_infer": 26470,
+      "evaluating": 3490
+    },
+    "entity_names": [
+      "规范和引导资本",
+      "健康发展",
+      "的政治经济学分析",
+      "本文是否采用实证研究",
+      "本文未采用实证研究",
+      "或具体案例的量化分析",
+      "研究方法为规范性理论",
+      "属纯理论",
+      "推演与文献诠释型研究",
+      "论文指出资本",
+      "这一核心定义",
+      "如何体现资本",
+      "内容与形式的辩证关系",
+      "无对象的劳动构成资本",
+      "之间的人格化生产关系",
+      "形式赋予增殖机制",
+      "动生产力的重要的关系",
+      "只有当资本",
+      "了这种生产力本身发展",
+      "本才不再是这样的关系"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"b1abfdc3-39cf-57c7-b156-b3f1bafa01d8\",\n    \"created_at\": 1783776683081,\n    \"updated_at\": 1783776683081,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 3849,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"sentence_cut\",\n    \"created_at\": 1783772777777,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"264b8e6d-9dd8-565a-a7e5-665bfdb00834\",\n    \"type\": \"Docume"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据该论文，马克思对资本的“内容规定”指生产原料、生产工具和无对象的劳动等物质要素；“形式规定”指资本家与工人之间的人格化生产关系（社会规定性）[来源:2]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据该论文，马克思对资本的“内容规定”指资本是“能够带来剩余价值的价值”，即其本质是自行增殖的价值；“形式规定”指资本本质上是“一定的、社会的、属于一定历史社会形态的生产关系”，并非资本主义专属，只要满足运行条件即可适配于社会主义市场经济[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": [
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        }
+      ]
+    },
+    "metrics": {
+      "entity_recall": 0.2857142857142857,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 0.9,
+      "answer_relevancy": 1,
+      "answer_correctness": 0.3,
+      "answer_completeness": 0.3,
+      "citation_accuracy": 0.9,
+      "confidence_calibration": 0.5,
+      "hallucination_rate": 0.9,
+      "factual_consistency": 0.9,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 16500,
+      "stage3_latency_ms": 39063,
+      "stage4_latency_ms": 180033,
+      "end_to_end_latency_ms": 273842,
+      "overall_22": 0.7203007518796993
+    }
+  },
+  {
+    "question_id": "Q06",
+    "question_type": "事实检索_2",
+    "question": "截至2017年末，聊城市共设立多少家民间资本管理公司？其注册资本总额是多少？",
+    "gold_answer": "22家；10.52亿元",
+    "paper_id": "0c4a53e11442",
+    "hypothesis": "截至2017年末，聊城市共设立22家民间资本管理公司，注册资本总额为10.52亿元（即105,160万元）。这一数据直接来源于《关于聊城市民间资本管理公司规范发展的思考》论文的引言部分，该论文明确指出：“截至2017年末……全市共设立22家民间资本管理公司，注册资本10.52亿元，各项投资余额24.06亿元。”同时，论文中提供的表1（2014-2017年经营数据）也证实了2017年公司数量为22家，注册资本为105,160万元（约合10.516亿元），与文本描述基本一致。此外，Cognee语义检索和Cognee COT多跳推理均确认了相同的数字。因此，该结论具有高度确定性。\n\n需要补充背景的是，聊城市民间资本管理公司数量在2016年曾达到26家的高点，但2017年因《山东省地方金融条例》实施，公司设立由审批制转为业务许可制，导致几家运营较差的公司退出经营，数量减少至22家。尽管数量下降，但注册资本总额与2015年、2016年基本持平，主要源于经营较好的公司进行了增资扩股。这表明民间资本管理行业在总量规模上保持稳定，但结构上实现了“提质增效”。\n\n综上，聊城市2017年末民间资本管理公司的数量为22家，注册资本总额为10.52亿元，这一信息在多个检索层（Cognee原始分块、Cognee语义检索、Cognee COT推理）中均得到一致验证，置信度极高。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 8755,
+      "stage2_coarse": 16308,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 36484,
+      "stage4_fusion": 1,
+      "s4_cot_ms": 111608,
+      "stage4_total": 111625,
+      "stage4_infer": 12589,
+      "evaluating": 2952
+    },
+    "entity_names": [
+      "截至2017年末",
+      "聊城市共设立多少家民间资本管理公司",
+      "其注册资本总额多少",
+      "关于聊城市民间资本",
+      "管理公司规范发展",
+      "山东省不断推进金融",
+      "促进民间融资规范发展",
+      "厅关于进一步规范发展",
+      "民间融资机构的意见",
+      "关于加快全省金融",
+      "改革发展的若干意见",
+      "不断推动民间资本",
+      "规范化发展",
+      "山东省民间资本",
+      "管理公司的快速发展",
+      "东省出台的一系列金融",
+      "聊城市为完善地方金融",
+      "年开始规范民间资本",
+      "数量和业务量逐年增加",
+      "民间资本"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"e5a73d11-1bb7-5f8d-a363-77fb4200262b\",\n    \"created_at\": 1783758838360,\n    \"updated_at\": 1783758838360,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 4586,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"sentence_cut\",\n    \"created_at\": 1783758659280,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"3f436a3b-d513-5a2d-9fee-76f9a9a38cd3\",\n    \"type\": \"Docume"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"截至2017年末，聊城市共设立22家民间资本管理公司，注册资本总额为10.52亿元[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"截至2017年末，聊城市共设立22家民间资本管理公司，其注册资本总额为10.52亿元[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 16308,
+      "stage3_latency_ms": 36484,
+      "stage4_latency_ms": 111625,
+      "end_to_end_latency_ms": 188832,
+      "overall_22": 0.8263157894736842
+    }
+  },
+  {
+    "question_id": "Q07",
+    "question_type": "多跳推理_2",
+    "question": "根据论文，小农户参与规范型合作社对人力资本为何产生间接负向影响？该效应是通过哪个资本要素的中介作用实现的？",
+    "gold_answer": "因为实物资本与社会资本对人力资本有负向影响，而小农户参与规范型合作社对实物资本和社会资本具有直接正向影响，从而间接导致人力资本下降；中介要素是实物资本和社会资本。",
+    "paper_id": "8fc68cd1cc8e",
+    "hypothesis": "根据论文《农业经营主体融合发展、资本要素优化及互动关联研究——基于规范合作社调研数据》，小农户参与规范型合作社对人力资本产生间接负向影响，该效应通过**实物资本**的中介作用实现。具体机制如下：\n\n【Step 1】前提+来源引用：\n- 论文实证结果表明，小农户参与规范型合作社对人力资本无直接显著影响（路径未通过t检验，CR<1.96），但存在间接负向影响，总效应为-0.143（来源：Cognee分块，原文“参加合作社对人力资本的影响路径未通过t检验……但表4中同时显示参与规范型合作社对人力资本的间接效果呈负相关，即参加合作社程度每增加1%，农户人力资本就会减少0.143%”）。\n- 同时，论文明确量化了路径系数：参加合作社→实物资本的直接效应为0.727（总效应0.761）；实物资本→务农人数（人力资本观测变量之一）的直接效应为-0.049（来源：Cognee分块，表4）。\n- 此外，语义检索结果也直接指出：“该效应是通过实物资本的中介作用实现的，即合作社→实物资本→人力资本（务农人数）路径，其中实物资本对务农人数有直接负向影响（β=−0.049）”（来源：Cognee语义检索）。\n\n【Step 2】中间推导+来源引用：\n- 论文解释实物资本对人力资本的负向影响机制：实物资本（土地流转、家庭农场等）扩张会促使“部分丧失比较优势的（小）农户转产，从事非农工作带来更多工资性收益”，同时“专门组织针对农业生产的职业教育和种养殖技术培训的动力和效果相对较差”，导致务农人数减少和人力资本投入下降（来源：Cognee分块，原文“实物资本对人力资本中的务农人数指标产生直接负向影响……增加实物资本积累，将鼓励无比较优势的农户更趋向从事非农或涉农二三产业生产，而不再针对农业生产进行人力资本投资”）。\n- 在农业经营主体融合对资本要素影响分析中，论文进一步指出：对于普通小农，合作社更多鼓励其“按照规定流程实施标准化生产，或直接流转小农户土地由合作社统一生产，对小农户专有性资产投资不足”，因此表现为“对人力资本的析出现象”（来源：Cognee分块）。\n- 结合路径图：参加合作社正向促进实物资本积累（如土地流转、家庭农场建设），而实物资本积累又通过减少务农人数来降低人力资本投入，形成“合作社→实物资本→人力资本”的间接负向链。该链中实物资本是唯一显著的中介变量（金融资本、社会资本对人力资本的直接影响或间接影响未形成中介链，且合作社→金融资本→人力资本路径因不显著被删除）（来源：Cognee分块，模型修正中删除金融资本→人力资本路径）。\n\n【Step 3】结论+来源引用：\n- **确定结论**：小农户参与规范型合作社对人力资本的间接负向影响是由实物资本的中介作用实现的。具体路径为：合作社参与→实物资本增加（土地流转、家庭农场等）→务农人数减少→人力资本投入下降。论文未发现合作社对人力资本有直接效应，所有负向影响完全通过实物资本传导。该结论在Cognee原始分块和Cognee语义检索中均有明确证据支持，且与论文原文描述一致。\n- **推测**：虽然社会资本对人力资本也有直接负向影响（β=-0.176），但合作社参与并非通过社会资本间接影响人力资本（合作社→社会资本为正向，且社会资本→人力资本为负向，但合作社对人力资本的间接效应-0.143主要来自实物资本路径，而非社会资本路径），因此中介机制明确为实物资本，而非社会资本。此推测基于路径系数分解：合作社→实物资本→务农人数的间接效应约为0.727*(-0.049)≈-0.0356，加上其他间接路径（如合作社→实物资本→人力资本的其他观测变量），总间接效应-0.143中实物资本路径贡献主体。",
+    "confidence": 0.95,
+    "timings": {
+      "outlining": 6302,
+      "stage2_coarse": 14819,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 2,
+      "stage3_refine": 36188,
+      "stage4_fusion": 1,
+      "s4_cot_ms": 180005,
+      "stage4_total": 180015,
+      "stage4_infer": 19611,
+      "evaluating": 2552
+    },
+    "entity_names": [
+      "效应通过哪个资本要素中介作用实现",
+      "样本有效率",
+      "人力资本存在负向影响",
+      "其现实逻辑",
+      "社会资本协调行政关系",
+      "解决土地流转与贷款",
+      "成实际农业劳动力下降",
+      "资本对人力资本的路径",
+      "发现显著负向直接影响",
+      "此引发的资本配置变化",
+      "非农收入",
+      "对四类资本要素的影响",
+      "方向与路径",
+      "产生显著直接正向影响",
+      "资本产生直接正向影响",
+      "和间接正向影响",
+      "本仅产生间接负向影响",
+      "仅间接负向影响",
+      "对人力资本有负向影响",
+      "中未列出该路径"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"72f08ad4-66fd-5d0c-9c6a-df6be99fc971\",\n    \"created_at\": 1783759145003,\n    \"updated_at\": 1783759145003,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据论文，小农户参与规范型合作社对人力资本产生间接负向影响，主因是非农收入占比上升与务农人数减少共同拉低农业人力资本实际投入强度，印证了组织融合过程中“去农化”倾向[14,16]。该效应是通过**实物资本**的中介作用实现的，即合作社→实物资本→人力资本（务农人数）路径，其中实物资本对务农人数有直接负向影响（β=−0.049）[来源:8]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"小农户参与规范型合作社对人力资本产生间接负向影响，是因为实物资本扩张（如土地流转、家庭农场建设）导致部分小农户转产非农领域，减少务农人数，从而降低农业人力资本投入；该效应通过实物资本的中介作用实现[来源:4]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.3333333333333333,
+      "pgvector_hit": 0.7,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 0,
+      "answer_completeness": 0,
+      "citation_accuracy": 1,
+      "confidence_calibration": 0,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 1,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 14819,
+      "stage3_latency_ms": 36188,
+      "stage4_latency_ms": 180015,
+      "end_to_end_latency_ms": 259611,
+      "overall_22": 0.7228070175438596
+    }
+  },
+  {
+    "question_id": "Q08",
+    "question_type": "政策评估_2",
+    "question": "该论文提出的社会资本治理机制对我国产业集群政策制定具有何种实践启示？",
+    "gold_answer": "社会资本治理机制可通过降低交易成本、促进信息传播与知识溢出、营造自洽治理环境、推动技术创新，为我国产业集群政策提供以信任和网络为基础的内生性治理路径，具有重要借鉴价值。",
+    "paper_id": "ec3b751386ad",
+    "hypothesis": "{\n  \"content\": \"该论文提出的社会资本治理机制对我国产业集群政策制定的实践启示主要体现在以下六个方面，这些启示基于对安徽博望刃具产业集群的实证研究，强调社会资本在降低交易成本、促进创新和推动集群健康发展中的核心作用。\\n\\n**一、核心启示：培育和利用本土社会资本是欠发达地区产业集群发展的根本路径**\\n论文明确指出，落后地区产业集群发展受阻的根本原因并非缺乏基础设施或政策支持，而是“缺乏产业集群，而其根源是因为缺乏社会资本”。因此，最核心的政策启示是必须“培育和利用社会资本”，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，以此增强区域创新能力，推动产业集群健康发展（[来源：Cognee分块问答第12条；Cognee语义检索第1条]）。这要求政策制定者将社会资本视为与物质资本、人力资本并列的战略资源，优先关注本地社会关系网络、信任和规范的内生生长，而非盲目追求外部资本注入。\\n\\n**二、具体路径一：通过信任机制降低交易成本，提升集群协作效率**\\n论文构建的“信任机制”包含理性途径（重复博弈下的长期利益计算）、生存依赖途径（产业链分工导致相互依存）和声誉途径（非正式信息快速传播使声誉成为信用凭证）。政策启示在于：产业集群政策应鼓励企业间长期合作关系的建立，支持行业协会等中介组织搭建企业间信息共享平台，促进声誉信息的透明化，从而降低监督和执行成本，使企业间订货、结算等环节无需正式契约即可高效运转（[来源：Cognee原始分块“三、社会资本的治理机制”表2；Cognee分块问答第6条]）。\\n\\n**三、具体路径二：健全群内规范机制，实现自我实施秩序**\\n论文指出，群内规范包括惯例（基于习俗性产权的自我实施机制）和惩罚机制（通过网络传递违规信息实施市场制裁），辅以法律维护机制。政策启示是：应尊重和吸纳地方已有的优良习俗和集体文化（如博望集体创业传统），将其纳入基层治理规范体系，形成正式制度与非正式制度的互补；同时完善法律保障，防止过度法治化削弱内生治理韧性（[来源：Cognee分块摘要第9条；Cognee原始分块“三、社会资本的治理机制”]）。\\n\\n**四、具体路径三：支持行业协会等中介组织发育，拓展横向网络**\\n论文建议“支持行业协会等中介组织发育以拓展横向网络”，通过强化企业间的横向联系（如企业家与员工、亲戚朋友的联系）以及纵向产业链网络（企业与供应商、政府等），扩大社会资本的覆盖面和资源动员能力（[来源：Cognee分块摘要第8条]）。政策上可设立专项基金鼓励集群内成立商会、技术联盟等组织，促进信息交流和集体行动。\\n\\n**五、具体路径四：推动校企合作，将人力资本转化为社会资本**\\n论文以安徽工业大学为例，提出“推动校企合作转化人力资本为社会资本”。政策启示是：应鼓励高校、科研机构与产业集群深度合作，通过人才培训、技术转移、联合研发等方式，将知识型人力资本嵌入本地社会网络，提升集群的创新能力和根植性（[来源：Cognee分块摘要第8条]）。\\n\\n**六、制度保障：将社会资本建设纳入区域创新政策工具箱，依据国家规划纲要**\\n论文明确建议“依据《国家中长期科学和技术发展规划纲要（2006—2020年）》精神，将社会资本建设纳入区域创新政策工具箱”（[来源：Cognee分块摘要第8条]）。这意味着，在国家创新体系框架下，政策制定者应将社会资本培育作为区域创新政策的重要组成部分，通过制度化安排（如设立社会资本发展专项、建立集群社会资本评估指标）来引导和激励社会资本的生成与积累。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 7996,
+      "stage2_coarse": 12520,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 2,
+      "stage3_refine": 32242,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 180017,
+      "stage4_total": 180030,
+      "stage4_infer": 25081,
+      "evaluating": 2740
+    },
+    "entity_names": [
+      "文化和制度",
+      "创新能力有重要的政策",
+      "维护机制作为正式制度",
+      "些关系或多或少是制度",
+      "据此提出的最核心政策",
+      "是缺乏基础设施或政策",
+      "据此提出的核心政策",
+      "为嵌入于制度",
+      "资本高度嵌入地方制度",
+      "逻辑而非简单移植制度",
+      "政策建议强调制度",
+      "建设纳入区域创新政策",
+      "会资本区域对正式制度",
+      "制可替代部分科层监管",
+      "于当地的社会关系制度",
+      "是和地方社会经济制度",
+      "入当地社会关系及制度",
+      "业是一种适应性的制度",
+      "中促进良性行为和禁止",
+      "最具代表性的正式制度"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"8ed6a71a-7a2c-5bfd-ab48-ad11fca0cf1e\",\n    \"created_at\": 1783761056349,\n    \"updated_at\": 1783761056349,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"该论文提出的社会资本治理机制对我国产业集群政策制定的实践启示是：必须“培育和利用社会资本”，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，以此增强区域创新能力，推动产业集群健康发展[来源:12]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"该论文提出的社会资本治理机制对我国产业集群政策制定的实践启示在于：应优先培育和利用本土社会资本，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，增强区域创新能力；强调通过信任和规范机制降低交易成本、促进创新，而非盲目引进外部资本[来源:12]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0,
+      "pgvector_hit": 0.7,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 0.9,
+      "answer_relevancy": 1,
+      "answer_correctness": 0.9,
+      "answer_completeness": 1,
+      "citation_accuracy": 0.8,
+      "confidence_calibration": 0.7,
+      "hallucination_rate": 0.9,
+      "factual_consistency": 1,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 12520,
+      "stage3_latency_ms": 32242,
+      "stage4_latency_ms": 180030,
+      "end_to_end_latency_ms": 260731,
+      "overall_22": 0.7684210526315789
+    }
+  },
+  {
+    "question_id": "Q09",
+    "question_type": "概念定义_3",
+    "question": "根据该论文，习近平关于规范和引导资本健康发展的重要论述在理论定位上被定义为什么？",
+    "gold_answer": "是将马克思主义基本原理与中国特色社会主义市场经济条件下资本发展实际相结合的产物，是当代马克思主义政治经济学资本理论研究的最新理论成果。",
+    "paper_id": "e423e80d0486",
+    "hypothesis": "```json\n{\n  \"content\": \"根据该论文，习近平关于规范和引导资本健康发展的重要论述在理论定位上被明确定义为**习近平经济思想的重要内容**。这一理论定位在多篇核心论文中得到了直接且一致的表述。\n\n**确定结论：**\n*   **理论定位：** 该论述是“习近平经济思想的重要内容”。\n*   **依据来源：**\n    1.  Cognee 语义检索和多跳推理结果明确指出：“在理论定位上，习近平关于规范和引导资本健康发展的重要论述被定义为‘习近平经济思想的重要内容’”。\n    2.  Cognee 原始分块中，郭敬生等人的论文摘要和关键词部分直接指出：“习近平总书记关于规范和引导资本健康发展的重要论述是习近平经济思想的重要内容，是规范和引导资本健康发展的科学指导”。\n    3.  郑冬芳等人的论文摘要也将其界定为“当代马克思主义政治经济学资本理论研究的最新理论成果”，这与“习近平经济思想的重要内容”的内在定位完全一致。\n\n**详细阐述：**\n该理论定位体现了该论述在党和国家经济理论体系中的核心地位。它并非孤立的理论观点，而是作为习近平经济思想的重要有机组成部分，旨在规范和引导资本在社会主义市场经济条件下的健康发展。这一理论定位确立了其作为科学指导思想的权威性，强调资本发展须遵循法治化、市场化原则，服务于国家高质量发展和共同富裕的宏观战略。该论述不仅回应了新时代构建高水平社会主义市场经济体制的现实要求，也为防范资本无序扩张、发挥资本作为重要生产要素的积极作用提供了根本遵循。它是马克思主义资本理论在中国特色社会主义新时代的具体化和创新发展。\n\n**推测/补充信息：**\n基于Graphiti蒸馏实体中“生产要素理论”以及Cognee其他分块内容的补充，可以推断该理论定位还隐含了资本作为“重要生产要素”的功能性定位，强调在社会主义制度框架下利用资本发展生产力，服务于人民利益和国家战略。这进一步明确了该论述在理论上对资本双重属性（积极与消极）的辩证把握。\n\n综上所述，习近平关于规范和引导资本健康发展的重要论述在理论定位上被明确界定为习近平经济思想的重要内容。\",\n  \"confidence\": \"high\",\n  \"citations\": [\n    \"Cognee 语义检索結果: 「在理论定位上，习近平关于规范和引导资本健康发展的重要论述被定义为‘习近平经济思想的重要内容’」\",\n    \"Cognee 原始分块（郭敬生等论文摘要及关键词）: 「习近平总书记关于规范和引导资本健康发展的重要论述是习近平经济思想的重要内容，是规范和引导资本健康发展的科学指导」\",\n    \"Cognee 原始分块（郑冬芳等论文摘要）: 「习近平关于规范和引导资本健康发展重要论述...是当代马克思主义政治经济学资本理论研究的最新理论成果」\",\n    \"Cognee COT 多跳推理: 「根据该论文，习近平关于规范和引导资本健康发展的重要论述在理论定位上被定义为**习近平经济思想的重要内容**」\",\n    \"Graphiti 精炼实体（生产要素理论）: 「一种经济学理论，认为农村缺乏资金、技术等要素，工商资本下乡能补充这些要素」\"\n  ],\n  \"reasoning\": \"回答基于对三层检索链信息的综合分析。首先，Cognee语义检索和COI多跳推理直接给出了该论述的理论定位，这是最直接且置信度最高的证据。其次，Cognee原始分块中两篇核心论文（王施泽、郭敬生、郑冬芳等）的摘要和关键词进一步证实了这一点，将其描述为“习近平经济思想的重要内容”和“最新理论成果”。由于这些来源直接从论文原文检索，置信度高，因此作为确定结论。Graphiti精炼实体虽然提供了“生产要素理论”等背景信息，但并未直接给出理论定位的定义，仅用于补充说明该理论定位背后隐含的资本功能性视角。总之，所有关键证据均一致指向该确定结论，没有冲突信息，因此回答置信度高。\"\n}\n```",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 5537,
+      "stage2_coarse": 31192,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 91546,
+      "stage4_fusion": 1,
+      "s4_cot_ms": 118377,
+      "stage4_total": 118389,
+      "stage4_infer": 12285,
+      "evaluating": 2525
+    },
+    "entity_names": [
+      "平关于规范和引导资本",
+      "重要论述的三维逻辑",
+      "马克思主义",
+      "如何规范和引导资本",
+      "论述继承了马克思主义",
+      "的资本理论",
+      "中国共产党人运用资本",
+      "代构建高水平社会主义",
+      "市场经济体制",
+      "剖析了规范和引导资本",
+      "不断提升党驾驭资本",
+      "站在中国特色社会主义",
+      "事业发展",
+      "局把握规范和引导资本",
+      "走好规范和引导资本",
+      "规范和引导资本",
+      "社会主义",
+      "资本的健康发展",
+      "健全资本市场功能",
+      "依法规范和引导资本"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"53cdf20d-99a0-55ad-9352-1b95507609b9\",\n    \"created_at\": 1783756189455,\n    \"updated_at\": 1783756189455,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 8107,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"sentence_end\",\n    \"created_at\": 1783451130024,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"8962c322-a3de-5050-9280-f9f023b1d515\",\n    \"type\": \"Docume"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"在理论定位上，习近平关于规范和引导资本健康发展的重要论述被定义为“习近平经济思想的重要内容”[来源:2]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"在理论定位上被定义为习近平经济思想的重要内容[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": [],
+      "cogneeEntities": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[]"
+        }
+      ]
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "papers": [
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "source_folder",
+            "author",
+            "year",
+            "doc_type",
+            "period"
+          ],
+          "textPreview": ""
+        }
+      ]
+    },
+    "metrics": {
+      "entity_recall": 1,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 0,
+      "faithfulness": 0.9,
+      "answer_relevancy": 0.9,
+      "answer_correctness": 0.6,
+      "answer_completeness": 0.5,
+      "citation_accuracy": 0.8,
+      "confidence_calibration": 0.7,
+      "hallucination_rate": 0.9,
+      "factual_consistency": 0.9,
+      "cot_quality": 0.7,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 0.7,
+      "actual_hops": 0,
+      "stage2_latency_ms": 31192,
+      "stage3_latency_ms": 91546,
+      "stage4_latency_ms": 118389,
+      "end_to_end_latency_ms": 261624,
+      "overall_22": 0.7315789473684211
+    }
+  }
+]

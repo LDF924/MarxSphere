@@ -1,0 +1,25 @@
+[
+  {
+    "question_id": "Q01",
+    "question": "根据该论文，政府和社会资本合作（PPP）模式的本质属性是什么？",
+    "question_type": "概念定义",
+    "template": {
+      "duration_ms": 232947,
+      "confidence": 0,
+      "eval_score": 0.95
+    },
+    "adaptive": {
+      "duration_ms": 13821,
+      "confidence": 0,
+      "eval_score": 0.75,
+      "plan": [
+        "outline",
+        "pg_arm",
+        "cognee_lexical",
+        "fuse",
+        "hypothesis",
+        "evaluate"
+      ]
+    }
+  }
+]

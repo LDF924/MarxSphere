@@ -1,0 +1,738 @@
+[
+  {
+    "question_id": "Q05",
+    "question_type": "概念定义",
+    "question": "根据该论文，马克思对资本的‘内容规定’和‘形式规定’分别指什么？",
+    "gold_answer": "内容规定：资本是能够带来剩余价值的价值，能否实现价值增殖是判断其是否属于资本的唯一标准；形式规定：资本本质上是一种抽象的且具有异化性质的生产关系，只在一定的社会历史条件与生产力基础上生成和发展。",
+    "paper_id": "8f76bacb489d",
+    "hypothesis": "根据多篇论文尤其是伏森的《规范和引导资本健康发展的政治经济学分析》中的明确界定，马克思对资本的“内容规定”和“形式规定”构成了资本二重性的核心分析维度，二者既对立统一又相互作用。\n\n**1. 资本的“内容规定”**\n指资本的物质要素层面，具体包括**生产原料、生产工具（生产资料）以及“无对象的劳动”（即与生产资料相分离的、作为潜在劳动力的活劳动）**。原文明确指出：“资本以物质要素为内容”，这些要素是资本存在的物质载体，构成生产力发展的客观基础。从生产力的角度看，内容更为根本，因为它提供了价值创造的物质条件。此外，在另一篇论文的语义检索中，也有将内容规定表述为“资本是‘能够带来剩余价值的价值’”，即其本质是自行增殖的价值，但这更偏向于功能本质而非物质要素，但核心均指向资本作为价值运动所依赖的物质基础。\n\n**2. 资本的“形式规定”**\n指资本的社会规定性或生产关系层面，即**资本家与工人之间的人格化生产关系**。伏森论文强调：“以社会规定性为形式”，这种形式表现为“资本家只是作为人格化的资本执行职能”，工人则作为人格化的劳动被吸纳。形式规定使资本超出单纯物的范畴，成为“自为存在、自我增殖的价值”，即资本必须通过特定的社会关系（雇佣劳动关系）才能实现增殖。另一篇论文（何干强）也明确：资本的形式规定是“一定的、社会的、属于一定历史社会形态的生产关系”，并非永恒的自然物。两者共同揭示：形式是资本区别于一般生产资料的标志，是资本关系的社会本质。\n\n**3. 二者的辩证关系**\n内容与形式“对立统一、相辅相成”，缺一不可——内容提供生产力载体，形式赋予增殖机制。但“从生产力角度看，内容更为根本”，因为物质要素的发展最终会引发形式的变革。这一辩证关系也体现在马克思对资本历史性的判断上：资本的内容推动生产力发展，但其形式（资本主义私有制）最终会成为生产力发展的桎梏，从而被更高形态所取代。\n\n**来源引用**：\n- 伏森《规范和引导资本健康发展的政治经济学分析》正文：“资本是以物质要素为内容，以社会规定性为形式的自为存在、自我增殖的价值”（Cognee分块）。\n- 该论文的问答：“资本以物质要素为内容，以社会规定性为形式……生产原料、生产工具和无对象的劳动构成资本的物质要素（内容），而资本家与工人之间的人格化生产关系构成其社会形式”（Cognee分块中的问答）。\n- Cognee语义检索结果[1]：“内容规定指生产原料、生产工具和无对象的劳动等物质要素；形式规定指资本家与工人之间的人格化生产关系”。\n- Cognee语义检索结果[2]：“资本的内容规定是‘能够带来剩余价值的价值’（本质）；形式规定本质上是‘一定的、社会的、属于一定历史社会形态的生产关系’”。\n- 何干强论文中关于资本本质的论述（Cognee分块）：资本“本质不是物质生产资料本身，而是物质生产资料的资本主义的社会形式或资本主义生产过程中的社会关系”。\n\n**置信度与推理**：\n上述结论直接源于Cognee原始分块和语义检索，属于高置信度的确定结论。Graphiti精炼实体未提供相关资本概念，故不采用。所有引证均直接来自论文原文，无推测成分。",
+    "confidence": 0.6,
+    "timings": {
+      "outlining": 7819,
+      "stage2_coarse": 14178,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 2,
+      "stage3_refine": 68068,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 95305,
+      "stage4_total": 95315,
+      "stage4_infer": 20771,
+      "evaluating": 3261
+    },
+    "entity_names": [
+      "以社会规定",
+      "规避监管",
+      "并重的政策",
+      "件及其对应的现实制度",
+      "其四大政策",
+      "四大政策",
+      "完善制度",
+      "依托市场准入",
+      "构建全过程全链条监管",
+      "建立政策",
+      "通过功能性产业政策",
+      "治理与政策",
+      "善规范资本发展的制度",
+      "立引导资本发展的政策",
+      "此认识资本的一般规定",
+      "概念是进一步直接规定",
+      "那么社会制度",
+      "社会主义基本经济制度",
+      "才符合资本性质的规定",
+      "资本是多种社会规定"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"b1abfdc3-39cf-57c7-b156-b3f1bafa01d8\",\n    \"created_at\": 1783776683081,\n    \"updated_at\": 1783776683081,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据该论文，马克思对资本的“内容规定”指生产原料、生产工具和无对象的劳动等物质要素；“形式规定”指资本家与工人之间的人格化生产关系（社会规定性）[来源:2]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据该论文，马克思对资本的“内容规定”指资本是“能够带来剩余价值的价值”，即其本质是自行增殖的价值；“形式规定”指资本本质上是“一定的、社会的、属于一定历史社会形态的生产关系”，并非资本主义专属，而是以物为中介的人与人之间的社会关系[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": []
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.3,
+      "pgvector_hit": 0.7,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 0.9,
+      "answer_relevancy": 1,
+      "answer_correctness": 0.8,
+      "answer_completeness": 0.9,
+      "citation_accuracy": 0.9,
+      "confidence_calibration": 0.7,
+      "hallucination_rate": 0.9,
+      "factual_consistency": 0.9,
+      "cot_quality": 1,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 1,
+      "stage2_latency_ms": 14178,
+      "stage3_latency_ms": 68068,
+      "stage4_latency_ms": 95315,
+      "end_to_end_latency_ms": 229913,
+      "overall_22": 0.768421052631579
+    }
+  },
+  {
+    "question_id": "Q06",
+    "question_type": "事实检索",
+    "question": "截至2017年末，聊城市共设立多少家民间资本管理公司？其注册资本总额是多少？",
+    "gold_answer": "22家；10.52亿元",
+    "paper_id": "0c4a53e11442",
+    "hypothesis": "截至2017年末，聊城市共设立22家民间资本管理公司，注册资本总额为10.52亿元（即105,160万元）。这一数据来源于《关于聊城市民间资本管理公司规范发展的思考》一文的引言部分，原文明确记载：“全市共设立22家民间资本管理公司，注册资本10.52亿元，各项投资余额24.06亿元。”同时，该文表1《2014-2017年聊城市民间资本管理公司经营数据》也列示了2017年的对应数据：数量为22家，注册资本为105,160万元（约合10.52亿元）。两者完全一致，具有高度可信度。\n\n需要指出的是，在Cognee多跳推理结果中曾出现“注册资本总额为163.54亿元”的错误表述，该数值实为2014-2017年间全部投资余额（债权投资与短期财务性投资之和）的合计值，并非注册资本。注册资本是公司设立时股东认缴的资本金，反映机构的资本实力；而投资余额是业务开展后的资产规模。在《关于聊城市民间资本管理公司规范发展的思考》的问答部分，第2条回答明确说明“短期财务性投资与债权投资合计占总投资金额的99.05%（52.99%+46.06%），而股权投资仅占0.95%（15,462万元/163.54亿元）”，此处163.54亿元是总投资金额（含债权投资753,474万元+短期财务性投资866,891万元+股权投资15,462万元），并非注册资本。因此，正确答案以Cognee原始分块和语义检索为准。\n\n从发展背景看，聊城市自2013年开始规范民间资本管理公司设立，2014-2016年数量逐年增加（2014年17家、2015年25家、2016年26家），2017年因《山东省地方金融条例》实施，设立审批转为业务许可，致使部分运营较差的公司未申请许可而退出，数量降至22家。尽管数量减少，但注册资本与2015年（110,160万元）、2016年（103,160万元）基本持平，主要原因是辖区内经营较好的几家公司进行了增资扩股，体现了“提质增效”的发展特征。\n\n综上，本题的确定结论为：聊城市截至2017年末共设立22家民间资本管理公司，注册资本合计10.52亿元。相关信息已由Cognee原始分块和Cognee语义检索双重确认，置信度极高。",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 6630,
+      "stage2_coarse": 13487,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 32241,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 84664,
+      "stage4_total": 84675,
+      "stage4_infer": 17125,
+      "evaluating": 2867
+    },
+    "entity_names": [
+      "截至2017年末",
+      "聊城市共设立多少家民间资本管理公司",
+      "其注册资本总额多少",
+      "关于聊城市民间资本",
+      "管理公司规范发展",
+      "山东省不断推进金融",
+      "促进民间融资规范发展",
+      "厅关于进一步规范发展",
+      "民间融资机构的意见",
+      "关于加快全省金融",
+      "改革发展的若干意见",
+      "不断推动民间资本",
+      "规范化发展",
+      "山东省民间资本",
+      "管理公司的快速发展",
+      "东省出台的一系列金融",
+      "聊城市为完善地方金融",
+      "年开始规范民间资本",
+      "数量和业务量逐年增加",
+      "民间资本"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"e5a73d11-1bb7-5f8d-a363-77fb4200262b\",\n    \"created_at\": 1783758838360,\n    \"updated_at\": 1783758838360,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 4586,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"sentence_cut\",\n    \"created_at\": 1783758659280,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"3f436a3b-d513-5a2d-9fee-76f9a9a38cd3\",\n    \"type\": \"Docume"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"截至2017年末，聊城市共设立22家民间资本管理公司，注册资本总额为10.52亿元[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"截至2017年末，聊城市共设立22家民间资本管理公司，其注册资本总额为10.52亿元[来源:1]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": []
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.7,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 1,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 1,
+      "stage2_latency_ms": 13487,
+      "stage3_latency_ms": 32241,
+      "stage4_latency_ms": 84675,
+      "end_to_end_latency_ms": 157187,
+      "overall_22": 0.8947368421052632
+    }
+  },
+  {
+    "question_id": "Q07",
+    "question_type": "多跳推理",
+    "question": "根据论文，小农户参与规范型合作社对人力资本为何产生间接负向影响？该效应是通过哪个资本要素的中介作用实现的？",
+    "gold_answer": "因为实物资本与社会资本对人力资本有负向影响，而小农户参与规范型合作社对实物资本和社会资本具有直接正向影响，从而间接导致人力资本下降；中介要素是实物资本和社会资本。",
+    "paper_id": "8fc68cd1cc8e",
+    "hypothesis": "{\n  \"content\": \"根据论文《农业经营主体融合发展、资本要素优化及互动关联研究——基于规范合作社调研数据》（张益丰、王晨，2020）的实证分析，小农户参与规范型合作社对人力资本产生间接负向影响，其根本原因在于合作社推动规模化经营（如土地流转、家庭农场建设）所引致的实物资本扩张，进而抑制了农业人力资本的实际投入。具体机制如下：\\n\\n1. **中介路径**：该间接负向效应主要通过**实物资本**的中介作用实现。结构方程模型（SEM）实证结果显示，参加规范型合作社对实物资本具有直接正向影响（直接效应0.727，表4），而实物资本对人力资本的观测变量“务农人数”产生直接负向影响（直接效应-0.049，表4）。务农人数的减少直接表征了家庭农业劳动力供给的下降，从而拉低了人力资本投入强度。此外，模型中将“实物资本→人力资本”路径修正为“实物资本→务农人数”后通过检验（CR>1.96），进一步确认了这条传导路径的有效性（来源：Cognee原始分块“模型修正”部分）。\\n\\n2. **经济学逻辑**：论文指出，合作社在运营中更多鼓励小农户按照标准化流程生产或将土地流转给合作社统一经营，这导致农户的实物资本（如规模化用地、设施设备）快速积累，但“对小农户专有性资产投资不足”。实物资本专用性增强会固化经营者的知识结构、挤出职业培训等人力资本投资，使得农业劳动力数量与质量双降。同时，非农收入占比上升进一步反映了农业人力资本的“去农化”趋势，即劳动力从农业向非农产业转移（来源：Cognee原始分块“农业经营主体融合对各种资本要素影响分析”段落）。\\n\\n3. **其他辅助机制**：除实物资本外，社会资本也发挥了中介作用。合作社对社会资本有强烈正向影响（直接效应0.808），而社会资本对人力资本有直接负向影响（直接效应-0.176），这意味着丰富的社会关系网络诱导农户从事非农经营或导致高学历劳动力外流，同样降低了农业人力资本存量。但论文在结果讨论中明确将实物资本路径作为解释“合作社对人力资本间接负向影响”的核心机制，且表4显示合作社对人力资本的总间接效果为-0.143，其中实物资本路径的贡献是主要的（来源：Cognee原始分块“资本要素间交互影响”部分）。\\n\\n4. **确定结论与推测**：**确定结论**：小农户参与规范型合作社对人力资本仅产生间接负向影响（无直接效应），该间接效应主要通过实物资本的中介作用",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 6917,
+      "stage2_coarse": 21608,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 3,
+      "stage3_refine": 32731,
+      "stage4_fusion": 1,
+      "s4_cot_ms": 73101,
+      "stage4_total": 73113,
+      "stage4_infer": 29011,
+      "evaluating": 3684
+    },
+    "entity_names": [
+      "效应通过哪个资本要素中介作用实现",
+      "农业经营主体融合发展",
+      "素优化及互动关联研究",
+      "样本有效率",
+      "论文使用的结构",
+      "借鉴管理学分析",
+      "研究者通常使用结构",
+      "参加具有二次返利机制",
+      "直接体现带动农户发展",
+      "与利益共融特征",
+      "无法满足研究",
+      "论文构建的理论分析",
+      "社会资本对人力资本",
+      "存在负向影响",
+      "其现实逻辑",
+      "营主体更依赖社会资本",
+      "协调行政关系",
+      "解决土地流转与贷款",
+      "成实际农业劳动力下降",
+      "发现显著负向直接影响"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"72f08ad4-66fd-5d0c-9c6a-df6be99fc971\",\n    \"created_at\": 1783759145003,\n    \"updated_at\": 1783759145003,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        },
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"chunk_index\": 0,\n    \"chunk_size\": 3151,\n    \"metadata\": \"{\\\"index_fields\\\": [\\\"text\\\"]}\",\n    \"topological_rank\": 2,\n    \"cut_type\": \"paragraph_end\",\n    \"created_at\": 1783452469300,\n    \"feedback_weight\": 0.5,\n    \"document_id\": \"e1c27155-6bc0-53f9-a7dc-14cac93b038c\",\n    \"type\": \"Docum"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"根据论文，小农户参与规范型合作社对人力资本产生间接负向影响，主因是非农收入占比上升与务农人数减少共同拉低农业人力资本实际投入强度，印证了组织融合过程中“去农化”倾向[14,16]。该效应是通过**实物资本**的中介作用实现的，具体表现为“参加合作社→实物资本→务农人数”路径（表4显示“实物资本→务农人数”直接效果为-0.049），而务农人数是人力资本的观测变量之一[来源:8]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"小农户参与规范型合作社对人力资本产生间接负向影响，是因为实物资本扩张（如土地流转、家庭农场建设）导致部分小农户转产非农领域，减少务农人数，从而降低农业人力资本投入强度；该效应通过实物资本的中介作用实现[来源:4]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": []
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.7,
+      "pgvector_hit": 1,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 1,
+      "answer_relevancy": 1,
+      "answer_correctness": 1,
+      "answer_completeness": 1,
+      "citation_accuracy": 1,
+      "confidence_calibration": 1,
+      "hallucination_rate": 1,
+      "factual_consistency": 1,
+      "cot_quality": 1,
+      "multi_hop_accuracy": 1,
+      "reasoning_depth": 1,
+      "stage2_latency_ms": 21608,
+      "stage3_latency_ms": 32731,
+      "stage4_latency_ms": 73113,
+      "end_to_end_latency_ms": 167211,
+      "overall_22": 0.9473684210526315
+    }
+  },
+  {
+    "question_id": "Q08",
+    "question_type": "政策评估",
+    "question": "该论文提出的社会资本治理机制对我国产业集群政策制定具有何种实践启示？",
+    "gold_answer": "社会资本治理机制可通过降低交易成本、促进信息传播与知识溢出、营造自洽治理环境、推动技术创新，为我国产业集群政策提供以信任和网络为基础的内生性治理路径，具有重要借鉴价值。",
+    "paper_id": "ec3b751386ad",
+    "hypothesis": "{\n  \"content\": \"基于该论文《基于产业集群的社会资本治理机制》的研究结论与实践发现，其提出的社会资本治理机制对我国产业集群政策制定具有以下实践启示：\\n\\n**1. 确定结论：根本原因在于社会资本缺失**\\n论文明确指出，落后地区产业集群发展受阻的根源并非基础设施或政策支持不足，而是“缺乏产业集群，而其根源是因为缺乏社会资本”。因此，最核心的政策启示是：必须“培育和利用社会资本”，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，以此增强区域创新能力，推动产业集群健康发展[来源:Cognee原始分块结论; Cognee语义检索; 问答第12条]。这一结论具有高置信度，来源于论文原文的明确表述。\\n\\n**2. 具体政策启示及推理链**\\n\\n**启示一：优先培育本土社会资本，而非盲目引进外部资本**\\n- 法律依据：《国家中长期科学和技术发展规划纲要（2006—2020年）》（国发〔2006〕6号）强调增强自主创新能力，建设创新型国家。该纲要提出要“营造有利于创新涌现的生态环境”，而社会资本正是创新环境的软性基础。\\n- 禁止行为类别：避免政策过度依赖基础设施投资、招商引资等硬性投入，忽视本地信任、规范、网络等社会性资源的培育。\\n- 具体条款：论文实践数据表明，博望集群本地创办人占比97.9%、本地雇员81.8%，根植性是其成功关键。政策应禁止以行政手段强制引进外部企业而不考虑本地社会网络嵌入。\\n- 执行机制：参考论文“信任机制”（理性博弈、生存依赖、声誉途径）与“群内规范”（惯例、惩罚机制），政策应支持行业协会、商会等中介组织发育，建立企业信用共享平台，强化声誉传导，完善基于习俗性产权的自我实施机制[来源:论文第三部分; 术语表]。\\n\\n**启示二：构建企业家中心-三重网络支撑体系**\\n- 法律依据：同上发展规划纲要，要求“推动产学研结合，健全区域创新体系”。\\n- 禁止行为类别：避免政策只关注大型龙头企业，忽视纵向产业链网络和外围销售网络的功能。\\n- 具体条款：论文指出企业家处于网络核心，横向（家族、员工）、纵向（供应商、政府、客户）、外围（13000人“飞毛腿”销售队）三类网络共同构成治理基础。政策应支持本地企业家协会、产业链协同组织、专业化市场队伍建设。\\n- 执行机制：县政府可设立“企业家网络发展基金”，鼓励本地企业家牵头组建行业互助会；推动校企合作（如论文中安徽工业大学）将人力资本转化为社会资本；将集体创业等优良习俗纳入基层治理规范[来源:论文第二部分; 摘要第8条]。\\n\\n**启示三：平衡非正式规范与正式制度的关系**\\n- 法律依据：《中华人民共和国中小企业促进法》（2002年颁布）鼓励中小企业“诚实守信、规范经营”；《社会信用体系建设规划纲要（2014—2020年）》强调发挥社会信用体系服务经济社会发展的作用。\\n- 禁止行为类别：防止过度依赖法律强制手段破坏内生信任，也警惕非正式规范导致封闭排外。\\n- 具体条款：论文显示博望集群95%以上交易依赖非正式规范，法律仅在重大违约时启动。政策应尊重本地惯例（如集体投资建厂），同时引入异质性节点（高校、技术经纪人）打破路径依赖。\\n- 执行机制：在法律框架内，允许产业集群内部制定行业自律公约，建立违规信息披露和联合惩罚机制；将“枫桥经验”式社会组织纳入治理体系，实现正式与非正式规范的有机嵌合[来源:论文第三部分; 摘要第9条; 社会资本视域下社会治理效能提升路径研究-问答第7条]。\\n\\n**3. 政策变迁时间线**\\n- 2006年：《国家",
+    "confidence": 0.5,
+    "timings": {
+      "outlining": 5903,
+      "stage2_coarse": 11588,
+      "s2_timeout_chunks": 0,
+      "s2_timeout_rag": 0,
+      "s2_timeout_hybrid": 0,
+      "s2_valid_routes": 2,
+      "stage3_refine": 31208,
+      "stage4_fusion": 0,
+      "s4_cot_ms": 97328,
+      "stage4_total": 97339,
+      "stage4_infer": 33652,
+      "evaluating": 2786
+    },
+    "entity_names": [
+      "文化和制度",
+      "创新能力有重要的政策",
+      "维护机制作为正式制度",
+      "些关系或多或少是制度",
+      "据此提出的最核心政策",
+      "是缺乏基础设施或政策",
+      "据此提出的核心政策",
+      "为嵌入于制度",
+      "资本高度嵌入地方制度",
+      "逻辑而非简单移植制度",
+      "政策建议强调制度",
+      "建设纳入区域创新政策",
+      "会资本区域对正式制度",
+      "制可替代部分科层监管",
+      "于当地的社会关系制度",
+      "是和地方社会经济制度",
+      "入当地社会关系及制度",
+      "业是一种适应性的制度",
+      "中促进良性行为和禁止",
+      "最具代表性的正式制度"
+    ],
+    "_debugCoarse": {
+      "chunks": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"id\": \"8ed6a71a-7a2c-5bfd-ab48-ad11fca0cf1e\",\n    \"created_at\": 1783761056349,\n    \"updated_at\": 1783761056349,\n    \"ontology_valid\": false,\n    \"version\": 1,\n    \"topological_rank\": 0,\n    \"type\": \"IndexSchema\",\n    \"belongs_to_set\": [],\n    \"source_pipeline\": null,\n    \"source_task\": nul"
+        }
+      ],
+      "ragCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"该论文提出的社会资本治理机制对我国产业集群政策制定的实践启示是：必须“培育和利用社会资本”，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，以此增强区域创新能力，推动产业集群健康发展[来源:12]。\"\n  }\n]"
+        }
+      ],
+      "hybridCompletion": [
+        {
+          "hasText": true,
+          "keys": [
+            "type",
+            "text"
+          ],
+          "textPreview": "[\n  {\n    \"text\": \"该论文提出的社会资本治理机制对我国产业集群政策制定的实践启示是：应优先培育和利用本土社会资本，营造有利于欠发达地区集群内社会资本形成与积累的创新环境，增强区域创新能力，推动产业集群健康发展；而非盲目引进外部资本[来源:12]。\"\n  }\n]"
+        }
+      ],
+      "pgEntities": [],
+      "pgChunks": []
+    },
+    "_debugRefined": {
+      "entities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "hybridEntities": [
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        },
+        {
+          "hasText": false,
+          "keys": [
+            "name",
+            "category",
+            "description",
+            "score"
+          ],
+          "textPreview": ""
+        }
+      ],
+      "distills": [],
+      "domain": {
+        "keys": [
+          "results",
+          "total"
+        ],
+        "type": "object"
+      },
+      "papers": []
+    },
+    "metrics": {
+      "entity_recall": 0.3,
+      "pgvector_hit": 0.7,
+      "cognee_chunks_hit": 0.9,
+      "cognee_rag_hit": 0.9,
+      "cognee_hybrid_hit": 0.9,
+      "entity_name_accuracy": 0.7,
+      "graphiti_entity_expansion": 0.9,
+      "chunk_recall": 1,
+      "faithfulness": 0.9,
+      "answer_relevancy": 1,
+      "answer_correctness": 0.9,
+      "answer_completeness": 1,
+      "citation_accuracy": 0.8,
+      "confidence_calibration": 0.7,
+      "hallucination_rate": 0.9,
+      "factual_consistency": 0.9,
+      "cot_quality": 0.5,
+      "multi_hop_accuracy": 0,
+      "reasoning_depth": 1,
+      "stage2_latency_ms": 11588,
+      "stage3_latency_ms": 31208,
+      "stage4_latency_ms": 97339,
+      "end_to_end_latency_ms": 182624,
+      "overall_22": 0.7842105263157895
+    }
+  }
+]
