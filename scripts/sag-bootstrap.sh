@@ -43,7 +43,7 @@ start_openviking() {
     log "OpenViking 已在运行 (1933)"
   else
     log "启动 OpenViking (1933) 静默..."
-    cscript //nologo SAG_ROOT\\scripts\\ov-start.vbs
+    cscript //nologo "$SAG_ROOT\scripts\ov-start.vbs" "$SAG_ROOT" "${OPENVIKING_DIR:-.}"
     sleep 5
   fi
 }
