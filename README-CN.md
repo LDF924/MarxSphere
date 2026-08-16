@@ -88,34 +88,67 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 
 政经 C 刊科研方法论：四步法选题 / 选题矩阵 / 悖论选题 / 概念命名 / 跨学科 / 模板检测 / 编辑校验 / 外审翻译 / 期刊匹配（80 本马理论期刊库）
 
-### 🤖 AI Agent（50+ 能力项 · 26 工具）
+### 🤖 AI Agent（50+ 能力项 · 26 工具 · 5 层安全 · 5 层记忆）
 
-**编排核心**
-- 决策循环：规划 → 选工具 → 执行 → reflect → replan（最多 3 轮）
-- 任务 DAG：LLM 拆解子任务 → 依赖编排 → 队列并发（信号量限流）→ 进度 SSE 流式推送
-- 失败处理：工具超时熔断（30s）→ 重试退避 → 失败回流 → 错误分类（可恢复/不可恢复）
-- 人工审批门：高影响工具需人工确认（approval 事件）→ 超时自动拒绝
-- checkpoint 快照：每轮落盘（loop/plan/failures），重启续跑
+> 对标 OpenAI Codex + DeepSeek Harness 开源实现，50 项特性全部吸收。完整能力档案见 [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md)。
 
-**工具矩阵（26 个）**
+**① 核心编排架构**
 
-| 类别 | 工具 |
+| 能力 | 实现 |
 |---|---|
-| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse |
-| 行动 | 实证分析真跑（Python 沙箱）/ 代码沙箱（3 级隔离）/ 文件读写 / 网页抓取（Edge headless）/ MCP 工具调用 / 主动研究 |
-| 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） |
-| 系统 | 计划确认 / 任务通知 / 工具缓存（LRU）/ 会话检索 / 凭证管理（脱敏） |
+| 决策循环 | 规划 → 选工具 → 执行 → reflect → replan（最多 3 轮） |
+| 协商修订 | 主管审阅工人产出 → 发修订指令 → 重新产出（确定性规则兜底） |
+| 计划验证 | 缺 write/retrieve 步骤自动补齐；目标歧义先澄清（assessGoalClarity） |
+| 计划确认 | 执行前展示计划，人工确认后才执行（`POST /tasks/:id/confirm-plan`） |
+| checkpoint | 每轮落快照（loop/plan/failures），重启续跑（迁移 069） |
+| token 预算 | 任务级 400K token 上限，超预算自动终止 |
+| 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
+| 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**记忆与学习**
-- 记忆层（OpenViking）：偏好/经验/历史交互三钩子（recall/commit/remember），推理注入
-- 记忆投毒审查：拦截"要求执行动作"类注入内容
-- 技能蒸馏（EDV）、轨迹评测、反思 → 归因 → 最小 diff 补丁 → bad case 回流
-- 学习曲线：连续 N 天完成率/步骤成功率趋势可视化
+**② 工具矩阵（26 个）**
 
-**治理与扩展**
-- 权限分级：reader / analyst / manager / admin 四级
-- 工具白名单审批、租户配额、成本看板（token 实时统计）
-- 插件热加载（plugins/ 目录）、OAuth 接入、会话图分叉、消息线程
+| 类别 | 工具 | 工程特性 |
+|---|---|---|
+| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
+| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest | 超时熔断、降级链 |
+| 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） | 附件预处理压缩 |
+| 协作 | agent_subagent（外部 Agent 派发）/ attachment_read / code_search / todo_update | 子进程治理（防孤儿） |
+
+**③ 安全（5 层）**
+
+1. **Guardian 策略文件**（可编辑热更新）——风险 × 授权 → allow / deny / review
+2. **3 级沙箱**——read-only（禁网）/ workspace-write（预授权）/ full-access（白名单代理）
+3. **网络审批**——SSRF 高危直接拒绝，白名单外域名需人工确认
+4. **审批门**——高危工具四态（approve/edit/reject/respond）+ 自主级别（suggest/auto-edit/full-auto）
+5. **凭证隔离**——凭据脱敏存储（sk-\*\*\*\*）、沙箱环境剔除 API Key
+
+**④ 记忆（5 层）**
+
+- **情景记忆**：研究轨迹，可检索遗忘
+- **战略记忆**：项目目标约束注入
+- **技能蒸馏**：EDV 评审（含工具用法），自动沉淀新技能
+- **防错规则**：用户反馈/评测失败自动沉淀（负评转规则）
+- **语料库**：四大子库（文本/概念/逻辑/句式），Agent 写作自动注入
+
+**⑤ 调度与运维**
+
+- 队列并发（优先级 enterprise/pro/free）+ DAG 依赖
+- 会话恢复（前缀锚点 + 跨会话检索）
+- 设置持久化（预设/自主级别/沙箱级别落库 + 启动恢复）
+- 诊断面板（LLM 并发/队列/SSE/内存/子进程）
+- hooks 生命周期（7 事件：注册/注销/超时隔离）
+- **主动研究**：每日自主巡检（失败任务/评测回退/热点 → 新研究任务）
+- **反馈闭环**：👍👎 → 防错规则 + 记忆回流
+- 通知（完成告警 + toast）+ 自省报告 + 失败恢复建议
+
+**⑥ Agent 评测**
+
+- 回归评测集（gold 任务 + 故障注入：429/超时/降级）
+- 24h 自动回归 + 通过率告警
+- 轨迹级指标：计划遵循度 / 工具准确率 / 推理质量（judge 打分）
+- 学习曲线 + 成本审计（token 实时统计）
+
+**⑦ 学习闭环**：反思 → 归因 → 最小 diff 补丁 → bad case 回流 → 评测再验证（V294-V297 全打通）
 
 ### 🖥 桌面端（Electron + NSIS）
 
