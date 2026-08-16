@@ -1,5 +1,5 @@
 # 技能更新检测基线（运行时生成）
-data/
+data/*
 # 评测金标数据（公开评测资产, 放行）
 !data/gold_candidates.json
 !data/judge_gold.json
