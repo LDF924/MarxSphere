@@ -215,7 +215,6 @@
 
 ### 评测指标
 - `SCORING_STANDARD.md` — 32 项评测指标定义
-- `docs/assets/sag-benchmark-simple.png` — SAG 基准（HotpotQA/2WikiMultiHop/MuSiQue，Recall@2 79.30%）
 - `cross_judge_report.md` / `significance_report.md` / `tp_report.md` — 评测报告样例
 - 154 项单元测试（`npm test`）
 

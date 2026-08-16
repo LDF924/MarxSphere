@@ -1,4 +1,4 @@
-# SAG 全链路检索流程 (V88K) + eval-22-metrics V40 评测体系
+# MarxSphere 全链路检索流程 (V88K) + eval-22-metrics V40 评测体系
 
 > 入口: `POST /api/reason/query` (Fastify :4173) → reasonWithFallback (V80自愈闭环)
 > 核心: `InferenceService` (src/services/inference-service.ts, 1682行)
@@ -30,7 +30,7 @@
 ┌──────────────────────────────────────────┼──────────────────────────────────────────┐
 │                                          │                                          │
 │  ┌───────────────────────┐  ┌────────────▼───────────────┐  ┌────────────────────┐ │
-│  │ 阶段2: 粗检索           │  │ 阶段3: Graphiti精炼        │  │ 阶段4: SAG融合生成  │ │
+│  │ 阶段2: 粗检索           │  │ 阶段3: Graphiti精炼        │  │ 阶段4: 融合生成  │ │
 │  │ stage2_cogneeCoarse    │  │ stage3_graphitiRefine     │  │ reason() 主流程     │ │
 │  │                        │  │                           │  │                     │ │
 │  │ Cognee MCP (3路并行):   │  │ Phase A (并行):            │  │ V85 Graphiti→PG     │ │

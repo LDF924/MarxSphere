@@ -61,7 +61,7 @@
 
 ### 创新点
 
-1. **事件中心检索结构**：`chunk → event → entities`，多跳召回优于纯向量（基准 Recall@2 79.30%，较 HippoRAG 2 提升 11.16pp）
+1. **事件中心检索结构**：`chunk → event → entities`，以事件为语义单元，多跳召回优于纯向量检索
 2. **三库异构图谱融合**：Graphiti 社区 + Cognee 实体 + PG 向量统一查询面
 3. **52 步可解释推理**：每步 token/检索来源可视化，非黑箱
 4. **评测驱动自愈闭环**：反思 → 归因 → 最小 diff 补丁 → bad case 回流
@@ -218,7 +218,7 @@ curl -X POST http://localhost:4173/api/agent/tasks \
 
 | 模块 | 复用方式 | 独立使用 |
 |---|---|---|
-| **SAG 检索内核** | `src/db/` + `src/services/` 的检索服务 | 任何文档库/知识库可接入（事件中心检索） |
+| **检索内核** | `src/db/` + `src/services/` 的检索服务 | 任何文档库/知识库可接入（事件中心检索） |
 | **MCP Server** | `npm run mcp` | Claude Code / Codex 等任意 Agent 直接调用（sag_search/sag_ingest 等 23 工具） |
 | **Agent 编排层** | `src/services/agent-*` | 任务队列/工具注册表/审批门/记忆层可移植 |
 | **实证工作台** | `scripts/empirical_runner.py` + API | 问卷生成→回归全管道，Python 脚本可直接复用 |
@@ -238,8 +238,8 @@ curl -X POST http://localhost:4173/api/agent/tasks \
 
 | 模块 | 状态 |
 |---|---|
-| SAG 检索内核 | ✅ 完成（基准 Recall@2 79.30%） |
-| 52 步推理链路 | ✅ 完成（50 题评测基线 0.870） |
+| 检索内核 | ✅ 完成（事件中心检索结构，53 题评测综合分 0.884） |
+| 52 步推理链路 | ✅ 完成（53 题 32 指标评测综合分 0.884） |
 | 三库知识图谱 | ✅ 完成（500 篇入库，21337 实体，1085 社区） |
 | 65 科研场景 | ✅ 完成（8 阶段全覆盖） |
 | AI Agent | ✅ 完成（50+ 能力项，23 工具，154 测试） |

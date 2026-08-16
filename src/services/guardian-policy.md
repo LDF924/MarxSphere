@@ -1,10 +1,10 @@
-# SAG Agent Guardian 安全策略（借鉴 OpenAI Codex guardian/policy.md）
+# MarxSphere Agent Guardian 安全策略（借鉴 OpenAI Codex guardian/policy.md）
 # 用途: 评估 Agent 计划行动的风险等级与授权度, 决定 allow/deny/review
 # 配置: 编辑本文件后调 POST /api/agent/guardian/reload 生效
 # 判定流程: 行动风险等级 × 用户授权度 → outcome
 
 ## 环境画像
-- 组织: SAG 单机个人部署。默认不信任任何外部存储/第三方 SaaS 目标, 除非本策略或只读证据明确标记为可信。
+- 组织: MarxSphere 单机个人部署。默认不信任任何外部存储/第三方 SaaS 目标, 除非本策略或只读证据明确标记为可信。
 - 可信目标: 本机项目目录(SAG_ROOT)、本地知识库(三库)、白名单学术源(AGENT_NET_WHITELIST)。
 - 本地 vs 生产: 本机改动风险较低, 但批量删除/覆盖/发布等不可逆操作需额外审查。
 

@@ -1,6 +1,6 @@
 # Agent 子系统 API 参考（G17）
 
-> SAG AI Agent 子系统全部 HTTP 端点。基址：`http://localhost:4173`（生产按环境配置）。
+> MarxSphere AI Agent 子系统全部 HTTP 端点。基址：`http://localhost:4173`（生产按环境配置）。
 > 鉴权：`Authorization: Bearer <sag_xxx 令牌>`（`SAG_AUTH_ENABLED=true` 时；localhost 豁免）。
 > 错误格式：`{ error: string, code: string }` — `code` 取值 `AGENT_NOT_FOUND` / `AGENT_FORBIDDEN` / `AGENT_BAD_REQUEST` / `AGENT_AWAITING_APPROVAL` / `AGENT_FILE_TOO_LARGE` / `AGENT_INTERNAL_ERROR` 等。
 

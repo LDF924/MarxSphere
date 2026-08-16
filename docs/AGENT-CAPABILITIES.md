@@ -1,4 +1,4 @@
-# SAG Agent 能力总览（2026-08-16 终版）
+# MarxSphere Agent 能力总览（2026-08-16 终版）
 
 > AI Agent 子系统完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现，50 项特性全部吸收。
 

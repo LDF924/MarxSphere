@@ -6,8 +6,7 @@
 
 **AI 驱动的马克思主义理论研究科研中枢** — 从文献检索、知识图谱到 AI Agent 与桌面端的完整科研工作台。
 
-> 底层基于 SAG（event-centric retrieval）构建：`chunk → event → entities` 的事件中心检索结构，
-> 多跳召回能力在 HotpotQA / 2WikiMultiHop / MuSiQue 上 Recall@2 平均 79.30%（较 HippoRAG 2 提升 11.16pp）。
+基于事件中心检索结构（`chunk → event → entities`）构建：以事件为语义单元组织文献知识，通过多跳召回发现跨文献的概念演变与观点关联。
 
 ---
 
