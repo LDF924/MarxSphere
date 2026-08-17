@@ -33,6 +33,8 @@ export interface ChatPanelProps {
   webSearch: boolean;
   /** V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20） */
   deepMode: boolean;
+  /** V399: 思考强度三档（low/high/max）— DeepSeek reasoning_effort */
+  reasoningEffort: "low" | "high" | "max";
   collapsed: boolean;
   models: Array<{ id: string; label: string }>;
   /** V399: 待审批工具（review/manager 级弹窗确认） */
@@ -49,6 +51,7 @@ export interface ChatPanelProps {
   onModelChange: (model: string) => void;
   onWebSearchChange: (value: boolean) => void;
   onDeepModeChange: (value: boolean) => void;
+  onReasoningEffortChange: (value: "low" | "high" | "max") => void;
   onToggleCollapsed: () => void;
   onOpenCitation: (citation: MarkdownCitation) => void;
   onGoToView: (view: "ask" | "reason" | "empirical-research") => void;
@@ -776,6 +779,22 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                   <Zap className="h-4 w-4" />
                   深度
                 </button>
+                {/* V399: 思考强度三档（DeepSeek reasoning_effort） */}
+                <select
+                  value={props.reasoningEffort}
+                  onChange={(e) => props.onReasoningEffortChange(e.target.value as "low" | "high" | "max")}
+                  title="思考强度：低（快速）→ 高（默认）→ 最大（最充分思考，更耗时）"
+                  className={cn(
+                    "h-7 rounded-md border px-2 text-xs outline-none focus:border-primary/60",
+                    props.reasoningEffort === "max" ? "border-purple-400/50 bg-purple-500/10 text-purple-400"
+                      : props.reasoningEffort === "low" ? "border-border/60 bg-background text-muted-foreground"
+                      : "border-border/60 bg-background text-foreground"
+                  )}
+                >
+                  <option value="low">思考·低</option>
+                  <option value="high">思考·高</option>
+                  <option value="max">思考·最大</option>
+                </select>
                 <div className="ml-auto flex items-center gap-1.5">
                   <label className="text-xs text-muted-foreground">模型</label>
                   <select

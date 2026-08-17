@@ -168,6 +168,8 @@ export interface CallLlmOptions {
   maxTokens?: number;
   timeoutMs?: number;
   thinking?: "disabled" | "enabled";   // 默认 disabled（防 deepseek-v4-flash 空 content 坑）
+  /** V399: 思考强度（DeepSeek reasoning_effort: low/medium/high/max）— 控制思考链充分程度 */
+  reasoningEffort?: "low" | "medium" | "high" | "max";
   jsonMode?: boolean;                  // response_format = json_object
   /** V396-14: Agent 场景标记 — 自动采集 usage 入 exec_logs（规划/reflect/replan/工具全链路 token 审计） */
   agentContext?: { taskId?: string; action: string; tool?: string };
@@ -267,6 +269,10 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
   // 关键坑（P0 记忆）: deepseek-v4-flash 默认 thinking 消耗全部输出配额 → content 为空
   // 结构化输出必须禁用 thinking；仅需要长思考推理时开启
   if (input.thinking !== "enabled") body.thinking = { type: "disabled" };
+  // V399: 思考强度（DeepSeek reasoning_effort）— low/medium/high/max
+  if (input.reasoningEffort) {
+    body.reasoning_effort = input.reasoningEffort === "medium" ? "high" : input.reasoningEffort;
+  }
   if (input.jsonMode) body.response_format = { type: "json_object" };
   if (input.onStream) body.stream = true;  // 架构E2: 流式请求标记
 

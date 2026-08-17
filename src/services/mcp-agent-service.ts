@@ -191,6 +191,8 @@ export class McpAgentService {
     webSearch?: boolean;
     /** V399: 深度模式 — 轮次上限 20（质量优先），前端「深度思考」开关 */
     deepMode?: boolean;
+    /** V399: 思考强度三档（low/high/max）— DeepSeek reasoning_effort */
+    reasoningEffort?: "low" | "high" | "max";
   }, tenantId = config.DEFAULT_TENANT_ID, emit?: StreamEmitter) {
     assertNotAborted(input.signal);
     emit?.({ type: "stage", label: "加载会话", detail: "正在读取当前 MCP 会话上下文" });
@@ -250,6 +252,7 @@ export class McpAgentService {
           images: input.images,
           webSearch: input.webSearch,
           deepMode: input.deepMode,
+          reasoningEffort: input.reasoningEffort,
           toolCalls,
           signal: input.signal,
           emit
@@ -356,6 +359,7 @@ export class McpAgentService {
     images?: McpMessageImage[];
     webSearch?: boolean;
     deepMode?: boolean;
+    reasoningEffort?: "low" | "high" | "max";
     toolCalls: McpToolCallRecord[];
     signal?: AbortSignal;
     emit?: StreamEmitter;
@@ -475,6 +479,7 @@ export class McpAgentService {
     /** V399: 已调用过的工具+参数组合（同 query 去重） */
     const seenToolCalls = new Set<string>();
     /** V399: 已加载的技能集（防同一 skill 重复注入上下文） */
+    let planReasoning = "";
     const loadedSkills = new Set<string>();
     // V399: /命令 → @skill: 语法解析 — 用户输入 @skill:技能名 任务 时预加载技能指令
     let skillInjectedContext = "";
@@ -547,10 +552,20 @@ export class McpAgentService {
             ].filter(Boolean).join("\n\n")
           }
         ],
-        maxTokens: 400,
+        // V399: 规划决策 maxTokens 也拉满（思考充分性）+ 思考强度 max
+        maxTokens: 131_072,
         jsonMode: true,
-        temperature: 0.1
+        temperature: 0.1,
+        reasoningEffort: input.reasoningEffort ?? "high",
+        // V399: 采集规划阶段思考 — 工具链面板显示「决策理由」
+        onReasoning: (reasoning) => {
+          planReasoning += reasoning;
+        }
       });
+      // 每轮决策思考（截断展示，作为工具链决策理由）
+      if (planReasoning.trim().length > 0) {
+        input.emit?.({ type: "stage", label: `决策思考`, detail: planReasoning.trim().slice(0, 300) });
+      }
       if (plan?.error) {
         return { text: `（工具规划失败: ${plan.error.slice(0, 200)}）`, reasoning: "" };
       }
@@ -681,9 +696,11 @@ export class McpAgentService {
       model,
       agentContext: { action: "chat_final" },
       messages: finalMessages as any,
-      // V399: 思考链简短根因 — maxTokens 2000 被思考+回答共享；提至 4000 让思考更充分
-      maxTokens: 4000,
+      // V399: maxTokens 拉到 DeepSeek 上限 131072（模型上下文 100 万，输出可达 128K）
+      maxTokens: 131_072,
       thinking: "enabled",
+      // V399: 思考强度由前端三档控制
+      reasoningEffort: input.reasoningEffort ?? "high",
       onStream: (delta) => {
         input.emit?.({ type: "assistant_delta", delta });
       },

@@ -201,6 +201,8 @@ function AppShell() {
   const [chatWebSearch, setChatWebSearch] = useState(false);
   /** V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20），Composer 开关 */
   const [chatDeepMode, setChatDeepMode] = useState(false);
+  /** V399: 思考强度三档（low/high/max）— 控制思考链充分程度 */
+  const [chatReasoningEffort, setChatReasoningEffort] = useState<"low" | "high" | "max">("high");
   /** V399: 待审批工具弹窗 {approvalId, toolName, arguments} */
   const [chatApproval, setChatApproval] = useState<{ approvalId: string; toolName: string; arguments: Record<string, unknown> } | null>(null);
   const [chatModels, setChatModels] = useState<Array<{ id: string; label: string }>>([]);
@@ -325,7 +327,7 @@ function AppShell() {
     setChatReasoning("");
     setChatRunningTool(null);
     try {
-      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode }, (event) => {
+      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode, reasoningEffort: chatReasoningEffort }, (event) => {
         switch (event.type) {
           case "message":
             if (event.message.role === "user") {
@@ -1780,6 +1782,7 @@ function AppShell() {
                 model={chatModel}
                 webSearch={chatWebSearch}
                 deepMode={chatDeepMode}
+                reasoningEffort={chatReasoningEffort}
                 collapsed={chatCollapsed}
                 models={chatModels}
                 onSelectSession={selectChatSession}
@@ -1794,6 +1797,7 @@ function AppShell() {
                 onModelChange={setChatModel}
                 onWebSearchChange={setChatWebSearch}
                 onDeepModeChange={setChatDeepMode}
+                onReasoningEffortChange={setChatReasoningEffort}
                 onToggleCollapsed={() => setChatCollapsed((v) => !v)}
                 onOpenCitation={(citation) => setDrawer({ type: "citation", citation })}
                 onGoToView={(view) => navigateView(view)}
