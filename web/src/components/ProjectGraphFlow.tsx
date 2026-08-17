@@ -558,35 +558,52 @@ function applySelectionStyles(input: {
     }
   }
 
-  return {
-    nodes: input.nodes.map((node) => {
-      const selected = node.id === input.selectedNodeId;
-      const highlighted = highlightMode && (input.highlightedNodeIds!.has(node.id) || relatedNodeIds.has(node.id));
-      const dimmed = highlightMode ? !highlighted && !selected : !relatedNodeIds.has(node.id) && !selected;
-      return {
-        ...node,
-        style: {
-          ...node.style,
-          opacity: selected ? 1 : dimmed ? 0.15 : 1,
-          border: selected ? "2px solid var(--graph-node-fg, #111827)" : node.style?.border,
-          boxShadow: selected ? "0 10px 30px rgba(15, 23, 42, 0.22)" : node.style?.boxShadow
-        }
-      };
-    }),
-    edges: input.edges.map((edge) => {
-      const related = relatedNodeIds.has(edge.source) || relatedNodeIds.has(edge.target);
-      const highlighted = highlightMode && (input.highlightedNodeIds!.has(edge.source) || input.highlightedNodeIds!.has(edge.target));
-      const dimmed = highlightMode ? !highlighted && !related : !related;
-      return {
-        ...edge,
-        style: {
-          ...edge.style,
-          opacity: dimmed ? 0.08 : 1,
-          strokeWidth: highlighted ? 2.4 : 1
-        }
-      };
-    })
+  // V399 性能: 高亮/选中只重建样式变化的节点与边（原全量 map 5万节点+10万边导致
+  // 关系查询返回后页面卡死）。未变化的节点保留原引用 → React 跳过重渲染。
+  const needsNodeStyle = (node: GraphNode) => {
+    const selected = node.id === input.selectedNodeId;
+    const highlighted = highlightMode && input.highlightedNodeIds!.has(node.id);
+    if (highlightMode) {
+      return selected || highlighted || relatedNodeIds.has(node.id);
+    }
+    return selected || relatedNodeIds.has(node.id);
   };
+  const needsEdgeStyle = (edge: GraphEdge) => {
+    const related = relatedNodeIds.has(edge.source) || relatedNodeIds.has(edge.target);
+    const highlighted = highlightMode && (input.highlightedNodeIds!.has(edge.source) || input.highlightedNodeIds!.has(edge.target));
+    return highlightMode ? highlighted || related : related;
+  };
+
+  const nodes = input.nodes.map((node) => {
+    if (!needsNodeStyle(node)) return node;  // 未命中 → 原引用（不触发重渲染）
+    const selected = node.id === input.selectedNodeId;
+    const highlighted = highlightMode && (input.highlightedNodeIds!.has(node.id) || relatedNodeIds.has(node.id));
+    const dimmed = highlightMode ? !highlighted && !selected : !relatedNodeIds.has(node.id) && !selected;
+    return {
+      ...node,
+      style: {
+        ...node.style,
+        opacity: selected ? 1 : dimmed ? 0.15 : 1,
+        border: selected ? "2px solid var(--graph-node-fg, #111827)" : node.style?.border,
+        boxShadow: selected ? "0 10px 30px rgba(15, 23, 42, 0.22)" : node.style?.boxShadow
+      }
+    };
+  });
+  const edges = input.edges.map((edge) => {
+    if (!needsEdgeStyle(edge)) return edge;  // 未命中 → 原引用
+    const related = relatedNodeIds.has(edge.source) || relatedNodeIds.has(edge.target);
+    const highlighted = highlightMode && (input.highlightedNodeIds!.has(edge.source) || input.highlightedNodeIds!.has(edge.target));
+    const dimmed = highlightMode ? !highlighted && !related : !related;
+    return {
+      ...edge,
+      style: {
+        ...edge.style,
+        opacity: dimmed ? 0.08 : 1,
+        strokeWidth: highlighted ? 2.4 : 1
+      }
+    };
+  });
+  return { nodes, edges };
 }
 
 function buildCircularPositionMap(graph: ProjectGraphRecord) {
