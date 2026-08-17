@@ -282,14 +282,18 @@ function listLiterature(filter: LiteratureFilter = {}): {
   if (filter.author) filtered = filtered.filter((r) => r.authors.some((a) => a.includes(filter.author!)));
   if (filter.year) filtered = filtered.filter((r) => r.year === filter.year);
   if (filter.keyword) {
+    // V399: 关键词拆分为多词（空格/逗号分隔），任一命中即算 — 修复整句匹配导致 0 条
+    const terms = filter.keyword.split(/[\s,，、]+/).map((t) => t.toLowerCase()).filter(Boolean);
     const kw = filter.keyword.toLowerCase();
     filtered = filtered.filter((r) => {
       // 标题/作者命中直接算
       if (r.title.toLowerCase().includes(kw)) return true;
       if (r.authors.some((a) => a.includes(filter.keyword!))) return true;
+      // 多词任一命中标题（如 "资本下乡 农村集体经济" → 命中含任一词的论文）
+      if (terms.length > 1 && terms.some((t) => r.title.toLowerCase().includes(t))) return true;
       // 摘要内容命中
       const summary = readAuxContent(r.path, "摘要.md");
-      if (summary && summary.toLowerCase().includes(kw)) return true;
+      if (summary && (summary.toLowerCase().includes(kw) || (terms.length > 1 && terms.some((t) => summary.toLowerCase().includes(t))))) return true;
       return false;
     });
   }
