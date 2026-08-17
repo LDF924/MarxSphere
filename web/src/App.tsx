@@ -158,6 +158,13 @@ function AppShell() {
   // V399: 登录状态（header 登录按钮/用户菜单）
   const { user: authUser, openLogin, logout: authLogout } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  // V399: 用户菜单点击外部关闭
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const close = () => setUserMenuOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [userMenuOpen]);
   const [projects, setProjects] = useState<SourceRecord[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [projectStats, setProjectStats] = useState<ProjectStatsRecord | null>(null);
@@ -1591,6 +1598,18 @@ function AppShell() {
               )}
             </div>
           ) : null}
+          {/* V399: 设置按钮（模式/项目之间；原 ProjectRail 移除后补回） */}
+          <button
+            type="button"
+            onClick={toggleSettings}
+            title={t("全局设置", "Global settings")}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors",
+              workspaceView === "settings" ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/60 hover:border-primary/40 hover:text-foreground"
+            )}
+          >
+            <Settings className="h-4 w-4" />
+          </button>
           {/* V399: 顶栏「项目」按钮（原左侧常驻项目列移入弹出面板） */}
           <button
             type="button"
@@ -1618,7 +1637,7 @@ function AppShell() {
               <>
                 <button
                   type="button"
-                  onClick={() => setUserMenuOpen((v) => !v)}
+                  onClick={(e) => { e.stopPropagation(); setUserMenuOpen((v) => !v); }}
                   className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 >
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
@@ -1627,7 +1646,7 @@ function AppShell() {
                   <span className="max-w-20 truncate">{authUser.username}</span>
                 </button>
                 {userMenuOpen ? (
-                  <div className="absolute right-0 top-9 z-50 w-48 rounded-lg border border-border bg-background/95 p-1.5 shadow-xl backdrop-blur">
+                  <div className="absolute right-0 top-9 z-50 w-48 rounded-lg border border-border bg-background/95 p-1.5 shadow-xl backdrop-blur" onClick={(e) => e.stopPropagation()}>
                     <div className="border-b border-border/60 px-2 py-1.5 text-xs">
                       <div className="font-medium">{authUser.username}</div>
                       <div className="text-[10px] text-muted-foreground">
