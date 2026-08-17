@@ -1900,13 +1900,30 @@ export function buildHttpServer() {
   // ───── V398: 通用 AI 对话（ChatPanel）─────
 
   /** 图片上传：base64 → data/agent_workspace/chat_uploads/ 相对路径（≤2MB，扩展名白名单） */
-  async function persistChatImage(dataUrl: string): Promise<{ path: string; name: string; sizeKB: number } | { error: string }> {
-    const match = /^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/s.exec(dataUrl);
-    if (!match) return { error: "仅支持 png/jpg/jpeg/gif/webp 图片" };
-    const ext = match[1] === "jpeg" ? "jpg" : match[1];
-    const raw = Buffer.from(match[2], "base64");
-    if (raw.length === 0) return { error: "图片内容为空" };
-    if (raw.length > 2 * 1024 * 1024) return { error: "图片超过 2MB 上限，请压缩后重试" };
+  async function persistChatImage(dataUrl: string, allowDocs = false): Promise<{ path: string; name: string; sizeKB: number } | { error: string }> {
+    // V399: 支持文档（PDF/Office/文本）+ 图片；扩展名白名单
+    const mimeMatch = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,(.+)$/s.exec(dataUrl);
+    if (!mimeMatch) return { error: "格式不支持" };
+    const mime = mimeMatch[1].toLowerCase();
+    const raw = Buffer.from(mimeMatch[2], "base64");
+    if (raw.length === 0) return { error: "文件内容为空" };
+    if (raw.length > 20 * 1024 * 1024) return { error: "文件超过 20MB 上限" };
+    const extMap: Record<string, string> = {
+      "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/bmp": "bmp",
+      "application/pdf": "pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+      "application/msword": "doc",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+      "application/vnd.ms-powerpoint": "ppt",
+      "text/plain": "txt", "text/markdown": "md", "text/csv": "csv"
+    };
+    const ext = extMap[mime];
+    if (!ext) return { error: "仅支持 png/jpg/jpeg/gif/webp 图片 + PDF/Word/Excel/PPT/文本" };
+    const isImage = ["png", "jpg", "gif", "webp", "bmp"].includes(ext);
+    if (!isImage && !allowDocs) return { error: "仅支持图片（文档请经对话附件上传）" };
+    if (isImage && raw.length > 2 * 1024 * 1024) return { error: "图片超过 2MB 上限，请压缩后重试" };
     const fs = await import("node:fs");
     const nodePath = await import("node:path");
     const { randomUUID } = await import("node:crypto");
@@ -1945,7 +1962,8 @@ export function buildHttpServer() {
       images: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(6).optional(),
       webSearch: z.boolean().optional(),
       deepMode: z.boolean().optional(),
-      reasoningEffort: z.enum(["low", "high", "max"]).optional()
+      reasoningEffort: z.enum(["low", "high", "max"]).optional(),
+      docs: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(3).optional()
     }).parse(request.body);
 
     const detail = await mcpAgentService.getSession(params.sessionId);
@@ -1963,6 +1981,18 @@ export function buildHttpServer() {
           return reply.code(400).send({ error: saved.error });
         }
         images.push({ path: saved.path, name: img.name });
+      }
+    }
+    // V399: 文档附件持久化（PDF/Office/文本 → agent_workspace/chat_uploads/）
+    let docs: Array<{ path: string; name: string }> | undefined;
+    if (input.docs?.length) {
+      docs = [];
+      for (const doc of input.docs) {
+        const saved = await persistChatImage(doc.dataUrl, true);
+        if ("error" in saved) {
+          return reply.code(400).send({ error: saved.error });
+        }
+        docs.push({ path: saved.path, name: doc.name });
       }
     }
 
@@ -2005,6 +2035,7 @@ export function buildHttpServer() {
         webSearch: input.webSearch,
         deepMode: input.deepMode,
         reasoningEffort: input.reasoningEffort,
+        docs,
         signal: abortController.signal
       }, config.DEFAULT_TENANT_ID, (event) => {
         send(event.type, event);

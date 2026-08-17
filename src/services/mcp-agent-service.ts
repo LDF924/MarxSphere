@@ -193,6 +193,8 @@ export class McpAgentService {
     deepMode?: boolean;
     /** V399: 思考强度三档（low/high/max）— DeepSeek reasoning_effort */
     reasoningEffort?: "low" | "high" | "max";
+    /** V399: 文档附件（PDF/Office/文本，attachment_read 解析） */
+    docs?: McpMessageImage[];
   }, tenantId = config.DEFAULT_TENANT_ID, emit?: StreamEmitter) {
     assertNotAborted(input.signal);
     emit?.({ type: "stage", label: "加载会话", detail: "正在读取当前 MCP 会话上下文" });
@@ -253,6 +255,7 @@ export class McpAgentService {
           webSearch: input.webSearch,
           deepMode: input.deepMode,
           reasoningEffort: input.reasoningEffort,
+          docs: input.docs,
           toolCalls,
           signal: input.signal,
           emit
@@ -360,6 +363,7 @@ export class McpAgentService {
     webSearch?: boolean;
     deepMode?: boolean;
     reasoningEffort?: "low" | "high" | "max";
+    docs?: McpMessageImage[];
     toolCalls: McpToolCallRecord[];
     signal?: AbortSignal;
     emit?: StreamEmitter;
@@ -386,6 +390,33 @@ export class McpAgentService {
       input.toolCalls.push(toolCall);
       input.emit?.({ type: "tool_end", toolCall });
       contextParts.push(`[用户附件图片 ${img.name}] ${description}`);
+    }
+
+    // ①.5 V399: 文档附件 → attachment_read 解析注入（PDF/Office/文本）
+    for (const doc of input.docs ?? []) {
+      assertNotAborted(input.signal);
+      const started = performance.now();
+      input.emit?.({ type: "tool_start", toolName: "attachment_read", arguments: { path: doc.path } });
+      const { buildAgentTools, executeAgentTool } = await import("./agent-tool-router.js");
+      const tools = await buildAgentTools();
+      const toolDef = tools.find((t) => t.name === "attachment_read");
+      let resultText = "（附件解析失败）";
+      if (toolDef) {
+        const exec = await executeAgentTool(toolDef, { path: doc.path, maxChars: 8000 }, { role: "analyst" });
+        resultText = exec.ok ? exec.result : exec.result;
+      }
+      const toolCall = await addMcpToolCall({
+        sessionId: input.session.id,
+        messageId: input.messageId,
+        toolName: "attachment_read",
+        arguments: { path: doc.path },
+        result: { text: resultText.slice(0, 3000) },
+        status: "SUCCEEDED",
+        durationMs: Math.round(performance.now() - started)
+      });
+      input.toolCalls.push(toolCall);
+      input.emit?.({ type: "tool_end", toolCall });
+      contextParts.push(`[附件 ${doc.name}] ${resultText.slice(0, 8000)}`);
     }
 
     // ② 联网开关 → web_search 结果注入

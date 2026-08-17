@@ -43,7 +43,7 @@ export interface ChatPanelProps {
   onCreateSession: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
-  onSend: (content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean) => void;
+  onSend: (content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean, docs?: ChatDraftImage[]) => void;
   onStop: () => void;
   /** V399: 撤回/删除指定消息（参数=消息 id；用户消息撤回、AI 回答删除） */
   onRecall: (messageId: string) => void;
@@ -294,6 +294,8 @@ function ReasoningBlock({ text, streaming = false }: { text: string; streaming?:
 export const ChatPanel: FC<ChatPanelProps> = (props) => {
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<ChatDraftImage[]>([]);
+  // V399: 文档附件（PDF/Office/文本，发送后由服务端 attachment_read 解析）
+  const [draftDocs, setDraftDocs] = useState<ChatDraftImage[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => {
@@ -380,20 +382,32 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
   function handleSend() {
     const content = draft.trim();
     if (!content || props.isRunning) return;
-    props.onSend(content, draftImages, props.webSearch, props.deepMode);
+    props.onSend(content, draftImages, props.webSearch, props.deepMode, draftDocs);
     setDraft("");
     setDraftImages([]);
+    setDraftDocs([]);
   }
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
     for (const file of Array.from(files)) {
-      if (!file.type.startsWith("image/")) continue;
-      if (draftImages.length >= 6) break;
-      try {
-        const img = await fileToDataUrl(file);
-        setDraftImages((prev) => [...prev, img]);
-      } catch { /* ignore */ }
+      // V399: 图片 → 内联预览；PDF/Office/文本 → 附加为待上传附件（服务端 attachment_read 解析）
+      const isImage = file.type.startsWith("image/");
+      const ext = file.name.toLowerCase().split(".").pop() || "";
+      const isDoc = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".md", ".csv"].includes("." + ext);
+      if (isImage) {
+        if (draftImages.length >= 6) break;
+        try {
+          const img = await fileToDataUrl(file);
+          setDraftImages((prev) => [...prev, img]);
+        } catch { /* ignore */ }
+      } else if (isDoc) {
+        if (draftDocs.length >= 3) break;
+        try {
+          const img = await fileToDataUrl(file, 4096);  // 大文件直接用原 dataUrl
+          setDraftDocs((prev) => [...prev, img]);
+        } catch { /* ignore */ }
+      }
     }
   }
 
@@ -750,7 +764,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv"
                   multiple
                   className="hidden"
                   onChange={(e) => { void handleFiles(e.target.files); e.target.value = ""; }}

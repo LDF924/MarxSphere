@@ -316,7 +316,7 @@ function AppShell() {
   }, [chatSessionId]);
 
   // 发送消息
-  async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean) {
+  async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean, docs?: ChatDraftImage[]) {
     if (!chatSessionId || chatIsRunning) return;
     chatAbortRef.current?.abort();
     const controller = new AbortController();
@@ -327,7 +327,7 @@ function AppShell() {
     setChatReasoning("");
     setChatRunningTool(null);
     try {
-      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode, reasoningEffort: chatReasoningEffort }, (event) => {
+      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode, reasoningEffort: chatReasoningEffort, docs }, (event) => {
         switch (event.type) {
           case "message":
             if (event.message.role === "user") {

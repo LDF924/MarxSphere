@@ -516,7 +516,7 @@ export const api = {
 
   async streamChatMessage(
     sessionId: string,
-    input: { content: string; images?: Array<{ dataUrl: string; name: string }>; webSearch?: boolean; deepMode?: boolean; reasoningEffort?: "low" | "high" | "max" },
+    input: { content: string; images?: Array<{ dataUrl: string; name: string }>; webSearch?: boolean; deepMode?: boolean; reasoningEffort?: "low" | "high" | "max"; docs?: Array<{ dataUrl: string; name: string }> },
     onEvent: (event: McpStreamEvent) => void,
     options: { signal?: AbortSignal } = {}
   ) {

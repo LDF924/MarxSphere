@@ -559,9 +559,67 @@ export async function buildAgentTools(opts?: {
             }
           }
           // 文本/数据文件 → 直接读
-          const content = fs.readFileSync(target, "utf8");
-          const maxChars = Math.min(Math.max(Number(a.maxChars) || 4000, 100), 20000);
-          return `【附件】${rel} (${content.length} 字符)\n${content.slice(0, maxChars)}`;
+          if ([".txt", ".md", ".csv", ".json", ".log", ".tsv", ".xml", ".yaml", ".yml"].includes(ext)) {
+            const content = fs.readFileSync(target, "utf8");
+            const maxChars = Math.min(Math.max(Number(a.maxChars) || 4000, 100), 20000);
+            return `【附件】${rel} (${content.length} 字符)\n${content.slice(0, maxChars)}`;
+          }
+          // V399: PDF/Word/Excel/PPT → Python 子进程解析（PyMuPDF/python-docx/openpyxl/python-pptx）
+          if ([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"].includes(ext)) {
+            const maxChars = Math.min(Math.max(Number(a.maxChars) || 4000, 100), 20000);
+            const py = process.env.COGNEE_PYTHON || process.env.EMPIRICAL_PYTHON || "python";
+            const pyScript = `
+import sys
+from pathlib import Path
+p = Path(r"${target.replace(/\\/g, "\\\\")}")
+ext = p.suffix.lower()
+out = []
+try:
+    if ext == ".pdf":
+        import fitz
+        doc = fitz.open(str(p))
+        for i, page in enumerate(doc):
+            if len("\\n".join(out)) > ${maxChars}: break
+            out.append(page.get_text())
+    elif ext in (".docx", ".doc"):
+        from docx import Document
+        d = Document(str(p))
+        for para in d.paragraphs:
+            if para.text.strip(): out.append(para.text)
+        for t in d.tables:
+            for row in t.rows:
+                out.append(" | ".join(c.text.strip() for c in row.cells))
+    elif ext in (".xlsx", ".xls"):
+        import openpyxl
+        wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+        for ws in wb.worksheets:
+            out.append(f"[Sheet: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                out.append(" | ".join(str(c) if c is not None else "" for c in row))
+    elif ext in (".pptx", ".ppt"):
+        from pptx import Presentation
+        prs = Presentation(str(p))
+        for i, slide in enumerate(prs.slides):
+            out.append(f"[Slide {i+1}]")
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for para in shape.text_frame.paragraphs:
+                        if para.text.strip(): out.append(para.text)
+    text = "\\n".join(out)
+    print(text[:${maxChars}])
+except Exception as e:
+    print(f"（解析失败: {e}）")
+`;
+            try {
+              const { execFile } = await import("node:child_process");
+              const { promisify } = await import("node:util");
+              const { stdout } = await promisify(execFile)(py, ["-c", pyScript], { timeout: 60000, windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+              return `【附件·${ext.slice(1)} 解析】${rel}\n${stdout.trim() || "（解析无输出）"}`;
+            } catch (e: any) {
+              return `（${ext.slice(1)} 解析失败: ${String(e?.message || e).slice(0, 150)}）`;
+            }
+          }
+          return `（不支持的文件类型: ${ext || "未知"} — 支持 图片/文本/PDF/Word/Excel/PPT）`;
         } catch (e: any) {
           return `（附件读取异常: ${String(e?.message || e).slice(0, 200)}）`;
         }
