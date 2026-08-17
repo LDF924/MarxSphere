@@ -161,7 +161,8 @@ const documentUpdateSchema = z.object({
 
 const createMcpSessionSchema = z.object({
   title: z.string().min(1).optional(),
-  sourceIds: z.array(z.string().uuid()).optional()
+  sourceIds: z.array(z.string().uuid()).optional(),
+  kind: z.enum(["project", "chat"]).optional()
 });
 
 const mcpMessageSchema = z.object({
@@ -1721,6 +1722,23 @@ export function buildHttpServer() {
     return reply.code(201).send({ session });
   });
 
+  // V398: 会话重命名（AI 对话页/项目会话通用）
+  app.post("/api/mcp/sessions/:sessionId/rename", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    z.string().uuid().parse(params.sessionId);
+    const { title } = z.object({ title: z.string().trim().min(1).max(100) }).parse(request.body);
+    const session = await mcpAgentService.updateTitle(params.sessionId, title);
+    if (!session) {
+      return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
+    }
+    return { session };
+  });
+
+  // V398: 通用 AI 对话会话列表（kind=chat）
+  app.get("/api/chat/sessions", async () => ({
+    sessions: await mcpAgentService.listSessions({ kind: "chat" })
+  }));
+
   app.get("/api/mcp/sessions", async () => ({
     sessions: await mcpAgentService.listSessions()
   }));
@@ -1802,6 +1820,113 @@ export function buildHttpServer() {
       await mcpAgentService.runUserMessage({
         sessionId: params.sessionId,
         content: input.content,
+        signal: abortController.signal
+      }, config.DEFAULT_TENANT_ID, (event) => {
+        send(event.type, event);
+      });
+    } catch (error) {
+      if (!isAbortError(error)) {
+        send("error", {
+          type: "error",
+          message: getErrorMessage(error)
+        });
+      }
+    } finally {
+      completed = true;
+      request.raw.off("aborted", abortRun);
+      reply.raw.off("close", abortRun);
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+        reply.raw.end();
+      }
+    }
+  });
+
+  // ───── V398: 通用 AI 对话（ChatPanel）─────
+
+  /** 图片上传：base64 → data/agent_workspace/chat_uploads/ 相对路径（≤2MB，扩展名白名单） */
+  async function persistChatImage(dataUrl: string): Promise<{ path: string; name: string; sizeKB: number } | { error: string }> {
+    const match = /^data:image\/(png|jpe?g|gif|webp);base64,(.+)$/s.exec(dataUrl);
+    if (!match) return { error: "仅支持 png/jpg/jpeg/gif/webp 图片" };
+    const ext = match[1] === "jpeg" ? "jpg" : match[1];
+    const raw = Buffer.from(match[2], "base64");
+    if (raw.length === 0) return { error: "图片内容为空" };
+    if (raw.length > 2 * 1024 * 1024) return { error: "图片超过 2MB 上限，请压缩后重试" };
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    const { randomUUID } = await import("node:crypto");
+    const uploadsDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "chat_uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const fileName = `${randomUUID()}.${ext}`;
+    fs.writeFileSync(nodePath.join(uploadsDir, fileName), raw);
+    return { path: `chat_uploads/${fileName}`, name: fileName, sizeKB: Math.round(raw.length / 1024) };
+  }
+
+  app.post("/api/chat/uploads", async (request, reply) => {
+    const { dataUrl } = z.object({ dataUrl: z.string().min(20).max(3_500_000) }).parse(request.body);
+    const saved = await persistChatImage(dataUrl);
+    if ("error" in saved) {
+      return reply.code(400).send({ error: saved.error });
+    }
+    return reply.code(201).send(saved);
+  });
+
+  app.post("/api/chat/sessions/:sessionId/messages/stream", async (request, reply) => {
+    const params = request.params as { sessionId: string };
+    z.string().uuid().parse(params.sessionId);
+    const input = z.object({
+      content: z.string().trim().min(1).max(20000),
+      images: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(6).optional(),
+      webSearch: z.boolean().optional()
+    }).parse(request.body);
+
+    const detail = await mcpAgentService.getSession(params.sessionId);
+    if (!detail || detail.session.kind !== "chat") {
+      return reply.code(404).send(notFound("CHAT_SESSION_NOT_FOUND", "AI 对话会话不存在"));
+    }
+
+    // 图片持久化（base64 → 相对路径，不入库）
+    let images: Array<{ path: string; name: string }> | undefined;
+    if (input.images?.length) {
+      images = [];
+      for (const img of input.images) {
+        const saved = await persistChatImage(img.dataUrl);
+        if ("error" in saved) {
+          return reply.code(400).send({ error: saved.error });
+        }
+        images.push({ path: saved.path, name: img.name });
+      }
+    }
+
+    const abortController = new AbortController();
+    let completed = false;
+    const abortRun = () => {
+      if (!completed) {
+        abortController.abort();
+      }
+    };
+    request.raw.on("aborted", abortRun);
+    reply.raw.on("close", abortRun);
+
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Connection": "keep-alive"
+    });
+
+    const send = (event: string, data: unknown) => {
+      if (abortController.signal.aborted || reply.raw.destroyed || reply.raw.writableEnded) {
+        return;
+      }
+      reply.raw.write(`event: ${event}\n`);
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      await mcpAgentService.runUserMessage({
+        sessionId: params.sessionId,
+        content: input.content,
+        images,
+        webSearch: input.webSearch,
         signal: abortController.signal
       }, config.DEFAULT_TENANT_ID, (event) => {
         send(event.type, event);
@@ -4058,6 +4183,27 @@ export function buildHttpServer() {
       ? `图片 ${sizeKB}KB 较大 — 建议压缩后上传（多模态 token 成本与分辨率成正比）`
       : isImage ? `图片 ${sizeKB}KB — 可直接用于附件读取` : `文件 ${sizeKB}KB — 非图片附件`;
     return { ok: true, sizeKB, isImage, suggestion };
+  });
+
+  // V398: 对话图片静态服务（ChatPanel 消息内联预览；限 agent_workspace/chat_uploads 内，防路径穿越）
+  app.get("/api/chat/images/*", async (request, reply) => {
+    const raw = String((request.params as { "*"?: string })["*"] ?? "");
+    // 兼容两种相对路径：`chat_uploads/xxx.png`（上传接口返回值）或 `xxx.png`（直接文件名）
+    const rel = raw.replace(/^[/\\]+/, "").replace(/^chat_uploads[/\\]/, "");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const uploadsDir = path.join(workspace, "chat_uploads");
+    const target = path.resolve(uploadsDir, rel);
+    if (!(target === uploadsDir || target.startsWith(uploadsDir + path.sep))) {
+      return reply.code(400).send({ error: "路径越界", code: "AGENT_BAD_REQUEST" });
+    }
+    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在", code: "AGENT_NOT_FOUND" });
+    const ext = path.extname(target).toLowerCase();
+    const mime = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : ext === ".bmp" ? "image/bmp" : "image/jpeg";
+    reply.header("Content-Type", mime);
+    reply.header("Cache-Control", "public, max-age=86400");
+    return reply.send(fs.readFileSync(target));
   });
 
   // 差距P③(DSH settings): 设置读写 + 差距P⑤ 子进程状态

@@ -129,7 +129,8 @@ function mcpSessionFromRow(row: Record<string, unknown>): McpSessionRecord {
     sourceIds: Array.isArray(row.source_ids) ? row.source_ids.map(String) : [],
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
     createdAt: new Date(String(row.created_at)).toISOString(),
-    updatedAt: new Date(String(row.updated_at)).toISOString()
+    updatedAt: new Date(String(row.updated_at)).toISOString(),
+    kind: (row.kind ?? "project") as "project" | "chat"
   };
 }
 
@@ -140,7 +141,8 @@ function mcpMessageFromRow(row: Record<string, unknown>): McpMessageRecord {
     role: String(row.role) as McpMessageRole,
     content: String(row.content),
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
-    createdAt: new Date(String(row.created_at)).toISOString()
+    createdAt: new Date(String(row.created_at)).toISOString(),
+    images: Array.isArray(row.images) ? row.images as McpMessageRecord["images"] : null
   };
 }
 
@@ -1556,11 +1558,12 @@ export async function createMcpSession(input: {
   model?: string;
   sourceIds?: string[];
   metadata?: Record<string, unknown>;
+  kind?: "project" | "chat";
 }): Promise<McpSessionRecord> {
   const result = await pool.query(
     `
-      insert into mcp_sessions (id, tenant_id, title, model, source_ids, metadata)
-      values ($1, $2, $3, $4, $5::uuid[], $6::jsonb)
+      insert into mcp_sessions (id, tenant_id, title, model, source_ids, metadata, kind)
+      values ($1, $2, $3, $4, $5::uuid[], $6::jsonb, $7)
       returning *
     `,
     [
@@ -1569,7 +1572,8 @@ export async function createMcpSession(input: {
       input.title,
       input.model ?? null,
       input.sourceIds ?? [],
-      JSON.stringify(input.metadata ?? {})
+      JSON.stringify(input.metadata ?? {}),
+      input.kind ?? "project"
     ]
   );
   return mcpSessionFromRow(result.rows[0]);
@@ -1579,17 +1583,24 @@ export async function listMcpSessions(input: {
   tenantId: string;
   limit: number;
   sourceId?: string;
+  kind?: "project" | "chat";
 }): Promise<McpSessionRecord[]> {
   const params: unknown[] = [input.tenantId, input.limit];
-  const sourceSql = input.sourceId ? "and source_ids @> $3::uuid[]" : "";
+  const clauses: string[] = [];
   if (input.sourceId) {
     params.push([input.sourceId]);
+    clauses.push("source_ids @> $3::uuid[]");
   }
+  if (input.kind) {
+    params.push(input.kind);
+    clauses.push(`kind = $${params.length}`);
+  }
+  const whereSql = clauses.length > 0 ? `and ${clauses.join(" and ")}` : "";
   const result = await pool.query(
     `
       select *
       from mcp_sessions
-      where tenant_id = $1 ${sourceSql}
+      where tenant_id = $1 ${whereSql}
       order by updated_at desc, id
       limit $2
     `,
@@ -1682,14 +1693,15 @@ export async function addMcpMessage(input: {
   role: McpMessageRole;
   content: string;
   metadata?: Record<string, unknown>;
+  images?: McpMessageRecord["images"];
 }): Promise<McpMessageRecord> {
   const result = await pool.query(
     `
-      insert into mcp_messages (id, session_id, role, content, metadata)
-      values ($1, $2, $3, $4, $5::jsonb)
+      insert into mcp_messages (id, session_id, role, content, metadata, images)
+      values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
       returning *
     `,
-    [randomUUID(), input.sessionId, input.role, input.content, JSON.stringify(input.metadata ?? {})]
+    [randomUUID(), input.sessionId, input.role, input.content, JSON.stringify(input.metadata ?? {}), JSON.stringify(input.images ?? null)]
   );
   await touchMcpSession(input.sessionId);
   return mcpMessageFromRow(result.rows[0]);

@@ -1,4 +1,4 @@
-import { useEffect, Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -30,12 +30,15 @@ import {
   Database,
   Landmark,
   Wrench,
-  Boxes
+  Boxes,
+  Sun,
+  Moon
 } from "lucide-react";
 import { api } from "./lib/api";
 import { AuthGate } from "./components/AuthGate";
 import { BillingPanel } from "./components/BillingPanel";
 import { AdminPanel } from "./components/AdminPanel";
+import { ChatPanel, type ChatDraftImage } from "./components/ChatPanel";
 import { cn, formatDate, formatDuration, formatMessageDate, shortId, timeGapMinutes } from "./lib/utils";
 import { MarkdownMessage, renderMarkdownLines, type MarkdownCitation } from "./lib/markdown";
 import type {
@@ -106,7 +109,7 @@ import { EmpiricalResearchPanel } from "./components/EmpiricalResearchPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -166,11 +169,229 @@ function AppShell() {
   const [mcpDetail, setMcpDetail] = useState<McpSessionDetail | null>(null);
   const [aiSettings, setAiSettings] = useState<PublicAiProviderSettings | null>(null);
   const [mcpSettings, setMcpSettings] = useState<PublicMcpSettings | null>(null);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("home");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("assistant");
   const [modeBadge, setModeBadge] = useState<{ mode: "preview" | "full"; mcpPoolSize: number } | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);  // V390: 运行模式切换菜单展开状态
   // 待播放的 demo 查询（Hero 按钮 → AskPanel 自动检索）
   const pendingDemoRef = useRef<string | null>(null);
+
+  // ── V398: AI 对话页状态（assistant 视图）──
+  const [chatSessions, setChatSessions] = useState<McpSessionRecord[]>([]);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<McpMessageRecord[]>([]);
+  const [chatToolCalls, setChatToolCalls] = useState<McpToolCallRecord[]>([]);
+  const [chatPendingUser, setChatPendingUser] = useState("");
+  const [chatStreamingText, setChatStreamingText] = useState("");
+  const [chatRunningTool, setChatRunningTool] = useState<string | null>(null);
+  const [chatIsRunning, setChatIsRunning] = useState(false);
+  const [chatModel, setChatModel] = useState("");
+  const [chatWebSearch, setChatWebSearch] = useState(false);
+  const [chatModels, setChatModels] = useState<Array<{ id: string; label: string }>>([]);
+  const [chatCollapsed, setChatCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("sag:chat:collapsed:v1") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      return window.localStorage.getItem("sag:theme:v1") === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const chatSessionLoadedRef = useRef<Set<string>>(new Set());
+
+  // 主题切换
+  function toggleTheme() {
+    const next: "dark" | "light" = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.classList.toggle("light", next === "light");
+    document.documentElement.classList.toggle("dark", next === "dark");
+    try {
+      window.localStorage.setItem("sag:theme:v1", next);
+    } catch { /* ignore */ }
+  }
+
+  // 侧边栏折叠持久化
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("sag:chat:collapsed:v1", chatCollapsed ? "1" : "0");
+    } catch { /* ignore */ }
+  }, [chatCollapsed]);
+
+  // 加载模型列表
+  useEffect(() => {
+    fetch("/api/llm/models")
+      .then((r) => r.json())
+      .then((d) => {
+        const models = (d.models ?? []) as Array<{ id: string; label: string; provider: string; desc: string; roles: string[] }>;
+        setChatModels(models.map((m) => ({ id: m.id, label: `${m.label}（${m.provider}）` })));
+        setChatModel((prev) => prev || (d.roleMap?.reason ?? models[0]?.id ?? ""));
+      })
+      .catch(() => {});
+  }, []);
+
+  // 加载会话列表；无会话时自动新建
+  const loadChatSessions = useCallback(async () => {
+    try {
+      const { sessions } = await api.listChatSessions();
+      setChatSessions(sessions);
+      if (sessions.length > 0) {
+        if (!chatSessionId || !sessions.some((s) => s.id === chatSessionId)) {
+          setChatSessionId(sessions[0].id);
+        }
+      } else {
+        const { session } = await api.createMcpSession({ kind: "chat" });
+        setChatSessions((prev) => [session, ...prev]);
+        setChatSessionId(session.id);
+      }
+    } catch { /* 服务未就绪时静默 */ }
+  }, [chatSessionId]);
+
+  useEffect(() => {
+    void loadChatSessions();
+  }, [loadChatSessions]);
+
+  // 切换会话 → 加载消息
+  const selectChatSession = useCallback((sessionId: string) => {
+    setChatSessionId(sessionId);
+    chatAbortRef.current?.abort();
+    if (chatSessionLoadedRef.current.has(sessionId)) return;
+    void api.getMcpSession(sessionId).then((detail) => {
+      chatSessionLoadedRef.current.add(sessionId);
+      setChatMessages(detail.messages);
+      setChatToolCalls(detail.toolCalls);
+      setChatModel((prev) => prev || (detail.session.model ?? ""));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!chatSessionId || chatSessionLoadedRef.current.has(chatSessionId)) return;
+    void api.getMcpSession(chatSessionId).then((detail) => {
+      chatSessionLoadedRef.current.add(chatSessionId);
+      setChatMessages(detail.messages);
+      setChatToolCalls(detail.toolCalls);
+      setChatModel((prev) => prev || (detail.session.model ?? ""));
+    }).catch(() => {});
+  }, [chatSessionId]);
+
+  // 发送消息
+  async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean) {
+    if (!chatSessionId || chatIsRunning) return;
+    chatAbortRef.current?.abort();
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
+    setChatIsRunning(true);
+    setChatPendingUser(content);
+    setChatStreamingText("");
+    setChatRunningTool(null);
+    try {
+      await api.streamChatMessage(chatSessionId, { content, images, webSearch }, (event) => {
+        switch (event.type) {
+          case "message":
+            if (event.message.role === "user") {
+              setChatPendingUser("");
+              setChatMessages((prev) => [...prev, event.message]);
+            } else {
+              setChatStreamingText("");
+              setChatMessages((prev) => [...prev, event.message]);
+            }
+            break;
+          case "assistant_delta":
+            setChatStreamingText((prev) => prev + event.delta);
+            break;
+          case "tool_start":
+            setChatRunningTool(event.toolName);
+            break;
+          case "tool_end":
+            setChatRunningTool(null);
+            setChatToolCalls((prev) => [...prev, event.toolCall]);
+            break;
+          case "model":
+            setChatModel(event.model);
+            break;
+          case "done":
+            setChatMessages(event.detail.messages);
+            setChatToolCalls(event.detail.toolCalls);
+            break;
+          case "error":
+            setError(event.message);
+            break;
+          default:
+            break;
+        }
+      }, { signal: controller.signal });
+      // 发送完成后刷新会话列表（autoTitle 可能已更新标题）
+      const { sessions } = await api.listChatSessions();
+      setChatSessions(sessions);
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        setError(String(err instanceof Error ? err.message : err));
+      }
+    } finally {
+      setChatIsRunning(false);
+      setChatPendingUser("");
+      setChatStreamingText("");
+      setChatRunningTool(null);
+      chatAbortRef.current = null;
+    }
+  }
+
+  // 新建会话
+  async function createChatSession() {
+    if (chatIsRunning) return;
+    try {
+      const { session } = await api.createMcpSession({ kind: "chat" });
+      setChatSessions((prev) => [session, ...prev]);
+      chatSessionLoadedRef.current.add(session.id);
+      setChatMessages([]);
+      setChatToolCalls([]);
+      setChatStreamingText("");
+      setChatSessionId(session.id);
+    } catch { /* ignore */ }
+  }
+
+  // 重命名 / 删除会话
+  async function renameChatSession(sessionId: string, title: string) {
+    try {
+      const { session } = await api.renameMcpSession(sessionId, title);
+      setChatSessions((prev) => prev.map((s) => s.id === sessionId ? session : s));
+    } catch { /* ignore */ }
+  }
+
+  async function deleteChatSession(sessionId: string) {
+    try {
+      await api.deleteMcpSession(sessionId);
+      chatSessionLoadedRef.current.delete(sessionId);
+      const remaining = chatSessions.filter((s) => s.id !== sessionId);
+      setChatSessions(remaining);
+      if (chatSessionId === sessionId) {
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          setChatSessionId(next.id);
+          void api.getMcpSession(next.id).then((detail) => {
+            chatSessionLoadedRef.current.add(next.id);
+            setChatMessages(detail.messages);
+            setChatToolCalls(detail.toolCalls);
+          }).catch(() => {});
+        } else {
+          const { session } = await api.createMcpSession({ kind: "chat" });
+          setChatSessions([session]);
+          setChatSessionId(session.id);
+          setChatMessages([]);
+          setChatToolCalls([]);
+          chatSessionLoadedRef.current.add(session.id);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  function stopChatMessage() {
+    chatAbortRef.current?.abort();
+  }
 
   // 加载运行模式徽标（GBrain 模式徽标）
   useEffect(() => {
@@ -240,7 +461,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -251,7 +472,7 @@ function AppShell() {
         // 无 state 时从 hash 恢复
         const hash = window.location.hash.replace(/^#/, "");
         if (validViews.includes(hash as WorkspaceView)) setWorkspaceView(hash as WorkspaceView);
-        else setWorkspaceView("home");
+        else setWorkspaceView("assistant");
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -1320,6 +1541,14 @@ function AppShell() {
               onChange={(view) => navigateView(view)}
             />
           )}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === "dark" ? t("切换到浅色主题", "Switch to light theme") : t("切换到深色主题", "Switch to dark theme")}
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
         </header>
 
         {error ? (
@@ -1349,6 +1578,32 @@ function AppShell() {
                   <ApiTokensPanel />
                 </div>
               </section>
+            ) : workspaceView === "assistant" ? (
+              <ChatPanel
+                sessions={chatSessions}
+                activeSessionId={chatSessionId}
+                messages={chatMessages}
+                toolCalls={chatToolCalls}
+                pendingUserContent={chatPendingUser}
+                streamingText={chatStreamingText}
+                isRunning={chatIsRunning}
+                runningToolName={chatRunningTool}
+                model={chatModel}
+                webSearch={chatWebSearch}
+                collapsed={chatCollapsed}
+                models={chatModels}
+                onSelectSession={selectChatSession}
+                onCreateSession={() => void createChatSession()}
+                onRenameSession={(sessionId, title) => void renameChatSession(sessionId, title)}
+                onDeleteSession={(sessionId) => void deleteChatSession(sessionId)}
+                onSend={(content, images, webSearch) => void sendChatMessage(content, images, webSearch)}
+                onStop={stopChatMessage}
+                onModelChange={setChatModel}
+                onWebSearchChange={setChatWebSearch}
+                onToggleCollapsed={() => setChatCollapsed((v) => !v)}
+                onOpenCitation={(citation) => setDrawer({ type: "citation", citation })}
+                onGoToView={(view) => navigateView(view)}
+              />
             ) : workspaceView === "documents" ? (
               <ProjectDocumentsWorkspace
                 project={selectedProject}
@@ -1912,7 +2167,7 @@ function MainWorkspaceTabs(props: {
 
   /** 导航分组色点（finesse：分组视觉标识，色相按职能区分；后台/系统组不显示色点更干净） */
   const GROUP_DOTS: Record<string, string> = {
-    chat: "hsl(43 96% 60%)", reason: "hsl(43 96% 60%)", ask: "hsl(43 96% 60%)",
+    assistant: "hsl(43 96% 60%)", chat: "hsl(43 96% 60%)", reason: "hsl(43 96% 60%)", ask: "hsl(43 96% 60%)",
     literature: "hsl(150 45% 50%)", sciverse: "hsl(150 45% 50%)", scenarios: "hsl(150 45% 50%)", education: "hsl(160 60% 45%)", "empirical-research": "hsl(160 60% 45%)",
     truth: "hsl(214 60% 55%)", memory: "hsl(214 60% 55%)", documents: "hsl(214 60% 55%)", "graphiti-ingest": "hsl(214 60% 55%)", "cognee-ingest": "hsl(214 60% 55%)", graph: "hsl(214 60% 55%)", sources: "hsl(214 60% 55%)",
     policy: "hsl(28 70% 55%)", vault: "hsl(28 70% 55%)",
@@ -1931,6 +2186,7 @@ function MainWorkspaceTabs(props: {
       icon: <MessageCircle className="h-3.5 w-3.5" />,
       dot: "hsl(43 96% 60%)",
       items: [
+        { value: "assistant", label: t("AI对话", "AI Chat") },
         { value: "chat", label: t("对话", "Chat") },
         { value: "reason", label: t("推理", "Reason") },
         { value: "ask", label: t("Ask检索", "Ask") },

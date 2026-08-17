@@ -426,7 +426,7 @@ export const api = {
     return request<{ sessions: McpSessionRecord[] }>("/api/mcp/sessions");
   },
 
-  async createMcpSession(input: { title?: string; sourceIds?: string[] }) {
+  async createMcpSession(input: { title?: string; sourceIds?: string[]; kind?: "project" | "chat" }) {
     return request<{ session: McpSessionRecord }>("/api/mcp/sessions", {
       method: "POST",
       body: JSON.stringify(input)
@@ -471,6 +471,49 @@ export const api = {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ content })
+    });
+    if (!response.ok || !response.body) {
+      const text = await response.text();
+      const data = safeParseJson(text);
+      throw new Error(data?.error?.message ?? `请求失败：${response.status}`);
+    }
+
+    await readSseStream(response, onEvent);
+  },
+
+  // ── V398: 通用 AI 对话（ChatPanel）──
+
+  async renameMcpSession(sessionId: string, title: string) {
+    return request<{ session: McpSessionRecord }>(`/api/mcp/sessions/${sessionId}/rename`, {
+      method: "POST",
+      body: JSON.stringify({ title })
+    });
+  },
+
+  async listChatSessions() {
+    return request<{ sessions: McpSessionRecord[] }>("/api/chat/sessions");
+  },
+
+  async uploadChatImage(dataUrl: string) {
+    return request<{ path: string; name: string; sizeKB: number }>("/api/chat/uploads", {
+      method: "POST",
+      body: JSON.stringify({ dataUrl })
+    });
+  },
+
+  async streamChatMessage(
+    sessionId: string,
+    input: { content: string; images?: Array<{ dataUrl: string; name: string }>; webSearch?: boolean },
+    onEvent: (event: McpStreamEvent) => void,
+    options: { signal?: AbortSignal } = {}
+  ) {
+    const response = await fetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
+      method: "POST",
+      signal: options.signal,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(input)
     });
     if (!response.ok || !response.body) {
       const text = await response.text();

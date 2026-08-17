@@ -306,9 +306,17 @@ export interface McpSessionRecord {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  /** V398: 会话种类 — project(项目绑定/MCP工具对话) | chat(通用AI对话) */
+  kind?: "project" | "chat";
 }
 
 export type McpMessageRole = "user" | "assistant" | "tool" | "system";
+
+/** 用户消息附带图片（V398：相对路径，base64 不入库；前端用 dataUrl 预览） */
+export interface McpMessageImage {
+  path: string;
+  name: string;
+}
 
 export interface McpMessageRecord {
   id: string;
@@ -317,6 +325,7 @@ export interface McpMessageRecord {
   content: string;
   metadata: Record<string, unknown>;
   createdAt: string;
+  images?: McpMessageImage[] | null;
 }
 
 export interface McpToolCallRecord {

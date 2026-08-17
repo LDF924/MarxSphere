@@ -1,3 +1,7 @@
+/* V398: 第三方样式（KaTeX 公式 + hljs 代码高亮，AI 对话页富渲染）— @import 必须置于顶部 */
+@import "katex/dist/katex.min.css";
+@import "highlight.js/styles/github-dark.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -32,6 +36,28 @@
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+}
+
+/* V398: 浅色主题（AI 对话页切换）— 留白充足 + 分区清晰，覆盖 :root 变量 */
+.light {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 12%;
+  --muted: 210 32% 94%;
+  --muted-foreground: 215 20% 42%;
+  --accent: 214 45% 92%;
+  --accent-foreground: 222 47% 12%;
+  --primary: 214 55% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 30% 95%;
+  --border: 214 30% 88%;
+  --input: 214 30% 86%;
+  --ring: 214 55% 55%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 12%;
+  --shadow-xs: 0 1px 2px hsl(222 30% 30% / 0.06);
+  --shadow-sm: 0 2px 6px hsl(222 30% 30% / 0.08);
+  --shadow-md: 0 4px 12px hsl(222 30% 30% / 0.1);
+  --shadow-lg: 0 8px 24px hsl(222 30% 30% / 0.12);
 }
 
 * {

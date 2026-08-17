@@ -229,6 +229,13 @@ export interface McpSessionRecord {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  /** V398: 会话种类 — project(项目绑定/MCP工具对话) | chat(通用AI对话) */
+  kind?: "project" | "chat";
+}
+
+export interface McpMessageImage {
+  path: string;
+  name: string;
 }
 
 export interface McpMessageRecord {
@@ -238,6 +245,7 @@ export interface McpMessageRecord {
   content: string;
   metadata: Record<string, unknown>;
   createdAt: string;
+  images?: McpMessageImage[] | null;
 }
 
 export interface McpToolCallRecord {
@@ -266,6 +274,7 @@ export type McpStreamEvent =
   | { type: "tool_start"; toolName: string; arguments: Record<string, unknown> }
   | { type: "search_progress"; event: SearchProgressEvent }
   | { type: "tool_end"; toolCall: McpToolCallRecord }
+  | { type: "model"; model: string }
   | { type: "done"; detail: McpSessionDetail }
   | { type: "error"; message: string };
 

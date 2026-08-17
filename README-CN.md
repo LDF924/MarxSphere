@@ -133,6 +133,16 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 - **节奏适配**：按掌握度调整习题难度/时长（避免简单重复/难度过载）
 - **分层教学**：同一知识点按水平输出不同版本讲解（基础/进阶/挑战）
 
+### 💬 AI 对话（豆包式交互 · 默认首页）
+
+> 进入系统即达的 AI 会话页（DeepSeek Harness / 豆包同款交互范式）。
+
+- **会话管理侧边栏**：全部历史对话列表，支持新建（Ctrl+K）/ 重命名 / 删除 / 置顶，可折叠为图标窄条
+- **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、引用来源徽章、工具调用折叠卡，长回复滚动浏览
+- **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、附件上传 + 图片粘贴（base64 压缩 ≤2MB，image_analyze 多模态理解）
+- **浅色 / 深色双主题**：header 一键切换，localStorage 持久化
+- **空会话首屏**：欢迎语 + 热词建议（点击即问）+ 核心功能入口（Ask 检索 / 52 步推理 / 实证工作台）
+
 ### 🤖 AI Agent（50+ 能力项 · 26 工具 · 5 层安全 · 5 层记忆）
 
 > 对标 OpenAI Codex + DeepSeek Harness 开源实现，50 项特性全部吸收。完整能力档案见 [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md)。

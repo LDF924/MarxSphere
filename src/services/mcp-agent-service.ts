@@ -13,7 +13,7 @@ import {
   listMcpSessions,
   updateMcpSessionTitle
 } from "../db/repositories.js";
-import type { McpSessionRecord, McpToolCallRecord } from "../types.js";
+import type { McpMessageImage, McpSessionRecord, McpToolCallRecord } from "../types.js";
 import type { SearchProgressEvent } from "../types.js";
 import { aiSettingsService, type AiRuntimeSettings } from "./ai-settings-service.js";
 import { createModelCallLogger, importModelCallLog, type ModelCallLogRecord } from "../observability/model-call-log.js";
@@ -54,6 +54,7 @@ export type McpRunStreamEvent =
   | { type: "tool_start"; toolName: string; arguments: Record<string, unknown> }
   | { type: "search_progress"; event: SearchProgressEvent }
   | { type: "tool_end"; toolCall: McpToolCallRecord }
+  | { type: "model"; model: string }
   | { type: "done"; detail: Awaited<ReturnType<typeof getMcpSessionDetail>> }
   | { type: "error"; message: string };
 
@@ -63,26 +64,40 @@ export class McpAgentService {
   async createSession(input: {
     title?: string;
     sourceIds?: string[];
+    kind?: "project" | "chat";
   }, tenantId = config.DEFAULT_TENANT_ID): Promise<McpSessionRecord> {
     const settings = await aiSettingsService.getRuntimeSettings();
     const title = input.title?.trim();
+    const kind = input.kind ?? "project";
     return createMcpSession({
       tenantId,
       title: title || defaultMcpSessionTitle(),
       model: settings.hasRemoteLlm ? settings.llmModel : "local-rule-fallback",
       sourceIds: input.sourceIds ?? [],
       metadata: {
-        createdVia: "webui",
+        createdVia: kind === "chat" ? "webui:chat" : "webui",
         autoTitle: !title
-      }
+      },
+      kind
     });
   }
 
-  async listSessions(input: { sourceId?: string } = {}, tenantId = config.DEFAULT_TENANT_ID) {
+  async listSessions(input: { sourceId?: string; kind?: "project" | "chat" } = {}, tenantId = config.DEFAULT_TENANT_ID) {
     return listMcpSessions({
       tenantId,
-      limit: 50,
-      sourceId: input.sourceId
+      limit: input.kind === "chat" ? 100 : 50,
+      sourceId: input.sourceId,
+      kind: input.kind
+    });
+  }
+
+  /** V398: 会话重命名（AI 对话页/项目会话通用） */
+  async updateTitle(sessionId: string, title: string, tenantId = config.DEFAULT_TENANT_ID) {
+    return updateMcpSessionTitle({
+      sessionId,
+      tenantId,
+      title,
+      metadata: { renamedByUser: true }
     });
   }
 
@@ -110,6 +125,10 @@ export class McpAgentService {
     sessionId: string;
     content: string;
     signal?: AbortSignal;
+    /** V398: 通用 AI 对话（kind=chat）附带图片相对路径 */
+    images?: McpMessageImage[];
+    /** V398: 通用 AI 对话联网开关 — 开启时注入 web_search 结果 */
+    webSearch?: boolean;
   }, tenantId = config.DEFAULT_TENANT_ID, emit?: StreamEmitter) {
     assertNotAborted(input.signal);
     emit?.({ type: "stage", label: "加载会话", detail: "正在读取当前 MCP 会话上下文" });
@@ -125,7 +144,8 @@ export class McpAgentService {
     const userMessage = await addMcpMessage({
       sessionId: input.sessionId,
       role: "user",
-      content: input.content
+      content: input.content,
+      images: input.images?.length ? input.images : undefined
     });
     let activeSession = detail.session;
     if (shouldAutoTitleSession(detail.session, detail.messages)) {
@@ -144,63 +164,87 @@ export class McpAgentService {
     }
     assertNotAborted(input.signal);
     emit?.({ type: "message", message: userMessage });
-    emit?.({ type: "stage", label: "连接 MCP", detail: "正在启动 MCP 客户端并发现可用工具" });
 
-    const projectId = activeSession.sourceIds[0];
-    if (!projectId) {
-      throw new Error("MCP 会话缺少项目 ID，请先在项目下新建会话。");
-    }
-    const runner = await this.createRunner(projectId, input.signal);
     const toolCalls: McpToolCallRecord[] = [];
     let assistantText = "";
-    try {
-      assertNotAborted(input.signal);
-      const toolsResult = await runner.client.listTools(undefined, { signal: input.signal });
-      const tools = toolsResult.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema
-      }));
-      assertNotAborted(input.signal);
-      emit?.({ type: "stage", label: "工具发现", detail: `发现 ${tools.length} 个 MCP 工具` });
+    const projectId = activeSession.sourceIds[0];
+    if (!projectId) {
+      // ── V398: 通用 AI 对话路径（kind=chat / 无项目绑定）──
+      // 直调 LLM 流式回答（真 token），图片经 image_analyze 注入描述，联网开关注入 web_search 结果
+      emit?.({ type: "stage", label: "生成回答", detail: "正在综合上下文生成回答" });
       const settings = await aiSettingsService.getRuntimeSettings();
       assertNotAborted(input.signal);
-
       if (!settings.hasRemoteLlm) {
-        assistantText = await this.runFallbackToolFlow({
-          runner,
-          session: activeSession,
-          messageId: userMessage.id,
-          userContent: input.content,
-          toolCalls,
-          signal: input.signal,
-          emit
-        });
+        assistantText = "未配置远程 LLM（llmBaseUrl/llmApiKey），请在设置中填写后可对话。";
       } else {
-        assistantText = await this.runLlmToolFlow({
-          runner,
+        assistantText = await this.runChatLlmFlow({
           session: activeSession,
           messageId: userMessage.id,
           history: detail.messages,
           settings,
-          tools,
           userContent: input.content,
+          images: input.images,
+          webSearch: input.webSearch,
           toolCalls,
           signal: input.signal,
           emit
         });
       }
-    } finally {
-      await runner.close();
+    } else {
+      emit?.({ type: "stage", label: "连接 MCP", detail: "正在启动 MCP 客户端并发现可用工具" });
+      const runner = await this.createRunner(projectId, input.signal);
+      try {
+        assertNotAborted(input.signal);
+        const toolsResult = await runner.client.listTools(undefined, { signal: input.signal });
+        const tools = toolsResult.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema
+        }));
+        assertNotAborted(input.signal);
+        emit?.({ type: "stage", label: "工具发现", detail: `发现 ${tools.length} 个 MCP 工具` });
+        const settings = await aiSettingsService.getRuntimeSettings();
+        assertNotAborted(input.signal);
+
+        if (!settings.hasRemoteLlm) {
+          assistantText = await this.runFallbackToolFlow({
+            runner,
+            session: activeSession,
+            messageId: userMessage.id,
+            userContent: input.content,
+            toolCalls,
+            signal: input.signal,
+            emit
+          });
+        } else {
+          assistantText = await this.runLlmToolFlow({
+            runner,
+            session: activeSession,
+            messageId: userMessage.id,
+            history: detail.messages,
+            settings,
+            tools,
+            userContent: input.content,
+            toolCalls,
+            signal: input.signal,
+            emit
+          });
+        }
+      } finally {
+        await runner.close();
+      }
     }
 
     assertNotAborted(input.signal);
     const answerCitations = collectAnswerCitations(toolCalls);
     const assistantContent = assistantText || "已完成工具调用。";
-    for (const delta of chunkText(assistantContent, 24)) {
-      assertNotAborted(input.signal);
-      emit?.({ type: "assistant_delta", delta });
-      await sleep(12);
+    // V398: 通用对话（runChatLlmFlow）已真 token 流式 emit delta，此处跳过模拟打字避免重复输出
+    if (projectId) {
+      for (const delta of chunkText(assistantContent, 24)) {
+        assertNotAborted(input.signal);
+        emit?.({ type: "assistant_delta", delta });
+        await sleep(12);
+      }
     }
     assertNotAborted(input.signal);
     const assistant = await addMcpMessage({
@@ -224,6 +268,129 @@ export class McpAgentService {
       toolCalls,
       detail: updatedDetail
     };
+  }
+
+  /**
+   * V398: 通用 AI 对话流（kind=chat，无项目绑定）—
+   * 图片经 image_analyze 注入描述 → 联网开关注入 web_search → callLlm 真 token 流式 → 落库。
+   */
+  private async runChatLlmFlow(input: {
+    session: McpSessionRecord;
+    messageId: string;
+    history: Awaited<ReturnType<typeof getMcpSessionDetail>>["messages"];
+    settings: AiRuntimeSettings;
+    userContent: string;
+    images?: McpMessageImage[];
+    webSearch?: boolean;
+    toolCalls: McpToolCallRecord[];
+    signal?: AbortSignal;
+    emit?: StreamEmitter;
+  }): Promise<string> {
+    assertNotAborted(input.signal);
+    const contextParts: string[] = [];
+
+    // ① 图片 → image_analyze 描述注入（主进程直调，不经 stdio runner）
+    for (const img of input.images ?? []) {
+      assertNotAborted(input.signal);
+      const started = performance.now();
+      input.emit?.({ type: "tool_start", toolName: "image_analyze", arguments: { path: img.path, mode: "describe" } });
+      const { analyzeImageAtPath } = await import("./agent-tool-router.js");
+      const description = await analyzeImageAtPath(img.path, "describe");
+      const toolCall = await addMcpToolCall({
+        sessionId: input.session.id,
+        messageId: input.messageId,
+        toolName: "image_analyze",
+        arguments: { path: img.path, mode: "describe" },
+        result: { text: description },
+        status: "SUCCEEDED",
+        durationMs: Math.round(performance.now() - started)
+      });
+      input.toolCalls.push(toolCall);
+      input.emit?.({ type: "tool_end", toolCall });
+      contextParts.push(`[用户附件图片 ${img.name}] ${description}`);
+    }
+
+    // ② 联网开关 → web_search 结果注入
+    if (input.webSearch) {
+      assertNotAborted(input.signal);
+      const { executeAgentTool } = await import("./agent-tool-router.js");
+      const started = performance.now();
+      input.emit?.({ type: "tool_start", toolName: "web_search", arguments: { query: input.userContent.slice(0, 80), source: "general", maxResults: 5 } });
+      let resultText = "（联网搜索失败）";
+      let failed = false;
+      try {
+        const toolResult = await executeAgentTool("web_search", {
+          query: input.userContent.slice(0, 80),
+          source: "general",
+          maxResults: 5
+        });
+        resultText = typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult);
+      } catch (e: any) {
+        failed = true;
+        resultText = `（联网搜索异常: ${String(e?.message || e).slice(0, 120)}）`;
+      }
+      const toolCall = await addMcpToolCall({
+        sessionId: input.session.id,
+        messageId: input.messageId,
+        toolName: "web_search",
+        arguments: { query: input.userContent.slice(0, 80), source: "general", maxResults: 5 },
+        result: { text: resultText },
+        status: failed ? "FAILED" : "SUCCEEDED",
+        durationMs: Math.round(performance.now() - started),
+        error: failed ? resultText : undefined
+      });
+      input.toolCalls.push(toolCall);
+      input.emit?.({ type: "tool_end", toolCall });
+      contextParts.push(`[联网搜索结果]\n${resultText.slice(0, 4000)}`);
+    }
+
+    // ③ LLM 流式回答（真 token）
+    assertNotAborted(input.signal);
+    const { callLlm } = await import("../ai/llm-common.js");
+    const historyForLlm = input.history.slice(-8);
+    const recentTurns = historyForLlm
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const { getRoleModel } = await import("./llm-model-registry.js");
+    const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
+    input.emit?.({ type: "model", model });
+
+    const systemPrompt = [
+      "你是 MarxSphere AI 助手，一名马克思主义理论研究科研助手。",
+      "基于你的知识回答用户问题；若提供了检索结果/图片描述/联网搜索上下文，优先依据它们作答并标注来源。",
+      "回答使用 Markdown：代码块用 ```lang 标注，数学公式用 $...$ 或 $$...$$。",
+      "对于理论问题给出概念界定、历史脉络、当代意义的结构化回答。",
+      "若上下文不足，诚实说明并建议使用 Ask 检索或 52 步推理获取文献级证据。"
+    ].join("\n");
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...recentTurns,
+      {
+        role: "user",
+        content: [
+          input.userContent,
+          ...(contextParts.length > 0 ? [`\n\n---\n附加上下文（仅供参考）:\n${contextParts.join("\n\n")}`] : [])
+        ].join("")
+      }
+    ];
+
+    const result = await callLlm({
+      model,
+      agentContext: { action: "chat_general" },
+      messages: messages as any,
+      maxTokens: 2000,
+      onStream: (delta) => {
+        input.emit?.({ type: "assistant_delta", delta });
+      }
+    });
+
+    assertNotAborted(input.signal);
+    if (result?.error) {
+      return `（模型调用失败: ${result.error.slice(0, 300)}）`;
+    }
+    return result?.text ?? "（无回答）";
   }
 
   private async createRunner(projectId: string, signal?: AbortSignal) {

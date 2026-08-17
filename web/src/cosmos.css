@@ -532,3 +532,14 @@
 .step-light-up {
   animation: step-light-up 0.6s ease-out;
 }
+
+/* ─── V398: 浅色主题适配（AI 对话页切换）─── */
+.light .cosmos-bg {
+  opacity: 0.35;
+}
+
+/* 浅色下代码高亮用浅色 hljs 主题 */
+.light .markdown-rich-code pre code {
+  color: #24292e;
+  background: transparent;
+}

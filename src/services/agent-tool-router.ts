@@ -740,47 +740,7 @@ export async function buildAgentTools(opts?: {
         path: { type: "string", required: true, desc: "图片相对路径（agent_workspace 内）" },
         mode: { type: "string", desc: "ocr(文本提取)/chart(图表数据JSON)/describe(综合描述, 默认)" },
       },
-      run: async (a) => {
-        try {
-          const fs = await import("node:fs");
-          const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
-          const rel = String(a.path || "").replace(/^[/\\]+/, "");
-          const target = path.resolve(workspace, rel);
-          if (!(target === workspace || target.startsWith(workspace + path.sep))) return `（路径越界: ${rel}）`;
-          if (!fs.existsSync(target)) return "（文件不存在）";
-          const ext = path.extname(target).toLowerCase();
-          const IMAGES = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
-          if (!IMAGES.includes(ext)) return `（非图片文件: ${ext || "未知"} — 仅支持 png/jpg/jpeg/gif/webp/bmp）`;
-          const sizeKB = Math.round(fs.statSync(target).size / 1024);
-          if (sizeKB > 2048) return `（图片 ${sizeKB}KB 过大 — 请压缩至 2MB 内再分析（多模态 token 成本与分辨率成正比））`;
-          const mode = String(a.mode || "describe");
-          const base64 = fs.readFileSync(target).toString("base64");
-          const mime = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : "image/jpeg";
-          const modePrompt: Record<string, string> = {
-            ocr: "提取图片中全部可见文字（OCR）, 按阅读顺序输出。如有表格, 用 Markdown 表格呈现。只输出提取的文本。",
-            chart: "分析图片中的图表（柱状图/折线图/散点图/表格）: 1) 图表类型 2) 轴含义 3) 数据点提取为结构化 JSON（完整数值）。只输出 JSON: {\"chartType\":\"...\",\"axes\":{...},\"data\":[...],\"insight\":\"...\"}",
-            describe: "综合描述图片: 1) 图片类型(图表/文本截图/照片) 2) 关键内容 3) 与研究相关的要点。",
-          };
-          const { callLlm } = await import("../ai/llm-common.js");
-          const { agentModelRouter } = await import("./agent-model-router.js");
-          const r = await callLlm({
-            model: agentModelRouter.routeAgentModel("summarize", "图片分析"),
-            agentContext: { action: "agent_tool_image_analyze" },
-            messages: [{
-              role: "user",
-              content: [
-                { type: "text", text: modePrompt[mode] || modePrompt.describe },
-                { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
-              ] as any,
-            }],
-            maxTokens: 800,
-          });
-          return `【图片理解·${mode}】${rel} (${sizeKB}KB)\n${r?.text || "（分析失败）"}`;
-        } catch (e: any) {
-          return `（图片分析异常: ${String(e?.message || e).slice(0, 150)}）`;
-        }
-      },
+      run: async (a) => analyzeImageAtPath(String(a.path || ""), String(a.mode || "describe")),
     },
     // wisp借鉴1: 持久运行时 — Python 子进程常驻, 变量跨调用保持（重计算只需一次载入）
     {
@@ -1384,6 +1344,51 @@ async function ffprobeMeta(filePath: string): Promise<string> {
     return `时长 ${Math.round(durSec)}s · 码率 ${Math.round(Number(fmt.bit_rate || 0) / 1000)}kbps · 格式 ${fmt.format_name || "?"}`;
   } catch {
     return "（ffprobe 不可用 — 安装 ffmpeg 后可显示时长信息）";
+  }
+}
+
+/**
+ * V398: 图片理解（AI 对话页多模态复用）— 主进程直调 callLlm，不经 MCP stdio runner。
+ * path 为相对路径（data/agent_workspace 内），与 image_analyze 工具同一实现。
+ */
+export async function analyzeImageAtPath(relPath: string, mode = "describe"): Promise<string> {
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const rel = String(relPath || "").replace(/^[/\\]+/, "");
+    const target = path.resolve(workspace, rel);
+    if (!(target === workspace || target.startsWith(workspace + path.sep))) return `（路径越界: ${rel}）`;
+    if (!fs.existsSync(target)) return "（文件不存在）";
+    const ext = path.extname(target).toLowerCase();
+    const IMAGES = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
+    if (!IMAGES.includes(ext)) return `（非图片文件: ${ext || "未知"} — 仅支持 png/jpg/jpeg/gif/webp/bmp）`;
+    const sizeKB = Math.round(fs.statSync(target).size / 1024);
+    if (sizeKB > 2048) return `（图片 ${sizeKB}KB 过大 — 请压缩至 2MB 内再分析（多模态 token 成本与分辨率成正比））`;
+    const base64 = fs.readFileSync(target).toString("base64");
+    const mime = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : "image/jpeg";
+    const modePrompt: Record<string, string> = {
+      ocr: "提取图片中全部可见文字（OCR）, 按阅读顺序输出。如有表格, 用 Markdown 表格呈现。只输出提取的文本。",
+      chart: "分析图片中的图表（柱状图/折线图/散点图/表格）: 1) 图表类型 2) 轴含义 3) 数据点提取为结构化 JSON（完整数值）。只输出 JSON: {\"chartType\":\"...\",\"axes\":{...},\"data\":[...],\"insight\":\"...\"}",
+      describe: "综合描述图片: 1) 图片类型(图表/文本截图/照片) 2) 关键内容 3) 与研究相关的要点。",
+    };
+    const { callLlm } = await import("../ai/llm-common.js");
+    const { agentModelRouter } = await import("./agent-model-router.js");
+    const r = await callLlm({
+      model: agentModelRouter.routeAgentModel("summarize", "图片分析"),
+      agentContext: { action: "agent_tool_image_analyze" },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: modePrompt[mode] || modePrompt.describe },
+          { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
+        ] as any,
+      }],
+      maxTokens: 800,
+    });
+    return `【图片理解·${mode}】${rel} (${sizeKB}KB)\n${r?.text || "（分析失败）"}`;
+  } catch (e: any) {
+    return `（图片分析异常: ${String(e?.message || e).slice(0, 150)}）`;
   }
 }
 
