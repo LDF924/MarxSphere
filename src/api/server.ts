@@ -2396,13 +2396,20 @@ export function buildHttpServer() {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const rootDir = process.env.SAG_ROOT || process.cwd();
+    // V399: 评测文件已移入 evaluation/ 目录 — 优先查 evaluation/，根目录兜底
+    const evalDir = path.join(rootDir, "evaluation");
+    const resolveEvalFile = (name: string) => {
+      const inEval = path.join(evalDir, name);
+      if (fs.existsSync(inEval)) return inEval;
+      return path.join(rootDir, name);
+    };
     if (params.file) {
-      // 防目录穿越：只允许根目录下的 eval_*.json
+      // 防目录穿越：只允许 eval_*.json
       const safeName = path.basename(params.file);
       if (!safeName.startsWith("eval_") || !safeName.endsWith(".json") || safeName.startsWith("eval_results_")) {
         return { error: "文件不合法" };
       }
-      const filePath = path.join(rootDir, safeName);
+      const filePath = resolveEvalFile(safeName);
       if (!fs.existsSync(filePath)) return { error: "文件不存在" };
       try {
         const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -2427,25 +2434,30 @@ export function buildHttpServer() {
         return { error: "JSON 解析失败: " + (e?.message || String(e)).substring(0, 100) };
       }
     }
-    // 列表：扫描根目录 eval_*.json
+    // 列表：扫描 evaluation/ + 根目录 eval_*.json（V399: 文件已移入 evaluation/）
     try {
-      const files = fs.readdirSync(rootDir)
-        .filter((f: string) => f.startsWith("eval_") && f.endsWith(".json") && !f.startsWith("eval_results_"))
-        .map((f: string) => {
-          const stat = fs.statSync(path.join(rootDir, f));
+      const scanDirs = [evalDir, rootDir];
+      const files: Array<{ name: string; updatedAt: Date; size: number; questionCount: number; overallAvg: number }> = [];
+      for (const dir of scanDirs) {
+        if (!fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.startsWith("eval_") || !f.endsWith(".json") || f.startsWith("eval_results_")) continue;
+          if (files.some((x) => x.name === f)) continue;  // evaluation/ 优先，根目录同名校跳
+          const stat = fs.statSync(path.join(dir, f));
           let questionCount = 0;
           let overallAvg = 0;
           try {
-            const data = JSON.parse(fs.readFileSync(path.join(rootDir, f), "utf-8"));
+            const data = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
             if (Array.isArray(data) && data.length > 0) {
               questionCount = data.length;
               const valid = data.filter((r: any) => typeof r?.overall === "number" && !r?.error);
               overallAvg = valid.length > 0 ? valid.reduce((s: number, r: any) => s + r.overall, 0) / valid.length : 0;
             }
           } catch { /* 解析失败跳过统计 */ }
-          return { name: f, updatedAt: stat.mtime, size: stat.size, questionCount, overallAvg };
-        })
-        .sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
+          files.push({ name: f, updatedAt: stat.mtime, size: stat.size, questionCount, overallAvg });
+        }
+      }
+      files.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
       return { files };
     } catch (e: any) {
       return { error: (e?.message || String(e)).substring(0, 100) };
@@ -2564,29 +2576,39 @@ export function buildHttpServer() {
     }
   });
 
-  // GET /api/eval/reports — 列根目录 *_report.md；?name=xxx 读单文件内容
+  // GET /api/eval/reports — 列评测报告（V399: 报告已移入 reports/ 目录）
   // 允许的报告名（防目录穿越）
   const EVAL_REPORT_NAMES = ["significance_report.md", "failure_report.md", "tp_report.md", "kappa_report.md"];
   app.get("/api/eval/reports", async (request) => {
     const params = request.query as { name?: string };
     const rootDir = process.env.SAG_ROOT || process.cwd();
+    const reportsDir = path.join(rootDir, "reports");
+    const resolveReport = (name: string) => {
+      const inReports = path.join(reportsDir, name);
+      if (fs.existsSync(inReports)) return inReports;
+      return path.join(rootDir, name);
+    };
     if (params.name) {
       const safeName = path.basename(params.name);
       if (!EVAL_REPORT_NAMES.includes(safeName)) return { error: "报告名不合法" };
-      const filePath = path.join(rootDir, safeName);
+      const filePath = resolveReport(safeName);
       if (!fs.existsSync(filePath)) return { name: safeName, exists: false, content: "", updatedAt: null };
       const stat = fs.statSync(filePath);
       return { name: safeName, exists: true, content: fs.readFileSync(filePath, "utf-8"), updatedAt: stat.mtime };
     }
-    // 列表：扫描根目录 *_report.md
+    // 列表：扫描 reports/ + 根目录 *_report.md
     try {
-      const files = fs.readdirSync(rootDir)
-        .filter((f: string) => EVAL_REPORT_NAMES.includes(f))
-        .map((f: string) => {
-          const stat = fs.statSync(path.join(rootDir, f));
-          return { name: f, updatedAt: stat.mtime, size: stat.size };
-        })
-        .sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      const files: Array<{ name: string; updatedAt: Date; size: number }> = [];
+      for (const dir of [reportsDir, rootDir]) {
+        if (!fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir)) {
+          if (!EVAL_REPORT_NAMES.includes(f)) continue;
+          if (files.some((x) => x.name === f)) continue;
+          const stat = fs.statSync(path.join(dir, f));
+          files.push({ name: f, updatedAt: stat.mtime, size: stat.size });
+        }
+      }
+      files.sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
       return { files };
     } catch (e: any) {
       return { error: (e?.message || String(e)).substring(0, 100) };
