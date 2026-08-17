@@ -118,4 +118,92 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       return `【记忆】${hits.length} 条\n` + hits.map((s: any, i: number) => `${i + 1}. Q: ${s.query}\n   A: ${String(s.answerSummary ?? "").slice(0, 150)}`).join("\n");
     }),
   },
+  // ── V399 第二批：文献库/写作语料/评测/入库监控/教育 ──
+  {
+    name: "view_literature_search", label: "文献库检索", risk: "safe",
+    description: "检索本地文献库（500+ 论文元数据），返回论文标题/作者/主题/年份",
+    params: {
+      query: { type: "string", required: true, desc: "文献检索关键词" },
+      limit: { type: "number", desc: "返回条数(默认5)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { literatureService } = await import("./literature-service.js");
+      const q = String(a.query || "").trim();
+      const res = await literatureService.list({ keyword: q, page: 1, pageSize: Math.min(Math.max(Number(a.limit) || 5, 1), 10) });
+      const items = (res?.items ?? []).slice(0, 8) as unknown as Array<{ title?: string; authors?: string | string[]; year?: string; topic?: string }>;
+      return `【文献库】${res?.total ?? items.length} 条\n` + items.map((p, i) => `${i + 1}. ${p.title || "?"} — ${Array.isArray(p.authors) ? p.authors.join(", ") : p.authors || ""}（${p.year || ""} · ${p.topic || ""}）`).join("\n");
+    }),
+  },
+  {
+    name: "view_corpus_recall", label: "写作语料召回", risk: "safe",
+    description: "从写作语料库召回句式/逻辑/概念/范例，用于学术写作润色（因果/对比/研究缺口等语义组）",
+    params: {
+      q: { type: "string", required: true, desc: "写作主题或关键词" },
+      group: { type: "string", desc: "语义组(因果/对比/研究缺口/总结发现)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { recallCorpusForWriting } = await import("./writing-corpus-service.js");
+      const res = await recallCorpusForWriting({
+        q: String(a.q || ""),
+        semanticGroups: a.group ? [String(a.group)] : undefined,
+        limit: 3
+      });
+      const lines: string[] = [`【写作语料】句式${res.expressions.length} 逻辑${res.logics.length} 概念${res.concepts.length} 范例${res.texts.length}`];
+      res.expressions.slice(0, 2).forEach((e: any) => lines.push(`- [句式·${e.semanticGroup}] ${e.expression}`));
+      res.logics.slice(0, 2).forEach((l: any) => lines.push(`- [逻辑·${l.patternType}] ${l.name}`));
+      res.texts.slice(0, 2).forEach((t: any) => lines.push(`- [范例] ${String(t.text).slice(0, 120)}`));
+      return lines.join("\n");
+    }),
+  },
+  {
+    name: "view_eval_report", label: "评测报告", risk: "safe",
+    description: "生成 Agent 评测报告（任务完成率/步骤成功率/多轮循环率）",
+    params: {
+      days: { type: "number", desc: "统计天数(默认7)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { generateAgentEvalReport } = await import("./agent-eval-service.js");
+      const r = await generateAgentEvalReport(Math.min(Math.max(Number(a.days) || 7, 1), 90));
+      return `【评测报告】完成率 ${Math.round((r.completionRate ?? 0) * 100)}% · 步骤成功率 ${Math.round((r.stepSuccessRate ?? 0) * 100)}% · ${r.totalTasks ?? 0} 任务 / ${r.totalSteps ?? 0} 步 · 多轮循环率 ${Math.round((r.multiLoopRate ?? 0) * 100)}%`;
+    }),
+  },
+  {
+    name: "view_ingest_status", label: "入库监控", risk: "safe",
+    description: "查看知识图谱入库状态（Graphiti/Cognee 文档数与索引概况）",
+    params: {
+      engine: { type: "string", desc: "引擎(graphiti/cognee, 默认graphiti)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { overview } = await import("./ingest-monitor-service.js");
+      const res = await overview(String(a.engine || "graphiti") as any);
+      return `【入库状态】${JSON.stringify(res).slice(0, 800)}`;
+    }),
+  },
+  {
+    name: "view_education_profile", label: "学情画像", risk: "safe",
+    description: "查看自适应学习系统的学生学情画像（知识点掌握度/薄弱点）",
+    params: {
+      subject: { type: "string", desc: "学科(如 政治经济学)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { getStudentProfile } = await import("./adaptive-learning-service.js");
+      const profile = await getStudentProfile({ subject: String(a.subject || "") }) as Record<string, unknown>;
+      return `【学情画像】${JSON.stringify(profile ?? {}).slice(0, 800)}`;
+    }),
+  },
+  {
+    name: "view_skill_run", label: "技能执行", risk: "safe",
+    description: "执行系统技能库中的自研 Skill（如 因果推断/实证分析/文献综述），返回执行指引",
+    params: {
+      skill: { type: "string", required: true, desc: "技能名称（如 causal-inference-analysis/empirical-data-analysis）" },
+      goal: { type: "string", required: true, desc: "要完成的任务目标" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { getSkillDetail } = await import("./skills-service.js");
+      const detail = getSkillDetail(String(a.skill || ""));
+      if (!detail) return `（技能 ${a.skill} 不存在，可用 view_skill_search 检索）`;
+      const md = String(detail.skillMd ?? "").slice(0, 2500);
+      return `【技能执行·${detail.name}】\n执行指引（前 2500 字）:\n${md}`;
+    }),
+  },
 ];
