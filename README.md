@@ -21,7 +21,7 @@
 | | | |
 |---|---|---|
 | **AI 对话**（默认首页） | **52 步推理** | **Ask 检索** |
-| ![AI 对话](docs/assets/sag-chat.png) | ![推理](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
+| ![AI 对话](docs/assets/sag-assistant.png) | ![推理](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
 | **知识图谱** | **文献库** | **科研场景工作台** |
 | ![图谱](docs/assets/sag-graph.png) | ![文献库](docs/assets/sag-literature.png) | ![场景](docs/assets/sag-scenarios.png) |
 
