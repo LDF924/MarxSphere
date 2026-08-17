@@ -33,6 +33,8 @@ export interface ChatPanelProps {
   webSearch: boolean;
   collapsed: boolean;
   models: Array<{ id: string; label: string }>;
+  /** V399: 待审批工具（review/manager 级弹窗确认） */
+  approval: { approvalId: string; toolName: string; arguments: Record<string, unknown> } | null;
   onSelectSession: (sessionId: string) => void;
   onCreateSession: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
@@ -40,6 +42,7 @@ export interface ChatPanelProps {
   onSend: (content: string, images: ChatDraftImage[], webSearch: boolean) => void;
   onStop: () => void;
   onRecall: () => void;
+  onApproveTool: (approvalId: string, approved: boolean) => void;
   onModelChange: (model: string) => void;
   onWebSearchChange: (value: boolean) => void;
   onToggleCollapsed: () => void;
@@ -700,11 +703,48 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
               </div>
             </div>
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground/60">
-              MarxSphere AI 对话 · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解
+              MarxSphere AI 对话 · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解 / Agent 工具调度
             </p>
           </div>
         </div>
       </div>
+
+      {/* V399: 工具审批弹窗（review/manager 级工具） */}
+      {props.approval ? <ToolApprovalModal approval={props.approval} onApprove={props.onApproveTool} /> : null}
     </section>
   );
 };
+
+/** 工具审批弹窗（review/manager 级工具需人工确认） */
+function ToolApprovalModal(props: {
+  approval: { approvalId: string; toolName: string; arguments: Record<string, unknown> };
+  onApprove: (approvalId: string, approved: boolean) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => props.onApprove(props.approval.approvalId, false)}>
+      <div
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">⚠️</span>
+          <h3 className="text-sm font-semibold">工具需要人工审批</h3>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Agent 请求调用 <span className="font-mono font-medium text-foreground">{props.approval.toolName}</span>（该工具风险较高，需确认后执行）：
+        </p>
+        <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted/50 p-2.5 font-mono text-[11px] leading-4 text-muted-foreground">
+          {JSON.stringify(props.approval.arguments, null, 2)}
+        </pre>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => props.onApprove(props.approval.approvalId, false)}>
+            拒绝
+          </Button>
+          <Button variant="default" size="sm" onClick={() => props.onApprove(props.approval.approvalId, true)}>
+            批准执行
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

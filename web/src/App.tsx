@@ -187,6 +187,8 @@ function AppShell() {
   const [chatIsRunning, setChatIsRunning] = useState(false);
   const [chatModel, setChatModel] = useState("");
   const [chatWebSearch, setChatWebSearch] = useState(false);
+  /** V399: 待审批工具弹窗 {approvalId, toolName, arguments} */
+  const [chatApproval, setChatApproval] = useState<{ approvalId: string; toolName: string; arguments: Record<string, unknown> } | null>(null);
   const [chatModels, setChatModels] = useState<Array<{ id: string; label: string }>>([]);
   const [chatCollapsed, setChatCollapsed] = useState(() => {
     try {
@@ -319,6 +321,9 @@ function AppShell() {
           case "model":
             setChatModel(event.model);
             break;
+          case "tool_approval":
+            setChatApproval({ approvalId: event.approvalId, toolName: event.toolName, arguments: event.arguments });
+            break;
           case "done":
             setChatMessages(event.detail.messages);
             setChatToolCalls(event.detail.toolCalls);
@@ -413,6 +418,14 @@ function AppShell() {
       // 该消息的工具调用一并移除（撤回后重发避免残留）
       setChatToolCalls((prev) => prev.filter((t) => t.messageId !== last.id));
     } catch { /* 删除失败静默（刷新后仍可见） */ }
+  }
+
+  /** V399: 工具审批（前端弹窗 → 批准/拒绝 review 工具） */
+  async function approveChatTool(approvalId: string, approved: boolean) {
+    setChatApproval(null);
+    try {
+      await api.approveChatTool(approvalId, approved);
+    } catch { /* 审批失败静默 */ }
   }
 
   // 加载运行模式徽标（GBrain 模式徽标）
@@ -1622,6 +1635,8 @@ function AppShell() {
                 onSend={(content, images, webSearch) => void sendChatMessage(content, images, webSearch)}
                 onStop={stopChatMessage}
                 onRecall={() => void recallChatMessage()}
+                onApproveTool={(approvalId, approved) => void approveChatTool(approvalId, approved)}
+                approval={chatApproval}
                 onModelChange={setChatModel}
                 onWebSearchChange={setChatWebSearch}
                 onToggleCollapsed={() => setChatCollapsed((v) => !v)}

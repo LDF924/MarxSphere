@@ -507,6 +507,13 @@ export const api = {
     });
   },
 
+  async approveChatTool(approvalId: string, approved: boolean) {
+    return request<{ ok: boolean; approved: boolean }>(`/api/chat/approvals/${approvalId}`, {
+      method: "POST",
+      body: JSON.stringify({ approved })
+    });
+  },
+
   async streamChatMessage(
     sessionId: string,
     input: { content: string; images?: Array<{ dataUrl: string; name: string }>; webSearch?: boolean },

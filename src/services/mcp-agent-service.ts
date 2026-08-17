@@ -63,6 +63,55 @@ export type McpRunStreamEvent =
 type StreamEmitter = (event: McpRunStreamEvent) => void;
 
 export class McpAgentService {
+  /** V399: 对话工具审批队列 — key=approvalId, value={tool,args,resolvers}；waitToolApproval 挂起，approve/deny 唤醒 */
+  private pendingApprovals = new Map<string, {
+    toolName: string;
+    args: Record<string, unknown>;
+    sessionId: string;
+    createdAt: number;
+    resolve: (approved: boolean) => void;
+    timeout: NodeJS.Timeout;
+  }>();
+
+  /** V399: 审批决定（对话内 review 工具 → 前端弹窗 → 批准后强制执行） */
+  async approveToolCall(approvalId: string, approved: boolean): Promise<boolean> {
+    const entry = this.pendingApprovals.get(approvalId);
+    if (!entry) return false;
+    clearTimeout(entry.timeout);
+    this.pendingApprovals.delete(approvalId);
+    entry.resolve(approved);
+    return true;
+  }
+
+  /** V399: 审批事件广播回调（server 端注入，转 SSE tool_approval） */
+  emitApproval?: (event: { type: "tool_approval"; approvalId: string; sessionId: string; toolName: string; arguments: Record<string, unknown> }) => void;
+
+  /** V399: 等待审批决定（60s 超时 → 视为拒绝） */
+  private waitToolApproval(sessionId: string, toolName: string, args: Record<string, unknown>): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const approvalId = crypto.randomUUID();
+      const entry = {
+        toolName,
+        args,
+        sessionId,
+        createdAt: Date.now(),
+        resolve,
+        timeout: setTimeout(() => {
+          this.pendingApprovals.delete(approvalId);
+          resolve(false);
+        }, 60_000)
+      };
+      this.pendingApprovals.set(approvalId, entry);
+      this.emitApproval?.({
+        type: "tool_approval",
+        approvalId,
+        sessionId,
+        toolName,
+        arguments: args
+      });
+    });
+  }
+
   async createSession(input: {
     title?: string;
     sourceIds?: string[];
@@ -366,7 +415,7 @@ export class McpAgentService {
 
     // ③ V399: Agent 工具循环 — LLM 规划选工具 → 执行 → 结果入上下文 → 循环
     const { callLlm } = await import("../ai/llm-common.js");
-    const { buildAgentTools, executeAgentTool, checkToolPolicy } = await import("./agent-tool-router.js");
+    const { buildAgentTools, executeAgentTool, checkToolPolicy, maskCredentials } = await import("./agent-tool-router.js");
     const { getRoleModel } = await import("./llm-model-registry.js");
     const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
     input.emit?.({ type: "model", model });
@@ -444,14 +493,14 @@ export class McpAgentService {
         continue;
       }
 
-      // 3c. 策略检查（白名单/风险/角色）
-      const policy = checkToolPolicy(toolDef.name, "manager");
+      // 3c. 策略检查（对话内默认低权限角色 reader — manager 级工具触发审批弹窗）
+      const policy = checkToolPolicy(toolDef.name, "reader");
       if (!policy.allowed) {
         contextParts.push(`[工具 ${toolDef.name} 被策略拦截: ${policy.reason}]`);
         continue;
       }
 
-      // 3d. 执行（review 工具会返回 requiresApproval — 对话内记为需人工审批，跳过）
+      // 3d. 执行（review/manager 工具 → SSE 审批弹窗 → 批准后强制执行）
       assertNotAborted(input.signal);
       const started = performance.now();
       input.emit?.({ type: "tool_start", toolName: toolDef.name, arguments: decision.args ?? {} });
@@ -459,10 +508,21 @@ export class McpAgentService {
       let failed = false;
       let needsApproval = false;
       try {
-        const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "manager" });
+        // reader 角色 → run_code/file_write 等 manager 级工具返回 requiresApproval → 审批弹窗
+        const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "reader" });
         if (exec.requiresApproval) {
           needsApproval = true;
-          resultText = `工具 ${toolDef.name} 需要人工审批，对话内已跳过（可在任务面板或修改自主级别后使用）`;
+          // V399: 审批弹窗 — 前端批准后强制执行（绕过策略层，直调工具 run）
+          const approved = await this.waitToolApproval(input.session.id, toolDef.name, decision.args ?? {});
+          if (approved) {
+            const safeArgs = Object.fromEntries(
+              Object.entries(decision.args ?? {}).map(([k, v]) => [/key|token|secret|password|auth/i.test(k) ? maskCredentials(String(v)) : v].map((vv) => [k, vv])[0])
+            );
+            resultText = await toolDef.run(safeArgs);
+            needsApproval = false;
+          } else {
+            resultText = `工具 ${toolDef.name} 审批超时/拒绝，已跳过`;
+          }
         } else if (!exec.ok) {
           failed = true;
           resultText = exec.result;

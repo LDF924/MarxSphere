@@ -1885,6 +1885,17 @@ export function buildHttpServer() {
     return reply.code(201).send(saved);
   });
 
+  // V399: 对话工具审批（前端弹窗 → 批准/拒绝 review 工具）
+  app.post("/api/chat/approvals/:approvalId", async (request, reply) => {
+    const params = request.params as { approvalId: string };
+    const { approved } = z.object({ approved: z.boolean() }).parse(request.body);
+    const ok = await mcpAgentService.approveToolCall(params.approvalId, approved);
+    if (!ok) {
+      return reply.code(404).send(notFound("APPROVAL_NOT_FOUND", "审批请求不存在或已超时"));
+    }
+    return { ok: true, approved };
+  });
+
   app.post("/api/chat/sessions/:sessionId/messages/stream", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
@@ -1936,6 +1947,13 @@ export function buildHttpServer() {
       reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
+    // V399: 审批事件注入（review 工具 → 前端弹窗）
+    mcpAgentService.emitApproval = (event) => {
+      if (event.sessionId === params.sessionId) {
+        send("tool_approval", event);
+      }
+    };
+
     try {
       await mcpAgentService.runUserMessage({
         sessionId: params.sessionId,
@@ -1955,6 +1973,7 @@ export function buildHttpServer() {
       }
     } finally {
       completed = true;
+      mcpAgentService.emitApproval = undefined;
       request.raw.off("aborted", abortRun);
       reply.raw.off("close", abortRun);
       if (!reply.raw.destroyed && !reply.raw.writableEnded) {

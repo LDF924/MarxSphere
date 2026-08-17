@@ -276,6 +276,7 @@ export type McpStreamEvent =
   | { type: "search_progress"; event: SearchProgressEvent }
   | { type: "tool_end"; toolCall: McpToolCallRecord }
   | { type: "model"; model: string }
+  | { type: "tool_approval"; approvalId: string; sessionId: string; toolName: string; arguments: Record<string, unknown> }
   | { type: "done"; detail: McpSessionDetail }
   | { type: "error"; message: string };
 
