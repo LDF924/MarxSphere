@@ -651,7 +651,7 @@ export const EvalPanel: FC = () => {
 
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto max-w-5xl space-y-4">
+      <div className="mx-auto w-full max-w-[1400px] space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />

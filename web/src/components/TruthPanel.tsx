@@ -241,7 +241,7 @@ export function TruthPanel() {
 
   return (
     <section className="min-h-0 flex-1 overflow-hidden px-4 py-4 md:px-6">
-      <div className="mx-auto flex h-full max-w-6xl flex-col space-y-3">
+      <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col space-y-3">
         <div className="flex items-center gap-2">
           <BookOpenCheck className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">知识页面（Compiled Truth + 时间线）</h2>

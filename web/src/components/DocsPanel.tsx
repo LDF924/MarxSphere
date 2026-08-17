@@ -66,7 +66,7 @@ export function DocsPanel() {
             <Loader2 className="h-4 w-4 animate-spin" /> 加载文档...
           </div>
         ) : (
-          <article className="mx-auto max-w-3xl">
+          <article className="mx-auto w-full max-w-[1100px]">
             <h1 className="mb-4 text-xl font-semibold">{currentTitle}</h1>
             <div className="markdown-body">
               <MarkdownMessage content={content} />

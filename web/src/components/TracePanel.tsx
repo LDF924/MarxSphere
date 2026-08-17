@@ -234,7 +234,7 @@ export function TracePanel() {
 
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto w-full max-w-[1400px] space-y-4">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">Trace Waterfall</h2>

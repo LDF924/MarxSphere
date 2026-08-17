@@ -237,7 +237,7 @@ export const CJournalPanel: FC = () => {
 
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto max-w-6xl space-y-4">
+      <div className="mx-auto w-full max-w-[1400px] space-y-4">
         {/* ═══ Hero 区 ═══ */}
         <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-background/60 to-violet-500/10 p-5">
           <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
