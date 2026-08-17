@@ -135,6 +135,9 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   const logout = () => {
     safeStorage.remove("sag_token");
+    // V399: 退出同时关闭登录模态 — 否则 user=null 后模态仍显示（loginOpen 未清），
+    // 用户看到"点了退出没反应"
+    setLoginOpen(false);
     // V399: 登出回本地模式（enabled:false）— 原 enabled:true+user:null 会触发
     // 「!auth.enabled || auth.user」条件为 false → 强制渲染全屏登录页（认证未启用时不该出现）
     setAuth({ enabled: false, user: null });
