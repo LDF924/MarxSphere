@@ -51,7 +51,7 @@ const REASON_STEP_TOKENS: Record<string, { in: number; out: number }> = {
 };
 
 interface HomePanelProps {
-  onChangeView: (view: "literature" | "reason" | "ask" | "truth" | "sciverse" | "skills" | "vault" | "graph" | "policy" | "scenarios" | "jobs" | "documents", params?: { demo?: string }) => void;
+  onChangeView: (view: "assistant" | "literature" | "reason" | "ask" | "truth" | "sciverse" | "skills" | "vault" | "graph" | "policy" | "scenarios" | "jobs" | "documents", params?: { demo?: string }) => void;
 }
 
 export function HomePanel({ onChangeView }: HomePanelProps) {
@@ -224,11 +224,11 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             面向哲学社会科学全域科研赋能
           </p>
 
-          {/* 按钮：开始研究提问 = 主按钮（跳 Ask 自动播放 demo），进入文献库 = 次级 */}
+          {/* 按钮：开始研究提问 = 主按钮（跳 AI 对话页），进入文献库 = 次级 */}
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <button
               type="button"
-              onClick={() => onChangeView("ask", { demo: "资本下乡对农村集体经济的双重效应" })}
+              onClick={() => onChangeView("assistant")}
               className="rounded-full bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_28px_hsl(214_55%_48%/0.35)] transition-all hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_0_40px_hsl(214_55%_48%/0.5)]"
             >
               开始研究提问
