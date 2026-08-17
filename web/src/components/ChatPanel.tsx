@@ -129,6 +129,54 @@ function CitationStrip({ citations, onOpenCitation }: { citations: MarkdownCitat
   );
 }
 
+/** V399: 工具元数据 — 英文工具名 → 中文功能名 + 数据源/数据库（工具链展示） */
+const TOOL_META: Record<string, { label: string; source: string }> = {
+  // Agent 工具
+  sag_search: { label: "知识库检索", source: "PostgreSQL + 向量库（SAG 四源）" },
+  sag_get_event: { label: "事件详情", source: "PostgreSQL（事件表）" },
+  sag_reason: { label: "SAG 推理", source: "52 步推理链（Cognee/Graphiti/PG）" },
+  sag_retrieve: { label: "文献检索", source: "文献库（500+ 论文）" },
+  concept_trace: { label: "概念溯源", source: "知识图谱 + 文献库" },
+  policy_search: { label: "政策检索", source: "政策库（gov.cn）" },
+  empirical_analysis: { label: "实证分析", source: "Python 实证引擎" },
+  llm_write: { label: "LLM 写作", source: "DeepSeek/Qwen" },
+  summarize: { label: "内容摘要", source: "DeepSeek/Qwen" },
+  review_output: { label: "质量评审", source: "DeepSeek/Qwen" },
+  web_search: { label: "联网搜索", source: "Bing/百度/搜狗" },
+  web_fetch: { label: "网页抓取", source: "外部网页" },
+  run_code: { label: "代码执行", source: "Python/JS 沙箱" },
+  runtime_exec: { label: "持久 Python", source: "Python 沙箱" },
+  calc: { label: "计算器", source: "内置" },
+  image_analyze: { label: "图片理解", source: "多模态 LLM" },
+  audio_transcribe: { label: "音频转写", source: "语音模型" },
+  attachment_read: { label: "附件读取", source: "附件文件" },
+  file_read: { label: "文件读取", source: "本地文件" },
+  file_write: { label: "文件写入", source: "本地文件" },
+  apply_patch: { label: "精确补丁", source: "本地文件" },
+  run_command: { label: "终端命令", source: "系统终端" },
+  code_search: { label: "代码搜索", source: "代码库" },
+  github_repo: { label: "GitHub 仓库", source: "GitHub API" },
+  todo_update: { label: "待办管理", source: "任务系统" },
+  agent_subagent: { label: "外部 Agent", source: "外部进程" },
+  // 视图工具
+  view_policy_tree: { label: "政策库检索", source: "政策库目录（Obsidian）" },
+  view_truth_list: { label: "知识页检索", source: "知识页（PostgreSQL）" },
+  view_literature_search: { label: "文献库检索", source: "文献库（500+ 论文元数据）" },
+  view_sciverse_search: { label: "外部学术检索", source: "Sciverse（知网/万方）" },
+  view_skill_search: { label: "技能检索", source: "技能库（103 个 Skill）" },
+  view_skill_run: { label: "技能执行", source: "技能库 SKILL.md + references" },
+  view_vault_tree: { label: "资料库检索", source: "资料库（Obsidian 目录）" },
+  view_memory_context: { label: "记忆检索", source: "会话记忆（PostgreSQL）" },
+  view_corpus_recall: { label: "写作语料", source: "写作语料库" },
+  view_eval_report: { label: "评测报告", source: "Agent 评测（任务统计）" },
+  view_ingest_status: { label: "入库监控", source: "Graphiti/Cognee 索引" },
+  view_education_profile: { label: "学情画像", source: "自适应学习（PostgreSQL）" },
+};
+
+function toolMeta(name: string): { label: string; source: string } {
+  return TOOL_META[name] ?? { label: name, source: "内置" };
+}
+
 /** V399: 工具链合并面板 — 默认折叠，摘要（N 次调用 · 成功率 · 总耗时），展开看每步详情 */
 function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
   const [open, setOpen] = useState(false);
@@ -151,7 +199,7 @@ function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
         </span>
         {totalMs > 0 ? <span className="shrink-0 text-[10px]">{(totalMs / 1000).toFixed(1)}s</span> : null}
         <span className="min-w-0 flex-1 truncate text-[10px] opacity-70">
-          {calls.map((c) => c.toolName).join(" → ")}
+          {calls.map((c) => toolMeta(c.toolName).label).join(" → ")}
         </span>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
@@ -168,6 +216,7 @@ function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
 function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number }) {
   const [open, setOpen] = useState(false);
   const ok = call.status === "SUCCEEDED";
+  const meta = toolMeta(call.toolName);
   const argsText = Object.entries(call.arguments ?? {})
     .map(([k, v]) => `${k}=${typeof v === "string" ? (v.length > 40 ? v.slice(0, 40) + "…" : v) : JSON.stringify(v).slice(0, 40)}`)
     .join(" · ");
@@ -185,13 +234,17 @@ function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number 
           {index}
         </span>
         {call.status === "FAILED" ? <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" /> : ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" /> : <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-400" />}
-        <span className="shrink-0 font-medium">{call.toolName}</span>
+        <span className="shrink-0 font-medium">{meta.label}</span>
+        <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">{meta.source}</span>
         {argsText ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{argsText}</span> : null}
         {call.durationMs != null ? <span className="shrink-0 text-muted-foreground">{call.durationMs}ms</span> : null}
         <ChevronDown className={cn("ml-auto h-3 w-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
       {open ? (
         <div className="mt-1.5 space-y-1.5">
+          <div className="rounded bg-background/60 px-2 py-1 text-[10px] leading-4 text-muted-foreground">
+            📚 数据源: {meta.source} · 工具: <span className="font-mono">{call.toolName}</span>
+          </div>
           {argsText ? (
             <div className="rounded bg-background/60 px-2 py-1 font-mono text-[10px] leading-4 text-muted-foreground">
               参数: {argsText}
