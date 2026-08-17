@@ -206,6 +206,8 @@ function AppShell() {
       return "dark";
     }
   });
+  /** V399: 顶栏「项目」弹出面板 */
+  const [projectPanelOpen, setProjectPanelOpen] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
 
   // 主题切换
@@ -1553,42 +1555,8 @@ function AppShell() {
           <HomePanel onChangeView={(view) => navigateView(view)} />
         </div>
       ) : (
-      <div className={cn(
-        "grid h-dvh min-h-0 grid-cols-[minmax(188px,220px)_minmax(0,1fr)] overflow-hidden text-foreground isolate",
-        "lg:grid-cols-[268px_minmax(0,1fr)]"
-      )}>
-      <ProjectRail
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        sessionsByProjectId={sessionsByProjectId}
-        expandedProjectIds={expandedProjectIds}
-        selectedSessionId={mcpDetail?.session.id ?? ""}
-        isSessionBusy={isMcpRunning}
-        isSettingsOpen={workspaceView === "settings"}
-        showArchived={showArchivedProjects}
-        newProjectName={newProjectName}
-        onNewProjectNameChange={setNewProjectName}
-        onCreateProject={createProject}
-        onSelectProject={(projectId) => {
-          setSelectedProjectId(projectId);
-          if (workspaceView === "settings") {
-            setWorkspaceView("chat");
-          }
-        }}
-        onToggleProjectExpanded={toggleProjectExpanded}
-        onRenameProject={renameProject}
-        onArchiveOrRestoreProject={(project) => void archiveOrRestoreProject(project)}
-        onDeleteProject={(project) => void permanentlyDeleteProject(project)}
-        onToggleArchived={setShowArchivedProjects}
-        onOpenSettings={toggleSettings}
-        onCreateSession={() => void createMcpSession()}
-        onSelectProjectSession={(projectId, sessionId) => void selectProjectSession(projectId, sessionId)}
-        onDeleteSession={(projectId, sessionId) => {
-          const session = sessionsByProjectId[projectId]?.find((s) => s.id === sessionId);
-          void deleteMcpSessionById(projectId, sessionId, session?.title ?? t("对话", "Conversation"));
-        }}
-        onGoHome={() => navigateView("home")}
-      />
+      <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
+      {/* V399: 项目列移入顶栏「项目」弹出面板 — 主区域全宽 */}
 
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
@@ -1598,6 +1566,19 @@ function AppShell() {
               onChange={(view) => navigateView(view)}
             />
           )}
+          {/* V399: 顶栏「项目」按钮（原左侧常驻项目列移入弹出面板） */}
+          <button
+            type="button"
+            onClick={() => setProjectPanelOpen((v) => !v)}
+            title={t("项目（文献库）", "Projects")}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors",
+              projectPanelOpen ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/60 hover:border-primary/40 hover:text-foreground"
+            )}
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+            项目
+          </button>
           <button
             type="button"
             onClick={toggleTheme}
@@ -1607,6 +1588,52 @@ function AppShell() {
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
         </header>
+
+        {/* V399: 项目弹出面板（顶栏「项目」按钮，替代原左侧常驻列） */}
+        {projectPanelOpen ? (
+          <div className="relative z-40">
+            <div
+              className="fixed inset-0 z-30"
+              onClick={() => setProjectPanelOpen(false)}
+              aria-hidden
+            />
+            <div className="absolute left-4 top-1 z-40 w-[300px] overflow-hidden rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur">
+              <ProjectRail
+                projects={projects}
+                selectedProjectId={selectedProjectId}
+                sessionsByProjectId={sessionsByProjectId}
+                expandedProjectIds={expandedProjectIds}
+                selectedSessionId={mcpDetail?.session.id ?? ""}
+                isSessionBusy={isMcpRunning}
+                isSettingsOpen={workspaceView === "settings"}
+                showArchived={showArchivedProjects}
+                newProjectName={newProjectName}
+                onNewProjectNameChange={setNewProjectName}
+                onCreateProject={createProject}
+                onSelectProject={(projectId) => {
+                  setSelectedProjectId(projectId);
+                  setProjectPanelOpen(false);
+                  if (workspaceView === "settings") {
+                    setWorkspaceView("chat");
+                  }
+                }}
+                onToggleProjectExpanded={toggleProjectExpanded}
+                onRenameProject={renameProject}
+                onArchiveOrRestoreProject={(project) => void archiveOrRestoreProject(project)}
+                onDeleteProject={(project) => void permanentlyDeleteProject(project)}
+                onToggleArchived={setShowArchivedProjects}
+                onOpenSettings={toggleSettings}
+                onCreateSession={() => void createMcpSession()}
+                onSelectProjectSession={(projectId, sessionId) => void selectProjectSession(projectId, sessionId)}
+                onDeleteSession={(projectId, sessionId) => {
+                  const session = sessionsByProjectId[projectId]?.find((s) => s.id === sessionId);
+                  void deleteMcpSessionById(projectId, sessionId, session?.title ?? t("对话", "Conversation"));
+                }}
+                onGoHome={() => { setProjectPanelOpen(false); navigateView("home"); }}
+              />
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="border-b border-red-400/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 md:px-6">
@@ -1925,7 +1952,7 @@ function ProjectRail(props: {
 
   return (
     <>
-      <aside className="relative z-10 flex min-h-0 flex-col overflow-hidden border-r border-border">
+      <aside className="relative z-10 flex max-h-[70vh] min-h-0 flex-col overflow-hidden border-r border-border">
         <div className="border-b border-border p-4">
           <div className="flex items-start justify-between gap-2">
             <button
