@@ -449,6 +449,8 @@ export class McpAgentService {
 
     const MAX_TOOL_ROUNDS = 12;
     let finalText = "";
+    /** V399: 已加载的技能集（防同一 skill 重复注入上下文） */
+    const loadedSkills = new Set<string>();
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       assertNotAborted(input.signal);
       input.emit?.({ type: "stage", label: `工具规划 ${round + 1}`, detail: "正在决定下一步工具调用" });
@@ -464,8 +466,12 @@ export class McpAgentService {
             role: "user",
             content: [
               `用户任务: ${input.userContent}`,
-              ...(contextParts.length > 0 ? [`已收集上下文:\n${contextParts.join("\n\n").slice(0, 6000)}`] : ["（尚无工具结果）"])
-            ].join("\n\n")
+              ...(contextParts.length > 0 ? [`已收集上下文:\n${contextParts.join("\n\n").slice(0, 6000)}`] : ["（尚无工具结果）"]),
+              // V399: 技能执行约束 — 已加载技能的代码模板需用 run_code/runtime_exec 落地执行
+              loadedSkills.size > 0
+                ? `注意：已加载技能「${[...loadedSkills].join("、")}」的完整指令。若技能含代码模板且用户要求执行分析，下一步必须调用 run_code 或 runtime_exec 执行代码（不要重复加载同一技能）。`
+                : ""
+            ].filter(Boolean).join("\n\n")
           }
         ],
         maxTokens: 400,
@@ -491,6 +497,11 @@ export class McpAgentService {
       if (!toolDef) {
         contextParts.push(`[工具 ${decision.tool} 不存在，忽略]`);
         continue;
+      }
+
+      // V399: view_skill_run 执行后记录已加载技能（防重复注入）
+      if (toolDef.name === "view_skill_run" && typeof decision.args?.skill === "string") {
+        loadedSkills.add(decision.args.skill);
       }
 
       // 3c. 策略检查（对话内默认低权限角色 reader — manager 级工具触发审批弹窗）
