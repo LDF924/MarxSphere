@@ -97,7 +97,7 @@ function MessageRoleBadge({ role }: { role: "user" | "assistant" }) {
   return (
     <span className={cn(
       "mb-1 flex items-center gap-1.5 text-xs",
-      role === "user" ? "justify-end text-primary-foreground/70" : "text-muted-foreground"
+      role === "user" ? "justify-end text-muted-foreground" : "text-muted-foreground"
     )}>
       {role === "user" ? "你" : (
         <>
@@ -587,7 +587,8 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                       <div className={cn(
                         "message-pop-in max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6",
                         isUser
-                          ? "rounded-br-md bg-primary text-primary-foreground"
+                          // V399: 用户气泡柔和化 — 浅蓝底+深字（原纯蓝白字在工具链内可读性差）
+                          ? "rounded-br-md border border-primary/20 bg-primary/10 text-foreground"
                           : "rounded-bl-md border border-border bg-card shadow-sm"
                       )}>
                         {isUser ? (
@@ -623,7 +624,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         {toolCallsFor(message.id).length > 0 ? (
                           <ToolChain calls={toolCallsFor(message.id)} />
                         ) : null}
-                        <div className={cn("mt-1 text-[10px]", isUser ? "text-primary-foreground/60" : "text-muted-foreground/70")}>
+                        <div className={cn("mt-1 text-[10px]", isUser ? "text-muted-foreground/70" : "text-muted-foreground/70")}>
                           {formatDate(message.createdAt)}
                         </div>
                       </div>
@@ -661,7 +662,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 {props.pendingUserContent ? (
                   <div className="flex flex-col items-end gap-1.5 self-end">
                     <MessageRoleBadge role="user" />
-                    <div className="message-pop-in max-w-[88%] rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground">
+                    <div className="message-pop-in max-w-[88%] rounded-2xl rounded-br-md border border-primary/20 bg-primary/10 px-4 py-3 text-sm leading-6 text-foreground">
                       <div className="whitespace-pre-wrap">{props.pendingUserContent}</div>
                     </div>
                   </div>
