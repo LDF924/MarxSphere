@@ -179,10 +179,17 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                 )}
                 {error && <div className="text-xs text-red-400">{error}</div>}
-                <button type="button" onClick={() => void doSubmit()} disabled={busy || !username || !password}
-                  className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">
-                  {busy ? "处理中…" : mode === "login" ? "登录" : "注册"}
-                </button>
+                {/* V399: 登录在左、退出登录在右 */}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => void doSubmit()} disabled={busy || !username || !password}
+                    className="flex-1 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">
+                    {busy ? "处理中…" : mode === "login" ? "登录" : "注册"}
+                  </button>
+                  <button type="button" onClick={logout}
+                    className="flex-1 rounded-lg border border-red-400/40 bg-red-500/10 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/20">
+                    退出登录
+                  </button>
+                </div>
                 {mode === "login" ? (
                   <button type="button" onClick={() => { setResetView("forgot"); setError(""); }} className="w-full text-xs text-muted-foreground hover:text-foreground">
                     忘记密码？
