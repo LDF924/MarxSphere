@@ -11,6 +11,7 @@ import { WritingOutputToolsPanel } from "./WritingOutputToolsPanel";
 import { QualityCheckToolsPanel } from "./QualityCheckToolsPanel";
 import { TheoryToolsPanel } from "./TheoryToolsPanel";
 import { DocumentReader } from "./DocumentReader";
+import { DragHandle } from "./ui/DragHandle";
 
 /** 场景研究步骤：工具指引 + 可选跳转 */
 export interface ScenarioStep {
@@ -96,7 +97,10 @@ export const ScenariosWorkbench: FC<Props> = ({ guide, onBack, onNavigate }) => 
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(180px,240px)_minmax(0,1fr)] overflow-hidden xl:grid-cols-[minmax(180px,240px)_minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="relative min-h-0 flex-1">
+        {/* V399: 中列/右列分隔把手（能力面板 | 文献阅读器 可左右拉伸） */}
+        <DragHandle leftVar="--guide-mid-w" defaultWidth={520} minWidth={300} maxWidth={1000} storageKey="scenarios-mid-width" offset={-9} />
+        <div className="grid h-full min-h-0 grid-cols-[minmax(180px,240px)_minmax(0,1fr)] overflow-hidden xl:grid-cols-[minmax(180px,240px)_var(--guide-mid-w,minmax(0,1fr))_minmax(0,1fr)]">
         {/* 左：步骤向导（可勾选） */}
         <div className="min-h-0 overflow-y-auto border-r border-border/50 p-3">
           <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">研究步骤</div>
@@ -251,6 +255,7 @@ export const ScenariosWorkbench: FC<Props> = ({ guide, onBack, onNavigate }) => 
         {/* 右：文献阅读器（全部 66 个场景统一，独立大栏）——检索文献→原文所见即所得标注 */}
         <div className="min-h-0 overflow-y-auto border-t border-border/50 p-3 xl:border-l xl:border-t-0">
           <DocumentReader storageKeyPrefix={`doc-${guide.id}`} />
+        </div>
         </div>
       </div>
     </div>
