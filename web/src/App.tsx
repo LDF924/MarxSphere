@@ -205,7 +205,6 @@ function AppShell() {
     }
   });
   const chatAbortRef = useRef<AbortController | null>(null);
-  const chatSessionLoadedRef = useRef<Set<string>>(new Set());
 
   // 主题切换
   function toggleTheme() {
@@ -260,11 +259,14 @@ function AppShell() {
 
   // 切换会话 → 加载消息
   const selectChatSession = useCallback((sessionId: string) => {
+    // V399: 切换立即清空（防止停留上一个会话内容）+ 每次都重新拉取（不信任 loaded 缓存）
     setChatSessionId(sessionId);
     chatAbortRef.current?.abort();
-    if (chatSessionLoadedRef.current.has(sessionId)) return;
+    setChatMessages([]);
+    setChatToolCalls([]);
+    setChatStreamingText("");
+    setChatReasoning("");
     void api.getMcpSession(sessionId).then((detail) => {
-      chatSessionLoadedRef.current.add(sessionId);
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -272,9 +274,9 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!chatSessionId || chatSessionLoadedRef.current.has(chatSessionId)) return;
+    if (!chatSessionId) return;
+    // V399: 挂载/变更时拉取（始终拉最新，不信任 loaded 缓存）
     void api.getMcpSession(chatSessionId).then((detail) => {
-      chatSessionLoadedRef.current.add(chatSessionId);
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -358,7 +360,6 @@ function AppShell() {
     try {
       const { session } = await api.createMcpSession({ kind: "chat" });
       setChatSessions((prev) => [session, ...prev]);
-      chatSessionLoadedRef.current.add(session.id);
       setChatMessages([]);
       setChatToolCalls([]);
       setChatStreamingText("");
@@ -378,25 +379,20 @@ function AppShell() {
   async function deleteChatSession(sessionId: string) {
     try {
       await api.deleteMcpSession(sessionId);
-      chatSessionLoadedRef.current.delete(sessionId);
       const remaining = chatSessions.filter((s) => s.id !== sessionId);
       setChatSessions(remaining);
       if (chatSessionId === sessionId) {
         if (remaining.length > 0) {
-          const next = remaining[0];
-          setChatSessionId(next.id);
-          void api.getMcpSession(next.id).then((detail) => {
-            chatSessionLoadedRef.current.add(next.id);
-            setChatMessages(detail.messages);
-            setChatToolCalls(detail.toolCalls);
-          }).catch(() => {});
+          // V399: 切到下一个会话（useEffect 自动拉取，此处只清空防残留）
+          setChatSessionId(remaining[0].id);
+          setChatMessages([]);
+          setChatToolCalls([]);
         } else {
           const { session } = await api.createMcpSession({ kind: "chat" });
           setChatSessions([session]);
           setChatSessionId(session.id);
           setChatMessages([]);
           setChatToolCalls([]);
-          chatSessionLoadedRef.current.add(session.id);
         }
       }
     } catch { /* ignore */ }
