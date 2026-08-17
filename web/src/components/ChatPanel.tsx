@@ -868,11 +868,11 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                       <div className="border-b border-border/60 px-3 py-1.5 text-[10px] text-muted-foreground">
                         / 技能命令 — 选中后输入任务描述，回车即执行
                       </div>
-                      <div className="max-h-64 overflow-y-auto p-1">
+                      <div className="max-h-80 overflow-y-auto p-1">
                         {skillFiltered.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-muted-foreground">无匹配技能</div>
                         ) : (
-                          skillFiltered.slice(0, 30).map((s, i) => (
+                          skillFiltered.map((s, i) => (
                             <button
                               key={s.name}
                               type="button"
