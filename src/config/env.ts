@@ -20,7 +20,7 @@ const envSchema = z.object({
   LLM_MODEL: z.string().min(1).default("qwen3.6-flash"),
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
-  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
   LLM_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
   GITHUB_TOKEN: z.string().default(""),
   RERANK_BASE_URL: z.string().url().optional(),
@@ -30,7 +30,7 @@ const envSchema = z.object({
   INGEST_CONCURRENCY: z.coerce.number().int().positive().max(20).default(5),
   MCP_TRANSPORT: z.enum(["stdio", "http"]).default("stdio"),
   MCP_HTTP_PORT: z.coerce.number().int().positive().default(4174),
-  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000)
+  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000)
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

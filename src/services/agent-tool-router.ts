@@ -1478,7 +1478,7 @@ export async function executeAgentTool(
       return { ok: true, result: cached, risk: tool.risk, requiresApproval: false };
     }
     // 工具级超时熔断: 默认 90s（覆盖调用方没设超时的工具; AGENT_TOOL_TIMEOUT_MS 可调）
-    const TOOL_TIMEOUT_MS = Math.min(Math.max(parseInt(process.env.AGENT_TOOL_TIMEOUT_MS || "90000", 10), 5000), 600000);
+    const TOOL_TIMEOUT_MS = Math.min(Math.max(parseInt(process.env.AGENT_TOOL_TIMEOUT_MS || "300000", 10), 10000), 900000);
     const result = await Promise.race([
       tool.run(safeArgs),
       new Promise<string>((_, reject) => setTimeout(() => reject(new Error(`工具 ${tool.name} 执行超时（>${Math.round(TOOL_TIMEOUT_MS / 1000)}s, AGENT_TOOL_TIMEOUT_MS 可调）`)), TOOL_TIMEOUT_MS)),

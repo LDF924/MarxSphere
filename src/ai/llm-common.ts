@@ -80,7 +80,7 @@ export async function fetchLlm(input: {
         // 所有结构化输出调用必须禁用 thinking，否则 finish_reason=length 且 content=""
         thinking: { type: "disabled" },
       }),
-      signal: (AbortSignal as any).timeout(input.timeoutMs ?? 60_000),
+      signal: (AbortSignal as any).timeout(input.timeoutMs ?? 180_000),
     }).catch(() => null);
     if (!resp || !resp.ok) return null;
     const j = await resp.json();
@@ -278,7 +278,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
 
   let lastError = "";
   let lastErrorType: CallLlmResult["errorType"] = "other";
-  const baseTimeout = input.timeoutMs ?? 60_000;
+  const baseTimeout = input.timeoutMs ?? 180_000;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
