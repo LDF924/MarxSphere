@@ -154,16 +154,7 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
-| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_e**⑧ 工程加固（Agent 可靠性 4 件套）**
-
-| 能力 | 实现 |
-|---|---|
-| **引文核查**（citation-service.ts） | 本地文献引文提取与验证（原文级溯源，防伪造引用） |
-| **分层上下文压缩**（context-compressor.ts） | 五层组合：工具结果预算控制 → 噪声删除 → API 层微压缩 → 归档式摘要 → 全量压缩；80% 阈值触发 + 批量压缩 + [COMPRESSED] 防重复标记 |
-| **故障分类学**（error-recovery-map.ts） | 分类规则 + 恢复策略映射；核心原则："第一判断不是要不要重试，而是值不值得重试"（纯函数可单测） |
-| **熔断器**（circuit-breaker.ts） | 每条恢复路径独立熔断 + 终止上限 + 死亡螺旋防护（错误路径禁用会再次调用模型的副作用逻辑） |
-
-vent / concept_trace / policy_search / review_output / summarize / pdf_parse | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
+| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
 | 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest | 超时熔断、降级链 |
 | 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） | 附件预处理压缩 |
 | 协作 | agent_subagent（外部 Agent 派发）/ attachment_read / code_search / todo_update | 子进程治理（防孤儿） |
@@ -203,6 +194,15 @@ vent / concept_trace / policy_search / review_output / summarize / pdf_parse | �
 - 学习曲线 + 成本审计（token 实时统计）
 
 **⑦ 学习闭环**：反思 → 归因 → 最小 diff 补丁 → bad case 回流 → 评测再验证（V294-V297 全打通）
+**⑧ 工程加固（Agent 可靠性 4 件套）**
+
+| 能力 | 实现 |
+|---|---|
+| **引文核查**（citation-service.ts） | 本地文献引文提取与验证（原文级溯源，防伪造引用） |
+| **分层上下文压缩**（context-compressor.ts） | 五层组合：工具结果预算控制 → 噪声删除 → API 层微压缩 → 归档式摘要 → 全量压缩；80% 阈值触发 + 批量压缩 + [COMPRESSED] 防重复标记 |
+| **故障分类学**（error-recovery-map.ts） | 分类规则 + 恢复策略映射；核心原则："第一判断不是要不要重试，而是值不值得重试"（纯函数可单测） |
+| **熔断器**（circuit-breaker.ts） | 每条恢复路径独立熔断 + 终止上限 + 死亡螺旋防护（错误路径禁用会再次调用模型的副作用逻辑） |
+
 
 ### 🖥 桌面端（Electron + NSIS）
 
