@@ -221,6 +221,20 @@ function AppShell() {
   /** V399: 顶栏「项目」弹出面板 */
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
+  /** V399: 流式落库清理 — assistant 消息追加后统一清空流式态（历史消息已渲染，无闪现） */
+  const lastStreamedAssistantRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!chatMessages.length || !chatStreamingText) return;
+    const last = chatMessages[chatMessages.length - 1];
+    if (last?.role === "assistant" && last.id !== lastStreamedAssistantRef.current) {
+      lastStreamedAssistantRef.current = last.id;
+      // 延迟一帧让历史消息渲染完成，再清流式态（避免闪现）
+      window.setTimeout(() => {
+        setChatStreamingText("");
+        setChatReasoning("");
+      }, 50);
+    }
+  }, [chatMessages, chatStreamingText]);
 
   // 主题切换
   function toggleTheme() {
@@ -318,8 +332,8 @@ function AppShell() {
               setChatPendingUser("");
               setChatMessages((prev) => [...prev, event.message]);
             } else {
-              setChatStreamingText("");
-              setChatReasoning("");
+              // V399: 落库后由 useEffect 观察 messages 变化统一清空流式态
+              // （避免流式气泡与历史消息双渲染/闪现）
               setChatMessages((prev) => [...prev, event.message]);
             }
             break;
