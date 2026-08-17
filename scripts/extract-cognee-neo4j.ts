@@ -1,4 +1,3 @@
-import os
 import 'dotenv/config';
 import { pool } from '../src/db/pool.js';
 import { execSync } from 'child_process';
@@ -10,8 +9,7 @@ async function main() {
 
   // 用 Python 直接连 Neo4j 11003
   const pyScript = `
-import sys
-sys.path.insert(0, r'CLAUDE_DIR\\skills\\marx-cognee')
+import os
 from neo4j import GraphDatabase
 import json
 

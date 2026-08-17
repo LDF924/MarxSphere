@@ -277,7 +277,7 @@ export class McpAgentService {
   private async runChatLlmFlow(input: {
     session: McpSessionRecord;
     messageId: string;
-    history: Awaited<ReturnType<typeof getMcpSessionDetail>>["messages"];
+    history: NonNullable<Awaited<ReturnType<typeof getMcpSessionDetail>>>["messages"];
     settings: AiRuntimeSettings;
     userContent: string;
     images?: McpMessageImage[];
@@ -313,18 +313,26 @@ export class McpAgentService {
     // ② 联网开关 → web_search 结果注入
     if (input.webSearch) {
       assertNotAborted(input.signal);
-      const { executeAgentTool } = await import("./agent-tool-router.js");
+      const { buildAgentTools, executeAgentTool } = await import("./agent-tool-router.js");
       const started = performance.now();
       input.emit?.({ type: "tool_start", toolName: "web_search", arguments: { query: input.userContent.slice(0, 80), source: "general", maxResults: 5 } });
       let resultText = "（联网搜索失败）";
       let failed = false;
       try {
-        const toolResult = await executeAgentTool("web_search", {
-          query: input.userContent.slice(0, 80),
-          source: "general",
-          maxResults: 5
-        });
-        resultText = typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult);
+        const tools = await buildAgentTools();
+        const toolDef = tools.find((t) => t.name === "web_search");
+        if (!toolDef) {
+          resultText = "（web_search 工具不可用）";
+          failed = true;
+        } else {
+          const toolResult = await executeAgentTool(toolDef, {
+            query: input.userContent.slice(0, 80),
+            source: "general",
+            maxResults: 5
+          });
+          resultText = toolResult.ok ? toolResult.result : `（联网搜索被拦截: ${toolResult.result.slice(0, 120)}）`;
+          if (!toolResult.ok) failed = true;
+        }
       } catch (e: any) {
         failed = true;
         resultText = `（联网搜索异常: ${String(e?.message || e).slice(0, 120)}）`;
@@ -351,7 +359,6 @@ export class McpAgentService {
     const recentTurns = historyForLlm
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }));
-
     const { getRoleModel } = await import("./llm-model-registry.js");
     const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
     input.emit?.({ type: "model", model });
