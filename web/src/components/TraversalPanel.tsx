@@ -18,6 +18,8 @@ export function TraversalPanel(props: {
   const [result, setResult] = useState<TraversalResult | null>(null);
   const [running, setRunning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // V399: 结果分页（原全量渲染 9823 结果 DOM 卡死）
+  const [visibleResultCount, setVisibleResultCount] = useState(100);
 
   // 2026-08-07 性能：不再全量排序 5 万实体（首帧卡顿根源）——默认顺序即可，搜索时过滤
   const entityOptions = props.graph.entities;
@@ -47,6 +49,7 @@ export function TraversalPanel(props: {
     setRunning(true);
     setTimeout(() => {
       setResult(traverseGraph(props.graph, id, direction, depth));
+      setVisibleResultCount(100);
       setRunning(false);
     }, 50);
   };
@@ -67,6 +70,7 @@ export function TraversalPanel(props: {
     // 模拟异步让 UI 反馈
     setTimeout(() => {
       setResult(traverseGraph(props.graph, startId, direction, depth));
+      setVisibleResultCount(100);
       setRunning(false);
     }, 50);
   };
@@ -78,6 +82,7 @@ export function TraversalPanel(props: {
       setRunning(true);
       setTimeout(() => {
         setResult(traverseGraph(props.graph, startId, dir, depth));
+        setVisibleResultCount(100);
         setRunning(false);
       }, 50);
     }
@@ -90,6 +95,7 @@ export function TraversalPanel(props: {
       setRunning(true);
       setTimeout(() => {
         setResult(traverseGraph(props.graph, startId, direction, d));
+        setVisibleResultCount(100);
         setRunning(false);
       }, 50);
     }
@@ -248,7 +254,7 @@ export function TraversalPanel(props: {
         )}
       </div>
 
-      {/* 结果 — 2026-08-07 内容自适应（不撑满全高），最多 60vh 滚动 */}
+      {/* 结果 — V399: 分页渲染（原全量渲染 9823 结果 DOM 卡死页面） */}
       {result ? (
         <Card className="max-h-[60vh] min-h-0 overflow-y-auto p-3">
           <div className="mb-2 text-sm font-medium">
@@ -261,22 +267,33 @@ export function TraversalPanel(props: {
           {result.nodes.length === 0 ? (
             <div className="text-sm text-muted-foreground">{t("无关联实体", "No related entities")}</div>
           ) : (
-            <div className="space-y-1.5">
-              {result.nodes.map((node) => (
-                <div key={node.entityId} className="rounded border border-border/60 px-2 py-1.5 text-sm">
-                  <div className="flex items-center gap-2">
-                    <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="font-medium">{node.name}</span>
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                      {t("深度", "depth")} {node.depth}
-                    </span>
+            <>
+              <div className="space-y-1.5">
+                {result.nodes.slice(0, visibleResultCount).map((node) => (
+                  <div key={node.entityId} className="rounded border border-border/60 px-2 py-1.5 text-sm">
+                    <div className="flex items-center gap-2">
+                      <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="font-medium">{node.name}</span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        {t("深度", "depth")} {node.depth}
+                      </span>
+                    </div>
+                    <div className="mt-1 pl-6 text-xs leading-5 text-muted-foreground">
+                      {node.path.join(" → ")}
+                    </div>
                   </div>
-                  <div className="mt-1 pl-6 text-xs leading-5 text-muted-foreground">
-                    {node.path.join(" → ")}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {visibleResultCount < result.nodes.length ? (
+                <button
+                  type="button"
+                  onClick={() => setVisibleResultCount((prev) => Math.min(prev + 200, result.nodes.length))}
+                  className="mt-2 w-full rounded-md border border-border px-3 py-2 text-center text-xs text-muted-foreground hover:bg-accent/50"
+                >
+                  {t("加载更多", "Load more")}（{result.nodes.length - visibleResultCount} 条剩余）
+                </button>
+              ) : null}
+            </>
           )}
         </Card>
       ) : (
