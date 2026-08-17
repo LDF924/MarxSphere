@@ -167,7 +167,9 @@ function ProjectGraphCanvas(props: {
     edges: props.graph.edges,
     positionByNodeId,
     selectedNodeId,
-    highlightedNodeIds: props.highlightedNodeIds
+    // V399 性能: highlightedNodeIds 不作为 useMemo 依赖（否则关系查询 9823 高亮节点
+    // 触发全量重建卡死）；高亮由下方单独 effect 增量应用到已渲染节点
+    highlightedNodeIds: undefined
   }), [
     entityById,
     entityIdsByEventId,
@@ -178,9 +180,28 @@ function ProjectGraphCanvas(props: {
     initialEntityIds,
     positionByNodeId,
     props.graph.edges,
-    props.highlightedNodeIds,
     selectedNodeId
   ]);
+
+  // V399 性能: 高亮/选中样式增量应用 — 不重建整图，仅更新命中+相关节点/边的 style
+  useEffect(() => {
+    const highlight = props.highlightedNodeIds;
+    if (!highlight || highlight.size === 0) return;
+    setNodes((current) => current.map((node) => {
+      const related = node.id === selectedNodeId;
+      const hit = highlight.has(node.id);
+      if (!hit && !related) return node;
+      return {
+        ...node,
+        style: {
+          ...node.style,
+          opacity: 1,
+          border: "2px solid var(--graph-node-fg, #111827)",
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.22)"
+        }
+      };
+    }));
+  }, [props.highlightedNodeIds, selectedNodeId, setNodes]);
 
   useEffect(() => {
     setNodes(graphModel.nodes);
