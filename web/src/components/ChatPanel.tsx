@@ -267,11 +267,11 @@ function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number 
 }
 
 /** V398: 「已深度思考」折叠区（DeepSeek reasoning_content） */
-function ReasoningBlock({ text }: { text: string }) {
+function ReasoningBlock({ text, streaming = false }: { text: string; streaming?: boolean }) {
   // V399: 默认展开 — 流式完成落库后历史消息不再"折叠闪现"
   const [open, setOpen] = useState(true);
   return (
-    <div className="mb-2 rounded-lg border border-border/60 bg-muted/30">
+    <div className={cn("rounded-lg border border-border/60 bg-muted/30", !streaming && "mb-2")}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -282,8 +282,9 @@ function ReasoningBlock({ text }: { text: string }) {
         <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
       </button>
       {open ? (
-        <div className="max-h-56 overflow-auto whitespace-pre-wrap border-t border-border/50 px-3 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="max-h-72 overflow-auto whitespace-pre-wrap border-t border-border/50 px-3 py-2 text-xs leading-5 text-muted-foreground">
           {text}
+          {streaming ? <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-primary align-middle" /> : null}
         </div>
       ) : null}
     </div>
@@ -703,24 +704,33 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                   </div>
                 ) : null}
 
-                {/* 流式 AI 回复 */}
-                {props.streamingText || props.reasoningText ? (
+                {/* V399: 流式思考区 — 独立固定块（DeepSeek 式：思考跳出后固定在页面，
+                    实时展开思考过程，思考完输出回答；不与回答气泡绑定，杜绝闪现） */}
+                {props.reasoningText ? (
+                  <div className="flex flex-col items-start gap-1.5 self-start">
+                    <MessageRoleBadge role="assistant" />
+                    <div className="w-full max-w-[88%] rounded-2xl rounded-bl-md border border-border bg-card shadow-sm">
+                      <ReasoningBlock text={props.reasoningText} streaming />
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* 流式 AI 回答（思考区下方独立输出） */}
+                {props.streamingText ? (
                   <div className="flex flex-col items-start gap-1.5 self-start">
                     <MessageRoleBadge role="assistant" />
                     <div className="message-pop-in max-w-[88%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6 shadow-sm">
-                      {props.reasoningText ? <ReasoningBlock text={props.reasoningText} /> : null}
-                      {props.streamingText ? (
-                        <>
-                          <MarkdownStreaming content={props.streamingText} />
-                          <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" />
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          正在思考…
-                        </div>
-                      )}
+                      <MarkdownStreaming content={props.streamingText} />
+                      <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" />
                     </div>
+                  </div>
+                ) : null}
+
+                {/* 思考中占位（思考已开始、回答未出） */}
+                {props.isRunning && !props.streamingText && !props.reasoningText ? (
+                  <div className="flex items-center gap-2 self-start rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted-foreground shadow-sm">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    正在思考…
                   </div>
                 ) : null}
               </div>
