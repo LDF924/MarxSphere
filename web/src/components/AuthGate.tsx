@@ -2,7 +2,8 @@
 // 可选启用: 后端 AUTH_ENABLED=true 时前端要求登录（JWT 存 localStorage）
 // 关闭时直接放行（兼容本地单机使用）
 // V390: 忘记密码（邮箱重置链接）+ 重置密码页 + 注册可带邮箱
-import { useEffect, useState, type FC, type ReactNode } from "react";
+// V399: AuthContext 导出 — header 登录按钮 / 用户菜单接入
+import { createContext, useContext, useEffect, useState, type FC, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 
 interface AuthState {
@@ -10,62 +11,30 @@ interface AuthState {
   user: { username: string; role: string; plan: string; balanceCents: number } | null;
 }
 
-// V390: 用户菜单 — 用户名/角色/余额/登出（右上角浮动, 全局可见）
-function UserMenu({ user, onLogout }: { user: NonNullable<AuthState["user"]>; onLogout: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [balance, setBalance] = useState<number | null>(null);
-  useEffect(() => {
-    const token = localStorage.getItem("sag_token");
-    if (!token) return;
-    fetch("/api/billing/balance", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d && typeof d.balanceCents === "number") setBalance(d.balanceCents); })
-      .catch(() => {});
-  }, []);
-  // 点击外部关闭
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [open]);
-  const roleLabel = user.role === "admin" ? "管理员" : user.role === "user" ? "普通用户" : user.role;
-  const planLabel = { free: "免费版", pro: "专业版", enterprise: "企业版" }[user.plan] || user.plan;
-  return (
-    <div className="fixed bottom-4 left-4 z-[100]">
-      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white backdrop-blur transition-colors hover:border-primary/40 hover:bg-white/10">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
-          {user.username.charAt(0).toUpperCase()}
-        </span>
-        <span className="max-w-28 truncate">{user.username}</span>
-        <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
-      </button>
-      {open && (
-        <div className="absolute bottom-11 left-0 w-56 overflow-hidden rounded-xl border border-white/10 bg-slate-900/95 text-white shadow-2xl backdrop-blur" onClick={(e) => e.stopPropagation()}>
-          <div className="border-b border-white/10 px-4 py-3">
-            <div className="text-sm font-medium">{user.username}</div>
-            <div className="mt-0.5 text-xs text-slate-400">
-              {roleLabel} · {planLabel}
-            </div>
-            <div className="mt-1.5 text-xs">
-              余额: <span className="font-mono font-medium text-emerald-400">{balance === null ? "—" : "¥" + (balance / 100).toFixed(2)}</span>
-            </div>
-          </div>
-          <div className="py-1">
-            <button type="button" onClick={() => { setOpen(false); onLogout(); }}
-              className="block w-full px-4 py-2 text-left text-sm text-red-400 transition-colors hover:bg-white/5">
-              退出登录
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+interface AuthContextValue {
+  enabled: boolean;
+  user: AuthState["user"];
+  /** V399: 打开登录模态（header 登录按钮触发） */
+  openLogin: () => void;
+  logout: () => void;
+}
+
+const AuthContext = createContext<AuthContextValue>({
+  enabled: false,
+  user: null,
+  openLogin: () => {},
+  logout: () => {}
+});
+
+/** V399: 读取登录状态（header 按钮/用户菜单用） */
+export function useAuth(): AuthContextValue {
+  return useContext(AuthContext);
 }
 
 export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
   const [auth, setAuth] = useState<AuthState>({ enabled: false, user: null });
+  // V399: 登录模态开关（认证未启用时 header 登录按钮也可打开）
+  const [loginOpen, setLoginOpen] = useState(false);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -140,13 +109,71 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     }).catch(() => {});
   }, []);
 
+  // V399: 登录成功统一处理（认证启用/未启用共用）
+  const handleAuthSuccess = (d: { token?: string; user: AuthState["user"] }) => {
+    if (d.token) localStorage.setItem("sag_token", d.token);
+    setAuth({ enabled: true, user: d.user });
+    setLoginOpen(false);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("sag_token");
+    setAuth({ enabled: true, user: null });
+  };
+
+  const contextValue: AuthContextValue = {
+    enabled: auth.enabled,
+    user: auth.user,
+    openLogin: () => { setMode("login"); setError(""); setResetView("none"); setLoginOpen(true); },
+    logout
+  };
+
   if (!auth.enabled || auth.user) {
-    // V390: 已登录 → 悬浮用户菜单（所有视图可见）
+    // V399: 正常放行 — 登录状态经 context 暴露（header 登录按钮/用户菜单）
     return (
-      <>
+      <AuthContext.Provider value={contextValue}>
         {children}
-        {auth.enabled && auth.user ? <UserMenu user={auth.user} onLogout={() => { localStorage.removeItem("sag_token"); setAuth({ enabled: true, user: null }); }} /> : null}
-      </>
+        {/* V399: 登录模态（认证未启用时 header 按钮触发；启用时整页登录） */}
+        {loginOpen && !auth.user ? (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setLoginOpen(false)}>
+            <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-4 text-center">
+                <div className="text-xl font-bold">MarxSphere</div>
+                <div className="mt-1 text-xs text-muted-foreground">马研星环 · 科研智能中枢</div>
+              </div>
+              <div className="mb-4 flex rounded-lg bg-muted/60 p-1">
+                {(["login", "register"] as const).map((m) => (
+                  <button key={m} type="button" onClick={() => { setMode(m); setError(""); setResetView("none"); }}
+                    className={cn("flex-1 rounded-md py-1.5 text-sm", mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>
+                    {m === "login" ? "登录" : "注册"}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="密码（至少6位）"
+                  onKeyDown={(e) => e.key === "Enter" && void doSubmit()}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                {mode === "register" && (
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱（选填，用于找回密码）"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                )}
+                {error && <div className="text-xs text-red-400">{error}</div>}
+                <button type="button" onClick={() => void doSubmit()} disabled={busy || !username || !password}
+                  className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40">
+                  {busy ? "处理中…" : mode === "login" ? "登录" : "注册"}
+                </button>
+                {mode === "login" ? (
+                  <button type="button" onClick={() => { setResetView("forgot"); setError(""); }} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                    忘记密码？
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </AuthContext.Provider>
     );
   }
 
@@ -160,8 +187,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
       });
       const d = await r.json();
       if (!r.ok) { setError(d.error || "操作失败"); return; }
-      if (d.token) localStorage.setItem("sag_token", d.token);
-      setAuth({ enabled: true, user: d.user });
+      // V399: 统一登录成功处理（关模态）
+      handleAuthSuccess(d);
     } catch (e: any) { setError(String(e?.message || e)); }
     finally { setBusy(false); }
   };

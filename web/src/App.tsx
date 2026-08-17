@@ -32,10 +32,11 @@ import {
   Wrench,
   Boxes,
   Sun,
-  Moon
+  Moon,
+  UserRound
 } from "lucide-react";
 import { api } from "./lib/api";
-import { AuthGate } from "./components/AuthGate";
+import { AuthGate, useAuth } from "./components/AuthGate";
 import { BillingPanel } from "./components/BillingPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatPanel, type ChatDraftImage } from "./components/ChatPanel";
@@ -154,6 +155,9 @@ export default function App() {
 
 function AppShell() {
   const { language, preference: languagePreference, setPreference: setLanguagePreference, t } = useI18n();
+  // V399: 登录状态（header 登录按钮/用户菜单）
+  const { user: authUser, openLogin, logout: authLogout } = useAuth();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [projects, setProjects] = useState<SourceRecord[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [projectStats, setProjectStats] = useState<ProjectStatsRecord | null>(null);
@@ -1470,76 +1474,7 @@ function AppShell() {
       {/* 全局告警 toast（轮询新告警，点击跳转告警中心） */}
       <AlertToast onOpenAlerts={() => navigateView("alerts")} />
       {/* 运行模式徽标（左下角用户菜单上方：收起式小徽标，点击展开切换；不挡内容） */}
-      {modeBadge && (
-        <div className="fixed bottom-16 left-4 z-40">
-          <button type="button" onClick={() => setModeMenuOpen((v) => !v)}
-            className="flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:border-primary/40 hover:text-foreground"
-            title={modeBadge.health?.label ?? "切换运行模式（重启后生效）"}>
-            <span className={cn("h-2 w-2 rounded-full",
-              modeBadge.mode === "full" ? "bg-green-500"
-                : modeBadge.mode === "degraded" ? "bg-amber-500"
-                : "bg-blue-500")} />
-            {modeBadge.mode === "full" ? "完整"
-              : modeBadge.mode === "degraded" ? "降级"
-              : "预览"}
-          </button>
-          {modeMenuOpen && (
-            <div className="absolute bottom-9 left-0 w-60 rounded-lg border border-border bg-background/95 p-2 shadow-xl backdrop-blur">
-              <div className="mb-1.5 px-1 text-[10px] text-muted-foreground">
-                {modeBadge.health?.label ?? "运行模式 · 重启后生效"}
-              </div>
-              {modeBadge.health ? (
-                <div className="mb-1.5 space-y-0.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
-                  <div className="flex items-center gap-1.5">
-                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.graphiti ? "bg-green-500" : "bg-red-500")} />
-                    Graphiti Neo4j {modeBadge.health.neo4j.graphiti ? "在线" : "未连接"}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.cognee ? "bg-green-500" : "bg-red-500")} />
-                    Cognee Neo4j {modeBadge.health.neo4j.cognee ? "在线" : "未连接"}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.pythonProcesses > 0 ? "bg-green-500" : "bg-red-500")} />
-                    Python 进程 {modeBadge.health.pythonProcesses} 个
-                  </div>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => { setModeMenuOpen(false); void switchModeTo("preview"); }}
-                className={cn(
-                  "flex w-full shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-left text-xs transition-colors",
-                  modeBadge.mode === "preview"
-                    ? "border-blue-400/50 bg-blue-500/15 text-blue-400"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                )}
-              >
-                <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.mode === "preview" ? "bg-blue-500" : "bg-muted-foreground/40")} />
-                <div className="min-w-0">
-                  <div className="font-medium leading-tight">预览模式</div>
-                  <div className="text-[10px] leading-tight text-muted-foreground">省内存 · 无推理/MCP 池</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setModeMenuOpen(false); void switchModeTo("full"); }}
-                className={cn(
-                  "mt-1 flex w-full shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-left text-xs transition-colors",
-                  modeBadge.mode === "full"
-                    ? "border-green-400/50 bg-green-500/15 text-green-400"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                )}
-              >
-                <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.mode === "full" ? "bg-green-500" : "bg-muted-foreground/40")} />
-                <div className="min-w-0">
-                  <div className="font-medium leading-tight">完整模式</div>
-                  <div className="text-[10px] leading-tight text-muted-foreground">推理 · MCP 池 {modeBadge.mcpPoolSize} 实例</div>
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {/* V399: 运行模式/健康状态 — 已移入顶栏（项目按钮左侧） */}
       {/* 宇宙背景层：紫调深空渐变 + 山峰地平线 + 亮星 + 星尘 + 星环（纯CSS必渲染） */}
       <div className="cosmos-bg">
         <div className="cosmos-alpine" />
@@ -1559,13 +1494,103 @@ function AppShell() {
       {/* V399: 项目列移入顶栏「项目」弹出面板 — 主区域全宽 */}
 
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
+        <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start gap-3 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
+          {/* V399: 品牌区（移出项目面板，顶栏最左；点击回首页） */}
+          <button
+            type="button"
+            onClick={() => navigateView("home")}
+            title={t("返回首页", "Back to home")}
+            className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent/40"
+          >
+            <SymbolLogo size={28} />
+            <span className="hidden flex-col items-start leading-tight lg:flex">
+              <span className="text-sm font-semibold">MarxSphere 马研星环</span>
+              <span className="text-[10px] text-muted-foreground">{t("马理论 AI 科研中枢", "Marxist theory AI research hub")}</span>
+            </span>
+          </button>
           {workspaceView === "settings" ? null : (
             <MainWorkspaceTabs
               view={workspaceView}
               onChange={(view) => navigateView(view)}
             />
           )}
+          {/* V399: 运行模式按钮（项目左侧；弹出健康+切换菜单） */}
+          {modeBadge ? (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setModeMenuOpen((v) => !v)}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors",
+                  modeMenuOpen ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/60 hover:border-primary/40 hover:text-foreground"
+                )}
+                title={modeBadge.health?.label ?? "切换运行模式（重启后生效）"}
+              >
+                <span className={cn("h-2 w-2 rounded-full",
+                  modeBadge.mode === "full" ? "bg-green-500"
+                    : modeBadge.mode === "degraded" ? "bg-amber-500"
+                    : "bg-blue-500")} />
+                {modeBadge.mode === "full" ? "完整"
+                  : modeBadge.mode === "degraded" ? "降级"
+                  : "预览"}
+              </button>
+              {modeMenuOpen && (
+                <div className="absolute right-0 top-9 z-50 w-60 rounded-lg border border-border bg-background/95 p-2 shadow-xl backdrop-blur">
+                  <div className="mb-1.5 px-1 text-[10px] text-muted-foreground">
+                    {modeBadge.health?.label ?? "运行模式 · 重启后生效"}
+                  </div>
+                  {modeBadge.health ? (
+                    <div className="mb-1.5 space-y-0.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.graphiti ? "bg-green-500" : "bg-red-500")} />
+                        Graphiti Neo4j {modeBadge.health.neo4j.graphiti ? "在线" : "未连接"}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.cognee ? "bg-green-500" : "bg-red-500")} />
+                        Cognee Neo4j {modeBadge.health.neo4j.cognee ? "在线" : "未连接"}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.pythonProcesses > 0 ? "bg-green-500" : "bg-red-500")} />
+                        Python 进程 {modeBadge.health.pythonProcesses} 个
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => { setModeMenuOpen(false); void switchModeTo("preview"); }}
+                    className={cn(
+                      "flex w-full shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-left text-xs transition-colors",
+                      modeBadge.mode === "preview"
+                        ? "border-blue-400/50 bg-blue-500/15 text-blue-400"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.mode === "preview" ? "bg-blue-500" : "bg-muted-foreground/40")} />
+                    <div className="min-w-0">
+                      <div className="font-medium leading-tight">预览模式</div>
+                      <div className="text-[10px] leading-tight text-muted-foreground">省内存 · 无推理/MCP 池</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setModeMenuOpen(false); void switchModeTo("full"); }}
+                    className={cn(
+                      "mt-1 flex w-full shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-left text-xs transition-colors",
+                      modeBadge.mode === "full"
+                        ? "border-green-400/50 bg-green-500/15 text-green-400"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.mode === "full" ? "bg-green-500" : "bg-muted-foreground/40")} />
+                    <div className="min-w-0">
+                      <div className="font-medium leading-tight">完整模式</div>
+                      <div className="text-[10px] leading-tight text-muted-foreground">推理 · MCP 池 {modeBadge.mcpPoolSize} 实例</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
           {/* V399: 顶栏「项目」按钮（原左侧常驻项目列移入弹出面板） */}
           <button
             type="button"
@@ -1587,6 +1612,49 @@ function AppShell() {
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
+          {/* V399: 登录/用户按钮（主题右侧；未登录显示登录，已登录显示用户名菜单） */}
+          <div className="relative shrink-0">
+            {authUser ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setUserMenuOpen((v) => !v)}
+                  className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                    {authUser.username.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="max-w-20 truncate">{authUser.username}</span>
+                </button>
+                {userMenuOpen ? (
+                  <div className="absolute right-0 top-9 z-50 w-48 rounded-lg border border-border bg-background/95 p-1.5 shadow-xl backdrop-blur">
+                    <div className="border-b border-border/60 px-2 py-1.5 text-xs">
+                      <div className="font-medium">{authUser.username}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {authUser.role === "admin" ? "管理员" : "普通用户"} · {authUser.plan === "pro" ? "专业版" : authUser.plan === "enterprise" ? "企业版" : "免费版"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUserMenuOpen(false); authLogout(); }}
+                      className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-red-400 transition-colors hover:bg-red-500/10"
+                    >
+                      退出登录
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={openLogin}
+                className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                登录
+              </button>
+            )}
+          </div>
         </header>
 
         {/* V399: 项目弹出面板（顶栏「项目」按钮，替代原左侧常驻列） */}
@@ -1953,34 +2021,7 @@ function ProjectRail(props: {
   return (
     <>
       <aside className="relative z-10 flex max-h-[70vh] min-h-0 flex-col overflow-hidden border-r border-border">
-        <div className="border-b border-border p-4">
-          <div className="flex items-start justify-between gap-2">
-            <button
-              type="button"
-              onClick={props.onGoHome}
-              title={t("返回首页", "Back to home")}
-              className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent/40"
-            >
-              <div className="brand-ring">
-                <SymbolLogo size={32} />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">MarxSphere 马研星环</div>
-                <div className="truncate text-xs text-muted-foreground">{t("马理论 AI 科研中枢", "Marxist theory AI research hub")}</div>
-              </div>
-            </button>
-            <Button
-              variant={props.isSettingsOpen ? "secondary" : "ghost"}
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              title={t("全局设置", "Global settings")}
-              aria-label={t("全局设置", "Global settings")}
-              onClick={props.onOpenSettings}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        {/* V399: 品牌区/设置已移入顶栏 — 面板直接以「项目」列表开头 */}
 
         <div className="flex items-center justify-between px-4 py-3">
           <div className="text-xs font-medium text-muted-foreground">{t("项目", "Projects")}</div>
