@@ -1902,7 +1902,8 @@ export function buildHttpServer() {
     const input = z.object({
       content: z.string().trim().min(1).max(20000),
       images: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(6).optional(),
-      webSearch: z.boolean().optional()
+      webSearch: z.boolean().optional(),
+      deepMode: z.boolean().optional()
     }).parse(request.body);
 
     const detail = await mcpAgentService.getSession(params.sessionId);
@@ -1960,6 +1961,7 @@ export function buildHttpServer() {
         content: input.content,
         images,
         webSearch: input.webSearch,
+        deepMode: input.deepMode,
         signal: abortController.signal
       }, config.DEFAULT_TENANT_ID, (event) => {
         send(event.type, event);

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FC } from "react";
 import {
   Loader2, Plus, PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Pin, PinOff,
-  MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw
+  MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { McpMessageRecord, McpSessionRecord, McpToolCallRecord } from "../types";
@@ -31,6 +31,8 @@ export interface ChatPanelProps {
   runningToolName: string | null;
   model: string;
   webSearch: boolean;
+  /** V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20） */
+  deepMode: boolean;
   collapsed: boolean;
   models: Array<{ id: string; label: string }>;
   /** V399: 待审批工具（review/manager 级弹窗确认） */
@@ -39,12 +41,13 @@ export interface ChatPanelProps {
   onCreateSession: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
   onDeleteSession: (sessionId: string) => void;
-  onSend: (content: string, images: ChatDraftImage[], webSearch: boolean) => void;
+  onSend: (content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean) => void;
   onStop: () => void;
   onRecall: () => void;
   onApproveTool: (approvalId: string, approved: boolean) => void;
   onModelChange: (model: string) => void;
   onWebSearchChange: (value: boolean) => void;
+  onDeepModeChange: (value: boolean) => void;
   onToggleCollapsed: () => void;
   onOpenCitation: (citation: MarkdownCitation) => void;
   onGoToView: (view: "ask" | "reason" | "empirical-research") => void;
@@ -344,7 +347,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
   function handleSend() {
     const content = draft.trim();
     if (!content || props.isRunning) return;
-    props.onSend(content, draftImages, props.webSearch);
+    props.onSend(content, draftImages, props.webSearch, props.deepMode);
     setDraft("");
     setDraftImages([]);
   }
@@ -725,6 +728,19 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 >
                   <Globe className="h-4 w-4" />
                   联网
+                </button>
+                {/* V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20） */}
+                <button
+                  type="button"
+                  onClick={() => props.onDeepModeChange(!props.deepMode)}
+                  title="深度模式：文献必查、推理深化、最多 20 轮工具调用（更全面但更耗时）"
+                  className={cn(
+                    "flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                    props.deepMode ? "bg-purple-500/15 text-purple-400" : "text-muted-foreground hover:bg-accent"
+                  )}
+                >
+                  <Zap className="h-4 w-4" />
+                  深度
                 </button>
                 <div className="ml-auto flex items-center gap-1.5">
                   <label className="text-xs text-muted-foreground">模型</label>

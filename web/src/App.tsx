@@ -187,6 +187,8 @@ function AppShell() {
   const [chatIsRunning, setChatIsRunning] = useState(false);
   const [chatModel, setChatModel] = useState("");
   const [chatWebSearch, setChatWebSearch] = useState(false);
+  /** V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20），Composer 开关 */
+  const [chatDeepMode, setChatDeepMode] = useState(false);
   /** V399: 待审批工具弹窗 {approvalId, toolName, arguments} */
   const [chatApproval, setChatApproval] = useState<{ approvalId: string; toolName: string; arguments: Record<string, unknown> } | null>(null);
   const [chatModels, setChatModels] = useState<Array<{ id: string; label: string }>>([]);
@@ -284,7 +286,7 @@ function AppShell() {
   }, [chatSessionId]);
 
   // 发送消息
-  async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean) {
+  async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean) {
     if (!chatSessionId || chatIsRunning) return;
     chatAbortRef.current?.abort();
     const controller = new AbortController();
@@ -295,7 +297,7 @@ function AppShell() {
     setChatReasoning("");
     setChatRunningTool(null);
     try {
-      await api.streamChatMessage(chatSessionId, { content, images, webSearch }, (event) => {
+      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode }, (event) => {
         switch (event.type) {
           case "message":
             if (event.message.role === "user") {
@@ -1622,6 +1624,7 @@ function AppShell() {
                 runningToolName={chatRunningTool}
                 model={chatModel}
                 webSearch={chatWebSearch}
+                deepMode={chatDeepMode}
                 collapsed={chatCollapsed}
                 models={chatModels}
                 onSelectSession={selectChatSession}
@@ -1635,6 +1638,7 @@ function AppShell() {
                 approval={chatApproval}
                 onModelChange={setChatModel}
                 onWebSearchChange={setChatWebSearch}
+                onDeepModeChange={setChatDeepMode}
                 onToggleCollapsed={() => setChatCollapsed((v) => !v)}
                 onOpenCitation={(citation) => setDrawer({ type: "citation", citation })}
                 onGoToView={(view) => navigateView(view)}

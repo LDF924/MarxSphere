@@ -189,6 +189,8 @@ export class McpAgentService {
     images?: McpMessageImage[];
     /** V398: 通用 AI 对话联网开关 — 开启时注入 web_search 结果 */
     webSearch?: boolean;
+    /** V399: 深度模式 — 轮次上限 20（质量优先），前端「深度思考」开关 */
+    deepMode?: boolean;
   }, tenantId = config.DEFAULT_TENANT_ID, emit?: StreamEmitter) {
     assertNotAborted(input.signal);
     emit?.({ type: "stage", label: "加载会话", detail: "正在读取当前 MCP 会话上下文" });
@@ -247,6 +249,7 @@ export class McpAgentService {
           userContent: input.content,
           images: input.images,
           webSearch: input.webSearch,
+          deepMode: input.deepMode,
           toolCalls,
           signal: input.signal,
           emit
@@ -352,6 +355,7 @@ export class McpAgentService {
     userContent: string;
     images?: McpMessageImage[];
     webSearch?: boolean;
+    deepMode?: boolean;
     toolCalls: McpToolCallRecord[];
     signal?: AbortSignal;
     emit?: StreamEmitter;
@@ -449,15 +453,27 @@ export class McpAgentService {
       "2. 需要检索文献/知识库 → sag_search / sag_retrieve / concept_trace；",
       "   需要深度推理 → sag_reason；需要联网 → web_search；需要实证分析 → empirical_analysis；",
       "   需要读取附件 → attachment_read；需要图片分析 → image_analyze；其他按描述选择。",
-      "3. 工具执行完成后，判断任务是否解决：解决 → 返回 {\"done\":true}；否则继续调用下一步工具。",
-      "4. 最多 12 轮工具调用，超限必须收尾。",
-      "5. risk=review 或需 manager 的工具需要用户审批，若被拦截说明原因并换工具。",
+      "3. **质量优先原则（严禁偷懒）**：",
+      "   - 涉及论文/文献/学术综述类任务：必须先调 view_literature_search（文献库 500+ 同行评议论文），",
+      "     再调 sag_search（知识库）交叉验证，不得因知识库更快而跳过文献库；",
+      "   - 涉及政策/法规 → 必须先调 policy_search 或 view_policy_tree；",
+      "   - 涉及概念溯源/跨文献关联 → concept_trace 或 view_truth_list；",
+      "   - 多步骤任务不要一步收尾：检索 → 推理/实证 → 写作/总结，每阶段用对应工具；",
+      "   - 不要怕步骤多、耗时长，结果最优优先。",
+      "4. 工具执行完成后，判断任务是否解决：解决 → 返回 {\"done\":true}；否则继续调用下一步工具。",
+      "5. 最多 12 轮工具调用（深度模式 20 轮），超限必须收尾。",
+      "6. risk=review 或需 manager 的工具需要用户审批，若被拦截说明原因并换工具。",
       "只返回 JSON: {\"tool\":\"工具名\",\"args\":{...}} 或 {\"done\":true}。参数必须具体，不要用占位符。",
       `工具清单:\n${toolList}`
     ].join("\n");
 
-    const MAX_TOOL_ROUNDS = 12;
+    // V399: 深度模式 — 轮次上限提高（质量优先，不怕耗时长）
+    const MAX_TOOL_ROUNDS = input.deepMode ? 20 : 12;
     let finalText = "";
+    /** V399: 连续工具名记录（防同工具重复调用死循环） */
+    const recentToolNames: string[] = [];
+    /** V399: 已调用过的工具+参数组合（同 query 去重） */
+    const seenToolCalls = new Set<string>();
     /** V399: 已加载的技能集（防同一 skill 重复注入上下文） */
     const loadedSkills = new Set<string>();
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -512,6 +528,22 @@ export class McpAgentService {
       if (toolDef.name === "view_skill_run" && typeof decision.args?.skill === "string") {
         loadedSkills.add(decision.args.skill);
       }
+
+      // V399: 重复工具调用保护 — 同一工具连续选择 ≥3 次（结果已入上下文）→ 提醒换工具，防规划死循环
+      if (recentToolNames.length >= 2 && recentToolNames.slice(-2).every((n) => n === toolDef.name)) {
+        contextParts.push(`[提示: 工具 ${toolDef.name} 已连续调用 3 次，结果已在上下文中。请换用其他工具推进任务，或直接收尾回答]`);
+        recentToolNames.push(toolDef.name);
+        continue;
+      }
+      // V399: 完全相同的工具+参数调用去重（结果已在上下文）→ 直接跳过，防同 query 反复重试
+      const callKey = `${toolDef.name}:${JSON.stringify(decision.args ?? {})}`;
+      if (seenToolCalls.has(callKey)) {
+        contextParts.push(`[提示: 工具 ${toolDef.name} 已用相同参数调用过，结果已在上下文中。请换用其他工具或收尾]`);
+        recentToolNames.push(toolDef.name);
+        continue;
+      }
+      seenToolCalls.add(callKey);
+      recentToolNames.push(toolDef.name);
 
       // 3c. 策略检查（对话内默认低权限角色 reader — manager 级工具触发审批弹窗）
       const policy = checkToolPolicy(toolDef.name, "reader");
