@@ -1191,6 +1191,9 @@ export function buildHttpServer() {
     if (jwtPayload) {
       const u = await pool.query("select tenant_id from users where id = $1", [jwtPayload.uid]);
       if (u.rows.length > 0) tenantIds = [PUBLIC_TENANT, u.rows[0].tenant_id];
+    } else {
+      // V398: 未登录（本机/无 JWT）也应可见公共库（PUBLIC_TENANT）项目 — 公开文献资产
+      tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID];
     }
     const projects = tenantIds.length > 0
       ? await webuiService.listProjectsByTenants(tenantIds, {
