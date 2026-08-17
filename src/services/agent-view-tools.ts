@@ -229,4 +229,121 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       return parts.join("\n\n").slice(0, 16000);
     }),
   },
+  // ── V399 第三批：图谱/任务/文档/告警/Trace/Inbox/入库 ──
+  {
+    name: "view_graph_query", label: "知识图谱查询", risk: "safe",
+    description: "查询知识图谱（实体/事件/关系，Neo4j），返回实体关联路径，用于跨文献概念关联分析",
+    params: {
+      query: { type: "string", required: true, desc: "实体或概念查询（如 剩余价值/资本下乡）" },
+      limit: { type: "number", desc: "返回条数(默认10)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { neo4jQuery } = await import("../db/neo4j-query.js");
+      const q = String(a.query || "").trim();
+      const limit = Math.min(Math.max(Number(a.limit) || 10, 1), 30);
+      const entities = await neo4jQuery(11001,
+        `MATCH (e:Entity) WHERE e.name CONTAINS $q RETURN e.name as name, e.id as id LIMIT ${limit}`,
+        { q });
+      const items = Array.isArray(entities) ? entities : [];
+      if (items.length === 0) return `【知识图谱】0 条（Graphiti 11001）`;
+      const lines: string[] = [`【知识图谱】${items.length} 条（Graphiti Neo4j）`];
+      for (const e of items.slice(0, 10)) {
+        lines.push(`- ${e.name ?? "?"}（${String(e.id ?? "").slice(0, 12)}）`);
+      }
+      return lines.join("\n");
+    }),
+  },
+  {
+    name: "view_task_create", label: "创建 Agent 任务", risk: "safe",
+    description: "创建并执行 Agent 任务（自主规划+工具执行），返回任务 ID 与目标",
+    params: {
+      goal: { type: "string", required: true, desc: "任务目标（如 分析资本下乡对集体经济的影响）" },
+      template: { type: "string", desc: "模板(lit_review/empirical/policy/concept)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { createAgentTask, runAgentTask } = await import("./agent-task-service.js");
+      const goal = String(a.goal || "").trim();
+      const tpl = String(a.template || "");
+      const task = tpl && /^(lit_review|empirical|policy|concept)$/.test(tpl)
+        ? await createAgentTaskFromTemplateSafe(tpl, goal)
+        : await createAgentTask({ goal });
+      if (!task) return "（任务创建失败）";
+      // 后台启动执行，返回任务信息（不阻塞工具循环）
+      void runAgentTask(task.id, async (step) => {
+        const { buildAgentTools, chooseToolByLlm, executeToolWithFallback } = await import("./agent-tool-router.js");
+        const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
+        const chosen = await chooseToolByLlm(task.goal, step.title, tools);
+        if (chosen) {
+          const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools);
+          if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
+        }
+        const SELF_BASE = process.env.AGENT_API_BASE || "http://localhost:4173";
+        const res = await fetch(SELF_BASE + "/api/reason/query", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceId: task.projectId || undefined, query: step.query, mode: "adaptive" }),
+        });
+        const data: any = await res.json();
+        return { result: (data?.trace?.hypothesis?.content || data?.error || "（无结果）").substring(0, 120), detail: data?.trace?.hypothesis?.content || "（无结果）", source: "SAG 推理" };
+      }).catch(() => {});
+      return `【Agent 任务已创建】${task.id.slice(0, 8)}…\n目标: ${task.goal}\n已开始后台执行（查看: 任务面板）`;
+    }),
+  },
+  {
+    name: "view_task_status", label: "任务状态查询", risk: "safe",
+    description: "查询 Agent 任务列表与执行状态（运行中/完成/失败）",
+    params: {
+      limit: { type: "number", desc: "返回条数(默认5)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { listAgentTasks } = await import("./agent-task-service.js");
+      const tasks = await listAgentTasks(undefined, undefined, undefined, 0, Math.min(Math.max(Number(a.limit) || 5, 1), 20));
+      const items = (tasks ?? []).slice(0, 10) as unknown as Array<{ id: string; goal: string; status: string }>;
+      return `【任务列表】${items.length} 条\n` + items.map((t, i) => `${i + 1}. ${String(t.goal ?? "?").slice(0, 50)} — ${t.status}（${String(t.id).slice(0, 8)}）`).join("\n");
+    }),
+  },
+  {
+    name: "view_documents_stats", label: "文档统计", risk: "safe",
+    description: "统计项目文档/切片/事件/实体数量（文献库规模概览）",
+    params: {
+      sourceId: { type: "string", desc: "项目ID(默认主项目)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { webuiService } = await import("./webui-service.js");
+      const sourceId = String(a.sourceId || "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a");
+      const stats = await webuiService.getProjectStats(sourceId);
+      return `【文档统计】${JSON.stringify(stats).slice(0, 500)}`;
+    }),
+  },
+  {
+    name: "view_alerts", label: "系统告警", risk: "safe",
+    description: "查看系统告警列表（未读告警/错误提示）",
+    params: {
+      limit: { type: "number", desc: "返回条数(默认5)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const SELF_BASE = process.env.AGENT_API_BASE || "http://localhost:4173";
+      const res = await fetch(`${SELF_BASE}/api/alerts`);
+      const data: any = await res.json();
+      const items = (data?.alerts ?? []).slice(0, Math.min(Math.max(Number(a.limit) || 5, 1), 10)) as Array<{ message?: string; level?: string; createdAt?: string }>;
+      return `【系统告警】${items.length} 条\n` + items.map((x, i) => `${i + 1}. [${x.level ?? "info"}] ${x.message ?? "?"}`).join("\n");
+    }),
+  },
+  {
+    name: "view_traces", label: "Trace 查询", risk: "safe",
+    description: "查询最近检索/推理链路 Trace（执行耗时/步骤数）",
+    params: {
+      limit: { type: "number", desc: "返回条数(默认5)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { traceService } = await import("./trace-service.js");
+      const traces = await traceService.list({ limit: Math.min(Math.max(Number(a.limit) || 5, 1), 10) }) as unknown as Array<{ id: string; name?: string; durationMs?: number }>;
+      return `【Trace】${traces.length} 条\n` + traces.map((t, i) => `${i + 1}. ${String(t.name ?? "?").slice(0, 40)} — ${t.durationMs ?? 0}ms`).join("\n");
+    }),
+  },
 ];
+
+/** 模板任务创建（防循环依赖，内部转调） */
+async function createAgentTaskFromTemplateSafe(templateId: string, goal: string) {
+  const { createAgentTaskFromTemplate } = await import("./agent-task-service.js");
+  return createAgentTaskFromTemplate({ templateId, goal });
+}
