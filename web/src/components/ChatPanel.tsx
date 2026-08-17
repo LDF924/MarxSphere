@@ -537,11 +537,17 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         {isUser ? (
                           <div className="whitespace-pre-wrap">{message.content}</div>
                         ) : (
-                          <MarkdownRich
-                            content={message.content}
-                            citations={citationsFor(message)}
-                            onOpenCitation={props.onOpenCitation}
-                          />
+                          <>
+                            {/* V399: 历史消息思考链（后端 metadata.reasoning 回填） */}
+                            {typeof message.metadata?.reasoning === "string" && message.metadata.reasoning.length > 0 ? (
+                              <ReasoningBlock text={message.metadata.reasoning} />
+                            ) : null}
+                            <MarkdownRich
+                              content={message.content}
+                              citations={citationsFor(message)}
+                              onOpenCitation={props.onOpenCitation}
+                            />
+                          </>
                         )}
                         {isUser && message.images?.length ? (
                           <div className="mt-2 flex flex-wrap gap-2">
@@ -558,20 +564,20 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         {!isUser && citationsFor(message).length > 0 ? (
                           <CitationStrip citations={citationsFor(message)} onOpenCitation={props.onOpenCitation} />
                         ) : null}
-                        {!isUser && toolCallsFor(message.id).length > 0 ? (
+                        {toolCallsFor(message.id).length > 0 ? (
                           <ToolChain calls={toolCallsFor(message.id)} />
                         ) : null}
                         <div className={cn("mt-1 text-[10px]", isUser ? "text-primary-foreground/60" : "text-muted-foreground/70")}>
                           {formatDate(message.createdAt)}
                         </div>
                       </div>
-                      {/* V398: 撤回按钮 — 仅最后一条且为用户消息、未运行时 */}
+                      {/* V398: 撤回按钮 — 最后一条用户消息常显（不依赖悬停） */}
                       {isUser && !props.isRunning && message.id === props.messages[props.messages.length - 1]?.id ? (
                         <button
                           type="button"
                           onClick={props.onRecall}
                           title="撤回这条消息（回复前可撤回）"
-                          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-red-400"
                         >
                           <RotateCcw className="h-3 w-3" />
                           撤回

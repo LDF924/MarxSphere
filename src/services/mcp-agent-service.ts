@@ -227,6 +227,8 @@ export class McpAgentService {
 
     const toolCalls: McpToolCallRecord[] = [];
     let assistantText = "";
+    /** V399: 思考链（最终回答的 reasoning_content，随 assistant 消息落库） */
+    let chatReasoningText = "";
     const projectId = activeSession.sourceIds[0];
     if (!projectId) {
       // ── V398: 通用 AI 对话路径（kind=chat / 无项目绑定）──
@@ -237,7 +239,7 @@ export class McpAgentService {
       if (!settings.hasRemoteLlm) {
         assistantText = "未配置远程 LLM（llmBaseUrl/llmApiKey），请在设置中填写后可对话。";
       } else {
-        assistantText = await this.runChatLlmFlow({
+        const flowResult = await this.runChatLlmFlow({
           session: activeSession,
           messageId: userMessage.id,
           history: detail.messages,
@@ -249,6 +251,9 @@ export class McpAgentService {
           signal: input.signal,
           emit
         });
+        // V399: 思考链随 assistant 消息落库（metadata.reasoning 供历史消息折叠展示）
+        chatReasoningText = flowResult.reasoning;
+        assistantText = flowResult.text;
       }
     } else {
       emit?.({ type: "stage", label: "连接 MCP", detail: "正在启动 MCP 客户端并发现可用工具" });
@@ -311,7 +316,11 @@ export class McpAgentService {
       sessionId: input.sessionId,
       role: "assistant",
       content: assistantContent,
-      metadata: answerCitations.length > 0 ? { citations: answerCitations } : undefined
+      metadata: {
+        ...(answerCitations.length > 0 ? { citations: answerCitations } : {}),
+        // V399: 思考链落库（历史消息折叠展示）
+        ...(chatReasoningText.length > 0 ? { reasoning: chatReasoningText } : {})
+      }
     });
     emit?.({ type: "message", message: assistant });
 
@@ -346,7 +355,7 @@ export class McpAgentService {
     toolCalls: McpToolCallRecord[];
     signal?: AbortSignal;
     emit?: StreamEmitter;
-  }): Promise<string> {
+  }): Promise<{ text: string; reasoning: string }> {
     assertNotAborted(input.signal);
     const contextParts: string[] = [];
 
@@ -479,7 +488,7 @@ export class McpAgentService {
         temperature: 0.1
       });
       if (plan?.error) {
-        return `（工具规划失败: ${plan.error.slice(0, 200)}）`;
+        return { text: `（工具规划失败: ${plan.error.slice(0, 200)}）`, reasoning: "" };
       }
       let decision: { tool?: string; args?: Record<string, unknown>; done?: boolean } = {};
       try {
@@ -581,6 +590,8 @@ export class McpAgentService {
       }
     ];
 
+    // V399: 采集思考链（落库到 assistant 消息 metadata，历史消息可折叠查看）
+    let reasoningText = "";
     const result = await callLlm({
       model,
       agentContext: { action: "chat_final" },
@@ -591,16 +602,18 @@ export class McpAgentService {
         input.emit?.({ type: "assistant_delta", delta });
       },
       onReasoning: (reasoning) => {
+        reasoningText += reasoning;
         input.emit?.({ type: "reasoning_delta", delta: reasoning });
       }
     });
 
     assertNotAborted(input.signal);
     if (result?.error) {
-      return `（模型调用失败: ${result.error.slice(0, 300)}）`;
+      return { text: `（模型调用失败: ${result.error.slice(0, 300)}）`, reasoning: "" };
     }
     finalText = result?.text ?? "";
-    return finalText;
+    // 思考链由 runUserMessage 落库到 assistant 消息 metadata（此处不再提前写库）
+    return { text: finalText, reasoning: reasoningText.slice(0, 4000) };
   }
 
   private async createRunner(projectId: string, signal?: AbortSignal) {
