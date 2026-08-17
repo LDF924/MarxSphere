@@ -1116,6 +1116,8 @@ export async function buildAgentTools(opts?: {
         return data?.choices?.[0]?.message?.content || String(a.text).slice(0, 200);
       },
     },
+    // V399: 33 视图能力工具化 — 政策库/知识页/图谱/外部学术/技能/资料库/C刊/记忆
+    ...(await import("./agent-view-tools.js")).VIEW_TOOLS,
   ];
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);

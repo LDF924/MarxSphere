@@ -194,7 +194,7 @@ export function VaultPanel() {
         <div className="flex items-center gap-2">
           <BookMarked className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">资料库</h2>
-          <span className="text-xs text-muted-foreground">E:\1.Obsidian Vault（课题研究 / 课题文献库 / AI科研指令包）</span>
+          <span className="text-xs text-muted-foreground">Obsidian 资料库（课题研究 / 课题文献库 / AI科研指令包）</span>
           <ButtonSmall onClick={() => void loadTree()}><RefreshCw className="h-3.5 w-3.5" /> 刷新</ButtonSmall>
         </div>
 

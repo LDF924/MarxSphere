@@ -1,13 +1,15 @@
 // literature-service.ts — MarxSphere 本地文献库服务
-// 读取 E 盘课题文献库 500 篇论文的元数据，提供筛选检索。
+// 读取用户主目录课题文献库的论文元数据，提供筛选检索。
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式，但数据是本地文献。
 //
-// 数据源: E:\1.Obsidian Vault\课题文献库\学术期刊\{主题}\Markdown\{论文}\
+// 数据源: ~/1.Obsidian Vault/课题文献库/学术期刊/{主题}/Markdown/{论文}/
 //   每篇: {title}_信息.md (frontmatter) + {title}.index.md (元数据表) + {title}.original.md
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const ACADEMIC_JOURNAL_DIR = process.env.LITERATURE_DIR || "E:\\1.Obsidian Vault\\课题文献库（CSSCI、北大核心、CSCD、AMI、WJCI）\\学术期刊";
+// 脱敏: 个人盘符路径改为 os.homedir() 相对（LITERATURE_DIR env 可覆盖）
+const ACADEMIC_JOURNAL_DIR = process.env.LITERATURE_DIR || path.join(os.homedir(), "1.Obsidian Vault", "课题文献库（CSSCI、北大核心、CSCD、AMI、WJCI）", "学术期刊");
 
 export interface LiteratureRecord {
   id: string;              // 论文唯一 id（用 sourceHash 或文件名 hash）

@@ -1,14 +1,16 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /**
- * vault-service — 读取 Obsidian 政策资料库（E 盘白名单目录）
+ * vault-service — 读取 Obsidian 政策资料库（用户主目录白名单目录）
  *
- * 白名单：E:\1.Obsidian Vault 下的课题研究 / 课题文献库 / AI科研指令包V2-Obsidian
+ * 白名单：~/1.Obsidian Vault 下的课题研究 / 课题文献库 / AI科研指令包V2-Obsidian
  * 提供：目录树 + 文件正文。服务端读取（前端不直接碰文件系统）。
  */
 
-const VAULT_ROOT = process.env.VAULT_ROOT || "E:\\1.Obsidian Vault";
+// 脱敏: 个人盘符路径改为 os.homedir() 相对（VAULT_ROOT env 可覆盖）
+const VAULT_ROOT = process.env.VAULT_ROOT || path.join(os.homedir(), "1.Obsidian Vault");
 
 const WHITELIST_DIRS = [
   "课题研究",

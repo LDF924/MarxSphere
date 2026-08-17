@@ -1,9 +1,11 @@
 // policy-library-service.ts — 政策资料库服务
 // 浏览课题研究政策目录（已有 317 文件）+ gov.cn 检索 + 保存政策到库
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const POLICY_DIR = process.env.POLICY_DIR || "E:\\1.Obsidian Vault\\课题研究\\1.农业农村现代化进程中规范与引导工商资本路径研究\\著作、政策、会议";
+// 脱敏: 个人盘符路径改为 os.homedir() 相对（POLICY_DIR env 可覆盖）
+const POLICY_DIR = process.env.POLICY_DIR || path.join(os.homedir(), "1.Obsidian Vault", "课题研究", "1.农业农村现代化进程中规范与引导工商资本路径研究", "著作、政策、会议");
 
 export interface PolicyTreeNode {
   name: string;
