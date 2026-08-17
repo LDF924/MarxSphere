@@ -43,7 +43,8 @@ export interface ChatPanelProps {
   onDeleteSession: (sessionId: string) => void;
   onSend: (content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean) => void;
   onStop: () => void;
-  onRecall: () => void;
+  /** V399: 撤回/删除指定消息（参数=消息 id；用户消息撤回、AI 回答删除） */
+  onRecall: (messageId: string) => void;
   onApproveTool: (approvalId: string, approved: boolean) => void;
   onModelChange: (model: string) => void;
   onWebSearchChange: (value: boolean) => void;
@@ -628,17 +629,19 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                           {formatDate(message.createdAt)}
                         </div>
                       </div>
-                      {/* V398: 撤回按钮 — 最后一条用户消息常显（不依赖悬停） */}
-                      {isUser && !props.isRunning && message.id === props.messages[props.messages.length - 1]?.id ? (
-                        <button
-                          type="button"
-                          onClick={props.onRecall}
-                          title="撤回这条消息（回复前可撤回）"
-                          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-red-400"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          撤回
-                        </button>
+                      {/* V399: 消息操作 — 每条用户消息可撤回、每条 AI 回答可删除（不限最后一条） */}
+                      {!props.isRunning ? (
+                        <div className="flex items-center gap-1 opacity-60 transition-opacity hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => props.onRecall(message.id)}
+                            title={isUser ? "撤回这条消息" : "删除这条回答"}
+                            className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-red-400"
+                          >
+                            {isUser ? <RotateCcw className="h-3 w-3" /> : <Trash2 className="h-3 w-3" />}
+                            {isUser ? "撤回" : "删除"}
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                   );

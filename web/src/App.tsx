@@ -404,17 +404,18 @@ function AppShell() {
     chatAbortRef.current?.abort();
   }
 
-  /** V398: 撤回最后一条用户消息（AI 回复前可撤回；中止流式 + 删除消息） */
-  async function recallChatMessage() {
+  /** V399: 撤回/删除任意消息（提问可撤回、AI 回答可删除） */
+  async function recallChatMessage(messageId: string) {
     if (!chatSessionId || chatIsRunning) return;
-    const last = chatMessages[chatMessages.length - 1];
-    if (!last || last.role !== "user") return;
-    chatAbortRef.current?.abort();
+    // 若删除的是当前正在发送/回复关联的消息，先中止
+    if (messageId === chatMessages[chatMessages.length - 1]?.id) {
+      chatAbortRef.current?.abort();
+    }
     try {
-      await api.deleteMcpMessage(chatSessionId, last.id);
-      setChatMessages((prev) => prev.filter((m) => m.id !== last.id));
+      await api.deleteMcpMessage(chatSessionId, messageId);
+      setChatMessages((prev) => prev.filter((m) => m.id !== messageId));
       // 该消息的工具调用一并移除（撤回后重发避免残留）
-      setChatToolCalls((prev) => prev.filter((t) => t.messageId !== last.id));
+      setChatToolCalls((prev) => prev.filter((t) => t.messageId !== messageId));
     } catch { /* 删除失败静默（刷新后仍可见） */ }
   }
 
@@ -1656,7 +1657,7 @@ function AppShell() {
                 onDeleteSession={(sessionId) => void deleteChatSession(sessionId)}
                 onSend={(content, images, webSearch) => void sendChatMessage(content, images, webSearch)}
                 onStop={stopChatMessage}
-                onRecall={() => void recallChatMessage()}
+                onRecall={(messageId) => void recallChatMessage(messageId)}
                 onApproveTool={(approvalId, approved) => void approveChatTool(approvalId, approved)}
                 approval={chatApproval}
                 onModelChange={setChatModel}
