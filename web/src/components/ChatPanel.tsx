@@ -783,7 +783,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 <select
                   value={props.reasoningEffort}
                   onChange={(e) => props.onReasoningEffortChange(e.target.value as "low" | "high" | "max")}
-                  title="思考强度：低（快速）→ 高（默认）→ 最大（最充分思考，更耗时）"
+                  title="Reasoning effort: low(fast) → high(default) → max(deepest, slower)"
                   className={cn(
                     "h-7 rounded-md border px-2 text-xs outline-none focus:border-primary/60",
                     props.reasoningEffort === "max" ? "border-purple-400/50 bg-purple-500/10 text-purple-400"
@@ -791,9 +791,9 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                       : "border-border/60 bg-background text-foreground"
                   )}
                 >
-                  <option value="low">思考·低</option>
-                  <option value="high">思考·高</option>
-                  <option value="max">思考·最大</option>
+                  <option value="low">low</option>
+                  <option value="high">high</option>
+                  <option value="max">max</option>
                 </select>
                 <div className="ml-auto flex items-center gap-1.5">
                   <label className="text-xs text-muted-foreground">模型</label>
