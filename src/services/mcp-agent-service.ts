@@ -580,8 +580,9 @@ export class McpAgentService {
       seenToolCalls.add(callKey);
       recentToolNames.push(toolDef.name);
 
-      // 3c. 策略检查（对话内默认低权限角色 reader — manager 级工具触发审批弹窗）
-      const policy = checkToolPolicy(toolDef.name, "reader");
+      // 3c. 策略检查（对话内 analyst 角色 — 允许 llm_write/summarize 等分析写作工具，
+      // 仅 run_code/file_write 等 manager 级工具触发审批弹窗）
+      const policy = checkToolPolicy(toolDef.name, "analyst");
       if (!policy.allowed) {
         contextParts.push(`[工具 ${toolDef.name} 被策略拦截: ${policy.reason}]`);
         continue;
@@ -596,7 +597,7 @@ export class McpAgentService {
       let needsApproval = false;
       try {
         // reader 角色 → run_code/file_write 等 manager 级工具返回 requiresApproval → 审批弹窗
-        const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "reader" });
+        const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "analyst" });
         if (exec.requiresApproval) {
           needsApproval = true;
           // V399: 审批弹窗 — 前端批准后强制执行（绕过策略层，直调工具 run）
@@ -639,6 +640,9 @@ export class McpAgentService {
     assertNotAborted(input.signal);
     const systemPrompt = [
       "你是 MarxSphere AI 助手，一名马克思主义理论研究科研助手。",
+      "能力说明：你可以调用系统工具获取实时信息——文献库检索、知识库检索、SAG 推理、",
+      "政策库、知识图谱、联网搜索（web_search）、实证分析、技能执行等。",
+      "涉及最新信息/外部资料时使用联网搜索，不要声称无法访问互联网。",
       "根据用户任务和工具执行结果，给出完整、结构化的最终回答。",
       "回答使用 Markdown：代码块用 ```lang 标注，数学公式用 $...$ 或 $$...$$。",
       "引用工具结果时标注来源（如 [检索结果]、[推理结论]、[政策库]）。",

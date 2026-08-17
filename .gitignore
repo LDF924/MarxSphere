@@ -75,3 +75,6 @@ build/icon.ico
 .env.bak
 .env.v*
 *.local.json
+
+# 本地备份（数据库 dump + .env，绝不提交）
+backups/

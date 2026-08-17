@@ -265,7 +265,8 @@ function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number 
 
 /** V398: 「已深度思考」折叠区（DeepSeek reasoning_content） */
 function ReasoningBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
+  // V399: 默认展开 — 流式完成落库后历史消息不再"折叠闪现"
+  const [open, setOpen] = useState(true);
   return (
     <div className="mb-2 rounded-lg border border-border/60 bg-muted/30">
       <button
