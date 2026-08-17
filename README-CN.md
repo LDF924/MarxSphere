@@ -16,6 +16,17 @@
 
 > 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 26 工具矩阵 / 10 实证功能 / 桌面端细节 / 评测指标）
 
+### 🖼 界面速览
+
+| | | |
+|---|---|---|
+| **AI 对话**（默认首页） | **52 步推理** | **Ask 检索** |
+| ![AI 对话](docs/assets/sag-chat.png) | ![推理](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
+| **知识图谱** | **文献库** | **科研场景工作台** |
+| ![图谱](docs/assets/sag-graph.png) | ![文献库](docs/assets/sag-literature.png) | ![场景](docs/assets/sag-scenarios.png) |
+
+> 全部 36 张视图截图见 [docs/assets/](docs/assets/)（33 个 tab + 子视图全覆盖）。
+
 ### 💬 AI 对话（默认首页）
 
 > 进入系统即达的 AI 会话页，支持一句话调度系统全部能力。
