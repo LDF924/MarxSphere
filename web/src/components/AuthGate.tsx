@@ -147,6 +147,63 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     logout
   };
 
+  // V399: doSubmit/doForgot/doReset 必须在首个 return 之前声明 —
+  // 模态（首个 return 内）引用它们，声明在 return 后则 TDZ 未初始化，点击无反应
+  const doSubmit = async () => {
+    setBusy(true); setError("");
+    try {
+      const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const r = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, ...(mode === "register" && email ? { email } : {}) }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      // V399: 统一登录成功处理（关模态）
+      handleAuthSuccess(d);
+    } catch (e: any) { setError(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  // V390: 忘记密码申请（邮箱 → 发重置链接）
+  const doForgot = async () => {
+    setBusy(true); setError(""); setResetMsg("");
+    try {
+      const r = await fetch("/api/auth/forgot-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      if (d.smtpError) { setResetMsg("已提交。提示: 服务器 SMTP 未配置（" + d.smtpError + "），请联系管理员开启邮件服务。"); return; }
+      setResetMsg("如果该邮箱已注册，重置链接已发送，请查收（15分钟内有效）。");
+    } catch (e: any) { setError(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  // V390: 重置密码提交
+  const doReset = async () => {
+    setBusy(true); setError(""); setResetMsg("");
+    try {
+      const r = await fetch("/api/auth/reset-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: resetToken, newPassword: password }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      setResetMsg("密码已重置，请用新密码登录。");
+      setPassword("");
+      setTimeout(() => {
+        setResetView("none");
+        setMode("login");
+        const url = new URL(window.location.href);
+        url.search = "";
+        window.history.replaceState({}, "", url.toString());
+      }, 1500);
+    } catch (e: any) { setError(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
   if (!auth.enabled || auth.user) {
     // V399: 正常放行 — 登录状态经 context 暴露（header 登录按钮/用户菜单）
     return (
@@ -202,61 +259,6 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
       </AuthContext.Provider>
     );
   }
-
-  const doSubmit = async () => {
-    setBusy(true); setError("");
-    try {
-      const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const r = await fetch(url, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, ...(mode === "register" && email ? { email } : {}) }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
-      // V399: 统一登录成功处理（关模态）
-      handleAuthSuccess(d);
-    } catch (e: any) { setError(String(e?.message || e)); }
-    finally { setBusy(false); }
-  };
-
-  // V390: 忘记密码申请（邮箱 → 发重置链接）
-  const doForgot = async () => {
-    setBusy(true); setError(""); setResetMsg("");
-    try {
-      const r = await fetch("/api/auth/forgot-password", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
-      if (d.smtpError) { setResetMsg("已提交。提示: 服务器 SMTP 未配置（" + d.smtpError + "），请联系管理员开启邮件服务。"); return; }
-      setResetMsg("如果该邮箱已注册，重置链接已发送，请查收（15分钟内有效）。");
-    } catch (e: any) { setError(String(e?.message || e)); }
-    finally { setBusy(false); }
-  };
-
-  // V390: 重置密码提交
-  const doReset = async () => {
-    setBusy(true); setError(""); setResetMsg("");
-    try {
-      const r = await fetch("/api/auth/reset-password", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: resetToken, newPassword: password }),
-      });
-      const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
-      setResetMsg("密码已重置，请用新密码登录。");
-      setPassword("");
-      setTimeout(() => {
-        setResetView("none");
-        setMode("login");
-        const url = new URL(window.location.href);
-        url.search = "";
-        window.history.replaceState({}, "", url.toString());
-      }, 1500);
-    } catch (e: any) { setError(String(e?.message || e)); }
-    finally { setBusy(false); }
-  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
