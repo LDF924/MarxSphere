@@ -507,8 +507,19 @@ export class McpAgentService {
         skillInjectedContext = `（技能 ${skillMatch[1]} 不存在，可用 view_skill_search 检索）`;
       }
     }
+    // V399: /命令 → @tool: 语法解析 — 用户可指定必须使用的工具（如 @tool:policy_search 查政策）
+    let forcedTool: string | null = null;
+    const toolMatch = input.userContent.match(/@tool:([\w_]+)\s*([\s\S]*)/);
+    if (toolMatch) {
+      forcedTool = toolMatch[1];
+      input.emit?.({ type: "stage", label: `指定工具: ${forcedTool}`, detail: "将强制使用该工具执行" });
+    }
     // @skill 语法剥离后作为实际任务（不带技能指令前缀）
-    const actualTask = skillMatch ? skillMatch[2].trim() || input.userContent : input.userContent;
+    const actualTask = skillMatch ? skillMatch[2].trim() || input.userContent
+      : toolMatch ? toolMatch[2].trim() || input.userContent
+      : input.userContent;
+    // 强制工具注入：规划时告知 LLM 必须使用指定工具
+    const forcedToolHint = forcedTool ? `注意：用户指定必须使用工具「${forcedTool}」执行此任务，不要跳过或换用其他工具。` : "";
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       assertNotAborted(input.signal);
       input.emit?.({ type: "stage", label: `工具规划 ${round + 1}`, detail: "正在决定下一步工具调用" });
@@ -527,6 +538,8 @@ export class McpAgentService {
               ...(contextParts.length > 0 ? [`已收集上下文:\n${contextParts.join("\n\n").slice(0, 6000)}`] : ["（尚无工具结果）"]),
               // V399: 技能指令注入（/命令 → @skill: 语法预加载）
               skillInjectedContext ? `\n${skillInjectedContext}` : "",
+              // V399: 强制工具提示（@tool: 语法）
+              forcedToolHint || "",
               // V399: 技能执行约束 — 已加载技能的代码模板需用 run_code/runtime_exec 落地执行
               loadedSkills.size > 0
                 ? `注意：已加载技能「${[...loadedSkills].join("、")}」的完整指令。若技能含代码模板且用户要求执行分析，下一步必须调用 run_code 或 runtime_exec 执行代码（不要重复加载同一技能）。`
@@ -668,7 +681,8 @@ export class McpAgentService {
       model,
       agentContext: { action: "chat_final" },
       messages: finalMessages as any,
-      maxTokens: 2000,
+      // V399: 思考链简短根因 — maxTokens 2000 被思考+回答共享；提至 4000 让思考更充分
+      maxTokens: 4000,
       thinking: "enabled",
       onStream: (delta) => {
         input.emit?.({ type: "assistant_delta", delta });
