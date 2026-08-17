@@ -64,7 +64,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
           // 认证接口的 401 由自身流程处理(登录失败/未登录), 业务接口 401 才视为 token 失效
           if (!url.includes("/api/auth/")) {
             localStorage.removeItem("sag_token");
-            setAuth((a) => ({ enabled: a.enabled, user: null }));
+            // V399: token 失效 → 回本地模式（不跳全屏登录页）
+            setAuth({ enabled: false, user: null });
           }
         }
         return resp;
@@ -95,9 +96,9 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => {
         if (r.ok) return r.json().then((d) => setAuth({ enabled: true, user: d.user }));
-        // V390: token 失效 → 清 token 回登录页（原仅 removeItem, 页面停留"已登录"假象）
+        // V390: token 失效 → 清 token 回本地模式（V399: 不跳全屏登录页）
         localStorage.removeItem("sag_token");
-        setAuth((a) => ({ enabled: a.enabled, user: null }));
+        setAuth({ enabled: false, user: null });
       })
       .catch(() => setAuth({ enabled: false, user: null }));
   }, []);
@@ -121,7 +122,9 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem("sag_token");
-    setAuth({ enabled: true, user: null });
+    // V399: 登出回本地模式（enabled:false）— 原 enabled:true+user:null 会触发
+    // 「!auth.enabled || auth.user」条件为 false → 强制渲染全屏登录页（认证未启用时不该出现）
+    setAuth({ enabled: false, user: null });
   };
 
   const contextValue: AuthContextValue = {
