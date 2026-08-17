@@ -534,26 +534,37 @@ export async function buildAgentTools(opts?: {
           }
           if (!fs.existsSync(target)) return "（文件不存在）";
           const ext = path.extname(target).toLowerCase();
-          // 图片 → LLM 视觉描述（走多模态 API）
+          // 图片 → LLM 视觉描述（V399: 走 SenseNova 视觉模型 — DeepSeek 纯文本不支持图片）
           if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].includes(ext)) {
             const base64 = fs.readFileSync(target).toString("base64");
             const mime = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : "image/jpeg";
             try {
-              const { callLlm } = await import("../ai/llm-common.js");
-              const { agentModelRouter } = await import("./agent-model-router.js");
-              const r = await callLlm({
-                model: agentModelRouter.routeAgentModel("summarize", "图片描述"),
-                agentContext: { action: "agent_tool_attachment" },
-                messages: [{
-                  role: "user",
-                  content: [
-                    { type: "text", text: "请描述这张图片的关键内容（研究相关: 图表/公式/文本截图）:" },
-                    { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
-                  ] as any,
-                }],
-                maxTokens: 500,
-              });
-              return `【图片附件】${rel}\n${r?.text || "（图片描述失败）"}`;
+              if (process.env.SENSENOVA_API_KEY) {
+                const senseBase = process.env.SENSENOVA_BASE_URL ?? "https://token.sensenova.cn/v1";
+                const senseModel = process.env.SENSENOVA_MODEL ?? "sensenova-6.8-flash-lite";
+                const res = await fetch(`${senseBase}/chat/completions`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.SENSENOVA_API_KEY}` },
+                  body: JSON.stringify({
+                    model: senseModel,
+                    max_tokens: 1024,
+                    messages: [
+                      { role: "system", content: "你是专业的图像分析助手，输出中文。" },
+                      { role: "user", content: [
+                        { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
+                        { type: "text", text: "请描述这张图片的关键内容（研究相关: 图表/公式/文本截图）:" },
+                      ] },
+                    ],
+                  }),
+                  signal: (AbortSignal as any).timeout(60000),
+                });
+                if (res.ok) {
+                  const j: any = await res.json();
+                  const text = j?.choices?.[0]?.message?.content ?? "";
+                  return `【图片附件】${rel}\n${text || "（图片描述失败）"}`;
+                }
+              }
+              return `（图片附件不可用: DeepSeek 纯文本模型不支持图片。配置 SENSENOVA_API_KEY 启用视觉能力）`;
             } catch (e: any) {
               return `（图片描述失败: ${String(e?.message || e).slice(0, 120)} — 图片 ${rel} 已存在, 可手动查看）`;
             }
@@ -1433,21 +1444,36 @@ export async function analyzeImageAtPath(relPath: string, mode = "describe"): Pr
       chart: "分析图片中的图表（柱状图/折线图/散点图/表格）: 1) 图表类型 2) 轴含义 3) 数据点提取为结构化 JSON（完整数值）。只输出 JSON: {\"chartType\":\"...\",\"axes\":{...},\"data\":[...],\"insight\":\"...\"}",
       describe: "综合描述图片: 1) 图片类型(图表/文本截图/照片) 2) 关键内容 3) 与研究相关的要点。",
     };
-    const { callLlm } = await import("../ai/llm-common.js");
-    const { agentModelRouter } = await import("./agent-model-router.js");
-    const r = await callLlm({
-      model: agentModelRouter.routeAgentModel("summarize", "图片分析"),
-      agentContext: { action: "agent_tool_image_analyze" },
-      messages: [{
-        role: "user",
-        content: [
-          { type: "text", text: modePrompt[mode] || modePrompt.describe },
-          { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
-        ] as any,
-      }],
-      maxTokens: 800,
-    });
-    return `【图片理解·${mode}】${rel} (${sizeKB}KB)\n${r?.text || "（分析失败）"}`;
+    // V399: 图片理解走 SenseNova 视觉模型（eyes-for-deepseek 方案）— DeepSeek 纯文本不支持 image_url
+    // 优先 SENSENOVA_API_KEY；未配置时降级提示（不再假调用 DeepSeek 报错）
+    if (process.env.SENSENOVA_API_KEY) {
+      const senseBase = process.env.SENSENOVA_BASE_URL ?? "https://token.sensenova.cn/v1";
+      const senseModel = process.env.SENSENOVA_MODEL ?? "sensenova-6.8-flash-lite";
+      const res = await fetch(`${senseBase}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.SENSENOVA_API_KEY}` },
+        body: JSON.stringify({
+          model: senseModel,
+          max_tokens: 2048,
+          messages: [
+            { role: "system", content: "你是专业的图像分析助手，输出中文。" },
+            { role: "user", content: [
+              { type: "image_url", image_url: { url: `data:${mime};base64,${base64}` } },
+              { type: "text", text: modePrompt[mode] || modePrompt.describe },
+            ] },
+          ],
+        }),
+        signal: (AbortSignal as any).timeout(60000),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        return `（视觉分析失败: ${res.status} ${errText.slice(0, 120)} — 检查 SENSENOVA_API_KEY）`;
+      }
+      const j: any = await res.json();
+      const text = j?.choices?.[0]?.message?.content ?? "";
+      return `【图片理解·${mode}】${rel} (${sizeKB}KB)\n${text || "（分析无输出）"}`;
+    }
+    return `（图片理解不可用: DeepSeek 纯文本模型不支持图片输入。配置 SENSENOVA_API_KEY 启用视觉能力 — 免费获取: https://platform.sensenova.cn/console）`;
   } catch (e: any) {
     return `（图片分析异常: ${String(e?.message || e).slice(0, 150)}）`;
   }
