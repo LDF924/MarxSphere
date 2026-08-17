@@ -311,10 +311,10 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
   }, []);
   const skillFiltered = useMemo(() => {
     const q = skillQuery.trim().toLowerCase();
-    if (!q) return skillList.slice(0, 40);
+    if (!q) return skillList;  // V399: 显示全部技能（194 个，面板可滚动）
     return skillList.filter((s) =>
       s.name.toLowerCase().includes(q) || (s.zhName ?? "").toLowerCase().includes(q)
-    ).slice(0, 40);
+    );
   }, [skillList, skillQuery]);
   // 选中技能 → 拼 @skill:name 语法，面板关闭
   const selectSkill = (s: { name: string }) => {
@@ -872,7 +872,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         {skillFiltered.length === 0 ? (
                           <div className="px-3 py-2 text-xs text-muted-foreground">无匹配技能</div>
                         ) : (
-                          skillFiltered.slice(0, 12).map((s, i) => (
+                          skillFiltered.slice(0, 30).map((s, i) => (
                             <button
                               key={s.name}
                               type="button"
