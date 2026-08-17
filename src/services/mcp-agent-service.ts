@@ -8,6 +8,7 @@ import {
   addMcpToolCall,
   clearMcpSession,
   createMcpSession,
+  deleteMcpMessage,
   deleteMcpSession,
   getMcpSessionDetail,
   listMcpSessions,
@@ -51,6 +52,7 @@ export type McpRunStreamEvent =
   | { type: "stage"; label: string; detail?: string }
   | { type: "message"; message: { id: string; sessionId: string; role: string; content: string; metadata: Record<string, unknown>; createdAt: string } }
   | { type: "assistant_delta"; delta: string }
+  | { type: "reasoning_delta"; delta: string }
   | { type: "tool_start"; toolName: string; arguments: Record<string, unknown> }
   | { type: "search_progress"; event: SearchProgressEvent }
   | { type: "tool_end"; toolCall: McpToolCallRecord }
@@ -115,6 +117,15 @@ export class McpAgentService {
 
   async deleteSession(sessionId: string, tenantId = config.DEFAULT_TENANT_ID) {
     const deleted = await deleteMcpSession({ sessionId, tenantId });
+    if (!deleted) {
+      return null;
+    }
+    return { deleted: true };
+  }
+
+  /** V398: 撤回单条消息（AI 对话页回复前撤回；连带工具调用删除） */
+  async deleteMessage(sessionId: string, messageId: string, tenantId = config.DEFAULT_TENANT_ID) {
+    const deleted = await deleteMcpMessage({ sessionId, messageId, tenantId });
     if (!deleted) {
       return null;
     }
@@ -388,8 +399,13 @@ export class McpAgentService {
       agentContext: { action: "chat_general" },
       messages: messages as any,
       maxTokens: 2000,
+      // V398: 对话页开启思考链（deepseek reasoning_content）— 折叠区展示
+      thinking: "enabled",
       onStream: (delta) => {
         input.emit?.({ type: "assistant_delta", delta });
+      },
+      onReasoning: (reasoning) => {
+        input.emit?.({ type: "reasoning_delta", delta: reasoning });
       }
     });
 

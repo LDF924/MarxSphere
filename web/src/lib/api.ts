@@ -449,6 +449,12 @@ export const api = {
     });
   },
 
+  async deleteMcpMessage(sessionId: string, messageId: string) {
+    return request<{ deleted: boolean }>(`/api/mcp/sessions/${sessionId}/messages/${messageId}`, {
+      method: "DELETE"
+    });
+  },
+
   async sendMcpMessage(sessionId: string, content: string) {
     return request<{
       detail: McpSessionDetail;

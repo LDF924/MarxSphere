@@ -271,6 +271,7 @@ export type McpStreamEvent =
   | { type: "stage"; label: string; detail?: string }
   | { type: "message"; message: McpMessageRecord }
   | { type: "assistant_delta"; delta: string }
+  | { type: "reasoning_delta"; delta: string }
   | { type: "tool_start"; toolName: string; arguments: Record<string, unknown> }
   | { type: "search_progress"; event: SearchProgressEvent }
   | { type: "tool_end"; toolCall: McpToolCallRecord }

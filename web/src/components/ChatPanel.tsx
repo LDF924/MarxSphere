@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FC } from "react";
 import {
   Loader2, Plus, PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Pin, PinOff,
-  MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight
+  MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { McpMessageRecord, McpSessionRecord, McpToolCallRecord } from "../types";
@@ -25,6 +25,8 @@ export interface ChatPanelProps {
   toolCalls: McpToolCallRecord[];
   pendingUserContent: string;
   streamingText: string;
+  /** V398: 流式思考链（DeepSeek reasoning_content）— 折叠区展示 */
+  reasoningText: string;
   isRunning: boolean;
   runningToolName: string | null;
   model: string;
@@ -37,6 +39,7 @@ export interface ChatPanelProps {
   onDeleteSession: (sessionId: string) => void;
   onSend: (content: string, images: ChatDraftImage[], webSearch: boolean) => void;
   onStop: () => void;
+  onRecall: () => void;
   onModelChange: (model: string) => void;
   onWebSearchChange: (value: boolean) => void;
   onToggleCollapsed: () => void;
@@ -142,6 +145,29 @@ function ToolCallCard({ call }: { call: McpToolCallRecord }) {
         <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[10px] leading-4 text-muted-foreground">
           {typeof call.result === "string" ? call.result : JSON.stringify(call.result ?? call.error ?? {}, null, 2)}
         </pre>
+      ) : null}
+    </div>
+  );
+}
+
+/** V398: 「已深度思考」折叠区（DeepSeek reasoning_content） */
+function ReasoningBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-2 rounded-lg border border-border/60 bg-muted/30">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+      >
+        <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-primary/15 text-[9px] text-primary">🧠</span>
+        已深度思考
+        <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
+      </button>
+      {open ? (
+        <div className="max-h-56 overflow-auto whitespace-pre-wrap border-t border-border/50 px-3 py-2 text-xs leading-5 text-muted-foreground">
+          {text}
+        </div>
       ) : null}
     </div>
   );
@@ -444,7 +470,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 {props.messages.map((message) => {
                   const isUser = message.role === "user";
                   return (
-                    <div key={message.id} className={cn("flex flex-col gap-1.5", isUser ? "items-end" : "items-start")}>
+                    <div key={message.id} className={cn("group flex flex-col gap-1.5", isUser ? "items-end" : "items-start")}>
                       <MessageRoleBadge role={isUser ? "user" : "assistant"} />
                       <div className={cn(
                         "message-pop-in max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6",
@@ -485,6 +511,18 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                           {formatDate(message.createdAt)}
                         </div>
                       </div>
+                      {/* V398: 撤回按钮 — 仅最后一条且为用户消息、未运行时 */}
+                      {isUser && !props.isRunning && message.id === props.messages[props.messages.length - 1]?.id ? (
+                        <button
+                          type="button"
+                          onClick={props.onRecall}
+                          title="撤回这条消息（回复前可撤回）"
+                          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          撤回
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -514,12 +552,22 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 ) : null}
 
                 {/* 流式 AI 回复 */}
-                {props.streamingText ? (
+                {props.streamingText || props.reasoningText ? (
                   <div className="flex flex-col items-start gap-1.5 self-start">
                     <MessageRoleBadge role="assistant" />
                     <div className="message-pop-in max-w-[88%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3 text-sm leading-6 shadow-sm">
-                      <MarkdownStreaming content={props.streamingText} />
-                      <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" />
+                      {props.reasoningText ? <ReasoningBlock text={props.reasoningText} /> : null}
+                      {props.streamingText ? (
+                        <>
+                          <MarkdownStreaming content={props.streamingText} />
+                          <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" />
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          正在思考…
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : null}

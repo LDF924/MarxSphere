@@ -112,8 +112,12 @@ export function parseLlmJson(text: string): any {
   try { return JSON.parse(cleaned); } catch { return null; }
 }
 
-/** 架构E2: 流式响应读取 — SSE 逐块解析, 回调 onStream(delta), 返回聚合 text */
-async function readStreamingResponse(resp: Response, onStream: (delta: string) => void): Promise<string> {
+/** 架构E2: 流式响应读取 — SSE 逐块解析, 回调 onStream(delta) / onReasoning(reasoning), 返回聚合 text */
+async function readStreamingResponse(
+  resp: Response,
+  onStream: (delta: string) => void,
+  onReasoning?: (reasoning: string) => void
+): Promise<string> {
   if (!resp.body) return "";
   const reader = resp.body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -138,6 +142,11 @@ async function readStreamingResponse(resp: Response, onStream: (delta: string) =
           if (delta) {
             fullText += delta;
             onStream(delta);
+          }
+          // V398: DeepSeek 思考链（reasoning_content）— AI 对话页「已深度思考」折叠区
+          const reasoning = j?.choices?.[0]?.delta?.reasoning_content || "";
+          if (reasoning && onReasoning) {
+            onReasoning(reasoning);
           }
         } catch { /* 非 JSON 块跳过 */ }
       }
@@ -164,6 +173,8 @@ export interface CallLlmOptions {
   agentContext?: { taskId?: string; action: string; tool?: string };
   /** 架构E2: 流式返回 — 每收到一个增量块回调; 最终仍返回完整 text */
   onStream?: (delta: string) => void;
+  /** V398: 流式思考链回调（DeepSeek reasoning_content）— AI 对话页「已深度思考」折叠区 */
+  onReasoning?: (reasoning: string) => void;
 }
 
 export interface CallLlmResult {
@@ -285,7 +296,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
       } else {
         // 架构E2: 流式模式 — SSE 逐块回调（onStream）, 聚合成完整 text
         if (input.onStream) {
-          const text = await readStreamingResponse(resp, input.onStream);
+          const text = await readStreamingResponse(resp, input.onStream, input.onReasoning);
           const result: CallLlmResult = { text, tokens: null, cacheHit: null };
           if (input.jsonMode) result.json = parseLlmJson(text);
           return result;

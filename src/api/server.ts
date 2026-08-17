@@ -1737,6 +1737,18 @@ export function buildHttpServer() {
     return { session };
   });
 
+  // V398: 撤回单条消息（AI 对话页回复前撤回）
+  app.delete("/api/mcp/sessions/:sessionId/messages/:messageId", async (request, reply) => {
+    const params = request.params as { sessionId: string; messageId: string };
+    z.string().uuid().parse(params.sessionId);
+    z.string().uuid().parse(params.messageId);
+    const result = await mcpAgentService.deleteMessage(params.sessionId, params.messageId);
+    if (!result) {
+      return reply.code(404).send(notFound("MCP_MESSAGE_NOT_FOUND", "消息不存在"));
+    }
+    return result;
+  });
+
   // V398: 通用 AI 对话会话列表（kind=chat）
   app.get("/api/chat/sessions", async () => ({
     sessions: await mcpAgentService.listSessions({ kind: "chat" })

@@ -182,6 +182,7 @@ function AppShell() {
   const [chatToolCalls, setChatToolCalls] = useState<McpToolCallRecord[]>([]);
   const [chatPendingUser, setChatPendingUser] = useState("");
   const [chatStreamingText, setChatStreamingText] = useState("");
+  const [chatReasoning, setChatReasoning] = useState("");
   const [chatRunningTool, setChatRunningTool] = useState<string | null>(null);
   const [chatIsRunning, setChatIsRunning] = useState(false);
   const [chatModel, setChatModel] = useState("");
@@ -287,6 +288,7 @@ function AppShell() {
     setChatIsRunning(true);
     setChatPendingUser(content);
     setChatStreamingText("");
+    setChatReasoning("");
     setChatRunningTool(null);
     try {
       await api.streamChatMessage(chatSessionId, { content, images, webSearch }, (event) => {
@@ -297,11 +299,15 @@ function AppShell() {
               setChatMessages((prev) => [...prev, event.message]);
             } else {
               setChatStreamingText("");
+              setChatReasoning("");
               setChatMessages((prev) => [...prev, event.message]);
             }
             break;
           case "assistant_delta":
             setChatStreamingText((prev) => prev + event.delta);
+            break;
+          case "reasoning_delta":
+            setChatReasoning((prev) => prev + event.delta);
             break;
           case "tool_start":
             setChatRunningTool(event.toolName);
@@ -335,6 +341,7 @@ function AppShell() {
       setChatIsRunning(false);
       setChatPendingUser("");
       setChatStreamingText("");
+      setChatReasoning("");
       setChatRunningTool(null);
       chatAbortRef.current = null;
     }
@@ -350,6 +357,7 @@ function AppShell() {
       setChatMessages([]);
       setChatToolCalls([]);
       setChatStreamingText("");
+      setChatReasoning("");
       setChatSessionId(session.id);
     } catch { /* ignore */ }
   }
@@ -391,6 +399,20 @@ function AppShell() {
 
   function stopChatMessage() {
     chatAbortRef.current?.abort();
+  }
+
+  /** V398: 撤回最后一条用户消息（AI 回复前可撤回；中止流式 + 删除消息） */
+  async function recallChatMessage() {
+    if (!chatSessionId || chatIsRunning) return;
+    const last = chatMessages[chatMessages.length - 1];
+    if (!last || last.role !== "user") return;
+    chatAbortRef.current?.abort();
+    try {
+      await api.deleteMcpMessage(chatSessionId, last.id);
+      setChatMessages((prev) => prev.filter((m) => m.id !== last.id));
+      // 该消息的工具调用一并移除（撤回后重发避免残留）
+      setChatToolCalls((prev) => prev.filter((t) => t.messageId !== last.id));
+    } catch { /* 删除失败静默（刷新后仍可见） */ }
   }
 
   // 加载运行模式徽标（GBrain 模式徽标）
@@ -1586,6 +1608,7 @@ function AppShell() {
                 toolCalls={chatToolCalls}
                 pendingUserContent={chatPendingUser}
                 streamingText={chatStreamingText}
+                reasoningText={chatReasoning}
                 isRunning={chatIsRunning}
                 runningToolName={chatRunningTool}
                 model={chatModel}
@@ -1598,6 +1621,7 @@ function AppShell() {
                 onDeleteSession={(sessionId) => void deleteChatSession(sessionId)}
                 onSend={(content, images, webSearch) => void sendChatMessage(content, images, webSearch)}
                 onStop={stopChatMessage}
+                onRecall={() => void recallChatMessage()}
                 onModelChange={setChatModel}
                 onWebSearchChange={setChatWebSearch}
                 onToggleCollapsed={() => setChatCollapsed((v) => !v)}

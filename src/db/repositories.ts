@@ -1677,6 +1677,42 @@ export async function clearMcpSession(input: {
   }
 }
 
+/** V398: 撤回单条消息（连带其工具调用删除；仅限 AI 对话页回复前撤回） */
+export async function deleteMcpMessage(input: {
+  sessionId: string;
+  messageId: string;
+  tenantId: string;
+}): Promise<boolean> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const sessionResult = await client.query(
+      "select id from mcp_sessions where id = $1 and tenant_id = $2 for update",
+      [input.sessionId, input.tenantId]
+    );
+    if (!sessionResult.rows[0]) {
+      await client.query("rollback");
+      return false;
+    }
+    await client.query("delete from mcp_tool_calls where session_id = $1 and message_id = $2", [input.sessionId, input.messageId]);
+    const del = await client.query(
+      "delete from mcp_messages where id = $1 and session_id = $2",
+      [input.messageId, input.sessionId]
+    );
+    await client.query(
+      "update mcp_sessions set updated_at = now() where id = $1",
+      [input.sessionId]
+    );
+    await client.query("commit");
+    return (del.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteMcpSession(input: {
   sessionId: string;
   tenantId: string;
