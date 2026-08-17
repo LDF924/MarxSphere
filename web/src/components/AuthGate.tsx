@@ -102,10 +102,13 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
       .catch(() => setAuth({ enabled: false, user: null }));
   }, []);
 
-  // 后端认证状态（启用标志）
+  // 后端认证状态（启用标志）— V399: 已登录用户不被 enabled=false 清空
+  // （本地单机认证未启用也可登录；刷新后保持登录态）
   useEffect(() => {
     fetch("/api/auth/status").then((r) => r.json()).then((s) => {
-      if (s?.enabled === false) setAuth({ enabled: false, user: null });
+      if (s?.enabled === false && !localStorage.getItem("sag_token")) {
+        setAuth({ enabled: false, user: null });
+      }
     }).catch(() => {});
   }, []);
 
