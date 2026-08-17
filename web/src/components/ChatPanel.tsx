@@ -1,6 +1,6 @@
 // ChatPanel.tsx — V398: AI 对话页（豆包式交互）
 // 左侧会话管理侧边栏（新建/重命名/删除/置顶/折叠）+ 消息流（富渲染/引用/工具调用）+ 底部 Composer（模型/联网/附件/图片粘贴）
-import { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   Loader2, Plus, PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Pin, PinOff,
   MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap
@@ -299,6 +299,33 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
     }
   });
   const [menuId, setMenuId] = useState<string | null>(null);
+  // V399: 技能命令面板（/ 触发，Claude Code 式）
+  const [skillPanelOpen, setSkillPanelOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [skillIndex, setSkillIndex] = useState(0);
+  const [skillList, setSkillList] = useState<Array<{ name: string; zhName?: string; description?: string }>>([]);
+  useEffect(() => {
+    fetch("/api/skills").then((r) => r.json()).then((d) => {
+      setSkillList((d.skills ?? []).map((s: any) => ({ name: s.name, zhName: s.zhName, description: s.description })));
+    }).catch(() => {});
+  }, []);
+  const skillFiltered = useMemo(() => {
+    const q = skillQuery.trim().toLowerCase();
+    if (!q) return skillList.slice(0, 40);
+    return skillList.filter((s) =>
+      s.name.toLowerCase().includes(q) || (s.zhName ?? "").toLowerCase().includes(q)
+    ).slice(0, 40);
+  }, [skillList, skillQuery]);
+  // 选中技能 → 拼 @skill:name 语法，面板关闭
+  const selectSkill = (s: { name: string }) => {
+    const prefix = `@skill:${s.name} `;
+    const slashIdx = draft.lastIndexOf("/");
+    setDraft((slashIdx >= 0 ? draft.slice(0, slashIdx) : draft) + prefix);
+    setSkillPanelOpen(false);
+    setSkillQuery("");
+    setSkillIndex(0);
+    textareaRef.current?.focus();
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -781,26 +808,93 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
               ) : null}
 
               <div className="flex items-end gap-2 p-2">
-                <Textarea
-                  ref={textareaRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onPaste={(e) => {
-                    const files = e.clipboardData?.files;
-                    if (files && files.length > 0 && Array.from(files).some((f) => f.type.startsWith("image/"))) {
-                      e.preventDefault();
-                      void handleFiles(files);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="输入问题，Enter 发送，Shift+Enter 换行…"
-                  className="max-h-40 min-h-11 flex-1 resize-none border-0 bg-transparent focus-visible:ring-0"
-                />
+                <div className="relative flex-1">
+                  <Textarea
+                    ref={textareaRef}
+                    value={draft}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDraft(v);
+                      // V399: / 触发技能命令面板
+                      if (v === "/" || v.endsWith("/")) {
+                        setSkillPanelOpen(true);
+                        setSkillQuery("");
+                      } else if (skillPanelOpen && !v.includes("/")) {
+                        setSkillPanelOpen(false);
+                      } else if (skillPanelOpen) {
+                        // 提取 / 后的查询词过滤
+                        const slashIdx = v.lastIndexOf("/");
+                        setSkillQuery(v.slice(slashIdx + 1));
+                      }
+                    }}
+                    onPaste={(e) => {
+                      const files = e.clipboardData?.files;
+                      if (files && files.length > 0 && Array.from(files).some((f) => f.type.startsWith("image/"))) {
+                        e.preventDefault();
+                        void handleFiles(files);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (skillPanelOpen && e.key === "Escape") {
+                        setSkillPanelOpen(false);
+                        return;
+                      }
+                      if (skillPanelOpen && e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setSkillIndex((i) => Math.min(i + 1, skillFiltered.length - 1));
+                        return;
+                      }
+                      if (skillPanelOpen && e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setSkillIndex((i) => Math.max(i - 1, 0));
+                        return;
+                      }
+                      if (skillPanelOpen && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey && skillFiltered.length > 0) {
+                        e.preventDefault();
+                        selectSkill(skillFiltered[Math.max(skillIndex, 0)]);
+                        return;
+                      }
+                      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="输入问题，或输入 / 调用技能，Enter 发送，Shift+Enter 换行…"
+                    className="max-h-40 min-h-11 w-full flex-1 resize-none border-0 bg-transparent focus-visible:ring-0"
+                  />
+                  {/* V399: 技能命令面板（Claude Code 式 / 菜单） */}
+                  {skillPanelOpen ? (
+                    <div className="absolute bottom-full left-0 z-30 mb-2 w-96 overflow-hidden rounded-lg border border-border bg-background/95 shadow-xl backdrop-blur">
+                      <div className="border-b border-border/60 px-3 py-1.5 text-[10px] text-muted-foreground">
+                        / 技能命令 — 选中后输入任务描述，回车即执行
+                      </div>
+                      <div className="max-h-64 overflow-y-auto p-1">
+                        {skillFiltered.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">无匹配技能</div>
+                        ) : (
+                          skillFiltered.slice(0, 12).map((s, i) => (
+                            <button
+                              key={s.name}
+                              type="button"
+                              onClick={() => selectSkill(s)}
+                              onMouseEnter={() => setSkillIndex(i)}
+                              className={cn(
+                                "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                                i === skillIndex ? "bg-accent/60" : "hover:bg-accent/40"
+                              )}
+                            >
+                              <span className="mt-0.5 shrink-0 font-mono text-[10px] text-primary">/</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium">{s.zhName || s.name}</span>
+                                <span className="block truncate text-[10px] text-muted-foreground">{s.description?.slice(0, 60)}</span>
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <Button
                   className="h-9 shrink-0 self-end px-4"
                   variant={props.isRunning ? "destructive" : "default"}

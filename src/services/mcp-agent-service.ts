@@ -476,6 +476,39 @@ export class McpAgentService {
     const seenToolCalls = new Set<string>();
     /** V399: 已加载的技能集（防同一 skill 重复注入上下文） */
     const loadedSkills = new Set<string>();
+    // V399: /命令 → @skill: 语法解析 — 用户输入 @skill:技能名 任务 时预加载技能指令
+    let skillInjectedContext = "";
+    const skillMatch = input.userContent.match(/@skill:([\w.-]+(?:\/[\w.-]+)?)\s*([\s\S]*)/);
+    if (skillMatch) {
+      const { getSkillDetail } = await import("./skills-service.js");
+      const detail = getSkillDetail(skillMatch[1]);
+      if (detail) {
+        loadedSkills.add(skillMatch[1]);
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        const os = await import("node:os");
+        const skillDir = path.dirname(detail.skillMdPath ?? path.join(os.homedir(), ".claude", "skills", skillMatch[1], "SKILL.md"));
+        const parts: string[] = [`【技能 ${detail.name} 完整指令】\n${String(detail.skillMd ?? "")}`];
+        const refDir = path.join(skillDir, "references");
+        if (fs.existsSync(refDir)) {
+          const refs = fs.readdirSync(refDir).filter((f) => f.endsWith(".md")).slice(0, 3);
+          for (const ref of refs) {
+            try {
+              parts.push(`\n【方法库 ${ref}】\n${fs.readFileSync(path.join(refDir, ref), "utf8").slice(0, 6000)}`);
+            } catch { /* 忽略 */ }
+          }
+        }
+        const scriptsDir = path.join(skillDir, "scripts");
+        const scripts = fs.existsSync(scriptsDir) ? fs.readdirSync(scriptsDir) : [];
+        if (scripts.length > 0) parts.push(`\n【可执行脚本】${scripts.join(", ")}（用 run_code/run_command 执行）`);
+        skillInjectedContext = parts.join("\n\n").slice(0, 16000);
+        input.emit?.({ type: "stage", label: `技能加载: ${detail.name}`, detail: "已注入技能完整指令" });
+      } else {
+        skillInjectedContext = `（技能 ${skillMatch[1]} 不存在，可用 view_skill_search 检索）`;
+      }
+    }
+    // @skill 语法剥离后作为实际任务（不带技能指令前缀）
+    const actualTask = skillMatch ? skillMatch[2].trim() || input.userContent : input.userContent;
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       assertNotAborted(input.signal);
       input.emit?.({ type: "stage", label: `工具规划 ${round + 1}`, detail: "正在决定下一步工具调用" });
@@ -490,8 +523,10 @@ export class McpAgentService {
           {
             role: "user",
             content: [
-              `用户任务: ${input.userContent}`,
+              `用户任务: ${actualTask}`,
               ...(contextParts.length > 0 ? [`已收集上下文:\n${contextParts.join("\n\n").slice(0, 6000)}`] : ["（尚无工具结果）"]),
+              // V399: 技能指令注入（/命令 → @skill: 语法预加载）
+              skillInjectedContext ? `\n${skillInjectedContext}` : "",
               // V399: 技能执行约束 — 已加载技能的代码模板需用 run_code/runtime_exec 落地执行
               loadedSkills.size > 0
                 ? `注意：已加载技能「${[...loadedSkills].join("、")}」的完整指令。若技能含代码模板且用户要求执行分析，下一步必须调用 run_code 或 runtime_exec 执行代码（不要重复加载同一技能）。`
@@ -616,7 +651,8 @@ export class McpAgentService {
       {
         role: "user",
         content: [
-          `用户任务: ${input.userContent}`,
+          `用户任务: ${actualTask}`,
+          ...(skillInjectedContext ? [`\n技能指令（必须遵循）:\n${skillInjectedContext.slice(0, 6000)}`] : []),
           ...(contextParts.length > 0 ? [`\n\n工具执行记录:\n${contextParts.join("\n\n").slice(0, 12000)}`] : [])
         ].join("")
       }
