@@ -101,11 +101,19 @@ if (eb.status !== 0) process.exit(eb.status ?? 1);
 
 // 4) electron-builder 打包 NSIS
 // 缓存目录放项目内（跨盘符 EXDEV 修复: 默认 %LOCALAPPDATA% 可能在 D 盘而 tmp 在 C 盘）
-const cacheDir = path.join(root, ".cache", "electron-builder");
-writeFileSync(path.join(root, "resources", ".gitkeep"), "");
-const pb = spawnSync("npx", ["electron-builder", "--win", "nsis", "--config", "electron-builder.yml"], {
-  cwd: root, stdio: "inherit", env: { ...process.env, ELECTRON_BUILDER_CACHE: cacheDir },
-});
-if (pb.status !== 0) process.exit(pb.status ?? 1);
-
-console.log("[desktop] 打包完成 → release/ 目录");
+// V399: SKIP_ELECTRON_BUILDER=1 时跳过（release.mjs 会用完整 env 单独跑）
+if (process.env.SKIP_ELECTRON_BUILDER !== "1") {
+  const cacheDir = path.join(root, ".cache", "electron-builder");
+  writeFileSync(path.join(root, "resources", ".gitkeep"), "");
+  const pb = spawnSync("npx", ["electron-builder", "--win", "nsis", "--config", "electron-builder.yml"], {
+    cwd: root, stdio: "inherit",
+    env: {
+      ...process.env,
+      ELECTRON_BUILDER_CACHE: cacheDir,
+      ELECTRON_BUILDER_BINARIES_MIRROR: "https://npmmirror.com/mirrors/electron-builder-binaries/",
+      CSC_IDENTITY_AUTO_DISCOVERY: "false",
+    },
+  });
+  if (pb.status !== 0) process.exit(pb.status ?? 1);
+  console.log("[desktop] 打包完成 → release/ 目录");
+}

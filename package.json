@@ -26,7 +26,8 @@
     "mcp": "SAG_LOG_STDERR=true tsx src/mcp/server.ts",
     "demo:ingest": "tsx scripts/demo-ingest.ts",
     "demo:search": "tsx scripts/demo-search.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",
