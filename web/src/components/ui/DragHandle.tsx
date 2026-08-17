@@ -33,11 +33,16 @@ export function DragHandle({ leftVar, defaultWidth, storageKey, minWidth = 160, 
   /** 同步宽度到 grid 内联 style + CSS 变量 + localStorage */
   const applyWidth = (w: number) => {
     try { localStorage.setItem(storageKey, String(w)); } catch { /* 忽略 */ }
-    // 找使用该变量的 grid（把手兄弟中的 grid）
+    // 找使用该变量的 grid（把手兄弟中的 grid；若把手本身在 grid 内则用父级）
     const handle = handleRef.current;
-    if (handle && handle.parentElement) {
-      const grid = Array.from(handle.parentElement.children).find(c => c.tagName === "DIV" && (c.className || "").includes("grid"));
-      if (grid) (grid as HTMLElement).style.setProperty(leftVar, `${w}px`);
+    if (handle) {
+      const parent = handle.parentElement;
+      if (parent) {
+        const grid = parent.tagName === "DIV" && (parent.className || "").includes("grid")
+          ? parent  // 把手在 grid 内（右列详情分隔）
+          : Array.from(parent.children).find(c => c.tagName === "DIV" && (c.className || "").includes("grid"));
+        if (grid) (grid as HTMLElement).style.setProperty(leftVar, `${w}px`);
+      }
     }
     document.documentElement.style.setProperty(leftVar, `${w}px`);
   };

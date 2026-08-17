@@ -274,8 +274,10 @@ export function LiteraturePanel() {
             </Button>
           </Card>
 
-          {/* 右：文献列表 + 详情 */}
-          <div className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          {/* 右：文献列表 + 详情（列表/详情可左右拉伸） */}
+          <div className="relative min-h-0 flex-1">
+            <DragHandle leftVar="--list-w" defaultWidth={480} minWidth={280} maxWidth={900} storageKey="literature-list-width" offset={-9} />
+            <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[var(--list-w,minmax(0,1fr))_minmax(0,1fr)]">
             <div className="flex min-h-0 flex-col gap-3">
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
                 {loading ? (
@@ -449,6 +451,7 @@ export function LiteraturePanel() {
                 </Card>
               )}
             </div>
+          </div>
           </div>
         </div>
         </div>
