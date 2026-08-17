@@ -536,7 +536,8 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
       {/* ── 右侧对话流 ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-4 px-4 py-6 md:px-6">
+          {/* V399: 对话流自适应宽度 — 原 max-w-3xl(768px) 全宽下两侧大量留白 */}
+          <div className="mx-auto flex min-h-full w-full max-w-[1100px] flex-col gap-4 px-4 py-6 md:px-6">
             {/* 会话标题 */}
             <div className="shrink-0 pt-2">
               <h2 className="text-lg font-semibold leading-7">{activeSession?.title ?? "新对话"}</h2>
@@ -700,7 +701,8 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
 
         {/* ── 底部 Composer ── */}
         <div className="shrink-0 border-t border-border bg-background/80 px-4 py-3 md:px-6">
-          <div className="mx-auto max-w-3xl">
+          {/* V399: 输入区同步放宽（与消息流一致 1100px） */}
+          <div className="mx-auto w-full max-w-[1100px]">
             <div className="rounded-2xl border border-border bg-card shadow-sm transition-all duration-150 hover:border-primary/40 focus-within:border-primary/60 focus-within:shadow-[0_0_0_3px_hsl(214_55%_55%/0.12)]">
               {/* 功能行（豆包式）：附件 / 联网 / 模型 */}
               <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2">
