@@ -395,6 +395,10 @@ npm test                # 154 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
+## 致谢（AI 辅助开发声明）
+
+本项目由 LDF924 开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（154 项单元测试全绿，53 题评测 0.884）。
+
 ## License
 
 MIT License — 见 [LICENSE](LICENSE)。
