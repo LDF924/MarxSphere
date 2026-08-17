@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: MarxSphere 文档
+    url: https://github.com/LDF924/MarxSphere#readme
+    about: 阅读 README 与功能文档
+  - name: MarxSphere 评测标准
+    url: https://github.com/LDF924/MarxSphere/blob/main/docs/SCORING_STANDARD.md
+    about: 了解评测指标与基线
