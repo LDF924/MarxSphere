@@ -193,17 +193,40 @@ export const VIEW_TOOLS: AgentToolDef[] = [
   },
   {
     name: "view_skill_run", label: "技能执行", risk: "safe",
-    description: "执行系统技能库中的自研 Skill（如 因果推断/实证分析/文献综述），返回执行指引",
+    description: "完整加载并执行系统技能库中的自研 Skill（SKILL.md 全文 + references 方法库 + scripts），按技能流程完成科研任务",
     params: {
-      skill: { type: "string", required: true, desc: "技能名称（如 causal-inference-analysis/empirical-data-analysis）" },
+      skill: { type: "string", required: true, desc: "技能名称（如 causal-inference-mixtape/empirical-data-analysis）" },
       goal: { type: "string", required: true, desc: "要完成的任务目标" },
     },
     run: async (a) => safeCall(async () => {
       const { getSkillDetail } = await import("./skills-service.js");
       const detail = getSkillDetail(String(a.skill || ""));
       if (!detail) return `（技能 ${a.skill} 不存在，可用 view_skill_search 检索）`;
-      const md = String(detail.skillMd ?? "").slice(0, 2500);
-      return `【技能执行·${detail.name}】\n执行指引（前 2500 字）:\n${md}`;
+      // 完整加载 SKILL.md（非截断）+ references 方法库 + scripts 清单
+      const md = String(detail.skillMd ?? "");
+      const parts: string[] = [`【技能 ${detail.name} 完整指令】\n${md}`];
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const os = await import("node:os");
+      // 用实际技能目录（name 模糊匹配后可能是带编号前缀的目录）— 从 SKILL.md 定位
+      const skillDir = path.dirname(detail.skillMdPath ?? path.join(os.homedir(), ".claude", "skills", String(a.skill || ""), "SKILL.md"));
+      // 读取 references 方法库（每文件前 6000 字，最多 3 个）
+      const refDir = path.join(skillDir, "references");
+      if (fs.existsSync(refDir)) {
+        const refs = fs.readdirSync(refDir).filter((f) => f.endsWith(".md")).slice(0, 3);
+        for (const ref of refs) {
+          try {
+            const content = fs.readFileSync(path.join(refDir, ref), "utf8").slice(0, 6000);
+            parts.push(`\n【方法库 ${ref}】\n${content}`);
+          } catch { /* 读取失败忽略 */ }
+        }
+      }
+      // scripts 清单
+      const scriptsDir = path.join(skillDir, "scripts");
+      const scripts = fs.existsSync(scriptsDir) ? fs.readdirSync(scriptsDir) : [];
+      if (scripts.length > 0) parts.push(`\n【可执行脚本】${scripts.join(", ")}（可要求 Agent 用 run_code/run_command 执行）`);
+      // 限制总注入量防上下文爆炸
+      return parts.join("\n\n").slice(0, 16000);
     }),
   },
 ];

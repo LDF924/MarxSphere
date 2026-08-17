@@ -256,6 +256,7 @@ export function listSkills(): SkillRecord[] {
 export function getSkillDetail(name: string): {
   name: string;
   skillMd: string;
+  skillMdPath: string;
   zhDoc?: string;
   files: string[];
 } | null {
@@ -265,21 +266,38 @@ export function getSkillDetail(name: string): {
   const skillDir = isNested
     ? path.join(skillsDir, name.split("/")[0], ...name.split("/").slice(1))
     : path.join(skillsDir, name);
-  const skillMdPath = path.join(skillDir, "SKILL.md");
+  let skillMdPath = path.join(skillDir, "SKILL.md");
+  // V399: 目录名 ≠ frontmatter name 时按 name 模糊匹配（如 searchSkill 返回 causal-inference-mixtape，
+  // 实际目录 10-Jill0099-causal-inference-mixtape）— 递归一层模糊查找
+  if (!fs.existsSync(skillMdPath) && !isNested) {
+    let matchedDir: string | null = null;
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const candidate = path.join(skillsDir, entry.name, "SKILL.md");
+      if (!fs.existsSync(candidate)) continue;
+      const head = fs.readFileSync(candidate, "utf8").slice(0, 500);
+      if (head.includes(`name: ${name}`) || head.includes(`name: "${name}"`) || entry.name.includes(name)) {
+        matchedDir = path.join(skillsDir, entry.name);
+        break;
+      }
+    }
+    if (matchedDir) skillMdPath = path.join(matchedDir, "SKILL.md");
+  }
   if (!fs.existsSync(skillMdPath)) return null;
 
   const skillMd = fs.readFileSync(skillMdPath, "utf-8");
   const zhDocPath = path.join(skillsDir, "_中文说明", `${name}.zh-CN.md`);
   const zhDoc = fs.existsSync(zhDocPath) ? fs.readFileSync(zhDocPath, "utf-8") : undefined;
 
-  // 目录结构（一层）
+  // 目录结构（一层）— 用实际存在的 skillDir（name 模糊匹配后可能是不同目录）
+  const actualSkillDir = path.dirname(skillMdPath);
   const files: string[] = [];
-  if (fs.existsSync(skillDir)) {
-    for (const entry of fs.readdirSync(skillDir, { withFileTypes: true })) {
+  if (fs.existsSync(actualSkillDir)) {
+    for (const entry of fs.readdirSync(actualSkillDir, { withFileTypes: true })) {
       files.push(entry.isDirectory() ? `${entry.name}/` : entry.name);
     }
   }
-  return { name, skillMd, zhDoc, files };
+  return { name, skillMd, skillMdPath, zhDoc, files };
 }
 
 export async function runSkillHealthcheck(name: string): Promise<{  name: string;

@@ -1,6 +1,6 @@
-// MarkdownRich.tsx — V398: AI 对话页富渲染（代码块语法高亮 + KaTeX 公式）
+// MarkdownRich.tsx — V398: AI 对话页富渲染（代码块语法高亮 + KaTeX 公式 + Mermaid 图表）
 // 混合方案：代码块 → react-markdown（rehype-highlight + rehype-katex），正文段 → 现有轻量渲染（引用徽章 [n]）
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -26,6 +26,48 @@ function splitRichBlocks(content: string): Array<{ type: "text" | "code"; conten
     blocks.push({ type: "text", content: content.slice(lastIndex) });
   }
   return blocks.length > 0 ? blocks : [{ type: "text", content }];
+}
+
+/** V399: Mermaid 图表渲染（flowchart/sequence/gantt 等）— 懒加载 mermaid，失败回退代码块 */
+function MermaidBlock({ content }: { content: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let mermaidModule: typeof import("mermaid") | null = null;
+    void import("mermaid").then((m) => {
+      mermaidModule = m;
+      m.default.initialize({
+        startOnLoad: false,
+        theme: document.documentElement.classList.contains("light") ? "default" : "dark",
+        securityLevel: "loose"
+      });
+      if (!cancelled && ref.current) {
+        m.default.render(`mmd-${Date.now()}`, content).then(({ svg }) => {
+          if (!cancelled && ref.current) {
+            ref.current.innerHTML = svg;
+          }
+        }).catch((e: unknown) => {
+          if (!cancelled) setError(String(e instanceof Error ? e.message : e));
+        });
+      }
+    }).catch(() => {
+      if (!cancelled) setError("mermaid 加载失败");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [content]);
+
+  if (error) {
+    return (
+      <pre className="overflow-auto rounded-md border border-red-400/30 bg-muted/50 p-3 text-xs leading-5 text-muted-foreground">
+        <code>{content}</code>
+      </pre>
+    );
+  }
+  return <div ref={ref} className="overflow-auto rounded-md border border-border/60 bg-card/60 p-3" />;
 }
 
 /** 单个代码块：语言标签 + 复制按钮 + 语法高亮 */
@@ -76,7 +118,11 @@ export function MarkdownRich({
     <div className="space-y-2 break-words">
       {blocks.map((block, index) =>
         block.type === "code" ? (
-          <RichCodeBlock key={index} content={block.content} lang={block.lang} />
+          block.lang === "mermaid" ? (
+            <MermaidBlock key={index} content={block.content} />
+          ) : (
+            <RichCodeBlock key={index} content={block.content} lang={block.lang} />
+          )
         ) : (
           <div key={index} className="space-y-1">
             {renderMarkdownLines(block.content, citations, onOpenCitation)}

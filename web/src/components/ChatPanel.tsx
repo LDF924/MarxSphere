@@ -129,6 +129,41 @@ function CitationStrip({ citations, onOpenCitation }: { citations: MarkdownCitat
   );
 }
 
+/** V399: 工具链合并面板 — 默认折叠，摘要（N 次调用 · 成功率 · 总耗时），展开看每步详情 */
+function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
+  const [open, setOpen] = useState(false);
+  const okCount = calls.filter((c) => c.status === "SUCCEEDED").length;
+  const totalMs = calls.reduce((s, c) => s + (c.durationMs ?? 0), 0);
+  return (
+    <div className="mt-2.5 overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+      >
+        <Wrench className="h-3.5 w-3.5 shrink-0 text-primary" />
+        <span className="font-medium text-foreground">工具链</span>
+        <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+          {calls.length} 次
+        </span>
+        <span className={cn("shrink-0 text-[10px]", okCount === calls.length ? "text-emerald-500" : "text-amber-500")}>
+          {okCount === calls.length ? `全部成功` : `${okCount}/${calls.length} 成功`}
+        </span>
+        {totalMs > 0 ? <span className="shrink-0 text-[10px]">{(totalMs / 1000).toFixed(1)}s</span> : null}
+        <span className="min-w-0 flex-1 truncate text-[10px] opacity-70">
+          {calls.map((c) => c.toolName).join(" → ")}
+        </span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <div className="space-y-1.5 border-t border-border/60 p-2">
+          {calls.map((call, i) => <ToolCallCard key={call.id} call={call} index={i + 1} />)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** V399: 工具链时间线卡片 — 序号 + 工具名 + 参数摘要 + 结果摘要 + 耗时，可展开详情 */
 function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number }) {
   const [open, setOpen] = useState(false);
@@ -524,13 +559,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                           <CitationStrip citations={citationsFor(message)} onOpenCitation={props.onOpenCitation} />
                         ) : null}
                         {!isUser && toolCallsFor(message.id).length > 0 ? (
-                          <div className="mt-2.5 space-y-1.5">
-                            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                              <Wrench className="h-3 w-3" />
-                              工具链 · {toolCallsFor(message.id).length} 次调用
-                            </div>
-                            {toolCallsFor(message.id).map((call, i) => <ToolCallCard key={call.id} call={call} index={i + 1} />)}
-                          </div>
+                          <ToolChain calls={toolCallsFor(message.id)} />
                         ) : null}
                         <div className={cn("mt-1 text-[10px]", isUser ? "text-primary-foreground/60" : "text-muted-foreground/70")}>
                           {formatDate(message.createdAt)}

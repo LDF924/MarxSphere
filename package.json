@@ -40,6 +40,7 @@
     "gpt-tokenizer": "^3.4.0",
     "katex": "^0.16.47",
     "lucide-react": "^1.17.0",
+    "mermaid": "^11.16.1",
     "neo4j-driver": "^6.2.0",
     "p-limit": "^7.3.1",
     "pg": "^8.13.1",
