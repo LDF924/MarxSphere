@@ -33,7 +33,8 @@ import {
   Boxes,
   Sun,
   Moon,
-  UserRound
+  UserRound,
+  LogOut
 } from "lucide-react";
 import { api } from "./lib/api";
 import { AuthGate, useAuth } from "./components/AuthGate";
@@ -1646,18 +1647,20 @@ function AppShell() {
                   <span className="max-w-20 truncate">{authUser.username}</span>
                 </button>
                 {userMenuOpen ? (
-                  <div className="absolute right-0 top-9 z-50 w-48 rounded-lg border border-border bg-background/95 p-1.5 shadow-xl backdrop-blur" onClick={(e) => e.stopPropagation()}>
-                    <div className="border-b border-border/60 px-2 py-1.5 text-xs">
+                  <div className="absolute right-0 top-9 z-50 w-52 rounded-lg border border-border bg-background/95 p-2 shadow-xl backdrop-blur" onClick={(e) => e.stopPropagation()}>
+                    <div className="border-b border-border/60 px-2 pb-1.5 pt-0.5 text-xs">
                       <div className="font-medium">{authUser.username}</div>
                       <div className="text-[10px] text-muted-foreground">
                         {authUser.role === "admin" ? "管理员" : "普通用户"} · {authUser.plan === "pro" ? "专业版" : authUser.plan === "enterprise" ? "企业版" : "免费版"}
                       </div>
                     </div>
+                    {/* V399: 退出登录升级为显眼按钮（图标+红描边） */}
                     <button
                       type="button"
                       onClick={() => { setUserMenuOpen(false); authLogout(); }}
-                      className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-red-400 transition-colors hover:bg-red-500/10"
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-red-400/40 bg-red-500/10 px-3 py-2 text-left text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
                     >
+                      <LogOut className="h-3.5 w-3.5" />
                       退出登录
                     </button>
                   </div>

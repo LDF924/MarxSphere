@@ -6,6 +6,19 @@
 import { createContext, useContext, useEffect, useState, type FC, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 
+/** V399: 安全 localStorage（隐私模式/沙箱禁用时降级内存，不崩页面） */
+const safeStorage = {
+  get(key: string): string | null {
+    try { return window.localStorage.getItem(key); } catch { return null; }
+  },
+  set(key: string, value: string): void {
+    try { window.localStorage.setItem(key, value); } catch { /* 忽略 */ }
+  },
+  remove(key: string): void {
+    try { window.localStorage.removeItem(key); } catch { /* 忽略 */ }
+  }
+};
+
 interface AuthState {
   enabled: boolean;
   user: { username: string; role: string; plan: string; balanceCents: number } | null;
@@ -59,11 +72,11 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     const origFetch = window.fetch;
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       return origFetch(input, init).then((resp) => {
-        if (resp.status === 401 && localStorage.getItem("sag_token")) {
+        if (resp.status === 401 && safeStorage.get("sag_token")) {
           const url = String(input);
           // 认证接口的 401 由自身流程处理(登录失败/未登录), 业务接口 401 才视为 token 失效
           if (!url.includes("/api/auth/")) {
-            localStorage.removeItem("sag_token");
+            safeStorage.remove("sag_token");
             // V399: token 失效 → 回本地模式（不跳全屏登录页）
             setAuth({ enabled: false, user: null });
           }
@@ -76,7 +89,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   // 启动检查: 是否有会话
   useEffect(() => {
-    const token = localStorage.getItem("sag_token");
+    const token = safeStorage.get("sag_token");
     if (!token) {
       // 查后端是否启用认证
       fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token || ""}` } })
@@ -97,7 +110,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
       .then((r) => {
         if (r.ok) return r.json().then((d) => setAuth({ enabled: true, user: d.user }));
         // V390: token 失效 → 清 token 回本地模式（V399: 不跳全屏登录页）
-        localStorage.removeItem("sag_token");
+        safeStorage.remove("sag_token");
         setAuth({ enabled: false, user: null });
       })
       .catch(() => setAuth({ enabled: false, user: null }));
@@ -107,7 +120,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
   // （本地单机认证未启用也可登录；刷新后保持登录态）
   useEffect(() => {
     fetch("/api/auth/status").then((r) => r.json()).then((s) => {
-      if (s?.enabled === false && !localStorage.getItem("sag_token")) {
+      if (s?.enabled === false && !safeStorage.get("sag_token")) {
         setAuth({ enabled: false, user: null });
       }
     }).catch(() => {});
@@ -115,13 +128,13 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   // V399: 登录成功统一处理（认证启用/未启用共用）
   const handleAuthSuccess = (d: { token?: string; user: AuthState["user"] }) => {
-    if (d.token) localStorage.setItem("sag_token", d.token);
+    if (d.token) safeStorage.set("sag_token", d.token);
     setAuth({ enabled: true, user: d.user });
     setLoginOpen(false);
   };
 
   const logout = () => {
-    localStorage.removeItem("sag_token");
+    safeStorage.remove("sag_token");
     // V399: 登出回本地模式（enabled:false）— 原 enabled:true+user:null 会触发
     // 「!auth.enabled || auth.user」条件为 false → 强制渲染全屏登录页（认证未启用时不该出现）
     setAuth({ enabled: false, user: null });
