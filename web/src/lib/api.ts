@@ -877,7 +877,11 @@ export const api = {
 
   // 运行模式徽标（preview/full）
   async getMode() {
-    return request<{ mode: "preview" | "full"; mcpPoolSize: number }>("/api/mode");
+    return request<{
+      mode: "preview" | "full" | "degraded";
+      mcpPoolSize: number;
+      health?: { neo4j: { graphiti: boolean; cognee: boolean }; pythonProcesses: number; label: string };
+    }>("/api/mode");
   },
   async switchMode(mode: "preview" | "full") {
     return request<{ ok: boolean; mode: string; note: string }>("/api/mode", {

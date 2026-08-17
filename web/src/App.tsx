@@ -170,7 +170,7 @@ function AppShell() {
   const [aiSettings, setAiSettings] = useState<PublicAiProviderSettings | null>(null);
   const [mcpSettings, setMcpSettings] = useState<PublicMcpSettings | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("assistant");
-  const [modeBadge, setModeBadge] = useState<{ mode: "preview" | "full"; mcpPoolSize: number } | null>(null);
+  const [modeBadge, setModeBadge] = useState<{ mode: "preview" | "full" | "degraded"; mcpPoolSize: number; health?: { neo4j: { graphiti: boolean; cognee: boolean }; pythonProcesses: number; label: string } } | null>(null);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);  // V390: 运行模式切换菜单展开状态
   // 待播放的 demo 查询（Hero 按钮 → AskPanel 自动检索）
   const pendingDemoRef = useRef<string | null>(null);
@@ -1471,13 +1471,36 @@ function AppShell() {
         <div className="fixed bottom-16 left-4 z-40">
           <button type="button" onClick={() => setModeMenuOpen((v) => !v)}
             className="flex items-center gap-1.5 rounded-full border border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-md backdrop-blur transition-colors hover:border-primary/40 hover:text-foreground"
-            title="切换运行模式（重启后生效）">
-            <span className={cn("h-2 w-2 rounded-full", modeBadge.mode === "full" ? "bg-green-500" : "bg-blue-500")} />
-            {modeBadge.mode === "full" ? "完整" : "预览"}
+            title={modeBadge.health?.label ?? "切换运行模式（重启后生效）"}>
+            <span className={cn("h-2 w-2 rounded-full",
+              modeBadge.mode === "full" ? "bg-green-500"
+                : modeBadge.mode === "degraded" ? "bg-amber-500"
+                : "bg-blue-500")} />
+            {modeBadge.mode === "full" ? "完整"
+              : modeBadge.mode === "degraded" ? "降级"
+              : "预览"}
           </button>
           {modeMenuOpen && (
-            <div className="absolute bottom-9 left-0 w-52 rounded-lg border border-border bg-background/95 p-2 shadow-xl backdrop-blur">
-              <div className="mb-1.5 px-1 text-[10px] text-muted-foreground">运行模式 · 重启后生效</div>
+            <div className="absolute bottom-9 left-0 w-60 rounded-lg border border-border bg-background/95 p-2 shadow-xl backdrop-blur">
+              <div className="mb-1.5 px-1 text-[10px] text-muted-foreground">
+                {modeBadge.health?.label ?? "运行模式 · 重启后生效"}
+              </div>
+              {modeBadge.health ? (
+                <div className="mb-1.5 space-y-0.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1.5 text-[10px] leading-4 text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.graphiti ? "bg-green-500" : "bg-red-500")} />
+                    Graphiti Neo4j {modeBadge.health.neo4j.graphiti ? "在线" : "未连接"}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.neo4j.cognee ? "bg-green-500" : "bg-red-500")} />
+                    Cognee Neo4j {modeBadge.health.neo4j.cognee ? "在线" : "未连接"}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", modeBadge.health.pythonProcesses > 0 ? "bg-green-500" : "bg-red-500")} />
+                    Python 进程 {modeBadge.health.pythonProcesses} 个
+                  </div>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => { setModeMenuOpen(false); void switchModeTo("preview"); }}

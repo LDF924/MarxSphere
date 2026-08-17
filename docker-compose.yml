@@ -16,5 +16,45 @@ services:
       timeout: 5s
       retries: 20
 
+  # V399: 知识图谱库 — Graphiti bolt 11001(HTTP 11002) / Cognee bolt 11003(HTTP 11004)
+  # 代码 neo4j-query.ts 用 bolt://127.0.0.1:11001/11003，故主机 11001/11003 映射容器 7687(bolt)
+  neo4j-graphiti:
+    image: docker.m.daocloud.io/library/neo4j:5
+    container_name: sag_graphiti_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/neo4j123
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "11001:7687"
+      - "11002:7474"
+    volumes:
+      - sag_graphiti_neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  neo4j-cognee:
+    image: docker.m.daocloud.io/library/neo4j:5
+    container_name: sag_cognee_neo4j
+    environment:
+      NEO4J_AUTH: neo4j/neo4j123
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "11003:7687"
+      - "11004:7474"
+    volumes:
+      - sag_cognee_neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
   sag_lite_pgdata:
+  sag_graphiti_neo4jdata:
+  sag_cognee_neo4jdata:

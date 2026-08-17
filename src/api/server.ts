@@ -684,10 +684,51 @@ export function buildHttpServer() {
   });
 
   // 运行模式（GBrain 模式徽标）：preview=预览（省内存）/ full=完整（推理+MCP池）
-  app.get("/api/mode", async () => ({
-    mode: process.env.MARXSPHERE_PREVIEW === "1" ? "preview" : "full",
-    mcpPoolSize: process.env.MCP_POOL_SIZE ? Number(process.env.MCP_POOL_SIZE) : 10
-  }));
+  // V399: 真实健康探测 — mode 显示实际服务状态（Neo4j 双端口 + Python 进程），不再只看 env 标记
+  app.get("/api/mode", async () => {
+    const mode: "preview" | "full" = process.env.MARXSPHERE_PREVIEW === "1" ? "preview" : "full";
+    const mcpPoolSize = process.env.MCP_POOL_SIZE ? Number(process.env.MCP_POOL_SIZE) : 10;
+
+    // Neo4j 端口探测（Graphiti 11001 / Cognee 11003）— TCP 连接即算 up
+    const net = await import("node:net");
+    const probePort = (port: number): Promise<boolean> => new Promise((resolve) => {
+      const sock = net.connect({ port, host: "127.0.0.1", timeout: 1500 });
+      sock.once("connect", () => { sock.destroy(); resolve(true); });
+      sock.once("error", () => resolve(false));
+      sock.once("timeout", () => { sock.destroy(); resolve(false); });
+    });
+    const [graphitiUp, cogneeUp] = await Promise.all([probePort(11001), probePort(11003)]);
+
+    // Python 进程探测（openviking/cognee 相关子进程）
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const pythonProcessCount = await new Promise<number>((resolve) => {
+      if (process.platform === "win32") {
+        promisify(execFile)("tasklist", ["/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"])
+          .then(({ stdout }) => resolve(stdout.split("\n").filter((l) => l.includes("python")).length))
+          .catch(() => resolve(0));
+      } else {
+        promisify(execFile)("pgrep", ["-c", "-f", "python|openviking|cognee"])
+          .then(({ stdout }) => resolve(Number(stdout.trim()) || 0))
+          .catch(() => resolve(0));
+      }
+    });
+
+    // 真实状态: 完整模式需 Neo4j 至少一个 up（推理需要图库）
+    const neo4jUp = graphitiUp || cogneeUp;
+    const effectiveMode = mode === "full" && neo4jUp ? "full" : mode === "full" ? "degraded" : "preview";
+    return {
+      mode: effectiveMode,
+      mcpPoolSize,
+      health: {
+        neo4j: { graphiti: graphitiUp, cognee: cogneeUp },
+        pythonProcesses: pythonProcessCount,
+        label: effectiveMode === "full" ? "完整模式（全部服务在线）"
+          : effectiveMode === "degraded" ? "降级（Neo4j 未连接，推理不可用）"
+          : "预览模式"
+      }
+    };
+  });
 
   // ─── 学术研究 API（S41-S45）───
   // 学派脉络全景: POST { schoolName, topK?, model? }
