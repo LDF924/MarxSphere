@@ -147,7 +147,7 @@ export function TraversalPanel(props: {
             </button>
             {pickerOpen && (
               <div
-                className="absolute left-0 top-full z-30 mt-1 w-64 rounded-md border border-border bg-background p-2 shadow-lg"
+                className="absolute left-0 top-full z-30 mt-1 min-w-[16rem] max-w-[20rem] rounded-md border border-border bg-background p-2 shadow-lg"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -159,7 +159,7 @@ export function TraversalPanel(props: {
                   className="mb-1.5 w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:border-primary/60"
                 />
                 <div
-                  className="max-h-56 space-y-0.5 overflow-y-auto pr-1"
+                  className="max-h-56 min-h-[3rem] space-y-0.5 overflow-y-auto pr-1"
                   onScroll={(e) => {
                     // 滚动到底部 +50（无限滚动，防抖：只在本批显示完时触发）
                     const el = e.currentTarget;

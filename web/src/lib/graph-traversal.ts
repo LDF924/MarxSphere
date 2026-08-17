@@ -38,6 +38,9 @@ export function traverseGraph(
 ): TraversalResult {
   const maxDepth = Math.min(Math.max(depth, 1), 3);
   const entityById = new Map(graph.entities.map((e) => [e.id, e]));
+  // V399 性能: 预建 eventsById Map — 原 graph.events.find 在循环内 O(N×M) 导致
+  // 大图谱(5万实体/上千事件)选择实体后页面卡死
+  const eventsById = new Map(graph.events.map((e) => [e.id, e]));
   const eventsByEntity = new Map<string, string[]>();
   for (const edge of graph.edges) {
     const list = eventsByEntity.get(edge.entityId) ?? [];
@@ -61,7 +64,7 @@ export function traverseGraph(
   ) => {
     const events = eventsByEntity.get(item.entityId) ?? [];
     for (const eventId of events) {
-      const event = graph.events.find((e) => e.id === eventId);
+      const event = eventsById.get(eventId);
       if (!event) continue;
       // 方向过滤：事件有方向数据时，判断起点在事件中的角色
       const hasDirection = (event.subjectIds?.length ?? 0) > 0 || (event.objectIds?.length ?? 0) > 0;
