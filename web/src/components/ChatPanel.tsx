@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   Loader2, Plus, PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Pin, PinOff,
-  MessageSquare, Send, Square, Globe, ImagePlus, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap
+  MessageSquare, Send, Square, Globe, Paperclip, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { McpMessageRecord, McpSessionRecord, McpToolCallRecord } from "../types";
@@ -772,11 +772,11 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  title="上传图片（也可 Ctrl+V 粘贴截图）"
+                  title="上传附件（图片/PDF/Word/Excel/PPT/文本；图片也可 Ctrl+V 粘贴）"
                   className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
-                  <ImagePlus className="h-4 w-4" />
-                  图片
+                  <Paperclip className="h-4 w-4" />
+                  附件
                 </button>
                 <button
                   type="button"
@@ -843,6 +843,25 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         type="button"
                         onClick={() => setDraftImages((prev) => prev.filter((_, idx) => idx !== i))}
                         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {/* V399: 文档附件预览（PDF/Office/文本） */}
+              {draftDocs.length > 0 ? (
+                <div className="flex flex-wrap gap-2 px-3 pt-2">
+                  {draftDocs.map((doc, i) => (
+                    <div key={i} className="group relative flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1.5 text-xs">
+                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="max-w-40 truncate">{doc.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDraftDocs((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white"
                       >
                         ×
                       </button>
