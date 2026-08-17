@@ -1209,12 +1209,13 @@ export function getToolWhitelist(): Set<string> | null {
 export function getNetworkWhitelist(): Set<string> {
   const raw = process.env.AGENT_NET_WHITELIST;
   if (raw) return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  // 默认: 系统内部 API + LLM 提供方 + 常见公开学术源
+  // 默认: 系统内部 API + LLM 提供方 + 常见公开学术源 + 搜索引擎（V399: 对话工具循环 web_search 需要）
   return new Set([
     "localhost", "127.0.0.1", "0.0.0.0",
     "api.deepseek.com", "dashscope.aliyuncs.com", "api.openai.com", "api.anthropic.com",
     "weixin.sogou.com", "navi.cnki.net", "crpe.ruc.edu.cn", "www.ddjjyj.com",
     "www.qstheory.cn", "cssn.cn", "www.erj.cn", "www.jjxdt.org",
+    "cn.bing.com", "www.bing.com", "bing.com", "www.baidu.com", "baidu.com", "www.sogou.com",
   ]);
 }
 

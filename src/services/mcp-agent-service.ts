@@ -282,8 +282,9 @@ export class McpAgentService {
   }
 
   /**
-   * V398: 通用 AI 对话流（kind=chat，无项目绑定）—
-   * 图片经 image_analyze 注入描述 → 联网开关注入 web_search → callLlm 真 token 流式 → 落库。
+   * V398/V399: 通用 AI 对话流（kind=chat，无项目绑定）— Agent 工具循环：
+   * 图片/联网注入 → LLM 规划选工具 → 执行（审批拦截）→ 结果入上下文 → 循环
+   * 直到 LLM 判定完成 → 流式最终回答。全程 tool_start/tool_end 事件供前端时间线。
    */
   private async runChatLlmFlow(input: {
     session: McpSessionRecord;
@@ -363,43 +364,157 @@ export class McpAgentService {
       contextParts.push(`[联网搜索结果]\n${resultText.slice(0, 4000)}`);
     }
 
-    // ③ LLM 流式回答（真 token）
-    assertNotAborted(input.signal);
+    // ③ V399: Agent 工具循环 — LLM 规划选工具 → 执行 → 结果入上下文 → 循环
     const { callLlm } = await import("../ai/llm-common.js");
-    const historyForLlm = input.history.slice(-8);
-    const recentTurns = historyForLlm
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content }));
+    const { buildAgentTools, executeAgentTool, checkToolPolicy } = await import("./agent-tool-router.js");
     const { getRoleModel } = await import("./llm-model-registry.js");
     const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
     input.emit?.({ type: "model", model });
 
-    const systemPrompt = [
-      "你是 MarxSphere AI 助手，一名马克思主义理论研究科研助手。",
-      "基于你的知识回答用户问题；若提供了检索结果/图片描述/联网搜索上下文，优先依据它们作答并标注来源。",
-      "回答使用 Markdown：代码块用 ```lang 标注，数学公式用 $...$ 或 $$...$$。",
-      "对于理论问题给出概念界定、历史脉络、当代意义的结构化回答。",
-      "若上下文不足，诚实说明并建议使用 Ask 检索或 52 步推理获取文献级证据。"
+    const historyForLlm = input.history.slice(-8);
+    const recentTurns = historyForLlm
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const allTools = await buildAgentTools();
+    const toolList = allTools.map((t) => {
+      const params = Object.entries(t.params)
+        .map(([k, v]) => `${k}${v.required ? "(必填)" : ""}:${v.type} — ${v.desc}`)
+        .join("; ");
+      return `- ${t.name}(${t.risk}): ${t.description} | 参数: ${params || "无"}`;
+    }).join("\n");
+
+    const planningSystem = [
+      "你是 MarxSphere 的 Agent 工具调度器。根据用户任务，从工具清单中选择最合适的工具执行。",
+      "规则：",
+      "1. 每次只调用一个工具，观察结果后决定下一步。",
+      "2. 需要检索文献/知识库 → sag_search / sag_retrieve / concept_trace；",
+      "   需要深度推理 → sag_reason；需要联网 → web_search；需要实证分析 → empirical_analysis；",
+      "   需要读取附件 → attachment_read；需要图片分析 → image_analyze；其他按描述选择。",
+      "3. 工具执行完成后，判断任务是否解决：解决 → 返回 {\"done\":true}；否则继续调用下一步工具。",
+      "4. 最多 12 轮工具调用，超限必须收尾。",
+      "5. risk=review 或需 manager 的工具需要用户审批，若被拦截说明原因并换工具。",
+      "只返回 JSON: {\"tool\":\"工具名\",\"args\":{...}} 或 {\"done\":true}。参数必须具体，不要用占位符。",
+      `工具清单:\n${toolList}`
     ].join("\n");
 
-    const messages = [
+    const MAX_TOOL_ROUNDS = 12;
+    let finalText = "";
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      assertNotAborted(input.signal);
+      input.emit?.({ type: "stage", label: `工具规划 ${round + 1}`, detail: "正在决定下一步工具调用" });
+
+      // 3a. LLM 规划（非流式 JSON）
+      const plan = await callLlm({
+        model,
+        agentContext: { action: "chat_tool_plan" },
+        messages: [
+          { role: "system", content: planningSystem },
+          ...recentTurns.slice(-4),
+          {
+            role: "user",
+            content: [
+              `用户任务: ${input.userContent}`,
+              ...(contextParts.length > 0 ? [`已收集上下文:\n${contextParts.join("\n\n").slice(0, 6000)}`] : ["（尚无工具结果）"])
+            ].join("\n\n")
+          }
+        ],
+        maxTokens: 400,
+        jsonMode: true,
+        temperature: 0.1
+      });
+      if (plan?.error) {
+        return `（工具规划失败: ${plan.error.slice(0, 200)}）`;
+      }
+      let decision: { tool?: string; args?: Record<string, unknown>; done?: boolean } = {};
+      try {
+        decision = JSON.parse((plan?.text ?? "").trim().replace(/```json|```/g, ""));
+      } catch {
+        // 解析失败 → 收尾（不阻塞回答）
+      }
+
+      if (decision.done || !decision.tool) {
+        break;
+      }
+
+      // 3b. 找工具定义
+      const toolDef = allTools.find((t) => t.name === decision.tool);
+      if (!toolDef) {
+        contextParts.push(`[工具 ${decision.tool} 不存在，忽略]`);
+        continue;
+      }
+
+      // 3c. 策略检查（白名单/风险/角色）
+      const policy = checkToolPolicy(toolDef.name, "manager");
+      if (!policy.allowed) {
+        contextParts.push(`[工具 ${toolDef.name} 被策略拦截: ${policy.reason}]`);
+        continue;
+      }
+
+      // 3d. 执行（review 工具会返回 requiresApproval — 对话内记为需人工审批，跳过）
+      assertNotAborted(input.signal);
+      const started = performance.now();
+      input.emit?.({ type: "tool_start", toolName: toolDef.name, arguments: decision.args ?? {} });
+      let resultText = "（执行失败）";
+      let failed = false;
+      let needsApproval = false;
+      try {
+        const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "manager" });
+        if (exec.requiresApproval) {
+          needsApproval = true;
+          resultText = `工具 ${toolDef.name} 需要人工审批，对话内已跳过（可在任务面板或修改自主级别后使用）`;
+        } else if (!exec.ok) {
+          failed = true;
+          resultText = exec.result;
+        } else {
+          resultText = exec.result;
+        }
+      } catch (e: any) {
+        failed = true;
+        resultText = `（工具异常: ${String(e?.message || e).slice(0, 200)}）`;
+      }
+      const toolCall = await addMcpToolCall({
+        sessionId: input.session.id,
+        messageId: input.messageId,
+        toolName: toolDef.name,
+        arguments: decision.args ?? {},
+        result: { text: resultText.slice(0, 3000) },
+        status: needsApproval ? "FAILED" : failed ? "FAILED" : "SUCCEEDED",
+        durationMs: Math.round(performance.now() - started),
+        error: failed || needsApproval ? resultText.slice(0, 300) : undefined
+      });
+      input.toolCalls.push(toolCall);
+      input.emit?.({ type: "tool_end", toolCall });
+      contextParts.push(`[工具 ${toolDef.name} 结果]\n${resultText.slice(0, 2000)}`);
+    }
+
+    // ④ 最终回答（流式，含思考链）
+    assertNotAborted(input.signal);
+    const systemPrompt = [
+      "你是 MarxSphere AI 助手，一名马克思主义理论研究科研助手。",
+      "根据用户任务和工具执行结果，给出完整、结构化的最终回答。",
+      "回答使用 Markdown：代码块用 ```lang 标注，数学公式用 $...$ 或 $$...$$。",
+      "引用工具结果时标注来源（如 [检索结果]、[推理结论]、[政策库]）。",
+      "若工具结果不足，诚实说明并建议使用 Ask 检索或 52 步推理。"
+    ].join("\n");
+
+    const finalMessages = [
       { role: "system", content: systemPrompt },
-      ...recentTurns,
+      ...recentTurns.slice(-6),
       {
         role: "user",
         content: [
-          input.userContent,
-          ...(contextParts.length > 0 ? [`\n\n---\n附加上下文（仅供参考）:\n${contextParts.join("\n\n")}`] : [])
+          `用户任务: ${input.userContent}`,
+          ...(contextParts.length > 0 ? [`\n\n工具执行记录:\n${contextParts.join("\n\n").slice(0, 12000)}`] : [])
         ].join("")
       }
     ];
 
     const result = await callLlm({
       model,
-      agentContext: { action: "chat_general" },
-      messages: messages as any,
+      agentContext: { action: "chat_final" },
+      messages: finalMessages as any,
       maxTokens: 2000,
-      // V398: 对话页开启思考链（deepseek reasoning_content）— 折叠区展示
       thinking: "enabled",
       onStream: (delta) => {
         input.emit?.({ type: "assistant_delta", delta });
@@ -413,7 +528,8 @@ export class McpAgentService {
     if (result?.error) {
       return `（模型调用失败: ${result.error.slice(0, 300)}）`;
     }
-    return result?.text ?? "（无回答）";
+    finalText = result?.text ?? "";
+    return finalText;
   }
 
   private async createRunner(projectId: string, signal?: AbortSignal) {

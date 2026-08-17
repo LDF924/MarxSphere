@@ -126,25 +126,43 @@ function CitationStrip({ citations, onOpenCitation }: { citations: MarkdownCitat
   );
 }
 
-function ToolCallCard({ call }: { call: McpToolCallRecord }) {
+/** V399: 工具链时间线卡片 — 序号 + 工具名 + 参数摘要 + 结果摘要 + 耗时，可展开详情 */
+function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number }) {
   const [open, setOpen] = useState(false);
   const ok = call.status === "SUCCEEDED";
+  const argsText = Object.entries(call.arguments ?? {})
+    .map(([k, v]) => `${k}=${typeof v === "string" ? (v.length > 40 ? v.slice(0, 40) + "…" : v) : JSON.stringify(v).slice(0, 40)}`)
+    .join(" · ");
+  const resultText = typeof call.result === "string" ? call.result : JSON.stringify(call.result ?? call.error ?? {}, null, 2);
   return (
     <div className={cn(
       "rounded-md border px-2.5 py-1.5 text-xs",
       call.status === "FAILED" ? "border-red-400/30 bg-red-500/5" : ok ? "border-emerald-400/30 bg-emerald-500/5" : "border-blue-400/30 bg-blue-500/5"
     )}>
       <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setOpen(!open)}>
+        <span className={cn(
+          "flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
+          call.status === "FAILED" ? "bg-red-500/20 text-red-400" : ok ? "bg-emerald-500/20 text-emerald-400" : "bg-blue-500/20 text-blue-400"
+        )}>
+          {index}
+        </span>
         {call.status === "FAILED" ? <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" /> : ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" /> : <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-400" />}
-        <Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />
-        <span className="font-medium">{call.toolName}</span>
+        <span className="shrink-0 font-medium">{call.toolName}</span>
+        {argsText ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{argsText}</span> : null}
         {call.durationMs != null ? <span className="shrink-0 text-muted-foreground">{call.durationMs}ms</span> : null}
         <ChevronDown className={cn("ml-auto h-3 w-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
       {open ? (
-        <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[10px] leading-4 text-muted-foreground">
-          {typeof call.result === "string" ? call.result : JSON.stringify(call.result ?? call.error ?? {}, null, 2)}
-        </pre>
+        <div className="mt-1.5 space-y-1.5">
+          {argsText ? (
+            <div className="rounded bg-background/60 px-2 py-1 font-mono text-[10px] leading-4 text-muted-foreground">
+              参数: {argsText}
+            </div>
+          ) : null}
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2 font-mono text-[10px] leading-4 text-muted-foreground">
+            {resultText.slice(0, 2000)}
+          </pre>
+        </div>
       ) : null}
     </div>
   );
@@ -504,7 +522,11 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         ) : null}
                         {!isUser && toolCallsFor(message.id).length > 0 ? (
                           <div className="mt-2.5 space-y-1.5">
-                            {toolCallsFor(message.id).map((call) => <ToolCallCard key={call.id} call={call} />)}
+                            <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              <Wrench className="h-3 w-3" />
+                              工具链 · {toolCallsFor(message.id).length} 次调用
+                            </div>
+                            {toolCallsFor(message.id).map((call, i) => <ToolCallCard key={call.id} call={call} index={i + 1} />)}
                           </div>
                         ) : null}
                         <div className={cn("mt-1 text-[10px]", isUser ? "text-primary-foreground/60" : "text-muted-foreground/70")}>

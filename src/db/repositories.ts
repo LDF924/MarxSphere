@@ -314,9 +314,13 @@ export async function assertSourcesAccessible(sourceIds: string[], tenantId: str
   if (sourceIds.length === 0) {
     throw new Error("sourceIds must not be empty");
   }
+  // V399: 公共库(PUBLIC_TENANT)资源对本机/默认租户也可见 — 检索 501 篇文献资产不因租户隔离不可达
+  const accessibleTenants = tenantId === "00000000-0000-0000-0000-000000000001" || tenantId === "default"
+    ? ["default", "00000000-0000-0000-0000-000000000001"]
+    : [tenantId];
   const result = await pool.query(
-    "select id from sources where tenant_id = $1 and archived_at is null and id = any($2::uuid[])",
-    [tenantId, sourceIds]
+    "select id from sources where tenant_id = any($1::text[]) and archived_at is null and id = any($2::uuid[])",
+    [accessibleTenants, sourceIds]
   );
   const found = new Set(result.rows.map((row) => String(row.id)));
   const missing = sourceIds.filter((id) => !found.has(id));
