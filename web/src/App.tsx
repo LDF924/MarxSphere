@@ -2188,7 +2188,7 @@ function MainWorkspaceTabs(props: {
       items: [
         { value: "assistant", label: t("AI对话", "AI Chat") },
         { value: "chat", label: t("MCP工具检索", "MCP Search") },
-        { value: "reason", label: t("推理", "Reason") },
+        { value: "reason", label: t("推理工作台", "Reason Lab") },
         { value: "ask", label: t("Ask检索", "Ask") },
       ],
     },
