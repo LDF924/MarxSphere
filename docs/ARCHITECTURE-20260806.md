@@ -15,7 +15,7 @@ graph TB
         Truth[知识页<br/>Compiled Truth]
         Graph[知识图谱<br/>径向/力导向]
         Policy[政策库] Vault[资料库]
-        Skills[技能库<br/>103技能]
+        Skills[技能库<br/>190+技能]
         Jobs[Jobs自动化<br/>17类任务]
         Trace[Trace瀑布] Sciverse[外部检索]
     end
@@ -36,7 +36,7 @@ graph TB
         PolicyS[policy-service<br/>gov.cn检索]
         LitS[literature-service<br/>文献库1化6]
         TraceS[trace-service<br/>OTEL span]
-        SkillsS[skills-service<br/>103技能+GitHub]
+        SkillsS[skills-service<br/>扫描注册表+GitHub]
         VaultS[vault-service<br/>Obsidian资料库]
     end
 
@@ -105,10 +105,10 @@ graph TB
 
 每个场景 → 全屏工作台（步骤向导 + 工具指引 + 一键跳转）
 
-## 技能生态（103 个）
+## 技能生态（仓库随附 10 个 + 命令面板动态扫描）
 
-- **核心 9 个**：marx-agent(总入口)/marx-sag(推理)/marx-cognee/marx-graphiti/marx-ingest-all/marx-cognee-ingest/marx-graphiti-ingest/pdf2obsidian/md-clean
-- **通用 94 个**：选题/计量/写作/评审/文献/图表/统计等（academic-paper/deep-research/lit-search/00.1-3实证三栈...）
+- **仓库自研 10 个**（`skills/`）：marx-agent(总入口)/marx-sag(推理)/marx-cognee/marx-graphiti/marx-ingest-all/marx-cognee-ingest/marx-graphiti-ingest/pdf2obsidian/md-clean/cnki
+- **Web 命令面板**：`/` 弹出技能命令面板，扫描本地技能注册表（约 190+ 个，随安装增长）
 
 ## 数据流（论文入库链路）
 

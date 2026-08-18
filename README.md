@@ -2,6 +2,10 @@
   <img src="docs/assets/marx-logo-512.png" alt="MarxSphere" width="200" />
 </p>
 
+<p align="center">
+  <a href="README-EN.md">English</a> · <strong>中文</strong>
+</p>
+
 # MarxSphere 马研星环
 
 **AI 驱动的马克思主义理论研究科研中枢** — 从文献检索、知识图谱到 AI Agent 与桌面端的完整科研工作台。
@@ -14,7 +18,7 @@
 
 ## 功能总览
 
-> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 26 工具矩阵 / 10 实证功能 / 桌面端细节 / 评测指标）
+> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 44 工具矩阵 / 10 实证功能 / 桌面端细节 / 评测指标）
 
 ### 🖼 界面速览
 
@@ -35,14 +39,14 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **46 工具自主调度**：26 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件）+ 18 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，33 视图能力全覆盖）
-- **命令语法**：`/` 弹出技能命令面板（194 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
+- **44 工具自主调度**：26 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件）+ 18 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，33 视图能力全覆盖）
+- **命令语法**：`/` 弹出技能命令面板（190+ 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
 - **浅色 / 深色双主题**：header 一键切换，localStorage 持久化
 - **空会话首屏**：欢迎语 + 热词建议（点击即问）+ 核心功能入口（Ask 检索 / 52 步推理 / 实证工作台）
 
-### 🤖 AI Agent（50+ 能力项 · 26 工具 · 5 层安全 · 5 层记忆）
+### 🤖 AI Agent（50+ 能力项 · 44 工具 · 5 层安全 · 5 层记忆）
 
 > 50 项 Agent 特性全部吸收。完整能力档案见 [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md)。
 
@@ -59,12 +63,12 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（26 个）**
+**② 工具矩阵（26 个 Agent 工具；另有 18 个视图工具，合计 44）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
-| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
-| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest | 超时熔断、降级链 |
+| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / llm_write | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
+| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest / github_repo / runtime_exec | 超时熔断、降级链 |
 | 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） | 附件预处理压缩 |
 | 协作 | agent_subagent（外部 Agent 派发）/ attachment_read / code_search / todo_update | 子进程治理（防孤儿） |
 
@@ -280,15 +284,15 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 | **marx-cognee** | Cognee 知识图谱检索（17 种策略：HYBRID/语义/图遍历…）| ⑤ 检索 |
 | **marx-graphiti** | Graphiti 知识检索（五层蒸馏 + 社区发现 + 超边推理，23 个 MCP 工具）| ⑤ 检索 |
 | **marx-sag** | SAG 推理工作台（52 步链路 + token 采集 + 评测，30 题均值 0.870 基线）| ⑥ 推理 |
-| **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 65 场景 + 103 技能统一调度）| ⑦ 科研调度 |
+| **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 66 场景 + 190+ 技能统一调度）| ⑦ 科研调度 |
 
 **流水线全景**：`cnki 获取 → pdf2obsidian 转换 → md-clean 清洗 → marx-*-ingest 三库入库 → marx-cognee/marx-graphiti 检索 → marx-sag 推理 → marx-agent 调度`
 
-**技能系统（Web 端）**：技能注册表 192 项 + 触发词 + Skillify 固化 + 自动更新检测 + GitHub 发现。
+**技能系统（Web 端）**：技能注册表（约 190+ 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 + GitHub 发现。
 
 ### 📊 评测体系（多源融合的实证验证）
 
-**评测方法**：双轨评测（规则评分 + LLM judge 三轮回合取中位数）、53 题 4 类题型（概念定义 16 / 事实检索 14 / 多跳推理 14 / 政策评估 9）、31 评分项 + overall。
+**评测方法**：双轨评测（规则评分 + LLM judge 三轮回合取中位数）、53 题 4 类题型（概念定义 15 / 事实检索 13 / 多跳推理 14 / 政策评估 11）、31 评分项 + overall。
 
 **31 项指标**（[完整定义](docs/SCORING_STANDARD.md)）：
 
@@ -450,4 +454,5 @@ MIT License — 见 [LICENSE](LICENSE)。
 | 📈 评测报告样例 | `reports/`（7 份报告）· `evaluation/`（评测结果+金标+历史归档） |
 | ✅ 单元测试 | `npm test`（154 项） |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` |
+| 📚 种子语料 | `examples/seed-corpus/`（50 篇评测金标同源文献 + 一键入库脚本 `ingest-seed-corpus.ts`） |
 | 📄 示例数据 | `scripts/问卷演示数据*.csv`（随机模拟，seed=42） |

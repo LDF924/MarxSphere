@@ -2,6 +2,19 @@
 
 本项目按语义化版本管理，主要变更记录于此。
 
+## [0.2.2] - 2026-08-18
+
+### 桌面端发布（marx-icon）
+
+- 桌面端 v0.2.2（Marx 图标）打包发布，安装包上传 GitHub Release
+- 马克思图标纳入仓库（`docs/assets/marx-logo-512.png` / `marx-logo.png`）
+
+### 示例数据与文档
+
+- 新增种子语料 `examples/seed-corpus/`：50 篇评测金标同源文献（1化6 产物）+ 一键入库脚本，clone 后无需私有文献即可体验四源检索
+- 文档数字统一：Agent 工具 44（26 Agent + 18 视图）、场景 66、技能约 190+
+- 架构图同步（`docs/assets/marxsphere-architecture.svg`）
+
 ## [0.1.0] - 2026-08-17
 
 ### 开源发布
@@ -14,7 +27,7 @@ MarxSphere 马研星环首个开源版本（MIT 许可）。
 - **Ask 18 步检索流水线**：多臂召回 → 加权 RRF → Cosine 重打分 → Boost 链 → LLM 重排
 - **三库知识图谱**：Graphiti（超边/社区）+ Cognee（实体/切片）+ PG pgvector（向量 1024 维）
 - **66 科研场景工作台**：8 大阶段全覆盖，含分步引导与专属算法
-- **AI Agent**：50+ 能力项、26 工具、5 层安全、5 层记忆、Agent 轨迹评测
+- **AI Agent**：50+ 能力项、44 工具（26 Agent + 18 视图）、5 层安全、5 层记忆、Agent 轨迹评测
 - **实证研究工作台**：问卷生成/信效度/诊断/LLM 插补/回归（M1-M6）/证据账本/质量闸门
 - **桌面端**：Electron + NSIS 安装包，首次启动全量引导
 - **自研 Skill 10 个**：cnki/pdf2obsidian/md-clean/三库入库/三库检索/推理/Agent 调度

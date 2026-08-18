@@ -1,8 +1,8 @@
-# MarxSphere 全链路检索流程 (V88K) + eval-22-metrics V40 评测体系
+# MarxSphere 全链路检索流程 (V88K) + eval-32-metrics V41 评测体系
 
 > 入口: `POST /api/reason/query` (Fastify :4173) → reasonWithFallback (V80自愈闭环)
 > 核心: `InferenceService` (src/services/inference-service.ts, 1682行)
-> 评测: `scripts/eval-22-metrics.ts` (1059行, V41 — 32指标, A9-A12新增)
+> 评测: `scripts/eval-32-metrics.ts` (1059行, V41 — 32指标, A9-A12新增)
 
 ## 1. 整体架构 — 四层检索管道
 
@@ -143,12 +143,13 @@ expandQuery(query, sourceId, profile)
   └─ return query + ' ' + unique(extensions).slice(0,15)
 ```
 
-## 6. 评测架构 (eval-22-metrics V40)
+## 6. 评测架构 (eval-32-metrics V41)
 
 ```
-32指标, 1119行
-  A维度 (9, w=0.40): recall/precision/relevancy/entity/mrr/ndcg/diversity/
-                     cross_doc_coverage/context_json_contamination(A9)
+32 输出项 = 31 评分项 + overall, 1059行
+  A维度 (12, w=0.40): context_recall/context_precision/context_relevancy/
+                     entity_utilization/mrr/ndcg/diversity/cross_doc_coverage/
+                     json_contamination/paper_hit/paper_recall@k/source_grounded
   B维度 (9, w=0.35): correctness/completeness/relevancy/faithfulness/
                      hallucination/factual_consistency/citation_f1/
                      conciseness/readability
@@ -166,9 +167,9 @@ LLM Judge: _llmJudgeOnce → runThreeRoundMedian → mergeScore(rule, llm)
 
 ```
 SAG API (:4173, Fastify, tsx) → reasonWithFallback
-  ├─ MCP stdio → Cognee Python → Neo4j Cognee (:11003, 38672 nodes)
-  ├─ MCP stdio → Graphiti Python → Neo4j Graphiti (:11001, 31627 nodes)
-  └─ PG :5540 (pgvector) → 6925 chunks + 34978 entities
+  ├─ MCP stdio → Cognee Python → Neo4j Cognee (:11003, 31253 nodes)
+  ├─ MCP stdio → Graphiti Python → Neo4j Graphiti (:11001, 21337 nodes)
+  └─ PG :5540 (pgvector) → 7550 chunks + 34978 entities
 ```
 
 ## 8. 八题矩阵
