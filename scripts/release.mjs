@@ -1,6 +1,7 @@
 // scripts/release.mjs — 一键发布脚本：构建 → 桌面端打包 → 上传 GitHub Release
 // 用法: node scripts/release.mjs [版本标签] [发布说明]
 // 示例: node scripts/release.mjs v0.3.0 "新功能说明"
+// 版本号来源: 标签去掉前导 v（v0.2.2 → 0.2.2）；安装包名与 Release 标签自动一致
 // 环境变量: GITHUB_TOKEN（GitHub API token，必需）；SENSENOVA_API_KEY 等由 .env 提供
 import { spawnSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -55,9 +56,12 @@ run("tsx", ["scripts/build-desktop.mjs"], { env: { SKIP_ELECTRON_BUILDER: "1" } 
 console.log("════════ 3/5 NSIS 安装包 ════════");
 const cacheDir = path.join(root, ".cache", "electron-builder");
 if (!existsSync(cacheDir)) execSync(`mkdir -p "${cacheDir}"`, { shell: "powershell.exe" });
-const installer = path.join(root, "release", "MarxSphere Setup 0.1.0.exe");
+const tag = process.argv[2] || `v${Date.now().toString(36)}`;
+// 版本号 = 标签去前导 v；electron-builder 默认读 package.json version，需显式传入保证一致
+const version = tag.replace(/^v/, "").split("-")[0];
+const installer = path.join(root, "release", `MarxSphere Setup ${version}.exe`);
 if (existsSync(installer)) execSync(`del "${installer}"`, { shell: "cmd.exe" });
-run("electron-builder", ["--win", "nsis", "--config", "electron-builder.yml", "--publish", "never"], {
+run("electron-builder", ["--win", "nsis", "--config", "electron-builder.yml", "--publish", "never", "--config.extraMetadata.version", version], {
   env: {
     CSC_IDENTITY_AUTO_DISCOVERY: "false",
     ELECTRON_BUILDER_CACHE: cacheDir,
@@ -69,11 +73,10 @@ if (!existsSync(installer)) {
   process.exit(1);
 }
 const sizeMB = Math.round(statSync(installer).size / 1024 / 1024);
-console.log(`✅ 安装包: ${sizeMB}MB`);
+console.log(`✅ 安装包: ${installer} (${sizeMB}MB)`);
 
 // 4) 创建 GitHub Release + 上传安装包
 console.log("════════ 4/5 GitHub Release ════════");
-const tag = process.argv[2] || `v${Date.now().toString(36)}`;
 const notes = process.argv[3] || "MarxSphere 自动发布";
 const release = JSON.parse(execSync(
   `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({
@@ -102,8 +105,8 @@ console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.mes
 // 5) 同步安装包到主仓库（SAG-main release/）
 const mainReleaseDir = path.join("C:/Users/HUAWEI/SAG-main", "release");
 if (existsSync(mainReleaseDir)) {
-  execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup 0.1.0.exe"`, { shell: "cmd.exe" });
-  console.log("✅ 已同步到主仓库 release/");
+  execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
+  console.log(`✅ 已同步到主仓库 release/ (MarxSphere Setup ${version}.exe)`);
 }
 
 console.log("\n🎉 发布完成!");
