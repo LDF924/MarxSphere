@@ -351,6 +351,8 @@ npm run db:setup          # migrations + seed data
 npm run dev               # WebUI http://localhost:5173, API http://localhost:4173
 ```
 
+> **PDF2Obsidian (optional)**: `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
+
 ### 3. Production
 
 ```bash

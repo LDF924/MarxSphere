@@ -351,6 +351,8 @@ npm run db:setup          # 迁移 + 种子数据
 npm run dev               # WebUI http://localhost:5173, API http://localhost:4173
 ```
 
+> **PDF2Obsidian（可选）**：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
+
 ### 3. 生产模式
 
 ```bash

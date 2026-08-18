@@ -98,6 +98,9 @@ npm run dev                 # 开发: http://localhost:5173
 npm run build && npm start  # 生产: http://localhost:4173
 ```
 
+> **PDF2Obsidian 功能**（可选）：`vendor/pdf2obsidian` 的编译产物（dist）为构建产物未随仓库提交，首次使用前执行
+> `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`（否则 typecheck 报 2 个 module-not-found，PDF2Obsidian 功能不可用）。
+
 桌面端：`npm run build:desktop` → 安装 `release/MarxSphere Setup <ver>.exe`，首次启动引导配置
 
 ### 账号权限
