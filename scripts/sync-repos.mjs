@@ -29,7 +29,7 @@
  *   - 复制前打印差异报告，--dry-run 只预览
  *   - 每个方向复制完成后打印统计
  */
-import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,10 +95,14 @@ function diffFiles(srcFiles, dstRoot) {
 function copyFile(f) {
   const dir = path.dirname(f.dst);
   if (!existsSync(dir)) {
+    // 逐级创建缺失目录
+    const stack = [];
     let cur = dir;
-    const toCreate = [];
-    while (!existsSync(cur) && cur !== path.dirname(cur)) { toCreate.unshift(cur); cur = path.dirname(cur); }
-    for (const d of toCreate) cpSync(d, d, { recursive: true, errorOnExist: false });
+    while (!existsSync(cur) && cur !== path.dirname(cur)) {
+      stack.unshift(cur);
+      cur = path.dirname(cur);
+    }
+    for (const d of stack) mkdirSync(d, { recursive: true });
   }
   cpSync(f.src, f.dst, { force: true });
 }
