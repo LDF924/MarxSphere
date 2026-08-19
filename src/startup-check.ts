@@ -27,6 +27,15 @@ function checks(): CheckResult[] {
     results.push({ name: "EMBEDDING_API_KEY", ok: true, detail: "已配置" });
   }
 
+  // 1.5 JWT_SECRET（V410: 生产暴露必须设置 — 未设时用随机密钥，重启后 Web 会话全部失效）
+  if (!process.env.JWT_SECRET) {
+    results.push({ name: "JWT_SECRET", ok: false, detail: "未配置 — 使用随机密钥（重启后登录会话失效）。生产部署必须设置（openssl rand -hex 32），否则每次重启所有用户需重新登录" });
+  } else if ((process.env.JWT_SECRET || "").length < 32) {
+    results.push({ name: "JWT_SECRET", ok: false, detail: "强度不足（当前 <32 字符）— 建议 openssl rand -hex 32 生成强随机值" });
+  } else {
+    results.push({ name: "JWT_SECRET", ok: true, detail: "已配置（强度 OK）" });
+  }
+
   // 2. 数据库（DATABASE_URL 是否存在即可，连通性由 /health 报告）
   if (!process.env.DATABASE_URL) {
     results.push({ name: "DATABASE_URL", ok: false, detail: "未配置 — 服务无法启动，请在 .env 配置" });
