@@ -6,6 +6,13 @@
   <strong>English</strong> · <a href="README.md">中文</a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" />
+  <img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" />
+  <img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" />
+  <img src="https://img.shields.io/badge/license-MIT-orange" alt="License" />
+</p>
+
 # MarxSphere (马研星环)
 
 **An AI-driven research hub for Marxist theory** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.

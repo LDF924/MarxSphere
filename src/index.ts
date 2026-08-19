@@ -15,6 +15,10 @@ process.on("unhandledRejection", (reason) => {
 import { startHttpServer } from "./api/server.js";
 import { logger } from "./observability/logger.js";
 import { startJournalSyncScheduler } from "./services/journal-sync-service.js";  // V395-38: 期刊实时同步管道
+import { runStartupChecks } from "./startup-check.js";  // V407: 启动环境检查（密钥/目录缺失给明确警告）
+
+// V407: 启动前环境检查 — 打印配置报告（不阻断启动）
+runStartupChecks();
 
 // 从 mode.json 读取持久化模式（界面切换按钮写入）
 try {

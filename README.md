@@ -6,6 +6,13 @@
   <a href="README-EN.md">English</a> · <strong>中文</strong>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" />
+  <img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" />
+  <img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" />
+  <img src="https://img.shields.io/badge/license-MIT-orange" alt="License" />
+</p>
+
 # MarxSphere 马研星环
 
 **AI 驱动的马克思主义理论研究科研中枢** — 从文献检索、知识图谱到 AI Agent 与桌面端的完整科研工作台。
