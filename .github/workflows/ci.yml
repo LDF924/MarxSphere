@@ -68,8 +68,18 @@ jobs:
             fi
             sleep 5
           done
-          echo "server failed to start, log tail:"; tail -40 /tmp/server.log; exit 1
+          echo "server failed to start, log tail:"; tail -40 /tmp/server.log
+          # 失败时把日志写进文件供 artifact 收集（日志 API 403 时仍可下载）
+          cp /tmp/server.log /tmp/server-fail.log 2>/dev/null || true
+          exit 1
         shell: bash
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: /tmp/server-fail.log
 
       - name: E2E smoke tests (Playwright)
         run: |
