@@ -26,6 +26,18 @@ extraResources:
     to: sag/data
     filter:
       - "**/*"
+  - from: resources/sag/evaluation
+    to: sag/evaluation
+    filter:
+      - "**/*"
+  - from: resources/sag/reports
+    to: sag/reports
+    filter:
+      - "**/*"
+  - from: resources/sag/docs
+    to: sag/docs
+    filter:
+      - "**/*"
   - from: resources/sag/web
     to: sag/web
     filter:
