@@ -58,8 +58,15 @@ jobs:
           HTTP_PORT: 4173
         run: |
           npx tsx src/index.ts > /tmp/server.log 2>&1 &
-          sleep 15
-          curl -sf http://localhost:4173/health || (cat /tmp/server.log; exit 1)
+          # 轮询等待服务就绪（冷启动 + 空库迁移 80+ 步，最长 120s；要求 db up）
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:4173/health 2>/dev/null | grep -q '"db":"up"'; then
+              echo "server ready after ~$((i * 5))s (db up)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "server failed to start, log tail:"; tail -40 /tmp/server.log; exit 1
         shell: bash
 
       - name: E2E smoke tests (Playwright)
