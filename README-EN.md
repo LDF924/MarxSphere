@@ -7,10 +7,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" />
-  <img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" />
-  <img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" />
-  <img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" />
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
 # MarxSphere (马研星环)
