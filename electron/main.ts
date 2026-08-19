@@ -1,6 +1,6 @@
 // electron/main.ts — MarxSphere 桌面端主进程（V397）
 // 职责: 单实例锁 / 端口预检 / 引导页(onboarding) / spawn 后端 / 健康轮询 / 崩溃重启 / 错误页
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, screen } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import fs, { cpSync, rmSync } from "node:fs";
@@ -116,11 +116,26 @@ function createWindow() {
     title: "MarxSphere 马研星环",
     backgroundColor: "#0b1120",
     autoHideMenuBar: true,
+    // V411: 先隐藏窗口，渲染就绪后再显示（防启动白屏/离屏窗口残留）
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+  // V411: 渲染进程首次就绪后再显示窗口（避免窗口创建即显示但内容未渲染的闪烁/离屏问题）
+  mainWindow.once("ready-to-show", () => {
+    if (mainWindow) {
+      // 窗口位置校验：确保在屏幕可见区域内（异常退出后窗口可能残留屏幕外 -25600,-25600）
+      const bounds = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(bounds);
+      const visible = display.workArea;
+      const onScreen = bounds.x >= visible.x - 50 && bounds.y >= visible.y - 50 &&
+        bounds.x < visible.x + visible.width && bounds.y < visible.y + visible.height;
+      if (!onScreen) mainWindow.center();
+      mainWindow.show();
+    }
   });
   mainWindow.on("closed", () => { mainWindow = null; });
   // 初始显示引导页（本地文件）, 后端就绪后切到主界面
