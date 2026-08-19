@@ -1245,6 +1245,10 @@ export const apiEmpiricalWorkshop = {
   async recognizeQuestionnaire(input: { projectId?: string; title?: string; rawText: string }): Promise<{ ok: boolean; questionnaire: { id: string; questions: Question[]; meta: any; columns: string[] } }> {
     return request("/api/empirical/questionnaires/recognize", { method: "POST", body: JSON.stringify(input) });
   },
+  // V412: 问卷文件解析（PDF/Word/Excel/PPT → 文本，服务端 Python 解析）
+  async parseQuestionnaireFile(input: { fileName: string; base64: string }): Promise<{ ok: boolean; text: string; error?: string }> {
+    return request("/api/empirical/questionnaires/parse-file", { method: "POST", body: JSON.stringify(input) });
+  },
   async questionnaires(projectId?: string): Promise<{ questionnaires: EmpiricalQuestionnaire[] }> {
     const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     return request(`/api/empirical/questionnaires${qs}`);

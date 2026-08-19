@@ -3276,6 +3276,88 @@ export function buildHttpServer() {
     title: z.string().max(200).default("上传问卷"),
     rawText: z.string().min(1).max(50_000),
   });
+  // V412: 问卷文件解析 — PDF/Word/Excel/PPT 上传后转文本（复用 Python 解析，供问卷识别）
+  app.post("/api/empirical/questionnaires/parse-file", async (request, reply) => {
+    const parseSchema = z.object({
+      fileName: z.string().max(300),
+      base64: z.string().min(10).max(30_000_000), // 最大 ~30MB
+    });
+    const body = parseSchema.parse(request.body);
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const { writeFileSync, mkdirSync } = await import("node:fs");
+      const pathMod = await import("node:path");
+      const ext = pathMod.extname(body.fileName).toLowerCase();
+      const SUPPORTED = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".md", ".csv"];
+      if (!SUPPORTED.includes(ext)) {
+        return reply.code(400).send({ error: { code: "UNSUPPORTED_TYPE", message: `不支持的文件类型 ${ext}，支持 ${SUPPORTED.join(" / ")}` } });
+      }
+      // 纯文本类直接解析 base64 为 UTF-8
+      if ([".txt", ".md", ".csv"].includes(ext)) {
+        const text = Buffer.from(body.base64, "base64").toString("utf-8");
+        return { ok: true, text: text.slice(0, 50_000) };
+      }
+      // Office/PDF → Python 子进程解析
+      const tmpDir = pathMod.join(process.env.SAG_ROOT || process.cwd(), "data", "questionnaire_tmp");
+      mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = pathMod.join(tmpDir, `q_${Date.now()}${ext}`);
+      writeFileSync(tmpFile, Buffer.from(body.base64, "base64"));
+      const py = process.env.COGNEE_PYTHON || process.env.EMPIRICAL_PYTHON || "python";
+      const pyScript = `
+import sys
+from pathlib import Path
+p = Path(r"${tmpFile.replace(/\\/g, "\\\\")}")
+ext = p.suffix.lower()
+out = []
+try:
+    if ext == ".pdf":
+        import fitz
+        doc = fitz.open(str(p))
+        for i, page in enumerate(doc):
+            if len("\\n".join(out)) > 49000: break
+            out.append(page.get_text())
+    elif ext in (".docx", ".doc"):
+        from docx import Document
+        d = Document(str(p))
+        for para in d.paragraphs:
+            if para.text.strip(): out.append(para.text)
+        for t in d.tables:
+            for row in t.rows:
+                out.append(" | ".join(c.text.strip() for c in row.cells))
+    elif ext in (".xlsx", ".xls"):
+        import openpyxl
+        wb = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+        for ws in wb.worksheets:
+            out.append(f"[Sheet: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                out.append(" | ".join(str(c) if c is not None else "" for c in row))
+    elif ext in (".pptx", ".ppt"):
+        from pptx import Presentation
+        prs = Presentation(str(p))
+        for i, slide in enumerate(prs.slides):
+            out.append(f"[Slide {i+1}]")
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for para in shape.text_frame.paragraphs:
+                        if para.text.strip(): out.append(para.text)
+    text = "\\n".join(out)
+    print(text[:49000])
+except Exception as e:
+    print(f"（解析失败: {e}）")
+`;
+      const { stdout } = await promisify(execFile)(py, ["-c", pyScript], { timeout: 90_000, windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+      try { const rm = await import("node:fs"); rm.rmSync(tmpFile, { force: true }); } catch { /* 清理失败忽略 */ }
+      const text = String(stdout || "").trim();
+      if (!text || text.startsWith("（解析失败")) {
+        return reply.code(400).send({ error: { code: "PARSE_FAILED", message: text.slice(0, 200) || "解析无输出" } });
+      }
+      return { ok: true, text: text.slice(0, 50_000) };
+    } catch (e: any) {
+      return reply.code(500).send({ error: { code: "PARSE_ERROR", message: String(e?.message || e).slice(0, 200) } });
+    }
+  });
+
   app.post("/api/empirical/questionnaires/recognize", async (request, reply) => {
     const body = recognizeSchema.parse(request.body);
     const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");

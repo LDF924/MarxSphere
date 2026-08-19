@@ -29,7 +29,24 @@ export function RecognizePage({ projectId }: { projectId?: string }) {
     } finally { setBusy(false); }
   };
 
-  const handleFile = (f: File) => {
+  const handleFile = async (f: File) => {
+    // V412: 支持 PDF/Word/Excel/PPT 上传 — 服务端 Python 解析转文本
+    const ext = f.name.toLowerCase().split(".").pop() || "";
+    const binaryTypes = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"];
+    if (binaryTypes.includes(ext)) {
+      setBusy(true); setError("");
+      try {
+        const buf = await f.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const r = await apiEmpiricalWorkshop.parseQuestionnaireFile({ fileName: f.name, base64 });
+        if (r.ok) { setText(r.text); setTitle(f.name.replace(/\.[^.]+$/, "")); }
+        else setError(r.error ?? "解析失败");
+      } catch (e: any) {
+        setError(e?.message ?? "文件解析失败（文件过大？）");
+      } finally { setBusy(false); }
+      return;
+    }
+    // 文本类 → 前端直接读
     const reader = new FileReader();
     reader.onload = () => setText(String(reader.result ?? ""));
     reader.readAsText(f, "utf-8");
@@ -65,8 +82,8 @@ export function RecognizePage({ projectId }: { projectId?: string }) {
         <div className="mb-2 flex gap-2">
           <input className="flex-1 rounded-md border bg-background px-2 py-1.5 text-[11px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="问卷标题(可选)" />
           <label className="flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1.5 text-[11px] hover:bg-accent">
-            <FileUp className="h-3 w-3" /> 上传 .txt
-            <input type="file" accept=".txt,.md,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <FileUp className="h-3 w-3" /> 上传问卷文件
+            <input type="file" accept=".txt,.md,.csv,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }} />
           </label>
         </div>
         <textarea
