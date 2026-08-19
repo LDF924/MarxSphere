@@ -190,8 +190,8 @@ export function VaultPanel() {
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
-      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
+    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+      <div className="flex w-full flex-col space-y-3">
         <div className="flex items-center gap-2">
           <BookMarked className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">资料库</h2>
@@ -203,8 +203,8 @@ export function VaultPanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--vault-w" defaultWidth={280} storageKey="vault-width" />
-        <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,1fr)]" style={{"--vault-w": "280px"} as React.CSSProperties}>
-          <Card className="min-h-0 overflow-y-auto p-2">
+        <div className="relative grid w-full grid-cols-1 gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,1fr)]" style={{"--vault-w": "280px"} as React.CSSProperties}>
+          <Card className="overflow-y-auto p-2">
             {loading ? (
               <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />加载目录…
@@ -218,7 +218,7 @@ export function VaultPanel() {
             )}
           </Card>
 
-          <Card className="flex min-h-0 flex-col overflow-hidden p-4">
+          <Card className="flex flex-col p-4">
             {fileLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />读取文件…</div>
             ) : binaryUrl ? (
@@ -245,19 +245,19 @@ export function VaultPanel() {
                     </button>
                   </div>
                 </div>
-                {/* 预览撑满容器：宽高占满右栏，内容超高时内部滚动 */}
+                {/* 预览撑满容器宽度，高度给视口 85% 保证可见（页面滚动兜底） */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="min-h-0 flex-1">
+                  <div className="w-full">
                     <iframe
                       src={binaryUrl}
                       title={selectedName}
-                      className="h-full w-full rounded border border-border bg-white"
+                      className="h-[85vh] w-full rounded border border-border bg-white"
                     />
                   </div>
                 ) : (
-                  // 图片等 → 撑满容器内居中，可滚动
-                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-                    <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
+                  // 图片等 → 撑满容器内居中
+                  <div className="flex w-full items-center justify-center p-4">
+                    <img src={binaryUrl} alt={selectedName} className="max-h-[80vh] max-w-full object-contain" />
                   </div>
                 )}
               </div>
