@@ -16,6 +16,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 拉全历史+全部 tag：release.mjs 需用上个 tag 生成 Release Notes
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
