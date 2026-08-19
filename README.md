@@ -515,7 +515,7 @@ MIT License — 见 [LICENSE](LICENSE)。
 | 📊 运行截图 | [docs/assets/](docs/assets/)（首页/对话/推理/Ask/文献/图谱/场景/实证/Agent/评测 10 张） |
 | 📈 评测报告样例 | `reports/`（7 份报告）· `evaluation/`（评测结果+金标+历史归档） |
 | ✅ 单元测试 | `npm test`（154 项） |
-| 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` |
+| 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `examples/`（同批示例）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📚 种子语料 | `examples/seed-corpus/`（50 篇评测金标同源文献 + 一键入库脚本 `ingest-seed-corpus.ts`） |
 | 📄 示例数据 | `scripts/问卷演示数据*.csv`（随机模拟，seed=42） |
 | 📝 演示问卷 | `scripts/_问卷原始文本.txt`（农村经营形态问卷 16 页 167 题，实证演示用） |
