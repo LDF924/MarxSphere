@@ -198,7 +198,7 @@ export const MemoryPanel: FC = () => {
           ) : (
             <div className="space-y-1">
               {displayMemories.map((m, i) => (
-                <div key={i} className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1.5 text-xs">
+                <div key={i} className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1.5 text-xs transition-colors hover:bg-accent/40">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", m.success ? "bg-green-500" : "bg-red-500")} />
                     <span className="truncate">{m.query}</span>

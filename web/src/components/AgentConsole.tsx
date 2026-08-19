@@ -224,15 +224,15 @@ function RulesTab({ demoOn }: { demoOn: boolean }) {
       </div>
       {/* 概览卡片 */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">规则总数</div>
           <div className="mt-1 text-2xl font-bold text-primary">{rules.length}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">启用中</div>
           <div className="mt-1 text-2xl font-bold">{rules.filter((r) => r.enabled).length}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">累计拦截/命中</div>
           <div className="mt-1 text-2xl font-bold">{rules.reduce((a, r) => a + r.hitCount, 0)}</div>
         </div>
@@ -332,7 +332,7 @@ function MemoryTab({ demoOn }: { demoOn: boolean }) {
       {/* 概览卡片 */}
       <div className="grid grid-cols-4 gap-3">
         {(["goal", "constraint", "decision", "milestone"] as const).map((k) => (
-          <div key={k} className="rounded-lg border p-3">
+          <div key={k} className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs text-muted-foreground">{KIND_LABELS[k]}</div>
             <div className="mt-1 text-2xl font-bold text-primary">{memories.filter((m) => m.kind === k).length}</div>
           </div>
@@ -367,7 +367,7 @@ function MemoryTab({ demoOn }: { demoOn: boolean }) {
       <div className="space-y-2">
         {memories.length === 0 && <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">暂无战略记忆 — 点击「播放演示」查看示例</div>}
         {memories.map((m) => (
-          <div key={m.id} className="rounded-lg border p-3">
+          <div key={m.id} className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="flex items-center gap-2">
               <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{KIND_LABELS[m.kind] || m.kind}</span>
               <span className="text-[10px] text-muted-foreground">{SOURCE_LABELS[m.source] || m.source} · {new Date(m.createdAt).toLocaleDateString("zh-CN")}</span>
@@ -447,20 +447,20 @@ function LogsTab({ demoOn }: { demoOn: boolean }) {
 
       {/* 成本看板 */}
       {summary && summary.execCount > 0 && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-lg border p-3">
+        <div className="rise-stagger grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs text-muted-foreground">累计成本</div>
             <div className="mt-1 text-xl font-bold text-emerald-600">¥{(summary.totalCostCents / 100).toFixed(3)}</div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs text-muted-foreground">总 token</div>
             <div className="mt-1 text-xl font-bold">{summary.totalTokens.toLocaleString()}</div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs text-muted-foreground">执行次数</div>
             <div className="mt-1 text-xl font-bold">{summary.execCount}</div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs text-muted-foreground">按工具</div>
             <div className="mt-1 text-xs">{summary.byTool.slice(0, 3).map((t) => `${t.tool} ¥${(t.costCents / 100).toFixed(3)}`).join(" · ") || "—"}</div>
           </div>
@@ -469,7 +469,7 @@ function LogsTab({ demoOn }: { demoOn: boolean }) {
 
       {/* 消息流 */}
       {showMsgs && (
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="mb-2 text-xs font-medium text-muted-foreground">Agent 消息协议流（{messages.length} 条）· V394-6: 工人产出实时共享，后续工人自动复用</div>
           <div className="max-h-48 space-y-1 overflow-y-auto">
             {messages.map((m) => (
@@ -514,7 +514,7 @@ function LogsTab({ demoOn }: { demoOn: boolean }) {
       )}
 
       {/* 日志列表 */}
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 flex items-center gap-2">
           <input value={taskFilter} onChange={(e) => { setTaskFilter(e.target.value); void load(e.target.value); }}
             placeholder="按任务ID筛选（可留空=全部）" className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder:text-slate-500" />
@@ -612,17 +612,17 @@ function EvalTab({ demoOn }: { demoOn: boolean }) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">任务完成率</div>
               <div className="mt-1 text-2xl font-bold text-primary">{pct(report.completionRate)}</div>
               <div className="text-[10px] text-muted-foreground">{report.completedTasks}/{report.totalTasks} 完成</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">步骤成功率</div>
               <div className="mt-1 text-2xl font-bold text-emerald-600">{pct(report.stepSuccessRate)}</div>
               <div className="text-[10px] text-muted-foreground">{report.succeededSteps}/{report.totalSteps} 步</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">平均步骤成本</div>
               <div className="mt-1 text-2xl font-bold text-emerald-600">¥{(report.avgCostCents / 100).toFixed(3)}</div>
               <div className="text-[10px] text-muted-foreground">总成本 ¥{(report.totalCostCents / 100).toFixed(3)}</div>
@@ -661,7 +661,7 @@ function EvalTab({ demoOn }: { demoOn: boolean }) {
           </div>
           {/* V394-9: 学习曲线（近14天完成率趋势） */}
           {curve.length > 0 && (
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="mb-2 text-xs font-medium text-muted-foreground">学习曲线（近14天 · 任务完成率趋势）</div>
               <div className="flex h-24 items-end gap-1">
                 {curve.map((pt, i) => (
@@ -677,19 +677,19 @@ function EvalTab({ demoOn }: { demoOn: boolean }) {
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">失败任务</div>
               <div className="mt-1 text-xl font-bold text-red-600">{report.failedTasks}</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">失败步骤</div>
               <div className="mt-1 text-xl font-bold text-red-600">{report.failedSteps}</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">reflect 评估</div>
               <div className="mt-1 text-xl font-bold">{report.reflectCount}</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">审批次数</div>
               <div className="mt-1 text-xl font-bold">{report.approvalCount}</div>
             </div>
@@ -895,20 +895,20 @@ function AuditTab({ demoOn }: { demoOn: boolean }) {
       ) : (
         <>
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">执行次数</div>
               <div className="mt-1 text-2xl font-bold text-primary">{report.totalTasks}</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">累计成本</div>
               <div className="mt-1 text-2xl font-bold text-emerald-600">¥{(report.totalCostCents / 100).toFixed(3)}</div>
             </div>
-            <div className="rounded-lg border p-3">
+            <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
               <div className="text-xs text-muted-foreground">总 token</div>
               <div className="mt-1 text-2xl font-bold">{report.totalTokens.toLocaleString()}</div>
             </div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="mb-2 text-xs font-medium text-muted-foreground">按工具成本分布</div>
             {report.byTool.length === 0 ? <div className="text-xs text-muted-foreground">暂无工具记录</div> : (
               <div className="space-y-1.5">
@@ -927,7 +927,7 @@ function AuditTab({ demoOn }: { demoOn: boolean }) {
               </div>
             )}
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="mb-2 text-xs font-medium text-muted-foreground">最近执行（{report.recentTasks.length} 条）</div>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {report.recentTasks.map((t, i) => (
@@ -1254,13 +1254,13 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
       {msg && <div className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-xs">{msg}</div>}
       <div className="grid grid-cols-3 gap-3">
         {([["reader", "只读", "可调检索/推理/政策工具"], ["analyst", "分析", "可调写作/实证/评审工具"], ["manager", "管理", "可调全部工具（含危险需审批）"]] as const).map(([id, label, desc]) => (
-          <div key={id} className="rounded-lg border p-3">
+          <div key={id} className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
             <div className="text-xs font-medium">{label} <span className="font-mono text-[9px] text-muted-foreground">({id})</span></div>
             <div className="mt-1 text-[10px] text-muted-foreground">{desc}</div>
           </div>
         ))}
       </div>
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">工具清单与权限（{liveTools.length || TOOL_INFO.length} 个{liveTools.length > 0 ? " · 实时" : ""}）</div>
         <div className="space-y-1">
           {(liveTools.length > 0 ? liveTools.map((t) => ({ name: t.name, label: t.label, desc: t.description, minRole: "?", risk: t.risk })) : TOOL_INFO).map((t: any) => (
@@ -1625,7 +1625,7 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
         </div>
       </div>
       {/* V394-2: 模型路由展示 */}
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">模型路由策略（按步骤类型+复杂度选档）</div>
         <div className="space-y-1">
           {[
@@ -1647,7 +1647,7 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
         </div>
       </div>
       {/* V394-3: 知识回流展示 */}
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">知识回流（任务产出 → 知识页草稿）</div>
         <div className="text-[11px] leading-4 text-muted-foreground">
           Agent 任务完成且产出 ≥100 字时，自动提交为知识页草稿（<span className="text-primary">pending_review</span>），在「知识页」审核通过后正式入库。
@@ -1655,7 +1655,7 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
         </div>
       </div>
       {/* V394-1: 规划记忆注入展示 */}
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">规划记忆注入（规划时自动加载）</div>
         <div className="space-y-1 text-[11px]">
           <div className="flex items-center gap-2 rounded px-2 py-1 odd:bg-muted/30">
@@ -1695,41 +1695,41 @@ function EvalDemo() {
     <div className="space-y-4">
       <div className="rounded border border-amber-300/40 bg-amber-50/10 px-3 py-2 text-xs text-amber-600">演示数据（沙箱 · 不消耗 API）</div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">任务完成率</div>
           <div className="mt-1 text-2xl font-bold text-primary">{pct(demo.completionRate)}</div>
           <div className="text-[10px] text-muted-foreground">{demo.completedTasks}/{demo.totalTasks} 完成</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">步骤成功率</div>
           <div className="mt-1 text-2xl font-bold text-emerald-600">{pct(demo.stepSuccessRate)}</div>
           <div className="text-[10px] text-muted-foreground">{demo.succeededSteps}/{demo.totalSteps} 步</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">多轮收敛率</div>
           <div className="mt-1 text-2xl font-bold text-purple-600">{pct(demo.multiLoopRate)}</div>
           <div className="text-[10px] text-muted-foreground">{demo.multiLoopTasks} 个任务 ≥2轮</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">平均步骤成本</div>
           <div className="mt-1 text-2xl font-bold text-emerald-600">¥{(demo.avgCostCents / 100).toFixed(3)}</div>
           <div className="text-[10px] text-muted-foreground">总成本 ¥{(demo.totalCostCents / 100).toFixed(3)}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">失败任务</div>
           <div className="mt-1 text-xl font-bold text-red-600">{demo.failedTasks}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">失败步骤</div>
           <div className="mt-1 text-xl font-bold text-red-600">{demo.failedSteps}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">reflect 评估</div>
           <div className="mt-1 text-xl font-bold">{demo.reflectCount}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">审批次数</div>
           <div className="mt-1 text-xl font-bold">{demo.approvalCount}</div>
         </div>
@@ -1762,20 +1762,20 @@ function AuditDemo() {
     <div className="space-y-4">
       <div className="rounded border border-amber-300/40 bg-amber-50/10 px-3 py-2 text-xs text-amber-600">演示数据（沙箱 · 不消耗 API）</div>
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">执行次数</div>
           <div className="mt-1 text-2xl font-bold text-primary">{demo.totalTasks}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">累计成本</div>
           <div className="mt-1 text-2xl font-bold text-emerald-600">¥{(demo.totalCostCents / 100).toFixed(3)}</div>
         </div>
-        <div className="rounded-lg border p-3">
+        <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
           <div className="text-xs text-muted-foreground">总 token</div>
           <div className="mt-1 text-2xl font-bold">{demo.totalTokens.toLocaleString()}</div>
         </div>
       </div>
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">按工具成本分布</div>
         <div className="space-y-1.5">
           {demo.byTool.map((t) => (
@@ -1789,7 +1789,7 @@ function AuditDemo() {
           ))}
         </div>
       </div>
-      <div className="rounded-lg border p-3">
+      <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
         <div className="mb-2 text-xs font-medium text-muted-foreground">最近执行（{demo.recentTasks.length} 条）</div>
         <div className="space-y-1">
           {demo.recentTasks.map((t, i) => (

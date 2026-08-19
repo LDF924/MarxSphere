@@ -266,7 +266,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
         </div>
 
         {/* 数据带：研究规模（三库图谱真实数据） */}
-        <div className="mt-20 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        <div className="rise-stagger mt-20 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
           {stats.map((stat) => (
             <div key={stat.label} className="glass rounded-lg p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-lg">
               <div className="text-2xl font-semibold text-accent-foreground lg:text-xl">{stat.num}</div>

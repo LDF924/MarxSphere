@@ -50,6 +50,40 @@
   }
 }
 
+/* 统计卡 staggered 入场（V406: 只动 transform 防冻结, 与 view-fade-in 同策略） */
+.card-rise-in {
+  animation: card-rise-in 0.3s ease-out backwards;
+}
+@keyframes card-rise-in {
+  from {
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+/* 容器级 stagger：子元素逐个入场（无需手写 delay） */
+.rise-stagger > * {
+  animation: card-rise-in 0.3s ease-out backwards;
+}
+.rise-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.rise-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.rise-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.rise-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.rise-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.rise-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.rise-stagger > *:nth-child(7) { animation-delay: 300ms; }
+.rise-stagger > *:nth-child(8) { animation-delay: 350ms; }
+
+/* V406: 系统「减少动效」偏好 → 直接终值（对齐 HomePanel KPI 滚升降级） */
+@media (prefers-reduced-motion: reduce) {
+  .rise-stagger > *,
+  .card-rise-in {
+    animation: none;
+    transform: none;
+  }
+}
+
 /* ─── 静态宇宙渐变背景（无动画，径向渐变 + 图谱水印）─── */
 .cosmos-bg {
   position: fixed;

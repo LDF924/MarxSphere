@@ -78,3 +78,6 @@ build/icon.ico
 
 # 本地备份（数据库 dump + .env，绝不提交）
 backups/
+
+# 本地开发配置（Claude 浏览器预览等）
+.claude/

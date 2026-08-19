@@ -176,7 +176,7 @@ function QuotaEditor({ token }: { token: ApiTokenRecord }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="rise-stagger grid grid-cols-2 gap-2">
         {numInput("dailySearchLimit", t("每日搜索上限", "Daily search limit"), "如 1000（0=不限）")}
         {numInput("dailyIngestBytesLimit", t("每日入库上限(MB)", "Daily ingest MB"), "如 100（0=不限）")}
         {numInput("monthlyCostLimitUsd", t("每月成本上限($)", "Monthly cost limit"), "如 10（0=不限）")}

@@ -315,7 +315,7 @@ export function LiteraturePanel() {
                     <Card
                       key={record.id}
                       className={cn(
-                        "flex cursor-pointer items-start gap-3 p-3 transition-colors hover:bg-accent/40",
+                        "flex cursor-pointer items-start gap-3 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-md",
                         detail?.id === record.id && "border-primary"
                       )}
                       onClick={() => void openDetail(record.id)}
