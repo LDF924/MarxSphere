@@ -518,3 +518,6 @@ MIT License — 见 [LICENSE](LICENSE)。
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` |
 | 📚 种子语料 | `examples/seed-corpus/`（50 篇评测金标同源文献 + 一键入库脚本 `ingest-seed-corpus.ts`） |
 | 📄 示例数据 | `scripts/问卷演示数据*.csv`（随机模拟，seed=42） |
+| 📝 演示问卷 | `scripts/_问卷原始文本.txt`（农村经营形态问卷 16 页 167 题，实证演示用） |
+| 🎯 评测金标集 | `evaluation/gold_dataset.json`（53 题 4 类题型）+ `eval-archive/`（历史归档） |
+| 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |

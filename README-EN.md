@@ -518,3 +518,6 @@ MIT License — see [LICENSE](LICENSE).
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` |
 | 📚 Seed corpus | `examples/seed-corpus/` (50 papers aligned with the eval gold set + one-command ingestion script `ingest-seed-corpus.ts`) |
 | 📄 Sample data | `scripts/问卷演示数据*.csv` (randomly simulated, seed=42) |
+| 📝 Demo questionnaire | `scripts/_问卷原始文本.txt` (rural survey, 16 pages / 167 items, for empirical demo) |
+| 🎯 Eval gold set | `evaluation/gold_dataset.json` (53 questions, 4 types) + `eval-archive/` (history) |
+| 🕸 Knowledge-graph data | `knowledge-graph/` (entity mappings / normalization dictionaries) |
