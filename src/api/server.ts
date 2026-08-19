@@ -207,6 +207,8 @@ export function buildHttpServer() {
   globalRateLimiter.startCleanup();
   tokenRateLimiter.startCleanup();
   const app = Fastify({
+    // V412: 全局请求体上限 30MB（问卷文件解析/附件上传需要；默认 1MB 会挡掉 base64 大文件）
+    bodyLimit: 30 * 1024 * 1024,
     logger: {
       level: config.LOG_LEVEL,
       base: {
@@ -3311,9 +3313,9 @@ p = Path(r"${tmpFile.replace(/\\/g, "\\\\")}")
 ext = p.suffix.lower()
 out = []
 try:
-    if ext == ".pdf":
-        import fitz
-        doc = fitz.open(str(p))
+    if (ext == ".pdf"):
+        import pymupdf  # PyMuPDF 1.28+: fitz 已弃用，用 pymupdf 避免 deprecation 警告污染输出
+        doc = pymupdf.open(str(p))
         for i, page in enumerate(doc):
             if len("\\n".join(out)) > 49000: break
             out.append(page.get_text())

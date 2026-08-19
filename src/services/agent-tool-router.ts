@@ -587,8 +587,8 @@ ext = p.suffix.lower()
 out = []
 try:
     if ext == ".pdf":
-        import fitz
-        doc = fitz.open(str(p))
+        import pymupdf  # PyMuPDF 1.28+: fitz 已弃用，用 pymupdf 避免 deprecation 警告污染输出
+        doc = pymupdf.open(str(p))
         for i, page in enumerate(doc):
             if len("\\n".join(out)) > ${maxChars}: break
             out.append(page.get_text())
