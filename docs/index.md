@@ -36,4 +36,4 @@
 
 ---
 
-© 2026 MarxSphere — [GitHub 仓库](https://github.com/LDF924/MarxSphere) · MIT License
+© 2026 MarxSphere — [GitHub 仓库](https://github.com/LDF924/MarxSphere) · [AGPL v3 + 商业授权](https://github.com/LDF924/MarxSphere/blob/main/LICENSE)

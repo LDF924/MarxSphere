@@ -114,6 +114,6 @@
   <text x="985" y="1038" text-anchor="middle" font-size="11" fill="#94a3b8">告警中心 · 自愈巡检 · 运营管理</text>
 
   <!-- 底部 -->
-  <text x="600" y="1100" text-anchor="middle" font-size="12" fill="#64748b">全栈 TypeScript · Fastify 5 · React 19 · Vite 8 · Electron · MIT 开源</text>
+  <text x="600" y="1100" text-anchor="middle" font-size="12" fill="#64748b">全栈 TypeScript · Fastify 5 · React 19 · Vite 8 · Electron · AGPL v3 + 商业授权</text>
   <text x="600" y="1122" text-anchor="middle" font-size="11" fill="#64748b">© 2026 MarxSphere — AI 驱动的哲学社会科学科研中枢</text>
 </svg>

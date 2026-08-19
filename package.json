@@ -4,7 +4,7 @@
   "description": "MarxSphere 马研星环 — AI 驱动的马克思主义理论研究科研中枢（推理/检索/知识图谱/Agent/桌面端）",
   "type": "module",
   "main": "electron/dist/main.cjs",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch src/index.ts",
