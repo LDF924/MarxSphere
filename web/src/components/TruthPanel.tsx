@@ -240,8 +240,8 @@ export function TruthPanel() {
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
-      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
+    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+      <div className="flex w-full flex-col space-y-3">
         <div className="flex items-center gap-2">
           <BookOpenCheck className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">知识页面（Compiled Truth + 时间线）</h2>
@@ -323,7 +323,7 @@ export function TruthPanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--truth-w" defaultWidth={280} storageKey="truth-width" />
-        <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--truth-w,280px)_minmax(0,1fr)]" style={{"--truth-w": "280px"} as React.CSSProperties}>
+        <div className="relative grid h-[135vh] w-full grid-cols-1 gap-0 lg:grid-cols-[var(--truth-w,280px)_minmax(0,1fr)]" style={{"--truth-w": "280px"} as React.CSSProperties}>
           {/* 左：页面列表 */}
           <Card className="flex min-h-0 flex-col overflow-y-auto p-2">
             {loading ? (

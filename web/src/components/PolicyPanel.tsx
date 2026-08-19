@@ -214,8 +214,8 @@ export function PolicyPanel() {
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
-      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
+    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+      <div className="flex w-full flex-col space-y-3">
         <div className="flex items-center gap-2">
           <Landmark className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">政策资料库</h2>
@@ -267,7 +267,8 @@ export function PolicyPanel() {
         {/* 本地政策目录浏览 + 预览 */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--policy-w" defaultWidth={280} storageKey="policy-width" />
-        <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
+        {/* 双栏加高：135vh（比视口高 35%），外部滚动查看完整 */}
+        <div className="relative grid h-[135vh] w-full grid-cols-1 gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
           <Card className="flex min-h-0 flex-col overflow-y-auto p-2">
             <div className="mb-1 flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5" /> 本地政策库
