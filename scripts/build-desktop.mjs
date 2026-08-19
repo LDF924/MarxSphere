@@ -12,7 +12,7 @@ const sagResDir = path.join(root, "resources", "sag");
 // 1) 准备 extraResources 内容（真实目录, 非 asar）
 rmSync(path.join(root, "resources"), { recursive: true, force: true });
 mkdirSync(sagResDir, { recursive: true });
-for (const dir of ["dist", "scripts", "migrations", "data"]) {
+for (const dir of ["dist", "scripts", "migrations", "data", "evaluation", "reports", "docs"]) {
   const src = path.join(root, dir);
   if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
 }
