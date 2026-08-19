@@ -57,8 +57,10 @@ jobs:
           EMBEDDING_API_KEY: dummy
           HTTP_PORT: 4173
         run: |
+          echo "--- PG 连通性检查 ---"
+          node -e "const {Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query('select 1').then(r=>{console.log('PG OK:',r.rows[0]);process.exit(0)}).catch(e=>{console.error('PG QUERY FAIL:',e.message);process.exit(1)})).catch(e=>{console.error('PG CONNECT FAIL:',e.message);process.exit(1)})"
+          echo "--- 启动服务 ---"
           npx tsx src/index.ts > /tmp/server.log 2>&1 &
-          # 轮询等待服务就绪（冷启动 + 空库迁移 80+ 步，最长 120s；要求 db up）
           for i in $(seq 1 24); do
             if curl -sf http://localhost:4173/health 2>/dev/null | grep -q '"db":"up"'; then
               echo "server ready after ~$((i * 5))s (db up)"
