@@ -105,7 +105,8 @@ function MarkdownPreview({ content }: { content: string }) {
   if (codeBlock) {
     blocks.push(<pre key="tail" className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">{codeBlock.join("\n")}</pre>);
   }
-  return <div className="space-y-0.5">{blocks}</div>;
+  // A4 纸阅读版式：行宽限制 + 舒适行高（长文档阅读体验）
+  return <div className="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-sm leading-7">{blocks}</div>;
 }
 
 export function PolicyPanel() {
@@ -311,10 +312,12 @@ export function PolicyPanel() {
                   </div>
                 </div>
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <iframe src={binaryUrl} title={selectedName} className="min-h-[55vh] w-full flex-1 rounded border border-border bg-white" />
+                  <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
+                    <iframe src={binaryUrl} title={selectedName} className="aspect-[210/297] h-full max-w-full rounded border border-border bg-white" />
+                  </div>
                 ) : (
-                  <div className="flex flex-1 items-center justify-center p-4">
-                    <img src={binaryUrl} alt={selectedName} className="max-h-[60vh] max-w-full rounded object-contain" />
+                  <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+                    <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full rounded object-contain" />
                   </div>
                 )}
               </div>
