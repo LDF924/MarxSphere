@@ -468,10 +468,27 @@ export class McpAgentService {
     const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
     input.emit?.({ type: "model", model });
 
-    const historyForLlm = input.history.slice(-8);
-    const recentTurns = historyForLlm
+    // V405: 对话历史接入分层压缩 — 按字符预算动态截取（对齐 1M 窗口 800K 字符估算），
+    // 超阈值(80% = 640K)触发 compressContext 压缩历史部分（保留最新 2 轮）；未超阈零行为变化
+    const { compressContext, compactByBudget, DEFAULT_COMPACTION_BUDGET, estimateContextChars } = await import("./context-compressor.js");
+    const MAX_HIST_CHARS = 640_000; // 1M 窗口 80% 阈值（约 4 字符/token）
+    // 历史消息统一为 {role: string; content: string} 形态（与压缩器签名一致）
+    let recentTurns: Array<{ role: string; content: string }> = input.history
       .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
+    const histChars = estimateContextChars(recentTurns);
+    if (histChars >= MAX_HIST_CHARS) {
+      const compressed = compressContext("", recentTurns);
+      if (compressed.compressedCount > 0 && compressed.outputChars < compressed.inputChars) {
+        // 压缩后仍超预算 → 角色预算强截断兜底（保证永不超限）
+        const fallback = compactByBudget(compressed.compressed, { ...DEFAULT_COMPACTION_BUDGET, budgetChars: MAX_HIST_CHARS });
+        recentTurns = fallback.compressed;
+      } else {
+        const fallback = compactByBudget(recentTurns, { ...DEFAULT_COMPACTION_BUDGET, budgetChars: MAX_HIST_CHARS });
+        recentTurns = fallback.compressed;
+      }
+    }
 
     const allTools = await buildAgentTools();
     const toolList = allTools.map((t) => {
@@ -720,6 +737,14 @@ export class McpAgentService {
         ].join("")
       }
     ];
+
+    // V405: 发送前总字符硬校验 — 组装后若仍超 1M 窗口 80% 阈值，
+    // 对历史消息按角色预算强截断兜底（保证永不触达 token 超限错误）
+    if (estimateContextChars(finalMessages as any) >= 640_000) {
+      const { compactByBudget, DEFAULT_COMPACTION_BUDGET } = await import("./context-compressor.js");
+      const trimmed = compactByBudget(finalMessages.slice(0, -1), { ...DEFAULT_COMPACTION_BUDGET, budgetChars: 400_000 });
+      finalMessages.splice(0, finalMessages.length - 1, ...trimmed.compressed as any);
+    }
 
     // V399: 采集思考链（落库到 assistant 消息 metadata，历史消息可折叠查看）
     let reasoningText = "";
@@ -1029,14 +1054,23 @@ async function planToolAction(input: {
   signal?: AbortSignal;
 }): Promise<ToolAction> {
   assertNotAborted(input.signal);
-  // V380(P0-6): 对话历史接入分层压缩 — 取最近 10 条 → 压缩历史部分（保留最新 2 轮 + observations 不压缩）
-  // 80% 阈值触发（约 800K 字符窗口），未超阈零行为变化；熔断器 3 次失败自动放弃
+  // V380/V405: 对话历史接入分层压缩 — 按字符预算动态截取（保留最新若干轮直至预算上限），
+  // 超阈值(80% = 640K)触发 compressContext 压缩历史部分（保留最新 2 轮 + observations 不压缩）；
+  // 压缩后仍超 → compactByBudget 角色预算强截断兜底（保证永不超 1M 窗口）
+  const { compressContext, compactByBudget, DEFAULT_COMPACTION_BUDGET, estimateContextChars } = await import("./context-compressor.js");
+  const MAX_HIST_CHARS = 640_000; // 1M 窗口 80% 阈值（约 4 字符/token）
   let historyForLlm = input.history.slice(-10);
   const histChars = estimateContextChars(historyForLlm);
-  if (histChars >= 640_000) {
+  if (histChars >= MAX_HIST_CHARS) {
     const compressed = compressContext(input.userContent ?? "", historyForLlm);
     if (compressed.compressedCount > 0 && compressed.outputChars < compressed.inputChars) {
       historyForLlm = compressed.compressed;
+    }
+    // 压缩后仍超预算 → 角色预算强截断（兜底防线）
+    const stillOver = estimateContextChars(historyForLlm);
+    if (stillOver >= MAX_HIST_CHARS) {
+      const fallback = compactByBudget(historyForLlm, { ...DEFAULT_COMPACTION_BUDGET, budgetChars: MAX_HIST_CHARS });
+      historyForLlm = fallback.compressed;
     }
   }
   const controller = new AbortController();
