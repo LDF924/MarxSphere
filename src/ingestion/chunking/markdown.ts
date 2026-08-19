@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { randomUUID } from "node:crypto";
 import { decode, encode } from "gpt-tokenizer/encoding/cl100k_base";
 import type { ChunkingMode } from "../../types.js";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // study-companion-service.ts — 学习陪伴 Agent（V388）
 // 情感+任务双驱动，全天候学习伙伴
 // 四层能力：

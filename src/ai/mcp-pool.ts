@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // mcp-pool.ts — V92: MCP 多实例连接池, 消除单进程串行排队瓶颈
 // Cognee: 4 实例 × p-limit(3) = 12 并发
 // Graphiti: 4 实例 × p-limit(3) = 12 并发

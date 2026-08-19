@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // homework-help-service.ts — 作业辅导系统（V385）
 // 四层能力：
 //   ① 题目解析：分步拆解提供思路，不直接灌输答案（启发式）

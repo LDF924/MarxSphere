@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // step-docs.ts — 检索步骤详情文档（GBrain 教学台：面板 echo 后端真实代码）
 // 每步关联：真实 SQL / 公式 / 代码片段 / 说明。前端步骤展开时展示。
 // 与 search-service 的 emitSearchStep key 对齐。

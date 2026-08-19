@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-tool-registry.ts — 借鉴 Codex tools/registry.rs + parallel.rs
 // 工具注册表: 统一注册/查询/冲突检测 + 并行执行（无依赖工具并发跑, 结果合并）
 // 与 agent-tool-router 的 buildAgentTools 互补: registry 提供查询/编排层,

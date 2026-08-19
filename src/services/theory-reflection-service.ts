@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // theory-reflection-service.ts — 理论思辨拓展 5 大能力（S61-S65）
 // 理论前提反思 / 跨学科视角拓展 / 理论与现实联结 / 理论创新点识别 / 理论体系建构
 // 复用: LLM + 检索；专属算法: 前提分类库 / 学科映射库 / 理论-案例匹配 / 创新点扫描 / 体系一致性检测

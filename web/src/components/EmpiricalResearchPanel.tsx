@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // EmpiricalResearchPanel.tsx — 实证研究执行工作台（V348+）
 // 数据上传 → 选方法 → Python 沙箱执行 → 结果展示(回归表/系数图/诊断)
 // 骨架照抄 EducationPanel: 全高 flex column + 顶栏 + flex-1 内容区

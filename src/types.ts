@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 export type SearchStrategy = "vector" | "multi";
 export type SearchMode = "standard" | "fast";
 export type MultiSubStrategy = "multi" | "multi1" | "hopllm";

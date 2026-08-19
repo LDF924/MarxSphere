@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-credentials.ts — 借鉴 DSH credentials 包: Agent 凭证安全存储
 // 存储外部服务凭据供 Agent 工具调用（web_fetch 认证源/agent_subagent 等）
 // 安全: ①API 只返回脱敏视图(name/hint/kind, 不返回 value)

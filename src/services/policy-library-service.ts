@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // policy-library-service.ts — 政策资料库服务
 // 浏览课题研究政策目录（已有 317 文件）+ gov.cn 检索 + 保存政策到库
 import fs from "node:fs";

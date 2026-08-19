@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // llm-model-registry.ts — 统一 LLM 模型注册表（2026-08-07）
 // 角色 → 模型映射集中管理，前端可选择，所有调用点读取
 // 角色: reason(推理合成) / judge(评测打分) / review(评审) / plan(规划) / verify(题型复核) / strategy(策略决策)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ScenariosPanel.tsx — 科研场景全景（研究全生命周期，V255 重构）
 // 按研究阶段分组：选题构思 → 文献调研 → 证据检索 → 数据分析 → 论文写作 → 图表制作 → 评审发表 → 系统自动化
 // 每个场景 = 业务描述 + 独有能力徽章（真实实现提取）+ 动作（view=跳转Tab / skill=跳转技能面板）

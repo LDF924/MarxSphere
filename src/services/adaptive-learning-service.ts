@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // adaptive-learning-service.ts — 自适应学习系统（V384）
 // 四层能力：
 //   ① 学情建模：答题历史→知识点掌握度（已掌握/模糊/未掌握），平滑更新

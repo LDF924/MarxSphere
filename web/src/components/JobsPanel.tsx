@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // JobsPanel.tsx — Jobs 任务队列（GBrain Jobs 适配）
 // 顶部：统计胶囊 + 入队 + 任务流水（单列表）
 // 下方（GBrain 三区域）：三栏队列卡片 / Deterministic Task 对照演示 / Dream Cycle 9-phase 卡

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { createHash } from "node:crypto";
 import { normalizeVector } from "../db/vector.js";
 import { aiSettingsService } from "../services/ai-settings-service.js";

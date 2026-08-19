@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DemoDataButton.tsx — 「载入演示数据」按钮（V380+）
 // 加载基于《农村经营形态调查问卷(最终打印版).pdf》生成的 50 份全量模拟作答(269列)
 // 用法: <DemoDataButton onLoad={(data) => setParsed(data)} />

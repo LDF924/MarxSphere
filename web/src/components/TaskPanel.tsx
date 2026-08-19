@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TaskPanel.tsx — 自主任务面板（2026-08-07 P2）
 // 输入目标 → LLM 拆解子任务 → 逐项执行（进度条+每步状态）→ 暂停/恢复/取消干预
 import { useEffect, useRef, useState, type FC } from "react";

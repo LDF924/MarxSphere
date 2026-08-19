@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-ledger-service.ts — 证据账本(econ-paper-studio evidence ledger 模式)（V380+）
 // 防编造机制:
 // 1. add-from-result 只接收坐标{runId, tableIndex, rowIndex, colIndex}, 服务端从真实结果读数值, 不提供手填接口

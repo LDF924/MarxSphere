@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { config, SUPPORTED_EMBEDDING_DIMENSIONS } from "../config/env.js";
 import {
   getAiProviderSettings,

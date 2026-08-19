@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // rate-limiter.ts — 内存限流（固定窗口, 单进程无 redis）
 // 窗口按 Math.floor(now/windowMs) 的桶号, 天然自过期; 5 分钟定时清理防 Map 无限增长
 export class RateLimiter {

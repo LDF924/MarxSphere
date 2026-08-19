@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // dual-engine-service.ts — 双库调度服务：同时调 Graphiti + Cognee，结果融合
 import type { RichMcpClient } from "../ai/rich-mcp-client.js";
 import type { Pool } from "pg";

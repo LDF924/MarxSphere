@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ApiTokensPanel.tsx — 对外 API 访问令牌管理 + 配额治理仪表盘（MarxSphere 对外接入）
 // 对标 Sciverse 模式: 生成 sag_xxx 令牌 → 交给 Claude Code / Codex / 外部客户端
 // 创建时明文只显示一次; 库中只存 hash; 支持权限选择、撤销、配额配置与用量仪表盘

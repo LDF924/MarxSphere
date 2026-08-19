@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // jobs-handlers.ts — Jobs 默认任务处理器注册
 // lint（数据完整性检查）/ backlinks（反向链接重算）/ synthesize（Compiled Truth 整合）
 // / dream_cycle（夜间自整理 9-phase）/ batch_ingest（批量入库）/ hyperedge（超边）

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // sources-registry.ts — MarxSphere 统一数据源注册表（30 个外部源）
 // 每个源：名称/类型/状态/URL/说明。供前端 SourcesPanel 展示 + 后端接入判断。
 // 类型: api(开放API) | web(网页转PDF) | mcp(现成MCP) | auth(需注册/机构)

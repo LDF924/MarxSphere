@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DragHandle.tsx — 通用分栏拖拽把手（overlay 方式，不改 grid 结构）
 // 用法：在 grid 容器内放 <DragHandle leftVar="--filter-w" storageKey="xxx" />
 // grid 列宽需用 var(--filter-w) 引用

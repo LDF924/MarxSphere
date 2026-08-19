@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-provider-abstraction.ts — 架构A2: 服务抽象层
 // LlmProvider / SandboxProvider 接口 — 新实现可替换默认（无需改调用方）
 // 当前默认实现 = 现有服务（兼容层, 无行为变化）

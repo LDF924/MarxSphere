@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-exec-log.ts — V391(P2-4): 统一 Agent 执行日志
 // 全链路记录: 工具调用/决策/成本 — 运维面板可查
 // V395-2/7: 日志写入后经 SSE 实时推送（订阅该任务的 EventSource 连接）

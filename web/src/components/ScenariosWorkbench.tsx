@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ScenariosWorkbench.tsx — 全屏场景工作台（V256）
 // 形态2：左侧场景信息+步骤向导（可勾选进度），右侧当前步骤的工具操作指引（用哪个工具/做什么/怎么操作）
 // 每步可一键跳转到对应工具页面执行

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ErrorBoundary.tsx — 全局错误边界（防渲染异常导致整页白屏）
 // 组件渲染抛错 → 显示错误提示 + 刷新按钮, 而非卸载整个 React 树
 import { Component, type ReactNode } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // journal-sync-service.ts — V395-38/39/40: 期刊实时更新管道
 // 目标: 自主自动获取各期刊最新选题方向/研究热点/目录
 // 方式: ①抓期刊官网/公开页面 ②微信公众号搜索(搜狗, 选题方向/目录/内容提要) ③解析热点词 ④写入 updates

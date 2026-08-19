@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-chat-memory.ts — V395-3: Agent 对话记忆（多轮上下文）
 // /api/agent/chat 会话上下文: "帮我研究X"→"重点看Y" 连续对话
 // 存储: 内存 Map（本进程多轮, 每会话最近 20 条）+ conversation_context 表（摘要持久化, 重启恢复）

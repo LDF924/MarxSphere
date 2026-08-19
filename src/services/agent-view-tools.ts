@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-view-tools.ts — V399: 33 视图能力工具化（对话页一句话调度全系统）
 // 把各视图面板的核心后端能力封装为 Agent 工具，注册进 buildAgentTools。
 // 原则：只读优先、结果截断、异常兜底为「（不可用: …）」不抛断工具循环。

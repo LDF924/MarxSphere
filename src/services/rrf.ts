@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // rrf.ts — Reciprocal Rank Fusion（RRF）多路检索融合
 // GBrain 第 7 步：多臂召回 → 1/(k+rank) 融合排序
 //

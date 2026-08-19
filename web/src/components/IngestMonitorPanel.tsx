@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // IngestMonitorPanel.tsx — 图库入库监控（V406）
 // 挂在 Graphiti入库/Cognee入库 面板的入库操作下方：
 //   左侧 = 文档队列（库内文档按入库步骤打标 + paper_id_map 中排队未入库）

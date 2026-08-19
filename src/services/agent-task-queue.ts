@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-task-queue.ts — V394-4: 任务调度队列
 // 多任务并发控制: 串行/并发上限/优先级
 // 原理: 内存队列 + 信号量（每任务一个执行器槽位）

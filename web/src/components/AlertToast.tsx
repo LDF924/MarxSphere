@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AlertToast.tsx — 全局告警 toast（V364）
 // 轮询 /api/alerts 未读数 → 新告警弹 toast（警告黄/错误红/严重深红），点击跳告警中心
 import { useEffect, useRef, useState } from "react";

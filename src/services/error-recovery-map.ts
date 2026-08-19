@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // error-recovery-map.ts — 故障分类学 + 恢复策略映射表（BOOK-GAP-ROADMAP P0-10）
 // 纯函数，无副作用，可单测。分类规则第一版（后续用归因数据扩充）
 // 核心原则（书中 Ch5）: 第一判断不是"要不要重试"而是"值不值得重试"

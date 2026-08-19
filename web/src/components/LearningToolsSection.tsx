@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // LearningToolsSection.tsx — 评测学习引擎工具区块（2026-08-08 V290）
 // 展示 P0-1~P0-5 五个学习工具的：① 真实结果（API 数据） ② demo 演示（learning-demo.ts 静态数据逐步动画）
 // 挂在 EvalPanel 内（"学习引擎" tab），复用 EvalPanel 的 demo 播放机制（setTimeout 队列 + autoPlayedRef）

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // RecognizePage.tsx — 问卷上传识别（V380+）: 文本 → 主体/指标/变量结构
 import { useState } from "react";
 import { ScanSearch, FileUp, Loader2, FileText } from "lucide-react";

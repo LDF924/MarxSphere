@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // CJournalPanel.tsx — V395-20/21/22: 政经 C 刊科研（马理论选题方法论整合 · 精致版）
 // 9 大工具: 四步法选题 / 选题矩阵 / 悖论选题 / 概念命名 / 跨学科 / 模板检测 / 编辑校验 / 外审翻译 / 参考数据
 // 方法论来源: 八篇马理论 C 刊选题文章

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // event-bus.ts — 事件驱动架构（BOOK-GAP-ROADMAP P2-2, V381 2026-08-09）
 // 请求-响应式之外的补充：用户消息/定时任务/内部信号统一建模为结构化事件
 // 四维: source(来源) / channel(渠道) / content(内容) / context(上下文)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // alert-service.ts — 系统告警服务（任务巡检/降级/熔断/失败事件记录）
 // 前端告警中心 + toast 轮询的数据源；记录不阻塞业务（失败静默）
 import { pool } from "../db/pool.js";

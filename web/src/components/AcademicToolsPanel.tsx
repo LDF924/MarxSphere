@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AcademicToolsPanel.tsx — 学术研究专属能力交互面板（S41-S45）
 // 学派脉络(师承关系) / 观点对比(共识分歧聚类) / 学术争鸣(交锋时间线) / 学者谱系(师承网络) / 学科前沿(高频词)
 import { useState, useEffect, type FC } from "react";

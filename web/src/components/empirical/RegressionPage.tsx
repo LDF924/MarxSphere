@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // RegressionPage.tsx — 回归生成（V380+）: 基准/FE/聚类SE/交互 + 稳健性/安慰剂/IV/事件研究模板 + Agent Debug
 import { useState, useEffect } from "react";
 import { LineChart, Loader2, Play, FileCode2, AlertTriangle } from "lucide-react";

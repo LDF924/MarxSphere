@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // memory-eval-gold.ts — 记忆量化评测集（V377, ⑦）
 // 20 条真实场景记忆：写入 OpenViking → 用检索词测 recall@k → 算命中率
 // 每项: 写入内容(含唯一语义短语) + 检索词(应能召回) + 判定短语(召回结果应包含)

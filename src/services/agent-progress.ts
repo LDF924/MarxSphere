@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-progress.ts — V395-2: 任务流式进度（SSE 事件中心）
 // runAgentTask 各阶段发布事件 → /api/agent/tasks/:id/stream 推送给前端
 // 事件类型: snapshot(初始快照) | task(状态) | step(步骤) | reflect(循环评估) | exec_log(执行日志, V395-7) | done

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-guards.ts — 实证工作台守卫工具（V380+）
 // 反 hallucinate 核心: 变量白名单校验在 TS 服务端强制, 不依赖 LLM 提示词自觉
 // assertColumns: LLM 建议变量不在数据列中 → 抛带候选列的 400 错误

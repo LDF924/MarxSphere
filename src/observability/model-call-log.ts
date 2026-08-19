@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 

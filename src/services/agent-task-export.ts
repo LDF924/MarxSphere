@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-task-export.ts — V395-8: 任务结果导出 Markdown
 // 目标/状态/计划/步骤详情/执行日志/成本对比 → 可下载 .md
 import type { AgentTaskRecord } from "./agent-task-service.js";

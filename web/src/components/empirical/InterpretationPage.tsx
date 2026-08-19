@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // InterpretationPage.tsx — 结果解释闸门（V380+）: 回归结果 → LLM 解释草稿 → 人工确认
 // 确认后解锁证据账本写入; LLM 只做统计描述, 禁用因果推断词
 import { useState, useEffect } from "react";

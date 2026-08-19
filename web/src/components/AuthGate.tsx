@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AuthGate.tsx — 商业化登录门（V389+）
 // 可选启用: 后端 AUTH_ENABLED=true 时前端要求登录（JWT 存 localStorage）
 // 关闭时直接放行（兼容本地单机使用）

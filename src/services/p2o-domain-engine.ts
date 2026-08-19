@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // p2o-domain-engine.ts — V395-12: skill(pdf2obsidian) 领域能力整合 P2O 工作台
 // 复用自研 skill 的领域深度 prompt（FIELD_CONTEXT 资本下乡研究领域上下文）
 // 任务完成后重生成 摘要/术语表/问答 三产物 → 覆盖 vendor 通用产物

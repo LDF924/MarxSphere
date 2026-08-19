@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // truth-service.ts — GBrain Compiled Truth + Timeline 机制
 // knowledge_pages: 页面 = Compiled Truth（当前最佳理解，可改写）+ 下方时间线（只追加）
 // 核心语义：

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ReliabilityPage.tsx — 信效度报告（V380+）: α/KMO/Bartlett/因子分析
 import { useState } from "react";
 import { FlaskConical, Loader2, Play, Plus, X } from "lucide-react";

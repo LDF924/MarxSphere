@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // InboxPanel.tsx — Inbox 待办事项（GBrain /inbox 适配）
 // 简单待办列表 + localStorage 持久化 + 完成/删除
 import { useEffect, useState } from "react";

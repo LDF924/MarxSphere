@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // LedgerPage.tsx — 证据账本（econ-paper-studio evidence ledger 模式）: 系数四维绑定
 import { useState, useEffect } from "react";
 import { BookMarked, Plus, Trash2, RefreshCw, BookOpen } from "lucide-react";

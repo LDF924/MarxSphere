@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // reason-step-docs.ts — 推理 52 步步骤详情文档（GBrain 教学台：面板 echo 后端真实实现）
 // 每步关联：真实 SQL / 公式 / 代码片段。前端步骤展开时展示（与 Ask 的 step-docs 同款）。
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ask-demo.ts — Ask 沙箱 demo 数据（GBrain 模式：静态回放，不真打 API）
 // 从真实检索 trace 生成的预设数据，进 Ask 页即可播放完整演示
 // 结构对齐 SearchProgressEvent / Citation / AblationResult

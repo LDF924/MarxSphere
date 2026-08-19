@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-persistent-runtime.ts — 借鉴 wisp-science: Python 持久运行时
 // 子进程常驻, 变量跨调用保持（重计算: 载入数据/训练模型只需一次）
 // 设计: 每会话一个持久 Python 进程, 通过 stdin/stdout JSON-RPC 通信

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // writing-corpus-service.ts — 学术写作语料库（2026-08-16）
 // 四大子库: 文本范例 / 核心概念 / 论证逻辑 / 词汇句式
 // 设计原则: 语料是可复用学术资产 — 借鉴逻辑与句式, 不照搬原文

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // plugin-example-classical.ts — V395-4: 示例插件（经典文本研究工具包）
 // 插件入口约定: export { tools } — AgentToolDef 数组（注册时自动采集声明）
 // 注册: POST /api/agent/plugins {id:"classical-tools", name:"经典文本", entry:"./plugin-example-classical.js"}

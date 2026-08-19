@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // CodeBlock.tsx — 代码展示/复制/下载/「让 Agent 修复报错」（V380+）
 import { useState } from "react";
 import { Copy, Download, Wrench, Check, Loader2 } from "lucide-react";

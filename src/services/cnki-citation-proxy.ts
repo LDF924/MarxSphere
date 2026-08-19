@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

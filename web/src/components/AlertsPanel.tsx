@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AlertsPanel.tsx — 告警中心（任务巡检/降级/熔断/失败事件）
 // 级别徽章 / 时间线列表 / 未读标记 / 全部已读 / 清空已读 / 轮询新告警
 import { useState, useEffect, useCallback } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // external-sources-service.ts — MarxSphere 外部数据源服务
 // 统一暴露：数据源注册表 + OpenAlex 等开放 API 检索
 import { sourcesRegistry, type DataSource } from "./sources-registry.js";

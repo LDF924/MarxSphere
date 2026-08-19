@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-diagnosis-service.ts — 数据诊断（V380+）
 // 输入: 数据缺失率(TS 端算) + 田野信息 → LLM 发现问卷问题 + 解决方案 + 补齐要点
 import { callLlm } from "../ai/llm-common.js";

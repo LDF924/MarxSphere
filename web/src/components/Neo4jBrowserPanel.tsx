@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // Neo4jBrowserPanel.tsx — Neo4j 库直连浏览（V400）
 // 引擎切换(Graphiti/Cognee) + 节点类型统计 + 按类型列表 + 实体搜索 + 关系图
 import { useState, useEffect, type FC } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-task-service.ts — 自主任务规划器（2026-08-07 P2 → V391 P0-1 Agentic Loop）
 // 用户给目标 → LLM 拆解子任务 → 逐项执行 → 进度回报 → 中途干预
 // V391(P0-1/2/3): Agentic Loop — plan → act → observe → reflect → replan 多轮循环

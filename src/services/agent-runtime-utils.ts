@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-runtime-utils.ts — 借鉴 DSH spill + subprocess 包
 // ④ spill: 上下文溢出 → 历史归档到工作区文件（防丢失, 可检索）
 // ⑤ subprocess: 集中子进程注册表（统一超时/清理/状态, 防孤儿进程）

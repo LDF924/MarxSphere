@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // context-compressor.ts — 分层上下文压缩（BOOK-GAP-ROADMAP P0-6/P0-7）
 // 书中 Ch2: 五层组合——①工具结果预算控制 ②噪声删除 ③API层微压缩 ④归档式摘要 ⑤全量压缩
 // 80% 阈值触发 + 批量压缩 + [COMPRESSED] 防重复标记; 连续失败熔断器(3次放弃)

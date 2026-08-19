@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DiagnosisPage.tsx — 数据诊断（V380+）: 数据缺失 + 田野信息 → 问卷问题/方案/补齐要点
 import { useState } from "react";
 import { Stethoscope, Loader2, Play, CheckCircle2 } from "lucide-react";

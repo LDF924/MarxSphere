@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-model-router.ts — V394-2: 模型路由策略
 // 简单步骤用便宜模型(flash), 复杂步骤用强模型(pro) — 成本-质量平衡
 // 路由依据: 步骤类型 + 目标复杂度(长度/关键词)

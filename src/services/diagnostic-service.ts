@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // diagnostic-service.ts — 学情诊断升级（V386）
 // 从做题/交互行为挖掘学习问题，输出可落地诊断报告
 // 四层能力：

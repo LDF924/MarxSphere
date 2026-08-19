@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TheoryToolsPanel.tsx — 理论思辨拓展专属能力交互面板（S61-S65）
 // 前提反思(信号词库) / 跨学科(学科映射) / 理论现实联结(案例匹配) / 创新识别(信号扫描) / 体系建构(一致性检测)
 import { useState, useEffect, type FC } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // WritingToolsPanel.tsx — 论文写作与研究设计专属能力交互面板（S46-S50）
 // 问题凝练(主题覆盖矩阵) / 框架设计(模板匹配) / 论证补全(断层检测) / 方法适配(特征映射) / 反方视角(前提弱化检测)
 import { useState, useEffect, type FC } from "react";

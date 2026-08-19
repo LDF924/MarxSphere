@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-settings.ts — 借鉴 DSH settings 包: Agent 设置持久化
 // 预设/自主级别 等运行时设置落库（重启保持）; 环境变量优先级高于 DB（启动时 DB 覆盖）
 import { pool } from "../db/pool.js";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // force-layout.ts — d3-force 力导向布局驱动（供 ForceGraphPanel 使用）
 // 参数可调（charge / linkDistance / centerStrength），localStorage 持久化
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force";

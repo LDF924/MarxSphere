@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-presets.ts — 借鉴 DSH preset 包: Agent 模式预设
 // 预设 = 工具集 + 模型档位 + 行为约束 + 默认参数 的组合（DSH: 不同模式加载不同插件集）
 // 模式: academic(学术研究, 默认) / data(数据分析) / writing(论文写作) / coding(代码开发)

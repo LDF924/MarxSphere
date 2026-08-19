@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // memory-maintenance-service.ts — V391(P1-5): 记忆自动遗忘/合并
 // 防记忆膨胀: 相似记忆自动归并 + 长期未召回的记忆自动遗忘
 // 与 OpenViking 配合: 写入记忆时登记指纹, 定期整理(合并/遗忘)避免重复积累

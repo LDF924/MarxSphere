@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // retrieval-sources.ts — 检索源配置（三库任意组合：PG / Neo4j Graphiti / Neo4j Cognee）
 // 设计目标：Ask 18 步 / 推理 49 步的检索源全可配置——
 //   全关 / 只开一个 / 任意两个 / 全开，由前端开关 + localStorage 持久化

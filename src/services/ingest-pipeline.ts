@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ingest-pipeline.ts — 新论文增量管道: MD → Cognee → Graphiti → SAG 记录
 import { pool } from "../db/pool.js";
 

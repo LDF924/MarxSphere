@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ops-service.ts — 商业化阶段5: 运营（审计日志 + 差异化限流 + 管理端）
 // V389+
 import { pool } from "../db/pool.js";

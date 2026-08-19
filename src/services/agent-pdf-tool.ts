@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-pdf-tool.ts — V395-1: 多模态 PDF 解析工具（Agent 可调用）
 // 复用 PDF2Obsidian 开源项目(yeora26)的 MinerU 官方管线: 完整 6 阶段导入 或 轻量单步解析
 // 支持扫描件 OCR / 公式 / 表格 / 翻译 / Obsidian 导出

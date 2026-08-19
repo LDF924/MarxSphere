@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // self-heal-service.ts — 告警自主闭环（V379）
 // 发现告警 → 自动根因分析 → 自动尝试解决 → 反馈结果
 // 对可自动处理的告警执行修复动作；不可自动处理的标记"需人工"并给出诊断

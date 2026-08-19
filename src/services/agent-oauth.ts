@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-oauth.ts — 架构B: OAuth2 授权流（对齐 Codex/DSH 外部服务集成）
 // authorization_code 流: 开始授权→跳转→回调→存 token（AES 加密）→刷新
 // 首个适配器: GitHub（读公开仓库/issue）; 接口可扩展 feishu/notion 等

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // LlmModelSelector.tsx — LLM 模型选择组件（2026-08-07）
 // 展示可用模型 + 角色映射，用户可切换各角色使用的模型
 // v4: 支持 roles 参数按任务上下文过滤角色（Ask 全套 / Sciverse 仅检索 / 知网知识页仅 Claude 执行）

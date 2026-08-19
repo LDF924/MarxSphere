@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-orchestrator.ts — V391(P2-1/2): 主管-工人层级编排 + Agent 消息协议
 // 复杂任务: 主管(LLM)拆包为多个子目标 → 并行工人执行 → 主管汇总
 // 消息协议: agent_messages 表记录 主管↔工人 的结构化消息（task/result/status）

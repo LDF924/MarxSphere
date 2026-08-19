@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-scheduler.ts — V395-9: Agent 定时任务
 // agent_scheduled_tasks 表（迁移 059）: goal/cron/next_run/enabled
 // 每分钟检查: 到期(cron 匹配当前分钟) → 创建 agent 任务 → 更新 next_run/last_run

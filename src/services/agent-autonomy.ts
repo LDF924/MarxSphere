@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-autonomy.ts — 借鉴 Codex approval modes: 自主级别
 // suggest(建议, 每步审批) / auto-edit(自动执行, 高危审批) / full-auto(全自动, 只审计)
 // 级别由环境变量 AGENT_AUTONOMY 或 API 设置; 影响 executeAgentTool 的审批判定

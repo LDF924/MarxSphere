@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // jsonwebtoken.d.ts — 本地类型声明（无 @types/jsonwebtoken）
 declare module "jsonwebtoken" {
   export interface SignOptions { expiresIn?: string | number; algorithm?: string; }

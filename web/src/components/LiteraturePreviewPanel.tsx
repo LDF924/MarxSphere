@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // LiteraturePreviewPanel.tsx — 研究场景文献预览（V358）
 // 从研究结果提取文献（title/chunkCount）→ 点击拉 /api/documents/:id/chunks 拼接全文 → AnnotationWorkspace 标注
 // 集成到 6 个研究面板：分析完成后，"本次用到的文献"列表可逐篇预览原文并框选标注

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // writing-output-service.ts — 论文写作输出 5 大能力（S51-S55）
 // 高质量文献综述生成 / 学术段落扩写润色 / 规范化学术要件生成 / 引文与参考文献格式化 / 多场景语体适配
 // 复用: 检索 + LLM + citation-service；专属算法: 综述结构模板 / 语体规则库 / 引文格式生成器 / 要件模板 / 口语化检测

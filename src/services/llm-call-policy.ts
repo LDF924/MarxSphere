@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // llm-call-policy.ts — 恢复分级升级（BOOK-GAP-ROADMAP P0-12）
 // 书中 Ch5: ①静默重试(前台) vs 失败即弃(后台) ②降级接续(主模型过载→备用模型) ③错误扣留(恢复成功前端无感知)
 // 统一 LLM 调用入口：前台走 classifyError 重试映射表，后台单次 + 失败静默

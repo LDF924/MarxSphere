@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // LiteraturePanel.tsx — MarxSphere 本地文献库筛选界面
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式：
 // 左=筛选器（主题/作者/年份动态生成），右=文献列表

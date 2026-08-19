@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-eval-service.ts — V393-7: Agent 任务级评测体系
 // 指标: 任务完成率 / 步骤成功率 / 多轮收敛率 / 平均成本 / 平均耗时
 // V396-1: 轨迹级评测 — 计划遵循度 / 工具调用准确率 / 推理质量(LLM judge) / 回归基线告警

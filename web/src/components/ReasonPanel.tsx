@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ReasonPanel.tsx — 推理面板: 输入问题 → 查看推理链
 import { useState, useEffect, useRef, type FC } from "react";
 import { Loader2, Brain, ChevronRight, ChevronDown, CheckCircle2, XCircle, Clock, Copy, Info, Database, RefreshCw, Users, Wrench, ThumbsUp, ThumbsDown } from "lucide-react";

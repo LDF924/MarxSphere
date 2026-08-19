@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-service.ts — 实证研究执行服务（V348+）
 // 数据上传 → spawn Python 沙箱(独立 venv, 不依赖 MCP 池) → 结果回传 + 持久化
 // 安全: 复用 sag_execute_code 的防护思路(独立 venv 隔离 + 参数白名单方法 + 大小守卫)

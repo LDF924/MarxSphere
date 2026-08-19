@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-feedback.ts — 借鉴 DSH feedback 包: Agent 任务反馈闭环
 // 👍👎 → 失败反馈自动转防错规则 / 好评沉淀经验 / 反馈回流记忆
 import { pool } from "../db/pool.js";

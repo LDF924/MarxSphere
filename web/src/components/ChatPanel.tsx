@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ChatPanel.tsx — V398: AI 对话页（豆包式交互）
 // 左侧会话管理侧边栏（新建/重命名/删除/置顶/折叠）+ 消息流（富渲染/引用/工具调用）+ 底部 Composer（模型/联网/附件/图片粘贴）
 import { useEffect, useMemo, useRef, useState, type FC } from "react";

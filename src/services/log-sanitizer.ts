@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // log-sanitizer.ts — 日志脱敏（BOOK-GAP-ROADMAP P0-15）
 // 书中 Ch3: 本地模型做 PII 检测脱敏; 正则快速过滤覆盖 90% + LLM 深度分析可选(LOG_SANITIZE_LLM=true默认关)
 // 第一层正则（零成本）: 身份证/手机号/银行卡/IPv4/sk-key/Authorization → [REDACTED:type]

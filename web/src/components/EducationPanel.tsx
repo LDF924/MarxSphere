@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // EducationPanel.tsx — AI+教育 六大能力面板（V382）
 // 个性化学习规划 / 专业课课程辅导 / 学情诊断 / 预习与复习 / 教师备课 / 学习陪伴
 // V383: 固定 Obsidian 资料库侧栏（目录树 + md/PDF/图片内联预览 + Office 下载）

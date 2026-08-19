@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // p2o-service.ts — V395-10: PDF2Obsidian 任务服务（持久化 + 异步管线）
 // 任务落库 agent_p2o_tasks（重启不丢）; 上传 PDF 落盘 / URL 下载 / base64 解码
 // 管线后台异步执行（onStep 回调实时更新步骤进度）; 产物路径落 result 供前端读取

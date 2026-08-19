@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // classical-algorithms.ts — 经典文本研究专属算法（纯算法，不依赖 LLM）
 // 版本校勘 LCS diff / 互文段落对齐 / 概念语义漂移检测
 import { pool } from "../db/pool.js";

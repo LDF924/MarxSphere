@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // neo4j-browser-service.ts — Neo4j 库直连浏览（V400）
 // 安全只读浏览：节点类型统计 / 按类型列节点 / 实体搜索 / 关系图（不暴露任意 Cypher）
 // 两个引擎: Graphiti(11001) / Cognee(11003)

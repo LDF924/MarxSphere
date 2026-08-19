@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TracePanel.tsx — Trace Waterfall 统一追踪（OTEL 风格）
 // Ask 检索步骤 + Jobs 任务流水的统一 span 视图
 // 左列表（ID/状态标识 + 选中 + 删除 + 清空）+ 右瀑布（类型图标 + 层级 + 单条折叠 + 明细）

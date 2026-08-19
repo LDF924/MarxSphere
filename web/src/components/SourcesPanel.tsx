@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // SourcesPanel.tsx — MarxSphere 统一数据源面板（29 个外部源）
 // 按状态展示：已接入 / 可接入 / 需注册。含 OpenAlex/CORE 英文文献检索。
 import { useState, useEffect, type FC } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // neo4j-reason-sync.ts — 推理元数据同步到 Neo4j 11005
 // 每当 PG 中创建推理记录，可选同步到 Neo4j 图节点
 import { pool } from "../db/pool.js";

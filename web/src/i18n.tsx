@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type SupportedLanguage = "zh" | "en";

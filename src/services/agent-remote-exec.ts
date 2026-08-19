@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-remote-exec.ts — 借鉴 wisp-science: 远程计算上下文
 // WSL(Windows 子系统 Linux) 直连 / SSH 远程执行代码
 // 安全: 危险命令黑名单(同沙箱) + 凭证隔离 env + 超时

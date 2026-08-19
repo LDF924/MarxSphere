@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // markdown.tsx — 轻量 Markdown 渲染（App 对话与知识页 Claude 结论共用）
 // 支持：标题 / 加粗 / 行内代码 / 代码块 / 无序有序列表 / 表格 / 引用 [n]
 import type { ReactNode } from "react";

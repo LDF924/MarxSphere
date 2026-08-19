@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // eval-runner.ts — 评测脚本 SSE 运行器（2026-08-06）
 // 启动评测脚本子进程（node <tsx> scripts/<script>.ts），逐行解析 [EVAL-SSE] 进度协议
 // 转发为 SSE 事件流；客户端断开时杀掉子进程

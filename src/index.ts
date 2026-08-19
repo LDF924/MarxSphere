@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // index.ts — 入口：读取 mode.json 设定运行模式（界面切换持久化）
 // 模式：preview（省内存，无推理/MCP 池）| full（完整，拉 MCP 池）
 // 优先级：环境变量 MARXSPHERE_PREVIEW > mode.json > 默认 preview

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // QualityCheckToolsPanel.tsx — 论文质量检查专属能力交互面板（S56-S60）
 // 概念一致性(易混淆库) / 引文核查(模式统计) / 逻辑自洽(循环论证标记) / 学术不端(重合度) / 格式适配(规则库)
 import { useState, useEffect, type FC } from "react";

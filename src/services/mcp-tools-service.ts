@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // mcp-tools-service.ts — MCP 工具大全（静态清单 + 中文说明 + 参数示例）
 // 包含：SAG 自带 4 个 + Cognee 13 + Graphiti 12 + 2 ingest + Sciverse 6 + gov.cn 2
 // 预览模式也能显示（不依赖运行时连接）

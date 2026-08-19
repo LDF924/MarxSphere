@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // skillify-tracker.ts — Skillify 自动检测固化（GBrain 机制6）
 // 记录检索/工作流模式，检测重复成功（≥3 次同类）→ 生成候选 skill
 import fs from "node:fs";

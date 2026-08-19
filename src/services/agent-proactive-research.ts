@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-proactive-research.ts — P2: 主动研究（每日自主巡检）
 // 补齐 V373 记忆声称但缺失的行为: 每日自动发现问题→发起研究任务→反馈
 // 流程: ①从情景记忆/评测失败/历史任务收集信号 ②LLM 生成研究假设

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,

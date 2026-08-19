@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // UniverseBackground.tsx — 动态宇宙背景（2026-08-07）
 // Canvas 星场：~140 颗星（大小/亮度/漂移速度随机）+ 3 团星云光斑 + 鼠标视差
 // 性能：rAF 循环 + DPR 适配 + reduced-motion 静态帧 + 不可见时暂停

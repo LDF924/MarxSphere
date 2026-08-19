@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // EngineIngestPanel.tsx — Graphiti/Cognee 引擎入库面板（V399）
 // 触发 orchestrate_ingest.py 后台入库 + 状态轮询 + 引擎健康检查
 import { useState, useEffect, type FC } from "react";

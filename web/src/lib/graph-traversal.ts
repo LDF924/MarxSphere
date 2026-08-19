@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // graph-traversal.ts — 方向+深度遍历：从实体出发，在 entity↔event 超图上 BFS
 // 方向语义（依赖 LLM 推断的 subject/object，见 event_directions 表）：
 //   out = 起点是事件的 subject（主动方）：经其事件到达事件中的其它实体（它指向谁）

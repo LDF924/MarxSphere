@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DataVersionBar.tsx — 数据版本选择（V380+）: 变量白名单唯一真源
 import { useEffect, useState } from "react";
 import { Database } from "lucide-react";

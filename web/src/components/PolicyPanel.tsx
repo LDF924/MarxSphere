@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // PolicyPanel.tsx — 政策资料库面板（马克思政策库）
 // 左=本地政策目录浏览+预览 · 右=gov.cn 政策检索 + 一键存入政策库
 import { useState, useEffect, type FC, type ReactNode } from "react";

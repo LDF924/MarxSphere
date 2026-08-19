@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // paper-quality-service.ts — 论文质量检查 5 大能力（S56-S60）
 // 概念一致性校验 / 引文准确性核查 / 逻辑自洽性检查 / 学术不端风险提示 / 格式规范适配
 // 复用: LLM + 检索；专属算法: 概念歧义检测 / 引文匹配 / 循环论证检测 / 重合度计算 / 格式规则库

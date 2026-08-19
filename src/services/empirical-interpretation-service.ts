@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-interpretation-service.ts — 结果解释闸门（V380+）: LLM 草稿 + 防越界扫描
 // 硬约束: 只描述系数方向/显著性/置信区间, 不推断因果; 服务端正则扫禁用词
 import { callLlm } from "../ai/llm-common.js";

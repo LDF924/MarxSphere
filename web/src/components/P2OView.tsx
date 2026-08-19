@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // P2OView.tsx — V395-10: PDF2Obsidian 三栏工作台（复刻原版 LocalWorkspace 完整功能）
 // 左: 上传区+任务列表(统计/状态/进度/重试/删除) | 中: PDF iframe 预览 | 右: 输出(译文/阅读材料[摘要/术语表/问答]/论文信息结构化/Bases)
 // 直连 SAG /api/p2o/*（持久化任务, 重启不丢; 管线后台异步, 2s 轮询进度）

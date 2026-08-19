@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // NavRail.tsx — 实证工作台左侧功能导航（V380+）
 // 12 区段: 研究流程 11 项 + 方法执行(右侧工作区内嵌 16 方法网格)
 import { ClipboardList, ScanSearch, FlaskConical, Stethoscope, Database, Wand2, ListChecks, Workflow, LineChart, FileText, BookMarked, PlaySquare } from "lucide-react";

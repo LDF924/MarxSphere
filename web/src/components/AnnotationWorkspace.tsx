@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AnnotationWorkspace.tsx — 研究场景文本标注工作区（V357）
 // 功能: 粘贴文本 → 框选 → 工具条(高亮/下划线/笔记) → span 着色渲染 → 笔记收纳栏(分组/跳转/删除/导出)
 // 存储: localStorage 按 storageKey 持久化（不碰数据库）

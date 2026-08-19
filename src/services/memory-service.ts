@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // memory-service.ts — 记忆层（2026-08-07）
 // 短期记忆：conversation_context（按会话存对话摘要，推理时注入上下文）
 // 长期经验：task_experience（每次推理沉淀 问题→策略→质量，相似问题参考）

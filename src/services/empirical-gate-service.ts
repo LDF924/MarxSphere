@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-gate-service.ts — 人工闸门状态机（V380+）
 // 4 节点: topic | variable_definition | identification | result_interpretation
 // 状态: draft(可编辑) → locked → confirmed; 退回 = 回 draft + 级联回退后续节点

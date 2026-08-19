@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // startup-check.ts — 启动环境检查（V407: 边界健壮性）
 // 服务启动时检查关键配置，缺失/异常给出明确警告（而非静默空库/报错），不阻断启动
 import fs from "node:fs";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scenario-guides.ts — 35 个科研场景的研究开展步骤指南（V256）
 // 每个场景：目标 + 5-8 步研究流程（每步标注使用工具 + 操作指引）
 // 引导用户如何利用 MarxSphere 真实工具完成该场景研究

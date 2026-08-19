@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ForceGraphPanel.tsx — 力导向视图：d3-force 仿真驱动 React Flow 节点
 // 参数（charge/linkDistance/centering）可拖拽调节 + localStorage 持久化
 import { useEffect, useMemo, useRef, useState } from "react";

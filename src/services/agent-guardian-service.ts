@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-guardian-service.ts — 借鉴 OpenAI Codex guardian/ 包
 // 策略驱动的工具调用安全审查: 风险等级 × 用户授权度 → allow/deny/review
 // 策略文件: guardian-policy.md（可编辑, reload 热更新）

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { pool, closePool } from "./pool.js";
 import { logger } from "../observability/logger.js";
 

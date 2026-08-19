@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-reliability-service.ts — 信效度编排（V380+）
 // Python 实算(α/KMO/Bartlett/因子) → LLM 解读 → 落 pipeline_runs
 import { callLlm } from "../ai/llm-common.js";

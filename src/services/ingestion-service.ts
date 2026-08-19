@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { toVectorLiteral } from "../db/vector.js";

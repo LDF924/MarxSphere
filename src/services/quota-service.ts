@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // quota-service.ts — API 令牌配额治理（配额配置 + 用量流水）
 // 配套迁移: migrations/036_token_quotas.sql (token_quotas / token_usage)
 // 语义: 0 = 不限制; 无配额行 = 默认值(惰性插入); 仅外部持 token 请求记账(本机豁免)

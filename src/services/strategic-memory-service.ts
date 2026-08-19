@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // strategic-memory-service.ts — V391(P1-4): 战略记忆
 // 项目级长期目标/决策历史/约束 — 每次 Agent 会话开始加载, 避免会话间上下文重建
 import { pool } from "../db/pool.js";

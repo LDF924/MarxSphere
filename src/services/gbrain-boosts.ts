@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // gbrain-boosts.ts — 从 GBrain 源码移植的检索增强纯函数（MIT License）
 // 移植来源: gbrain search hybrid (v0.43)
 // 已适配我们的类型（EventRecord / SearchSection），保持 GBrain 算法语义

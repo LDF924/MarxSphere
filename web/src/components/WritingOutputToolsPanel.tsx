@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // WritingOutputToolsPanel.tsx — 论文写作输出专属能力交互面板（S51-S55）
 // 综述生成(五段结构) / 段落扩写(口语检测) / 学术要件(模板) / 引文格式化(三格式) / 语体适配(规则库)
 import { useState, useEffect, type FC } from "react";

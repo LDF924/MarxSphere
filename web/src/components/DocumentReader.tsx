@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DocumentReader.tsx — 文献阅读器（V361）：所见即所得标注
 // 检索文献 → 选择文献 → 原文直接渲染，框选→工具条→高亮/下划线/笔记 立即作用于原文 span
 // 无"编辑区+预览区"分离——标注直接在原文上进行（像 PDF 阅读器）

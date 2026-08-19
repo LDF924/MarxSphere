@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // HomePanel.tsx — MarxSphere 品牌首页（Landing）
 // 深空宇宙背景 + 马克思理论叙事 + 功能入口 + 研究数据 + 检索栈 scrollytelling 动画
 import { useEffect, useState, type FC } from "react";

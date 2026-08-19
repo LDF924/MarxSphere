@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // reason-handler.ts — 推理 API handler，三层检索链 (Cognee→Graphiti→SAG)
 // P0 hardened: readiness probe, SIG cleanup, close-before-null, PID logging
 // V92: MCP 多实例连接池 (Cognee ×4, Graphiti ×4) — 消除单进程串行排队

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // QuestionForm.tsx — 统一 Question 渲染/编辑（V380+）
 import { useState } from "react";
 import type { Question } from "../../lib/api";

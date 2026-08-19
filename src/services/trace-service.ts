@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // trace-service.ts — Trace Waterfall 统一追踪（OTEL 风格 span）
 // Ask 检索步骤 + Jobs 任务流水 → 统一 span 存储 + 查询
 import { randomUUID } from "node:crypto";

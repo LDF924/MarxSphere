@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ImputationPage.tsx — LLM 民调插补工作台（V380+）: 论文方法复现
 // 三栏: 缺失机制诊断 | 插补队列(人工确认) | 对比评估(LLM vs MICE/KNN/RF)
 import { useState } from "react";

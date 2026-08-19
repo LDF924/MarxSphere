@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // alias.ts — 别名消解（GBrain 第 11 步 alias）
 // 用 entity_norm_dict.json 对查询词做别名归一，提升实体召回质量。
 // 例："资本下乡（工商资本）" → normDict 命中 → "资本下乡" 统一

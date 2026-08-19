@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // GateCard.tsx — 人工闸门卡片（V380+）: 选题/变量定义/识别策略/结果解释
 // draft(可编辑, 编辑由各功能页的 upsert 处理) → locked → confirmed; 退回=回 draft + 级联回退
 // 本组件只负责: 状态展示 + lock/confirm/reopen 动作 + 内容摘要 + 自定义渲染槽

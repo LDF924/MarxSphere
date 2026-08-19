@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TraversalPanel.tsx — 关系查询：从实体出发，按方向（入/出/双向）+ 深度遍历关系网络
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, GitCommitHorizontal, Loader2, Network, Search, X } from "lucide-react";

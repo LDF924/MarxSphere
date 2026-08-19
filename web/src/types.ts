@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 export interface SourceRecord {
   id: string;
   tenantId: string;

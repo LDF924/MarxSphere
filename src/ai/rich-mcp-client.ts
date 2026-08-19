@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // rich-mcp-client.ts — stdio MCP 客户端, 用于连接 Graphiti / Cognee
 // P0 hardened: stderr relay, readiness probe, heartbeat, abort, close SIGKILL, 180s default
 // P1: concurrency limiter support (p-limit)

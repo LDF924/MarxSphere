@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // billing-service.ts — 商业化阶段2: 计费系统（订阅 + 按量）
 // V389+ 混合计费
 // 逻辑: 平台 key 用户 — 订阅含月额度(免费token), 超额按单价扣 balance

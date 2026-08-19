@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // direction-service.ts — 事件方向推断（in/out/both 语义支撑）
 // LLM 从事件标题+摘要推断 subject/object 实体，结果存 event_directions 表
 // 图查询时：out = 起点作为 subject 的事件 → 事件其它实体；in = 起点作为 object 的事件 → 事件其它实体

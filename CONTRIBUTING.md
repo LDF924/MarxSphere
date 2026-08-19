@@ -2,6 +2,11 @@
 
 感谢你愿意为 MarxSphere 贡献！本指南帮助你理解项目结构与协作流程。
 
+> ⚖️ **提交即同意**：通过提交 Pull Request 或 Commit，即表示您同意
+> [CONTRIBUTOR-LICENSE-AGREEMENT.md](CONTRIBUTOR-LICENSE-AGREEMENT.md)
+> （贡献者许可协议）的条款——您的贡献可被用于项目商业运营，且项目可在 AGPL 家族内修订协议。
+
+
 ## 项目速览
 
 - **技术栈**：全栈 TypeScript（Fastify 5 + React 19 + Vite 8 + Electron）

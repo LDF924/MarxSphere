@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // quick-links.ts — 实时建联：前端正则从文本抽取三元组（零 LLM）
 // 可配置关系类型：中文名 + 正则句式（英文/中文均可），用户可在面板自定义
 // 用法：extractQuickLinks(text, relationTypes) → Array<{ subject, relation, object, relationLabel }>

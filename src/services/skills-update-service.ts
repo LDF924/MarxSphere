@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // skills-update-service.ts — 技能自动更新检测
 // 基线比对：本地改动 / 新技能 / GitHub 上游更新
 // 基线存 data/skills-baseline.json（原子写 tmp+rename）

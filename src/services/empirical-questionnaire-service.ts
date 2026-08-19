@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-questionnaire-service.ts — 问卷生成器 + 上传识别（V380+）
 // 生成: 课题 → 研究问题 → 变量维度分解 → Question[] 结构化问卷
 // 识别: 上传问卷文本 → 自动识别主体/指标/变量结构

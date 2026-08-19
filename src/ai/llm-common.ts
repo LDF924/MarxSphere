@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // llm-common.ts — 统一 LLM 调用工具（从 inference-service 提取公用，供其他服务复用）
 // fetchLlm: 带真实 token 采集的 fetch；getLlmEndpoint: 端点选择（DeepSeek 原生优先，DashScope 兜底）
 // G11: 全局 LLM 并发信号量 — 简单令牌计数, 最大 8 路并发(AGENT_LLM_CONCURRENCY 覆盖), 超出排队等待

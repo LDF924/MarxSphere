@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // adaptive-operators.ts — 自适应推理模式（V267）：算子注册表 + 类型定义
 // 模式 B：LLM 根据问题动态选择算子执行（简单问题 5 步收敛、复杂问题自动加算子）
 // 与 reason() 固定模板共存（模式 A），前端开关切换，缺省 template 保 0.870 基线

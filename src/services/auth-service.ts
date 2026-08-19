@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // auth-service.ts — 商业化阶段1: 用户认证(注册/登录/JWT) + 租户 + admin角色
 // V388+ 多用户商业化
 // 密码: bcrypt 哈希 | 会话: JWT (jsonwebtoken)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DataPipelinePage.tsx — 数据管道（V380+）: 缺失/缩尾/构造/筛选/描述 + Stata 下载
 import { useState } from "react";
 import { Workflow, Loader2, Play, FileCode2, ShieldCheck } from "lucide-react";

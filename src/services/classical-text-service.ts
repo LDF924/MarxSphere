@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // classical-text-service.ts — 经典文本研究 5 大能力（马理论文本研究专用）
 // 概念溯源 / 论证结构拆解 / 互文对照 / 晦涩文本阐释 / 版本校勘
 // 专属算法（lcsDiff/alignParagraphs/semanticDrift）在 classical-algorithms.ts，纯算法不烧 token

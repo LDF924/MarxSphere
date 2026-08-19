@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-plugin-service.ts — V395-4: Agent 插件体系
 // 插件 = 可插拔工具包: agent_plugins 表（迁移 058）声明 entry 模块
 // → buildAgentTools 动态加载启用插件的工具（合并进工具清单, LLM 可选择）

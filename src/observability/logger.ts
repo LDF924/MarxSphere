@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import pino from "pino";
 import { config } from "../config/env.js";
 import { sanitizeLine, sanitizeObject } from "../services/log-sanitizer.js";

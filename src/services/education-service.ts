@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // education-service.ts — AI+教育 六大能力（V382, 2026-08-09）
 // 个性化学习规划 / 专业课课程辅导 / 学情诊断 / 预习与复习 / 教师备课 / 学习陪伴
 // V383: 深度联动整个 Agent —— 走 52 步推理链路（三库检索→图谱→生成→评估→反思）+ 引用溯源 + 记忆

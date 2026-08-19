@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // concurrency.ts — P1: centralized p-limit controllers for PG and MCP
 // PG max 2 concurrent queries, Cognee MCP max 3, Graphiti MCP max 3
 import pLimit from "p-limit";

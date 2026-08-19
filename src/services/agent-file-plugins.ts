@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-file-plugins.ts — 架构A1: 文件目录插件 + 热加载
 // plugins/ 目录下的 .ts 文件 = 插件模块（导出 tools 数组）
 // fs.watch 监听 → 新增/修改/删除插件文件自动重载（无需重启服务）

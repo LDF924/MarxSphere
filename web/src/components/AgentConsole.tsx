@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AgentConsole.tsx — Agent 控制台（V392）
 // 3 tab: 防错规则(预防规则管理) / 战略记忆(项目目标约束) / 执行日志(日志+成本+消息流)
 // V392增强: 播放演示(demo逐步填充三tab) + 顶部统计概览 + 演示数据标注

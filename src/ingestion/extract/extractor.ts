@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import type { ExtractedEvent } from "../../types.js";
 import type { LlmClient } from "../../ai/llm-client.js";
 

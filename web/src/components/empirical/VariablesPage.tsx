@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // VariablesPage.tsx — 变量敲定（V380+）: 被解释/核心解释/控制/识别策略 + 人工闸门
 import { useState, useEffect } from "react";
 import { ListChecks, Loader2, Play, Save, RefreshCw } from "lucide-react";

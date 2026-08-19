@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // DocsPanel.tsx — 文档浏览（对标 Sciverse /docs：左侧章节导航 + 右侧 Markdown 渲染）
 // 渲染 docs/ 目录的 md 文件：overview/quickstart/api-reference/cookbook/integrations
 import { useState, useEffect } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // p2o-batch-service.ts — V395-13/14: P2O 批量导入（移植自研 skill pipeline.py 完整能力）
 // 目录扫描(.pdf/.PDF去重) → 批量创建 P2O 任务 → 队列并发执行
 // V395-14: 任务落库 agent_p2o_batch_jobs（重启恢复）+ 参数透传（retryFailed/maxFiles）

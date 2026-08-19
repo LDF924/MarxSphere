@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // code-sandbox-service.ts — P0-2: 代码执行沙箱（从 MCP server 提取, agent 工具与 MCP 共用）
 // 沙箱子进程执行: 黑名单+语义检查+sidecar门控+凭证隔离+工作目录隔离+白名单代理
 // 借鉴2(Codex PermissionProfile): 沙箱分级 read-only/workspace-write/full-access + 升级链

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // SymbolLogo.tsx — 品牌 Logo（直接用图片 /marx-logo.png，高保真）
 import type { FC } from "react";
 

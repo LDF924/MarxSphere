@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-variables-service.ts — 变量敲定（V380+）: 被解释/核心解释/控制/识别策略
 // LLM 四段式建议 + 白名单校验(反 hallucinate: 变量必须在数据列中) + 闸门落库
 import { callLlm } from "../ai/llm-common.js";

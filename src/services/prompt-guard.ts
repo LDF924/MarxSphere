@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // prompt-guard.ts — G23: Prompt 注入防护
 // 用户输入直拼 LLM prompt 前统一加"系统指令与用户内容分界"标记 + 长度/换行控制
 // 防注入: 用户内容里的"忽略以上指令"等诱导文本被隔离在明确标注的用户数据区

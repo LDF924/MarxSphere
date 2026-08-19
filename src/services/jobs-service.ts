@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // jobs-service.ts — Jobs 任务队列（GBrain Jobs 适配）
 // minion_jobs 表 + worker（FOR UPDATE SKIP LOCKED 领取）+ Deterministic Task
 // + Dream Cycle 9-phase + Trace Waterfall

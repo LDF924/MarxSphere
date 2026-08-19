@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // pdf2obsidian-adapter.ts — V395-1: PDF2Obsidian 集成适配层
 // 复用 yeora26/PDF2Obsidian 完整管线(importPdf): MinerU解析→规范化→翻译→Obsidian导出→质量检查
 // 直接从 vendor/pdf2obsidian 编译产物 import（保持开源项目独立性）

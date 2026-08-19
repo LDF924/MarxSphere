@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // cost-service.ts — 成本监控 + 每任务成本上限（BOOK-GAP-ROADMAP P2-3）
 // 聚合 retrieve_steps.parameters.tokens（真实 token 采集）→ 按任务/模型估算成本
 // 单任务 token 上限（默认 100 万）超限 → 返回 shouldStop 供推理链路终止

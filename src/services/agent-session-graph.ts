@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-session-graph.ts — 架构F: 持久化会话图 + 分叉
 // F1: 会话→任务→工具→产出 图谱（前端可视化; 复盘研究过程）
 // F2: 从 checkpoint 分叉新会话（DSH replay/fork 模式）

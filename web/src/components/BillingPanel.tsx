@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // BillingPanel.tsx — 商业化计费面板（V389+）
 // 余额/充值/订阅计划/账单/用量（JWT 认证）
 // V390 UI修复: 输入框深色背景(原白底白字看不清) + 错误提示醒目 + 账单滚动可删 + 用量空态demo

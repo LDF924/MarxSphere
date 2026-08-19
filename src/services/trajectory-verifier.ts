@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // trajectory-verifier.ts — 三层轨迹验证（BOOK-GAP-ROADMAP P1-6）
 // 书中 Ch6: 结果正确 ≠ 过程正确（删掉失败用例也能让测试通过）
 // ①结果验证器 verifyResult（代码化，零 LLM）：目标论文命中/金标实体覆盖（复用 A10/A11 逻辑）

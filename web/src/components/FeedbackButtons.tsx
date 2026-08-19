@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // FeedbackButtons.tsx — 用户反馈闭环（V375）
 // 回答区 👍👎 → POST /api/feedback → OpenViking 长期记忆（强化偏好/纠正约束）
 // 点赞: 记录"用户认可的回答风格" 踩: 记录"需改进的点" + 可填备注

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // MemoryPanel.tsx — 记忆管理面板（2026-08-08 V326, P1-4 记忆向量化 + P1-8 睡眠学习 前端展示）
 // 展示: ①记忆统计卡(总数/归档/冲突/向量化) ②最近记忆列表(状态徽章) ③睡眠学习报告
 // 真实数据: GET /api/memory/stats + /api/memory/recent; 10秒轮询; 无数据回退 demo

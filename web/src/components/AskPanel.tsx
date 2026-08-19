@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AskPanel.tsx — Ask 检索实时面板（18 步检索流水线：多臂召回 → 加权 RRF → boost 链 → 重排）
 // 复用 MarxSphere SSE /api/search/stream 的 search_progress 步骤事件，
 // 重组为左侧持久化步骤栈 + 右侧答案 + 引用条

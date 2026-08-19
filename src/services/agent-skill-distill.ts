@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-skill-distill.ts — V396-9: 技能蒸馏 + EDV 防自我确认
 // 从任务成败轨迹蒸馏可复用技能（SKILL.md 式工件, 带 when-to-apply 守卫）
 // EDV(自我确认陷阱防护): 蒸馏 agent 与验证 agent 角色解耦 — 第三方验证者跨轨迹对比,

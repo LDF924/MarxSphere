@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TruthDiff.tsx — Compiled Truth 重写 diff 对比（GBrain Synthesize 适配）
 // 行级对比：删除行红底、新增行绿底、修改行黄底（简化 Myers diff）
 import { useMemo } from "react";

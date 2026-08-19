@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // TruthPanel.tsx — GBrain Compiled Truth + Timeline 机制前端
 // 页面 = 上方 Compiled Truth（当前最佳理解，可重写） + 下方时间线（证据轨迹，只追加）
 import { useState, useEffect, type FC } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-knowledge-feedback.ts — V394-3: 工具结果回流知识库
 // Agent 任务完成时, 把已验证的步骤产出自动提交为知识页草稿（Truth 知识页, 人工审核后入库）
 // 知识沉淀复用: 同一主题的研究成果下次可被检索/引用

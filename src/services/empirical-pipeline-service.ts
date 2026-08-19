@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-pipeline-service.ts — 数据处理管道编排 + Stata 代码生成（V380+）
 // Python 实执行五步 + Stata 常量模板下载 + verify 反 hallucinate 报告
 import { execFile } from "node:child_process";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-workflows.ts — 借鉴 DSH workflow 包: 工作流模板
 // 固定多步骤流程一键执行（学术研究类常用流水线）
 // 每步 = 步骤名 + 类型 + 目标（由 agent 执行器驱动）

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // github-discover-service.ts — GitHub 需求直通检索
 // 自然语言需求 → 意图判断（LLM 优先/正则兜底）→ 多词×多scope 并行检索 → 汇总去重排序
 // 可选 Claude Code 智能筛选（noTools 模式，复用 ai-execute-service）

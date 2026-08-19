@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // QuickLinkPanel.tsx — 快速建联：粘贴文本 → 即时抽三元组
 // 双模式：正则即时（零 LLM，~0.3ms）+ LLM 深度（识别复杂句式/语义关系）
 // 关系类型可自定义（中文名 + 句式），localStorage 持久化

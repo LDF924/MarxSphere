@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // EvalPanel.tsx — 评测工作台（V274，2026-08-06）
 // 双模式：① 实时运行区 — 选评测脚本启动，SSE 逐步点亮（每题一个节点，展开看逐指标分数/来源/说明）
 //         ② 结果展示区 — 只读已完成 eval_*.json（32 指标分组/分数条/来源徽章/证据区）

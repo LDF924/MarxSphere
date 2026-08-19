@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-regression-service.ts — 回归代码生成 + Agent Debug（V380+）
 // 生成: 基准/固定效应/聚类SE/交互; 模板: 稳健性/安慰剂/IV一阶段/事件研究
 // 防呆静态规则: 聚类SE存在性 / 样本量断言 / 交互项出现检查

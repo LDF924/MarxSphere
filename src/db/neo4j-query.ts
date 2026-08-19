@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // neo4j-query.ts — 安全的 Neo4j 参数化查询工具
 // 替代 execSync + python -c 的脆弱的字符串拼接（中文实体名会转义出错）
 // 用法: await neo4jQuery(11001, "MATCH (e:Entity {name: $n}) RETURN e", {n: "风险共担"})

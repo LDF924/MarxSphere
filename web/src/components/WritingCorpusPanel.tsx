@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // WritingCorpusPanel.tsx — 学术写作语料库（2026-08-16）
 // 四大子库: 文本范例 / 核心概念 / 论证逻辑 / 词汇句式
 // 工作流: 积累(粘贴+LLM辅助提取) → 整理(打标签/检索) → 应用(写作前调取)

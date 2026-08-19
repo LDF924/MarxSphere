@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-episodic-memory.ts — V396-8: 情景记忆（研究轨迹存储/检索/遗忘）
 // 四层记忆中的"情景层": 任务执行经历 → 摘要+关键事实 → 可检索复用
 // 遗忘机制: 时间(>90天未访问)/频率(访问<1次且重要性低)/重要性(低分优先遗忘)

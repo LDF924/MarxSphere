@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // SkillsPanel.tsx — 技能注册表面板：列出全部 skill + 触发词 + 健康检查 + Skillify 固化 + 自动更新检测 + GitHub 发现
 import { useState, useEffect, type FC } from "react";
 import { Boxes, BookOpen, ChevronRight, Copy, Check, Loader2, Play, ExternalLink, CheckCircle2, XCircle, Wand2, Plus, Sparkles, Search, X, RefreshCw, Star, GitBranch, AlertTriangle, MessageSquareText } from "lucide-react";

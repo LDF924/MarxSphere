@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scholar-paradigm-service.ts — V395-25: 学者文献范式提取
 // 管道: 知网下载(CNKI skill) → PDF转md(pdf2obsidian) → 入库(md-clean/marx-ingest-all)
 //       → 范式提取(本服务: 从学者文献提炼写作范式) → 回填学者库 + 前端展示

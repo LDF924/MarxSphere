@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // AdminPanel.tsx — 运营管理面板（V389+, 仅 admin 可见）
 // 用户列表/用量汇总/审计日志/改用户计划
 // V390增强: 用户启禁用/调余额/重置密码 + 用量趋势 + 邮箱/状态展示

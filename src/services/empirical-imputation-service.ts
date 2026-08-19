@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // empirical-imputation-service.ts — LLM 民调插补编排（V380+）
 // 论文复现(杨锋等 2025): 缺失机制诊断(empty/junk/masked 三分类) → LLM 生成性插补(横截面上下文)
 // → 掩码重跑保真评估 → MICE/KNN/RF 基线对比 → 人工逐条确认

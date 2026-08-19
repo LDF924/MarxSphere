@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // teaching-assistant-service.ts — 教师备课辅助系统（V387）
 // 释放教师重复性劳动，把精力回归教学设计与师生互动
 // 四层能力：

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // api-token-service.ts — 对外 API 令牌管理（MarxSphere 对外接入基建）
 // 对标 Sciverse sv_xxx 模式: 创建时返回明文一次, 库中只存 sha256 hash
 // 用途: Claude Code / Codex / 外部客户端通过 Bearer Token 调用 SAG API

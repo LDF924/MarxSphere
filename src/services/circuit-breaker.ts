@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // circuit-breaker.ts — 熔断器 + 终止上限 + 死亡螺旋防护（BOOK-GAP-ROADMAP P0-11）
 // 书中 Ch5: 每条恢复路径独立熔断; 死亡螺旋防护 = 错误路径上禁用一切会再次调用模型的副作用逻辑
 // 三态: CLOSED(正常) → OPEN(连续失败≥maxFailures) → HALF_OPEN(冷却后放行一次试探)

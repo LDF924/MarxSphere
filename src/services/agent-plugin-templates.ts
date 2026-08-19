@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-plugin-templates.ts — 架构#7: 插件模板库
 // 预置插件模板: 一键安装到 plugins/ 目录（生成 .ts 文件, 热加载生效）
 import { promises as fsP } from "node:fs";

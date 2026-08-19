@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // email-service.ts — V390: 免费 SMTP 邮件发送（QQ/163 邮箱授权码）
 // 未配置 SMTP 时静默降级（仅打日志, 不阻断流程 — 本地单机无邮件场景兼容）
 // 配置环境变量:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // task-monitor-service.ts — 任务巡检监控（评测/分析/检索等任务的卡死检测 + 慢查询告警）
 // 启动定时巡检: query_tasks 非终态任务超过阈值无更新 → 标记失败 + 告警
 // 推理完成时: 慢查询(>30s) → 告警

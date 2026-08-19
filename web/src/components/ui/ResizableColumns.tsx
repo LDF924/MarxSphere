@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ResizableColumns.tsx — 可拖拽分栏组件
 // 左列固定拖拽宽度 + 右列自适应，拖拽把手在中间
 import { useRef, useState, type ReactNode } from "react";

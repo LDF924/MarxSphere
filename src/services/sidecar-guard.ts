@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // sidecar-guard.ts — Sidecar 工具门控（BOOK-GAP-ROADMAP P0-13）
 // 书中 Ch4: 独立轻量 LLM 与主模型并行审查每次工具调用; 只读结构化字段 {tool, args}
 // 三层: ①规则层(确定性零成本) ②LLM层(verify角色flash) ③连续deny熔断→review(升级人工)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // GeneratorPage.tsx — 问卷生成器（V380+）: 课题 → 结构化问卷
 import { useState } from "react";
 import { Wand2, Loader2, Sparkles } from "lucide-react";

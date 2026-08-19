@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ClassicalToolsPanel.tsx — 经典文本研究专属能力交互面板（V349）
 // 5 个场景的专属算法可视化：输入 → 调 /api/classical/* → 渲染结构化结果
 // 概念溯源(语义漂移) / 论证拆解(论证树) / 互文对照(段落对齐) / 晦涩阐释(句级锚定) / 版本校勘(LCS diff)

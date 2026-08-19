@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // policy-service.ts — 中国政府网政策检索
 // 通过已注册的 gov-cn-policy MCP（China-Central-Policy-MCP）检索
 // 用 spawn + stdin 标准握手（initialize → tools/call）

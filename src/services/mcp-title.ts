@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 const DEFAULT_SESSION_TITLE = "新对话";
 const MAX_CHINESE_TITLE_LENGTH = 18;
 const MAX_ENGLISH_TITLE_WORDS = 8;

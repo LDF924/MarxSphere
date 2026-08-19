@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // reason-demo.ts — 推理沙箱 demo 数据（GBrain 模式：静态回放，不真打 API）
 // 推理页进来自动播放，展示四个区域：答案与证据 / 引用证据 / 检索步骤 / 消融实验
 import type { ReasonDetail } from "../components/ReasonPanel";

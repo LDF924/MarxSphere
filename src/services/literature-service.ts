@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // literature-service.ts — MarxSphere 本地文献库服务
 // 读取用户主目录课题文献库的论文元数据，提供筛选检索。
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式，但数据是本地文献。

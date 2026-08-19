@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // MarkdownRich.tsx — V398: AI 对话页富渲染（代码块语法高亮 + KaTeX 公式 + Mermaid 图表）
 // 混合方案：代码块 → react-markdown（rehype-highlight + rehype-katex），正文段 → 现有轻量渲染（引用徽章 [n]）
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";

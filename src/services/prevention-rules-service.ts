@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // prevention-rules-service.ts — V391(P1-6): 错误模式 → 预防规则自动化
 // 用户踩反馈 / 评测失败 → LLM 归因 → 生成预防规则（注入后续执行上下文, 防止同类错误复发）
 import { pool } from "../db/pool.js";

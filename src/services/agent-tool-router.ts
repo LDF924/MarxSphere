@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-tool-router.ts — V393-1: 真·工具调用（LLM 动态工具选择）
 // 规划时不再定死工具类型: 每步执行时 LLM 从工具清单选工具+参数, 运行时调度
 // 工具清单: SAG 现有能力注册表（推理/检索/写作/实证/政策等）

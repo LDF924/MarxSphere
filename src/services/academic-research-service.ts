@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // academic-research-service.ts — 学术研究 5 大能力（S41-S45）
 // 学派脉络全景 / 核心观点对比 / 学术争鸣还原 / 学者思想谱系 / 学科前沿动态
 // 复用: 检索(ILIKE+embedding) + entities 图谱 + LLM 归纳

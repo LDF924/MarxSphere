@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // cjournal-service.ts — V395-20: 政经 C 刊科研服务
 // 基于八篇马理论 C 刊选题方法论整合:
 //   四步法选题(时代问题→政经对象→经典理论→中间机制) / 理论接口映射表

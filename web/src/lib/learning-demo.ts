@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // learning-demo.ts — 评测学习引擎演示数据（2026-08-08 V290）
 // 5 个工具的静态演示数据（内嵌真实跑过的结果），供 LearningToolsSection demo 播放用
 // 数据来源: eval_failures 表(15行) / significance_report.md / kappa_report.md / tp_report.md / model-swap 矩阵

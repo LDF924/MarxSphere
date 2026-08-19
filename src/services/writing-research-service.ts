@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // writing-research-service.ts — 论文写作与研究设计 5 大能力（S46-S50）
 // 研究问题凝练 / 框架与论证结构设计 / 论证链条补全 / 研究方法适配 / 反方视角生成
 // 复用: 检索 + LLM 归纳；专属算法: 主题覆盖矩阵 / 框架模板匹配 / 逻辑断层检测 / 方法特征映射 / 前提弱化检测
