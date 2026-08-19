@@ -63,4 +63,4 @@ npx tsx scripts/eval-32-metrics.ts   # 53 题 31 指标, 基线 0.884
 
 ## 开源协议
 
-本项目 MIT 许可。贡献即视为同意你的代码以 MIT 协议发布。
+本项目 AGPL v3 + 商业授权双许可（见 [LICENSE](LICENSE)）。贡献即视为同意 [CONTRIBUTOR-LICENSE-AGREEMENT.md](CONTRIBUTOR-LICENSE-AGREEMENT.md) 的条款。
