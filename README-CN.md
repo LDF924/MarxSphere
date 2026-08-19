@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="README-EN.md">English</a> · <strong>中文</strong>
+  <a href="README-EN.md">English</a> · <strong>中文</strong> · <a href="https://ldf924.github.io/MarxSphere/">📚 文档站</a>
 </p>
 
 <p align="center">
@@ -27,6 +27,10 @@
 
 > 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 44 工具矩阵 / 10 实证功能 / 桌面端细节 / 评测指标）
 
+### 🏗 系统架构
+
+![MarxSphere 系统架构](docs/assets/marxsphere-architecture.svg)
+
 ### 🖼 界面速览
 
 | | | |
@@ -35,6 +39,8 @@
 | ![AI 对话](docs/assets/sag-assistant.png) | ![推理](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
 | **知识图谱** | **文献库** | **科研场景工作台** |
 | ![图谱](docs/assets/sag-graph.png) | ![文献库](docs/assets/sag-literature.png) | ![场景](docs/assets/sag-scenarios.png) |
+| **Agent 控制台** | **实证研究工作台** | **评测体系** |
+| ![Agent](docs/assets/sag-agent-console.png) | ![实证](docs/assets/sag-empirical-research.png) | ![评测](docs/assets/sag-eval.png) |
 
 > 全部 36 张视图截图见 [docs/assets/](docs/assets/)（33 个 tab + 子视图全覆盖）。
 
@@ -354,11 +360,10 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 ```bash
 git clone <your-repo-url>
 cd SAG-main
-cp .env.example .env      # 填入 LLM / Embedding API key
-npm install
-npm run db:setup          # 迁移 + 种子数据
-npm run dev               # WebUI http://localhost:5173, API http://localhost:4173
+npm run quickstart       # 🚀 一键启动：自动装依赖 → 检查环境 → 迁移 → 启动 http://localhost:4173
 ```
+
+> 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `npm run db:setup` → `npm run dev`
 
 > **PDF2Obsidian（可选）**：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 
@@ -412,11 +417,37 @@ VAULT_ROOT=D:\我的文献
 
 > **说明**：
 > - **未配置时**默认扫描 `~/1.Obsidian Vault`（开发者本机路径）——不存在则页面为空，但 **Ask 检索 / 52 步推理不受影响**（用仓库自带种子语料）
+
+### 📚 种子语料（clone 即体验检索）
+
+仓库自带 **50 篇评测金标同源文献**（`examples/seed-corpus/`，1化6 产物：全文+摘要+术语表+问答），无需任何私有文献即可体验四源检索：
+
+```bash
+npm run quickstart        # 启动服务后
+npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
+# 然后 Ask 检索 / 52 步推理即可检索这批语料
+# 可用 evaluation/gold_dataset.json 的 53 题金标验证检索质量（npx tsx scripts/eval-32-metrics.ts）
+```
+
+> 语料为公开学术期刊论文（含出处），仅用于功能演示；若持有其中某篇版权需移除，请在 Issue 说明。
 > - **推荐结构**：文献库下按主题分子目录（如 `资本下乡/`、`乡村振兴/`），每个 PDF 命名 `标题_作者.pdf`
 > - **Obsidian 可选**：配合 `pdf2obsidian` 技能将 PDF 转 Markdown 后浏览；不装也能直接用 PDF
 > - 完整路径变量见 `.env.example` 底部说明
 
 ---
+
+## 核心能力一览
+
+| 能力 | 说明 |
+|---|---|
+| 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
+| 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
+| 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
+| 🤖 **AI Agent** | 44 工具自主调度 / 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
+| 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
+| 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
+| 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 154 单测 / 消融 21 算子 / CI+E2E |
 
 ## 技术栈
 
@@ -474,6 +505,7 @@ MIT License — 见 [LICENSE](LICENSE)。
 | 材料 | 位置 |
 |---|---|
 | 📘 项目概述（目标用户/痛点/功能/Agent思路/技术路线/创新/价值） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) |
+| ❓ 常见问题（FAQ） | [docs/FAQ.md](docs/FAQ.md) |
 | 📘 使用说明（环境/部署/权限/流程/样例/输出/注意） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) 第 2 节 |
 | 📘 技术架构（模型/Agent/工具/RAG/上下文/工作流/数据流/架构图） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) 第 3 节 |
 | 📘 合规披露（数据/风险/商业API/闭源模型） | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |

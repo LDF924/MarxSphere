@@ -27,7 +27,8 @@
     "demo:ingest": "tsx scripts/demo-ingest.ts",
     "demo:search": "tsx scripts/demo-search.ts",
     "test": "vitest run",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "quickstart": "node scripts/quickstart.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.md">中文</a>
+  <strong>English</strong> · <a href="README.md">中文</a> · <a href="https://ldf924.github.io/MarxSphere/">📚 Docs</a>
 </p>
 
 <p align="center">
@@ -27,6 +27,10 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 
 > 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 44-tool matrix / 10 empirical features / desktop details / eval metrics)
 
+### 🏗 System Architecture
+
+![MarxSphere System Architecture](docs/assets/marxsphere-architecture.svg)
+
 ### 🖼 UI at a Glance
 
 | | | |
@@ -35,6 +39,8 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | ![AI Chat](docs/assets/sag-assistant.png) | ![Reasoning](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
 | **Knowledge Graph** | **Literature Library** | **Research Scenario Workbench** |
 | ![Graph](docs/assets/sag-graph.png) | ![Library](docs/assets/sag-literature.png) | ![Scenarios](docs/assets/sag-scenarios.png) |
+| **Agent Console** | **Empirical Workbench** | **Evaluation** |
+| ![Agent](docs/assets/sag-agent-console.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Eval](docs/assets/sag-eval.png) |
 
 > All 36 view screenshots live in [docs/assets/](docs/assets/) (33 tabs + sub-views).
 
@@ -354,11 +360,10 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 ```bash
 git clone <your-repo-url>
 cd SAG-main
-cp .env.example .env      # fill in LLM / Embedding API keys
-npm install
-npm run db:setup          # migrations + seed data
-npm run dev               # WebUI http://localhost:5173, API http://localhost:4173
+npm run quickstart       # 🚀 one-command start: install deps → env check → migrate → http://localhost:4173
 ```
+
+> Or step by step: `cp .env.example .env` (fill in LLM/Embedding keys) → `npm install` → `npm run db:setup` → `npm run dev`
 
 > **PDF2Obsidian (optional)**: `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 
@@ -412,11 +417,37 @@ VAULT_ROOT=D:\MyPapers
 
 > **Notes**:
 > - **Unconfigured** defaults to `~/1.Obsidian Vault` (developer machine path) — pages show empty if missing, but **Ask search / 52-step reasoning still work** (using the bundled seed corpus)
+
+### 📚 Seed Corpus (search immediately after clone)
+
+The repo ships **50 papers aligned with the eval gold set** (`examples/seed-corpus/`, 1-to-6 outputs: full text + summary + glossary + QA) — no private literature needed to experience four-source retrieval:
+
+```bash
+npm run quickstart        # after the service starts
+npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 papers
+# Ask search / 52-step reasoning now retrieve this corpus
+# Verify with the 53 gold questions in evaluation/gold_dataset.json (npx tsx scripts/eval-32-metrics.ts)
+```
+
+> Public academic journal papers (with provenance), for demo only; request removal via Issue if you hold copyright.
 > - **Recommended layout**: topic subfolders under the literature dir (e.g. `capital-rural/`, `rural-revitalization/`), PDFs named `title_author.pdf`
 > - **Obsidian is optional**: pair with the `pdf2obsidian` skill to convert PDFs to Markdown for browsing; PDFs work directly without it
 > - Full variable list at the bottom of `.env.example`
 
 ---
+
+## Core Capabilities
+
+| Capability | Description |
+|---|---|
+| 🧠 **52-step reasoning** | classify → 17-way coarse retrieval → Graphiti refine → hyperedge 3-way → fusion generation → self-healing |
+| 🔍 **Ask 18-step search** | multi-arm recall → weighted RRF → LLM rerank → numbered citation tracing |
+| 🗄 **Four-source retrieval** | SAG events + Graphiti hyperedges/communities + Cognee chunks + PG vector/lexical, RRF fusion |
+| 🤖 **AI Agent** | 44 tools / 5-layer security / 5-layer memory / task DAG / approval gates |
+| 📚 **Research scenarios** | 66 scenarios × 8 stages, full-screen workbench + dedicated algorithms |
+| 📊 **Empirical workbench** | questionnaire → reliability → imputation → regression (M1–M6) → evidence ledger |
+| 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
+| 📈 **Evaluation** | 53-question dual-track 0.884 / 154 unit tests / 21-operator ablation / CI+E2E |
 
 ## Tech Stack
 
@@ -474,6 +505,7 @@ MIT License — see [LICENSE](LICENSE).
 | Material | Location |
 |---|---|
 | 📘 Project overview (users/pain points/features/Agent design/tech route/innovation/value) | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) |
+| ❓ FAQ | [docs/FAQ.md](docs/FAQ.md) |
 | 📘 Usage (environment/deploy/permissions/workflows/examples/outputs/notes) | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) §2 |
 | 📘 Technical architecture (models/Agent/tools/RAG/context/workflows/data flow/architecture diagrams) | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) §3 |
 | 📘 Compliance disclosure (data/risks/commercial APIs/closed-source models) | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |
