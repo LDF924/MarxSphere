@@ -27,6 +27,15 @@ function checks(): CheckResult[] {
     results.push({ name: "EMBEDDING_API_KEY", ok: true, detail: "已配置" });
   }
 
+  // 1.2 Rerank（V412: 重排检索结果，未配置时检索融合仍可用但无重排）
+  const rerankModel = process.env.RERANK_MODEL;
+  const rerankBase = process.env.RERANK_BASE_URL;
+  if (!rerankModel || !rerankBase) {
+    results.push({ name: "RERANK", ok: false, detail: "未完整配置（RERANK_MODEL/RERANK_BASE_URL）— 检索结果不做 LLM 重排（功能降级，不影响基础检索）。建议在 .env 配置：RERANK_MODEL=qwen3-rerank + RERANK_BASE_URL=https://dashscope.aliyuncs.com" });
+  } else {
+    results.push({ name: "RERANK", ok: true, detail: `已配置（${rerankModel}）` });
+  }
+
   // 1.5 JWT_SECRET（V410: 生产暴露必须设置 — 未设时用随机密钥，重启后 Web 会话全部失效）
   if (!process.env.JWT_SECRET) {
     results.push({ name: "JWT_SECRET", ok: false, detail: "未配置 — 使用随机密钥（重启后登录会话失效）。生产部署必须设置（openssl rand -hex 32），否则每次重启所有用户需重新登录" });
