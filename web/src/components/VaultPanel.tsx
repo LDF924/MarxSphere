@@ -190,8 +190,8 @@ export function VaultPanel() {
   };
 
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col space-y-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
+      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
         <div className="flex items-center gap-2">
           <BookMarked className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">资料库</h2>
@@ -203,7 +203,7 @@ export function VaultPanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--vault-w" defaultWidth={280} storageKey="vault-width" />
-        <div className="relative grid w-full grid-cols-1 gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,auto)] lg:justify-center" style={{"--vault-w": "280px"} as React.CSSProperties}>
+        <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,1fr)]" style={{"--vault-w": "280px"} as React.CSSProperties}>
           <Card className="min-h-0 overflow-y-auto p-2">
             {loading ? (
               <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
@@ -218,7 +218,7 @@ export function VaultPanel() {
             )}
           </Card>
 
-          <Card className="p-4">
+          <Card className="flex min-h-0 flex-col overflow-hidden p-4">
             {fileLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />读取文件…</div>
             ) : binaryUrl ? (
@@ -245,25 +245,19 @@ export function VaultPanel() {
                     </button>
                   </div>
                 </div>
-                {/* A4 纸预览：固定真实尺寸 210mm×297mm，居中，四周留白（Card 滚动） */}
+                {/* 预览撑满容器：宽高占满右栏，内容超高时内部滚动 */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="flex flex-1 items-start justify-center px-6 pb-10">
+                  <div className="min-h-0 flex-1">
                     <iframe
                       src={binaryUrl}
                       title={selectedName}
-                      className="block shrink-0 rounded border border-border bg-white shadow-lg"
-                      style={{ width: "210mm", height: "297mm" }}
+                      className="h-full w-full rounded border border-border bg-white"
                     />
                   </div>
                 ) : (
-                  // 图片等 → A4 白纸内居中
-                  <div className="flex flex-1 items-center justify-center px-6 pb-10">
-                    <div
-                      className="flex shrink-0 items-center justify-center rounded border border-border bg-white p-4 shadow-lg"
-                      style={{ width: "210mm", height: "297mm" }}
-                    >
-                      <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
-                    </div>
+                  // 图片等 → 撑满容器内居中，可滚动
+                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+                    <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
                   </div>
                 )}
               </div>
