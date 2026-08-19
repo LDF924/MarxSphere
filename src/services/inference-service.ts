@@ -1,5 +1,6 @@
 // inference-service.ts — 三层检索链: Cognee粗检索 → Graphiti精炼 → SAG融合
 // V41 — 2026-07-26 Cognee MCP 扁平化 + 实体名规范化 + 上下文置信度标签
+import { join as pathJoin } from "node:path";
 import { pool } from "../db/pool.js";
 import { llmClient } from "../ai/llm-client.js";
 import { embeddingClient } from "../ai/embedding-client.js";
@@ -1363,11 +1364,17 @@ export class InferenceService {
   // 阶段 2: Cognee 底层粗检索
   // ═══════════════════════════════════════════
 
+  /** paper_id_map.json 绝对路径（不依赖进程 cwd，桌面端/任意目录启动均可用） */
+  private paperIdMapPath(): string {
+    const root = process.env.SAG_ROOT || process.cwd();
+    return pathJoin(root, "knowledge-graph", "paper_id_map.json");
+  }
+
   /** V88J: 从 paper_id_map.json 查指定 paperId 的论文标题 */
   private async getPaperTitleByPaperId(paperId: string): Promise<string | null> {
     try {
       const { readFileSync } = await import('fs');
-      const raw = readFileSync('paper_id_map.json', 'utf8');
+      const raw = readFileSync(this.paperIdMapPath(), 'utf8');
       const map = JSON.parse(raw);
       return map[paperId]?.title?.trim() || null;
     } catch { return null; }
@@ -1377,7 +1384,7 @@ export class InferenceService {
   private async findCandidatePapers(query: string, sourceId: string, topK: number = 5): Promise<Array<{ paper_id: string; title: string; graphiti_folder: string }>> {
     try {
       const { readFileSync } = await import('fs');
-      const raw = readFileSync('paper_id_map.json', 'utf8');
+      const raw = readFileSync(this.paperIdMapPath(), 'utf8');
       const map = JSON.parse(raw);
       const candidates: Array<{ paper_id: string; title: string; graphiti_folder: string }> = [];
       for (const [pid, info] of Object.entries(map)) {
