@@ -488,7 +488,7 @@ npm run typecheck       # frontend + backend type checks
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by LDF924. **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (154 unit tests green; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (154 unit tests green; 53-question eval 0.884).
 
 ## License
 
