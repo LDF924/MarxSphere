@@ -141,6 +141,10 @@ export async function getEmpiricalResult(taskId: string): Promise<{ status: stri
 
 /** venv 安装状态自检（前端徽标） */
 export async function getEmpiricalMeta(): Promise<{ venvReady: boolean; statsModels: boolean; statspai: boolean; python: string }> {
+  // V412: PYTHON 未配置时直接返回未安装，避免 execFile("") 报错（Maximum call stack / file cannot be empty）
+  if (!PYTHON) {
+    return { venvReady: false, statsModels: false, statspai: false, python: "未配置" };
+  }
   const probe = (mod: string) =>
     new Promise<boolean>((resolve) => {
       execFile(PYTHON, ["-c", `import ${mod}`], { timeout: 15_000, windowsHide: true }, (err) => resolve(!err));
