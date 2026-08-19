@@ -77,7 +77,19 @@ console.log(`✅ 安装包: ${installer} (${sizeMB}MB)`);
 
 // 4) 创建 GitHub Release + 上传安装包
 console.log("════════ 4/5 GitHub Release ════════");
-const notes = process.argv[3] || "MarxSphere 自动发布";
+// 说明: 优先用命令行参数；未传时自动从 git 提交生成（上个 tag 到当前的 commit 列表）
+let notes = process.argv[3];
+if (!notes) {
+  try {
+    const prevTag = execSync(`git tag --sort=-version:refname | head -n 2 | tail -n 1`, { cwd: root, encoding: "utf8" }).trim();
+    const range = prevTag ? `${prevTag}..${tag}` : "";
+    const commits = execSync(`git log --oneline ${range} | head -n 30`, { cwd: root, encoding: "utf8" }).trim();
+    if (commits) {
+      notes = `## 更新内容（自动生成）\n\n${commits.split("\n").map((c) => `- ${c.replace(/^\S+\s+/, "")}`).join("\n")}\n\n> 完整变更见 [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md)`;
+    }
+  } catch { /* 生成失败用默认 */ }
+}
+notes = notes || "MarxSphere 自动发布";
 const release = JSON.parse(execSync(
   `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({
     tag_name: tag,
