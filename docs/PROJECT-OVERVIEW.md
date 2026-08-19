@@ -100,6 +100,8 @@ npm run build && npm start  # 生产: http://localhost:4173
 
 > **PDF2Obsidian 功能**（可选）：`vendor/pdf2obsidian` 的编译产物（dist）为构建产物未随仓库提交，首次使用前执行
 > `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`（否则 typecheck 报 2 个 module-not-found，PDF2Obsidian 功能不可用）。
+>
+> **文献库/政策库/资料库数据源**：三个库页面扫描本地文件夹（`LITERATURE_DIR`/`POLICY_DIR`/`VAULT_ROOT` 环境变量，见 `.env.example` 底部）——指向任意本地目录即可，无需安装 Obsidian；未配置时页面为空，Ask/推理不受影响。
 
 桌面端：`npm run build:desktop` → 安装 `release/MarxSphere Setup <ver>.exe`，首次启动引导配置
 

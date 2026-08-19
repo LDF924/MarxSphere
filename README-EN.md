@@ -388,6 +388,25 @@ HTTP_PORT=4173
 Optional enhancements: `COGNEE_PYTHON` (reasoning MCP venv path), `EMPIRICAL_PYTHON` (empirical venv),
 `AGENT_EDGE_PATH` (browser tool), `NEO4J_PASSWORD` (graph credentials).
 
+### Data source configuration (Literature / Policy / Archive)
+
+The three "library" pages read **local folders** (recursively scanning PDF/MD files), pointed to via environment variables — **no Obsidian installation required**, any local folder works:
+
+```env
+# Literature: academic journal PDF directory (topic subfolders recommended; scanned and marked as ingested)
+LITERATURE_DIR=D:\MyPapers\AcademicJournals
+# Policy: policy/document directory (any tree)
+POLICY_DIR=D:\MyPapers\PolicyDocs
+# Archive: document library root (tree browsing + inline preview)
+VAULT_ROOT=D:\MyPapers
+```
+
+> **Notes**:
+> - **Unconfigured** defaults to `~/1.Obsidian Vault` (developer machine path) — pages show empty if missing, but **Ask search / 52-step reasoning still work** (using the bundled seed corpus)
+> - **Recommended layout**: topic subfolders under the literature dir (e.g. `capital-rural/`, `rural-revitalization/`), PDFs named `title_author.pdf`
+> - **Obsidian is optional**: pair with the `pdf2obsidian` skill to convert PDFs to Markdown for browsing; PDFs work directly without it
+> - Full variable list at the bottom of `.env.example`
+
 ---
 
 ## Tech Stack
