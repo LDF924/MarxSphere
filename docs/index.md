@@ -27,7 +27,7 @@
 
 ## 📊 评测与基准
 
-- [Benchmarks](BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 154 项
+- [Benchmarks](https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 154 项
 - [合规披露](OPEN-SOURCE-DISCLOSURE.md) — 数据治理 / 商业 API / 风险提示
 
 ## 🖥 桌面端
