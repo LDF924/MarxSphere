@@ -214,8 +214,8 @@ export function PolicyPanel() {
   };
 
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="flex w-full flex-col space-y-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
+      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
         <div className="flex items-center gap-2">
           <Landmark className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">政策资料库</h2>
@@ -267,8 +267,8 @@ export function PolicyPanel() {
         {/* 本地政策目录浏览 + 预览 */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--policy-w" defaultWidth={280} storageKey="policy-width" />
-        <div className="relative grid w-full grid-cols-1 gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
-          <Card className="overflow-y-auto p-2">
+        <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
+          <Card className="flex min-h-0 flex-col overflow-y-auto p-2">
             <div className="mb-1 flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5" /> 本地政策库
               {selectedPath && <span className="truncate text-primary">· {selectedName.slice(0, 40)}</span>}
@@ -284,7 +284,7 @@ export function PolicyPanel() {
             )}
           </Card>
 
-          <Card className="flex flex-col p-4">
+          <Card className="flex min-h-0 flex-col overflow-hidden p-4">
             {fileLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />读取文件…</div>
             ) : binaryUrl ? (
@@ -311,18 +311,18 @@ export function PolicyPanel() {
                     </button>
                   </div>
                 </div>
-                {/* 预览撑满容器宽度，高度给视口 85% 保证可见（页面滚动兜底） */}
+                {/* 预览撑满容器：宽高占满右栏，内容超高时 iframe 内部滚动 */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="w-full">
+                  <div className="min-h-0 flex-1">
                     <iframe
                       src={binaryUrl}
                       title={selectedName}
-                      className="h-[85vh] w-full rounded border border-border bg-white"
+                      className="h-full w-full rounded border border-border bg-white"
                     />
                   </div>
                 ) : (
-                  <div className="flex w-full items-center justify-center p-4">
-                    <img src={binaryUrl} alt={selectedName} className="max-h-[80vh] max-w-full object-contain" />
+                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+                    <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
                   </div>
                 )}
               </div>

@@ -172,8 +172,8 @@ export function LiteraturePanel() {
   };
 
   return (
-    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col space-y-3">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 md:px-6">
+      <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
         <div className="flex items-center gap-2">
           <Library className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">文献库</h2>
@@ -207,7 +207,7 @@ export function LiteraturePanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
         <DragHandle leftVar="--filter-w" defaultWidth={280} storageKey="literature-filter-width" />
-        <div className="grid w-full grid-cols-1 gap-0 lg:grid-cols-[var(--filter-w,280px)_minmax(0,1fr)]" style={{ "--filter-w": `${filterWidth}px` } as React.CSSProperties}>
+        <div className="grid min-h-0 w-full flex-1 grid-cols-1 gap-0 lg:grid-cols-[var(--filter-w,280px)_minmax(0,1fr)]" style={{ "--filter-w": `${filterWidth}px` } as React.CSSProperties}>
           {/* 左：筛选器（meta-catalog 动态生成） */}
           <Card className="flex min-h-0 flex-col overflow-y-auto p-3">
             <div className="mb-2 text-sm font-medium">筛选条件</div>
@@ -361,7 +361,7 @@ export function LiteraturePanel() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载详情…
                 </Card>
               ) : detail ? (
-                <Card className="space-y-3 p-4">
+                <Card className="flex min-h-0 flex-col space-y-3 overflow-y-auto p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <h3 className="text-base font-semibold leading-snug">{detail.title}</h3>
