@@ -13,6 +13,7 @@ MarxSphere 重视安全。发现安全漏洞请通过以下方式报告（**不�
 
 1. **GitHub 私有漏洞报告**（推荐）：仓库页面 → Security → Report a vulnerability
 2. **邮箱**：fudeng69@gmail.com（回复时效：3 个工作日内）
+3. **备用邮箱**：2665834886@qq.com（fudeng69@gmail.com 不可达时使用）
 
 请在报告中包含：
 - 漏洞类型（XSS/SQL 注入/SSRF/权限绕过/密钥泄露等）
@@ -37,5 +38,5 @@ MarxSphere 重视安全。发现安全漏洞请通过以下方式报告（**不�
 
 ## 已知边界（设计如此，非漏洞）
 
-- 本地单机部署模式下 `localhost` 豁免鉴权（部署到公网时必须启用 `SAG_AUTH_ENABLED=true`）
+- 本地单机部署模式下 `localhost` 豁免鉴权（外部连接强制 Bearer Token 鉴权已硬编码生效；`AUTH_MODE` 控制用户注册/登录模式，生产暴露前建议设置强 `JWT_SECRET`）
 - 上传的文献内容由使用者负责版权合规
