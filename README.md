@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" />
   <img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" />
   <img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" />
-  <img src="https://img.shields.io/badge/license-MIT-orange" alt="License" />
+  <img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" />
 </p>
 
 # MarxSphere 马研星环
@@ -492,7 +492,7 @@ npm run typecheck       # 前后端类型检查
 
 ## License
 
-MIT License — 见 [LICENSE](LICENSE)。
+**AGPL v3 + 商业授权双许可**（保留 Logo、衍生开源、商用需授权）——见 [LICENSE](LICENSE)。
 
 ## 合规披露
 

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" />
   <img src="https://img.shields.io/badge/tests-154%20passed-green" alt="Tests" />
   <img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" />
-  <img src="https://img.shields.io/badge/license-MIT-orange" alt="License" />
+  <img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" />
 </p>
 
 # MarxSphere (马研星环)
@@ -492,7 +492,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+**AGPL v3 + commercial dual license** (logos retained, derivatives stay open, commercial use requires license) — see [LICENSE](LICENSE).
 
 ## Compliance Disclosure
 
