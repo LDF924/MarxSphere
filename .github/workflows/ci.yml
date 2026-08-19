@@ -8,6 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: sag_lite
+          POSTGRES_USER: sag_lite
+          POSTGRES_PASSWORD: sag_lite_pass
+        ports:
+          - 5540:5432
+        options: >-
+          --health-cmd "pg_isready -U sag_lite -d sag_lite"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
@@ -35,3 +49,20 @@ jobs:
 
       - name: Frontend build
         run: npx vite build
+
+      - name: Start server for E2E
+        env:
+          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
+          LLM_API_KEY: dummy
+          EMBEDDING_API_KEY: dummy
+          HTTP_PORT: 4173
+        run: |
+          npx tsx src/index.ts > /tmp/server.log 2>&1 &
+          sleep 15
+          curl -sf http://localhost:4173/health || (cat /tmp/server.log; exit 1)
+        shell: bash
+
+      - name: E2E smoke tests (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test

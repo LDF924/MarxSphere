@@ -341,6 +341,8 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 
 ## 快速开始
 
+> 🚀 完整部署（Docker / systemd / Nginx / 故障排查）见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 ### 1. 环境要求
 - Node.js ≥ 20
 - PostgreSQL 16 + pgvector（推荐 Docker：`docker compose up -d`）

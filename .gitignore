@@ -81,3 +81,7 @@ backups/
 
 # 本地开发配置（Claude 浏览器预览等）
 .claude/
+
+# Playwright 产物
+playwright-report/
+test-results/

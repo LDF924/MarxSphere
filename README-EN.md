@@ -341,6 +341,8 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 
 ## Quick Start
 
+> 🚀 Full deployment (Docker / systemd / Nginx / troubleshooting): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 ### 1. Requirements
 - Node.js ≥ 20
 - PostgreSQL 16 + pgvector (Docker recommended: `docker compose up -d`)
