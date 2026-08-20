@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// Based on Zleap-AI/SAG (MIT License) — https://github.com/Zleap-AI/SAG
 // inference-service.ts — 三层检索链: Cognee粗检索 → Graphiti精炼 → SAG融合
 // V41 — 2026-07-26 Cognee MCP 扁平化 + 实体名规范化 + 上下文置信度标签
 import { join as pathJoin } from "node:path";

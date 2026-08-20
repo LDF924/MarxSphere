@@ -498,6 +498,8 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 
 📋 [Open-Source Compliance Disclosure](docs/OPEN-SOURCE-DISCLOSURE.md) — full disclosure: runtime dependencies / risk warnings (model hallucination, missing data, API errors) / commercial API usage & costs / closed-source models & alternatives / Agent frameworks / multimodal capabilities / run verification / **data governance (data provenance & authorization, knowledge-base construction & error handling, user-data desensitization & deletion, Agent context & memory management)**.
 
+> 📦 **Third-party source usage**: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) (SAG base MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp references / Cognee·Graphiti·OpenViking integration).
+
 > ⚠️ **Important**: this system depends on commercial LLM/Embedding APIs (metered by token). All AI-generated content **may hallucinate** — verify research conclusions against primary sources. See sections 2, 4, 5 of the [disclosure doc](docs/OPEN-SOURCE-DISCLOSURE.md).
 
 ## Docs & Verifiable Materials

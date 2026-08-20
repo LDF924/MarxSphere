@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// Based on Zleap-AI/SAG (MIT License) — https://github.com/Zleap-AI/SAG
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { pool } from "./pool.js";
