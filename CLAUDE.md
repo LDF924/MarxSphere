@@ -17,7 +17,7 @@ npx tsx src/index.ts  # 单跑后端
 - **环境变量**：改 `src/config/env.ts`（zod）时同步 `.env.example`
 - **数据库**：pgvector 1024 维；迁移幂等；`npm run db:migrate` 跑迁移
 - **检索**：四源混合架构（SAG 事件 + Graphiti 超边 + Cognee + PG），融合在 `search-service.ts` RRF
-- **Agent**：编排在 `src/services/agent-*`（37 文件）；新工具注册到 `agent-tool-router.ts`
+- **Agent**：编排在 `src/services/agent-*`（37 文件）；新工具注册到 `agent-tool-router.ts`；教育能力在 `src/services/education-*.ts` 等 12 服务（84 路由），改教育功能需同步前端面板（`web/src/components/Education*Panel.tsx`）与教育路由（server.ts `/api/education/*`）
 - **API**：Fastify 路由在 `src/api/server.ts`；错误格式 `{ error, code }`
 
 ## 前端修改要点

@@ -232,14 +232,14 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Journal matching**: 80-journal library (67 CSSCI / 9 C-extended / 4 PKU) auto-recommendation
 - **2026 topic seed library**: preloaded annual directions
 
-**AI + Education** (V382, `education-service.ts`) — six capabilities, deeply wired to the 52-step chain:
-- **Personalized learning plans**: goals/knowledge base/time → staged plan + dynamic adjustment
-- **Course tutoring**: step-by-step hints + error analysis + concept review (never just answers)
-- **Learning diagnostics**: exercise/test records → weak-point identification → analysis report
-- **Preview & review**: pre-class materials + post-class consolidation exercises
-- **Lesson planning**: syllabi / activities / case materials / differentiated teaching plans
-- **Study companion**: learning records + progress tracking + encouragement
-- Implementation: 52-step chain (three-library retrieval→graph→generation→evaluation→reflection) + citation tracing + memory injection
+**AI + Education** (84 education routes, 12 services) — an education Agent workbench (top nav "AI+Education" tab, student/teacher dual roles), deeply wired to the 52-step chain:
+- **Six core capabilities**: personalized learning plans / course tutoring (hints, never answers) / learning diagnostics / preview & review / lesson planning / study companion
+- **Education Agent closed loop**: Socratic questioning / scaffolded hints / wrong-question-to-mastery linkage / progress tracking / five-step polishing / idea cards / step follow-up
+- **Homework closed loop**: question solving (4 modes) / wrong-question collection / variant generation / grading / wrong-question reports / discussion / quiz / lecture summary
+- **Education-specific tech**: BKT cognitive diagnosis / knowledge-point prerequisite graph + topological path / ideology four-dimension audit + authority calibration
+- **End-to-end auto loop**: auto-collect → diagnose → iterate → weekly report; **education multimodal**: homework photo / speech assessment / blackboard recognition
+- **Reusable assets**: templates / case library / sample courses / external resource sources (school libraries, public platforms), role-scoped isolation
+- Implementation: 52-step chain + four-source retrieval + citation tracing + memory injection; one-sentence invocation from AI chat (`education_service` tool, 83 actions)
 
 **Adaptive learning system** (V384, `adaptive-learning-service.ts`) — four layers:
 - **Learning modeling**: answer history → concept mastery (mastered/fuzzy/unmastered), smoothed updates
