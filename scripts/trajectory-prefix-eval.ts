@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // trajectory-prefix-eval.ts — 轨迹前缀回归评测（BOOK-GAP-ROADMAP P0-3）
 // 输入: data/trajectory_prefix_gold.json (冻结上下文 + 可接受动作集合 + 禁止动作)
 // 流程: 对每题把 frozen_context 作为 user 消息, 调 getRoleModel("reason") 单轮生成"下一步动作"

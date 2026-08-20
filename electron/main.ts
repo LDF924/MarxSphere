@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // electron/main.ts — MarxSphere 桌面端主进程（V397）
 // 职责: 单实例锁 / 端口预检 / 引导页(onboarding) / spawn 后端 / 健康轮询 / 崩溃重启 / 错误页
 import { app, BrowserWindow, ipcMain, dialog, screen } from "electron";

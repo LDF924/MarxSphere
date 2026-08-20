@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // fix-skill-descriptions.ts — 技能 description 自动修复（BOOK-GAP-ROADMAP P1-2 续）
 // 闭环: 审计发现缺口 → LLM 补全 description → 写回 SKILL.md → 重跑审计验证缺口闭合 → 治愈率报告
 // 防复发: 修复时只追加不删改（保留原始信息），治愈率 < 100% 的缺口列入待办

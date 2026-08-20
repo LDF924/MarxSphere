@@ -42,8 +42,26 @@ MarxSphere（AGPL v3 + 商业授权双许可）使用了以下第三方开源项
 | **Cognee**（topoteretes/cognee）| 检索层（Neo4j 11003 + LanceDB，17 路检索策略）| Apache-2.0 |
 | **Graphiti**（getzep/graphiti）| 图谱检索层（五层蒸馏 / 超边 / 社区）| Apache-2.0 |
 | **OpenViking**（volcengine/OpenViking）| 长期记忆服务（REST API v0.4，自演化上下文数据库）| AGPL-3.0 |
+| **MinerU**（opendatalab/MinerU）| PDF 解析引擎（PDF2Obsidian 的核心管线，`mineru` 命令调用）| AGPL-3.0 |
+| **China-Central-Policy-MCP** | 政策检索 MCP 服务（spawn + stdio 握手）| 待确认 |
+| **OpenAlex** | 学术文献检索（api.openalex.org）| CC0（API 使用）|
+| **World Bank OKR** | 世界银行开放数据（openknowledge.worldbank.org）| CC BY 4.0 |
+| **Sciverse** | 学术检索 API（api.sciverse.space，SCIVERSE_API_TOKEN）| 商业 API |
+| **CNKI 知网** | 文献检索（kns.cnki.net，CDP 代理 + Edge headless）| 商业网站 |
+| **Claude Code CLI** | 外部 Agent 子进程桥（agent_subagent）| Anthropic 商业工具 |
 
-## 五、npm 依赖（42 项：26 运行时 + 16 开发）
+### Python 运行时库（scripts/ 调用）
+
+| 库 | 用途 | 许可证 |
+|---|---|---|
+| PyMuPDF | PDF 解析 | **AGPL-3.0**（双许可）|
+| python-docx | Word 解析 | MIT |
+| openpyxl | Excel 解析 | MIT |
+| python-pptx | PPT 解析 | MIT |
+| pandas / numpy | 实证分析 | BSD-3-Clause |
+| neo4j 驱动 | 图谱查询 | Apache-2.0 |
+
+## 五、npm 依赖（43 项：26 运行时 + 17 开发）
 
 | 协议 | 数量 | 代表包 |
 |---|---|---|
@@ -52,13 +70,16 @@ MarxSphere（AGPL v3 + 商业授权双许可）使用了以下第三方开源项
 | ISC | 2 | d3-force / lucide-react |
 | BSD-2-Clause | 1 | dotenv |
 
-完整依赖见 `package.json`。
+> 注：26 个直接依赖中 MIT 21 / Apache-2.0 2（class-variance-authority、neo4j-driver）/ ISC 2 / BSD-2-Clause 1；完整依赖见 `package.json`。
 
 ## 六、其他
 
-- **Contributor Covenant v2.1**（MIT）：`CODE_OF_CONDUCT.md` 改编自其全文（已标注）
-- **KaTeX / highlight.js** 样式：随 npm 包分发（MIT）
-- 无 GPL 系依赖；无 CDN 字体/外部素材
+- **Contributor Covenant v2.1**（CC BY 4.0）：`CODE_OF_CONDUCT.md` 改编自其全文（已标注）
+- **KaTeX 样式**（MIT）/ **highlight.js 样式**（**BSD-3-Clause**）：随 npm 包分发
+- **GPL 系运行时组件**（非 npm 依赖）：
+  - **Neo4j Community 镜像**（`docker-compose.yml` 11001/11003）— **GPLv3**（以 docker 服务运行、未修改未分发，不触发传染）
+  - **PyMuPDF**（Python 解析库）— **AGPL-3.0**（双许可，以进程调用方式使用）
+- 无 CDN 字体/外部素材
 
 ---
 

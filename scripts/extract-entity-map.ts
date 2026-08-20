@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import 'dotenv/config';
 import { pool } from '../src/db/pool.js';
 import { readFileSync } from 'fs';

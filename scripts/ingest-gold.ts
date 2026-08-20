@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import 'dotenv/config';
 process.env.DATABASE_URL = 'postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs';

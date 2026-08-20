@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // eval-32-metrics.ts — RAGAS v3 评测体系（2026-08-06 由 eval-22-metrics.ts 改名，与输出文件 eval_32metrics.json 对齐）
 // 注: 旧名 "eval-22" 为历史遗留 (早期版本仅22项指标)，V280 起输出名与指标数一致，V284 起脚本名同步改名
 //     当前实际评测 32 评分项 (A1-A12 + B1-B9 + C1-C3 + D1-D7)

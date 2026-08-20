@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // cross-judge.ts — 多源异构评判（BOOK-GAP-ROADMAP P2-5 古德哈特定律防御）
 // 现有单 Judge(deepseek-v4-flash) → qwen3.7-max 交叉复评同一批题
 // 两源分歧 > 0.2 的题标记人工审查; 分歧率统计进评测报告

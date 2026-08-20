@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // min-diff-patch.ts — 最小 diff 系统提示词补丁（BOOK-GAP-ROADMAP P1-5）
 // 输入: eval_failures 表中同类别失败的题（按 failure_category 聚合）
 // 流程: 同类别失败 → LLM(getRoleModel("plan"), pro级) 生成 old_str→new_str 最小补丁

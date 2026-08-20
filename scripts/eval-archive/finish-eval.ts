@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 const SAG_API = 'http://localhost:4173';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // run-eval-dual.ts — 双模式推理 A/B 评测（V267）
 // 同一批 gold 问题分别用 template（固定52步）和 adaptive（LLM动态选算子）跑，
 // 对比：成功率/耗时/置信度/算子数，验证 adaptive 简单题收敛、复杂题加深

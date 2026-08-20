@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scripts/build-desktop.mjs — 打包桌面端安装包（NSIS）
 // 前置: npm run build（后端 tsc + 前端 vite）; 流程: 准备 resources/sag → electron-builder
 import { spawnSync, execSync as s2 } from "node:child_process";

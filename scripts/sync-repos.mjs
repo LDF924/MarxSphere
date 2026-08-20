@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 #!/usr/bin/env node
 /**
  * scripts/sync-repos.mjs — MarxSphere 双仓库文件级同步（非 git 合并）

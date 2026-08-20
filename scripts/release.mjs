@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scripts/release.mjs — 一键发布脚本：构建 → 桌面端打包 → 上传 GitHub Release
 // 用法: node scripts/release.mjs [版本标签] [发布说明]
 // 示例: node scripts/release.mjs v0.3.0 "新功能说明"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // significance.ts — 配对统计显著性检验（BOOK-GAP-ROADMAP P0-1）
 // 用法: npx tsx scripts/significance.ts --before <evalA.json> --after <evalB.json> [--out significance_report.md]
 // 输入: 两份逐题评测结果，支持两种格式：

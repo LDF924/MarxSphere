@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // failure-attribution.ts — 失败归因（BOOK-GAP-ROADMAP P0-2）
 // 输入: eval_32metrics_perq.json (P0-1 产物) + trace_spans 表(步骤轨迹) + gold_dataset.json(金标)
 // 流程: 对低分题(overall < 题型中位数, 默认题型内 bottom 40%)组装归因 prompt → 调 getRoleModel("judge")

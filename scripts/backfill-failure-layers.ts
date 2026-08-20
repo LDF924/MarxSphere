@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // backfill-failure-layers.ts — 给 eval_failures 补 layer 列（P1-6 三层验证）
 // 用三层验证器(verifyResult/verifyProcess)结合评测JSON的trace数据+金标, 计算每题 layer:
 //   result(结果层失败: 论文未命中/实体覆盖低) / process(过程层失败: 降级未标注/绕过检索) / quality(质量层: 推理/上下文错误)

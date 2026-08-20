@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // pre-release-ablation.ts — 发布前消融检查（BOOK-GAP-ROADMAP P2-6 消融制度化）
 // 每次大版本发布前跑: 基线 + 12 算子逐个关掉 → 对比是否有算子退化
 // 输出: eval-archive/ablation-<version>.md（结果归档）

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // audit-skill-descriptions.ts — 技能 description 系统化审计（BOOK-GAP-ROADMAP P1-2）
 // 遍历 ~/.claude/skills 下 SKILL.md，提取 frontmatter description，检查四要素：
 //   ①触发时机(Use when) ②边界反例(Don't use when/NEVER) ③具体示例(参数值而非术语) ④执行代价(耗时/结果量级)

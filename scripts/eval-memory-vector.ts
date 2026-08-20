@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // eval-memory-vector.ts — P1-4 记忆向量化评估：验证语义召回质量
 // 2026-08-12：skill_embeddings(189) + task_experience 向量化(17/22) 已有；本脚本验证语义召回
 // 用法: npx tsx scripts/eval-memory-vector.ts

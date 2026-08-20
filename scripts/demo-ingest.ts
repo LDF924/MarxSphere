@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { ingestionService } from "../src/services/ingestion-service.js";
 import { closePool } from "../src/db/pool.js";
 

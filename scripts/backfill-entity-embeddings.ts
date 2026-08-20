@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // backfill-entity-embeddings.ts
 // Usage: cd SAG-main && npx tsx scripts/backfill-entity-embeddings.ts
 import "dotenv/config";

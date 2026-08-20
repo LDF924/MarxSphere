@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // skillify.ts — GBrain Skillify 机制：把重复成功的工作流固化为可复用 skill
 // 输入：工作流描述（名称/触发场景/步骤/checklist/反触发）
 // 输出：生成符合用户规范的 ~/.claude/skills/<name>/SKILL.md，原子写入

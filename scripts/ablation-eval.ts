@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ablation-eval.ts — 真消融评测（对齐 V88K 自己的口径，非 GBrain）
 // 基线：50 题全算子跑 → MRR/NDCG/paper_hit；关掉每个算子重跑 → 同指标对比
 // topK=15（对齐 V88K 评测 0.870 配置）；规则指标（不依赖 LLM，稳定可复现）

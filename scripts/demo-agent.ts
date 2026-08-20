@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // demo-agent.ts — G20: Agent 子系统端到端演示
 // 用法: npx tsx scripts/demo-agent.ts [goal]
 // 流程: 创建任务(LLM 拆解计划) → 入队执行(runAgentTask) → 查看执行日志 → 清理

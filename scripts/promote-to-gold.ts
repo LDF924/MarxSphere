@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // promote-to-gold.ts — 生产 bad case 回流评测集（BOOK-GAP-ROADMAP P2-4）
 // 输入: eval_failures 表中 confidence≥0.7 且 is_recoverable=false 的题
 // 流程: LLM(getRoleModel("plan")) 起草新 gold 题(question/gold_answer/relevant_paragraphs/question_type/paper_id/paper_title)

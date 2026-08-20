@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // extract-graphiti-entities.ts — 从 Graphiti Neo4j 提取高质量业务实体(过滤碎片)
 // Usage: cd SAG-main && npx tsx scripts/extract-graphiti-entities.ts
 // V26: entity quality filter — 去除日期、地名、数字、短词、停用词等碎片实体

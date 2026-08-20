@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scripts/quickstart.mjs — 一键体验脚本（V409: 小白友好）
 // clone 后跑 `npm run quickstart` 即可：检查环境 → 提示配置 → 启动服务
 // 流程: 检查 node/pg → 检查 .env（缺 key 给提示但可跳过）→ 迁移 → 启动 4173

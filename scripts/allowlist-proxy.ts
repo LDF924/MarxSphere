@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // allowlist-proxy.ts — 沙盒网络出口白名单代理（BOOK-GAP-ROADMAP P0-14）
 // 书中 Ch5: 网络出口默认断网 + 白名单代理放行——"即使注入成功读到敏感数据，没出口也传不出去"
 // 本机轻量 HTTP 代理（127.0.0.1:8899）: 只转发白名单 URL，其余 403

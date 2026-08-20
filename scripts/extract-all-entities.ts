@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // extract-all-entities.ts — 一键执行: Cognee+Graphiti 实体提取 + PG同步 + embedding回填
 // Usage: cd SAG-main && npx tsx scripts/extract-all-entities.ts
 // V28: Cognee 用 neo4j-driver 直连 Neo4j (不走MCP — MCP CYPHER search不可靠)

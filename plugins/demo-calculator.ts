@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // 示例插件: 计算器工具（证明 A1 插件热加载工作）
 // 放任意 .ts 文件到 plugins/ 目录 → 自动加载为 Agent 工具
 export const tools = [

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // judge-calibration.ts — 评判者金标校准（BOOK-GAP-ROADMAP P0-4）
 // 输入: data/judge_gold.json (人工标注金标集: 每题 gold_score + gold_passed)
 // 流程: 对每条用同一 judge prompt 模板重跑 _llmJudgeOnce (deepseek-v4-flash, 3轮中位数)

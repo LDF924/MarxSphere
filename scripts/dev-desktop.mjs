@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scripts/dev-desktop.mjs — 开发态启动桌面端（源码直接跑, 资源指向项目根）
 // 用法: npm run dev:desktop
 import { spawn } from "node:child_process";

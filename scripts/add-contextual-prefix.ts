@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // add-contextual-prefix.ts — P1-1 上下文感知检索：为 chunk 生成上下文前缀 + 重建 embedding
 // 2026-08-12 落地：索引期前缀锚定，预期提升 A2 (context_recall/precision)
 // 用法: npx tsx scripts/add-contextual-prefix.ts

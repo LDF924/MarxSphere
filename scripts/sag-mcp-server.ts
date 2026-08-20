@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // sag-mcp-server.ts — MarxSphere 对外 MCP Server（Claude Code / Codex 接入）
 // 对标 Sciverse-Agent-Tools 模式: 薄包装 MarxSphere REST API → MCP 工具
 // 暴露工具:

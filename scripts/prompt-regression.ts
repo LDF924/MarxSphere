@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // prompt-regression.ts — 提示词敏感性 CI（BOOK-GAP-ROADMAP P2-7）
 // 提示词变更时: 渲染系统提示词快照 → git diff 对比 → 跑 10 题快速回归集 → 输出报告
 // 快照: data/prompt-snapshots/prefix-vN.json（buildStaticPrefix 版本化）

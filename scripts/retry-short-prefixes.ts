@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // retry-short-prefixes.ts — 重跑短前缀（fallback 标题拼接版 → LLM 简述）
 // 2026-08-12：P1-1 完成后 146 个前缀过短，用 LLM 补简述
 import { pool } from "../src/db/pool.js";

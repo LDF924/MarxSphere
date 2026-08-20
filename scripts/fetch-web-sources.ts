@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // fetch-web-sources.ts — 网页类源批量抓取脚本
 // 用 Edge headless 打印网页转 PDF（不依赖 web_to_pdf.py，规避其 virtual-time-budget 问题）
 // 抓取网页类数据源 → 转 PDF → 输出到指定目录（默认政策库）

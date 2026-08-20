@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import { searchService } from "../src/services/search-service.js";
 import { closePool } from "../src/db/pool.js";
 

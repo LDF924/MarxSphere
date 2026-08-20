@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // eval-memory-recall.ts — 记忆量化评测（V377, ⑦）
 // 用 MEMORY_EVAL_GOLD 20 条: 写入 OpenViking → 每条用检索词 recall → 算命中率
 // 指标: recall@k (Top-5 命中率) / 平均相似度 / 按类别命中

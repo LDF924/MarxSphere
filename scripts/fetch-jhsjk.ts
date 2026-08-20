@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // fetch-jhsjk.ts — 习近平系列重要讲话数据库抓取（CDP 检索 + Edge headless 抓全文）
 // 检索是 JS 动态（需 CDP），文章页是静态（Edge headless 可打印）
 //
