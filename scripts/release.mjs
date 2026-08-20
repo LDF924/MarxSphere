@@ -57,7 +57,19 @@ run("tsx", ["scripts/build-desktop.mjs"], { env: { SKIP_ELECTRON_BUILDER: "1" } 
 console.log("════════ 3/5 NSIS 安装包 ════════");
 const cacheDir = path.join(root, ".cache", "electron-builder");
 if (!existsSync(cacheDir)) execSync(`mkdir -p "${cacheDir}"`, { shell: "powershell.exe" });
-const tag = process.argv[2] || `v${Date.now().toString(36)}`;
+// 版本号：优先命令行参数（node scripts/release.mjs vX.Y.Z）；未传时从最新 tag 自动递增（v0.2.0 → v0.3.0）
+let tag = process.argv[2];
+if (!tag) {
+  try {
+    const latest = execSync(`git tag --sort=-version:refname | head -n 1`, { cwd: root, encoding: "utf8" }).trim();
+    const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
+    if (m) {
+      tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
+      console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
+    }
+  } catch { /* 无 tag 时用默认 */ }
+}
+tag = tag || `v${Date.now().toString(36)}`;
 // 版本号 = 标签去前导 v；electron-builder 默认读 package.json version，需显式传入保证一致
 const version = tag.replace(/^v/, "").split("-")[0];
 const installer = path.join(root, "release", `MarxSphere Setup ${version}.exe`);
