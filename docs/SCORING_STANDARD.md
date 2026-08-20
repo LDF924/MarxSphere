@@ -1,11 +1,11 @@
-# MarxSphere RAGAS v3 评测标准 (2026-08-06 V96)
+# MarxSphere RAGAS v3 评测标准 (2026-08-06)
 
 ## 架构总览
 
 | 属性 | 值 |
 |------|-----|
 | 评测脚本 | scripts/eval-32-metrics.ts |
-| 版本 | V96 (A1-A12 + B1-B9 + C1-C3 + D1-D7) |
+| 版本 | (A1-A12 + B1-B9 + C1-C3 + D1-D7) |
 | 指标数 | 31 评分项 (A=12, B=9, C=3, D=7) + overall 综合分 |
 | 维度权重 | A:0.40 B:0.35 C:0.25 D:0.00(纯观测) |
 | LLM Judge | DeepSeek v4-flash + DashScope qwen-plus fallback |
@@ -67,18 +67,18 @@
 
 ```
 _llmJudgeOnce(prompt):
-  DeepSeek v4-flash (DashScope qwen-plus fallback)
-  → JSON { score: 0~1浮点数, reason: "一句话说明依据" }
-  2次重试 (指数退避: 2s + 随机0-3s)
-  自动检测分类错误: RateLimit→退避, Arrearage→fallback
+ DeepSeek v4-flash (DashScope qwen-plus fallback)
+ → JSON { score: 0~1浮点数, reason: "一句话说明依据" }
+ 2次重试 (指数退避: 2s + 随机0-3s)
+ 自动检测分类错误: RateLimit→退避, Arrearage→fallback
 
 runThreeRoundMedian(judgeFn):
-  3轮独立调用 → 取中位数
-  IQR过滤 (THRESHOLD=0.3, 可变)
-  → { median, warning(variance大), sample_count }
+ 3轮独立调用 → 取中位数
+ IQR过滤 (THRESHOLD=0.3, 可变)
+ → { median, warning(variance大), sample_count }
 
 mergeScore(rule_score, llm_score):
-  5种策略: rule_only | llm_only | max(默认) | min | avg
+ 5种策略: rule_only | llm_only | max(默认) | min | avg
 ```
 
 ## 评测入口

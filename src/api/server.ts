@@ -963,12 +963,34 @@ export function buildHttpServer() {
   // ─── 文档 API（前端 DocsPanel 渲染 docs/*.md，对标 Sciverse /docs）───
   const DOCS_ROOT = path.join(rootDir, "docs");
   const DOC_INDEX: Array<{ id: string; path: string; title: string; group: string }> = [
+    // 指南
     { id: "overview", path: "overview.md", title: "平台总览", group: "指南" },
     { id: "quickstart", path: "quickstart.md", title: "快速开始", group: "指南" },
-    { id: "api-reference", path: "api-reference.md", title: "API 参考", group: "参考" },
     { id: "cookbook", path: "cookbook.md", title: "Cookbook 示例", group: "指南" },
+    { id: "faq", path: "FAQ.md", title: "常见问题", group: "指南" },
+    { id: "deployment", path: "DEPLOYMENT.md", title: "部署指南", group: "指南" },
+    { id: "desktop", path: "DESKTOP.md", title: "桌面端", group: "指南" },
+    { id: "project-brief", path: "project-brief.md", title: "项目简报", group: "指南" },
+    // 参考
+    { id: "api-reference", path: "api-reference.md", title: "API 参考", group: "参考" },
+    { id: "agent-api", path: "agent-api.md", title: "Agent API", group: "参考" },
+    { id: "agent-env", path: "agent-env.md", title: "Agent 环境变量", group: "参考" },
+    { id: "api-integration", path: "API-INTEGRATION.md", title: "API 集成", group: "参考" },
+    // 架构
+    { id: "architecture", path: "ARCHITECTURE.md", title: "系统架构", group: "架构" },
+    { id: "pipeline-callgraph", path: "SAG_PIPELINE_CALLGRAPH.md", title: "推理链路调用图", group: "架构" },
+    // Agent
+    { id: "agent-capabilities", path: "AGENT-CAPABILITIES.md", title: "Agent 能力总览", group: "Agent" },
+    { id: "agent-architecture-next", path: "AGENT-ARCHITECTURE-NEXT.md", title: "Agent 架构演进", group: "Agent" },
+    // 评测
+    { id: "scoring-standard", path: "SCORING_STANDARD.md", title: "评测标准", group: "评测" },
+    // 集成
     { id: "claude-code", path: "integrations/claude-code.md", title: "Claude Code 集成", group: "集成" },
     { id: "codex-cli", path: "integrations/codex-cli.md", title: "Codex CLI 集成", group: "集成" },
+    { id: "deepseek-harness", path: "integrations/deepseek-harness.md", title: "DeepSeek Harness 集成", group: "集成" },
+    // 合规
+    { id: "open-source-disclosure", path: "OPEN-SOURCE-DISCLOSURE.md", title: "开源披露", group: "合规" },
+    { id: "features-detail", path: "FEATURES-DETAILED.md", title: "功能明细", group: "合规" },
   ];
 
   app.get("/api/docs", async (request) => {
@@ -982,6 +1004,162 @@ export function buildHttpServer() {
       index: DOC_INDEX.map((d) => ({ id: d.id, title: d.title, group: d.group })),
       current: { id: entry.id, title: entry.title, content },
     };
+  });
+
+  // ─── 教育复用资产 API（V389：模板/案例/示例课程 浏览入口）───
+  const EDU_ASSETS_ROOT = path.join(rootDir, "education-templates");
+  app.get("/api/education/assets", async (request) => {
+    const query = request.query as { kind?: string; name?: string };
+    const kind = query.kind || "templates";
+
+    if (kind === "templates") {
+      // 场景模板列表 + 单模板内容
+      const files = fs.readdirSync(EDU_ASSETS_ROOT).filter((f) => f.endsWith(".json"));
+      const templates = files.map((f) => {
+        try {
+          const j = JSON.parse(fs.readFileSync(path.join(EDU_ASSETS_ROOT, f), "utf-8"));
+          return { file: f, name: j.name, description: j.description, route: j.route };
+        } catch { return { file: f, name: f.replace(".json", ""), description: "", route: null }; }
+      });
+      if (query.name) {
+        const safe = String(query.name).replace(/[^a-z0-9-.]/gi, "");
+        const target = path.join(EDU_ASSETS_ROOT, safe);
+        // 防路径穿越：确保 target 在 EDU_ASSETS_ROOT 内
+        if (!target.startsWith(EDU_ASSETS_ROOT + path.sep)) return { ok: false, error: "非法路径" };
+        try { return { ok: true, template: JSON.parse(fs.readFileSync(target, "utf-8")) }; }
+        catch { return { ok: false, error: "模板不存在" }; }
+      }
+      return { ok: true, templates };
+    }
+
+    if (kind === "cases") {
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(rootDir, "data", "education-cases.json"), "utf-8"));
+        return { ok: true, cases: j.cases || [] };
+      } catch { return { ok: false, error: "案例库读取失败" }; }
+    }
+
+    if (kind === "courses") {
+      // 示例课程状态（seed 脚本是否已入库 source_chunks）
+      const r = await pool.query(`select count(*)::int as n from source_chunks where metadata->>'kind' = '示例课程'`);
+      const seeded = (r.rows[0]?.n || 0) > 0;
+      // 已入库的示例课程切片（含标题与内容）
+      const chunks = await pool.query(
+        `select heading, content, metadata->>'subject' as subject from source_chunks where metadata->>'kind' = '示例课程' order by heading`
+      );
+      return {
+        ok: true,
+        seeded,
+        count: r.rows[0]?.n || 0,
+        seedCommand: "npx tsx scripts/seed-edu-courses.ts",
+        courses: (chunks.rows || []).map((c: any) => ({ title: c.heading, subject: c.subject, content: (c.content || "").slice(0, 300) })),
+      };
+    }
+
+    return { ok: false, error: "未知资产类型" };
+  });
+
+  // ─── 教育资产导入 API（V389：示例课程一键入库 / 模板 / 案例写入）───
+  app.post("/api/education/assets/import", async (request) => {
+    const body = (request.body ?? {}) as { action?: string; kind?: string; name?: string; data?: unknown };
+
+    // ① 示例课程一键入库（复用 seed-edu-courses 逻辑）
+    if (body.action === "seed-courses") {
+      // 示例课程数据（与 scripts/seed-edu-courses.ts 的 COURSES 一致）
+      const COURSES = [
+        { subject: "政治经济学", chapters: [
+          { title: "商品与价值", content: "商品是用来交换的劳动产品，具有使用价值和价值二因素。使用价值是商品能满足人们某种需要的属性，是价值的物质承担者；价值是凝结在商品中的无差别的人类劳动。商品二因素由生产商品的劳动二重性决定：具体劳动创造使用价值，抽象劳动形成价值。价值量由生产商品的社会必要劳动时间决定，与劳动生产率成反比。" },
+          { title: "价值规律", content: "价值规律是商品经济的基本规律：商品的价值量由生产商品的社会必要劳动时间决定，商品交换以价值量为基础实行等价交换。价格受供求关系影响围绕价值上下波动，这是价值规律的表现形式。价值规律的作用：自发调节生产资料和劳动力在社会各生产部门之间的分配；刺激商品生产者改进技术、提高劳动生产率；促使商品生产者优胜劣汰。" },
+          { title: "剩余价值", content: "剩余价值是雇佣工人在生产过程中创造的、被资本家无偿占有的超过劳动力价值的价值。剩余价值生产是资本主义生产的绝对规律：绝对剩余价值生产靠延长劳动日，相对剩余价值生产靠缩短必要劳动时间。剩余价值率 = 剩余价值 / 可变资本。剩余价值理论是马克思主义政治经济学的核心。" },
+        ]},
+        { subject: "数学", chapters: [
+          { title: "一元二次方程与配方法", content: "配方法是解一元二次方程的基本方法之一。对于 ax² + bx + c = 0（a ≠ 0），配方步骤：① 化二次项系数为 1；② 移项，常数项移到等号右边；③ 配方，两边同时加一次项系数一半的平方；④ 左边写成完全平方；⑤ 开平方求解，注意正负号。" },
+          { title: "因式分解", content: "因式分解是把一个多项式分解为几个整式乘积的形式，是配方法等后续学习的基础。常用方法：提公因式法、公式法（平方差 a² - b² = (a+b)(a-b)、完全平方 a² ± 2ab + b² = (a±b)²）、十字相乘法。因式分解是解一元二次方程与化简分式的核心技能。" },
+        ]},
+      ];
+      const SOURCE_ID = process.env.EDU_SOURCE_ID || "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
+      let total = 0;
+      for (const course of COURSES) {
+        for (const ch of course.chapters) {
+          const exists = await pool.query(`select id from source_chunks where heading = $1 limit 1`, [ch.title]);
+          if (exists.rows.length > 0) continue;
+          await pool.query(
+            `insert into source_chunks (id, source_id, source_type, heading, content, raw_content, rank, metadata)
+             values (gen_random_uuid(), $1, 'document', $2, $3, $3, 0, $4)`,
+            [SOURCE_ID, ch.title, ch.content, JSON.stringify({ subject: course.subject, kind: "示例课程" })]
+          );
+          total += 1;
+        }
+      }
+      return { ok: true, imported: total, note: total > 0 ? `新增 ${total} 条课程切片` : "全部已存在，无新增" };
+    }
+
+    // ② 模板/案例写入（追加到对应 JSON 文件）
+    if (body.kind && body.name && body.data) {
+      const safeName = String(body.name).replace(/[^a-z0-9-.]/gi, "");
+      if (!safeName.endsWith(".json")) return { ok: false, error: "文件名需以 .json 结尾" };
+      let dir: string;
+      if (body.kind === "templates") dir = path.join(rootDir, "education-templates");
+      else if (body.kind === "cases") dir = path.join(rootDir, "data");
+      else return { ok: false, error: "kind 仅支持 templates/cases" };
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, safeName), JSON.stringify(body.data, null, 2), "utf-8");
+      // 案例库特殊：追加到 education-cases.json 的 cases 数组
+      if (body.kind === "cases") {
+        try {
+          const j = JSON.parse(fs.readFileSync(path.join(dir, "education-cases.json"), "utf-8"));
+          if (!j.cases.some((c: any) => c.id === (body.data as any).id)) {
+            j.cases.push(body.data);
+            fs.writeFileSync(path.join(dir, "education-cases.json"), JSON.stringify(j, null, 2), "utf-8");
+          }
+        } catch { /* 忽略 */ }
+      }
+      return { ok: true, saved: safeName };
+    }
+
+    return { ok: false, error: "参数不完整（需 action 或 kind+name+data）" };
+  });
+
+  // ─── 教育外部资源源 API（V389：学校资源库/公开平台接入）───
+  app.get("/api/education/sources", async (request) => {
+    const { educationResourceSourcesService } = await import("../services/education-resource-sources.js");
+    const sources = await educationResourceSourcesService.listSources();
+    return { ok: true, sources };
+  });
+  app.post("/api/education/sources/upsert", async (request) => {
+    const { educationResourceSourcesService } = await import("../services/education-resource-sources.js");
+    return educationResourceSourcesService.upsertSource(request.body as any);
+  });
+  app.post("/api/education/sources/fetch", async (request) => {
+    const { educationResourceSourcesService } = await import("../services/education-resource-sources.js");
+    const body = (request.body ?? {}) as { sourceId?: string };
+    const sources = await educationResourceSourcesService.listSources();
+    const source = sources.find((s: any) => s.id === body.sourceId);
+    if (!source) return { ok: false, error: "来源不存在" };
+    const fetched = await educationResourceSourcesService.fetchFromSource(source);
+    return { ok: fetched.ok, items: fetched.items, error: fetched.error };
+  });
+  app.post("/api/education/sources/import", async (request) => {
+    const { educationResourceSourcesService } = await import("../services/education-resource-sources.js");
+    return educationResourceSourcesService.importFromSource(request.body as any);
+  });
+
+  // ─── 教育复用资产（个人/公共隔离：学生 personal + public，教师 public）───
+  app.get("/api/education/asset-store", async (request) => {
+    const { educationAssetStoreService } = await import("../services/education-asset-store.js");
+    const query = request.query as { role?: string; kind?: string };
+    return educationAssetStoreService.listAssets({
+      role: query.role === "student" ? "student" : "teacher",
+      kind: query.kind,
+    });
+  });
+  app.post("/api/education/asset-store/add", async (request) => {
+    const { educationAssetStoreService } = await import("../services/education-asset-store.js");
+    return educationAssetStoreService.addAsset(request.body as any);
+  });
+  app.post("/api/education/asset-store/delete", async (request) => {
+    const { educationAssetStoreService } = await import("../services/education-asset-store.js");
+    return educationAssetStoreService.deleteAsset(request.body as any);
   });
 
   // 模式切换（写入 mode.json，重启后生效）：POST { mode: "preview" | "full" }
@@ -3053,6 +3231,90 @@ export function buildHttpServer() {
     return teachingAssistantService.classSummary(request.body as any);
   });
 
+  // ─── 教师端教学辅助扩展（V389，复赛：备课/作业考试/课堂互动）───
+  app.post("/api/education/teach/syllabus", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.generateSyllabus(request.body as any);
+  });
+  app.post("/api/education/teach/courseware", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.generateCourseware(request.body as any);
+  });
+  app.post("/api/education/teach/layered", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.layeredDesign(request.body as any);
+  });
+  app.post("/api/education/teach/questions", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.generateQuestions(request.body as any);
+  });
+  app.post("/api/education/teach/wrong-report", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.wrongAnalysisReport(request.body as any);
+  });
+  app.post("/api/education/teach/discussion", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.generateDiscussion(request.body as any);
+  });
+  app.post("/api/education/teach/quiz", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.quickQuiz(request.body as any);
+  });
+  app.post("/api/education/teach/lecture-summary", async (request) => {
+    const { teachingAssistantService } = await import("../services/teaching-assistant-service.js");
+    return teachingAssistantService.lectureSummary(request.body as any);
+  });
+
+  // ─── 学生端学习服务扩展（V389，复赛：认知维度/千人千策/复习提醒）───
+  app.post("/api/education/student/cognitive-dims", async (request) => {
+    const { studentLearningService } = await import("../services/student-learning-service.js");
+    return studentLearningService.cognitiveDimensions(request.body as any);
+  });
+  app.post("/api/education/student/recommend", async (request) => {
+    const { studentLearningService } = await import("../services/student-learning-service.js");
+    return studentLearningService.personalizedRecommend(request.body as any);
+  });
+  app.post("/api/education/student/review-reminder", async (request) => {
+    const { studentLearningService } = await import("../services/student-learning-service.js");
+    return studentLearningService.reviewReminder(request.body as any);
+  });
+
+  // ─── 阅读与语言学习 Agent（V389，复赛）───
+  app.post("/api/education/lang/reading", async (request) => {
+    const { languageLearningService } = await import("../services/language-learning-service.js");
+    return languageLearningService.readingTutor(request.body as any);
+  });
+  app.post("/api/education/lang/vocab-grammar", async (request) => {
+    const { languageLearningService } = await import("../services/language-learning-service.js");
+    return languageLearningService.vocabGrammar(request.body as any);
+  });
+  app.post("/api/education/lang/writing", async (request) => {
+    const { languageLearningService } = await import("../services/language-learning-service.js");
+    return languageLearningService.writingPolish(request.body as any);
+  });
+  app.post("/api/education/lang/record", async (request) => {
+    const { languageLearningService } = await import("../services/language-learning-service.js");
+    return languageLearningService.recordStudy(request.body as any);
+  });
+
+  // ─── 职业教育/编程教育 Agent（V389，复赛）───
+  app.post("/api/education/coding/decompose", async (request) => {
+    const { codingEducationService } = await import("../services/coding-education-service.js");
+    return codingEducationService.taskDecomposition(request.body as any);
+  });
+  app.post("/api/education/coding/tutor", async (request) => {
+    const { codingEducationService } = await import("../services/coding-education-service.js");
+    return codingEducationService.codeTutoring(request.body as any);
+  });
+  app.post("/api/education/coding/interview", async (request) => {
+    const { codingEducationService } = await import("../services/coding-education-service.js");
+    return codingEducationService.interviewPrep(request.body as any);
+  });
+  app.post("/api/education/coding/path", async (request) => {
+    const { codingEducationService } = await import("../services/coding-education-service.js");
+    return codingEducationService.careerPath(request.body as any);
+  });
+
   // V388: 学习陪伴 Agent（计划/答疑/激励/复盘）
   app.post("/api/education/companion/plan", async (request) => {
     const { studyCompanionService } = await import("../services/study-companion-service.js");
@@ -3081,6 +3343,154 @@ export function buildHttpServer() {
   app.post("/api/education/companion/reviews", async (request) => {
     const { studyCompanionService } = await import("../services/study-companion-service.js");
     return studyCompanionService.reviewHistory(request.body as any);
+  });
+
+  // ─── 教育专属 Agent 编排层（V389+，复赛冲刺期）───
+  app.post("/api/education/agent/socratic", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.socraticStart(request.body as any);
+  });
+  app.post("/api/education/agent/socratic-continue", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.socraticContinue(request.body as any);
+  });
+  app.post("/api/education/agent/scaffold", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.scaffoldedTutoring(request.body as any);
+  });
+  app.post("/api/education/agent/wrong-to-mastery", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.wrongToMastery(request.body as any);
+  });
+  app.post("/api/education/agent/progress", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.learningProgress(request.body as any);
+  });
+  app.post("/api/education/agent/route", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.routeByRole(request.body as any);
+  });
+  app.post("/api/education/agent/policy-check", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.checkEducationPolicy(String((request.body as any)?.content ?? ""));
+  });
+  app.post("/api/education/agent/polish", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.polishStep(request.body as any);
+  });
+  app.post("/api/education/agent/decompose", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.decomposeQuestions(request.body as any);
+  });
+  app.post("/api/education/agent/follow-up", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.followUpPolish(request.body as any);
+  });
+
+  // ─── 想法卡管理（Hazel 式多想法并行）───
+  app.post("/api/education/agent/idea-cards/list", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.listIdeaCards(request.body as any);
+  });
+  app.post("/api/education/agent/idea-cards/create", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.createIdeaCard(request.body as any);
+  });
+  app.post("/api/education/agent/idea-cards/update", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.updateIdeaCard(request.body as any);
+  });
+  app.post("/api/education/agent/idea-cards/delete", async (request) => {
+    const { agentEducationService } = await import("../services/agent-education.js");
+    return agentEducationService.deleteIdeaCard(request.body as any);
+  });
+
+  // ─── 端到端自动闭环（复赛冲刺期）───
+  app.post("/api/education/loop/hook-answer", async (request) => {
+    const { autoLearningLoopService } = await import("../services/auto-learning-loop.js");
+    return autoLearningLoopService.hookRecordAnswer(request.body as any);
+  });
+  app.post("/api/education/loop/hook-plan-progress", async (request) => {
+    const { autoLearningLoopService } = await import("../services/auto-learning-loop.js");
+    return autoLearningLoopService.hookPlanProgress(request.body as any);
+  });
+  app.post("/api/education/loop/diagnose", async (request) => {
+    const { autoLearningLoopService } = await import("../services/auto-learning-loop.js");
+    return autoLearningLoopService.autoDiagnose(request.body as any);
+  });
+  app.post("/api/education/loop/iterate", async (request) => {
+    const { autoLearningLoopService } = await import("../services/auto-learning-loop.js");
+    return autoLearningLoopService.autoIterate(request.body as any);
+  });
+  app.post("/api/education/loop/report", async (request) => {
+    const { autoLearningLoopService } = await import("../services/auto-learning-loop.js");
+    return autoLearningLoopService.autoLoopReport(request.body as any);
+  });
+
+  // ─── BKT 认知诊断（复赛冲刺期）───
+  app.post("/api/education/cognitive/bkt-track", async (request) => {
+    const { cognitiveDiagnosisService } = await import("../services/cognitive-diagnosis.js");
+    return cognitiveDiagnosisService.bktTrack(request.body as any);
+  });
+  app.post("/api/education/cognitive/bkt-diagnose", async (request) => {
+    const { cognitiveDiagnosisService } = await import("../services/cognitive-diagnosis.js");
+    return cognitiveDiagnosisService.bktDiagnose(request.body as any);
+  });
+
+  // ─── 知识点先修图 + 拓扑路径规划（复赛冲刺期）───
+  app.post("/api/education/kg/check-prereq", async (request) => {
+    const { knowledgeGraphEduService } = await import("../services/knowledge-graph-edu.js");
+    return knowledgeGraphEduService.checkPrerequisites(request.body as any);
+  });
+  app.post("/api/education/kg/plan-path", async (request) => {
+    const { knowledgeGraphEduService } = await import("../services/knowledge-graph-edu.js");
+    return knowledgeGraphEduService.planPath(request.body as any);
+  });
+  app.post("/api/education/kg/validate-path", async (request) => {
+    const { knowledgeGraphEduService } = await import("../services/knowledge-graph-edu.js");
+    return knowledgeGraphEduService.validatePath(request.body as any);
+  });
+
+  // ─── 思政内容四维核验（复赛冲刺期）───
+  app.post("/api/education/audit/content", async (request) => {
+    const { contentAuditService } = await import("../services/content-audit-service.js");
+    return contentAuditService.auditContent(request.body as any);
+  });
+  app.post("/api/education/audit/calibrate", async (request) => {
+    const { contentAuditService } = await import("../services/content-audit-service.js");
+    return contentAuditService.calibrateConcept(request.body as any);
+  });
+
+  // ─── 教育多模态打通（复赛冲刺期）───
+  app.post("/api/education/multimodal/photo-solve", async (request) => {
+    const { educationMultimodalService } = await import("../services/education-multimodal.js");
+    return educationMultimodalService.homeworkPhotoSolve(request.body as any);
+  });
+  app.post("/api/education/multimodal/speech-assessment", async (request) => {
+    const { educationMultimodalService } = await import("../services/education-multimodal.js");
+    return educationMultimodalService.speechAssessment(request.body as any);
+  });
+  app.post("/api/education/multimodal/blackboard", async (request) => {
+    const { educationMultimodalService } = await import("../services/education-multimodal.js");
+    return educationMultimodalService.blackboardRecognize(request.body as any);
+  });
+
+  // ─── 教育数据合规（复赛冲刺期）───
+  app.post("/api/education/compliance/classification", async (request) => {
+    const { educationComplianceService } = await import("../services/education-compliance.js");
+    return educationComplianceService.dataClassification();
+  });
+  app.post("/api/education/compliance/cleanup-student", async (request) => {
+    const { educationComplianceService } = await import("../services/education-compliance.js");
+    return educationComplianceService.cleanupStudentData(request.body as any);
+  });
+  app.post("/api/education/compliance/cleanup-expired", async (request) => {
+    const { educationComplianceService } = await import("../services/education-compliance.js");
+    return educationComplianceService.cleanupExpiredData();
+  });
+  app.post("/api/education/compliance/status", async (request) => {
+    const { educationComplianceService } = await import("../services/education-compliance.js");
+    return educationComplianceService.complianceStatus(request.body as any);
   });
 
   // ─── 实证研究执行工作台（V348+）───

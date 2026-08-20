@@ -164,4 +164,217 @@ export async function classSummary(input: { classId?: string; subject?: string }
   return { ok: true, summary: await llmJson(prompt), commonGaps, classStats: acc.rows[0] };
 }
 
-export const teachingAssistantService = { generateLesson, generateExam, gradeSubmission, classSummary };
+// ═══ ⑤ 课程大纲生成（V389，复赛）═══
+export async function generateSyllabus(input: {
+  subject: string;
+  courseName: string;          // 课程名称
+  weeks?: number;              // 课时/周数
+  studentLevel?: string;
+  curriculum?: string;         // 课标要求
+}): Promise<Record<string, unknown>> {
+  const weeks = input.weeks || 16;
+  const chunks = await retrieveChunks(input.courseName, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是课程设计专家。为以下课程生成大纲：
+课程: ${input.courseName}（${input.subject}）${input.studentLevel ? `，学生水平: ${input.studentLevel}` : ""}
+${input.curriculum ? `课标要求: ${input.curriculum}` : ""}
+课时: ${weeks} 周${ctx}
+
+输出 JSON: {
+  "courseTitle": "课程名称",
+  "objectives": ["教学目标(知识/能力/素养)"],
+  "outline": [{"week": 1, "topic": "周主题", "keyPoints": ["知识点"], "homework": "作业建议"}],
+  "assessment": "考核方式",
+  "textbook": "建议教材/参考书"
+}`;
+  return { ok: true, syllabus: await llmJson(prompt), weeks };
+}
+
+// ═══ ⑥ 课件生成（V389，复赛）═══
+export async function generateCourseware(input: {
+  subject: string;
+  courseName: string;          // 课程名/课件标题
+  knowledgePoint: string;      // 核心知识点
+  slides?: number;             // 页数（默认 10）
+}): Promise<Record<string, unknown>> {
+  const slides = input.slides || 10;
+  const chunks = await retrieveChunks(`${input.courseName} ${input.knowledgePoint}`, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是课件制作专家。生成课件「${input.courseName} — ${input.knowledgePoint}」（${input.subject}，约 ${slides} 页）：
+${ctx}
+
+输出 JSON: {
+  "title": "课件标题",
+  "slides": [{"page": 1, "title": "页标题", "type": "cover|text|concept|example|image|chart|summary|quiz|qa",
+              "content": "页面内容（文字）", "visualHint": "配图/图表建议（含图片描述）"}],
+  "notes": "讲解要点（教师备注）"
+}`;
+  return { ok: true, courseware: await llmJson(prompt), slideCount: slides };
+}
+
+// ═══ ⑦ 分层教学设计（V389，复赛）═══
+export async function layeredDesign(input: {
+  subject: string;
+  chapter: string;
+  levels?: string[];           // 分层（默认 基础/进阶/挑战）
+}): Promise<Record<string, unknown>> {
+  const levels = input.levels || ["基础", "进阶", "挑战"];
+  const chunks = await retrieveChunks(input.chapter, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是分层教学专家。为「${input.chapter}」（${input.subject}）设计分层教学方案，层次: ${levels.join("/")}${ctx}
+
+输出 JSON: {
+  "chapter": "章节",
+  "layers": [{"level": "基础", "targetStudents": "面向学生特征", "objectives": ["教学目标"], "activities": ["课堂活动"], "assignments": ["作业"]}],
+  "progression": "层间递进逻辑（如何从基础到挑战）"
+}`;
+  return { ok: true, design: await llmJson(prompt), levels };
+}
+
+// ═══ ⑧ 智能出题（分层：基础/提升/拓展）（V389，复赛）═══
+export async function generateQuestions(input: {
+  subject: string;
+  knowledgePoint: string;
+  tier?: "基础" | "提升" | "拓展";
+  count?: number;
+}): Promise<Record<string, unknown>> {
+  const tier = input.tier || "基础";
+  const count = input.count || 5;
+  const chunks = await retrieveChunks(input.knowledgePoint, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const tierRule = {
+    "基础": "考察基本概念与直接应用，学生应能直接作答",
+    "提升": "综合运用与变式，需两步以上推理",
+    "拓展": "跨知识点综合、开放性设问、批判性思考",
+  }[tier];
+
+  const prompt = `你是命题专家。为知识点「${input.knowledgePoint}」（${input.subject}）生成 ${count} 道${tier}题。
+${tierRule}${ctx}
+
+输出 JSON: {
+  "questions": [{"num": 1, "question": "题目", "type": "选择|填空|简答|论述", "difficulty": "基础|提升|拓展", "knowledgePoint": "考点", "answer": "参考答案/解析", "thinkingPoint": "考查的思维点"}]
+}`;
+  return { ok: true, tier, questions: await llmJson(prompt) };
+}
+
+// ═══ ⑨ 错题分析报告（班级/个人）（V389，复赛）═══
+export async function wrongAnalysisReport(input: {
+  studentId?: string;           // 个人（缺省=班级聚合）
+  subject: string;
+  days?: number;               // 统计窗口（默认 30 天）
+}): Promise<Record<string, unknown>> {
+  const days = input.days || 30;
+  const subject = input.subject;
+  const isClass = !input.studentId;
+
+  const rows = await pool.query(
+    `select knowledge_point,
+            count(*)::int as wrong_count,
+            array_agg(distinct mistake_type) as mistake_types,
+            array_agg(distinct question) as sample_questions
+     from wrong_questions
+     where subject = $1 and mastered = false and created_at > now() - ($2 || ' days')::interval
+     ${isClass ? "" : "and student_id = $3"}
+     group by knowledge_point order by wrong_count desc limit 12`,
+    isClass ? [subject, String(days)] : [subject, String(days), input.studentId]
+  );
+
+  const report = await llmJson(`你是教学分析专家。基于错题数据生成${isClass ? "班级" : "个人"}错题分析报告：
+科目: ${subject}，窗口: ${days} 天${isClass ? "" : `，学生: ${input.studentId}`}
+错题分布: ${JSON.stringify(rows.rows).slice(0, 2000)}
+
+输出 JSON: {
+  "summary": "错题总体情况（数量/集中度）",
+  "topWeakPoints": [{"point": "知识点", "wrongCount": N, "mistakeTypes": ["错误类型"], "suggestion": "针对性建议"}],
+  "patterns": ["发现的共性错误模式"],
+  "actionPlan": [{"priority": "高|中|低", "action": "建议措施", "target": "针对对象"}]
+}`);
+  return { ok: true, scope: isClass ? "class" : "student", subject, report, raw: rows.rows };
+}
+
+// ═══ ⑩ 课堂讨论题生成（V389，复赛）═══
+export async function generateDiscussion(input: {
+  subject: string;
+  topic: string;               // 课程内容/知识点
+  count?: number;
+}): Promise<Record<string, unknown>> {
+  const count = input.count || 3;
+  const chunks = await retrieveChunks(input.topic, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是课堂讨论设计专家。基于「${input.topic}」（${input.subject}）生成 ${count} 个课堂讨论题${ctx}
+
+输出 JSON: {
+  "discussions": [{"topic": "讨论题", "type": "观点辨析|案例分析|开放探讨|辩论", "guideQuestions": ["引导问题1", "引导问题2"], "expectedPoints": ["预期达成的认识/结论"], "minutes": "建议时长"}]
+}`;
+  return { ok: true, discussions: await llmJson(prompt) };
+}
+
+// ═══ ⑪ 随堂测验（V389，复赛）═══
+export async function quickQuiz(input: {
+  subject: string;
+  topic: string;
+  count?: number;
+  autoAnswers?: boolean;       // 含答案（供批改对照）
+}): Promise<Record<string, unknown>> {
+  const count = input.count || 5;
+  const chunks = await retrieveChunks(input.topic, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是随堂测验设计专家。基于「${input.topic}」（${input.subject}）生成 ${count} 道随堂测验题（客观题为主，快速作答）${ctx}
+
+输出 JSON: {
+  "quizTitle": "随堂测验标题",
+  "questions": [{"num": 1, "question": "题目", "type": "选择|判断|填空", "options": ["A. ...", "B. ..."], ${input.autoAnswers ? '"answer": "正确答案",' : ""} "knowledgePoint": "考点"}],
+  "estimateMinutes": "预计作答分钟"
+}`;
+  return { ok: true, quiz: await llmJson(prompt) };
+}
+
+// ═══ ⑫ 课堂总结（V389，复赛）═══
+export async function lectureSummary(input: {
+  subject: string;
+  topic: string;               // 本节课内容
+  notes?: string;              // 课堂记录（可选）
+  minutes?: number;            // 课时
+}): Promise<Record<string, unknown>> {
+  const chunks = await retrieveChunks(input.topic, DEFAULT_SOURCE, 5);
+  const ctx = chunks.length > 0
+    ? `\n\n【知识库参考】\n${chunks.slice(0, 3).map((c) => `[${c.title}] ${c.content.substring(0, 150)}`).join("\n")}`
+    : "";
+
+  const prompt = `你是课堂总结助手。基于课程内容生成课堂总结：
+科目: ${input.subject}，内容: ${input.topic}${input.minutes ? `，课时 ${input.minutes} 分钟` : ""}${input.notes ? `\n课堂记录: ${input.notes.slice(0, 500)}` : ""}${ctx}
+
+输出 JSON: {
+  "topic": "本课主题",
+  "keyPoints": ["知识要点（结构化）"],
+  "conclusions": ["核心结论"],
+  "homework": "课后作业建议",
+  "nextLesson": "下节课衔接建议",
+  "misconceptions": ["学生可能的常见误区（提前预警）"]
+}`;
+  return { ok: true, summary: await llmJson(prompt) };
+}
+
+export const teachingAssistantService = {
+  generateLesson, generateExam, gradeSubmission, classSummary,
+  generateSyllabus, generateCourseware, layeredDesign, generateQuestions,
+  wrongAnalysisReport, generateDiscussion, quickQuiz, lectureSummary,
+};

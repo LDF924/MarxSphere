@@ -83,3 +83,18 @@ CI 自动构建桌面端安装包并上传 Release（无需本地打包）。
 - 文献/向量/实体：PostgreSQL（docker 卷 `sag_lite_pgdata`）
 - 图谱：Neo4j（`sag_graphiti_neo4jdata` / `sag_cognee_neo4jdata`）
 - 建议定期备份 docker 卷（`docker run --rm -v sag_lite_pgdata:/data -v $(pwd):/backup alpine tar czf /backup/pgdata.tar.gz /data`）
+
+### Q15: 「AI+教育」是什么？怎么用？
+
+顶部导航「**AI+教育**」Tab → 学生端「我的学习」/ 教师端「教师工作台」两个子 Tab：
+- **学生端**：苏格拉底式五步打磨（记录→发散→验证→聚焦→压力测试）、作业辅导闭环（解析→错题→变式）、BKT 认知诊断、学习进度追踪、自动闭环周报、复习提醒、阅读/编程学习
+- **教师端**：备课辅助（大纲/教案/课件/分层）、作业与考试（出题/批改/错题报告/组卷）、课堂互动（讨论题/随堂测验/总结）、思政内容四维核验、知识点先修图
+- 每个功能区都有「Demo 演示」按钮，一键体验
+
+### Q16: 教育功能需要额外配置吗？
+
+不需要额外密钥——复用主系统的 LLM/Embedding 配置。部分能力需要：拍照识题走 SenseNova 视觉模型（`SENSENOVA_API_KEY`，未配则优雅降级提示）；口语测评需本地 whisper（`pip install faster-whisper`）。
+
+### Q17: 教育数据安全吗？
+
+教育数据合规（§4.2 设计）：学生数据匿名化（默认 `student_id`）、日志脱敏（`sanitizeLine`）、语音仅本地处理会话后即删、数据保留期自动清理（30 天可配）、`/api/education` 权限门控制访问。教育输出不替代教师/学校评价。

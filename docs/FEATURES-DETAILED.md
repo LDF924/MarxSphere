@@ -1,10 +1,10 @@
 # MarxSphere 功能规格详解
 
-> 本文档是 MarxSphere 的完整功能规格说明。所有功能均已在 Web 界面（33 视图）或桌面端实现并验证。
+> 本文档是 MarxSphere 的完整功能规格说明。所有功能均已在 Web 界面（40 视图）或桌面端实现并验证。
 
 ---
 
-## 一、导航与工作区（33 视图 · 6 大分类）
+## 一、导航与工作区（40 视图 · 6 大分类）
 
 ### 导航结构（Mega Menu）
 
@@ -57,7 +57,7 @@
 
 | 库 | 数据规模 | 存储 | 能力 |
 |---|---|---|---|
-| **Graphiti** | 501 篇文献、21,337 实体、39,499 chunk、1,085 社区、11,702 超边、166,631 关系 | Neo4j 11001 | 社区发现、超边推理、五层蒸馏 |
+| **Graphiti** | 领域文献库：大规模实体/切片/社区/超边/关系图谱 | Neo4j 11001 | 社区发现、超边推理、五层蒸馏 |
 | **Cognee** | 31,253 实体、248,417 关系、11,550 切片 | Neo4j 11003 + LanceDB | 实体关系路径、17 种检索策略 |
 | **PG pgvector** | 7,550 切片向量（1024 维） | PostgreSQL | 向量检索 + 全文检索（BM25） |
 
@@ -91,7 +91,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 
 ---
 
-## 四、AI Agent 子系统（50+ 能力项 · 44 工具）
+## 四、AI Agent 子系统（60+ 能力项 · 44 通用工具 + 84 教育路由）
 
 ### 4.1 编排核心
 
@@ -105,7 +105,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | token 预算 | 任务级 400K token 上限，超预算终止 |
 | 恢复 | 队列持久化 → 重启 recoverAfterRestart |
 
-### 4.2 工具矩阵（44 工具 = 26 Agent + 18 视图）
+### 4.2 工具矩阵（44 通用工具 = 26 基础 + 18 视图；教育工具经 /api/education/* 84 路由接入）
 
 | 类别 | 工具 | 说明 |
 |---|---|---|
@@ -195,3 +195,33 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | PDF2Obsidian | 三栏工作台：上传 → PDF 预览 → 六产物（original/摘要/术语表/问答/index/信息） |
 | 技能系统 | 技能注册表（约 190+ 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 |
 | 数据源 | 29 个外部源（已接入/可接入/需注册分类） |
+
+## 九、AI+教育（顶部「AI+教育」Tab · 84 路由）
+
+### 9.1 学生端「我的学习」
+
+| 能力 | 路由 | 说明 |
+|---|---|---|
+| 苏格拉底五步打磨 | `agent/polish`（diverge/verify/focus/stress）+ `agent/decompose` + `agent/follow-up` | 记录→发散→初步验证（知识库密度）→聚焦→压力测试，逐步解锁 + 跳步降级警告 + 完成度 0/5 + 示例想法模板 + 想法卡（多想法并行）+ 导出对话 |
+| 苏格拉底式提问 | `agent/socratic` / `socratic-continue` | 连续追问引导（3 轮上限），不直接给答案 |
+| 阶梯式启发 | `agent/scaffold` | hint → guided → full 三级提示 |
+| 作业辅导闭环 | `homework/solve` / `wrong` / `variant` / `qna` + `agent/wrong-to-mastery` | 解析→答疑→错题归集→变式→掌握度联动 |
+| 自适应学习 | `adaptive/record-answer` / `profile` / `push` / `pace` / `layered` | 学情建模/画像/推送/节奏/分层 |
+| 自动闭环 | `loop/hook-answer` / `diagnose` / `iterate` / `report` | 自动采集→诊断→迭代→周报 |
+| BKT 认知诊断 | `cognitive/bkt-track` / `bkt-diagnose` | p(掌握) 隐状态推断 + 预测答对概率 |
+| 学习进度追踪 | `agent/progress` | 计划完成率 + 掌握度变化 |
+| 认知维度 / 千人千策 / 复习提醒 | `student/cognitive-dims` / `recommend` / `review-reminder` | 布鲁姆六维 / 专业背景推荐 / 艾宾浩斯遗忘曲线 |
+| 阅读语言 / 编程教育 | `lang/*`（reading/vocab/writing/record）+ `coding/*`（decompose/tutor/interview/path） | 精读/润色/任务拆解/代码辅导/面试准备 |
+| 学习陪伴 | `companion/*` | 计划/答疑/激励/复盘 |
+
+### 9.2 教师端「教师工作台」
+
+| 能力 | 路由 | 说明 |
+|---|---|---|
+| 备课辅助 | `teach/syllabus` / `lesson` / `courseware` / `layered` | 课程大纲/教案/课件（含配图建议）/分层设计 |
+| 作业与考试 | `teach/questions`（基础/提升/拓展）/ `exam`（组卷）/ `grade`（批改）/ `wrong-report`（错题报告）/ `class-summary`（班级学情） | 完整教研闭环 |
+| 课堂互动 | `teach/discussion` / `quiz` / `lecture-summary` | 讨论题/随堂测验/课堂总结 |
+| 思政内容审核 | `audit/content`（四维核验）/ `calibrate`（Compiled Truth 校准） | 意识形态/表述/引用/边界 |
+| 知识点先修图 | `kg/check-prereq` / `plan-path` / `validate-path` | 先修缺失检测/拓扑路径/逆序校验 |
+| 多模态 | `multimodal/blackboard` / `speech-assessment` / `photo-solve` | 板书识别/口语测评/作业拍照 |
+| 数据合规 | `compliance/classification` / `status` / `cleanup-student` / `cleanup-expired` | 数据分级/状态/清理 |

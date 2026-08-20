@@ -59,3 +59,14 @@
 - `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`：备选 LLM 提供方
 - `DATABASE_URL`：PostgreSQL 连接串（Agent 全部持久化）
 - `SAG_AUTH_ENABLED`：`true` 时启用令牌鉴权（localhost 豁免）
+
+## 教育功能环境变量
+
+| 变量 | 必需 | 说明 |
+|---|---|---|
+| `SENSENOVA_API_KEY` | 可选 | 拍照识题/板书识别（作业图片 OCR，走 SenseNova 视觉模型；未配优雅降级提示） |
+| `SENSENOVA_BASE_URL` | 可选 | 视觉模型端点（默认 `https://token.sensenova.cn/v1`） |
+| `SENSENOVA_MODEL` | 可选 | 视觉模型（默认 `sensenova-6.8-flash-lite`） |
+| `COGNEE_PYTHON` / `PYTHON_EXE` | 可选 | 口语测评 Python 解释器（需本地 whisper：`pip install faster-whisper`） |
+| `EDU_DATA_RETENTION_DAYS` | 可选 | 学情数据保留期（默认 30 天，超期自动清理） |
+| `EDU_SOURCE_ID` | 可选 | 示例课程入库的 source_id（默认 `c609acbf-1d6e-4bd5-9ae1-92fa6c64021a`） |

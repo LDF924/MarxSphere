@@ -1,4 +1,4 @@
-# MarxSphere 桌面端（V397）
+# MarxSphere 桌面端
 
 AI Agent 桌面端封装 — Electron + NSIS 安装包。单进程架构：Electron 主进程 spawn 后端（`ELECTRON_RUN_AS_NODE` 复用内置 Node），同时提供 Fastify API + 前端静态服务。
 

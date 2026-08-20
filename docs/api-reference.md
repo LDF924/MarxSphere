@@ -41,17 +41,17 @@ Authorization: Bearer sag_xxx
 
 ```json
 {
-  "taskId": "uuid",
-  "trace": {
-    "outline": [...],
-    "retrieveSources": ["cognee_coarse", "graphiti_refine"],
-    "entityNames": ["资本下乡", "土地流转", ...],
-    "fusedContext": "拼接后的检索上下文...",
-    "hypothesis": { "content": "最终答案...", "confidence": 0.87, "citations": [...] },
-    "evaluation": { "dimensions": {...}, "overallScore": 0.85, "passed": true },
-    "timings": { "stage2_coarse": 1234, "stage3_refine": 567, ... },
-    "_debugCoarse": { "chunks": [...], "pgChunks": [...], ... }
-  }
+ "taskId": "uuid",
+ "trace": {
+ "outline": [...],
+ "retrieveSources": ["cognee_coarse", "graphiti_refine"],
+ "entityNames": ["资本下乡", "土地流转", ...],
+ "fusedContext": "拼接后的检索上下文...",
+ "hypothesis": { "content": "最终答案...", "confidence": 0.87, "citations": [...] },
+ "evaluation": { "dimensions": {...}, "overallScore": 0.85, "passed": true },
+ "timings": { "stage2_coarse": 1234, "stage3_refine": 567, ... },
+ "_debugCoarse": { "chunks": [...], "pgChunks": [...], ... }
+ }
 }
 ```
 
@@ -64,13 +64,13 @@ Authorization: Bearer sag_xxx
 
 ```bash
 curl -X POST http://localhost:4173/api/reason/query \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sag_xxx" \
-  -d '{
-    "sourceId": "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a",
-    "query": "资本下乡对农户土地流转的影响机制是什么？",
-    "topK": 15
-  }'
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer sag_xxx" \
+ -d '{
+ "sourceId": "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a",
+ "query": "资本下乡对农户土地流转的影响机制是什么？",
+ "topK": 15
+ }'
 ```
 
 ---
@@ -94,18 +94,18 @@ curl -X POST http://localhost:4173/api/reason/query \
 
 ```json
 {
-  "traceId": "uuid",
-  "sections": [
-    {
-      "chunkId": "neo4j-entity-0",
-      "sourceId": "uuid",
-      "heading": "[graphiti] 论文标题",
-      "content": "切片内容（最多 800 字）",
-      "rank": 0,
-      "score": 0.96,
-      "sourceStep": "graphiti-entity"
-    }
-  ]
+ "traceId": "uuid",
+ "sections": [
+ {
+ "chunkId": "neo4j-entity-0",
+ "sourceId": "uuid",
+ "heading": "[graphiti] 论文标题",
+ "content": "切片内容（最多 800 字）",
+ "rank": 0,
+ "score": 0.96,
+ "sourceStep": "graphiti-entity"
+ }
+ ]
 }
 ```
 
@@ -113,13 +113,13 @@ curl -X POST http://localhost:4173/api/reason/query \
 
 ```bash
 curl -X POST http://localhost:4173/api/search \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sag_xxx" \
-  -d '{
-    "query": "土地流转 农户收入",
-    "sourceIds": ["c609acbf-1d6e-4bd5-9ae1-92fa6c64021a"],
-    "topK": 10
-  }'
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer sag_xxx" \
+ -d '{
+ "query": "土地流转 农户收入",
+ "sourceIds": ["c609acbf-1d6e-4bd5-9ae1-92fa6c64021a"],
+ "topK": 10
+ }'
 ```
 
 ---
@@ -143,12 +143,12 @@ curl -X POST http://localhost:4173/api/search \
 
 ```json
 {
-  "sourceId": "uuid",
-  "documentId": "uuid",
-  "actualDocumentId": "uuid",
-  "chunkCount": 12,
-  "eventCount": 5,
-  "taskId": "uuid"
+ "sourceId": "uuid",
+ "documentId": "uuid",
+ "actualDocumentId": "uuid",
+ "chunkCount": 12,
+ "eventCount": 5,
+ "taskId": "uuid"
 }
 ```
 
@@ -158,14 +158,14 @@ curl -X POST http://localhost:4173/api/search \
 
 ```bash
 curl -X POST http://localhost:4173/api/documents/upload \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sag_xxx" \
-  -d '{
-    "sourceId": "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a",
-    "fileName": "论文标题.md",
-    "title": "论文标题",
-    "content": "# 论文内容\n\n正文..."
-  }'
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer sag_xxx" \
+ -d '{
+ "sourceId": "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a",
+ "fileName": "论文标题.md",
+ "title": "论文标题",
+ "content": "# 论文内容\n\n正文..."
+ }'
 ```
 
 ---
@@ -180,14 +180,14 @@ curl -X POST http://localhost:4173/api/documents/upload \
 
 ```json
 {
-  "documents": [
-    {
-      "id": "uuid",
-      "title": "论文标题",
-      "status": "COMPLETED",
-      "chunkCount": 12
-    }
-  ]
+ "documents": [
+ {
+ "id": "uuid",
+ "title": "论文标题",
+ "status": "COMPLETED",
+ "chunkCount": 12
+ }
+ ]
 }
 ```
 
@@ -203,3 +203,67 @@ curl -X POST http://localhost:4173/api/documents/upload \
 | `DELETE /api/tokens/:id` | 删除令牌记录 |
 
 > 管理接口对 localhost 豁免认证；部署后建议限制管理接口访问。
+
+---
+
+## 6. AI+教育 `POST /api/education/*`
+
+教育能力共 **80+ 路由**，按能力分组（请求体均为 JSON，响应 `{ ok: true, ... }`）：
+
+### 6.1 核心六能力
+
+| 接口 | 说明 | 关键入参 |
+|---|---|---|
+| `POST /api/education/learning-plan` | 个性化学习规划 | `subject, goal, currentLevel?, hoursPerWeek?, deadline?` |
+| `POST /api/education/tutoring` | 课程辅导（分步引导） | `subject, topic, difficulty?` |
+| `POST /api/education/diagnosis` | 学情诊断 | `subject, answers[]` |
+| `POST /api/education/preview-review` | 预习/复习 | `subject, topic, mode: preview\|review` |
+| `POST /api/education/lesson-plan` | 教师备课 | `subject, chapter, classMinutes?, studentLevel?` |
+| `POST /api/education/companion` | 学习陪伴 | `subject, message, history?` |
+
+### 6.2 自适应学习
+
+`/api/education/adaptive/record-answer`（作答建模）、`/profile`（学情画像）、`/push`（内容推送）、`/pace`（节奏适配）、`/layered`（分层教学）
+
+### 6.3 作业辅导闭环
+
+`/api/education/homework/solve`（题目解析，4 模式）、`/wrong`（错题归集）、`/variant`（变式生成）、`/wrong-list`、`/wrong-mastered`、`/qna`（追问式答疑）
+
+### 6.4 学情诊断
+
+`/api/education/diagnostic/gaps`（薄弱点）、`/behavior`（行为分析）、`/report`（诊断报告）、`/risk`（风险预警）
+
+### 6.5 教师助手
+
+`/api/education/teach/lesson`、`/exam`（组卷）、`/grade`（批改）、`/class-summary`（班级学情）、`/syllabus`（大纲）、`/courseware`（课件）、`/layered`（分层设计）、`/questions`（智能出题）、`/wrong-report`（错题报告）、`/discussion`（课堂讨论）、`/quiz`（随堂测验）、`/lecture-summary`（课堂总结）
+
+### 6.6 教育专属 Agent
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/education/agent/socratic` | 苏格拉底式提问（首轮） |
+| `POST /api/education/agent/socratic-continue` | 苏格拉底继续追问 |
+| `POST /api/education/agent/scaffold` | 阶梯式启发（hint/guided/full） |
+| `POST /api/education/agent/wrong-to-mastery` | 错题-知识点联动 |
+| `POST /api/education/agent/progress` | 学习进度追踪 |
+| `POST /api/education/agent/polish` | 五步打磨（diverge/verify/focus/stress） |
+| `POST /api/education/agent/decompose` | 子问题拆解 |
+| `POST /api/education/agent/follow-up` | 步骤结果苏格拉底追问 |
+| `POST /api/education/agent/idea-cards/*` | 想法卡管理（list/create/update/delete） |
+| `POST /api/education/agent/policy-check` | 教育策略校验 |
+
+### 6.7 自动闭环 / 认知诊断 / 知识图谱 / 合规
+
+| 分组 | 接口 |
+|---|---|
+| 自动闭环 | `/api/education/loop/hook-answer`、`/hook-plan-progress`、`/diagnose`、`/iterate`、`/report` |
+| BKT 认知诊断 | `/api/education/cognitive/bkt-track`、`/bkt-diagnose` |
+| 知识点先修图 | `/api/education/kg/check-prereq`、`/plan-path`、`/validate-path` |
+| 思政审核 | `/api/education/audit/content`、`/calibrate` |
+| 多模态 | `/api/education/multimodal/photo-solve`、`/speech-assessment`、`/blackboard` |
+| 数据合规 | `/api/education/compliance/classification`、`/cleanup-student`、`/cleanup-expired`、`/status` |
+| 学生服务 | `/api/education/student/cognitive-dims`、`/recommend`、`/review-reminder` |
+| 语言学习 | `/api/education/lang/reading`、`/vocab-grammar`、`/writing`、`/record` |
+| 编程教育 | `/api/education/coding/decompose`、`/tutor`、`/interview`、`/path` |
+
+> 完整路由清单见源码 `src/api/server.ts`（搜索 `app.post("/api/education`）。

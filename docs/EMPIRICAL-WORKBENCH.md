@@ -1,4 +1,4 @@
-# 实证研究工作台增强 — 使用手册(V380+)
+# 实证研究工作台增强 — 使用手册
 
 > MarxSphere 实证研究工作台从"方法执行器"升级为完整研究流水线。
 > 前端入口: 工作台 → 「实证研究」(hash: #empirical-research), 左侧 11 区段导航。
@@ -45,11 +45,11 @@
 POST/GET /api/empirical/projects
 POST /api/empirical/questionnaires/generate
 POST /api/empirical/questionnaires/recognize
-GET  /api/empirical/questionnaires?projectId=
+GET /api/empirical/questionnaires?projectId=
 POST/GET /api/empirical/data-versions
 
 # 信效度/诊断/闸门
-POST /api/empirical/reliability           # 异步轮询(复用 result/:taskId)
+POST /api/empirical/reliability # 异步轮询(复用 result/:taskId)
 POST /api/empirical/diagnosis
 POST /api/empirical/gates/upsert | /:id/lock | /:id/confirm | /:id/reopen | GET /gates
 
@@ -72,22 +72,22 @@ POST /api/empirical/interpretation/draft | /save
 ```bash
 # 1. 建项目
 curl -X POST localhost:4173/api/empirical/projects -H "Content-Type: application/json" \
-  -d '{"title":"农村经营形态调查","topic":"调地意愿"}'
+ -d '{"title":"农村经营形态调查","topic":"调地意愿"}'
 # 2. 生成问卷(20题, LLM ~60s)
 curl -X POST localhost:4173/api/empirical/questionnaires/generate -H "Content-Type: application/json" \
-  -d '{"projectId":"<PID>","topic":"二轮承包到期后农户调地意愿","nQuestions":20}'
+ -d '{"projectId":"<PID>","topic":"二轮承包到期后农户调地意愿","nQuestions":20}'
 # 3. 信效度(50份演示数据)
 curl -X POST localhost:4173/api/empirical/reliability -H "Content-Type: application/json" \
-  -d '{"data":{...},"scaleGroups":[{"name":"意愿","columns":["adj_willing","continue_will","abandon_right_will"]}]}'
+ -d '{"data":{...},"scaleGroups":[{"name":"意愿","columns":["adj_willing","continue_will","abandon_right_will"]}]}'
 # 4. 变量敲定(白名单校验)
 curl -X POST localhost:4173/api/empirical/variables/suggest -H "Content-Type: application/json" \
-  -d '{"columns":["adj_willing","identity","edu"],"nRows":50}'
+ -d '{"columns":["adj_willing","identity","edu"],"nRows":50}'
 # 5. 回归生成+执行
 curl -X POST localhost:4173/api/empirical/regression/generate -H "Content-Type: application/json" \
-  -d '{"data":{...},"spec":{"dep":"adj_willing","core":["identity","edu"],"cluster":"hukou","model":"ologit"}}'
+ -d '{"data":{...},"spec":{"dep":"adj_willing","core":["identity","edu"],"cluster":"hukou","model":"ologit"}}'
 # 6. 证据账本(解释闸门 confirm 后)
 curl -X POST localhost:4173/api/empirical/ledger/add-from-result -H "Content-Type: application/json" \
-  -d '{"projectId":"<PID>","runId":"<RUN>","tableIndex":0,"rowIndex":1,"colIndex":1}'
+ -d '{"projectId":"<PID>","runId":"<RUN>","tableIndex":0,"rowIndex":1,"colIndex":1}'
 ```
 
 ## 7. 部署与数据

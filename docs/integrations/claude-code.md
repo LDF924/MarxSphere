@@ -15,13 +15,13 @@
 
 ```json
 {
-  "mcpServers": {
-    "sag": {
-      "command": "npx",
-      "args": ["tsx", "scripts/sag-mcp-server.ts"],
-      "cwd": "<SAG_ROOT>"
-    }
-  }
+ "mcpServers": {
+ "sag": {
+ "command": "npx",
+ "args": ["tsx", "scripts/sag-mcp-server.ts"],
+ "cwd": "<SAG_ROOT>"
+ }
+ }
 }
 ```
 
@@ -37,17 +37,17 @@ claude mcp add sag npx tsx scripts/sag-mcp-server.ts --cwd SAG_ROOT
 
 ```json
 {
-  "mcpServers": {
-    "sag": {
-      "command": "npx",
-      "args": ["tsx", "scripts/sag-mcp-server.ts"],
-      "cwd": "<SAG_ROOT>",
-      "env": {
-        "SAG_API_URL": "https://your-server.example.com",
-        "SAG_API_TOKEN": "sag_xxx"
-      }
-    }
-  }
+ "mcpServers": {
+ "sag": {
+ "command": "npx",
+ "args": ["tsx", "scripts/sag-mcp-server.ts"],
+ "cwd": "<SAG_ROOT>",
+ "env": {
+ "SAG_API_URL": "https://your-server.example.com",
+ "SAG_API_TOKEN": "sag_xxx"
+ }
+ }
+ }
 }
 ```
 

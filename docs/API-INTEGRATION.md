@@ -30,3 +30,28 @@ MarxSphere 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Code
 ## 一句话流程
 
 MarxSphere 设置页生成 `sag_xxx` Token → 填入 Claude Code `.mcp.json` / Codex `config.toml` → Agent 直接调用 SAG 52 步推理 / 多源检索 / 文档入库。
+
+## 教育能力接入
+
+教育能力经 REST 暴露（**80+ 路由**，前缀 `/api/education`），与推理/检索同一认证体系（`education` 权限粒度）。
+
+**核心示例**：
+
+```bash
+# 苏格拉底式提问（五步打磨第一层）
+curl -X POST localhost:4173/api/education/agent/socratic \
+ -H "Content-Type: application/json" \
+ -d '{"subject":"政治经济学","question":"为什么说价值规律是商品经济的基本规律？"}'
+
+# 学习计划生成
+curl -X POST localhost:4173/api/education/learning-plan \
+ -H "Content-Type: application/json" \
+ -d '{"subject":"政治经济学","goal":"系统掌握价值规律","hoursPerWeek":4}'
+
+# 作业辅导（分步提示）
+curl -X POST localhost:4173/api/education/homework/solve \
+ -H "Content-Type: application/json" \
+ -d '{"subject":"政治经济学","question":"简述价值规律的基本内容","hintLevel":"hint"}'
+```
+
+完整路由清单见 [api-reference.md](api-reference.md) 第 6 章「AI+教育」。

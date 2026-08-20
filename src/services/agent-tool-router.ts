@@ -220,6 +220,87 @@ export async function buildAgentTools(opts?: {
       params: { keyword: { type: "string", required: true, desc: "政策关键词" } },
       run: async (a) => callApi("/api/reason/query", { query: `政策: ${a.keyword}`, mode: "adaptive" }),
     },
+    // 教育能力调用（Agent 一句话触发教育功能）
+    {
+      name: "education_service", label: "教育能力", risk: "safe",
+      description: "调用教育功能（学习规划/作业辅导/学情诊断/预习复习/备课/陪伴/苏格拉底/五步打磨等）",
+      params: {
+        action: { type: "string", required: true, desc: "学习规划=learning-plan|课程辅导=tutoring|学情诊断=diagnosis|预习复习=preview-review|备课=lesson-plan|陪伴=companion|苏格拉底=socratic|作业辅导=homework-solve|错题归集=wrong|变式=variant|出题=questions|批改=grade|BKT追踪=bkt-track|先修检测=check-prereq|路径规划=plan-path" },
+        subject: { type: "string", required: true, desc: "科目（如：政治经济学）" },
+        topic: { type: "string", desc: "知识点/题目/章节（按 action 需要）" },
+      },
+      run: async (a) => {
+        const action = String(a.action || "");
+        const subject = String(a.subject || "政治经济学");
+        const topic = String(a.topic || "");
+        const map: Record<string, string> = {
+          // 核心六能力
+          "learning-plan": "/learning-plan", "tutoring": "/tutoring", "diagnosis": "/diagnosis",
+          "preview-review": "/preview-review", "lesson-plan": "/lesson-plan", "companion": "/companion",
+          // 自适应
+          "record-answer": "/adaptive/record-answer", "profile": "/adaptive/profile", "push": "/adaptive/push",
+          "pace": "/adaptive/pace", "layered": "/adaptive/layered",
+          // 作业辅导
+          "homework-solve": "/homework/solve", "wrong": "/homework/wrong", "variant": "/homework/variant",
+          "wrong-list": "/homework/wrong-list", "wrong-mastered": "/homework/wrong-mastered", "qna": "/homework/qna",
+          "companion-plan": "/companion/plan", "companion-progress": "/companion/progress", "companion-plans": "/companion/plans",
+          "companion-qna": "/companion/qna", "motivate": "/companion/motivate", "review": "/companion/review", "reviews": "/companion/reviews",
+          // 学情诊断
+          "gaps": "/diagnostic/gaps", "behavior": "/diagnostic/behavior", "diag-report": "/diagnostic/report", "risk": "/diagnostic/risk",
+          // 教师助手
+          "exam": "/teach/exam", "grade": "/teach/grade", "class-summary": "/teach/class-summary",
+          "teach-lesson": "/teach/lesson",
+          "syllabus": "/teach/syllabus", "courseware": "/teach/courseware", "layered-teach": "/teach/layered",
+          "questions": "/teach/questions", "wrong-report": "/teach/wrong-report", "discussion": "/teach/discussion",
+          "quiz": "/teach/quiz", "lecture-summary": "/teach/lecture-summary",
+          // 教育 Agent 编排
+          "socratic": "/agent/socratic", "socratic-continue": "/agent/socratic-continue", "scaffold": "/agent/scaffold",
+          "wrong-to-mastery": "/agent/wrong-to-mastery", "progress": "/agent/progress", "polish": "/agent/polish",
+          "decompose": "/agent/decompose", "follow-up": "/agent/follow-up", "policy-check": "/agent/policy-check",
+          "idea-list": "/agent/idea-cards/list", "idea-create": "/agent/idea-cards/create",
+          "idea-update": "/agent/idea-cards/update", "idea-delete": "/agent/idea-cards/delete",
+          // 认知诊断
+          "bkt-track": "/cognitive/bkt-track", "bkt-diagnose": "/cognitive/bkt-diagnose",
+          // 知识图谱
+          "check-prereq": "/kg/check-prereq", "plan-path": "/kg/plan-path", "validate-path": "/kg/validate-path",
+          // 思政审核
+          "audit": "/audit/content", "calibrate": "/audit/calibrate",
+          // 多模态
+          "photo-solve": "/multimodal/photo-solve", "speech-assessment": "/multimodal/speech-assessment", "blackboard": "/multimodal/blackboard",
+          // 学生服务
+          "cognitive-dims": "/student/cognitive-dims", "recommend": "/student/recommend", "review-reminder": "/student/review-reminder",
+          // 语言学习
+          "reading": "/lang/reading", "vocab-grammar": "/lang/vocab-grammar", "writing": "/lang/writing", "record": "/lang/record",
+          // 编程教育
+          "coding-decompose": "/coding/decompose", "coding-tutor": "/coding/tutor", "interview": "/coding/interview", "coding-path": "/coding/path",
+          // 自动闭环
+          "hook-answer": "/loop/hook-answer", "hook-plan-progress": "/loop/hook-plan-progress",
+          "diagnose": "/loop/diagnose", "iterate": "/loop/iterate", "report": "/loop/report",
+          // 合规
+          "classification": "/compliance/classification", "status": "/compliance/status",
+          "cleanup-student": "/compliance/cleanup-student", "cleanup-expired": "/compliance/cleanup-expired",
+        };
+        const path2 = map[action];
+        if (!path2) return `（未知教育动作: ${action}）`;
+        const body: Record<string, unknown> = { subject };
+        if (topic) {
+          body.topic = topic; body.question = topic; body.knowledgePoint = topic;
+          body.chapter = topic; body.text = topic; body.problemStatement = topic;
+        }
+        try {
+          const SAG_URL = process.env.SAG_INTERNAL_URL || "http://127.0.0.1:4173";
+          const res = await fetch(`${SAG_URL}/api/education${path2}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+            signal: AbortSignal.timeout(120000),
+          });
+          if (!res.ok) return `（教育调用失败: HTTP ${res.status}）`;
+          const j = await res.json();
+          return JSON.stringify(j).slice(0, 2000);
+        } catch (e: any) {
+          return `（教育调用异常: ${String(e?.message || e).slice(0, 120)}）`;
+        }
+      },
+    },
     // 借鉴4(DSH subagent-claude-code): 调外部 Agent 子进程（Claude Code CLI 桥）
     // 复用 ai-execute-service 的 executeWithClaude; 严格成功映射 + 超时清理
     {

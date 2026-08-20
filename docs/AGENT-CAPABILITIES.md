@@ -1,6 +1,6 @@
-# MarxSphere Agent 能力总览（2026-08-16 终版）
+# MarxSphere Agent 能力总览（2026-08-21 更新）
 
-> AI Agent 子系统完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现，50 项特性全部吸收。
+> AI Agent 子系统完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现；覆盖通用科研 Agent（26 基础工具 + 18 视图工具）+ 教育专属 Agent（13 个教育服务文件、84 个教育路由）。
 
 ## 一、核心架构
 
@@ -13,11 +13,12 @@
 | checkpoint | 每轮落快照（loop/plan/failures），重启续跑 | 迁移 069 |
 | token 预算 | 任务级 400K token 上限，超预算终止 | `AGENT_TASK_TOKEN_BUDGET` |
 
-## 二、工具（23 个）
+## 二、工具（26 基础 + 18 视图 + 教育工具集）
 
 | 类别 | 工具 |
 |---|---|
 | 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse |
+| 教育 | education_service（learning-plan/tutoring/diagnosis/lesson-plan/companion/socratic/homework-solve/wrong/variant/questions/grade/bkt-track/check-prereq/plan-path 等 15 动作，对话一句话触发） |
 | 行动 | run_code(3级沙箱) / run_command / web_fetch / web_search / file_read / file_write / apply_patch / empirical_analysis / sag_ingest |
 | 协作 | agent_subagent(外部Agent) / attachment_read / code_search / todo_update |
 
@@ -61,19 +62,19 @@
 ## 七、环境变量（关键）
 
 ```
-AGENT_AUTONOMY=suggest|auto-edit|full-auto   AGENT_PRESET=academic|data|writing|coding
+AGENT_AUTONOMY=suggest|auto-edit|full-auto AGENT_PRESET=academic|data|writing|coding
 AGENT_SANDBOX_PROFILE=read-only|workspace-write|full-access
-AGENT_TASK_TOKEN_BUDGET=400000   AGENT_TASK_TIMEOUT_MS=600000
-AGENT_TOOL_TIMEOUT_MS=90000      AGENT_QUEUE_CONCURRENCY=2
-AGENT_LLM_CONCURRENCY=8          AGENT_PROACTIVE_RESEARCH=1
-AGENT_IDENTITY=...               AGENT_TOOL_WHITELIST=...  AGENT_NET_WHITELIST=...
+AGENT_TASK_TOKEN_BUDGET=400000 AGENT_TASK_TIMEOUT_MS=600000
+AGENT_TOOL_TIMEOUT_MS=90000 AGENT_QUEUE_CONCURRENCY=2
+AGENT_LLM_CONCURRENCY=8 AGENT_PROACTIVE_RESEARCH=1
+AGENT_IDENTITY=... AGENT_TOOL_WHITELIST=... AGENT_NET_WHITELIST=...
 ```
 
 ## 八、迁移（068-076）
 
 ```
-068 语料库四表  069 checkpoint   070 凭证   071 会话前缀
-072 消息线程    073 任务依赖DAG  074 反馈    075 设置持久化
+068 语料库四表 069 checkpoint 070 凭证 071 会话前缀
+072 消息线程 073 任务依赖DAG 074 反馈 075 设置持久化
 076 执行日志元数据
 ```
 
@@ -104,9 +105,31 @@ AGENT_IDENTITY=...               AGENT_TOOL_WHITELIST=...  AGENT_NET_WHITELIST=.
 ## 十二、演进史（2026-08 关键里程碑）
 
 ```
-08-07  P2 任务规划器基础 → 08-15 V391-396 Agent 体系（40+ 能力）
-08-16  审计 26 项补齐（迁移 067）→ 行动工具 5 项（9→16 工具）
-08-16  学术语料库（四大子库+Agent 注入）→ 白屏修复+ErrorBoundary
-08-16  借鉴 Codex/DSH 5 项（registry/沙箱3级/checkpoint/外部Agent/guardian）
-08-16  差距 A-T 20 项 → 收尾（UI/文档/单测）→ 50 项特性终版
+08-07 P2 任务规划器基础 → 08-15 V391-396 Agent 体系（40+ 能力）
+08-16 审计 26 项补齐（迁移 067）→ 行动工具 5 项（9→16 工具）
+08-16 学术语料库（四大子库+Agent 注入）→ 白屏修复+ErrorBoundary
+08-16 借鉴 Codex/DSH 5 项（registry/沙箱3级/checkpoint/外部Agent/guardian）
+08-16 差距 A-T 20 项 → 收尾（UI/文档/单测）→ 50 项特性终版
 ```
+
+## 教育专属 Agent 编排
+
+在通用编排（44 工具）之上新增**教育场景专属闭环**：
+
+| 能力 | 服务/路由 | 说明 |
+|---|---|---|
+| 苏格拉底式提问 | `agent-education.ts` `socraticStart/Continue` | 连续追问引导（3 轮上限），不直接给答案 |
+| 阶梯式启发 | `scaffoldedTutoring` | hint → guided → full 三级提示状态机 |
+| 错题-知识点联动 | `wrongToMastery` | 错题→溯源→掌握度下调→变式→回升 |
+| 学习进度追踪 | `learningProgress` | 计划完成率 + 掌握度变化 + 变式正确率 |
+| 五步打磨 | `polishStep`（diverge/verify/focus/stress）| Hazel 式：记录→发散→初步验证（知识库密度）→聚焦→压力测试 |
+| 子问题拆解 | `decomposeQuestions` | 从 Problem Statement 拆 2-4 个子问题 |
+| 步骤追问 | `followUpPolish` | 对任一步输出苏格拉底式追问 |
+| 想法卡 | `idea-cards/*`（list/create/update/delete）| 多想法并行管理（Hazel 式） |
+| 教育策略校验 | `checkEducationPolicy` | 「不直接给答案」「不替代教师评价」边界 |
+| BKT 认知诊断 | `cognitive-diagnosis.ts` | p(掌握) 贝叶斯推断 + 预测答对概率 |
+| 知识点先修图 | `knowledge-graph-edu.ts` | kp_points/kp_edges + 拓扑路径规划 |
+| 思政内容审核 | `content-audit-service.ts` | 四维核验（意识形态/表述/引用/边界）+ Compiled Truth 校准 |
+| 自动闭环 | `auto-learning-loop.ts` | 钩子采集→自动诊断→回流迭代→周报 |
+| 教育合规 | `education-compliance.ts` | 数据分级/清理/保留期/状态 |
+| 教育多模态 | `education-multimodal.ts` | 作业拍照/口语测评/板书识别 |

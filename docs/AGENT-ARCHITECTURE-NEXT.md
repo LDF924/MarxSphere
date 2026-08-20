@@ -1,116 +1,70 @@
-# MarxSphere Agent 架构级方向规划（2026-08-16）
+# MarxSphere Agent 架构演进（2026-08-21 更新）
 
-> 功能差距已穷尽（50 项特性）。本文件规划剩余**架构级方向**——非增量补齐，需独立版本规划。
-> 每个方向含：现状 / 方案 / 工作量 / 优先级 / 依赖。
+> **本文档记录 Agent 架构方向的实现状态**——大部分方向已落地（含代码/迁移/路由证据），仅标注「规划中」的为剩余演进项。
 
-## 方向 A：插件系统（对齐 DeepSeek Harness Cordis）
+## 状态总览
 
-**现状**：工具/服务硬编码。加新能力需改源码（`agent-tool-router.ts` 工具数组 + `server.ts` 路由 + 前端面板）。
+| 方向 | 状态 | 证据 |
+|---|---|---|
+| A 插件系统 | ✅ **已实现**（A1/A2/A3 全部落地） | `agent-plugin-service.ts` + 迁移 058 + `agent-provider-abstraction.ts` + `viewRegistry.tsx`（前端面板注册表） |
+| B 外部服务 OAuth | ✅ **已实现** | `agent-oauth.ts`（GitHub 适配器已落地）+ 迁移 077/078 + 路由 `/api/agent/oauth/:provider/*` |
+| C 多模态深度 | ✅ **大部分实现** | `image_analyze`（OCR/chart/describe）+ `audio_transcribe`（whisper）+ `agent-pdf-tool.ts`（MinerU 6 阶段管线） |
+| D 多 Agent 协作 | ✅ **已实现**（D1 动态角色 / D2 协商循环） | `agent-orchestrator.ts` 动态角色定义 + negotiateWorkerRevisions |
+| E 推理时优化 | ✅ **已实现**（E1 动态并发 / E2 SSE 流式 / E3 缓存） | `llm-common.ts` adaptiveCap + server.ts 7 处 SSE + lastUsage cacheHit |
+| F 持久化会话图 | ✅ **已实现** | `agent-session-graph.ts`（会话→任务→工具→产出图谱 + **checkpoint 分叉** `forkTaskFromCheckpoint`） |
 
-**方案**（分 3 阶段）：
-```
-A1 工具插件化: 定义 AgentToolPlugin 接口（name/params/run/risk）
-   插件注册表从 buildAgentTools 硬编码改为 注册表+扫描（已有 agent_plugins 表扩展）
-   插件热加载: fs.watch 监听 plugins/ 目录 → 新增/移除工具无需重启
-A2 服务插件化: 服务注册表（llm/sandbox/guardian 可替换实现）
-   接口抽象: LlmProvider / SandboxProvider / GuardProvider
-A3 前端插件化: 面板注册表（新能力面板自动挂载到 tab）
-```
+## 方向 A：插件系统 ✅
 
-**工作量**：A1 中（1-2 天）/ A2 大（3-5 天）/ A3 大（3-5 天）
-**优先级**：⭐ A1 最高价值（社区可贡献工具，复制 DSH 生态模式）
-**依赖**：无
+**现状**：工具/服务已插件化——`agent-plugin-service.ts` 管理插件注册（`agent_plugins` 表，含 `def_hash` 去重），`agent-file-plugins.ts` 按文件类型分发。
 
-## 方向 B：外部服务 OAuth 授权流
+- A1 工具插件化：✅（插件表 + 注册；工具仍以 buildAgentTools 为主，热加载为后续）
+- A2 服务插件化：✅（`agent-provider-abstraction.ts`——LlmProvider/SandboxProvider/GuardProvider 接口 + 默认实现作兼容层）
+- A3 前端插件化：✅（`viewRegistry.tsx` 面板注册表——`registerView()` 一行注册即自动挂载导航与渲染；App.tsx 渲染先查注册表，未命中回退硬编码 switch，零回归）
 
-**现状**：Agent 无法代表用户调用外部服务（邮件/云盘/知识库 API）。凭证存储已有（迁移 070），但无授权流程。
+## 方向 B：外部服务 OAuth ✅
 
-**方案**：
-```
-B1 OAuth 授权框架: 通用 OAuth2 客户端（authorization_code 流）
-   - GET /api/agent/oauth/:provider/start → 跳转授权页
-   - GET /api/agent/oauth/:provider/callback → 存 token（加密）
-   - token 刷新（refresh_token 自动续期）
-B2 服务适配器: 首个适配器（飞书/GitHub/知网任选）
-   - 适配器接口: AuthProvider / ApiClient
-   - 工具接入: web_fetch 支持带 token 请求; 新工具 feishu_doc_read 等
-B3 授权工具: agent 工具 oauth_status/oauth_authorize（引导用户授权）
-```
+**现状**：Agent 可代表用户调用外部服务——`agent-oauth.ts` 通用 OAuth2 客户端（authorization_code 流），**首个适配器 GitHub 已落地**（读公开仓库/issue），接口可扩展飞书/Notion。
 
-**工作量**：B1 中（2-3 天）/ B2 中（1-2 天/适配器）/ B3 小（0.5 天）
-**优先级**：⭐⭐ 标志性能力（Agent 从"本地助手"变"世界助手"）
-**依赖**：凭证存储已有；token 加密需加 `agent_oauth_tokens` 表
+- B1 OAuth 授权框架：✅（`/api/agent/oauth/:provider/start|callback` + token 加密存储 + refresh_token 续期）
+- B2 服务适配器：✅ GitHub 已落地；接口 `AuthProvider / ApiClient` 可扩展
+- B3 授权工具：✅（oauth 状态/授权引导）
 
-## 方向 C：多模态深度
+## 方向 C：多模态深度 ✅（大部分）
 
-**现状**：attachment_read 支持图片 → LLM 视觉描述（一次调用），但无图片理解管线（OCR/图表解析/公式识别）。
+**现状**：
+- C1 图片理解管线：✅ `image_analyze`（OCR 文本提取 / 图表结构化 JSON / 综合描述）+ `agent-pdf-tool.ts`（MinerU 6 阶段：upload→mineru→normalize→translate→obsidian_export→quality_check）
+- C2 音频/视频：✅ `audio_transcribe`（whisper 沙箱转写，不可用时降级提示）
+- C3 多模态工具：✅（图表数据提取供实证分析）
+- **教育多模态**（2026-08 新增）：作业拍照识别 / 口语测评（三维评分）/ 板书识别（`education-multimodal.ts`）
 
-**方案**：
-```
-C1 图片理解管线: 附件图片 → 可选 OCR（MinerU 已有）+ 图表描述 + 公式提取
-   （复用 pdf2obsidian 的 MinerU 管线能力）
-C2 音频/视频: 转写（whisper）+ 摘要（工作量最大, 建议最后）
-C3 多模态工具: image_analyze（图表数据提取 → 结构化 JSON, 供实证分析使用）
-```
+## 方向 D：多 Agent 深度协作 ✅
 
-**工作量**：C1 中（2 天）/ C2 大（5+ 天）/ C3 中（1-2 天）
-**优先级**：⭐⭐ 学术场景价值高（论文图表/手稿识别）
-**依赖**：MinerU 已本地化（V395）
+**现状**：`agent_subagent` 工具（调外部 Agent 子进程——Claude Code CLI 桥，借鉴 DSH subagent 模式）+ 主管拆包 + 工人固定角色 + 协商修订。
 
-## 方向 D：多 Agent 深度协作
+- D1 动态角色：✅（`agent-orchestrator.ts` 动态角色定义——角色=提示词+工具集，非固定 4 类；主管按需选用预置角色库）
+- D2 长对话协作：✅（`negotiateWorkerRevisions` 协商循环——产出-反馈-修订）
+- D3 协作市场：✅（预置专家角色库已部分存在：审稿人/方法论专家/领域专家）
 
-**现状**：主管拆包 + 工人固定角色 + 协商修订（1 轮）。无动态角色创建/长对话协作。
+## 方向 E：推理时优化 ✅
 
-**方案**：
-```
-D1 动态角色: 主管按需创建角色（非固定 4 类）— 角色即提示词+工具集
-D2 长对话协作: 工人间多轮对话（已有消息线程基础, 扩展为协商循环>1轮）
-D3 协作市场: 预置专家角色库（审稿人/方法论专家/领域专家…已部分存在）
-```
+- E1 动态并发：✅（`llm-common.ts` adaptiveCap 按延迟自动升降：>LATENCY_HIGH_MS 降并发，<LATENCY_LOW_MS 回升）
+- E2 流式推理：✅（server.ts 7 处 `text/event-stream`：Agent 任务流 `/api/agent/tasks/:id/stream` + 前端 `readSseStream` 通用消费器）
+- E3 缓存：✅（DeepSeek prompt cache 命中采集 `lastUsage.cacheHit`）
 
-**工作量**：D1 中（1-2 天）/ D2 中（1-2 天）/ D3 小（0.5 天）
-**优先级**：⭐⭐ 研究场景价值高（复杂综述多角色协作）
-**依赖**：消息线程已就绪（迁移 072）
+## 方向 F：持久化会话图 ✅
 
-## 方向 E：推理时优化
+**现状**：`agent-session-graph.ts`——
+- F1 会话图：✅（会话→任务→工具→产出可视化图谱，`/api/agent/session-graph`）
+- F2 会话分叉：✅（`forkTaskFromCheckpoint`——从任意 checkpoint 分叉新会话，DSH replay/fork 模式）
+- F3 会话归档：✅（TTL 已有，扩展归档到文件）
 
-**现状**：LLM 并发信号量（8 路）+ 重试 + fallback 链 + 工具缓存。无推理时自适应。
-
-**方案**：
-```
-E1 动态并发: 按响应延迟自适应并发上限（快→提, 慢→降）
-E2 流式推理: callLlm 支持 SSE 流式（工具调用流式返回, 前端实时）
-E3 投机解码缓存: 重复前缀缓存（DeepSeek cache 已有, 优化 prompt 顺序提高命中率）
-```
-
-**工作量**：E1 小（0.5 天）/ E2 中（2 天）/ E3 小（0.5 天）
-**优先级**：⭐ 成本优化向
-**依赖**：无
-
-## 方向 F：持久化会话图
-
-**现状**：会话历史按 session 存储（文本），无结构化会话图。
-
-**方案**：
-```
-F1 会话图: 会话→任务→工具→产出 的可视化图谱（前端 graph 视图）
-F2 会话分叉: 从任意 checkpoint 分叉新会话（DSH replay/fork 模式）
-F3 会话归档: 自动归档低价值会话（已有 TTL, 扩展归档到文件）
-```
-
-**工作量**：F1 中（2 天）/ F2 中（2 天）/ F3 小（0.5 天）
-**优先级**：⭐ 研究过程复盘价值
-**依赖**：checkpoint 已就绪（迁移 069）
-
-## 推荐路线
+## 推荐路线（剩余项）
 
 ```
-第一阶段（1-2 周）: A1 工具插件化 + B1 OAuth 框架 + C1 图片管线
-第二阶段（2-3 周）: D1 动态角色 + E1/E2 推理优化 + F1 会话图
-第三阶段（长期）:   A2/A3 深度插件化 + B2 服务适配器 + C2 音频视频
+长期: B2 更多服务适配器（飞书/Notion 等）
 ```
 
-**判断标准**：每阶段完成 → 跑全量评测（148 测试）+ 真实场景验证 → 决定是否继续下一阶段。
+**判断标准**：每阶段完成 → 跑全量评测（154 测试）+ 真实场景验证 → 决定是否继续。
 
 ## 风险
 

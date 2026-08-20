@@ -1,179 +1,103 @@
-# MarxSphere 全链路检索流程 (V88K) + eval-32-metrics V41 评测体系
+# MarxSphere 系统架构（2026-08-21 更新）
 
-> 入口: `POST /api/reason/query` (Fastify :4173) → reasonWithFallback (V80自愈闭环)
-> 核心: `InferenceService` (src/services/inference-service.ts, 1682行)
-> 评测: `scripts/eval-32-metrics.ts` (1059行, V41 — 32指标, A9-A12新增)
+> MarxSphere 全链路架构：52 步推理 + 四源检索 + AI Agent 编排 + AI+教育，当前真实状态。
 
-## 1. 整体架构 — 四层检索管道
+## 1. 整体架构 — 四层管道
 
 ```
-                             ┌───────────────────────────┐
-                             │     用户 Query (HTTP)      │
-                             │  概念定义/事实检索/多跳推理/政策评估 │
-                             └─────────────┬─────────────┘
-                                           │
-                             ┌─────────────▼─────────────┐
-                             │    detectQuestionType()    │
-                             │  4路分类 + 7降级规则       │
-                             └─────────────┬─────────────┘
-                                           │
-                             ┌─────────────▼─────────────┐
-                             │  V50 expandQuery() 查询扩展  │
-                             │  L1: external_entities.name │
-                             │  L2: external_entities.desc │
-                             │  L3: source_chunks.heading  │
-                             │  +V88B LLM同义句            │
-                             │  +V88C type过滤             │
-                             │  +V88K heading extract     │
-                             └─────────────┬─────────────┘
-                                           │
-┌──────────────────────────────────────────┼──────────────────────────────────────────┐
-│                                          │                                          │
-│  ┌───────────────────────┐  ┌────────────▼───────────────┐  ┌────────────────────┐ │
-│  │ 阶段2: 粗检索           │  │ 阶段3: Graphiti精炼        │  │ 阶段4: 融合生成  │ │
-│  │ stage2_cogneeCoarse    │  │ stage3_graphitiRefine     │  │ reason() 主流程     │ │
-│  │                        │  │                           │  │                     │ │
-│  │ Cognee MCP (3路并行):   │  │ Phase A (并行):            │  │ V85 Graphiti→PG     │ │
-│  │  CHUNKS (topK=25)      │  │  chunk_search_entities    │  │   交叉信号          │ │
-│  │  RAG_COMPLETION (15)   │  │  search_literature        │  │                     │ │
-│  │  HYBRID_COMPLETION(15) │  │  get_entity_info          │  │ V42 fuseResults     │ │
-│  │                        │  │  search_by_concept        │  │   按来源配额融合:    │ │
-│  │ PG 本地双路 (并行):     │  │                           │  │   Cognee  35% 2100  │ │
-│  │  pgvector entity (20)  │  │ Phase B (并行):            │  │   PG      25% 1500  │ │
-│  │  pgvector chunk (20)   │  │  hybrid_search_entities   │  │   Graphiti25% 1500  │ │
-│  │  V47 ILIKE keyword(10) │  │  get_distill_content      │  │   PG全文  10% 600   │ │
-│  │  V88A document boost   │  │  get_domain_knowledge     │  │   实体名   5% 300   │ │
-│  │  V63 HyDE双向量        │  │                           │  │                     │ │
-│  │                        │  │ Entity合并+展开(1-hop)     │  │ generateHypothesis  │ │
-│  │ Cognee词法 (仅factual): │  │                           │  │  LLM: DS/DashScope  │ │
-│  │  CHUNKS_LEXICAL (15)   │  │                           │  │                     │ │
-│  │                        │  │                           │  │ evaluateHypothesis  │ │
-│  │ Cognee Neo4j直连:       │  │                           │  │  LLM Judge 交叉校验  │ │
-│  │  Entity CONTAINS查询    │  │                           │  │                     │ │
-│  └───────────────────────┘  └───────────────────────────┘  └────────────────────┘ │
-│                                                                                    │
-└────────────────────────────────────────────────────────────────────────────────────┘
+用户 Query (HTTP / MCP / SSE)
+        │
+        ▼
+┌─ 推理链路层 ──────────────────────────────┐
+│ 问题分类(四路分调) → Cognee 粗检索 → Graphiti 精炼 │
+│ → PG 词法 → 超边增强 → 融合 → 假设 → 评估 → 反思   │
+└──────────────┬──────────────────────────┘
+               ▼
+┌─ 检索层（四源混合 RRF）───────────────────┐
+│ SAG 事件(内容向量+标题向量+BM25)          │
+│ Graphiti 超边/社区 · Cognee 切片 · PG 向量/词法 │
+└──────────────┬──────────────────────────┘
+               ▼
+┌─ AI Agent 编排层 ────────────────────────┐
+│ 规划→选工具→执行→reflect→replan(≤3轮)      │
+│ 44 通用工具 + 5层安全 + 5层记忆            │
+│ 插件系统(A1工具/A2服务/A3前端注册表)        │
+└──────────────┬──────────────────────────┘
+               ▼
+┌─ AI+教育层（84 路由）────────────────────┐
+│ 六能力/自适应四层/作业闭环/BKT/先修图      │
+│ 苏格拉底五步打磨/思政审核/自动闭环/多模态   │
+└──────────────┬──────────────────────────┘
+               ▼
+┌─ 数据层 ────────────────────────────────┐
+│ PG+pgvector(1024维) │ Neo4j(Graphiti/Cognee) │
+└──────────────────────────────────────────┘
 ```
 
-## 2. V80 检索自愈闭环 (reasonWithFallback)
+**规模**：149 服务文件（36 agent-* + 12 教育服务）· 489 路由（84 教育）· 82 迁移 · 40 前端视图 · 154 测试
 
-```
-策略1: reason() 全栈检索 ──成功→ standard 返回
-  │失败
-  ▼
-策略2: reason(expandedQuery) 全栈+180s超时 ──成功→ expandedQuery 返回
-  │超时
-  ▼ reasonFast回退
-策略3: reason(hydeAnswer) 全栈+180s超时 ──成功→ hyde 返回
-  │超时
-  ▼ reasonFast回退
-策略4: reason(query+entityNames) 全栈+180s超时 ──成功→ entityBoost 返回
-  │超时
-  ▼ reasonFast回退
-  
-全部用尽 → fallback_exhausted 返回策略1结果
-```
+## 2. 推理链路（52 步）
 
-**reasonFast**: PG+ILIKE+LLM轻量检索(无CogneeMCP/GraphitiMCP), 5-15s, 仅在回退时调用
+入口 `InferenceService.reason()`，关键阶段：
 
-## 3. PG 双路检索详细
+1. **问题分类**（四路分调 PROFILES）
+2. **Cognee 粗检索**（stage2）
+3. **Graphiti 精炼**（stage3）
+4. **PG 全文**（stage4）
+5. **超边增强**（stage3.5）
+6. **多源融合**
+7. **假设生成**
+8. **评估**
+9. **反思自愈**（template → expandQuery → HyDE → reasonFast 逐级升级）
 
-```
-query + expandQuery扩展词
-  │
-  ├─ embeddingClient.generate(query) → queryVec
-  │  └─ V63 HyDE (factual): LLM生成假设答案 → hydeVecStr || queryVecStr
-  │
-  ├─ entity_vec_search: ORDER BY embedding<=>(hydeVec||queryVec) LIMIT 20
-  ├─ chunk_vec_search: ORDER BY embedding<=>(hydeVec||queryVec) LIMIT 20
-  │
-  └─ ILIKE keyword (V47, V60, V88A):
-       expandKw = query拆词 ∪ entities扩展
-       → ORDER BY hitCount DESC, LENGTH ASC LIMIT 10
-       → V88A: 命中doc_id → 注入同doc其他chunks LIMIT 10
-       → 去重合并到 result.pgChunks
-```
+每阶段写入 `retrieve_steps` 日志（真实 token 可审计）；`mode: "adaptive"` 走 24 算子注册表（outline/pg_arm/cognee_hybrid/extract_entities 等）。
 
-## 4. fuseResults V42 配额引擎
+## 3. 检索架构（四源混合）
 
-```
-maxTotal = 6000
+`SearchService.search()`（RRF 融合 + 余弦重排 0.7/0.3）：
 
-QUOTA_COGNEE   = ceil(6000 × 0.35) = 2100
-QUOTA_PG       = ceil(6000 × 0.25) = 1500
-QUOTA_GRAPHITI = ceil(6000 × 0.25) = 1500
-QUOTA_FT       = ceil(6000 × 0.10) = 600
-QUOTA_NAMES    = ceil(6000 × 0.05) = 300
+| 源 | 作用 | 技术 |
+|---|---|---|
+| SAG 事件 | 主知识轴（Compiled Truth ×2.0） | 内容向量 + 标题向量 + BM25 三臂 RRF |
+| Graphiti 超边 | 跨文档语义关联/社区聚合 | `hybrid_search_entities` MCP，Neo4j 11001 |
+| Cognee 切片 | 段落级 HYBRID | `cognee_search`，Neo4j 11003 + LanceDB |
+| PG | 向量/词法 + 教育知识库切片 | pgvector 1024 维 + BM25 + `source_chunks` |
 
-每个来源独立 appendWithCap(header, text, quota, priority)
-  → 超限自动截断 → [TRUNCATED]
-  → 最接近换行或句号处切断
+## 4. AI Agent 编排
 
-处理顺序:
-  1. Cognee chunks (body+QA) + RAG → QUOTA_COGNEE
-  2. PG chunks (entity+vector+ILIKE) → QUOTA_PG
-  3. PG fulltext → QUOTA_FT
-  4. Graphiti entities+distills+domain+papers → QUOTA_GRAPHITI
-  5. Entity names → QUOTA_NAMES
+- **44 通用工具**（26 基础 + 18 视图）+ 教育工具集（84 路由）
+- **5 层安全**：Guardian 策略 / 3 级沙箱 / 网络审批(SSRF) / 审批门 / 凭证隔离
+- **5 层记忆**：情景 / 战略 / 技能蒸馏 / 防错规则 / 语料库
+- **插件系统**：A1 工具插件（`agent_plugins` 表）/ A2 服务接口（Llm/Sandbox/Guard Provider）/ A3 前端注册表（`viewRegistry.tsx`）
+- **外部服务**：OAuth（GitHub 适配器）/ 多 Agent 协作（动态角色 + 协商循环）/ 会话图 + checkpoint 分叉
 
-sections.sort(priority) → join('\n\n') → substring(0, maxTotal)
-```
+## 5. AI+教育层（84 路由）
 
-## 5. expandQuery 扩展链路
+| 模块 | 服务 | 能力 |
+|---|---|---|
+| 核心六能力 | `education-service.ts` | 学习规划/课程辅导/学情诊断/预习复习/备课/陪伴 |
+| 自适应四层 | `adaptive-learning-service.ts` | 建模/画像/推送/节奏/分层 |
+| 作业闭环 | `homework-help-service.ts` | 解析/错题/变式/答疑/批改 |
+| 教师助手 | `teaching-assistant-service.ts` | 备课/出题/组卷/批改/讨论/测验/总结 |
+| 教育编排 | `agent-education.ts` | 苏格拉底/五步打磨/想法卡/追问/策略校验 |
+| 认知诊断 | `cognitive-diagnosis.ts` | BKT p(掌握) 推断 |
+| 知识图谱 | `knowledge-graph-edu.ts` | 先修图 + 拓扑路径 |
+| 自动闭环 | `auto-learning-loop.ts` | 采集→诊断→迭代→周报 |
+| 思政审核 | `content-audit-service.ts` | 四维核验 + Compiled Truth 校准 |
+| 多模态/合规/学生/语言/编程 | 5 服务 | 拍照/口语/板书 · 数据分级 · 认知维度/千人千策/复习提醒 · 精读润色 · 任务拆解/面试 |
 
-```
-expandQuery(query, sourceId, profile)
-  │
-  ├─ Step 1: 分词 + 停用词过滤 → contentWords[前6]
-  │
-  ├─ Step 2: external_entities (V88C type过滤)
-  │   SELECT name FROM external_entities
-  │   WHERE (name ILIKE '%w%' OR description ILIKE '%w%')
-  │   [AND type IN (政策类)] LIMIT 5
-  │
-  ├─ Step 3: source_chunks heading (V88K)
-  │   如果 extensions.length < 5:
-  │     SELECT heading FROM source_chunks
-  │     WHERE content ILIKE '%kw1%' AND content ILIKE '%kw2%' LIMIT 5
-  │
-  ├─ Step 4: LLM同义句 (V88B)
-  │   "请把以下问题改写成2个同义问句: {query}"
-  │   → 提取新词注入
-  │
-  └─ return query + ' ' + unique(extensions).slice(0,15)
-```
+## 6. 评测体系
 
-## 6. 评测架构 (eval-32-metrics V41)
+- **RAGAS v3 评测**（`scripts/eval-32-metrics.ts`）：31+ 评分项，53 题金标集，基线综合分 **0.884**
+- **教育评测**（`scripts/eval-education.ts`）：BKT AUC / 路径逆序率 / 思政核验 / 批改准确率，综合分 **0.884**
+- Kappa 校准门 ≥0.7（当前 1.000）；154 项单元测试
 
-```
-32 输出项 = 31 评分项 + overall, 1059行
-  A维度 (12, w=0.40): context_recall/context_precision/context_relevancy/
-                     entity_utilization/mrr/ndcg/diversity/cross_doc_coverage/
-                     json_contamination/paper_hit/paper_recall@k/source_grounded
-  B维度 (9, w=0.35): correctness/completeness/relevancy/faithfulness/
-                     hallucination/factual_consistency/citation_f1/
-                     conciseness/readability
-  C维度 (3, w=0.25): cot_quality/reasoning_depth/multi_hop_accuracy
-  D维度 (7, w=0.00): stage2/3/4 latency_norm, end_to_end_norm,
-                     token_efficiency, neo4j_query_norm, pg_query_norm
+## 7. 基础设施
 
-overall = 0.40A + 0.35B + 0.25C + 0.00D
-
-LLM Judge: _llmJudgeOnce → runThreeRoundMedian → mergeScore(rule, llm)
-          双轨(rule_score + llm_score), 融合策略: max
-```
-
-## 7. 基础设施拓扑
-
-```
-SAG API (:4173, Fastify, tsx) → reasonWithFallback
-  ├─ MCP stdio → Cognee Python → Neo4j Cognee (:11003, 31253 nodes)
-  ├─ MCP stdio → Graphiti Python → Neo4j Graphiti (:11001, 21337 nodes)
-  └─ PG :5540 (pgvector) → 7550 chunks + 34978 entities
-```
-
-## 8. 八题矩阵
-
-| Q10 | ✅ standard | Q18 | ✅ standard | Q26 | ✅ standard |
-| Q30 | ✅ standard | Q41 | ✅ standard | Q47 | ✅ standard |
-| Q22 | ✅ hyde | Q44 | ⚠️ hyde(有答案,术语不精确) | | |
+| 组件 | 说明 |
+|---|---|
+| 后端 | Fastify 5，4173，489 路由 |
+| 前端 | React 19 + Vite 8，5173，40 视图（含「AI+教育」Tab） |
+| 数据库 | PostgreSQL 16 + pgvector（Docker 5540）· Neo4j 11001/11003 · LanceDB |
+| 桌面端 | Electron + NSIS |
+| 模型 | DeepSeek 原生 + Embedding MAAS + Rerank（OpenAI 兼容协议） |
