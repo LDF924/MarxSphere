@@ -108,6 +108,8 @@ import { PolicyPanel } from "./components/PolicyPanel";
 import { SymbolLogo } from "./components/SymbolLogo";
 import { ScenariosPanel } from "./components/ScenariosPanel";
 import { EducationPanel } from "./components/EducationPanel";
+import { EducationWorkspacePanel } from "./components/EducationWorkspacePanel";
+import { getRegisteredView } from "./components/viewRegistry";
 import { EmpiricalResearchPanel } from "./components/EmpiricalResearchPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
@@ -1514,6 +1516,13 @@ function AppShell() {
         <div className="relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden">
           <HomePanel onChangeView={(view) => navigateView(view)} />
         </div>
+      ) : getRegisteredView(workspaceView) ? (
+        // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
+        (() => {
+          const entry = getRegisteredView(workspaceView)!;
+          const P = entry.component;
+          return <P />;
+        })()
       ) : (
       <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
       {/* V399: 项目列移入顶栏「项目」弹出面板 — 主区域全宽 */}
@@ -1905,7 +1914,7 @@ function AppShell() {
             ) : workspaceView === "scenarios" ? (
               <ScenariosPanel onChangeView={(view) => navigateView(view)} />
             ) : workspaceView === "education" ? (
-              <EducationPanel />
+              <EducationWorkspacePanel />
             ) : workspaceView === "graphiti-ingest" ? (
               <EngineIngestPanel engine="graphiti" />
             ) : workspaceView === "cognee-ingest" ? (

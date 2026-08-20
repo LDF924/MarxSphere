@@ -188,10 +188,12 @@ interface ToolDef {
   icon: React.ReactNode;
   fields: Array<{ key: string; label: string; placeholder: string; type?: "text" | "textarea" | "select"; options?: string[] }>;
   resultKey: string;
-  /** V383: Demo 演示数据（一键填入并运行） */
+  /** V393: Demo 演示数据（一键填入并运行） */
   demo?: Record<string, string>;
   /** V393: 进入工具自动加载默认模式（数据类功能直接呈现） */
   autoLoad?: boolean;
+  /** 角色分发：student=学生端「我的学习」 / teacher=教师端「教师工作台」（缺省 student） */
+  role?: "student" | "teacher";
   render: (r: any) => React.ReactNode;
 }
 
@@ -1069,6 +1071,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E1", title: "个性化学习规划", desc: "按目标/水平/时间生成分阶段学习计划，动态调整路径",
     icon: <GraduationCap className="h-4 w-4" />,
+    role: "student",
     resultKey: "plan",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：马克思主义基本原理", type: "text" },
@@ -1089,6 +1092,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E2", title: "专业课课程辅导", desc: "分步引导式辅导，先提示再示范，不直接给答案",
     icon: <BookOpen className="h-4 w-4" />,
+    role: "student",
     resultKey: "tutoring",
     fields: [
       { key: "subject", label: "专业", placeholder: "如：政治经济学", type: "text" },
@@ -1105,6 +1109,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E3", title: "学情诊断", desc: "作答分析·漏洞定位·行为分析·预测预警（双报告）",
     icon: <Stethoscope className="h-4 w-4" />,
+    role: "student",
     resultKey: "diagnosis",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：马克思主义政治经济学", type: "text" },
@@ -1126,6 +1131,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E4", title: "预习与复习", desc: "预习材料（目标/概念/自测）或复习材料（框架/速记/易错点）",
     icon: <CalendarClock className="h-4 w-4" />,
+    role: "student",
     resultKey: "material",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：中国近现代史纲要", type: "text" },
@@ -1142,6 +1148,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E5", title: "教师备课", desc: "教案课件·命题组卷·作业批改·班级学情汇总",
     icon: <ClipboardList className="h-4 w-4" />,
+    role: "teacher",
     resultKey: "teach",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：马克思主义基本原理", type: "text" },
@@ -1170,6 +1177,7 @@ const TOOLS: ToolDef[] = [
   {
     id: "E6", title: "学习陪伴", desc: "日周计划·随时答疑·激励疏导·复盘总结",
     icon: <HeartHandshake className="h-4 w-4" />,
+    role: "student",
     resultKey: "companion",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：马克思主义基本原理", type: "text" },
@@ -1232,11 +1240,13 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-export const EducationPanel: FC = () => {
+export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ role = "all" }) => {
   const [running, setRunning] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, any>>({});
   const [inputs, setInputs] = useState<Record<string, Record<string, string>>>({});
   const [activeTool, setActiveTool] = useState<string>("E1");
+  // V389: 角色分发 — 按 role 过滤工具列表（student→E1/E2/E3/E4/E6，teacher→E5）
+  const tools = role === "all" ? TOOLS : TOOLS.filter((t) => (t.role ?? "student") === role);
   // V383: 左右拉伸 — 分隔条控制中间区宽度（向左=中间变窄侧栏变宽，向右=中间变宽侧栏变窄）
   // V383: 侧栏宽度独立可拖（200-1000px），中间区 flex-1 自动补位
   const [obsWidth, setObsWidth] = useState(500);
@@ -1300,11 +1310,11 @@ export const EducationPanel: FC = () => {
     setRunning(null);
   };
 
-  const active = TOOLS.find((t) => t.id === activeTool)!;
+  const active = tools.find((t) => t.id === activeTool) ?? tools[0];
 
   // V393: 切换工具时自动加载默认模式（数据类功能直接呈现，无需点 Demo）
   useEffect(() => {
-    const auto = (TOOLS.find((t) => t.id === activeTool) as ToolDef & { autoLoad?: boolean });
+    const auto = (tools.find((t) => t.id === activeTool) as ToolDef & { autoLoad?: boolean });
     if (auto?.autoLoad && !running && !results[auto.id]) {
       void run(auto, auto.demo);
     }
@@ -1315,23 +1325,24 @@ export const EducationPanel: FC = () => {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <GraduationCap className="h-4 w-4 text-emerald-600" />
-        <h2 className="text-sm font-semibold">AI+教育</h2>
-        <span className="text-[10px] text-muted-foreground">个性化学习 · 课程辅导 · 学情诊断 · 预习复习 · 教师备课 · 学习陪伴</span>
+        <span className="text-xs font-medium text-foreground/80">
+          {role === "teacher" ? "教师工作台 · 备课教研" : "我的学习 · 六大学习能力"}
+        </span>
       </div>
 
       <div className="flex flex-1 min-h-0">
         {/* 左侧工具列表 */}
         <div className="w-[200px] shrink-0 space-y-1 overflow-y-auto border-r p-2">
-          {TOOLS.map((t) => (
+          {tools.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTool(t.id)}
-              className={`w-full rounded-md px-2 py-2 text-left transition-colors ${activeTool === t.id ? "bg-emerald-50 text-emerald-800" : "hover:bg-muted"}`}
+              className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${activeTool === t.id ? "bg-emerald-50 text-emerald-800" : "hover:bg-muted"}`}
             >
-              <div className="flex items-center gap-2 text-[12px] font-medium">
+              <div className="flex items-center gap-2 text-[13px] font-medium">
                 {t.icon} {t.title}
               </div>
-              <div className="mt-0.5 pl-6 text-[10px] leading-4 text-muted-foreground">{t.desc}</div>
+              <div className="mt-1 pl-6 text-[11px] leading-4 text-muted-foreground">{t.desc}</div>
             </button>
           ))}
         </div>
@@ -1342,12 +1353,12 @@ export const EducationPanel: FC = () => {
           <div className="space-y-2">
             {active.fields.map((f) => (
               <div key={f.key}>
-                <label className="mb-1 block text-[11px] font-medium text-foreground/80">{f.label}</label>
+                <label className="mb-1.5 block text-xs font-medium text-foreground/80">{f.label}</label>
                 {f.type === "select" ? (
                   <select
                     value={inputs[active.id]?.[f.key] || ""}
                     onChange={(e) => setInputs((prev) => ({ ...prev, [active.id]: { ...(prev[active.id] || {}), [f.key]: e.target.value } }))}
-                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px]"
                   >
                     <option value="">选择…</option>
                     {f.options!.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -1358,7 +1369,7 @@ export const EducationPanel: FC = () => {
                     onChange={(e) => setInputs((prev) => ({ ...prev, [active.id]: { ...(prev[active.id] || {}), [f.key]: e.target.value } }))}
                     placeholder={f.placeholder}
                     rows={f.type === "textarea" ? 3 : 1}
-                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground/50"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px] placeholder:text-muted-foreground/50"
                   />
                 )}
               </div>
