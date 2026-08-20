@@ -57,11 +57,14 @@ run("tsx", ["scripts/build-desktop.mjs"], { env: { SKIP_ELECTRON_BUILDER: "1" } 
 console.log("════════ 3/5 NSIS 安装包 ════════");
 const cacheDir = path.join(root, ".cache", "electron-builder");
 if (!existsSync(cacheDir)) execSync(`mkdir -p "${cacheDir}"`, { shell: "powershell.exe" });
-// 版本号：优先命令行参数（node scripts/release.mjs vX.Y.Z）；未传时从最新 tag 自动递增（v0.2.0 → v0.3.0）
+// 版本号：优先命令行参数（node scripts/release.mjs vX.Y.Z）；未传时从最新新序列 tag 自动递增（v0.2.0 → v0.3.0）
 let tag = process.argv[2];
 if (!tag) {
   try {
-    const latest = execSync(`git tag --sort=-version:refname | head -n 1`, { cwd: root, encoding: "utf8" }).trim();
+    // 只认新协议序列 tag（v0.1.x/v0.2.x/v0.3.x... 重新计数；旧协议 v0.2.2-marx-icon 等含后缀的不参与）
+    const allTags = execSync(`git tag --sort=-version:refname`, { cwd: root, encoding: "utf8" }).trim().split("\n");
+    const newSeries = allTags.filter((t) => /^v0\.[0-9]+\.[0-9]+$/.test(t) && !t.includes("-"));
+    const latest = newSeries[0] || allTags[0];
     const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
     if (m) {
       tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
