@@ -1,0 +1,22 @@
+{
+  "name": "苏格拉底式提问 · 辅导",
+  "description": "连续追问引导，不直接给答案（追问上限 3 轮）",
+  "route": { "method": "POST", "path": "/api/education/agent/socratic" },
+  "input": {
+    "subject": "政治经济学",
+    "question": "为什么说价值规律是商品经济的基本规律？",
+    "studentId": "demo-student"
+  },
+  "expectedOutput": {
+    "ok": true,
+    "socratic": {
+      "acknowledge": "好问题！我们一步步来",
+      "questions": [
+        { "q": "价值规律的基本内容是什么？", "hint": "想想价值由什么决定、价格围绕什么波动" },
+        { "q": "价格为什么会在价值周围波动？", "hint": "想想供求关系" }
+      ],
+      "why": "先确认学生对价值规律内容的掌握，再引导到作用机制"
+    },
+    "state": { "round": 1, "maxRounds": 3 }
+  }
+}

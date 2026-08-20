@@ -1,0 +1,21 @@
+{
+  "name": "学习陪伴 · 共情引导",
+  "description": "情感+任务双驱动学习伙伴",
+  "route": { "method": "POST", "path": "/api/education/companion" },
+  "input": {
+    "subject": "政治经济学",
+    "studentProfile": "大一新生，基础一般",
+    "message": "最近学《资本论》第一卷好难，有点想放弃",
+    "history": []
+  },
+  "expectedOutput": {
+    "ok": true,
+    "companion": {
+      "empathy": "理解你，第一卷确实有门槛",
+      "advice": "把剩余价值部分拆成 3 天小任务",
+      "followUp": "今天先看 10 分钟，明天我们再复盘",
+      "encouragement": "你已经坚持两周了",
+      "resources": ["配方法微课"]
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "作业辅导 · 题目解析",
+  "description": "分步提示式作业辅导（默认 hint，不直接给答案）",
+  "route": { "method": "POST", "path": "/api/education/homework/solve" },
+  "input": {
+    "subject": "数学",
+    "question": "用配方法解方程 x² - 6x + 8 = 0",
+    "mode": "text",
+    "hintLevel": "hint",
+    "studentId": "demo-student"
+  },
+  "expectedOutput": {
+    "ok": true,
+    "solution": {
+      "analysis": "考点：配方法解一元二次方程；已知二次项系数为 1，可直接配方",
+      "steps": [
+        { "hint": "先把常数项移到等号右边，变成 x² - 6x = -8" },
+        { "hint": "配方：一次项系数 -6 的一半是 -3，两边加 (-3)² = 9" },
+        { "hint": "左边写成完全平方 (x - 3)² = 1，再开方" }
+      ],
+      "keyFormula": "(x - b/2)² = (b/2)² - c",
+      "pitfalls": ["忘记两边同时加 9", "开方后漏掉正负号"],
+      "finalAnswer": "",
+      "similarPractice": "用配方法解 x² + 4x - 5 = 0"
+    },
+    "hintLevel": "hint"
+  }
+}

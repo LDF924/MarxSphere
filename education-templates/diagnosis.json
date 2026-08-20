@@ -1,0 +1,22 @@
+{
+  "name": "学情诊断 · 薄弱点分析",
+  "description": "基于作答记录自动聚合薄弱点/行为/风险",
+  "route": { "method": "POST", "path": "/api/education/diagnosis" },
+  "input": {
+    "subject": "政治经济学",
+    "answers": [
+      { "knowledgePoint": "价值", "isCorrect": true },
+      { "knowledgePoint": "价值规律", "isCorrect": false },
+      { "knowledgePoint": "剩余价值", "isCorrect": false }
+    ]
+  },
+  "expectedOutput": {
+    "ok": true,
+    "mastered": ["价值"],
+    "weak": ["价值规律", "剩余价值"],
+    "rootCauses": ["价值规律与剩余价值的联系未建立"],
+    "actionPlan": [
+      { "priority": "高", "action": "先复习价值规律，再学剩余价值" }
+    ]
+  }
+}

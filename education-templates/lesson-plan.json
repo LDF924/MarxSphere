@@ -1,0 +1,22 @@
+{
+  "name": "教师备课 · 完整教案",
+  "description": "教案 + 课堂活动 + 分层教学方案",
+  "route": { "method": "POST", "path": "/api/education/lesson-plan" },
+  "input": {
+    "subject": "政治经济学",
+    "chapter": "价值规律",
+    "classMinutes": 45,
+    "studentLevel": "普通本科大二"
+  },
+  "expectedOutput": {
+    "ok": true,
+    "lessonTitle": "价值规律及其作用",
+    "objectives": ["掌握价值规律基本内容", "理解价格波动机制"],
+    "classFlow": [
+      { "segment": "导入", "duration": 5, "teacherAction": "案例引入", "studentAction": "讨论" }
+    ],
+    "caseMaterials": ["价格围绕价值波动的历史案例"],
+    "assessment": ["课堂问答 + 小测"],
+    "homework": ["教材习题 2-4 题"]
+  }
+}
