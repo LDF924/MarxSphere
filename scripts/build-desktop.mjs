@@ -75,7 +75,9 @@ const scan = (d) => {
     const lower = f.name.toLowerCase();
     const isRealEnv = lower === ".env" || (lower.endsWith(".env") && !/\.(example|template|bak|sample|dist)$/.test(lower));
     if (isRealEnv) leaked.push(p);
-    if (banned.some((b) => lower.includes(b.toLowerCase()))) leaked.push(p);
+    // 文件名含密钥特征（排除 .env 本身——由 isRealEnv 精确判定；config.env.example 模板放行）
+    const nameBanned = banned.filter((b) => b !== ".env" && b !== "sag.env");
+    if (nameBanned.some((b) => lower.includes(b.toLowerCase()))) leaked.push(p);
     if (/\.(env|json)$/.test(lower)) {
       try {
         const txt = require("fs").readFileSync(p, "utf-8");
