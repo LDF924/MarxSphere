@@ -1,8 +1,28 @@
 # MarxSphere 教育场景评测与实测反馈
 
-> 对应 [COMPETITION-AI-EDUCATION.md §5.2](COMPETITION-AI-EDUCATION.md) 的落地文档：教育场景专项评测指标、学生/教师实测数据、教学效果反馈。
+> 对应 [COMPETITION-AI-EDUCATION.md §5.2](COMPETITION-AI-EDUCATION.md) 的落地文档：教育场景专项评测指标、学生/教师实测数据、教学效果反馈、**反馈闭环（V397 已实现）**。
 >
 > **数据边界声明（诚实标注）**：本文档中的实测数据为**当前开发阶段的模拟/演示数据**（确定性种子，可复现），真实课堂实测计划见 §4。所有数字均可追溯来源（脚本或种子文件），不虚构用户身份。
+
+---
+
+## 0. 反馈闭环（V397 已实现）
+
+```
+学生/教师使用教育功能 → 右下角「💬 功能反馈」（赞/踩+备注）
+  → POST /api/education/feedback → edu_feedback 表（匿名+脱敏）
+  → 统计（/api/education/feedback/stats：满意率/负评热点）
+  → 评测时自动推导改进建议（低分指标 + 负评热点 → 高/中优先级）
+  → 评测工作台展示「反馈闭环 · 自动改进建议」
+```
+
+| 环节 | 实现 |
+|---|---|
+| 反馈收集 | 学生端/教师端右下角 FAB（`EduFeedbackFAB.tsx`），赞/踩+可选备注，自动带角色/场景 |
+| 存储 | `edu_feedback` 表（迁移 086）：role/scene/feedback/note/source，匿名 student_id + sanitizeLine 脱敏 |
+| 统计 | `/api/education/feedback/stats`：满意率、按场景/角色聚合、负评热点（top5） |
+| 改进建议 | `/api/education/eval` 自动推导：BKT<0.75→参数校准；诊断F1<0.85→特征增强；批改<0.9→规则扩充；满意度<80%→处理负评；负评热点逐条转建议 |
+| 展示 | 评测工作台（EvalPanel）「教育场景评测」区块：12 卡 + 综合技术分 + 改进建议黄框 |
 
 ---
 

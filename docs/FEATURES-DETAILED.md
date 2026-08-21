@@ -254,3 +254,12 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 知识点先修图 | `kg/check-prereq` / `plan-path` / `validate-path` | 先修缺失检测/拓扑路径/逆序校验 |
 | 多模态 | `multimodal/blackboard` / `speech-assessment` / `photo-solve` | 板书识别/口语测评/作业拍照 |
 | 数据合规 | `compliance/classification` / `status` / `cleanup-student` / `cleanup-expired` | 数据分级/状态/清理 |
+
+### 9.3 反馈闭环与教育评测（V397）
+
+| 能力 | 路由/文件 | 说明 |
+|---|---|---|
+| 使用反馈（学生/教师） | `POST /api/education/feedback` | 学生端/教师端右下角 FAB：赞/踩+备注，自动带角色/场景，脱敏落库（`edu_feedback` 表） |
+| 反馈统计 | `GET /api/education/feedback/stats` | 满意率、按场景/角色聚合、负评热点 top5（教学效果指标 ⑫ 数据源） |
+| 教育评测（12 项） | `GET /api/education/eval`（`education-eval-service.ts`） | 技术 6 项（BKT/诊断/路径/批改/思政/闭环）+ 教学效果 6 项（掌握度/辅导对照/备课效率/批改效率/规划覆盖/满意度） |
+| 自动改进建议 | 同上（suggestions 字段） | 低分指标（BKT<0.75 等）+ 负评热点 → 高/中优先级改进建议，评测工作台展示 |
