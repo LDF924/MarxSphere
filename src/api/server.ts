@@ -3504,6 +3504,10 @@ export function buildHttpServer() {
     const { educationFeedbackService } = await import("../services/education-feedback-service.js");
     return educationFeedbackService.eduFeedbackStats();
   });
+  app.get("/api/education/eval", async () => {
+    const { educationEvalService } = await import("../services/education-eval-service.js");
+    return educationEvalService.runEducationEval();
+  });
 
   // ─── 实证研究执行工作台（V348+）───
   const MAX_EMPIRICAL_CELLS = 200_000;
