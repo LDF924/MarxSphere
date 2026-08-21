@@ -2,7 +2,7 @@
 // SourcesPanel.tsx — MarxSphere 统一数据源面板（29 个外部源）
 // 按状态展示：已接入 / 可接入 / 需注册。含 OpenAlex/CORE 英文文献检索。
 import { useState, useEffect, type FC } from "react";
-import { Database, Loader2, Search, Globe, Lock, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
+import { Database, Loader2, Search, Globe, Lock, CheckCircle2, ExternalLink, RefreshCw, Download } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
@@ -38,6 +38,30 @@ export function SourcesPanel() {
   const [oaResults, setOaResults] = useState<Array<Record<string, unknown>>>([]);
   const [oaLoading, setOaLoading] = useState(false);
   const [extSource, setExtSource] = useState<string>("openalex");
+  // V412: URL 一键导入
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlResult, setUrlResult] = useState<{ ok: boolean; title?: string; chunks?: number; error?: string } | null>(null);
+
+  const importUrl = async () => {
+    const url = urlInput.trim();
+    if (!url || urlLoading) return;
+    setUrlLoading(true);
+    setUrlResult(null);
+    try {
+      const r = await fetch("/api/sources/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const d = await r.json();
+      setUrlResult(d);
+      if (d.ok) { setUrlInput(""); void loadSources(); }
+    } catch {
+      setUrlResult({ ok: false, error: "请求失败，请重试" });
+    }
+    setUrlLoading(false);
+  };
   const SOURCE_OPTIONS: Array<{ value: string; label: string }> = [
     { value: "openalex", label: "OpenAlex（学术）" },
     { value: "core", label: "CORE（OA全文）" },
@@ -118,6 +142,30 @@ export function SourcesPanel() {
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载数据源…</div>}
+
+        {/* V412: URL 一键导入（粘贴网址 → 抓取 → 入库） */}
+        <Card className="p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+            <Globe className="h-4 w-4 text-emerald-600" /> URL 一键导入
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void importUrl(); }}
+              placeholder="粘贴网页链接，如 https://www.qstheory.cn/...（自动抓取 → 切片 → 向量化入库）"
+              className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-emerald-400"
+            />
+            <Button onClick={() => void importUrl()} disabled={urlLoading}>
+              {urlLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} 一键导入
+            </Button>
+          </div>
+          {urlResult && (
+            <div className={`mt-2 rounded-md px-3 py-2 text-xs ${urlResult.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+              {urlResult.ok ? `✓ 已入库：「${urlResult.title}」（${urlResult.chunks ?? "?"} 个切片）` : `✗ ${urlResult.error}`}
+            </div>
+          )}
+        </Card>
 
         {/* 外部文献检索（API + 网页源） */}
         <Card className="p-4">

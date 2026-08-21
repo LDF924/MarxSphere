@@ -36,9 +36,20 @@ export function chunkMarkdown(content: string, options: ChunkMarkdownOptions = {
   const mode = options.mode ?? (options.maxTokens == null && options.overlapTokens == null ? "heading_strict" : "token");
   if (mode === "heading_strict") {
     const sections = buildHeadingStrictSections(content);
+    // V412: 超长 section（无标题长文/网页抓取文本）按 token 窗口二次切分，防单块超嵌入上限
+    const maxTokens = normalizeTokenCount(options.maxTokens ?? 512, 64, 8192);
+    const out: SectionDraft[] = [];
+    for (const section of sections) {
+      if (section.tokenCount > maxTokens) {
+        const sub = buildTokenWindowSections(section.rawContent, { ...options, maxTokens, overlapTokens: Math.min(options.overlapTokens ?? 100, maxTokens - 1) });
+        for (const s of sub) out.push({ ...s, orderIndex: out.length, heading: section.heading || s.heading });
+      } else {
+        out.push(section);
+      }
+    }
     return {
-      sections,
-      chunks: sections.map((section, index) => buildChunk([section], index))
+      sections: out,
+      chunks: out.map((section, index) => buildChunk([section], index))
     };
   }
   const sections = buildTokenWindowSections(content, options);

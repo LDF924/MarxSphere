@@ -318,11 +318,30 @@ ipcMain.handle("db:setup", async () => {
   const root = resourceRoot();
   const dataRoot = sagRoot();
   const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
-  // 1) 找 docker 命令
-  const dockerCmd = ["docker", "docker.exe"].find((c) => {
+  // 1) 找 docker 命令；找不到则自动安装 Docker Desktop（winget 静默安装 + 等守护进程）
+  let dockerCmd = ["docker", "docker.exe"].find((c) => {
     try { execFileSync(c, ["--version"], { timeout: 3000, windowsHide: true, stdio: "pipe" }); return true; } catch { return false; }
   });
-  if (!dockerCmd) return { ok: false, error: "未检测到 Docker。请先安装 Docker Desktop（https://www.docker.com/products/docker-desktop/）或自行安装 PostgreSQL 16 + pgvector。" };
+  if (!dockerCmd) {
+    console.log("[desktop] 未检测到 Docker，尝试自动安装 Docker Desktop ...");
+    try {
+      // winget 静默安装（等待安装完成）
+      execFileSync("winget", ["install", "Docker.DockerDesktop", "--accept-source-agreements", "--accept-package-agreements", "--silent", "--disable-interactivity"], { timeout: 600_000, windowsHide: true, stdio: "pipe" });
+      console.log("[desktop] Docker Desktop 安装完成，等待启动 ...");
+      // 首次安装需用户手动启动 Docker Desktop（WSL2 组件依赖）；等待 docker 命令可用最多 10 分钟
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 600_000) {
+        try {
+          const ok = execFileSync("docker", ["--version"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
+          if (ok) { dockerCmd = "docker"; break; }
+        } catch { /* 未就绪继续等 */ }
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    } catch (e: any) {
+      return { ok: false, error: "Docker 自动安装失败，请手动安装 Docker Desktop（https://www.docker.com/products/docker-desktop/）: " + String(e?.message || e).slice(0, 150) };
+    }
+  }
+  if (!dockerCmd) return { ok: false, error: "Docker 已安装但未启动。请打开 Docker Desktop（右下角鲸鱼图标变绿）后点击「重试」。" };
   // 2) 准备 compose 文件（内置 → userData）
   const composeSrc = path.join(root, "docker-compose.yml");
   const composeDst = path.join(dataRoot, "docker-compose.yml");

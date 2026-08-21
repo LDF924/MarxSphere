@@ -6549,6 +6549,16 @@ except Exception as e:
     total: externalSourcesService.registry.count
   }));
 
+  // V412: URL 一键导入（数据源页粘贴网址 → 抓取 → ingest 入库）
+  app.post("/api/sources/import-url", async (request) => {
+    const body = request.body as { url?: string; title?: string; sourceId?: string };
+    return externalSourcesService.importFromUrl({
+      url: body.url || "",
+      title: body.title,
+      sourceId: body.sourceId,
+    });
+  });
+
   const externalSearchSchema = z.object({
     source: z.enum(["openalex", "core", "worldbank", "github", "qstheory", "people_theory", "xuexi", "gmw_theory", "studytimes", "ce_theory", "cssn", "aisixiang"]),
     query: z.string().optional(),

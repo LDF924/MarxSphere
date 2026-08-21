@@ -291,6 +291,72 @@ async function searchWebSource(input: {
   }
 }
 
+// ─── URL 一键导入（V412: 数据源页粘贴网址 → 抓取网页 → 走 ingest 管道入库）───
+async function importFromUrl(input: {
+  url: string;
+  title?: string;
+  sourceId?: string;
+}): Promise<Record<string, unknown>> {
+  const url = String(input.url || "").trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, error: "请输入完整网址（http:// 或 https:// 开头）" };
+  }
+  try {
+    // 1. 抓取网页内容（15s 超时）
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        Accept: "text/html,text/plain,*/*",
+      },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return { ok: false, error: `网页抓取失败 HTTP ${response.status}` };
+    const contentType = response.headers.get("content-type") || "";
+    const body = await response.text();
+
+    // 2. 转文本：HTML 剥离标签 → 文本；纯文本直接用
+    let content = body;
+    if (contentType.includes("text/html")) {
+      content = body
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    if (content.length < 50) return { ok: false, error: "网页内容过少，可能需登录或为动态页面" };
+
+    // 3. 走 ingest 管道入库（切片 + 向量化 + 图谱）
+    const { ingestionService } = await import("./ingestion-service.js");
+    const title = (input.title || url.split("/").pop() || url).slice(0, 120);
+    const result = await ingestionService.ingestDocument({
+      title,
+      content: content.slice(0, 300_000), // 上限 30 万字符（超长页面截断，防嵌入超限）
+      sourceId: input.sourceId,
+      extract: false, // URL 快速入库：跳过 LLM 实体抽取（省时省 key）；需图谱可在文档页手动触发
+      metadata: { sourceUrl: url, importedAt: new Date().toISOString() },
+    });
+    return {
+      ok: true,
+      sourceId: result.sourceId ?? result.source?.id ?? null,
+      chunks: result.chunkCount ?? result.stats?.chunks ?? null,
+      title,
+      url,
+      note: "网页已入库（切片+向量化完成）",
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export const externalSourcesService = {
   registry: sourcesRegistry,
   searchOpenAlex,
@@ -298,5 +364,6 @@ export const externalSourcesService = {
   searchWorldBank,
   searchWebSource,
   searchGitHub,
+  importFromUrl,
   getSourceList: (): DataSource[] => sourcesRegistry.list()
 };
