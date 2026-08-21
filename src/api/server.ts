@@ -965,6 +965,7 @@ export function buildHttpServer() {
   const DOC_INDEX: Array<{ id: string; path: string; title: string; group: string }> = [
     // 指南
     { id: "overview", path: "overview.md", title: "平台总览", group: "指南" },
+    { id: "project-overview", path: "PROJECT-OVERVIEW.md", title: "项目概述（用户/痛点/创新）", group: "指南" },
     { id: "quickstart", path: "quickstart.md", title: "快速开始", group: "指南" },
     { id: "cookbook", path: "cookbook.md", title: "Cookbook 示例", group: "指南" },
     { id: "faq", path: "FAQ.md", title: "常见问题", group: "指南" },
