@@ -64,6 +64,8 @@ try {
 console.log(`[desktop] node_modules 已拷贝 (${depNames.length} 直接依赖 + 传递依赖)`);
 
 // 2) 断言: 打包目录不含 .env / 密钥文件
+// 注意: 只匹配"真实 .env"（文件名恰为 .env 或以 .env 结尾且非模板），
+// config.env.example / config.env.template 是随包配置模板（占位符，非密钥）
 const banned = [".env", "sag.env", "DEEPSEEK_API_KEY", "sk-ws-", "sk-4b39"];
 let leaked = [];
 const scan = (d) => {
@@ -71,6 +73,8 @@ const scan = (d) => {
     const p = path.join(d, f.name);
     if (f.isDirectory()) { scan(p); continue; }
     const lower = f.name.toLowerCase();
+    const isRealEnv = lower === ".env" || (lower.endsWith(".env") && !/\.(example|template|bak|sample|dist)$/.test(lower));
+    if (isRealEnv) leaked.push(p);
     if (banned.some((b) => lower.includes(b.toLowerCase()))) leaked.push(p);
     if (/\.(env|json)$/.test(lower)) {
       try {
