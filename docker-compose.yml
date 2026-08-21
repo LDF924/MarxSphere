@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # daocloud 镜像（国内可直连；海外用户可改回 pgvector/pgvector:pg16）
+    image: docker.m.daocloud.io/pgvector/pgvector:pg16
     container_name: sag_lite_postgres
     environment:
       POSTGRES_DB: sag_lite
