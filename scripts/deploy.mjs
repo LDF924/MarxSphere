@@ -58,13 +58,15 @@ function ensureDocker() {
 // ── ③ docker compose up（数据库，含首次拉镜像）──
 function startDatabase() {
   console.log(`\n${GREEN}════ 数据库（docker compose）════${RESET}`);
+  const composeFile = path.join(root, "docker-compose.yml");
   try {
-    execSync("docker compose up -d --wait", { cwd: root, stdio: "inherit", timeout: 600_000 });
+    // -f 显式指定配置文件（防 CWD 异常/WSL 混用 Windows docker 时找不到文件）
+    execSync(`docker compose -f "${composeFile}" up -d --wait`, { cwd: root, stdio: "inherit", timeout: 600_000 });
     ok("数据库已启动（PostgreSQL + Neo4j × 2）");
   } catch {
     warn("docker compose 未就绪（首次拉镜像或 Docker 未启动），尝试无 --wait 重试…");
     try {
-      execSync("docker compose up -d", { cwd: root, stdio: "inherit", timeout: 600_000 });
+      execSync(`docker compose -f "${composeFile}" up -d`, { cwd: root, stdio: "inherit", timeout: 600_000 });
       ok("数据库已启动");
     } catch {
       fail("数据库启动失败 — 请检查 Docker 是否正常运行（docker ps 应能看到容器）");
