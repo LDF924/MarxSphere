@@ -17,6 +17,11 @@ for (const dir of ["dist", "scripts", "migrations", "data", "evaluation", "repor
   const src = path.join(root, dir);
   if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
 }
+// V410: 教育资产随包携带（模板/案例库 — 否则教育功能空）
+for (const dir of ["education-templates"]) {
+  const src = path.join(root, dir);
+  if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
+}
 // 前端产物: 后端期望 <SAG_ROOT>/web/dist — 需拷到 sag/web/dist 而非 sag/web-dist
 const webDist = path.join(root, "web", "dist");
 if (existsSync(webDist)) {

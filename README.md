@@ -361,12 +361,13 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 ### 2. 安装与初始化
 
 ```bash
-git clone <your-repo-url>
-cd SAG-main
-npm run quickstart       # 🚀 一键启动：自动装依赖 → 检查环境 → 迁移 → 启动 http://localhost:4173
+git clone https://github.com/LDF924/MarxSphere.git
+cd MarxSphere
+npm run deploy          # 🚀 一键部署：自动装 Node → 起数据库 → 装依赖 → 迁移 → 种子数据 → 启动 http://localhost:4173
 ```
 
-> 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `npm run db:setup` → `npm run dev`
+> 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `docker compose up -d` → `npx tsx src/db/migrate.ts` → `npm start`
+> 完整说明见 [部署指南](docs/DEPLOYMENT-GUIDE.md)（含 Windows 虚拟机测试方法）
 
 > **PDF2Obsidian（可选）**：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 

@@ -5,6 +5,8 @@ data/*
 !data/judge_gold.json
 !data/trajectory_prefix_candidates.json
 !data/trajectory_prefix_gold.json
+# 教育案例库（随开源分发, 放行）
+!data/education-cases.json
 .env
 batch-ingest-log.json
 

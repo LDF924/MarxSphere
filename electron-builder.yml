@@ -44,6 +44,10 @@ extraResources:
       - "**/*"
   - from: resources/sag/node_modules.zip
     to: sag/node_modules.zip
+  - from: resources/sag/education-templates
+    to: sag/education-templates
+    filter:
+      - "**/*"
   - from: resources/sag/docker-compose.yml
     to: sag/docker-compose.yml
 
