@@ -346,8 +346,8 @@ async function importFromUrl(input: {
     });
     return {
       ok: true,
-      sourceId: result.sourceId ?? result.source?.id ?? null,
-      chunks: result.chunkCount ?? result.stats?.chunks ?? null,
+      sourceId: result.sourceId,
+      chunks: result.chunkCount,
       title,
       url,
       note: "网页已入库（切片+向量化完成）",
