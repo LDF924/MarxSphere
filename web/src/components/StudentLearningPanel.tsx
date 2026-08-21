@@ -5,6 +5,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { Send, Loader2, Sparkles, ClipboardList, BarChart3, Camera, ArrowRight, BookOpen, Play } from "lucide-react";
 import { EduResultCard } from "./EduResultView";
+import { EduFeedbackFAB } from "./EduFeedbackFAB";
 import { DonutChart, MasteryBars, SimpleBars, StatCards, Timeline } from "./EduCharts";
 
 const API = "/api/education";
@@ -320,6 +321,7 @@ export function StudentLearningPanel() {
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <EduFeedbackFAB role="student" scene="general" source="学生端工作台" />
       {/* 苏格拉底追问 · 五步打磨（Hazel 式） */}
       <div className="rounded-xl border bg-card p-3 lg:col-span-2">
         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
