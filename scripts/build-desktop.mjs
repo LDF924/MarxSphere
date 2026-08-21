@@ -22,6 +22,11 @@ for (const dir of ["education-templates"]) {
   const src = path.join(root, dir);
   if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
 }
+// V411: 自研 skill（10 个）随包携带 — 桌面端可直接使用
+for (const dir of ["skills"]) {
+  const src = path.join(root, dir);
+  if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
+}
 // 前端产物: 后端期望 <SAG_ROOT>/web/dist — 需拷到 sag/web/dist 而非 sag/web-dist
 const webDist = path.join(root, "web", "dist");
 if (existsSync(webDist)) {
