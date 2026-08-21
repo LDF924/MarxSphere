@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // scripts/release.mjs — 一键发布脚本：构建 → 桌面端打包 → 上传 GitHub Release
-// 用法: node scripts/release.mjs [版本标签] [发布说明]
+// 用法: node scripts/release.mjs [版本标签] [发布说明] [--no-publish]
 // 示例: node scripts/release.mjs v0.3.0 "新功能说明"
+//       node scripts/release.mjs v0.1.0 --no-publish   # 只打包不上传（重打已发布版本时用，避免 Release 重复创建 422）
 // 版本号来源: 标签去掉前导 v（v0.2.2 → 0.2.2）；安装包名与 Release 标签自动一致
-// 环境变量: GITHUB_TOKEN（GitHub API token，必需）；SENSENOVA_API_KEY 等由 .env 提供
+// 环境变量: GITHUB_TOKEN（GitHub API token，仅发布模式必需）；SENSENOVA_API_KEY 等由 .env 提供
 import { spawnSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -21,7 +22,29 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || (() => {
 })();
 const REPO = process.env.GITHUB_REPO || "LDF924/MarxSphere";
 
-if (!GITHUB_TOKEN) {
+// --no-publish：只打包（本地构建 + NSIS），跳过 GitHub Release 创建与资产上传。
+// 用于重打已发布版本（如修正 license 重新出包），避免重复创建 Release 触发 422。
+const NO_PUBLISH = process.argv.includes("--no-publish");
+const posArgs = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const notesArg = posArgs[1];
+// 版本号：优先命令行参数（node scripts/release.mjs vX.Y.Z）；未传时从最新新序列 tag 自动递增（v0.2.0 → v0.3.0）
+let tag = posArgs[0];
+if (!tag) {
+  try {
+    // 只认新协议序列 tag（v0.1.x/v0.2.x/v0.3.x... 重新计数；旧协议 v0.2.2-marx-icon 等含后缀的不参与）
+    const allTags = execSync(`git tag --sort=-version:refname`, { cwd: root, encoding: "utf8" }).trim().split("\n");
+    const newSeries = allTags.filter((t) => /^v0\.[0-9]+\.[0-9]+$/.test(t) && !t.includes("-"));
+    const latest = newSeries[0] || allTags[0];
+    const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
+    if (m) {
+      tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
+      console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
+    }
+  } catch { /* 无 tag 时用默认 */ }
+}
+tag = tag || `v${Date.now().toString(36)}`;
+
+if (!GITHUB_TOKEN && !NO_PUBLISH) {
   console.error("❌ 缺少 GITHUB_TOKEN 环境变量（GitHub API token）");
   process.exit(1);
 }
@@ -44,20 +67,19 @@ function run(cmd, args, opts = {}) {
 }
 
 // 1) 构建后端 + 前端 + electron
-console.log("════════ 1/5 构建后端 + 前端 ════════");
+console.log(NO_PUBLISH ? "════════ 1/3 构建后端 + 前端 ════════" : "════════ 1/5 构建后端 + 前端 ════════");
 run("tsc", ["-p", "tsconfig.build.json"]);
 run("vite", ["build"]);
 run("tsx", ["electron/build.mjs"]);
 
 // 2) 准备 resources/sag（node_modules 压缩 + 密钥断言）
-console.log("════════ 2/5 准备桌面端资源 ════════");
+console.log(NO_PUBLISH ? "════════ 2/3 准备桌面端资源 ════════" : "════════ 2/5 准备桌面端资源 ════════");
 run("tsx", ["scripts/build-desktop.mjs"], { env: { SKIP_ELECTRON_BUILDER: "1" } });
 
 // 3) NSIS 打包（项目内缓存 + npmmirror 镜像 + 跳过签名）
-console.log("════════ 3/5 NSIS 安装包 ════════");
+console.log(NO_PUBLISH ? "════════ 3/3 NSIS 安装包（--no-publish 模式）════════" : "════════ 3/5 NSIS 安装包 ════════");
 const cacheDir = path.join(root, ".cache", "electron-builder");
 if (!existsSync(cacheDir)) execSync(`mkdir -p "${cacheDir}"`, { shell: "powershell.exe" });
-const tag = process.argv[2] || `v${Date.now().toString(36)}`;
 // 版本号 = 标签去前导 v；electron-builder 默认读 package.json version，需显式传入保证一致
 const version = tag.replace(/^v/, "").split("-")[0];
 const installer = path.join(root, "release", `MarxSphere Setup ${version}.exe`);
@@ -76,10 +98,16 @@ if (!existsSync(installer)) {
 const sizeMB = Math.round(statSync(installer).size / 1024 / 1024);
 console.log(`✅ 安装包: ${installer} (${sizeMB}MB)`);
 
-// 4) 创建 GitHub Release + 上传安装包
+if (NO_PUBLISH) {
+  console.log("\n🔧 --no-publish 模式：跳过 GitHub Release 创建与上传，产物留在本地 release/");
+  console.log("   如需替换已发布资产：删旧 → 传新（curl uploads.github.com），或改用完整发布流程\n");
+  process.exit(0);
+}
+
+// 4) 创建或更新 GitHub Release（幂等：tag 已有 Release 则 PATCH 更新，否则 POST 创建——重打版本不再 422）
 console.log("════════ 4/5 GitHub Release ════════");
 // 说明: 优先用命令行参数；未传时自动从 git 提交生成（上个 tag 到当前的 commit 列表）
-let notes = process.argv[3];
+let notes = notesArg;
 if (!notes) {
   try {
     const prevTag = execSync(`git tag --sort=-version:refname | head -n 2 | tail -n 1`, { cwd: root, encoding: "utf8" }).trim();
@@ -91,31 +119,55 @@ if (!notes) {
   } catch { /* 生成失败用默认 */ }
 }
 notes = notes || "MarxSphere 自动发布";
-const release = JSON.parse(execSync(
-  `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({
-    tag_name: tag,
-    name: `MarxSphere ${tag} — 自动发布`,
-    body: notes,
-    draft: false,
-    prerelease: false,
-  }))}`,
+const releaseMeta = {
+  name: `MarxSphere ${tag} — 自动发布`,
+  body: notes,
+  draft: false,
+  prerelease: false,
+};
+// 先查该 tag 是否已有 Release（存在则更新，避免 POST 重复创建 422）
+const existing = JSON.parse(execSync(
+  `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
   { encoding: "utf8" }
 ));
+let release;
+if (existing.id) {
+  release = JSON.parse(execSync(
+    `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${existing.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(releaseMeta))}`,
+    { encoding: "utf8" }
+  ));
+  console.log(`✅ Release 已存在，已更新: ${release.html_url || release.message || "?"}`);
+} else {
+  release = JSON.parse(execSync(
+    `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({ tag_name: tag, ...releaseMeta }))}`,
+    { encoding: "utf8" }
+  ));
+  console.log(`✅ Release 已创建: ${release.html_url || release.message || "?"}`);
+}
 if (!release.id) {
   console.error("❌ Release 创建失败:", release.message || JSON.stringify(release).slice(0, 200));
   process.exit(1);
 }
-console.log(`✅ Release: ${release.html_url}`);
 
 console.log("════════ 5/5 上传安装包 ════════");
 const assetName = encodeURIComponent(path.basename(installer));
+// 同名资产已存在时先删除再上传（重打版本时资产替换，避免上传 422 already_exists）
+const existingAssets = JSON.parse(execSync(
+  `curl -s "https://api.github.com/repos/${REPO}/releases/${release.id}/assets" -H "Authorization: token ${GITHUB_TOKEN}"`,
+  { encoding: "utf8" }
+));
+const dup = (Array.isArray(existingAssets) ? existingAssets : []).find((a) => a.name === decodeURIComponent(assetName));
+if (dup) {
+  execSync(`curl -s -X DELETE "https://api.github.com/repos/${REPO}/releases/assets/${dup.id}" -H "Authorization: token ${GITHUB_TOKEN}"`, { encoding: "utf8" });
+  console.log(`↻ 已删除旧资产 ${dup.name}，替换为新安装包`);
+}
 const upload = JSON.parse(execSync(
   `curl -s -X POST "https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${assetName}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/octet-stream" --data-binary "@${installer.replace(/\\/g, "/")}"`,
   { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
 ));
 console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.message || "?"}`);
 
-// 5) 同步安装包到主仓库（SAG-main release/）
+// 6) 同步安装包到主仓库（SAG-main release/）
 const mainReleaseDir = path.join("C:/Users/HUAWEI/SAG-main", "release");
 if (existsSync(mainReleaseDir)) {
   execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
