@@ -48,6 +48,10 @@ extraResources:
     to: sag/education-templates
     filter:
       - "**/*"
+  - from: resources/sag/skills
+    to: sag/skills
+    filter:
+      - "**/*"
   - from: resources/sag/docker-compose.yml
     to: sag/docker-compose.yml
 

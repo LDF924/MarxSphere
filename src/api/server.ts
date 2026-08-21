@@ -990,6 +990,8 @@ export function buildHttpServer() {
     { id: "claude-code", path: "integrations/claude-code.md", title: "Claude Code 集成", group: "集成" },
     { id: "codex-cli", path: "integrations/codex-cli.md", title: "Codex CLI 集成", group: "集成" },
     { id: "deepseek-harness", path: "integrations/deepseek-harness.md", title: "DeepSeek Harness 集成", group: "集成" },
+    { id: "data-sources-guide", path: "DATA-SOURCES-GUIDE.md", title: "外部数据源目录", group: "集成" },
+    { id: "skills-guide", path: "SKILLS-GUIDE.md", title: "Skill 目录与导入", group: "集成" },
     // 合规
     { id: "open-source-disclosure", path: "OPEN-SOURCE-DISCLOSURE.md", title: "开源披露", group: "合规" },
     { id: "features-detail", path: "FEATURES-DETAILED.md", title: "功能明细", group: "合规" },
