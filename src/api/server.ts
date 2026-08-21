@@ -985,6 +985,7 @@ export function buildHttpServer() {
     { id: "agent-architecture-next", path: "AGENT-ARCHITECTURE-NEXT.md", title: "Agent 架构演进", group: "Agent" },
     // 评测
     { id: "scoring-standard", path: "SCORING_STANDARD.md", title: "评测标准", group: "评测" },
+    { id: "edu-evaluation", path: "EDU-EVALUATION.md", title: "教育评测与实测", group: "评测" },
     // 集成
     { id: "claude-code", path: "integrations/claude-code.md", title: "Claude Code 集成", group: "集成" },
     { id: "codex-cli", path: "integrations/codex-cli.md", title: "Codex CLI 集成", group: "集成" },
