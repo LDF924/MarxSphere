@@ -36,14 +36,21 @@ function ensureBackendDeps(): boolean {
     console.log("[desktop] 首次启动: 解压 node_modules ...");
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     fs.mkdirSync(nm, { recursive: true });
-    // Windows System32 bsdtar（libarchive）: 路径处理稳, 解压 zip
     const sysTar = "C:/Windows/System32/tar.exe";
     const tmp = path.join(root, "node_modules_tmp");
     rmSync(tmp, { recursive: true, force: true });
     fs.mkdirSync(tmp, { recursive: true });
-    execFileSync("powershell.exe", ["-NoProfile", "-Command",
-      `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
-      { windowsHide: true, stdio: "pipe", timeout: 120_000 });
+    // 首选 System32 bsdtar；失败（精简系统无 tar.exe 等）时降级 PowerShell Expand-Archive
+    try {
+      execFileSync("powershell.exe", ["-NoProfile", "-Command",
+        `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
+        { windowsHide: true, stdio: "pipe", timeout: 120_000 });
+    } catch {
+      console.log("[desktop] tar.exe 不可用，降级 Expand-Archive ...");
+      execFileSync("powershell.exe", ["-NoProfile", "-Command",
+        `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${tmp}' -Force`],
+        { windowsHide: true, stdio: "pipe", timeout: 300_000 });
+    }
     // 解出 node_modules/ 子目录 → 移到目标
     const src = path.join(tmp, "node_modules");
     if (fs.existsSync(src)) {
