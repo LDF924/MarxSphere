@@ -3495,6 +3495,16 @@ export function buildHttpServer() {
     return educationComplianceService.complianceStatus(request.body as any);
   });
 
+  // ─── 教育反馈闭环（V397: 学生/教师使用反馈 → 教学效果统计 → 改进驱动）───
+  app.post("/api/education/feedback", async (request) => {
+    const { educationFeedbackService } = await import("../services/education-feedback-service.js");
+    return educationFeedbackService.submitEduFeedback(request.body as any);
+  });
+  app.get("/api/education/feedback/stats", async () => {
+    const { educationFeedbackService } = await import("../services/education-feedback-service.js");
+    return educationFeedbackService.eduFeedbackStats();
+  });
+
   // ─── 实证研究执行工作台（V348+）───
   const MAX_EMPIRICAL_CELLS = 200_000;
   const empiricalRunSchema = z.object({

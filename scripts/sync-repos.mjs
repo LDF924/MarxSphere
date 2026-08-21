@@ -41,7 +41,7 @@ const MAIN = "C:/Users/HUAWEI/SAG-main";
 
 // ─── 方向规则：目录 → 源端 ───
 // 开源 → 主仓库（代码方向，开源领先）
-const DIR_TO_MAIN = new Set(["src", "web/src", "test", "migrations", "electron", "docs"]);
+const DIR_TO_MAIN = new Set(["src", "web/src", "test", "migrations", "electron", "docs", "scripts"]);
 // 根级文件：开源 → 主仓库（README/发布脚本等）
 const ROOT_TO_MAIN = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "package.json", "package-lock.json", "docker-compose.yml", "codex-config.toml.example", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vite.preview.config.ts", "vitest.config.ts", "release.mjs", "sync-repos.mjs", ".github"];
 

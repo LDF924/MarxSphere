@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Loader2, ShieldCheck, Camera, Network, Play } from "lucide-react";
 import { EduResultCard } from "./EduResultView";
+import { EduFeedbackFAB } from "./EduFeedbackFAB";
 
 const API = "/api/education";
 
@@ -69,6 +70,7 @@ export function TeacherWorkspacePanel() {
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <EduFeedbackFAB role="teacher" scene="general" source="教师工作台" />
       {/* 教研闭环：备课 / 命题 / 批改 / 班级学情 */}
       <div className="rounded-xl border bg-card p-3">
         <div className="mb-2 flex items-center justify-between text-sm font-semibold">备课辅助（大纲 / 教案 / 课件 / 分层）<DemoBtn onClick={() => demoRun("lesson", `${API}/teach/lesson`, { subject, chapter: "价值规律", classMinutes: 45 }, "备课教案", { input: "价值规律" })} /></div>

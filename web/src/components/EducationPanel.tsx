@@ -1245,6 +1245,43 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
   const [results, setResults] = useState<Record<string, any>>({});
   const [inputs, setInputs] = useState<Record<string, Record<string, string>>>({});
   const [activeTool, setActiveTool] = useState<string>("E1");
+  // V397: 教育反馈闭环 — 赞/踩+备注 → /api/education/feedback；统计 → /api/education/feedback/stats
+  const [fbOpen, setFbOpen] = useState(false);
+  const [fbSent, setFbSent] = useState(false);
+  const [fbNote, setFbNote] = useState("");
+  const [fbStats, setFbStats] = useState<{ summary?: { total: number; likes: number; dislikes: number; likeRate: number } } | null>(null);
+
+  const submitFeedback = async (fb: 1 | -1) => {
+    setFbSent(false);
+    try {
+      const r = await fetch(`${API_BASE}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: role === "teacher" ? "teacher" : "student",
+          scene: activeTool === "E5" ? "lesson" : activeTool === "E3" ? "diagnosis" : activeTool === "E2" ? "tutoring" : activeTool === "E1" ? "plan" : "general",
+          feedback: fb,
+          note: fbNote.trim() || undefined,
+          source: active.title,
+        }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setFbSent(true); setFbNote(""); setFbOpen(false);
+        void loadStats();
+      }
+    } catch { /* 静默失败不打断使用 */ }
+  };
+
+  const loadStats = async () => {
+    try {
+      const r = await fetch(`${API_BASE}/feedback/stats`);
+      const d = await r.json();
+      if (d.ok) setFbStats(d);
+    } catch { /* 忽略 */ }
+  };
+
+  useEffect(() => { void loadStats(); }, []);
   // V389: 角色分发 — 按 role 过滤工具列表（student→E1/E2/E3/E4/E6，teacher→E5）
   const tools = role === "all" ? TOOLS : TOOLS.filter((t) => (t.role ?? "student") === role);
   // V383: 左右拉伸 — 分隔条控制中间区宽度（向左=中间变窄侧栏变宽，向右=中间变宽侧栏变窄）
@@ -1328,7 +1365,43 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
         <span className="text-xs font-medium text-foreground/80">
           {role === "teacher" ? "教师工作台 · 备课教研" : "我的学习 · 六大学习能力"}
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          {fbStats?.summary && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700" title="教育反馈统计（教学效果指标）">
+              👍 {fbStats.summary.likes} · 👎 {fbStats.summary.dislikes} · 满意率 {fbStats.summary.likeRate}%
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { setFbOpen((c) => !c); setFbSent(false); }}
+            className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[10px] text-emerald-700 hover:bg-emerald-50"
+            title="功能反馈（帮助改进教育功能）"
+          >
+            💬 功能反馈
+          </button>
+        </div>
       </div>
+
+      {fbOpen && (
+        <div className="border-b bg-emerald-50/60 px-4 py-2.5">
+          <div className="mb-1.5 text-[11px] text-emerald-800">
+            这个功能对你有帮助吗？（{active.title}）
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void submitFeedback(1)}
+              className="rounded-lg border border-emerald-300 bg-white px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-100">👍 有帮助</button>
+            <button type="button" onClick={() => void submitFeedback(-1)}
+              className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs text-red-600 hover:bg-red-50">👎 没帮助</button>
+            <input
+              value={fbNote}
+              onChange={(e) => setFbNote(e.target.value)}
+              placeholder="可选：补充说明（不会显示个人标识）"
+              className="h-7 flex-1 rounded border border-emerald-200 bg-white px-2 text-xs outline-none focus:border-emerald-400"
+            />
+          </div>
+          {fbSent && <div className="mt-1 text-[10px] text-emerald-600">✓ 反馈已记录（脱敏存储）</div>}
+        </div>
+      )}
 
       <div className="flex flex-1 min-h-0">
         {/* 左侧工具列表 */}
