@@ -371,6 +371,10 @@ export const EvalPanel: FC = () => {
   const [outputArg, setOutputArg] = useState("");
   const [dimsArg, setDimsArg] = useState("");
   const [limitArg, setLimitArg] = useState(50);
+  // V397: 教育评测（12 项指标：技术 6 + 教学效果 6）
+  const [eduEval, setEduEval] = useState<{ techScore?: number; metrics?: Array<{ id: number; name: string; value: number; sample: string; group: string }>; suggestions?: Array<{ metric: string; action: string; priority: string }> } | null>(null);
+  const [eduEvalBusy, setEduEvalBusy] = useState(false);
+  const [eduOpen, setEduOpen] = useState<number | null>(null);
   // V381: 评测配置（模型/模式/机制）— 智能默认 + 用户可选
   const [judgeModel, setJudgeModel] = useState("deepseek-v4-flash");
   const [evalPreset, setEvalPreset] = useState<"smart" | "fast" | "rigorous" | "cross">("smart");
@@ -553,6 +557,20 @@ export const EvalPanel: FC = () => {
     stepMapRef.current.clear();
   };
 
+  // ─── V397: 教育评测（12 项）───
+  const runEduEval = async () => {
+    setEduEvalBusy(true);
+    setEduEval(null);
+    try {
+      const r = await fetch("/api/education/eval");
+      const d = await r.json();
+      if (d.ok) setEduEval(d);
+    } catch { /* 忽略 */ }
+    setEduEvalBusy(false);
+  };
+
+  useEffect(() => { void runEduEval(); }, []);
+
   // ─── 启动评测 ───
   const runEval = async () => {
     if (running) return;
@@ -692,6 +710,92 @@ export const EvalPanel: FC = () => {
           </Card>
         ) : (
         <>
+        {/* ───── V397: 教育评测（12 项：技术 6 + 教学效果 6）───── */}
+        <Card className="p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-emerald-600" />
+            <span className="text-sm font-medium">教育场景评测（12 项指标）</span>
+            <button
+              type="button"
+              onClick={() => void runEduEval()}
+              disabled={eduEvalBusy}
+              className="ml-auto flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${eduEvalBusy ? "animate-spin" : ""}`} />
+              重新评测
+            </button>
+          </div>
+          {eduEval ? (
+            <>
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">
+                  综合技术分：{eduEval.techScore?.toFixed(3)}
+                </span>
+                <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                  BKT / 诊断 / 路径 / 批改 / 思政 / 闭环 · 掌握度 / 辅导 / 备课 / 批改效率 / 规划 / 满意度
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+                {(eduEval.metrics ?? []).map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setEduOpen((c) => (c === m.id ? null : m.id))}
+                    className="rounded-lg border p-2.5 text-left transition-colors hover:bg-muted/40"
+                    style={{ borderColor: m.group === "技术" ? "hsl(142 76% 85%)" : "hsl(38 92% 85%)" }}
+                    title="点击展开详情"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium">{m.name}</span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{m.group}</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <span className="text-lg font-bold" style={{ color: m.value >= 0.8 ? "hsl(142 70% 35%)" : m.value >= 0.5 ? "hsl(38 90% 40%)" : "hsl(0 80% 50%)" }}>
+                        {(m.value * 100).toFixed(0)}%
+                      </span>
+                      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded bg-muted">
+                        <div className="h-full rounded" style={{ width: `${Math.min(100, m.value * 100)}%`, background: m.value >= 0.8 ? "hsl(142 70% 45%)" : m.value >= 0.5 ? "hsl(38 90% 50%)" : "hsl(0 80% 55%)" }} />
+                      </div>
+                    </div>
+                    <div className="mt-1 truncate text-[9px] text-muted-foreground">{m.sample}</div>
+                    {eduOpen === m.id && (
+                      <div className="mt-2 border-t border-dashed pt-2 text-[10px] leading-4 text-muted-foreground">
+                        <div>指标编号：#0{m.id}（{m.group}）</div>
+                        <div>评测方法：{m.sample}</div>
+                        <div className={m.value >= 0.8 ? "text-emerald-700" : m.value >= 0.5 ? "text-amber-700" : "text-red-700"}>
+                          {m.value >= 0.8 ? "✅ 达标（≥80%）" : m.value >= 0.5 ? "⚠️ 需关注（50-80%）" : "❌ 不达标（<50%）"}
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {eduEval.suggestions && eduEval.suggestions.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
+                    <Sparkles className="h-3.5 w-3.5" /> 反馈闭环 · 自动改进建议（低分指标 + 负评热点驱动）
+                  </div>
+                  <div className="space-y-1">
+                    {eduEval.suggestions.map((s, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-[10px] leading-4 text-amber-900">
+                        <span className={`mt-0.5 shrink-0 rounded px-1 py-px text-[8px] font-bold ${s.priority === "high" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          {s.priority === "high" ? "高优先" : "中优先"}
+                        </span>
+                        <span><b>{s.metric}</b>：{s.action}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2 py-6 text-xs text-muted-foreground">
+              <Loader2 className={`h-4 w-4 animate-spin ${eduEvalBusy ? "" : "hidden"}`} />
+              {eduEvalBusy ? "运行教育评测中（12 项指标）..." : "点击「重新评测」加载教育评测结果"}
+            </div>
+          )}
+        </Card>
+
         {/* ───── 运行评测区（实时流程可视化）───── */}
         <Card className="p-4">
           <div className="mb-2 flex items-center gap-2">
