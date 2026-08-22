@@ -138,11 +138,26 @@ if (existing.id) {
   ));
   console.log(`✅ Release 已存在，已更新: ${release.html_url || release.message || "?"}`);
 } else {
-  release = JSON.parse(execSync(
+  // POST 创建；若 422（tag 已有 Release，竞态/时序）→ 自动降级查已有 + PATCH
+  let postResp = execSync(
     `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({ tag_name: tag, ...releaseMeta }))}`,
     { encoding: "utf8" }
-  ));
-  console.log(`✅ Release 已创建: ${release.html_url || release.message || "?"}`);
+  );
+  release = JSON.parse(postResp);
+  if (!release.id && release.message?.includes("already_exists")) {
+    console.log("⚠️ Release 已存在（竞态），降级 PATCH 更新…");
+    const retry = JSON.parse(execSync(
+      `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
+      { encoding: "utf8" }
+    ));
+    if (retry.id) {
+      release = JSON.parse(execSync(
+        `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${retry.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(releaseMeta))}`,
+        { encoding: "utf8" }
+      ));
+    }
+  }
+  console.log(`✅ Release 已创建/更新: ${release.html_url || release.message || "?"}`);
 }
 if (!release.id) {
   console.error("❌ Release 创建失败:", release.message || JSON.stringify(release).slice(0, 200));
