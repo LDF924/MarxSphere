@@ -132,6 +132,16 @@
     if (!pgOk) $("err").textContent = "数据库未就绪 — 点击上方「一键启动 PostgreSQL」或自行配置数据库。";
   }
 
+  // 本地 PG 安装进度监听
+  if (window.sagDesktop?.onPgProgress) {
+    window.sagDesktop.onPgProgress(({ stage, pct }) => {
+      const wrap = $("extract-wrap");
+      wrap.style.display = "block";
+      $("extract-fill").style.width = pct + "%";
+      $("extract-text").textContent = stage;
+    });
+  }
+
   // 解压进度监听（IPC：electron main → 引导页）
   if (window.sagDesktop?.onExtractProgress) {
     window.sagDesktop.onExtractProgress(({ done, total, pct }) => {
