@@ -7,5 +7,8 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   saveEnv: (input: unknown) => ipcRenderer.invoke("env:save", input),
   restartBackend: () => ipcRenderer.invoke("backend:restart"),
   dbSetup: () => ipcRenderer.invoke("db:setup"),
+  onExtractProgress: (cb: (p: { done: number; total: number; pct: number }) => void) => {
+    ipcRenderer.on("extract-progress", (_e, data) => cb(data));
+  },
   pyCheck: (p: string) => ipcRenderer.invoke("py:check", p),
 });

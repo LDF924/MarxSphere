@@ -34,23 +34,55 @@ function ensureBackendDeps(): boolean {
   if (!fs.existsSync(zip)) return false; // 无压缩包且无依赖 — 无法启动
   try {
     console.log("[desktop] 首次启动: 解压 node_modules（约 3-10 分钟，2.6 万文件）...");
-    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
     fs.mkdirSync(nm, { recursive: true });
     const sysTar = "C:/Windows/System32/tar.exe";
     const tmp = path.join(root, "node_modules_tmp");
     rmSync(tmp, { recursive: true, force: true });
     fs.mkdirSync(tmp, { recursive: true });
-    // 首选 PowerShell Expand-Archive（Windows 原生 zip 解压，最稳）；
-    // 失败时降级 System32 bsdtar（libarchive，路径处理稳）
-    // 注意：82MB/2.6 万文件解压可能需 3-10 分钟（VM/低配机更慢）——超时给足 20 分钟
+    // 流式解压（带进度）：PowerShell 逐文件解压并输出 "进度:已解/总数"
+    // 进度通过 IPC 发给引导页（extract-progress）
+    const psScript = `
+$zip = '${zip}'
+$dst = '${tmp}'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
+$total = $arc.Entries.Count
+$done = 0
+foreach ($e in $arc.Entries) {
+  $target = Join-Path $dst $e.FullName
+  if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
+  New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+  [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $target, $true)
+  $done++
+  if ($done % 500 -eq 0 -or $done -eq $total) { Write-Output "PROGRESS:$done/$total" }
+}
+$arc.Dispose()
+Write-Output "DONE:$done/$total"
+`;
     let extracted = false;
-    try {
-      execFileSync("powershell.exe", ["-NoProfile", "-Command",
-        `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${tmp}' -Force`],
-        { windowsHide: true, stdio: "pipe", timeout: 1_200_000 });
-      extracted = true;
-    } catch {
-      console.log("[desktop] Expand-Archive 失败，降级 tar.exe ...");
+    const extractProc = spawn("powershell.exe", ["-NoProfile", "-Command", psScript], { windowsHide: true });
+    let extractErr = "";
+    extractProc.stdout.on("data", (buf: Buffer) => {
+      const line = buf.toString().trim();
+      const m = line.match(/PROGRESS:(\d+)\/(\d+)/) || line.match(/DONE:(\d+)\/(\d+)/);
+      if (m) {
+        const done = Number(m[1]), total = Number(m[2]);
+        const pct = total > 0 ? Math.round(done / total * 100) : 0;
+        // IPC 发进度到引导页
+        for (const w of BrowserWindow.getAllWindows()) {
+          w.webContents.send("extract-progress", { done, total, pct });
+        }
+        if (line.startsWith("DONE")) extracted = true;
+      } else if (line) { extractErr += line + "\n"; }
+    });
+    extractProc.stderr.on("data", (buf: Buffer) => { extractErr += buf.toString(); });
+    const extractOk = await new Promise<boolean>((resolve) => {
+      extractProc.on("close", () => resolve(extracted));
+      setTimeout(() => { if (!extracted) { extractProc.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
+    });
+    if (!extractOk) {
+      console.log("[desktop] 流式解压失败，降级 tar.exe ...");
       execFileSync("powershell.exe", ["-NoProfile", "-Command",
         `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
         { windowsHide: true, stdio: "pipe", timeout: 600_000 });
