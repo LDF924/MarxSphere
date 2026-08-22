@@ -413,28 +413,30 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
     if (!fs.existsSync(path.join(pgBin, "pg_ctl.exe"))) {
       const zipPath = path.join(pgDir, "pg.zip");
       fs.mkdirSync(pgDir, { recursive: true });
-      // 国内镜像优先（华为云），失败用官方
+      // 官方 EDB 优先（实测国内可达 4MB/s）；华为云镜像（部分文件 404）作备选
       const mirrors = [
-        `https://mirrors.huaweicloud.com/postgresql/v16/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
         `https://get.enterprisedb.com/postgresql/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
+        `https://mirrors.huaweicloud.com/postgresql/v16/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
       ];
       let dlOk = false;
-      sendStage("下载 PostgreSQL 便携版（约 300MB，国内镜像）…", 5);
+      let dlErr = "";
+      sendStage("下载 PostgreSQL 便携版（约 300MB）…", 5);
       for (const m of mirrors) {
         try {
-          // 流式下载带进度（curl 输出进度条解析）
+          // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
           const { spawn: dlSpawn } = require("node:child_process") as typeof import("node:child_process");
-          const dl = dlSpawn("curl", ["-L", "-o", zipPath, m, "--progress-bar"], { windowsHide: true });
+          const dl = dlSpawn("curl.exe", ["-L", "-o", zipPath, m, "--progress-bar", "--retry", "2"], { windowsHide: true });
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
             if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.35);
+            else if (!line.includes("%")) dlErr = line.trim().slice(0, 120);
           });
           dlOk = await new Promise<boolean>((resolve) => { dl.on("close", (c: number) => resolve(c === 0)); });
           if (dlOk) break;
         } catch { /* 试下一个镜像 */ }
       }
-      if (!dlOk) return { ok: false, error: "PostgreSQL 下载失败（网络问题），请安装 Docker 或手动安装 PostgreSQL 后重试" };
+      if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
       sendStage("解压 PostgreSQL…", 45);
       execFileSync("powershell.exe", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force`], { timeout: 300_000, windowsHide: true, stdio: "pipe" });
       fs.rmSync(zipPath, { force: true });
