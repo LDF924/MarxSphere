@@ -32,6 +32,10 @@
   .py-row { display: flex; gap: 8px; align-items: center; }
   .py-row input { flex: 1; }
   .py-check { font-size: 11px; white-space: nowrap; }
+  .progress-wrap { display: none; margin: 10px 0 4px; }
+  .progress-bar { width: 100%; height: 8px; background: #0d1526; border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #fbbf24, #f59e0b); transition: width .3s; }
+  .progress-text { font-size: 11px; color: #94a3b8; margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -43,8 +47,12 @@
     <div class="section-title">① 数据库（PostgreSQL + pgvector，必需）</div>
     <div class="row"><span class="label">🛢 PostgreSQL（5540/5432）</span><span id="pg" class="badge warn">检测中…</span></div>
     <div id="pg-actions" style="display:none; padding: 8px 0 4px;">
-      <button id="btn-pg-setup" class="btn btn-primary">🚀 一键启动 PostgreSQL（Docker）</button>
-      <div class="hint">自动检测 Docker → 启动 pgvector/pgvector:pg16 容器 → 等待就绪。<br>若未装 Docker：请安装 Docker Desktop 后重试，或自行安装 PostgreSQL 16 + pgvector 扩展。</div>
+      <button id="btn-pg-setup" class="btn btn-primary">🚀 一键启动 PostgreSQL（Docker / 自动本地）</button>
+      <div class="hint">自动检测 Docker → 启动容器；无 Docker 自动安装本地 PostgreSQL（国内镜像，免注册）。<br>首次解压依赖约 3-10 分钟（2.6 万文件），请耐心等待。</div>
+      <div id="extract-wrap" class="progress-wrap">
+        <div class="progress-bar"><div id="extract-fill" class="progress-fill"></div></div>
+        <div id="extract-text" class="progress-text">正在解压依赖…</div>
+      </div>
     </div>
     <div id="pg-status" class="err"></div>
   </div>
@@ -115,10 +123,21 @@
     if (!pgOk) $("err").textContent = "数据库未就绪 — 点击上方「一键启动 PostgreSQL」或自行配置数据库。";
   }
 
+  // 解压进度监听（IPC：electron main → 引导页）
+  if (window.sagDesktop?.onExtractProgress) {
+    window.sagDesktop.onExtractProgress(({ done, total, pct }) => {
+      const wrap = $("extract-wrap");
+      wrap.style.display = "block";
+      $("extract-fill").style.width = pct + "%";
+      $("extract-text").textContent = `正在解压依赖… ${done.toLocaleString()} / ${total.toLocaleString()}（${pct}%）`;
+      if (pct >= 100) $("extract-text").textContent = "✓ 依赖解压完成";
+    });
+  }
+
   // 一键启动 PG
   $("btn-pg-setup").addEventListener("click", async () => {
     const btn = $("btn-pg-setup");
-    btn.disabled = true; btn.textContent = "正在启动数据库…（约 1-2 分钟）";
+    btn.disabled = true; btn.textContent = "正在启动数据库…（首次约 3-10 分钟，含依赖解压）";
     $("pg-status").className = "err";
     $("pg-status").textContent = "";
     try {
