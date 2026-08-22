@@ -33,7 +33,7 @@ function ensureBackendDeps(): boolean {
   if (fs.existsSync(path.join(nm, "fastify", "package.json"))) return true; // 已就绪
   if (!fs.existsSync(zip)) return false; // 无压缩包且无依赖 — 无法启动
   try {
-    console.log("[desktop] 首次启动: 解压 node_modules ...");
+    console.log("[desktop] 首次启动: 解压 node_modules（约 3-10 分钟，2.6 万文件）...");
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
     fs.mkdirSync(nm, { recursive: true });
     const sysTar = "C:/Windows/System32/tar.exe";
@@ -42,17 +42,18 @@ function ensureBackendDeps(): boolean {
     fs.mkdirSync(tmp, { recursive: true });
     // 首选 PowerShell Expand-Archive（Windows 原生 zip 解压，最稳）；
     // 失败时降级 System32 bsdtar（libarchive，路径处理稳）
+    // 注意：82MB/2.6 万文件解压可能需 3-10 分钟（VM/低配机更慢）——超时给足 20 分钟
     let extracted = false;
     try {
       execFileSync("powershell.exe", ["-NoProfile", "-Command",
         `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${tmp}' -Force`],
-        { windowsHide: true, stdio: "pipe", timeout: 300_000 });
+        { windowsHide: true, stdio: "pipe", timeout: 1_200_000 });
       extracted = true;
     } catch {
       console.log("[desktop] Expand-Archive 失败，降级 tar.exe ...");
       execFileSync("powershell.exe", ["-NoProfile", "-Command",
         `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
-        { windowsHide: true, stdio: "pipe", timeout: 120_000 });
+        { windowsHide: true, stdio: "pipe", timeout: 600_000 });
       extracted = true;
     }
     // 解出 node_modules/ 子目录（zip 内第一层是 node_modules/）→ 移到目标
