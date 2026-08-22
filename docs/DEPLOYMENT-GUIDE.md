@@ -16,7 +16,7 @@ npm run deploy
 |---|---|---|
 | ① Node 检查 | 缺则自动安装（Windows 用 winget） | 自动 |
 | ② Docker 检查 | 缺则提示安装 Docker Desktop | 提示一次 |
-| ③ 数据库启动 | `docker compose up -d`（PostgreSQL + Neo4j × 2） | 自动（首次拉镜像较慢） |
+| ③ 数据库启动 | `docker compose up -d`（PostgreSQL + Neo4j × 2）；**无 Docker 自动装本地 PostgreSQL**（华为云镜像，免管理员/免注册） | 自动（首次拉镜像较慢） |
 | ④ 依赖安装 | `npm install` | 自动 |
 | ⑤ .env 准备 | 自动复制 `.env.example → .env` | 填入 LLM_API_KEY（可选） |
 | ⑥ 数据库迁移 | `npx tsx src/db/migrate.ts` | 自动 |

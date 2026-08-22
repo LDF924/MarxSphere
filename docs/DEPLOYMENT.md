@@ -12,7 +12,16 @@
 | Python（可选） | 3.12 + venv | 推理 MCP 池 / 实证分析 |
 | pnpm | ≥ 10 | 仅 vendor/pdf2obsidian 构建需要 |
 
-## 2. 快速部署（Docker 一键）
+## 2. 快速部署（一键：Docker 或本地 PostgreSQL 自动切换）
+
+```bash
+# 一键部署（推荐）：自动装 Node → 起数据库（有 Docker 用 Docker，无 Docker 自动装本地 PostgreSQL）→ 装依赖 → 迁移 → 种子 → 启动
+git clone https://github.com/LDF924/MarxSphere.git
+cd MarxSphere
+npm run deploy          # http://localhost:4173
+```
+
+### 2.1 有 Docker（手动分步）
 
 ```bash
 # 1. 克隆 + 配置
@@ -31,6 +40,17 @@ npm run db:setup # 迁移 + 种子数据
 npm run build # 后端 tsc + 前端 vite
 npm start # http://localhost:4173
 ```
+
+### 2.2 无 Docker（自动装本地 PostgreSQL，国内友好）
+
+> 无需 Docker 注册/登录/外网；自动下载 PostgreSQL 16 便携版（华为云镜像）+ pgvector，免管理员。
+
+```bash
+node scripts/deploy.mjs   # 检测到无 Docker → 自动装本地 PG（initdb → 启动 5540 → 建库 + pgvector）
+# 或直接 npm run deploy（全流程）
+```
+
+**桌面端**：引导页「一键启动数据库」自动走降级链——有 Docker 用 Docker，无 Docker 自动装本地 PG。
 
 ## 3. 环境变量配置
 

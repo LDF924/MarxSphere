@@ -2,6 +2,19 @@
 
 本项目按语义化版本管理，主要变更记录于此。
 
+## [0.3.0] - 2026-08-23
+
+### 🚀 无 Docker 模式（国内用户友好）
+
+- **数据库五级降级链**（桌面端引导页 + `db:setup`）：有 Docker 用 Docker → 无 Docker 自动装 Docker → Docker 装不了/失败/超时 → **自动装本地 PostgreSQL 16 便携版**（华为云镜像，免管理员/免注册/免外网）
+- **deploy.mjs 无 Docker 模式**：`npm run deploy` 检测到无 Docker 自动装本地 PG（initdb → 启动 5540 → 建库 + pgvector → 写 DATABASE_URL）
+- **node_modules 解压修复**：Expand-Archive 优先 + 递归容错（干净 Windows 环境不再"后端依赖缺失"）
+
+### 🐛 修复
+
+- release.mjs：POST 422 竞态降级 PATCH（CI 与手动发布并发不再崩溃）
+- 教育反馈闭环 / 12 项评测（V397，随 v0.2.0 已发布）
+
 ## [0.5.0] - 2026-08-21
 
 ### ✨ AI+教育（重大新增）
