@@ -448,7 +448,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
-            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.35, "download");
+            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.75, "download");
             else if (!line.includes("%")) dlErr = line.trim().slice(0, 120);
           });
           dlOk = await new Promise<boolean>((resolve) => {
@@ -456,11 +456,11 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
             // curl.exe 启动失败（ENOENT 等）→ 不卡死，立即失败
             dl.on("error", (e: Error) => { dlErr = "curl 启动失败: " + e.message.slice(0, 80); resolve(false); });
           });
-          if (dlOk) break;
+          if (dlOk) { sendStage("✓ 下载完成", 80, "download"); break; }
         } catch { /* 试下一个镜像 */ }
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
-      sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 45, "install");
+      sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 50, "install");
       // 异步流式解压（不阻塞主进程；VM/低配机可能 5-15 分钟）
       const { spawn: unzipSpawn } = require("node:child_process") as typeof import("node:child_process");
       const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
@@ -477,18 +477,18 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
     // 初始化（幂等）
     const dataDir = path.join(pgDir, "data");
     if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
-      sendStage("初始化数据库…", 60);
+      sendStage("初始化数据库…", 70);
       execFileSync(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
     }
     // 启动（幂等）
-    sendStage("启动 PostgreSQL…", 75);
+    sendStage("启动 PostgreSQL…", 80);
     try {
       execFileSync(path.join(pgBin, "pg_isready.exe"), ["-h", "127.0.0.1", "-p", "5540"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
     } catch {
       execFileSync(path.join(pgBin, "pg_ctl.exe"), ["-D", dataDir, "-l", path.join(pgDir, "pg.log"), "-o", "-p 5540", "start"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
     }
     // 建库 + pgvector
-    sendStage("创建数据库 + pgvector 扩展…", 85);
+    sendStage("创建数据库 + pgvector 扩展…", 90);
     execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", "CREATE DATABASE sag_lite OWNER sag_lite"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
     execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
     sendStage("✓ PostgreSQL 就绪", 100);
