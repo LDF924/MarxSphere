@@ -66,7 +66,9 @@ npm start               # http://localhost:4173
 
 ### 4.1 创建虚拟机（VMware Workstation）
 
-1. **镜像**：Windows 11 专业版 ISO（微软官网下载）
+> ⚠️ **已知问题（2026-08 实测）**：**VirtualBox 7.2 + Win11 24H2/25H2 OOBE 不兼容**——安装程序能装完系统，但首次设置界面（OOBE）反复卡死（鼠标/键盘无响应），尝试 VBoxVGA/VBoxSVGA 显卡、断网、注册表 BypassNRO 均无效。**建议使用 VMware Workstation 或 Hyper-V**（对 Win11 OOBE 兼容性最好）。
+
+1. **镜像**：Windows 11 专业版 ISO（微软官网或 MSDN 渠道下载）
 2. **配置**：4 GB 内存 / 60 GB 磁盘 / 2 核 CPU（Docker Desktop 最低要求）
 3. **网络**：NAT 模式（可联网下载依赖）
 4. **安装**：全新安装 Windows 11（不登录微软账号，本地账户即可）
