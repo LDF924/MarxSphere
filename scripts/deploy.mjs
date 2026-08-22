@@ -4,7 +4,7 @@
 // 流程: ① 检查 Node（缺则装）→ ② 检查 Docker（缺则提示安装）→ ③ docker compose up（数据库）
 //       → ④ npm install → ⑤ .env 准备 → ⑥ 数据库迁移 → ⑦ 种子数据入库 → ⑧ 启动 4173
 import { spawn, spawnSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,18 +44,82 @@ function ensureDocker() {
   try {
     execSync("docker ps", { stdio: "pipe", timeout: 8000 });
     ok("Docker 可用");
+    return true;
   } catch {
-    if (isWin) {
-      fail("Docker 未运行 — 请先安装/启动 Docker Desktop（https://www.docker.com/products/docker-desktop/）");
-      fail("安装后：docker desktop 启动完成（右下角鲸鱼图标绿色）→ 重跑本脚本");
-    } else {
-      fail("Docker 未运行 — 请安装 Docker（https://docs.docker.com/get-docker/）后重试");
-    }
-    process.exit(1);
+    warn("Docker 未运行/未安装 — 将尝试无 Docker 模式（自动安装本地 PostgreSQL）");
+    return false;
   }
 }
 
-// ── ③ docker compose up（数据库，含首次拉镜像）──
+// ── ②b 无 Docker 模式：自动安装本地 PostgreSQL（Windows 原生安装包，国内镜像）──
+function installLocalPostgres() {
+  console.log(`\n${GREEN}════ 无 Docker 模式：安装本地 PostgreSQL + pgvector ════${RESET}`);
+  if (isWin) {
+    // Windows: 用 zip 便携版 PostgreSQL（免安装、免管理员，含 pgvector）
+    const pgVer = "16.6";
+    const pgZipUrl = `https://get.enterprisedb.com/postgresql/postgresql-${pgVer}-1-windows-x64-binaries.zip`;
+    const pgDir = path.join(root, ".pg-local");
+    const pgBin = path.join(pgDir, "pgsql", "bin");
+    try {
+      if (!existsSync(path.join(pgBin, "pg_ctl.exe"))) {
+        warn("下载 PostgreSQL 便携版（约 300MB，国内镜像）…");
+        const zipPath = path.join(pgDir, "pg.zip");
+        mkdirSync(pgDir, { recursive: true });
+        // 先试国内镜像（华为云/清华），失败用官方
+        const mirrors = [
+          "https://mirrors.huaweicloud.com/postgresql/v16/postgresql-16.6-1-windows-x64-binaries.zip",
+          pgZipUrl,
+        ];
+        let dlOk = false;
+        for (const m of mirrors) {
+          try { execSync(`curl -L -o "${zipPath}" "${m}"`, { stdio: "pipe", timeout: 600_000 }); dlOk = true; break; }
+          catch { warn(`镜像 ${m} 下载失败，试下一个…`); }
+        }
+        if (!dlOk) { fail("PostgreSQL 下载失败 — 请手动下载后重试"); process.exit(1); }
+        warn("解压 PostgreSQL…");
+        execSync(`powershell -NoProfile -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force"`, { stdio: "pipe", timeout: 300_000 });
+        rmSync(zipPath, { force: true });
+      }
+      // 初始化数据库（幂等）
+      const dataDir = path.join(pgDir, "data");
+      if (!existsSync(path.join(dataDir, "PG_VERSION"))) {
+        warn("初始化数据库…");
+        execSync(`"${path.join(pgBin, "initdb.exe")}" -D "${dataDir}" -U sag_lite -A trust -E UTF8 --locale=C`, { stdio: "pipe", timeout: 120_000 });
+      }
+      // 启动 PostgreSQL（幂等：已在跑则跳过）
+      try {
+        execSync(`"${path.join(pgBin, "pg_isready.exe")}" -h 127.0.0.1 -p 5540`, { stdio: "pipe", timeout: 5000 });
+        ok("本地 PostgreSQL 已在运行");
+      } catch {
+        execSync(`"${path.join(pgBin, "pg_ctl.exe")}" -D "${dataDir}" -l "${path.join(pgDir, "pg.log")}" -o "-p 5540" start`, { stdio: "pipe", timeout: 30_000 });
+        ok("本地 PostgreSQL 已启动（端口 5540）");
+      }
+      // 建库 + 用户 + pgvector 扩展
+      execSync(`"${path.join(pgBin, "psql.exe")}" -h 127.0.0.1 -p 5540 -U sag_lite -d postgres -c "CREATE DATABASE sag_lite OWNER sag_lite"`, { stdio: "pipe", timeout: 30_000 });
+      execSync(`"${path.join(pgBin, "psql.exe")}" -h 127.0.0.1 -p 5540 -U sag_lite -d sag_lite -c "CREATE EXTENSION IF NOT EXISTS vector"`, { stdio: "pipe", timeout: 30_000 });
+      // 写 .env（DATABASE_URL 指向本地 PG）
+      const envPath = path.join(root, ".env");
+      if (existsSync(envPath)) {
+        let env = readFileSync(envPath, "utf8");
+        if (!env.includes("DATABASE_URL=")) {
+          env += `\nDATABASE_URL=postgres://sag_lite@127.0.0.1:5540/sag_lite\n`;
+          writeFileSync(envPath, env);
+        }
+      }
+      ok("本地 PostgreSQL + pgvector 就绪（无 Docker）");
+      return true;
+    } catch (e) {
+      fail("本地 PostgreSQL 安装失败: " + String(e?.message || e).slice(0, 200));
+      fail("请手动安装 PostgreSQL 16 + pgvector，或安装 Docker 后重试");
+      process.exit(1);
+    }
+  }
+  // Linux/macOS: 用包管理器
+  warn("Linux/macOS 建议用 Docker；也可 apt/brew 安装 postgresql + pgvector");
+  return false;
+}
+
+// ── ③ 数据库启动（优先 Docker，失败自动本地 PG）──
 function startDatabase() {
   console.log(`\n${GREEN}════ 数据库（docker compose）════${RESET}`);
   const composeFile = path.join(root, "docker-compose.yml");
@@ -69,8 +133,8 @@ function startDatabase() {
       execSync(`docker compose -f "${composeFile}" up -d`, { cwd: root, stdio: "inherit", timeout: 600_000 });
       ok("数据库已启动");
     } catch {
-      fail("数据库启动失败 — 请检查 Docker 是否正常运行（docker ps 应能看到容器）");
-      process.exit(1);
+      warn("Docker 数据库启动失败 — 自动切换到本地 PostgreSQL 模式…");
+      installLocalPostgres();
     }
   }
 }
