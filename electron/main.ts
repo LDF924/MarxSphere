@@ -161,6 +161,8 @@ async function bootstrap() {
   }
   currentPort = port;
   createWindow();
+  // 等待引导页完全加载（did-finish-load）——确保解压/进度 IPC 事件不丢失（引导页 ready 前发的事件收不到）
+  await waitForOnboardingReady();
   // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
   const dbReady = await waitForDbReady(port, 0);
   if (dbReady) void startBackend(port);
@@ -168,6 +170,18 @@ async function bootstrap() {
     // 引导页负责数据库启动；DB 就绪后由引导页触发 backend:start
     console.log("[desktop] 数据库未就绪 — 等待引导页完成数据库启动");
   }
+}
+
+/** 等待引导页 did-finish-load（最多 15s；解压进度事件需在页面 ready 后发出） */
+function waitForOnboardingReady(): Promise<void> {
+  return new Promise((resolve) => {
+    const w = mainWindow;
+    if (!w) return resolve();
+    if (w.webContents.isLoading()) {
+      w.webContents.once("did-finish-load", () => resolve());
+      setTimeout(resolve, 15_000); // 兜底：15s 后不等了
+    } else resolve();
+  });
 }
 
 /** 探测数据库就绪（5540/5432），最多等 30s（引导页可能正在启动数据库/用户手动启动 Docker） */
