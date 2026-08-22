@@ -420,7 +420,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       ];
       let dlOk = false;
       let dlErr = "";
-      sendStage("下载 PostgreSQL 便携版（约 300MB）…", 5);
+      sendStage("准备下载 PostgreSQL 便携版（约 300MB）…", 5, "download");
       for (const m of mirrors) {
         try {
           // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
@@ -432,7 +432,11 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
             if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.35, "download");
             else if (!line.includes("%")) dlErr = line.trim().slice(0, 120);
           });
-          dlOk = await new Promise<boolean>((resolve) => { dl.on("close", (c: number) => resolve(c === 0)); });
+          dlOk = await new Promise<boolean>((resolve) => {
+            dl.on("close", (c: number) => resolve(c === 0));
+            // curl.exe 启动失败（ENOENT 等）→ 不卡死，立即失败
+            dl.on("error", (e: Error) => { dlErr = "curl 启动失败: " + e.message.slice(0, 80); resolve(false); });
+          });
           if (dlOk) break;
         } catch { /* 试下一个镜像 */ }
       }
