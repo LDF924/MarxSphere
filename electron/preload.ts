@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   saveEnv: (input: unknown) => ipcRenderer.invoke("env:save", input),
   restartBackend: () => ipcRenderer.invoke("backend:restart"),
   startBackend: () => ipcRenderer.invoke("backend:start"),
-  dbSetup: () => ipcRenderer.invoke("db:setup"),
+  dbSetup: (mode?: "auto" | "docker" | "local") => ipcRenderer.invoke("db:setup", mode),
   onExtractProgress: (cb: (p: { done: number; total: number; pct: number }) => void) => {
     ipcRenderer.on("extract-progress", (_e, data) => cb(data));
   },

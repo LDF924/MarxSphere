@@ -396,10 +396,11 @@ ipcMain.handle("env:probe", async () => {
 
 ipcMain.handle("py:check", async (_e, p: string) => checkPython(String(p || "")));
 
-/** 无 Docker 模式：自动安装本地 PostgreSQL 16 便携版（免管理员，国内镜像）→ 返回端口或错误 */
-async function installLocalPostgres(root: string): Promise<{ ok: boolean; error?: string }> {
+/** 无 Docker 模式：自动安装本地 PostgreSQL 16 便携版（免管理员，国内镜像）→ 返回端口或错误
+ * 注意：pg-local 必须放 dataRoot（userData 可写）——Program Files 只读会导致 initdb ENOENT */
+async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; error?: string }> {
   const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
-  const pgDir = path.join(root, "pg-local");
+  const pgDir = path.join(dataRoot, "pg-local");
   const pgBin = path.join(pgDir, "pgsql", "bin");
   const pgVer = "16.6";
   try {
@@ -437,7 +438,7 @@ async function installLocalPostgres(root: string): Promise<{ ok: boolean; error?
     execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", "CREATE DATABASE sag_lite OWNER sag_lite"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
     execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
     // 写 .env（引导页 dataRoot 下的 .env）
-    const envFile = path.join(root, ".env");
+    const envFile = path.join(dataRoot, ".env");
     if (fs.existsSync(envFile)) {
       let env = fs.readFileSync(envFile, "utf8");
       if (!env.includes("DATABASE_URL=")) {
@@ -452,10 +453,16 @@ async function installLocalPostgres(root: string): Promise<{ ok: boolean; error?
 }
 
 /** 一键启动 PostgreSQL: 优先 Docker；不可用则自动装本地 PostgreSQL（免 Docker，国内友好） */
-ipcMain.handle("db:setup", async () => {
+ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
   const root = resourceRoot();
   const dataRoot = sagRoot();
   const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
+  // 模式选择:
+  //   auto   (默认): Docker → 装 Docker → 本地 PG（降级链）
+  //   docker       : 只用 Docker（用户选择装 Docker）
+  //   local        : 直接用本地 PG（跳过 Docker）
+  const wantDocker = mode !== "local";
+  const wantLocalFallback = mode !== "docker";
   // 0) 先探测 5540 是否已有 PG（本地模式已跑则直接成功）
   try {
     execFileSync("powershell.exe", ["-NoProfile", "-Command", "(Test-NetConnection -ComputerName 127.0.0.1 -Port 5540 -WarningAction SilentlyContinue).TcpTestSucceeded"], { timeout: 8000, windowsHide: true, stdio: "pipe" });
@@ -469,7 +476,14 @@ ipcMain.handle("db:setup", async () => {
   let dockerCmd = ["docker", "docker.exe"].find((c) => {
     try { execFileSync(c, ["--version"], { timeout: 3000, windowsHide: true, stdio: "pipe" }); return true; } catch { return false; }
   });
-  if (!dockerCmd) {
+  // local 模式：跳过 Docker，直接本地 PG
+  if (mode === "local") {
+    console.log("[desktop] 用户选择本地 PostgreSQL 模式 ...");
+    const r = await installLocalPostgres(dataRoot);
+    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（用户选择）" };
+    return { ok: false, error: r.error || "本地 PostgreSQL 安装失败" };
+  }
+  if (!dockerCmd && wantDocker) {
     // 无 Docker → ① 先尝试自动安装 Docker Desktop（winget 静默安装）
     console.log("[desktop] 未检测到 Docker，尝试自动安装 Docker Desktop ...");
     try {
@@ -484,16 +498,19 @@ ipcMain.handle("db:setup", async () => {
         await new Promise((r) => setTimeout(r, 5000));
       }
     } catch (e: any) {
-      console.log("[desktop] Docker 自动安装失败（无 WSL2/嵌套虚拟化/注册限制），降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
+      console.log("[desktop] Docker 自动安装失败（无 WSL2/嵌套虚拟化/注册限制）", String(e?.message || e).slice(0, 100));
       dockerCmd = undefined;
     }
   }
   if (!dockerCmd) {
     // ② Docker 装不了/起不来（如 VM 嵌套虚拟化、国内注册门槛）→ 降级本地 PostgreSQL（免 Docker，国内友好）
-    console.log("[desktop] 使用无 Docker 模式：自动安装本地 PostgreSQL ...");
-    const r = await installLocalPostgres(root);
-    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（无 Docker 模式）" };
-    return { ok: false, error: r.error || "无 Docker 模式安装失败" };
+    if (wantLocalFallback) {
+      console.log("[desktop] 使用无 Docker 模式：自动安装本地 PostgreSQL ...");
+      const r = await installLocalPostgres(dataRoot);
+      if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（无 Docker 模式）" };
+      return { ok: false, error: r.error || "无 Docker 模式安装失败" };
+    }
+    return { ok: false, error: "Docker 不可用（docker 模式下不降级）。请安装 Docker Desktop 后重试，或选择「本地 PostgreSQL」模式。" };
   }
   // 2) 准备 compose 文件（内置 → userData）
   const composeSrc = path.join(root, "docker-compose.yml");
@@ -526,22 +543,28 @@ volumes:
   try {
     execFileSync(dockerCmd, ["compose", "-f", composeDst, "up", "-d"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
   } catch (e: any) {
-    // Docker 有但 compose 失败（daemon 未跑/镜像拉取失败）→ 降级本地 PostgreSQL
-    console.log("[desktop] docker compose 失败，降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
-    const r = await installLocalPostgres(root);
-    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker compose 失败降级）" };
-    return { ok: false, error: r.error || "docker compose 与本地 PostgreSQL 均失败" };
+    // Docker 有但 compose 失败（daemon 未跑/镜像拉取失败）→ 视模式降级本地 PostgreSQL
+    if (wantLocalFallback) {
+      console.log("[desktop] docker compose 失败，降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
+      const r = await installLocalPostgres(dataRoot);
+      if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker compose 失败降级）" };
+      return { ok: false, error: r.error || "docker compose 与本地 PostgreSQL 均失败" };
+    }
+    return { ok: false, error: "docker compose 启动失败: " + String(e?.message || e).slice(0, 150) };
   }
   // 4) 轮询等待 5540 就绪（最多 60s）
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     if (await probeTcp(5540)) return { ok: true, port: 5540 };
   }
-  // 5) Docker 容器起了但 60s 未就绪 → 降级本地 PostgreSQL
-  console.log("[desktop] Docker PostgreSQL 60s 未就绪，降级本地 PostgreSQL ...");
-  const r2 = await installLocalPostgres(root);
-  if (r2.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker 超时降级）" };
-  return { ok: false, error: r2.error || "PostgreSQL 容器与本地 PostgreSQL 均未就绪" };
+  // 5) Docker 容器起了但 60s 未就绪 → 视模式降级本地 PostgreSQL
+  if (wantLocalFallback) {
+    console.log("[desktop] Docker PostgreSQL 60s 未就绪，降级本地 PostgreSQL ...");
+    const r2 = await installLocalPostgres(dataRoot);
+    if (r2.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker 超时降级）" };
+    return { ok: false, error: r2.error || "PostgreSQL 容器与本地 PostgreSQL 均未就绪" };
+  }
+  return { ok: false, error: "PostgreSQL 容器已启动但 60 秒内未就绪，请检查 Docker Desktop 是否正常运行。" };
 });
 
 ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: string; llmModel?: string; embeddingApiKey?: string; cogneePython?: string; empiricalPython?: string; pgPort?: number }) => {
