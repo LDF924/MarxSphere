@@ -40,25 +40,50 @@ function ensureBackendDeps(): boolean {
     const tmp = path.join(root, "node_modules_tmp");
     rmSync(tmp, { recursive: true, force: true });
     fs.mkdirSync(tmp, { recursive: true });
-    // 首选 System32 bsdtar；失败（精简系统无 tar.exe 等）时降级 PowerShell Expand-Archive
+    // 首选 PowerShell Expand-Archive（Windows 原生 zip 解压，最稳）；
+    // 失败时降级 System32 bsdtar（libarchive，路径处理稳）
+    let extracted = false;
     try {
-      execFileSync("powershell.exe", ["-NoProfile", "-Command",
-        `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
-        { windowsHide: true, stdio: "pipe", timeout: 120_000 });
-    } catch {
-      console.log("[desktop] tar.exe 不可用，降级 Expand-Archive ...");
       execFileSync("powershell.exe", ["-NoProfile", "-Command",
         `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${tmp}' -Force`],
         { windowsHide: true, stdio: "pipe", timeout: 300_000 });
+      extracted = true;
+    } catch {
+      console.log("[desktop] Expand-Archive 失败，降级 tar.exe ...");
+      execFileSync("powershell.exe", ["-NoProfile", "-Command",
+        `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
+        { windowsHide: true, stdio: "pipe", timeout: 120_000 });
+      extracted = true;
     }
-    // 解出 node_modules/ 子目录 → 移到目标
-    const src = path.join(tmp, "node_modules");
-    if (fs.existsSync(src)) {
-      rmSync(nm, { recursive: true, force: true });
-      try {
-        fs.renameSync(src, nm);
-      } catch {
-        cpSync(src, nm, { recursive: true });
+    // 解出 node_modules/ 子目录（zip 内第一层是 node_modules/）→ 移到目标
+    if (extracted) {
+      // Expand-Archive 解出的目录名可能与 zip 内一致（node_modules），也可能有差异——
+      // 递归找 fastify/package.json 所在目录作为 node_modules 根
+      let src = path.join(tmp, "node_modules");
+      if (!fs.existsSync(path.join(src, "fastify", "package.json"))) {
+        // 搜索实际位置（zip 结构差异容错）
+        const walk = (d: string): string | null => {
+          try {
+            for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+              const p = path.join(d, e.name);
+              if (e.isDirectory()) {
+                if (fs.existsSync(path.join(p, "fastify", "package.json"))) return p;
+                const r = walk(p);
+                if (r) return r;
+              }
+            }
+          } catch { /* 权限跳过 */ }
+          return null;
+        };
+        src = walk(tmp) ?? src;
+      }
+      if (fs.existsSync(src)) {
+        rmSync(nm, { recursive: true, force: true });
+        try {
+          fs.renameSync(src, nm);
+        } catch {
+          cpSync(src, nm, { recursive: true });
+        }
       }
     }
     rmSync(tmp, { recursive: true, force: true });
@@ -313,22 +338,85 @@ ipcMain.handle("env:probe", async () => {
 
 ipcMain.handle("py:check", async (_e, p: string) => checkPython(String(p || "")));
 
-/** 一键启动 PostgreSQL: 内置 docker-compose → docker compose up -d → 等待 5540 就绪 */
+/** 无 Docker 模式：自动安装本地 PostgreSQL 16 便携版（免管理员，国内镜像）→ 返回端口或错误 */
+async function installLocalPostgres(root: string): Promise<{ ok: boolean; error?: string }> {
+  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+  const pgDir = path.join(root, "pg-local");
+  const pgBin = path.join(pgDir, "pgsql", "bin");
+  const pgVer = "16.6";
+  try {
+    if (!fs.existsSync(path.join(pgBin, "pg_ctl.exe"))) {
+      const zipPath = path.join(pgDir, "pg.zip");
+      fs.mkdirSync(pgDir, { recursive: true });
+      // 国内镜像优先（华为云），失败用官方
+      const mirrors = [
+        `https://mirrors.huaweicloud.com/postgresql/v16/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
+        `https://get.enterprisedb.com/postgresql/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
+      ];
+      let dlOk = false;
+      for (const m of mirrors) {
+        try {
+          execFileSync("curl", ["-L", "-o", zipPath, m], { timeout: 600_000, windowsHide: true, stdio: "pipe" });
+          dlOk = true; break;
+        } catch { /* 试下一个镜像 */ }
+      }
+      if (!dlOk) return { ok: false, error: "PostgreSQL 下载失败（网络问题），请安装 Docker 或手动安装 PostgreSQL 后重试" };
+      execFileSync("powershell.exe", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force`], { timeout: 300_000, windowsHide: true, stdio: "pipe" });
+      fs.rmSync(zipPath, { force: true });
+    }
+    // 初始化（幂等）
+    const dataDir = path.join(pgDir, "data");
+    if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
+      execFileSync(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
+    }
+    // 启动（幂等）
+    try {
+      execFileSync(path.join(pgBin, "pg_isready.exe"), ["-h", "127.0.0.1", "-p", "5540"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
+    } catch {
+      execFileSync(path.join(pgBin, "pg_ctl.exe"), ["-D", dataDir, "-l", path.join(pgDir, "pg.log"), "-o", "-p 5540", "start"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
+    }
+    // 建库 + pgvector
+    execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", "CREATE DATABASE sag_lite OWNER sag_lite"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
+    execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
+    // 写 .env（引导页 dataRoot 下的 .env）
+    const envFile = path.join(root, ".env");
+    if (fs.existsSync(envFile)) {
+      let env = fs.readFileSync(envFile, "utf8");
+      if (!env.includes("DATABASE_URL=")) {
+        env += `\nDATABASE_URL=postgres://sag_lite@127.0.0.1:5540/sag_lite\n`;
+        fs.writeFileSync(envFile, env);
+      }
+    }
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: "本地 PostgreSQL 安装失败: " + String(e?.message || e).slice(0, 150) };
+  }
+}
+
+/** 一键启动 PostgreSQL: 优先 Docker；不可用则自动装本地 PostgreSQL（免 Docker，国内友好） */
 ipcMain.handle("db:setup", async () => {
   const root = resourceRoot();
   const dataRoot = sagRoot();
   const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
-  // 1) 找 docker 命令；找不到则自动安装 Docker Desktop（winget 静默安装 + 等守护进程）
+  // 0) 先探测 5540 是否已有 PG（本地模式已跑则直接成功）
+  try {
+    execFileSync("powershell.exe", ["-NoProfile", "-Command", "(Test-NetConnection -ComputerName 127.0.0.1 -Port 5540 -WarningAction SilentlyContinue).TcpTestSucceeded"], { timeout: 8000, windowsHide: true, stdio: "pipe" });
+    // 若 5540 已通，检查是否我们的库
+    try {
+      const pgCheck = execFileSync("powershell.exe", ["-NoProfile", "-Command", `& { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 5540); $c.Close(); 'ok' }`], { timeout: 5000, windowsHide: true, stdio: "pipe" });
+      if (pgCheck.toString().includes("ok")) return { ok: true, note: "数据库端口 5540 已就绪" };
+    } catch { /* 继续正常流程 */ }
+  } catch { /* 端口未开，继续 */ }
+  // 1) 找 docker 命令
   let dockerCmd = ["docker", "docker.exe"].find((c) => {
     try { execFileSync(c, ["--version"], { timeout: 3000, windowsHide: true, stdio: "pipe" }); return true; } catch { return false; }
   });
   if (!dockerCmd) {
+    // 无 Docker → ① 先尝试自动安装 Docker Desktop（winget 静默安装）
     console.log("[desktop] 未检测到 Docker，尝试自动安装 Docker Desktop ...");
     try {
-      // winget 静默安装（等待安装完成）
       execFileSync("winget", ["install", "Docker.DockerDesktop", "--accept-source-agreements", "--accept-package-agreements", "--silent", "--disable-interactivity"], { timeout: 600_000, windowsHide: true, stdio: "pipe" });
       console.log("[desktop] Docker Desktop 安装完成，等待启动 ...");
-      // 首次安装需用户手动启动 Docker Desktop（WSL2 组件依赖）；等待 docker 命令可用最多 10 分钟
       const waitStart = Date.now();
       while (Date.now() - waitStart < 600_000) {
         try {
@@ -338,10 +426,17 @@ ipcMain.handle("db:setup", async () => {
         await new Promise((r) => setTimeout(r, 5000));
       }
     } catch (e: any) {
-      return { ok: false, error: "Docker 自动安装失败，请手动安装 Docker Desktop（https://www.docker.com/products/docker-desktop/）: " + String(e?.message || e).slice(0, 150) };
+      console.log("[desktop] Docker 自动安装失败（无 WSL2/嵌套虚拟化/注册限制），降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
+      dockerCmd = undefined;
     }
   }
-  if (!dockerCmd) return { ok: false, error: "Docker 已安装但未启动。请打开 Docker Desktop（右下角鲸鱼图标变绿）后点击「重试」。" };
+  if (!dockerCmd) {
+    // ② Docker 装不了/起不来（如 VM 嵌套虚拟化、国内注册门槛）→ 降级本地 PostgreSQL（免 Docker，国内友好）
+    console.log("[desktop] 使用无 Docker 模式：自动安装本地 PostgreSQL ...");
+    const r = await installLocalPostgres(root);
+    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（无 Docker 模式）" };
+    return { ok: false, error: r.error || "无 Docker 模式安装失败" };
+  }
   // 2) 准备 compose 文件（内置 → userData）
   const composeSrc = path.join(root, "docker-compose.yml");
   const composeDst = path.join(dataRoot, "docker-compose.yml");
@@ -373,14 +468,22 @@ volumes:
   try {
     execFileSync(dockerCmd, ["compose", "-f", composeDst, "up", "-d"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
   } catch (e: any) {
-    return { ok: false, error: "docker compose 启动失败: " + String(e?.message || e).slice(0, 150) };
+    // Docker 有但 compose 失败（daemon 未跑/镜像拉取失败）→ 降级本地 PostgreSQL
+    console.log("[desktop] docker compose 失败，降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
+    const r = await installLocalPostgres(root);
+    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker compose 失败降级）" };
+    return { ok: false, error: r.error || "docker compose 与本地 PostgreSQL 均失败" };
   }
   // 4) 轮询等待 5540 就绪（最多 60s）
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     if (await probeTcp(5540)) return { ok: true, port: 5540 };
   }
-  return { ok: false, error: "PostgreSQL 容器已启动但 60 秒内未就绪，请检查 Docker Desktop 是否正常运行。" };
+  // 5) Docker 容器起了但 60s 未就绪 → 降级本地 PostgreSQL
+  console.log("[desktop] Docker PostgreSQL 60s 未就绪，降级本地 PostgreSQL ...");
+  const r2 = await installLocalPostgres(root);
+  if (r2.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker 超时降级）" };
+  return { ok: false, error: r2.error || "PostgreSQL 容器与本地 PostgreSQL 均未就绪" };
 });
 
 ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: string; llmModel?: string; embeddingApiKey?: string; cogneePython?: string; empiricalPython?: string; pgPort?: number }) => {
