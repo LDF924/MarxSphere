@@ -11,5 +11,8 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   onExtractProgress: (cb: (p: { done: number; total: number; pct: number }) => void) => {
     ipcRenderer.on("extract-progress", (_e, data) => cb(data));
   },
+  onPgProgress: (cb: (p: { stage: string; pct: number }) => void) => {
+    ipcRenderer.on("pg-progress", (_e, data) => cb(data));
+  },
   pyCheck: (p: string) => ipcRenderer.invoke("py:check", p),
 });
