@@ -99,6 +99,19 @@ const nmDir = path.join(sagResDir, "node_modules");
 const zipPath = path.join(sagResDir, "node_modules.zip");
 if (existsSync(nmDir)) {
   console.log("[desktop] 压缩 node_modules → node_modules.zip ...");
+  // V413: 删除 emoji/特殊字符文件名的文件（Windows tar/Expand-Archive 解压会失败）
+  // 例: @fastify/send/test/fixtures/snow❄️...（测试 fixtures，运行时不需要）
+  const EMOJI_RE = /[^\x00-\x7F一-鿿　-〿＀-￯]/;
+  let removedEmoji = 0;
+  const scanEmoji = (d) => {
+    for (const f of readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, f.name);
+      if (f.isDirectory()) { scanEmoji(p); continue; }
+      if (EMOJI_RE.test(f.name)) { rmSync(p, { force: true }); removedEmoji++; }
+    }
+  };
+  try { scanEmoji(nmDir); } catch { /* 忽略 */ }
+  if (removedEmoji > 0) console.log(`[desktop] 已移除 ${removedEmoji} 个 emoji 文件名文件（解压兼容）`);
   const sysTar = "C:/Windows/System32/tar.exe";
   try {
     const ps = `& '${sysTar}' -a -c -f '${zipPath}' -C '${sagResDir}' node_modules`;
