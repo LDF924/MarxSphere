@@ -33,6 +33,7 @@
   .py-row input { flex: 1; }
   .py-check { font-size: 11px; white-space: nowrap; }
   .progress-wrap { display: none; margin: 10px 0 4px; }
+  .progress-label { font-size: 12px; color: #cbd5e1; margin-bottom: 4px; font-weight: 600; }
   .progress-bar { width: 100%; height: 8px; background: #0d1526; border-radius: 999px; overflow: hidden; }
   .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #fbbf24, #f59e0b); transition: width .3s; }
   .progress-text { font-size: 11px; color: #94a3b8; margin-top: 5px; }
@@ -57,10 +58,21 @@
         <div id="pg-local-hint" class="hint" style="display:none;margin-top:6px;">自动下载 PostgreSQL 16 便携版（国内镜像，约 300MB）+ pgvector，免安装免管理员免外网。首次约 3-10 分钟。</div>
       </div>
       <button id="btn-pg-setup" class="btn btn-primary">🚀 一键启动 PostgreSQL（Docker / 自动本地）</button>
-      <div class="hint">自动检测 Docker → 启动容器；无 Docker 自动安装本地 PostgreSQL（国内镜像，免注册）。<br>首次解压依赖约 3-10 分钟（2.6 万文件），请耐心等待。</div>
+      <div class="hint">自动检测 Docker → 启动容器；无 Docker 自动安装本地 PostgreSQL。<br>首次解压依赖约 3-10 分钟（2.6 万文件），请耐心等待。</div>
       <div id="extract-wrap" class="progress-wrap">
+        <div class="progress-label">① 依赖解压（node_modules）</div>
         <div class="progress-bar"><div id="extract-fill" class="progress-fill"></div></div>
-        <div id="extract-text" class="progress-text">正在解压依赖…</div>
+        <div id="extract-text" class="progress-text">等待中…</div>
+      </div>
+      <div id="pg-dl-wrap" class="progress-wrap">
+        <div class="progress-label">② 下载 PostgreSQL（~300MB）</div>
+        <div class="progress-bar"><div id="pg-dl-fill" class="progress-fill"></div></div>
+        <div id="pg-dl-text" class="progress-text">等待中…</div>
+      </div>
+      <div id="pg-install-wrap" class="progress-wrap">
+        <div class="progress-label">③ 安装 PostgreSQL（解压/初始化/启动）</div>
+        <div class="progress-bar"><div id="pg-install-fill" class="progress-fill"></div></div>
+        <div id="pg-install-text" class="progress-text">等待中…</div>
       </div>
     </div>
     <div id="pg-status" class="err"></div>
@@ -132,13 +144,20 @@
     if (!pgOk) $("err").textContent = "数据库未就绪 — 点击上方「一键启动 PostgreSQL」或自行配置数据库。";
   }
 
-  // 本地 PG 安装进度监听
+  // 本地 PG 安装进度监听（下载 → ②，安装 → ③）
   if (window.sagDesktop?.onPgProgress) {
-    window.sagDesktop.onPgProgress(({ stage, pct }) => {
-      const wrap = $("extract-wrap");
-      wrap.style.display = "block";
-      $("extract-fill").style.width = pct + "%";
-      $("extract-text").textContent = stage;
+    window.sagDesktop.onPgProgress(({ stage, pct, type }) => {
+      if (type === "download") {
+        const wrap = $("pg-dl-wrap");
+        wrap.style.display = "block";
+        $("pg-dl-fill").style.width = pct + "%";
+        $("pg-dl-text").textContent = stage;
+      } else {
+        const wrap = $("pg-install-wrap");
+        wrap.style.display = "block";
+        $("pg-install-fill").style.width = pct + "%";
+        $("pg-install-text").textContent = stage;
+      }
     });
   }
 
