@@ -26,7 +26,7 @@ function resourceRoot(): string {
 }
 
 /** 确保后端子进程依赖就绪: node_modules 缺失时从 node_modules.zip 解压（NSIS 大目录安装易截断） */
-function ensureBackendDeps(): boolean {
+async function ensureBackendDeps(): Promise<boolean> {
   const root = resourceRoot();
   const nm = path.join(root, "node_modules");
   const zip = path.join(root, "node_modules.zip");
@@ -214,11 +214,11 @@ function createWindow() {
 }
 
 /** 启动后端子进程（ELECTRON_RUN_AS_NODE 复用内置 Node 跑编译产物） */
-function startBackend(port: number) {
+async function startBackend(port: number) {
   const root = resourceRoot();
   const dataRoot = sagRoot();
   // 依赖就绪检查: node_modules 缺失时从 tgz 解压（首次启动）
-  if (!ensureBackendDeps()) {
+  if (!(await ensureBackendDeps())) {
     showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
     return;
   }
