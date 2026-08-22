@@ -132,11 +132,15 @@ const existing = JSON.parse(execSync(
 ));
 let release;
 if (existing.id) {
+  // 已存在：不覆盖已有 body（保留手动写的发布说明），只更新 name/draft/prerelease
+  const patchMeta = existing.body && existing.body.trim() !== "MarxSphere 自动发布"
+    ? { name: releaseMeta.name, draft: false, prerelease: false }
+    : releaseMeta;
   release = JSON.parse(execSync(
-    `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${existing.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(releaseMeta))}`,
+    `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${existing.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(patchMeta))}`,
     { encoding: "utf8" }
   ));
-  console.log(`✅ Release 已存在，已更新: ${release.html_url || release.message || "?"}`);
+  console.log(`✅ Release 已存在，已更新（保留原 body）: ${release.html_url || release.message || "?"}`);
 } else {
   // POST 创建；若 422（tag 已有 Release，竞态/时序）→ 自动降级查已有 + PATCH
   let postResp = execSync(
