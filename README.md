@@ -253,9 +253,9 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 ### 🖥 桌面端（Electron + NSIS）
 
 - 单进程架构：`node dist/src/index.js` 同时服务 API + 前端（零额外依赖）
-- 首次启动全量引导：一键启动 PostgreSQL（Docker）/ Neo4j 检测 / Python 系统探测 / LLM 密钥配置
+- 首次启动全量引导：一键启动 PostgreSQL（**有 Docker 用 Docker，无 Docker 自动装本地 PostgreSQL 便携版**）/ Neo4j 检测 / Python 系统探测 / LLM 密钥配置
 - 自动端口避让（4173→4183）、崩溃自动重启、进程树清理（taskkill /T）
-- 依赖自解压：node_modules.zip 首启 bsdtar 自动解压（安装包 159MB）
+- 依赖自解压：node_modules.zip 首启自动解压（Expand-Archive 优先 + 递归容错，干净环境不再失败）
 
 ### 🎯 实证研究工作台（10 大功能）
 
@@ -354,7 +354,7 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 
 ### 1. 环境要求
 - Node.js ≥ 20
-- PostgreSQL 16 + pgvector（推荐 Docker：`docker compose up -d`）
+- PostgreSQL 16 + pgvector（**有 Docker 用 Docker：`docker compose up -d`；无 Docker 自动装本地 PostgreSQL**——`npm run deploy` 或桌面端引导页自动处理）
 - （可选）Python 3.12 + venv（推理 MCP 池 / 实证分析）
 - （可选）Neo4j（Graphiti 11001 / Cognee 11003，图谱增强）
 
@@ -363,10 +363,10 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 ```bash
 git clone https://github.com/LDF924/MarxSphere.git
 cd MarxSphere
-npm run deploy          # 🚀 一键部署：自动装 Node → 起数据库 → 装依赖 → 迁移 → 种子数据 → 启动 http://localhost:4173
+npm run deploy          # 🚀 一键部署：自动装 Node → 起数据库（有 Docker 用 Docker，无 Docker 自动装本地 PostgreSQL）→ 装依赖 → 迁移 → 种子数据 → 启动 http://localhost:4173
 ```
 
-> 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `docker compose up -d` → `npx tsx src/db/migrate.ts` → `npm start`
+> 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `docker compose up -d`（无 Docker 用 `node scripts/deploy.mjs` 自动装本地 PG）→ `npx tsx src/db/migrate.ts` → `npm start`
 > 完整说明见 [部署指南](docs/DEPLOYMENT-GUIDE.md)（含 Windows 虚拟机测试方法）
 
 > **PDF2Obsidian（可选）**：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
