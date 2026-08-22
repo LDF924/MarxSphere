@@ -441,8 +441,18 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
         } catch { /* 试下一个镜像 */ }
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
-      sendStage("解压 PostgreSQL…", 45);
-      execFileSync("powershell.exe", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force`], { timeout: 300_000, windowsHide: true, stdio: "pipe" });
+      sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 45, "install");
+      // 异步流式解压（不阻塞主进程；VM/低配机可能 5-15 分钟）
+      const { spawn: unzipSpawn } = require("node:child_process") as typeof import("node:child_process");
+      const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
+        `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force`],
+        { windowsHide: true });
+      const unzipOk = await new Promise<boolean>((resolve) => {
+        unzip.on("close", (c: number) => resolve(c === 0));
+        unzip.on("error", () => resolve(false));
+        setTimeout(() => { if (!unzip.exitCode) { unzip.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
+      });
+      if (!unzipOk) return { ok: false, error: "PostgreSQL 解压超时/失败，请手动解压 pg.zip 后重试" };
       fs.rmSync(zipPath, { force: true });
     }
     // 初始化（幂等）
