@@ -163,6 +163,11 @@ async function bootstrap() {
   createWindow();
   // 等待引导页完全加载（did-finish-load）——确保解压/进度 IPC 事件不丢失（引导页 ready 前发的事件收不到）
   await waitForOnboardingReady();
+  // 依赖就绪检查（提前执行，不等 DB——否则 DB 未就绪时解压永不触发）
+  if (!(await ensureBackendDeps())) {
+    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+    return;
+  }
   // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
   const dbReady = await waitForDbReady(port, 0);
   if (dbReady) void startBackend(port);
