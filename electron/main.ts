@@ -404,9 +404,9 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
   const pgBin = path.join(pgDir, "pgsql", "bin");
   const pgVer = "16.6";
   // 阶段进度 → 引导页
-  const sendStage = (stage: string, pct: number) => {
+  const sendStage = (stage: string, pct: number, type: "download" | "install" = "install") => {
     for (const w of BrowserWindow.getAllWindows()) {
-      w.webContents.send("pg-progress", { stage, pct });
+      w.webContents.send("pg-progress", { stage, pct, type });
     }
   };
   try {
@@ -429,7 +429,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
-            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.35);
+            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.35, "download");
             else if (!line.includes("%")) dlErr = line.trim().slice(0, 120);
           });
           dlOk = await new Promise<boolean>((resolve) => { dl.on("close", (c: number) => resolve(c === 0)); });
