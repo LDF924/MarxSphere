@@ -47,6 +47,15 @@
     <div class="section-title">① 数据库（PostgreSQL + pgvector，必需）</div>
     <div class="row"><span class="label">🛢 PostgreSQL（5540/5432）</span><span id="pg" class="badge warn">检测中…</span></div>
     <div id="pg-actions" style="display:none; padding: 8px 0 4px;">
+      <div style="margin-bottom:8px;">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">选择数据库方式：</div>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-pg-docker" class="btn">🐳 安装 Docker（需外网/注册）</button>
+          <button id="btn-pg-local" class="btn btn-primary">🛢 本地 PostgreSQL（推荐，免 Docker）</button>
+        </div>
+        <div id="pg-docker-hint" class="hint" style="display:none;margin-top:6px;">Docker Desktop 需要：① 外网访问（国内需 VPN/代理）② 注册登录 Docker 账号 ③ 启用 WSL2/虚拟化。安装约 5-10 分钟，之后自动启动数据库。</div>
+        <div id="pg-local-hint" class="hint" style="display:none;margin-top:6px;">自动下载 PostgreSQL 16 便携版（国内镜像，约 300MB）+ pgvector，免安装免管理员免外网。首次约 3-10 分钟。</div>
+      </div>
       <button id="btn-pg-setup" class="btn btn-primary">🚀 一键启动 PostgreSQL（Docker / 自动本地）</button>
       <div class="hint">自动检测 Docker → 启动容器；无 Docker 自动安装本地 PostgreSQL（国内镜像，免注册）。<br>首次解压依赖约 3-10 分钟（2.6 万文件），请耐心等待。</div>
       <div id="extract-wrap" class="progress-wrap">
@@ -152,6 +161,19 @@
     await ensureBackendStarted();
   };
 
+  // 数据库方式选择（docker / local）
+  let pgMode = "auto";
+  $("btn-pg-docker").addEventListener("click", () => {
+    pgMode = "docker";
+    $("pg-docker-hint").style.display = "block";
+    $("pg-local-hint").style.display = "none";
+  });
+  $("btn-pg-local").addEventListener("click", () => {
+    pgMode = "local";
+    $("pg-local-hint").style.display = "block";
+    $("pg-docker-hint").style.display = "none";
+  });
+
   // 一键启动 PG
   $("btn-pg-setup").addEventListener("click", async () => {
     const btn = $("btn-pg-setup");
@@ -159,7 +181,7 @@
     $("pg-status").className = "err";
     $("pg-status").textContent = "";
     try {
-      const r = await window.sagDesktop.dbSetup();
+      const r = await window.sagDesktop.dbSetup(pgMode);
       if (r.ok) {
         $("pg-status").className = "ok-msg";
         $("pg-status").textContent = "✓ PostgreSQL 已就绪（端口 " + r.port + "）";
