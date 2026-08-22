@@ -190,7 +190,7 @@
     await ensureBackendStarted();
   };
 
-  // 数据库方式选择（docker / local）
+  // 数据库方式选择（docker / local）——本地 PG 直接触发安装
   let pgMode = "auto";
   $("btn-pg-docker").addEventListener("click", () => {
     pgMode = "docker";
@@ -201,6 +201,7 @@
     pgMode = "local";
     $("pg-local-hint").style.display = "block";
     $("pg-docker-hint").style.display = "none";
+    $("btn-pg-setup").click(); // 直接触发安装
   });
 
   // 一键启动 PG
