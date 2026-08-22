@@ -134,6 +134,24 @@
     });
   }
 
+  // 轮询重探测（每 3 秒）— 用户后启动 Docker/数据库也能自动识别
+  setInterval(() => {
+    if (!$("save").disabled) return; // 已就绪不再轮询
+    refreshProbe().catch(() => {});
+  }, 3000);
+
+  // 数据库就绪后自动触发后端启动（DB 未就绪时 bootstrap 等待中）
+  async function ensureBackendStarted() {
+    if (probe && (probe["pg:5540"] || probe["pg:5432"])) {
+      try { await window.sagDesktop.startBackend(); } catch { /* 后端已起则忽略 */ }
+    }
+  }
+  const origRefresh = refreshProbe;
+  refreshProbe = async () => {
+    await origRefresh();
+    await ensureBackendStarted();
+  };
+
   // 一键启动 PG
   $("btn-pg-setup").addEventListener("click", async () => {
     const btn = $("btn-pg-setup");

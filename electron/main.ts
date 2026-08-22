@@ -73,7 +73,13 @@ Write-Output "DONE:$done/$total"
         for (const w of BrowserWindow.getAllWindows()) {
           w.webContents.send("extract-progress", { done, total, pct });
         }
-        if (line.startsWith("DONE")) extracted = true;
+        if (line.startsWith("DONE")) {
+          extracted = true;
+          // 强制补发 100% 进度（防尾部进度未刷新导致 UI 卡 9x%）
+          for (const w of BrowserWindow.getAllWindows()) {
+            w.webContents.send("extract-progress", { done: total, total, pct: 100 });
+          }
+        }
       } else if (line) { extractErr += line + "\n"; }
     });
     extractProc.stderr.on("data", (buf: Buffer) => { extractErr += buf.toString(); });
@@ -155,7 +161,26 @@ async function bootstrap() {
   }
   currentPort = port;
   createWindow();
-  void startBackend(port);
+  // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
+  const dbReady = await waitForDbReady(port, 0);
+  if (dbReady) void startBackend(port);
+  else {
+    // 引导页负责数据库启动；DB 就绪后由引导页触发 backend:start
+    console.log("[desktop] 数据库未就绪 — 等待引导页完成数据库启动");
+  }
+}
+
+/** 探测数据库就绪（5540/5432），最多等 30s（引导页可能正在启动数据库/用户手动启动 Docker） */
+function waitForDbReady(port: number, attempt: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const check = async () => {
+      const ok = (await probeTcp(5540)) || (await probeTcp(5432));
+      if (ok) return resolve(true);
+      if (attempt >= 15) return resolve(false); // 30s 未就绪 → 引导页接管
+      setTimeout(() => { void (async () => { const r = await waitForDbReady(port, attempt + 1); resolve(r); })(); }, 2000);
+    };
+    void check();
+  });
 }
 
 /** 端口预检: 4173 空闲则用, 被占则递增（最多 +10）; 返回 null 表示全部被占 */
@@ -544,6 +569,12 @@ ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: 
 ipcMain.handle("backend:restart", async () => {
   if (backendProc) { backendStopping = true; backendProc.kill(); backendStopping = false; }
   startBackend(currentPort);
+  return { ok: true };
+});
+
+// 引导页数据库就绪后触发后端启动（DB 未就绪时 bootstrap 等待，由本入口拉起）
+ipcMain.handle("backend:start", async () => {
+  if (!backendProc) startBackend(currentPort);
   return { ok: true };
 });
 
