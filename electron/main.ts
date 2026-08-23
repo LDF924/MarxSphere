@@ -32,6 +32,34 @@ async function ensureBackendDeps(): Promise<boolean> {
   const zip = path.join(root, "node_modules.zip");
   if (fs.existsSync(path.join(nm, "fastify", "package.json"))) return true; // 已就绪
   if (!fs.existsSync(zip)) return false; // 无压缩包且无依赖 — 无法启动
+  // V413: 安装目录写权限检查 — Program Files 只读时用 icacls 提权放开（普通用户可解压）
+  try {
+    const probe = path.join(nm, ".write-test");
+    fs.writeFileSync(probe, "ok");
+    fs.rmSync(probe, { force: true });
+  } catch {
+    console.log("[desktop] 安装目录不可写，尝试 icacls 放开权限（需 UAC）...");
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    try {
+      execFileSync("powershell.exe", ["-NoProfile", "-Command",
+        `Start-Process icacls -ArgumentList '\\"${root}\\"','/grant','*S-1-5-32-545:(OI)(CI)F','/T','/Q' -Verb RunAs -Wait`],
+        { timeout: 60_000, windowsHide: true, stdio: "pipe" });
+      console.log("[desktop] icacls 权限放开完成");
+    } catch (e: any) {
+      console.error("[desktop] icacls 提权失败:", String(e?.message || e).slice(0, 120));
+      return false;
+    }
+    // 重试写入
+    try {
+      fs.mkdirSync(nm, { recursive: true });
+      const probe = path.join(nm, ".write-test");
+      fs.writeFileSync(probe, "ok");
+      fs.rmSync(probe, { force: true });
+    } catch {
+      console.error("[desktop] 权限放开后仍不可写");
+      return false;
+    }
+  }
   try {
     console.log("[desktop] 首次启动: 解压 node_modules（约 3-10 分钟，2.6 万文件）...");
     const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
