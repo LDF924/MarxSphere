@@ -39,7 +39,7 @@ if (!tag) {
     if (!m) throw new Error("未找到可用的版本 tag 作为递增基准");
     tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
     console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
-  } catch (e: any) {
+  } catch (e) {
     // 版本解析失败 → 中止（不生成 Date.now() 时间戳垃圾 tag，避免污染 Release 列表）
     console.error(`❌ 版本号解析失败: ${String(e?.message || e)}`);
     console.error("   请显式传入版本参数，例如: node scripts/release.mjs v0.4.0 [发布说明]");
