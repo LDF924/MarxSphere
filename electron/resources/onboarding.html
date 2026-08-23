@@ -168,7 +168,19 @@
       wrap.style.display = "block";
       $("extract-fill").style.width = pct + "%";
       $("extract-text").textContent = `正在解压依赖… ${done.toLocaleString()} / ${total.toLocaleString()}（${pct}%）`;
-      if (pct >= 100) $("extract-text").textContent = "✓ 依赖解压完成";
+      if (pct >= 100) {
+        $("extract-text").textContent = "✓ 依赖解压完成";
+        // 解压完成后才允许启动数据库
+        $("btn-pg-setup").disabled = false;
+        $("btn-pg-docker").disabled = false;
+        $("btn-pg-local").disabled = false;
+      } else {
+        // 解压中禁用数据库按钮（避免 PG 流程依赖未就绪的 node_modules）
+        $("btn-pg-setup").disabled = true;
+        $("btn-pg-docker").disabled = true;
+        $("btn-pg-local").disabled = true;
+        $("extract-text").textContent = `正在解压依赖… ${done.toLocaleString()} / ${total.toLocaleString()}（${pct}%）— 解压完成前请勿操作数据库`;
+      }
     });
   }
 

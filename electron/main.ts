@@ -489,13 +489,43 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
       sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 30, "install");
-      // 异步流式解压（不阻塞主进程；VM/低配机可能 5-15 分钟）
+      // 流式解压带进度（ZipFile 逐文件计数，与 node_modules 解压一致）
       const { spawn: unzipSpawn } = require("node:child_process") as typeof import("node:child_process");
-      const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
-        `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${pgDir}' -Force`],
-        { windowsHide: true });
+      const pgUnzipScript = `
+$zip = '${zipPath}'
+$dst = '${pgDir}'
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
+$total = $arc.Entries.Count
+$done = 0
+foreach ($e in $arc.Entries) {
+  $target = Join-Path $dst $e.FullName
+  if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
+  New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+  [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $target, $true)
+  $done++
+  if ($done % 100 -eq 0 -or $done -eq $total) { Write-Output "PGUNZIP:$done/$total" }
+}
+$arc.Dispose()
+Write-Output "PGDONE:$done/$total"
+`;
+      const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command", pgUnzipScript], { windowsHide: true });
+      let unzipDone = false;
+      unzip.stdout.on("data", (buf: Buffer) => {
+        const line = buf.toString().trim();
+        const m = line.match(/PGUNZIP:(\d+)\/(\d+)/) || line.match(/PGDONE:(\d+)\/(\d+)/);
+        if (m) {
+          const d = Number(m[1]), t = Number(m[2]);
+          const pct = t > 0 ? Math.round(d / t * 100) : 0;
+          sendStage(`解压 PostgreSQL… ${d.toLocaleString()}/${t.toLocaleString()}（${pct}%，约需 ${Math.max(1, Math.round((t - d) / 200))} 分钟）`, 30 + pct * 0.3, "install");
+          if (line.startsWith("PGDONE")) {
+            unzipDone = true;
+            sendStage("✓ PostgreSQL 解压完成", 60, "install");
+          }
+        }
+      });
       const unzipOk = await new Promise<boolean>((resolve) => {
-        unzip.on("close", (c: number) => resolve(c === 0));
+        unzip.on("close", () => resolve(unzipDone));
         unzip.on("error", () => resolve(false));
         setTimeout(() => { if (!unzip.exitCode) { unzip.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
       });
