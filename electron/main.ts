@@ -70,13 +70,29 @@ async function ensureBackendDeps(): Promise<boolean> {
     console.log("[desktop] 首次启动: 解压 node_modules（约 3-10 分钟，2.6 万文件）...");
     const { execFileSync, spawn } = require("node:child_process") as typeof import("node:child_process");
     fs.mkdirSync(nm, { recursive: true });
-    const sysTar = "C:/Windows/System32/tar.exe";
     const tmp = path.join(root, "node_modules_tmp");
     rmSync(tmp, { recursive: true, force: true });
     fs.mkdirSync(tmp, { recursive: true });
-    // 流式解压（带进度）：PowerShell 逐文件解压并输出 "进度:已解/总数"
-    // 进度通过 IPC 发给引导页（extract-progress）
-    const psScript = `
+    // V435: tar.exe 优先解压（Windows 自带 libarchive，多线程，比逐文件 ExtractToFile 快 3-5 倍）
+    // 2.6 万文件约 1-2 分钟；PowerShell 流式（带进度）做兜底
+    const sysTar = "C:/Windows/System32/tar.exe";
+    let extracted = false;
+    let tarErr = "";
+    try {
+      execFileSync(sysTar, ["-xf", zip, "-C", tmp], { windowsHide: true, stdio: "pipe", timeout: 300_000 });
+      // 校验解压结果（fastify 存在才算成功）
+      extracted = fs.existsSync(path.join(tmp, "node_modules", "fastify", "package.json"));
+      if (extracted) {
+        console.log("[desktop] tar 解压完成（快路径）");
+      }
+    } catch (e: any) {
+      tarErr = String(e?.message || e).slice(0, 120);
+      console.error("[desktop] tar 解压失败，降级流式解压:", tarErr);
+    }
+    if (!extracted) {
+      // 降级：PowerShell 流式解压（带进度，逐文件）
+      console.log("[desktop] 降级流式解压（带进度）...");
+      const psScript = `
 $zip = '${zip}'
 $dst = '${tmp}'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -95,39 +111,35 @@ foreach ($e in $arc.Entries) {
 $arc.Dispose()
 Write-Output "DONE:$done/$total"
 `;
-    let extracted = false;
-    const extractProc = spawn("powershell.exe", ["-NoProfile", "-Command", psScript], { windowsHide: true });
-    let extractErr = "";
-    extractProc.stdout.on("data", (buf: Buffer) => {
-      const line = buf.toString().trim();
-      const m = line.match(/PROGRESS:(\d+)\/(\d+)/) || line.match(/DONE:(\d+)\/(\d+)/);
-      if (m) {
-        const done = Number(m[1]), total = Number(m[2]);
-        const pct = total > 0 ? Math.round(done / total * 100) : 0;
-        // IPC 发进度到引导页
-        for (const w of BrowserWindow.getAllWindows()) {
-          w.webContents.send("extract-progress", { done, total, pct });
-        }
-        if (line.startsWith("DONE")) {
-          extracted = true;
-          // 强制补发 100% 进度（防尾部进度未刷新导致 UI 卡 9x%）
+      const extractProc = spawn("powershell.exe", ["-NoProfile", "-Command", psScript], { windowsHide: true });
+      let extractErr = "";
+      extractProc.stdout.on("data", (buf: Buffer) => {
+        const line = buf.toString().trim();
+        const m = line.match(/PROGRESS:(\d+)\/(\d+)/) || line.match(/DONE:(\d+)\/(\d+)/);
+        if (m) {
+          const done = Number(m[1]), total = Number(m[2]);
+          const pct = total > 0 ? Math.round(done / total * 100) : 0;
+          // IPC 发进度到引导页
           for (const w of BrowserWindow.getAllWindows()) {
-            w.webContents.send("extract-progress", { done: total, total, pct: 100 });
+            w.webContents.send("extract-progress", { done, total, pct });
           }
-        }
-      } else if (line) { extractErr += line + "\n"; }
-    });
-    extractProc.stderr.on("data", (buf: Buffer) => { extractErr += buf.toString(); });
-    const extractOk = await new Promise<boolean>((resolve) => {
-      extractProc.on("close", () => resolve(extracted));
-      setTimeout(() => { if (!extracted) { extractProc.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
-    });
-    if (!extractOk) {
-      console.log("[desktop] 流式解压失败，降级 tar.exe ...");
-      execFileSync("powershell.exe", ["-NoProfile", "-Command",
-        `& '${sysTar}' -x -f '${zip}' -C '${tmp}'`],
-        { windowsHide: true, stdio: "pipe", timeout: 600_000 });
-      extracted = true;
+          if (line.startsWith("DONE")) {
+            extracted = true;
+            // 强制补发 100% 进度（防尾部进度未刷新导致 UI 卡 9x%）
+            for (const w of BrowserWindow.getAllWindows()) {
+              w.webContents.send("extract-progress", { done: total, total, pct: 100 });
+            }
+          }
+        } else if (line) { extractErr += line + "\n"; }
+      });
+      extractProc.stderr.on("data", (buf: Buffer) => { extractErr += buf.toString(); });
+      const extractOk = await new Promise<boolean>((resolve) => {
+        extractProc.on("close", () => resolve(extracted));
+        setTimeout(() => { if (!extracted) { extractProc.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
+      });
+      if (!extractOk) {
+        console.error("[desktop] 流式解压也失败:", extractErr.slice(0, 200));
+      }
     }
     // 解出 node_modules/ 子目录（zip 内第一层是 node_modules/）→ 移到目标
     if (extracted) {
@@ -996,9 +1008,20 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
       sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 30, "install");
-      // 流式解压带进度（ZipFile 逐文件计数，与 node_modules 解压一致）
-      const { spawn: unzipSpawn } = require("node:child_process") as typeof import("node:child_process");
-      const pgUnzipScript = `
+      // V435: tar 优先解压 PG（比逐文件 ExtractToFile 快 3-5 倍）；流式（带进度）兜底
+      const { spawn: unzipSpawn, execFileSync: efSync } = require("node:child_process") as typeof import("node:child_process");
+      let pgUnzipOk = false;
+      try {
+        efSync("C:/Windows/System32/tar.exe", ["-xf", zipPath, "-C", pgDir], { windowsHide: true, stdio: "pipe", timeout: 600_000 });
+        // 校验：pgsql/bin/pg_ctl.exe 存在
+        pgUnzipOk = fs.existsSync(path.join(pgDir, "pgsql", "bin", "pg_ctl.exe"));
+        if (pgUnzipOk) sendStage("✓ PostgreSQL 解压完成", 60, "install");
+        else console.error("[desktop] PG tar 解压后 pg_ctl 缺失，降级流式");
+      } catch (e: any) {
+        console.error("[desktop] PG tar 解压失败，降级流式:", String(e?.message || e).slice(0, 120));
+      }
+      if (!pgUnzipOk) {
+        const pgUnzipScript = `
 $zip = '${zipPath}'
 $dst = '${pgDir}'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -1017,27 +1040,28 @@ foreach ($e in $arc.Entries) {
 $arc.Dispose()
 Write-Output "PGDONE:$done/$total"
 `;
-      const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command", pgUnzipScript], { windowsHide: true });
-      let unzipDone = false;
-      unzip.stdout.on("data", (buf: Buffer) => {
-        const line = buf.toString().trim();
-        const m = line.match(/PGUNZIP:(\d+)\/(\d+)/) || line.match(/PGDONE:(\d+)\/(\d+)/);
-        if (m) {
-          const d = Number(m[1]), t = Number(m[2]);
-          const pct = t > 0 ? Math.round(d / t * 100) : 0;
-          sendStage(`解压 PostgreSQL… ${d.toLocaleString()}/${t.toLocaleString()}（${pct}%，约需 ${Math.max(1, Math.round((t - d) / 200))} 分钟）`, 30 + pct * 0.3, "install");
-          if (line.startsWith("PGDONE")) {
-            unzipDone = true;
-            sendStage("✓ PostgreSQL 解压完成", 60, "install");
+        const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command", pgUnzipScript], { windowsHide: true });
+        let unzipDone = false;
+        unzip.stdout.on("data", (buf: Buffer) => {
+          const line = buf.toString().trim();
+          const m = line.match(/PGUNZIP:(\d+)\/(\d+)/) || line.match(/PGDONE:(\d+)\/(\d+)/);
+          if (m) {
+            const d = Number(m[1]), t = Number(m[2]);
+            const pct = t > 0 ? Math.round(d / t * 100) : 0;
+            sendStage(`解压 PostgreSQL… ${d.toLocaleString()}/${t.toLocaleString()}（${pct}%，约需 ${Math.max(1, Math.round((t - d) / 200))} 分钟）`, 30 + pct * 0.3, "install");
+            if (line.startsWith("PGDONE")) {
+              unzipDone = true;
+              sendStage("✓ PostgreSQL 解压完成", 60, "install");
+            }
           }
-        }
-      });
-      const unzipOk = await new Promise<boolean>((resolve) => {
-        unzip.on("close", () => resolve(unzipDone));
-        unzip.on("error", () => resolve(false));
-        setTimeout(() => { if (!unzip.exitCode) { unzip.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
-      });
-      if (!unzipOk) return { ok: false, error: "PostgreSQL 解压超时/失败，请手动解压 pg.zip 后重试" };
+        });
+        pgUnzipOk = await new Promise<boolean>((resolve) => {
+          unzip.on("close", () => resolve(unzipDone));
+          unzip.on("error", () => resolve(false));
+          setTimeout(() => { if (!unzip.exitCode) { unzip.kill(); resolve(false); } }, 1_200_000); // 20 分钟超时
+        });
+      }
+      if (!pgUnzipOk) return { ok: false, error: "PostgreSQL 解压超时/失败，请手动解压 pg.zip 后重试" };
       fs.rmSync(zipPath, { force: true });
       // 安装 pgvector 扩展（Windows 预编译，需与 PG 16 匹配）
       const pgBinReal = path.join(pgDir, "pgsql", "bin");
