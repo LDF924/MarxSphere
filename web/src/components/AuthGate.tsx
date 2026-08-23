@@ -69,6 +69,9 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   // V390: 全局 401 拦截 — token 失效(服务重启/密钥轮换)时清 token 回登录页
   // 避免各面板静默 401 显示"已登录"假象
+  // V424: 修复"退出登录没反应" — 401 拦截器原来 setAuth({enabled:false}) 会把退出后的
+  // 登录页打回主界面（enabled=false → 放行分支）。改为 enabled:true（保持登录门禁），
+  // 只有后端明确禁用认证（/api/auth/status enabled=false）才回主界面。
   useEffect(() => {
     const origFetch = window.fetch;
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
@@ -78,8 +81,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
           // 认证接口的 401 由自身流程处理(登录失败/未登录), 业务接口 401 才视为 token 失效
           if (!url.includes("/api/auth/")) {
             safeStorage.remove("sag_token");
-            // V399: token 失效 → 回本地模式（不跳全屏登录页）
-            setAuth({ enabled: false, user: null });
+            // V424: 保持 enabled=true（回登录页），不再降级 enabled=false（回主界面）
+            setAuth({ enabled: true, user: null });
           }
         }
         return resp;
