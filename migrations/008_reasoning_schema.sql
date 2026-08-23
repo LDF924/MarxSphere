@@ -1,7 +1,6 @@
 -- 008_reasoning_schema: SAG 11005 推理层数据模型
 -- 五种实体: query_tasks, outlines, retrieve_steps, infer_hypotheses, eval_records
 
-begin;
 
 create table if not exists query_tasks (
   id uuid primary key default gen_random_uuid(),
@@ -86,4 +85,3 @@ create index if not exists idx_eval_records_task on eval_records(task_id);
 
 insert into schema_migrations (name) values ('008_reasoning_schema.sql');
 
-commit;

@@ -1,7 +1,6 @@
 -- 010_knowledge_pages.sql: GBrain Compiled Truth + Timeline 机制
 -- knowledge_pages: 知识页面（Compiled Truth 区：当前最佳理解，可改写）
 -- page_entries:    证据时间线（Timeline 区：只追加，记录"何时从何得到"）
-begin;
 
 create table if not exists knowledge_pages (
   id uuid primary key,
@@ -29,4 +28,3 @@ create index if not exists page_entries_page_id_time_idx on page_entries (page_i
 
 insert into schema_migrations (name) values ('010_knowledge_pages.sql');
 
-commit;
