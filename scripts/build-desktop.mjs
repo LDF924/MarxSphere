@@ -36,6 +36,10 @@ if (existsSync(webDist)) {
 if (existsSync(path.join(root, "docker-compose.yml"))) {
   cpSync(path.join(root, "docker-compose.yml"), path.join(sagResDir, "docker-compose.yml"));
 }
+// V421: pgvector Windows 预编译 zip 随包携带 — 引导页本地 PG 安装时零下载（GitHub 国内直连不稳）
+if (existsSync(path.join(root, "pgvector-pg16.zip"))) {
+  cpSync(path.join(root, "pgvector-pg16.zip"), path.join(sagResDir, "pgvector-pg16.zip"));
+}
 // 生产依赖 node_modules: dist 编译产物 import fastify/pg/dotenv 等 npm 包,
 // 运行时从 <SAG_ROOT>/node_modules 解析 — 必须随包携带（只拷 dependencies, 排除 dev）
 const depNames = Object.keys(JSON.parse(readFileSync(path.join(root, "package.json"), "utf-8")).dependencies || {});

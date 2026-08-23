@@ -804,10 +804,17 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
     if (!fs.existsSync(path.join(pgBin, "pg_ctl.exe"))) {
       const zipPath = path.join(pgDir, "pg.zip");
       fs.mkdirSync(pgDir, { recursive: true });
-      // 官方 EDB 优先（实测国内可达 4MB/s）；华为云镜像（部分文件 404）作备选
+      // V421: PG 下载多镜像（国内免 VPN）+ 断点续传 — 原只有 EDB(国外)+华为云(部分404)，慢且易断
+      // 顺序: 国内完整镜像优先 → EDB 兜底。curl 带 -C -（续传）+ --retry（断线重试）
+      const pgZipName = `postgresql-${pgVer}-1-windows-x64-binaries.zip`;
       const mirrors = [
-        `https://get.enterprisedb.com/postgresql/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
-        `https://mirrors.huaweicloud.com/postgresql/v16/postgresql-${pgVer}-1-windows-x64-binaries.zip`,
+        // 国内镜像（无需 VPN，快）
+        `https://mirror.nju.edu.cn/postgresql/v16/${pgZipName}`,
+        `https://mirrors.ustc.edu.cn/postgresql/v16/${pgZipName}`,
+        `https://mirrors.tuna.tsinghua.edu.cn/postgresql/v16/${pgZipName}`,
+        `https://mirrors.huaweicloud.com/postgresql/v16/${pgZipName}`,
+        // 官方 EDB 兜底（国内有时可达）
+        `https://get.enterprisedb.com/postgresql/${pgZipName}`,
       ];
       let dlOk = false;
       let dlErr = "";
@@ -817,7 +824,8 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       for (const m of mirrors) {
         try {
           // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
-          const dl = dlSpawn("curl.exe", ["-L", "-o", zipPath, m, "--progress-bar", "--retry", "2"], { windowsHide: true });
+          // V421: -C - 断点续传（镜像失败换源时保留已下部分）+ --retry 5 断线重试 + --connect-timeout 15 快速失败换源
+          const dl = dlSpawn("curl.exe", ["-L", "-C", "-", "-o", zipPath, m, "--progress-bar", "--retry", "5", "--connect-timeout", "15", "--max-time", "1800"], { windowsHide: true });
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
@@ -881,15 +889,34 @@ Write-Output "PGDONE:$done/$total"
       const vectorControl = path.join(pgDir, "pgsql", "share", "extension", "vector.control");
       if (!fs.existsSync(vectorControl)) {
         sendStage("安装 pgvector 扩展…", 62, "install");
-        const vecUrl = "https://github.com/andreiramani/pgvector_pgsql_windows/releases/download/0.8.6_16/vector.v0.8.6-pg16.zip";
+        // V421: pgvector 下载顺序 — ① 随包预置（resources/sag/pgvector-pg16.zip，零下载）→ ② GitHub 官方 → ③ 国内镜像兜底
+        // GitHub 国内直连不稳（需 VPN），随包预置彻底免网络
         const vecZip = path.join(pgDir, "pgvector.zip");
-        const vecOk = await new Promise<boolean>((resolve) => {
-          const p = dlSpawn("curl.exe", ["-L", "-o", vecZip, vecUrl, "--retry", "2"], { windowsHide: true });
-          p.on("close", (c: number) => resolve(c === 0));
-          p.on("error", () => resolve(false));
-          setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 120_000);
-        });
-        if (!vecOk) return { ok: false, error: "pgvector 下载失败（网络问题）" };
+        let vecOk = false;
+        const bundledVec = path.join(resourceRoot(), "pgvector-pg16.zip");
+        if (fs.existsSync(bundledVec)) {
+          console.log("[desktop] 使用随包预置 pgvector...");
+          try {
+            fs.copyFileSync(bundledVec, vecZip);
+            vecOk = true;
+          } catch { vecOk = false; }
+        }
+        if (!vecOk) {
+          const vecMirrors = [
+            `https://github.com/andreiramani/pgvector_pgsql_windows/releases/download/0.8.6_16/vector.v0.8.6-pg16.zip`,
+            `https://gh-proxy.com/https://github.com/andreiramani/pgvector_pgsql_windows/releases/download/0.8.6_16/vector.v0.8.6-pg16.zip`,
+          ];
+          for (const vu of vecMirrors) {
+            if (vecOk) break;
+            vecOk = await new Promise<boolean>((resolve) => {
+              const p = dlSpawn("curl.exe", ["-L", "-C", "-", "-o", vecZip, vu, "--retry", "3", "--connect-timeout", "15", "--max-time", "300"], { windowsHide: true });
+              p.on("close", (c: number) => resolve(c === 0));
+              p.on("error", () => resolve(false));
+              setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 120_000);
+            });
+          }
+        }
+        if (!vecOk) return { ok: false, error: "pgvector 下载失败（随包预置缺失且网络不可达），请检查网络后重试" };
         const vecUnzipOk = await new Promise<boolean>((resolve) => {
           const p = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
             `Expand-Archive -LiteralPath '${vecZip}' -DestinationPath '${pgDir}\\pgvector-tmp' -Force`],
