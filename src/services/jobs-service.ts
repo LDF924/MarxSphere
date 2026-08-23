@@ -150,44 +150,57 @@ export async function enqueueJob(input: {
   return jobFromRow(result.rows[0]);
 }
 
-/** 领取下一个任务（FOR UPDATE SKIP LOCKED + lock 租约 — GBrain worker 模式） */
+/** 领取下一个任务（FOR UPDATE SKIP LOCKED + lock 租约 — GBrain worker 模式）
+ *  V4xx: 恢复卡死任务 + 超时判定均需 lock 租约校验（仅 lock_until < now() 才允许),
+ *        恢复与领取合并进同一事务（防恢复与领取并发竞态） */
 export async function claimNextJob(workerId: string): Promise<MinionJob | null> {
-  // 先恢复卡死任务（lock_until 过期 → 回 waiting，stalled_counter+1）
-  await pool.query(
-    `update minion_jobs set status = 'waiting', lock_token = null, lock_until = null,
-       stalled_counter = stalled_counter + 1
-     where status = 'active' and lock_until is not null and lock_until < now()`
-  ).catch(() => {});
-  // 超时任务 → failed
-  await pool.query(
-    `update minion_jobs set status = 'failed', error_text = 'timeout', completed_at = now()
-     where status = 'active' and timeout_at is not null and timeout_at < now()`
-  ).catch(() => {});
-  // 延迟任务到期 → waiting
-  await pool.query(
-    `update minion_jobs set status = 'waiting', delay_until = null
-     where status = 'delayed' and delay_until is not null and delay_until <= now()`
-  ).catch(() => {});
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // 先恢复卡死任务（lock_until 过期 → 回 waiting，stalled_counter+1）
+    await client.query(
+      `update minion_jobs set status = 'waiting', lock_token = null, lock_until = null,
+         stalled_counter = stalled_counter + 1
+       where status = 'active' and lock_until is not null and lock_until < now()`
+    ).catch(() => {});
+    // 超时任务 → failed（仅持有有效租约的任务才判定超时 — 未拿到租约的行不被误判）
+    await client.query(
+      `update minion_jobs set status = 'failed', error_text = 'timeout', completed_at = now()
+       where status = 'active' and timeout_at is not null and timeout_at < now()
+         and lock_until is not null and lock_until < now()`
+    ).catch(() => {});
+    // 延迟任务到期 → waiting
+    await client.query(
+      `update minion_jobs set status = 'waiting', delay_until = null
+       where status = 'delayed' and delay_until is not null and delay_until <= now()`
+    ).catch(() => {});
 
-  const result = await pool.query(
-    `with next_job as (
-       select id from minion_jobs
-       where status = 'waiting' and (queue = 'default' or queue = '')
-       order by priority desc, created_at asc
-       limit 1
-       for update skip locked
-     )
-     update minion_jobs m
-     set status = 'active', lock_token = $1, lock_until = now() + interval '5 minutes',
-         started_at = now(), attempts_made = attempts_made + 1, attempts_started = attempts_started + 1,
-         timeout_at = case when m.timeout_ms is not null then now() + (m.timeout_ms || ' ms')::interval else m.timeout_at end,
-         updated_at = now()
-     from next_job
-     where m.id = next_job.id
-     returning m.*`,
-    [workerId]
-  );
-  return result.rows.length > 0 ? jobFromRow(result.rows[0]) : null;
+    const result = await client.query(
+      `with next_job as (
+         select id from minion_jobs
+         where status = 'waiting' and (queue = 'default' or queue = '')
+         order by priority desc, created_at asc
+         limit 1
+         for update skip locked
+       )
+       update minion_jobs m
+       set status = 'active', lock_token = $1, lock_until = now() + interval '5 minutes',
+           started_at = now(), attempts_made = attempts_made + 1, attempts_started = attempts_started + 1,
+           timeout_at = case when m.timeout_ms is not null then now() + (m.timeout_ms || ' ms')::interval else m.timeout_at end,
+           updated_at = now()
+       from next_job
+       where m.id = next_job.id
+       returning m.*`,
+      [workerId]
+    );
+    await client.query("commit");
+    return result.rows.length > 0 ? jobFromRow(result.rows[0]) : null;
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 /** 完成/失败（带退避重试 + stalled 检测） */

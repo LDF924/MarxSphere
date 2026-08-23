@@ -26,6 +26,8 @@ export interface AuthUser {
   plan: string;
   balanceCents: number;
   llmProvider: "platform" | "byok";
+  /** V390: 账号状态（disabled 后已签发 JWT 也失效） */
+  status?: "active" | "disabled";
 }
 
 export interface SessionPayload {
@@ -100,10 +102,10 @@ export function verifyToken(token: string): SessionPayload | null {
 
 // ─── 按用户ID取用户（供中间件挂上下文） ───
 export async function getUserById(userId: string): Promise<AuthUser | null> {
-  const r = await pool.query("select id, username, role, tenant_id, plan, balance_cents, llm_provider from users where id = $1", [userId]);
+  const r = await pool.query("select id, username, role, tenant_id, plan, balance_cents, llm_provider, status from users where id = $1", [userId]);
   if (r.rows.length === 0) return null;
   const row = r.rows[0];
-  return { id: row.id, username: row.username, role: row.role, tenantId: row.tenant_id, plan: row.plan, balanceCents: Number(row.balance_cents), llmProvider: row.llm_provider };
+  return { id: row.id, username: row.username, role: row.role, tenantId: row.tenant_id, plan: row.plan, balanceCents: Number(row.balance_cents), llmProvider: row.llm_provider, status: row.status };
 }
 
 export { PUBLIC_TENANT_ID, ADMIN_USER_ID, JWT_SECRET };

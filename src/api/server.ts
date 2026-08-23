@@ -1268,14 +1268,26 @@ export function buildHttpServer() {
   });
 
   // ───── 商业化计费 API（V389+: 余额/充值/订阅/账单/用量, JWT认证） ─────
-  // JWT 认证辅助: 从 Authorization 提取用户
+  // JWT 认证辅助: 从 Authorization 提取用户（V3xx: 校验 status='active', disabled 一律 403）
   const requireUser = async (request: any, reply: any) => {
     const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
     const payload = authService.verifyToken(token);
     if (!payload) { reply.code(401).send({ error: "未登录" }); return null; }
     const user = await authService.getUserById(payload.uid);
     if (!user) { reply.code(401).send({ error: "用户不存在" }); return null; }
+    // 已禁用账号: 拒绝一切需登录的 API（与登录校验对齐; 已签发 token 不再有效）
+    if (user.status === "disabled") { reply.code(403).send({ error: "账号已被禁用" }); return null; }
     return user;
+  };
+
+  // V3xx: 会话租户隔离 — 从 JWT 提取当前用户 tenantId（未登录/无 JWT → 默认公共租户）
+  const requestTenantId = async (request: any): Promise<string> => {
+    const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    if (token) {
+      const payload = authService.verifyToken(token);
+      if (payload?.tenantId) return payload.tenantId;
+    }
+    return config.DEFAULT_TENANT_ID;
   };
 
   app.get("/api/billing/balance", async (request, reply) => {
@@ -1369,6 +1381,9 @@ export function buildHttpServer() {
     const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
     const payload = authService.verifyToken(token);
     if (!payload || payload.role !== "admin") { reply.code(403).send({ error: "需要管理员权限" }); return null; }
+    // 已禁用管理员同样拒绝（disabled 状态全局生效）
+    const admin = await authService.getUserById(payload.uid);
+    if (!admin || admin.status === "disabled") { reply.code(403).send({ error: "账号已被禁用" }); return null; }
     return payload;
   };
   app.get("/api/admin/users", async (request, reply) => {
@@ -1960,7 +1975,7 @@ export function buildHttpServer() {
 
   app.post("/api/mcp/sessions", async (request, reply) => {
     const input = createMcpSessionSchema.parse(request.body);
-    const session = await mcpAgentService.createSession(input);
+    const session = await mcpAgentService.createSession(input, await requestTenantId(request));
     return reply.code(201).send({ session });
   });
 
@@ -1969,7 +1984,7 @@ export function buildHttpServer() {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
     const { title } = z.object({ title: z.string().trim().min(1).max(100) }).parse(request.body);
-    const session = await mcpAgentService.updateTitle(params.sessionId, title);
+    const session = await mcpAgentService.updateTitle(params.sessionId, title, await requestTenantId(request));
     if (!session) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -1981,7 +1996,7 @@ export function buildHttpServer() {
     const params = request.params as { sessionId: string; messageId: string };
     z.string().uuid().parse(params.sessionId);
     z.string().uuid().parse(params.messageId);
-    const result = await mcpAgentService.deleteMessage(params.sessionId, params.messageId);
+    const result = await mcpAgentService.deleteMessage(params.sessionId, params.messageId, await requestTenantId(request));
     if (!result) {
       return reply.code(404).send(notFound("MCP_MESSAGE_NOT_FOUND", "消息不存在"));
     }
@@ -1989,26 +2004,26 @@ export function buildHttpServer() {
   });
 
   // V398: 通用 AI 对话会话列表（kind=chat）
-  app.get("/api/chat/sessions", async () => ({
-    sessions: await mcpAgentService.listSessions({ kind: "chat" })
+  app.get("/api/chat/sessions", async (request) => ({
+    sessions: await mcpAgentService.listSessions({ kind: "chat" }, await requestTenantId(request))
   }));
 
-  app.get("/api/mcp/sessions", async () => ({
-    sessions: await mcpAgentService.listSessions()
+  app.get("/api/mcp/sessions", async (request) => ({
+    sessions: await mcpAgentService.listSessions({}, await requestTenantId(request))
   }));
 
   app.get("/api/projects/:projectId/mcp/sessions", async (request) => {
     const params = request.params as { projectId: string };
     z.string().uuid().parse(params.projectId);
     return {
-      sessions: await mcpAgentService.listSessions({ sourceId: params.projectId })
+      sessions: await mcpAgentService.listSessions({ sourceId: params.projectId }, await requestTenantId(request))
     };
   });
 
   app.get("/api/mcp/sessions/:sessionId", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    const detail = await mcpAgentService.getSession(params.sessionId);
+    const detail = await mcpAgentService.getSession(params.sessionId, await requestTenantId(request));
     if (!detail) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -2018,7 +2033,7 @@ export function buildHttpServer() {
   app.post("/api/mcp/sessions/:sessionId/clear", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    const detail = await mcpAgentService.clearSession(params.sessionId);
+    const detail = await mcpAgentService.clearSession(params.sessionId, await requestTenantId(request));
     if (!detail) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -2028,17 +2043,21 @@ export function buildHttpServer() {
   app.delete("/api/mcp/sessions/:sessionId", async (request) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    return mcpAgentService.deleteSession(params.sessionId);
+    return mcpAgentService.deleteSession(params.sessionId, await requestTenantId(request));
   });
 
   app.post("/api/mcp/sessions/:sessionId/messages", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
     const input = mcpMessageSchema.parse(request.body);
+    const tenantId = await requestTenantId(request);
+    const authHdrU = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const jwtU = authHdrU ? authService.verifyToken(authHdrU) : null;
     const result = await mcpAgentService.runUserMessage({
       sessionId: params.sessionId,
-      content: input.content
-    });
+      content: input.content,
+      userId: jwtU?.uid
+    }, tenantId);
     return reply.code(201).send(result);
   });
 
@@ -2142,10 +2161,12 @@ export function buildHttpServer() {
   });
 
   // V399: 对话工具审批（前端弹窗 → 批准/拒绝 review 工具）
+  // V3xx: 审批 ID 绑定 sessionId+userId — 仅本人会话的审批可批准（防跨会话/跨用户审批）
   app.post("/api/chat/approvals/:approvalId", async (request, reply) => {
     const params = request.params as { approvalId: string };
     const { approved } = z.object({ approved: z.boolean() }).parse(request.body);
-    const ok = await mcpAgentService.approveToolCall(params.approvalId, approved);
+    const user = await requireUser(request, reply); if (!user) return;
+    const ok = await mcpAgentService.approveToolCall(params.approvalId, approved, user.id);
     if (!ok) {
       return reply.code(404).send(notFound("APPROVAL_NOT_FOUND", "审批请求不存在或已超时"));
     }
@@ -2164,7 +2185,10 @@ export function buildHttpServer() {
       docs: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(3).optional()
     }).parse(request.body);
 
-    const detail = await mcpAgentService.getSession(params.sessionId);
+    const tenantId = await requestTenantId(request);
+    const authHdrU = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const jwtU = authHdrU ? authService.verifyToken(authHdrU) : null;
+    const detail = await mcpAgentService.getSession(params.sessionId, tenantId);
     if (!detail || detail.session.kind !== "chat") {
       return reply.code(404).send(notFound("CHAT_SESSION_NOT_FOUND", "AI 对话会话不存在"));
     }
@@ -2234,8 +2258,9 @@ export function buildHttpServer() {
         deepMode: input.deepMode,
         reasoningEffort: input.reasoningEffort,
         docs,
+        userId: jwtU?.uid,
         signal: abortController.signal
-      }, config.DEFAULT_TENANT_ID, (event) => {
+      }, tenantId, (event) => {
         send(event.type, event);
       });
     } catch (error) {
@@ -2298,8 +2323,6 @@ export function buildHttpServer() {
     }
     try {
       const result = await startReasonFlow(reasonQuery);
-      // V391(P1-3): 释放租户并发槽位
-      reasonQuery.releaseTenantSlot?.();
       const ctx = (request as any).tokenCtx as { tokenId: string } | undefined;
       if (ctx) {
         // reason 计月成本: 从 taskId 聚合 retrieve_steps 真实 tokens
@@ -2336,6 +2359,9 @@ export function buildHttpServer() {
       }
       logger.error({ error: msg }, "reason flow failed");
       return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "推理服务暂时不可用" } });
+    } finally {
+      // V391(P1-3): 释放租户并发槽位 — try/finally 保证异常路径也一定释放（防槽位泄漏）
+      reasonQuery.releaseTenantSlot?.();
     }
   });
 
@@ -6835,7 +6861,8 @@ export async function startHttpServer(): Promise<void> {
   })();
   const autoTimer = setTimeout(() => {
     runAutonomousResearch();
-    setInterval(runAutonomousResearch, 86400000);
+    // unref: 周期性定时器不阻止进程退出（关窗后 Electron 需能干净退出）
+    setInterval(runAutonomousResearch, 86400000).unref?.();
   }, msTo3am);
   autoTimer.unref?.();
   console.log(`[autonomous] 自主研究定时器已启动（下次 ${new Date(Date.now() + msTo3am).toLocaleString("zh-CN")}）`);

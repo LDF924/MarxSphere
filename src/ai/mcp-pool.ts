@@ -71,13 +71,16 @@ export class McpPool {
     if (client) return client;
 
     // 全部 busy — 轮询等待, 每 50ms 检查一次
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const timer = setInterval(async () => {
         const c = await tryAcquire();
         if (c) { clearInterval(timer); resolve(c); }
       }, 50);
-      // 最长等 120s
-      setTimeout(() => { clearInterval(timer); }, 1200_000);
+      // 最长等 120s — 超时不仅清理定时器, 还要 reject（防调用方无限挂起）
+      setTimeout(() => {
+        clearInterval(timer);
+        reject(new Error('MCP pool acquire timeout'));
+      }, 120_000);
     });
   }
 

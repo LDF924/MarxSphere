@@ -187,7 +187,13 @@ export async function executeCode(input: {
       if (guard.verdict === "review") {
         return { ok: false, stdout: "", stderr: "", error: "Sidecar 门控升级人工审查: " + guard.reason, durationMs: Date.now() - t0 };
       }
-    } catch { /* 门控服务不可用 → 放行（黑名单已兜底） */ }
+    } catch (e) {
+      // V4xx: 门控不可用时**默认拒绝**（fail-closed）— 敏感能力代码在无法审查时不允许执行,
+      // 黑名单只是第一道防线, 不能替代 LLM 语义门控（防门控故障时敏感代码静默放行）
+      const detail = e instanceof Error ? e.message : String(e);
+      console.error(`[sandbox] 门控服务不可用, 敏感代码默认拒绝: ${detail.slice(0, 120)}`);
+      return { ok: false, stdout: "", stderr: "", error: "安全门控不可用, 已拒绝执行（默认 deny）", durationMs: Date.now() - t0 };
+    }
   }
   try {
     let cmd: string;

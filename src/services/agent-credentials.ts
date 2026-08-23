@@ -4,7 +4,9 @@
 // 安全: ①API 只返回脱敏视图(name/hint/kind, 不返回 value)
 //       ②凭证不注入沙箱环境（code-sandbox 已剔除 API_KEY 类环境变量）
 //       ③凭证不出现在 exec_logs（工具参数走 maskCredentials）
+//       ④value 复用 auth-service 的 BYOK AES 加密（encryptByokKey/decryptByokKey）落库, 明文不落盘
 import { pool } from "../db/pool.js";
+import { encryptByokKey, decryptByokKey } from "./auth-service.js";
 
 export interface AgentCredential {
   id: number;
@@ -28,15 +30,16 @@ export async function listAgentCredentials(): Promise<AgentCredential[]> {
   return r.rows.map(safeView);
 }
 
-/** 新增/更新凭证（upsert by name） */
+/** 新增/更新凭证（upsert by name; value 用 BYOK AES 加密后落库） */
 export async function upsertAgentCredential(input: { name: string; kind?: string; value: string; hint?: string }): Promise<AgentCredential | null> {
   if (!input.name?.trim() || !input.value?.trim()) return null;
+  const encrypted = encryptByokKey(input.value.trim());
   const r = await pool.query(
     `insert into agent_credentials (name, kind, value, hint, updated_at)
      values ($1,$2,$3,$4, now())
      on conflict (name) do update set kind = excluded.kind, value = excluded.value, hint = excluded.hint, updated_at = now()
      returning id, name, kind, hint, created_at`,
-    [input.name.trim(), input.kind || "bearer", input.value.trim(), input.hint || null]
+    [input.name.trim(), input.kind || "bearer", encrypted, input.hint || null]
   );
   return safeView(r.rows[0]);
 }
@@ -47,11 +50,13 @@ export async function deleteAgentCredential(name: string): Promise<boolean> {
   return (r.rowCount || 0) > 0;
 }
 
-/** 按名取凭证值（仅服务端内部用; 不暴露给 API/日志） */
+/** 按名取凭证值（仅服务端内部用; 不暴露给 API/日志; 库中为 AES 密文, 返回前解密） */
 export async function getAgentCredentialValue(name: string): Promise<string | null> {
   try {
     const r = await pool.query("select value from agent_credentials where name = $1", [name]);
-    return r.rows[0]?.value ?? null;
+    const enc = r.rows[0]?.value;
+    if (!enc) return null;
+    return decryptByokKey(String(enc));
   } catch { return null; }
 }
 
