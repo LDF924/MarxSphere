@@ -487,6 +487,8 @@ function AppShell() {
   const [uploadJobs, setUploadJobs] = useState<UploadJobRecord[]>([]);
   const [isUploadQueueExpanded, setIsUploadQueueExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  // V415: 设置就地保存反馈（sticky 保存栏旁显示成功/失败）
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => t(DEFAULT_SEARCH_QUERY_ZH, DEFAULT_SEARCH_QUERY_EN));
   const [searchMode, setSearchMode] = useState<SearchMode>("fast");
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
@@ -1451,8 +1453,13 @@ function AppShell() {
       const response = await api.updateAiSettings(input);
       setAiSettings(response.settings);
       setStatus(t("设置已保存", "Settings saved"));
+      // V415: 就地成功提示（sticky 保存栏上显示）
+      setSettingsSaveStatus({ kind: "ok", message: t("✓ 设置已保存", "✓ Settings saved") });
     } catch (err) {
-      setError(getErrorMessage(err));
+      const message = getErrorMessage(err);
+      setError(message);
+      // V415: 就地失败提示（白名单 400 等错误直接显示在保存栏旁，不再只看顶部红条）
+      setSettingsSaveStatus({ kind: "error", message: t("保存失败：", "Save failed: ") + message });
     } finally {
       setIsSavingSettings(false);
     }
@@ -1772,6 +1779,7 @@ function AppShell() {
                   language={language}
                   languagePreference={languagePreference}
                   onLanguagePreferenceChange={setLanguagePreference}
+                  saveStatus={settingsSaveStatus}
                   onSave={(input) => void saveAiSettings(input)}
                 />
                 <div className="mx-auto mt-4 max-w-4xl">
@@ -3789,6 +3797,8 @@ function SettingsPanel(props: {
   languagePreference: LanguagePreference;
   onLanguagePreferenceChange: (preference: LanguagePreference) => void;
   onSave: (input: SettingsInput) => void;
+  /** V415: 就地保存反馈（成功/失败），替代远处全局 status */
+  saveStatus?: { kind: "ok" | "error"; message: string } | null;
 }) {
   const { t } = useI18n();
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState("");
@@ -4057,7 +4067,13 @@ function SettingsPanel(props: {
         </label>
       </SettingsCard>
 
-      <div className="flex justify-end">
+      {/* V415: 保存栏 sticky 固定底部 — 长表单滚动时保存按钮始终可见；成功/失败就地提示 */}
+      <div className="sticky bottom-2 z-10 mt-2 flex items-center justify-end gap-3 rounded-lg border border-border bg-background/90 px-4 py-3 shadow-lg backdrop-blur">
+        {props.saveStatus ? (
+          <span className={cn("text-sm", props.saveStatus.kind === "ok" ? "text-emerald-500" : "text-red-400")}>
+            {props.saveStatus.message}
+          </span>
+        ) : null}
         <Button type="submit" disabled={props.isSaving}>
           {props.isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {t("保存设置", "Save settings")}
