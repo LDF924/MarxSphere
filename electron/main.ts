@@ -531,6 +531,45 @@ Write-Output "PGDONE:$done/$total"
       });
       if (!unzipOk) return { ok: false, error: "PostgreSQL 解压超时/失败，请手动解压 pg.zip 后重试" };
       fs.rmSync(zipPath, { force: true });
+      // 安装 pgvector 扩展（Windows 预编译，需与 PG 16 匹配）
+      const pgBinReal = path.join(pgDir, "pgsql", "bin");
+      const vectorControl = path.join(pgDir, "pgsql", "share", "extension", "vector.control");
+      if (!fs.existsSync(vectorControl)) {
+        sendStage("安装 pgvector 扩展…", 62, "install");
+        const vecUrl = "https://github.com/andreiramani/pgvector_pgsql_windows/releases/download/0.8.6_16/vector.v0.8.6-pg16.zip";
+        const vecZip = path.join(pgDir, "pgvector.zip");
+        const vecOk = await new Promise<boolean>((resolve) => {
+          const p = dlSpawn("curl.exe", ["-L", "-o", vecZip, vecUrl, "--retry", "2"], { windowsHide: true });
+          p.on("close", (c: number) => resolve(c === 0));
+          p.on("error", () => resolve(false));
+          setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 120_000);
+        });
+        if (!vecOk) return { ok: false, error: "pgvector 下载失败（网络问题）" };
+        const vecUnzipOk = await new Promise<boolean>((resolve) => {
+          const p = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
+            `Expand-Archive -LiteralPath '${vecZip}' -DestinationPath '${pgDir}\\pgvector-tmp' -Force`],
+            { windowsHide: true });
+          p.on("close", (c: number) => resolve(c === 0));
+          p.on("error", () => resolve(false));
+          setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 120_000);
+        });
+        if (!vecUnzipOk) return { ok: false, error: "pgvector 解压失败" };
+        // 复制 lib/ → pgsql/lib/, share/ → pgsql/share/
+        try {
+          const cp = (src: string, dst: string) => {
+            if (!fs.existsSync(dst)) fs.mkdirSync(dst, { recursive: true });
+            for (const f of fs.readdirSync(src)) {
+              fs.copyFileSync(path.join(src, f), path.join(dst, f));
+            }
+          };
+          cp(path.join(pgDir, "pgvector-tmp", "lib"), path.join(pgBinReal, "..", "lib"));
+          cp(path.join(pgDir, "pgvector-tmp", "share", "extension"), path.join(pgDir, "pgsql", "share", "extension"));
+          fs.rmSync(path.join(pgDir, "pgvector-tmp"), { recursive: true, force: true });
+          fs.rmSync(vecZip, { force: true });
+        } catch (e: any) {
+          return { ok: false, error: "pgvector 复制失败: " + String(e?.message || e).slice(0, 100) };
+        }
+      }
     }
     // 初始化（幂等，异步不阻塞）
     const dataDir = path.join(pgDir, "data");
