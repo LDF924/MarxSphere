@@ -54,6 +54,15 @@ export async function listSources(): Promise<ResourceSource[]> {
 }
 
 export async function upsertSource(input: ResourceSource): Promise<{ ok: boolean; source?: ResourceSource; error?: string }> {
+  // SSRF 防护: 写库前校验 URL 仅允许公网地址（防后续 fetch 打到内网/元数据端点）
+  if (input.url) {
+    const { assertPublicUrl } = await import("./url-guard.js");
+    try {
+      await assertPublicUrl(input.url);
+    } catch {
+      return { ok: false, error: "URL 不允许访问内网/本地地址" };
+    }
+  }
   // 写库（表不存在则内存）
   try {
     await pool.query(

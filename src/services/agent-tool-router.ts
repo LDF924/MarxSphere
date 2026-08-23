@@ -10,6 +10,7 @@ import path from "node:path";  // G26: checkPathAccess 固定项目根（静态 
 import { fileURLToPath } from "node:url";
 import type { Dirent } from "node:fs";  // 差距I: code_search 类型引用
 import { executeToolsParallel as _executeToolsParallel } from "./agent-tool-registry.js";  // 借鉴1: 并行执行
+import { isSelfApiUrl } from "./url-guard.js";  // SSRF: localhost 仅精确放行系统自身 API
 
 /** Agent 可用工具注册表（name/描述/参数schema/危险级别） */
 export interface AgentToolDef {
@@ -1358,13 +1359,13 @@ export function getToolWhitelist(): Set<string> | null {
 // V396-7: 沙箱安全 — 网络出口白名单 + 文件路径边界 + 凭据保护
 // ═══════════════════════════════════════════════════════════════
 
-/** 网络出口白名单（AGENT_NET_WHITELIST 覆盖; 默认放行系统 API + LLM 提供方; 空=全部拒绝） */
+/** 网络出口白名单（AGENT_NET_WHITELIST 覆盖; 默认放行 LLM 提供方 + 常见公开学术源 + 搜索引擎; 空=全部拒绝）
+ * 注意: localhost/127.0.0.1/0.0.0.0 不再默认放行 —— 系统自身 API 仅经 isSelfApiUrl 精确放行（防 SSRF 打内网） */
 export function getNetworkWhitelist(): Set<string> {
   const raw = process.env.AGENT_NET_WHITELIST;
   if (raw) return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  // 默认: 系统内部 API + LLM 提供方 + 常见公开学术源 + 搜索引擎（V399: 对话工具循环 web_search 需要）
+  // 默认: LLM 提供方 + 常见公开学术源 + 搜索引擎（V399: 对话工具循环 web_search 需要）
   return new Set([
-    "localhost", "127.0.0.1", "0.0.0.0",
     "api.deepseek.com", "dashscope.aliyuncs.com", "api.openai.com", "api.anthropic.com",
     "weixin.sogou.com", "navi.cnki.net", "crpe.ruc.edu.cn", "www.ddjjyj.com",
     "www.qstheory.cn", "cssn.cn", "www.erj.cn", "www.jjxdt.org",
@@ -1372,15 +1373,21 @@ export function getNetworkWhitelist(): Set<string> {
   ]);
 }
 
-/** 网络出口校验: 检查 URL 是否在白名单内（防 SSRF: 拦截内网元数据/私有 IP） */
+/** 网络出口校验: 检查 URL 是否在白名单内（防 SSRF: 拦截内网元数据/私有 IP; localhost 仅精确放行系统自身 API） */
 export function checkNetworkAccess(url: string): { allowed: boolean; reason?: string } {
   try {
     const u = new URL(url);
     const host = u.hostname.toLowerCase();
-    // 拦截私有/环回/元数据地址（除显式允许的 localhost 系统 API）
+    // 系统自身 API 精确放行（SELF_BASE 默认 http://127.0.0.1:4173; 仅此显式放行 localhost/127.0.0.1）
+    if (host === "localhost" || host === "127.0.0.1") {
+      if (isSelfApiUrl(u)) return { allowed: true };
+      return { allowed: false, reason: `网络出口拦截: ${host} 仅放行系统自身 API(${process.env.SELF_BASE || "http://127.0.0.1:4173"})` };
+    }
+    // 拦截私有/环回/元数据地址（0.0.0.0/私有/元数据一律拒绝）
     const isPrivate = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
       || host === "169.254.169.254"  // 云元数据端点(SSRF 高危)
-      || /^127\./.test(host) && host !== "127.0.0.1";
+      || host === "0.0.0.0"
+      || /^127\./.test(host);
     if (isPrivate) return { allowed: false, reason: `网络出口拦截: ${host} 为私有/元数据地址(防 SSRF)` };
     const whitelist = getNetworkWhitelist();
     // 白名单匹配: 精确 host 或子域(如 api.deepseek.com 允许 *.deepseek.com)
