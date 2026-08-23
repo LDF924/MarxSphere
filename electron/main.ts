@@ -379,35 +379,80 @@ function waitForHealth(port: number, attempt: number) {
 
 function showErrorPage(title: string, message: string) {
   if (!mainWindow) return;
-  // V415: 错误页内置状态面板 — 实时探测端口/数据库，让用户看清系统状态（不再黑盒等待）
+  // V416: 错误页雷达探测 — 扫描动画 + 服务节点状态灯（绿=正常/红=占用/黄=异常），右侧文字明细每 3 秒刷新
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
-    body{background:#0b1120;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-    .box{max-width:560px;padding:32px;text-align:center}
+    body{background:#0b1120;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:20px;box-sizing:border-box}
+    .box{max-width:640px;padding:24px;text-align:center;width:100%}
     h1{color:#fbbf24;font-size:20px;margin:0 0 12px}
-    p{color:#94a3b8;font-size:14px;line-height:1.7;white-space:pre-wrap}
-    .panel{margin-top:20px;text-align:left;background:#111827;border:1px solid #1f2937;border-radius:10px;padding:14px 16px;font-size:13px}
-    .panel h3{margin:0 0 10px;color:#fbbf24;font-size:13px}
-    .row{display:flex;justify-content:space-between;padding:3px 0;color:#94a3b8}
+    p{color:#94a3b8;font-size:14px;line-height:1.7;white-space:pre-wrap;margin:0 0 8px}
+    .panel{margin-top:16px;text-align:left;background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;font-size:13px}
+    .panel h3{margin:0 0 12px;color:#fbbf24;font-size:13px;text-align:center}
+    /* ── 雷达 ── */
+    .radar-wrap{display:flex;gap:18px;align-items:center;justify-content:center;flex-wrap:wrap}
+    .radar{position:relative;width:200px;height:200px;border-radius:50%;border:1px solid #1f2937;background:radial-gradient(circle,rgba(16,185,129,.06),rgba(2,6,23,.55));margin:16px;flex-shrink:0}
+    .radar-ring{position:absolute;border-radius:50%;border:1px dashed #1f2937}
+    .r1{inset:15%}.r2{inset:32%}.r3{inset:49%}
+    .radar-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(34,211,238,.38),transparent 70deg);animation:sweep 3s linear infinite}
+    @keyframes sweep{to{transform:rotate(360deg)}}
+    .radar-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fbbf24;font-size:12px;font-weight:700;text-shadow:0 0 12px rgba(251,191,36,.5);letter-spacing:.5px}
+    .radar-node{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;white-space:nowrap}
+    .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .3s,box-shadow .3s}
+    .dot.ok{background:#34d399;box-shadow:0 0 9px #34d399}
+    .dot.bad{background:#f87171;box-shadow:0 0 9px #f87171;animation:blink 1s infinite}
+    .dot.probing{background:#64748b;box-shadow:0 0 6px #64748b}
+    @keyframes blink{50%{opacity:.35}}
+    .lbl{font-size:10px;color:#94a3b8;max-width:74px;overflow:hidden;text-overflow:ellipsis}
+    /* ── 明细列表 ── */
+    .radar-detail{min-width:210px;flex:1}
+    .row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:#94a3b8;font-size:12px}
     .row .ok{color:#34d399}.row .bad{color:#f87171}.row .warn{color:#fbbf24}
-    .hint{margin-top:12px;color:#64748b;font-size:12px}
+    .hint{margin-top:10px;color:#64748b;font-size:11px;line-height:1.6}
   </style></head><body><div class="box"><h1>${title}</h1><p>${message}</p>
-  <div class="panel"><h3>系统状态（每 3 秒自动刷新）</h3>
-    <div class="row"><span>后端端口 ${currentPort}</span><span id="st-port">探测中…</span></div>
-    <div class="row"><span>MCP 端口 ${MCP_DEFAULT_PORT + (currentPort - DEFAULT_PORT)}</span><span id="st-mcp">探测中…</span></div>
-    <div class="row"><span>PostgreSQL（5540/5432）</span><span id="st-pg">探测中…</span></div>
-    <div class="row"><span>后端进程</span><span id="st-backend">探测中…</span></div>
-    <div class="hint">提示：端口被占用时请先关闭旧版 MarxSphere（任务管理器结束 MarxSphere.exe）再重新打开。</div>
+  <div class="panel"><h3>🔍 系统雷达（每 3 秒自动扫描）</h3>
+    <div class="radar-wrap">
+      <div class="radar">
+        <div class="radar-ring r1"></div><div class="radar-ring r2"></div><div class="radar-ring r3"></div>
+        <div class="radar-sweep"></div>
+        <div class="radar-center">MarxSphere</div>
+        <div class="radar-node" id="node-port" style="left:50%;top:7%"><span class="dot probing"></span><span class="lbl">后端端口</span></div>
+        <div class="radar-node" id="node-mcp" style="left:93%;top:50%;flex-direction:row-reverse"><span class="dot probing"></span><span class="lbl">MCP 端口</span></div>
+        <div class="radar-node" id="node-pg" style="left:50%;top:93%"><span class="dot probing"></span><span class="lbl">PostgreSQL</span></div>
+        <div class="radar-node" id="node-backend" style="left:7%;top:50%"><span class="dot probing"></span><span class="lbl">后端进程</span></div>
+      </div>
+      <div class="radar-detail">
+        <div class="row"><span>后端端口 ${currentPort}</span><span id="st-port">探测中…</span></div>
+        <div class="row"><span>MCP 端口 ${MCP_DEFAULT_PORT + (currentPort - DEFAULT_PORT)}</span><span id="st-mcp">探测中…</span></div>
+        <div class="row"><span>PostgreSQL（5540/5432）</span><span id="st-pg">探测中…</span></div>
+        <div class="row"><span>后端进程</span><span id="st-backend">探测中…</span></div>
+        <div class="hint">提示：端口被占用时请先关闭旧版 MarxSphere（任务管理器结束 MarxSphere.exe）再重新打开。雷达节点：<span style="color:#34d399">●</span>正常 <span style="color:#f87171">●</span>占用/异常 <span style="color:#64748b">●</span>探测中</div>
+      </div>
+    </div>
   </div></div>
   <script>
-    const fmt = (busy, label) => busy ? '<span class="bad">占用（' + label + '）</span>' : '<span class="ok">空闲 ✓</span>';
+    function setNode(id, cls, label) {
+      const n = document.getElementById('node-' + id);
+      if (!n) return;
+      n.querySelector('.dot').className = 'dot ' + cls;
+      const lbl = n.querySelector('.lbl');
+      if (lbl) lbl.textContent = label;
+    }
     async function refresh() {
       try {
         const s = await window.sagDesktop.portProbe();
-        document.getElementById('st-port').innerHTML = s.portBusy ? '<span class="bad">占用（' + (s.portOwner || '未知进程') + '）</span>' : '<span class="ok">空闲 ✓</span>';
+        if (s.portBusy) {
+          setNode('port', 'bad', '占用·' + (s.portOwner || '?'));
+          document.getElementById('st-port').innerHTML = '<span class="bad">占用（' + (s.portOwner || '未知进程') + '）</span>';
+        } else {
+          setNode('port', 'ok', '空闲');
+          document.getElementById('st-port').innerHTML = '<span class="ok">空闲 ✓</span>';
+        }
+        setNode('mcp', s.mcpBusy ? 'bad' : 'ok', s.mcpBusy ? '占用' : '空闲');
         document.getElementById('st-mcp').innerHTML = s.mcpBusy ? '<span class="bad">占用</span>' : '<span class="ok">空闲 ✓</span>';
+        setNode('pg', s.dbUp ? 'ok' : 'bad', s.dbUp ? '就绪' : '未检测');
         document.getElementById('st-pg').innerHTML = s.dbUp ? '<span class="ok">已就绪 ✓</span>' : '<span class="warn">未检测到</span>';
+        setNode('backend', s.backendRunning ? 'ok' : 'bad', s.backendRunning ? '运行中' : '未运行');
         document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
-      } catch (e) { /* 桥未就绪则保持"探测中" */ }
+      } catch (e) { /* 桥未就绪则保持探测中 */ }
     }
     refresh();
     setInterval(refresh, 3000);
