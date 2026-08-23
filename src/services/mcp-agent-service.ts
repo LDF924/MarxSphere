@@ -477,7 +477,11 @@ export class McpAgentService {
     const { callLlm } = await import("../ai/llm-common.js");
     const { buildAgentTools, executeAgentTool, checkToolPolicy } = await import("./agent-tool-router.js");
     const { getRoleModel } = await import("./llm-model-registry.js");
-    const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
+    // V441: 有远程 LLM 时忽略会话固化的 fallback 模型（local-rule-fallback 是旧会话在
+    // 保存 key 前创建的，固化后导致对话 400）— 用当前设置的模型
+    const model = input.settings.hasRemoteLlm
+      ? (input.session.model && input.session.model !== "local-rule-fallback" ? input.session.model : input.settings.llmModel || getRoleModel("reason"))
+      : (input.session.model || getRoleModel("reason") || input.settings.llmModel);
     input.emit?.({ type: "model", model });
 
     // V405: 对话历史接入分层压缩 — 按字符预算动态截取（对齐 1M 窗口 800K 字符估算），

@@ -2271,7 +2271,8 @@ function ProjectRail(props: {
 
       {createProjectDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="presentation">
-          <div className="w-full max-w-sm max-h-[80vh] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-lg" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
+          {/* V441: 对话框可调整大小（resize）+ 内部可滚动 — 用户要求能拉伸/滚动 */}
+          <div className="w-[420px] max-w-[90vw] max-h-[85vh] min-h-[200px] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-lg resize-y" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
             <div id="create-project-title" className="text-sm font-semibold">{t("新建项目", "New project")}</div>
             <p className="mt-1 text-xs text-muted-foreground">{t("输入项目名称后创建，文档和对话都会归属到这个项目。", "Enter a project name. Documents and chats will belong to this project.")}</p>
             <Input
