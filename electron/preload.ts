@@ -19,4 +19,6 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   portProbe: () => ipcRenderer.invoke("port:probe"),
   // V417: 一键结束占用端口的残留 MarxSphere 进程（错误页按钮用）
   killPortOwner: () => ipcRenderer.invoke("port:kill-owner"),
+  // V419: 一键修复数据库（端口通但库缺失时自动建库 + 扩展 + 验证）
+  fixDb: () => ipcRenderer.invoke("port:fix-db"),
 });
