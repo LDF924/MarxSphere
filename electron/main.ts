@@ -78,6 +78,29 @@ async function ensureBackendDeps(): Promise<boolean> {
     const sysTar = "C:/Windows/System32/tar.exe";
     let extracted = false;
     let tarErr = "";
+    // V436: tar 是黑盒（无进度输出）— 用轮询已解压文件数模拟进度（zip 已知总条目数）
+    const TOTAL_NM_ENTRIES = 28829; // node_modules.zip 条目数（打包时固定，误差±几十可接受）
+    const countExtracted = (): number => {
+      let n = 0;
+      try {
+        const walk = (d: string) => {
+          for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) walk(p);
+            else n++;
+          }
+        };
+        walk(tmp);
+      } catch { /* 目录未创建 */ }
+      return n;
+    };
+    const progressTimer = setInterval(() => {
+      const done = countExtracted();
+      const pct = Math.min(99, Math.round(done / TOTAL_NM_ENTRIES * 100));
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send("extract-progress", { done, total: TOTAL_NM_ENTRIES, pct });
+      }
+    }, 1000);
     try {
       execFileSync(sysTar, ["-xf", zip, "-C", tmp], { windowsHide: true, stdio: "pipe", timeout: 300_000 });
       // 校验解压结果（fastify 存在才算成功）
@@ -88,6 +111,12 @@ async function ensureBackendDeps(): Promise<boolean> {
     } catch (e: any) {
       tarErr = String(e?.message || e).slice(0, 120);
       console.error("[desktop] tar 解压失败，降级流式解压:", tarErr);
+    }
+    clearInterval(progressTimer);
+    if (extracted) {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send("extract-progress", { done: TOTAL_NM_ENTRIES, total: TOTAL_NM_ENTRIES, pct: 100 });
+      }
     }
     if (!extracted) {
       // 降级：PowerShell 流式解压（带进度，逐文件）
@@ -1012,7 +1041,40 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       const { spawn: unzipSpawn, execFileSync: efSync } = require("node:child_process") as typeof import("node:child_process");
       let pgUnzipOk = false;
       try {
-        efSync("C:/Windows/System32/tar.exe", ["-xf", zipPath, "-C", pgDir], { windowsHide: true, stdio: "pipe", timeout: 600_000 });
+        // V436: PG tar 解压进度轮询（tar 黑盒，用已解压文件数/zip 条目数模拟百分比）
+        let pgTotalEntries = 0;
+        try {
+          const { execFileSync: countPsql } = require("node:child_process") as typeof import("node:child_process");
+          const countOut = countPsql("powershell.exe", ["-NoProfile", "-Command",
+            `Add-Type -AssemblyName System.IO.Compression.FileSystem; $a=[System.IO.Compression.ZipFile]::OpenRead('${zipPath}'); $a.Entries.Count; $a.Dispose()`],
+            { encoding: "utf8", windowsHide: true, timeout: 30_000 });
+          pgTotalEntries = parseInt(countOut.trim(), 10) || 0;
+        } catch { /* 数条目失败用 0（进度显示跳过） */ }
+        const countPgExtracted = (): number => {
+          let n = 0;
+          try {
+            const walk = (d: string) => {
+              for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+                const p = path.join(d, e.name);
+                if (e.isDirectory()) walk(p);
+                else n++;
+              }
+            };
+            walk(pgDir);
+          } catch { /* 目录未创建 */ }
+          return n;
+        };
+        const pgTimer = setInterval(() => {
+          if (pgTotalEntries <= 0) return;
+          const done = countPgExtracted();
+          const pct = Math.min(99, Math.round(done / pgTotalEntries * 100));
+          sendStage(`解压 PostgreSQL… ${done.toLocaleString()}/${pgTotalEntries.toLocaleString()}（${pct}%）`, 30 + pct * 0.3, "install");
+        }, 800);
+        try {
+          efSync("C:/Windows/System32/tar.exe", ["-xf", zipPath, "-C", pgDir], { windowsHide: true, stdio: "pipe", timeout: 600_000 });
+        } finally {
+          clearInterval(pgTimer);
+        }
         // 校验：pgsql/bin/pg_ctl.exe 存在
         pgUnzipOk = fs.existsSync(path.join(pgDir, "pgsql", "bin", "pg_ctl.exe"));
         if (pgUnzipOk) sendStage("✓ PostgreSQL 解压完成", 60, "install");
@@ -1125,14 +1187,25 @@ Write-Output "PGDONE:$done/$total"
     // 初始化（幂等，异步不阻塞）
     const dataDir = path.join(pgDir, "data");
     if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
+      // V436: initdb 动态进度 — 轮询 dataDir 生成进度（initdb 逐步写入 base/global/pg_wal 等）
       sendStage("初始化数据库（VM/低配机需几分钟）…", 50);
       const { spawn: initSpawn } = require("node:child_process") as typeof import("node:child_process");
+      const initTimer = setInterval(() => {
+        const stages = ["base", "global", "pg_wal", "PG_VERSION"];
+        let done = 0;
+        for (const s of stages) {
+          if (fs.existsSync(path.join(dataDir, s))) done++;
+        }
+        const pct = 50 + Math.round(done / stages.length * 12); // 50%→62%
+        sendStage(`初始化数据库…（${done}/${stages.length} 阶段）`, pct);
+      }, 1500);
       const initOk = await new Promise<boolean>((resolve) => {
         const p = initSpawn(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { windowsHide: true });
         p.on("close", (c: number) => resolve(c === 0));
         p.on("error", () => resolve(false));
         setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 600_000); // 10 分钟超时
       });
+      clearInterval(initTimer);
       if (!initOk) return { ok: false, error: "PostgreSQL 初始化失败/超时" };
     }
     // 启动（幂等，异步 + 轮询等待就绪）
