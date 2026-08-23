@@ -463,8 +463,12 @@ function showErrorPage(title: string, message: string) {
         }
         setNode('mcp', s.mcpBusy ? 'bad' : 'ok', s.mcpBusy ? '占用' : '空闲');
         document.getElementById('st-mcp').innerHTML = s.mcpBusy ? '<span class="bad">占用</span>' : '<span class="ok">空闲 ✓</span>';
-        setNode('pg', s.dbUp ? 'ok' : 'bad', s.dbUp ? '就绪' : '未检测');
-        document.getElementById('st-pg').innerHTML = s.dbUp ? '<span class="ok">已就绪 ✓</span>' : '<span class="warn">未检测到</span>';
+        setNode('pg', s.dbUp ? 'ok' : 'bad', s.dbUp ? '就绪' : (s.pg5540 || s.pg5432) ? '库缺失' : '未检测');
+        document.getElementById('st-pg').innerHTML = s.dbUp
+          ? '<span class="ok">已就绪 ✓</span>'
+          : ((s.pg5540 || s.pg5432)
+            ? '<span class="bad">端口通但数据库缺失（需重新初始化）</span>'
+            : '<span class="warn">未检测到</span>');
         setNode('backend', s.backendRunning ? 'ok' : 'bad', s.backendRunning ? '运行中' : '未运行');
         document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
         // 占用者是 MarxSphere 残留 → 显示一键清理按钮；否则提示手动关闭
@@ -567,12 +571,34 @@ ipcMain.handle("port:probe", async () => {
     out.mcpBusy = await probeTcp(mcpPort);
     out.pg5540 = await probeTcp(5540);
     out.pg5432 = await probeTcp(5432);
-    out.dbUp = Boolean(out.pg5540) || Boolean(out.pg5432);
+    // V418: PG 探测升级 — 端口通只代表进程在，数据库未必存在（曾出现 5540 监听但 sag_lite 库缺失
+    // 导致 /health db:down 卡主界面）。用 /health 的 db 字段做最终判定，更真实反映后端可用性。
+    out.dbUp = (out.pg5540 || out.pg5432) ? await probeHealthDb(currentPort) : false;
   } catch (e: any) {
     console.error("[desktop] port:probe 异常:", String(e?.message || e).slice(0, 120));
   }
   return out;
 });
+
+/** V418: 探测后端 /health 的 db 字段（后端进程在跑时最准确；不在则降级用端口判断） */
+function probeHealthDb(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.get({ host: "127.0.0.1", port, path: "/health", timeout: 3000 }, (res) => {
+      let body = "";
+      res.on("data", (c) => (body += c));
+      res.on("end", () => {
+        try {
+          const j = JSON.parse(body);
+          resolve(j.ok && j.db === "up");
+          return;
+        } catch { /* fallthrough */ }
+        resolve(false);
+      });
+    });
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+  });
+}
 
 /**
  * V417: 一键结束残留进程 — 杀掉占用端口的 MarxSphere 残留后端，然后自动重启后端。
@@ -854,7 +880,14 @@ Write-Output "PGDONE:$done/$total"
       p.on("error", () => resolve(false));
       setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 60_000);
     });
-    await runSql("CREATE DATABASE sag_lite OWNER sag_lite");
+    // V418: 建库结果严格校验 — 失败必须显式报错（否则后端连不上库 /health 永远 db:down，用户卡在进不去主界面）
+    const dbCreated = await runSql("CREATE DATABASE sag_lite OWNER sag_lite");
+    if (!dbCreated) {
+      // CREATE DATABASE 失败可能是"库已存在"（重复安装/上次残留）— 用 psql 查询确认库是否真的存在
+      const checkOk = await runSql("SELECT 1 FROM pg_database WHERE datname = 'sag_lite'");
+      if (!checkOk) return { ok: false, error: "创建 sag_lite 数据库失败（psql 返回非零），请检查 pg-local 日志" };
+      console.log("[desktop] sag_lite 数据库已存在（幂等跳过）");
+    }
     // 建扩展在 sag_lite 库
     const runSqlDb = (db: string, sql: string) => new Promise<boolean>((resolve) => {
       const p = sqlSpawn(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", db, "-c", sql], { windowsHide: true });
@@ -862,7 +895,9 @@ Write-Output "PGDONE:$done/$total"
       p.on("error", () => resolve(false));
       setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 60_000);
     });
-    await runSqlDb("sag_lite", "CREATE EXTENSION IF NOT EXISTS vector");
+    // V418: 建扩展失败同样显式报错（pgvector 缺失 → 迁移失败 → 后端起不来）
+    const extOk = await runSqlDb("sag_lite", "CREATE EXTENSION IF NOT EXISTS vector");
+    if (!extOk) return { ok: false, error: "pgvector 扩展创建失败，请检查 pg-local 日志" };
     sendStage("✓ PostgreSQL 就绪", 100);
     // 写 .env（引导页 dataRoot 下的 .env）— 本地 PG 模式强制 DATABASE_URL=5540（覆盖旧值）
     const envFile = path.join(dataRoot, ".env");
