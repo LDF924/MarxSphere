@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld("sagDesktop", {
     ipcRenderer.on("pg-progress", (_e, data) => cb(data));
   },
   pyCheck: (p: string) => ipcRenderer.invoke("py:check", p),
+  // V415: 端口状态探测（错误页用——"后端服务已退出"时展示端口/数据库状态，让用户放心）
+  portProbe: () => ipcRenderer.invoke("port:probe"),
 });
