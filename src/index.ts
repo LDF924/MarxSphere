@@ -37,10 +37,27 @@ try {
 } catch { /* mode.json 损坏忽略 */ }
 
 // V397 桌面端: 启动前自举数据库迁移（迁移文件幂等, 首次启动安全执行）
+// V420: 迁移失败重试 3 次（DB 未就绪时首次连接会失败），且 startHttpServer 等迁移完成——
+// 否则接口先于建表提供，注册/登录报 relation "tenants" does not exist
 import { migrate } from "./db/migrate.js";
-migrate().catch((e: unknown) => {
-  console.error("[sag] 数据库迁移失败（首次启动可忽略, 重试中）:", String((e as Error)?.message || e).slice(0, 200));
-});
+
+async function runMigrationsWithRetry(): Promise<void> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await migrate();
+      console.log(`[sag] 数据库迁移完成`);
+      return;
+    } catch (e: unknown) {
+      const msg = String((e as Error)?.message || e).slice(0, 200);
+      if (attempt < 3) {
+        console.error(`[sag] 数据库迁移失败（第 ${attempt}/3 次，2s 后重试）:`, msg);
+        await new Promise((r) => setTimeout(r, 2000));
+      } else {
+        console.error("[sag] 数据库迁移 3 次均失败（接口可能不可用）:", msg);
+      }
+    }
+  }
+}
 
 startHttpServer().catch((error: unknown) => {
   const code = (error as NodeJS.ErrnoException)?.code;
@@ -52,6 +69,9 @@ startHttpServer().catch((error: unknown) => {
   }
   process.exit(1);
 });
+
+// 迁移与服务器并发启动：迁移失败不阻塞服务器（本地开发容错），但迁移重试兜底
+void runMigrationsWithRetry();
 
 // V395-38: 期刊实时同步管道（启动即同步一次 + 每6小时自动）
 startJournalSyncScheduler();

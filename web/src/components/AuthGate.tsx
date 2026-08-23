@@ -149,6 +149,18 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     logout
   };
 
+  // V420: 后端错误统一转字符串 — 后端 500 时 error 是 {code, message} 对象，
+  // 直接 setError(对象) 会触发 React #31（对象不能作为 children 渲染）
+  const errText = (v: unknown, fallback = "操作失败"): string => {
+    if (v == null) return fallback;
+    if (typeof v === "string") return v;
+    if (typeof v === "object") {
+      const m = (v as { message?: unknown }).message;
+      if (typeof m === "string" && m) return m;
+    }
+    return fallback;
+  };
+
   // V399: doSubmit/doForgot/doReset 必须在首个 return 之前声明 —
   // 模态（首个 return 内）引用它们，声明在 return 后则 TDZ 未初始化，点击无反应
   const doSubmit = async () => {
@@ -160,7 +172,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ username, password, ...(mode === "register" && email ? { email } : {}) }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      if (!r.ok) { setError(errText(d?.error)); return; }
       // V399: 统一登录成功处理（关模态）
       handleAuthSuccess(d);
     } catch (e: any) { setError(String(e?.message || e)); }
@@ -176,7 +188,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ email }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      if (!r.ok) { setError(errText(d?.error)); return; }
       if (d.smtpError) { setResetMsg("已提交。提示: 服务器 SMTP 未配置（" + d.smtpError + "），请联系管理员开启邮件服务。"); return; }
       setResetMsg("如果该邮箱已注册，重置链接已发送，请查收（15分钟内有效）。");
     } catch (e: any) { setError(String(e?.message || e)); }
@@ -192,7 +204,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ token: resetToken, newPassword: password }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(d.error || "操作失败"); return; }
+      if (!r.ok) { setError(errText(d?.error)); return; }
       setResetMsg("密码已重置，请用新密码登录。");
       setPassword("");
       setTimeout(() => {
