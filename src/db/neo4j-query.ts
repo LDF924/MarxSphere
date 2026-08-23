@@ -4,7 +4,12 @@
 // 用法: await neo4jQuery(11001, "MATCH (e:Entity {name: $n}) RETURN e", {n: "风险共担"})
 import neo4j, { type Driver, type Session } from "neo4j-driver";
 
-const AUTH = { user: "neo4j", password: "neo4j123" };
+// 凭据来源: NEO4J_USER / NEO4J_PASSWORD 环境变量（桌面端/生产由 .env 注入）；
+// 默认值 neo4j/neo4j123 仅限本地开发，勿在生产使用
+const AUTH = {
+  user: process.env.NEO4J_USER || "neo4j",
+  password: process.env.NEO4J_PASSWORD || "neo4j123",
+};
 const drivers = new Map<number, Driver>();
 
 function getDriver(port: number): Driver {

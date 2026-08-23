@@ -84,6 +84,7 @@ $arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
 $total = $arc.Entries.Count
 $done = 0
 foreach ($e in $arc.Entries) {
+  if ($e.FullName -match '\.\.' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
   $target = Join-Path $dst $e.FullName
   if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
   New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
@@ -171,6 +172,13 @@ let backendProc: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentPort = DEFAULT_PORT;
 let backendStopping = false;
+// 连续崩溃计数 — 达到 MAX_CONSECUTIVE_CRASHES 后停止自动重启，等用户手动重试（防止崩溃-重启死循环）
+let consecutiveCrashes = 0;
+const MAX_CONSECUTIVE_CRASHES = 3;
+// 本次后端进程启动时刻（用于判断进程是否稳定存活过 → 重置崩溃计数）
+let backendStartedAt = 0;
+// 防重入标志：startBackend 内部有 await（依赖检查/端口探测），并发调用会双 spawn
+let backendStarting = false;
 
 // ─── 单实例锁 ───
 const gotLock = app.requestSingleInstanceLock();
@@ -293,66 +301,85 @@ function createWindow() {
 
 /** 启动后端子进程（ELECTRON_RUN_AS_NODE 复用内置 Node 跑编译产物） */
 async function startBackend(port: number) {
-  const root = resourceRoot();
-  const dataRoot = sagRoot();
-  // 依赖就绪检查: node_modules 缺失时从 tgz 解压（首次启动）
-  if (!(await ensureBackendDeps())) {
-    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
-    return;
-  }
-  // V415: 启动前二次端口确认 — 探测到已被占用（探测-启动间竞态/残留进程）→ 提示而非盲目 bind 失败
-  const busy = await probeTcp(port);
-  if (busy) {
-    const owner = probePortOwnerSync(port);
-    const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
-    showErrorPage("后端服务已退出", `端口 ${port} 已被其他程序占用${hint}。\n` +
-      `这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
-      `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
-      `下方状态面板会实时显示端口/数据库状态。`);
-    return;
-  }
-  const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
-    ELECTRON_RUN_AS_NODE: "1",
-    HTTP_PORT: String(port),
-    HTTP_HOST: "127.0.0.1",
-    AGENT_API_BASE: `http://127.0.0.1:${port}`,
-    MCP_HTTP_PORT: String(MCP_DEFAULT_PORT + (port - DEFAULT_PORT)),
-    SAG_ROOT: root,
-    // 未配置 .env（首次启动）时用 preview 模式：不拉 Python MCP 池, 配置保存重启后才进完整模式
-    MARXSPHERE_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1",
-    // 运行时数据目录（userData 可写）: 通过 SAG_ROOT 指向安装资源 + cwd 指向 userData
-    // 注: 后端 dotenv 从 cwd 加载 .env — 引导页写入 userData/sag-root/.env, spawn cwd 设到 dataRoot
-  };
-  backendProc = spawn(process.execPath, [path.join(root, "dist", "src", "index.js")], {
-    env,
-    cwd: dataRoot,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  backendProc.stdout?.on("data", (d) => console.log("[backend]", String(d).trimEnd()));
-  backendProc.stderr?.on("data", (d) => console.error("[backend]", String(d).trimEnd()));
-  backendProc.on("exit", (code) => {
-    console.error("[backend] exited code=" + code);
-    if (backendStopping || !mainWindow) return;
-    // V415: 退出原因分诊 — 端口被他人占用（旧实例/残留进程）→ 不盲目重启，提示用户
-    const portBusy = probeTcp(currentPort);
-    portBusy.then((busy) => {
-      if (busy) {
-        const owner = probePortOwnerSync(currentPort);
-        const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
-        showErrorPage("后端服务已退出", `端口 ${currentPort} 已被其他程序占用${hint}。` +
-          `\n这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
-          `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
-          `下方状态面板会实时显示端口/数据库状态。`);
-        return;
-      }
-      // 非端口冲突 → 错误页 + 3 秒后自动重启（原逻辑）
-      showErrorPage("后端服务已退出", `MarxSphere 后端进程异常退出（code=${code}），应用将自动重启后端。`);
-      setTimeout(() => { if (mainWindow && !backendStopping) startBackend(currentPort); }, 3000);
+  // 防重入：并发调用（如自动重启 timer 与手动按钮竞态）时忽略后者
+  if (backendStarting || (backendProc && backendProc.exitCode === null)) return;
+  backendStarting = true;
+  try {
+    const root = resourceRoot();
+    const dataRoot = sagRoot();
+    // 依赖就绪检查: node_modules 缺失时从 tgz 解压（首次启动）
+    if (!(await ensureBackendDeps())) {
+      showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+      return;
+    }
+    // V415: 启动前二次端口确认 — 探测到已被占用（探测-启动间竞态/残留进程）→ 提示而非盲目 bind 失败
+    const busy = await probeTcp(port);
+    if (busy) {
+      const owner = probePortOwnerSync(port);
+      const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
+      showErrorPage("后端服务已退出", `端口 ${port} 已被其他程序占用${hint}。\n` +
+        `这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
+        `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
+        `下方状态面板会实时显示端口/数据库状态。`);
+      return;
+    }
+    const env: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      ELECTRON_RUN_AS_NODE: "1",
+      HTTP_PORT: String(port),
+      HTTP_HOST: "127.0.0.1",
+      AGENT_API_BASE: `http://127.0.0.1:${port}`,
+      MCP_HTTP_PORT: String(MCP_DEFAULT_PORT + (port - DEFAULT_PORT)),
+      SAG_ROOT: root,
+      // 未配置 .env（首次启动）时用 preview 模式：不拉 Python MCP 池, 配置保存重启后才进完整模式
+      MARXSPHERE_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1",
+      // 运行时数据目录（userData 可写）: 通过 SAG_ROOT 指向安装资源 + cwd 指向 userData
+      // 注: 后端 dotenv 从 cwd 加载 .env — 引导页写入 userData/sag-root/.env, spawn cwd 设到 dataRoot
+    };
+    backendProc = spawn(process.execPath, [path.join(root, "dist", "src", "index.js")], {
+      env,
+      cwd: dataRoot,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     });
-  });
-  void waitForHealth(port, 0);
+    backendProc.stdout?.on("data", (d) => console.log("[backend]", String(d).trimEnd()));
+    backendProc.stderr?.on("data", (d) => console.error("[backend]", String(d).trimEnd()));
+    backendStartedAt = Date.now();
+    backendProc.on("exit", (code) => {
+      console.error("[backend] exited code=" + code);
+      if (backendStopping || !mainWindow) return;
+      // 本次进程稳定存活过（≥60s）→ 视为健康周期结束，崩溃计数清零（只拦快速崩溃循环）
+      if (backendStartedAt && Date.now() - backendStartedAt >= 60_000) consecutiveCrashes = 0;
+      // V415: 退出原因分诊 — 端口被他人占用（旧实例/残留进程）→ 不盲目重启，提示用户
+      const portBusy = probeTcp(currentPort);
+      portBusy.then((busy) => {
+        if (busy) {
+          const owner = probePortOwnerSync(currentPort);
+          const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
+          showErrorPage("后端服务已退出", `端口 ${currentPort} 已被其他程序占用${hint}。` +
+            `\n这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
+            `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
+            `下方状态面板会实时显示端口/数据库状态。`);
+          return;
+        }
+        // 非端口冲突 → 连续崩溃防护：达到阈值停止自动重启，提示用户手动重试
+        consecutiveCrashes++;
+        console.error(`[desktop] 后端异常退出 (code=${code}) 连续第 ${consecutiveCrashes}/${MAX_CONSECUTIVE_CRASHES} 次`);
+        if (consecutiveCrashes >= MAX_CONSECUTIVE_CRASHES) {
+          console.error("[desktop] 后端连续崩溃达到上限，停止自动重启，等待手动重试");
+          showErrorPage("后端服务已退出", `MarxSphere 后端进程连续异常退出 ${MAX_CONSECUTIVE_CRASHES} 次（最近一次 code=${code}）。` +
+            `\n已停止自动重启，请检查系统日志或配置后，点击「手动重启后端」重试。`);
+          return;
+        }
+        // 未达阈值 → 错误页 + 3 秒后自动重启（原逻辑）
+        showErrorPage("后端服务已退出", `MarxSphere 后端进程异常退出（code=${code}），应用将自动重启后端。`);
+        setTimeout(() => { if (mainWindow && !backendStopping) startBackend(currentPort); }, 3000);
+      });
+    });
+    void waitForHealth(port, 0);
+  } finally {
+    backendStarting = false;
+  }
 }
 
 /** 轮询 /health 直到 DB up, 然后加载主界面 */
@@ -438,6 +465,7 @@ function showErrorPage(title: string, message: string) {
       <div id="fix-status"></div>
       <div class="action">
         <button class="kill secondary" id="btn-retry">重新探测</button>
+        <button class="kill" id="btn-restart">🔄 手动重启后端</button>
         <button class="kill secondary" id="btn-fixdb" style="display:none">🔧 一键修复数据库</button>
         <button class="kill" id="btn-kill" style="display:none">⚡ 一键结束残留进程并重启</button>
       </div>
@@ -545,9 +573,28 @@ function showErrorPage(title: string, message: string) {
         btn.textContent = '⚡ 一键结束残留进程并重启';
       }
     }
+    async function restartBackend() {
+      const btn = document.getElementById('btn-restart');
+      btn.disabled = true;
+      btn.textContent = '正在重启后端…';
+      document.getElementById('fix-status').textContent = '';
+      try {
+        const r = await window.sagDesktop.restartBackend();
+        document.getElementById('fix-status').style.color = '#fbbf24';
+        document.getElementById('fix-status').textContent = r.ok ? '后端重启中，请稍候…' : '重启失败：' + String(r.error || '未知错误');
+        setTimeout(() => { location.reload(); }, 2500);
+      } catch (e) {
+        document.getElementById('fix-status').style.color = '#f87171';
+        document.getElementById('fix-status').textContent = '重启失败：' + String(e?.message || e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 手动重启后端';
+      }
+    }
     document.getElementById('btn-kill').addEventListener('click', killOwner);
     document.getElementById('btn-fixdb').addEventListener('click', fixDb);
     document.getElementById('btn-retry').addEventListener('click', refresh);
+    document.getElementById('btn-restart').addEventListener('click', restartBackend);
     refresh();
     setInterval(refresh, 3000);
   </script></body></html>`;
@@ -904,6 +951,7 @@ $arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
 $total = $arc.Entries.Count
 $done = 0
 foreach ($e in $arc.Entries) {
+  if ($e.FullName -match '\.\.' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
   $target = Join-Path $dst $e.FullName
   if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
   New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
@@ -1245,7 +1293,25 @@ ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: 
 });
 
 ipcMain.handle("backend:restart", async () => {
-  if (backendProc) { backendStopping = true; backendProc.kill(); backendStopping = false; }
+  if (backendProc) {
+    backendStopping = true;
+    const proc = backendProc;
+    backendProc = null;
+    const exited = new Promise<void>((resolve) => {
+      proc.once("exit", () => resolve());
+      // 兜底: 5s 内未触发 exit 事件也不再等（SIGKILL 兜底由 shutdownBackend 的 taskkill 完成）
+      setTimeout(() => resolve(), 5000);
+    });
+    proc.kill();
+    // 等待进程真正退出后再启动，避免旧进程仍占着端口导致新进程 bind 失败
+    await exited;
+    // 轮询等待端口释放（最多 5s；进程已退出但 TCP 端口可能仍在 TIME_WAIT 中）
+    for (let i = 0; i < 10; i++) {
+      if (!(await probeTcp(currentPort))) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    backendStopping = false;
+  }
   startBackend(currentPort);
   return { ok: true };
 });
