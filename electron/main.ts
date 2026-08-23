@@ -589,14 +589,14 @@ Write-Output "PGDONE:$done/$total"
     });
     await runSqlDb("sag_lite", "CREATE EXTENSION IF NOT EXISTS vector");
     sendStage("✓ PostgreSQL 就绪", 100);
-    // 写 .env（引导页 dataRoot 下的 .env）
+    // 写 .env（引导页 dataRoot 下的 .env）— 本地 PG 模式强制 DATABASE_URL=5540（覆盖旧值）
     const envFile = path.join(dataRoot, ".env");
     if (fs.existsSync(envFile)) {
       let env = fs.readFileSync(envFile, "utf8");
-      if (!env.includes("DATABASE_URL=")) {
-        env += `\nDATABASE_URL=postgres://sag_lite@127.0.0.1:5540/sag_lite\n`;
-        fs.writeFileSync(envFile, env);
-      }
+      // 移除已有的 DATABASE_URL（可能指向 5432 旧配置），强制设为本地 PG 5540
+      env = env.split("\n").filter((l) => !l.startsWith("DATABASE_URL=")).join("\n");
+      env += `\nDATABASE_URL=postgres://sag_lite@127.0.0.1:5540/sag_lite\n`;
+      fs.writeFileSync(envFile, env);
     }
     return { ok: true };
   } catch (e: any) {
