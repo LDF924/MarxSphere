@@ -11,6 +11,10 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   onExtractProgress: (cb: (p: { done: number; total: number; pct: number }) => void) => {
     ipcRenderer.on("extract-progress", (_e, data) => cb(data));
   },
+  // V433: 解压失败通知（引导页显示错误，不再黑盒跳雷达页）
+  onExtractError: (cb: (p: { message: string }) => void) => {
+    ipcRenderer.on("extract-error", (_e, data) => cb(data));
+  },
   onPgProgress: (cb: (p: { stage: string; pct: number; type: "download" | "install" }) => void) => {
     ipcRenderer.on("pg-progress", (_e, data) => cb(data));
   },

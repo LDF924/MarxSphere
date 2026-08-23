@@ -184,6 +184,21 @@
     });
   }
 
+  // V433: 解压失败通知 — 显示错误原因，用户可重试（不再黑盒跳错误页）
+  if (window.sagDesktop?.onExtractError) {
+    window.sagDesktop.onExtractError(({ message }) => {
+      const wrap = $("extract-wrap");
+      wrap.style.display = "block";
+      $("extract-fill").style.width = "100%";
+      $("extract-fill").style.background = "#f87171";
+      $("extract-text").textContent = "✗ " + (message || "解压失败");
+      $("extract-text").style.color = "#f87171";
+      // 允许重试（重新点保存/启动会再次触发 env:save → backend:start）
+      $("save").disabled = false;
+      $("save").textContent = "重新保存并启动";
+    });
+  }
+
   // 轮询重探测（每 3 秒）— 用户后启动 Docker/数据库也能自动识别
   setInterval(() => {
     if (!$("save").disabled) return; // 已就绪不再轮询
