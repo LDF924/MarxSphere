@@ -474,23 +474,62 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       if (!unzipOk) return { ok: false, error: "PostgreSQL 解压超时/失败，请手动解压 pg.zip 后重试" };
       fs.rmSync(zipPath, { force: true });
     }
-    // 初始化（幂等）
+    // 初始化（幂等，异步不阻塞）
     const dataDir = path.join(pgDir, "data");
     if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
-      sendStage("初始化数据库…", 70);
-      execFileSync(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
+      sendStage("初始化数据库（VM/低配机需几分钟）…", 70);
+      const { spawn: initSpawn } = require("node:child_process") as typeof import("node:child_process");
+      const initOk = await new Promise<boolean>((resolve) => {
+        const p = initSpawn(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { windowsHide: true });
+        p.on("close", (c: number) => resolve(c === 0));
+        p.on("error", () => resolve(false));
+        setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 600_000); // 10 分钟超时
+      });
+      if (!initOk) return { ok: false, error: "PostgreSQL 初始化失败/超时" };
     }
-    // 启动（幂等）
+    // 启动（幂等，异步 + 轮询等待就绪）
     sendStage("启动 PostgreSQL…", 80);
     try {
       execFileSync(path.join(pgBin, "pg_isready.exe"), ["-h", "127.0.0.1", "-p", "5540"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
     } catch {
-      execFileSync(path.join(pgBin, "pg_ctl.exe"), ["-D", dataDir, "-l", path.join(pgDir, "pg.log"), "-o", "-p 5540", "start"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
+      const { spawn: pgSpawn } = require("node:child_process") as typeof import("node:child_process");
+      const startOk = await new Promise<boolean>((resolve) => {
+        const p = pgSpawn(path.join(pgBin, "pg_ctl.exe"), ["-D", dataDir, "-l", path.join(pgDir, "pg.log"), "-o", "-p 5540", "start"], { windowsHide: true });
+        p.on("close", (c: number) => resolve(c === 0));
+        p.on("error", () => resolve(false));
+        setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 120_000); // 2 分钟超时
+      });
+      if (!startOk) {
+        // pg_ctl 启动可能异步就绪（进程已起但端口未开）——轮询 60s
+        let ready = false;
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            execFileSync(path.join(pgBin, "pg_isready.exe"), ["-h", "127.0.0.1", "-p", "5540"], { timeout: 3000, windowsHide: true, stdio: "pipe" });
+            ready = true; break;
+          } catch { /* 未就绪继续等 */ }
+        }
+        if (!ready) return { ok: false, error: "PostgreSQL 启动失败/超时（请检查 pg-local\\pg.log）" };
+      }
     }
-    // 建库 + pgvector
+    // 建库 + pgvector（异步）
     sendStage("创建数据库 + pgvector 扩展…", 90);
-    execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", "CREATE DATABASE sag_lite OWNER sag_lite"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
-    execFileSync(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"], { timeout: 30_000, windowsHide: true, stdio: "pipe" });
+    const { spawn: sqlSpawn } = require("node:child_process") as typeof import("node:child_process");
+    const runSql = (sql: string) => new Promise<boolean>((resolve) => {
+      const p = sqlSpawn(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", sql], { windowsHide: true });
+      p.on("close", (c: number) => resolve(c === 0));
+      p.on("error", () => resolve(false));
+      setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 60_000);
+    });
+    await runSql("CREATE DATABASE sag_lite OWNER sag_lite");
+    // 建扩展在 sag_lite 库
+    const runSqlDb = (db: string, sql: string) => new Promise<boolean>((resolve) => {
+      const p = sqlSpawn(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", db, "-c", sql], { windowsHide: true });
+      p.on("close", (c: number) => resolve(c === 0));
+      p.on("error", () => resolve(false));
+      setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 60_000);
+    });
+    await runSqlDb("sag_lite", "CREATE EXTENSION IF NOT EXISTS vector");
     sendStage("✓ PostgreSQL 就绪", 100);
     // 写 .env（引导页 dataRoot 下的 .env）
     const envFile = path.join(dataRoot, ".env");
