@@ -171,14 +171,27 @@ const mcpMessageSchema = z.object({
 });
 
 // 可信 LLM/Embedding provider 域名白名单 — 防止改 baseUrl 重定向窃取调用
+// 必须包含默认值 api.302ai.cn（.env 默认 EMBEDDING_BASE_URL/LLM_BASE_URL），否则设置页首次保存必 400
 const ALLOWED_PROVIDER_HOSTS = [
+  "api.302ai.cn",
   "api.deepseek.com",
   "dashscope.aliyuncs.com",
   "maas.aliyuncs.com",
+  "api.openai.com",
+  "api.anthropic.com",
+  "openrouter.ai",
+  "generativelanguage.googleapis.com",
+  "api.moonshot.cn",
+  "api.z.ai",
+  "api.minimax.chat",
+  "api.xiaoai.mi.com",
 ];
 const isTrustedProviderUrl = (url: string) => {
   try {
-    return ALLOWED_PROVIDER_HOSTS.some((h) => new URL(url).hostname === h || new URL(url).hostname.endsWith("." + h));
+    const u = new URL(url);
+    // 本机/回环地址（Ollama http://127.0.0.1:11434、本地代理等）放行 — 单机桌面应用，不构成外部窃取
+    if (u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "::1") return true;
+    return ALLOWED_PROVIDER_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h));
   } catch {
     return false;
   }
