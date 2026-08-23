@@ -186,11 +186,11 @@ const upload = JSON.parse(execSync(
 ));
 console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.message || "?"}`);
 
-// 6) 同步安装包到主仓库（SAG-main release/）
-const mainReleaseDir = path.join("C:/Users/HUAWEI/SAG-main", "release");
+// 6) 备份安装包到宿主机 release/（旧版同步到 SAG-main；SAG-main 停用后仅留本仓库 release/）
+const mainReleaseDir = path.join(root, "release");
 if (existsSync(mainReleaseDir)) {
   execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
-  console.log(`✅ 已同步到主仓库 release/ (MarxSphere Setup ${version}.exe)`);
+  console.log(`✅ 安装包已保留在 release/ (MarxSphere Setup ${version}.exe)`);
 }
 
 console.log("\n🎉 发布完成!");
