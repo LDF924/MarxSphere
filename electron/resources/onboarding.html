@@ -103,10 +103,17 @@
 
   <div class="section">
     <div class="section-title">④ AI 模型密钥（必需）</div>
+    <label>LLM 服务商</label>
+    <select id="llmProvider" class="provider-select">
+      <option value="302ai">阿里云百炼 302AI（默认）</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="openai">OpenAI 兼容</option>
+      <option value="custom">自定义</option>
+    </select>
     <label>LLM API Key</label>
     <input id="llmKey" type="password" placeholder="sk-...（如 DeepSeek / 阿里云百炼 / OpenAI 兼容）">
-    <label>LLM Base URL（可选）</label>
-    <input id="llmBase" placeholder="https://api.deepseek.com/v1（默认阿里云 MaaS 兼容接口）">
+    <label>LLM Base URL（自动按服务商填写，可改）</label>
+    <input id="llmBase" placeholder="https://api.deepseek.com/v1">
     <label>Embedding API Key（可选，默认与 LLM 相同）</label>
     <input id="embedKey" type="password" placeholder="可留空">
   </div>
@@ -117,6 +124,33 @@
 </div>
 <script>
   const $ = (id) => document.getElementById(id);
+  // V438: 服务商选择 → 自动填 Base URL（防 DeepSeek key 打 302AI 报 401）
+  const PROVIDER_BASES = {
+    "302ai": "https://api.302ai.cn/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+    "openai": "https://api.openai.com/v1",
+    "custom": "",
+  };
+  const providerSelect = $("llmProvider");
+  const llmBaseInput = $("llmBase");
+  if (providerSelect && llmBaseInput) {
+    providerSelect.addEventListener("change", () => {
+      llmBaseInput.value = PROVIDER_BASES[providerSelect.value] || "";
+      if (providerSelect.value === "302ai") {
+        $("err").textContent = "已选择 302AI，请填阿里云百炼的 API Key";
+        $("err").className = "err";
+      } else if (providerSelect.value === "deepseek") {
+        $("err").textContent = "已选择 DeepSeek，请填 DeepSeek 平台的 API Key（sk- 开头）";
+        $("err").className = "err";
+      }
+    });
+    // 已有 .env 时按已存 baseUrl 回填服务商
+    if (probe?.envExists && llmBaseInput.value) {
+      if (llmBaseInput.value.includes("deepseek")) providerSelect.value = "deepseek";
+      else if (llmBaseInput.value.includes("302ai")) providerSelect.value = "302ai";
+      else if (llmBaseInput.value.includes("openai")) providerSelect.value = "openai";
+    }
+  }
   let probe = null;
   const setBadge = (id, ok, text) => {
     const el = $(id);
@@ -277,6 +311,9 @@
     const pgPort = probe["pg:5540"] ? 5540 : 5432;
     $("save").disabled = true;
     $("save").textContent = "正在保存并启动…";
+    // V438: 立即给出明确等待提示（后端首次启动含迁移/初始化，1-3 分钟无反馈会误以为卡死）
+    $("err").className = "ok-msg";
+    $("err").textContent = "正在启动 MarxSphere…（首次启动需初始化数据库，约 1-3 分钟，请耐心等待）";
     try {
       const r = await window.sagDesktop.saveEnv({
         llmApiKey: key || undefined,
@@ -288,7 +325,7 @@
       });
       await window.sagDesktop.restartBackend();
       $("err").className = "ok-msg";
-      $("err").textContent = "配置已保存，正在启动 MarxSphere…";
+      $("err").textContent = "✓ 后端已启动，正在加载主界面…";
     } catch (e) {
       $("err").className = "err";
       $("err").textContent = "保存失败: " + e.message;

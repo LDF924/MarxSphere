@@ -3811,6 +3811,14 @@ function normalizeChunkingMode(value: unknown): ChunkingMode {
   return value === "token" ? "token" : DEFAULT_CHUNKING_MODE;
 }
 
+// V438: 按 base URL 推断服务商（设置页下拉回显用）
+function providerDetect(baseUrl: string): string {
+  if (baseUrl.includes("deepseek")) return "deepseek";
+  if (baseUrl.includes("302ai")) return "302ai";
+  if (baseUrl.includes("openai")) return "openai";
+  return "custom";
+}
+
 function SettingsPanel(props: {
   settings: PublicAiProviderSettings | null;
   isSaving: boolean;
@@ -3952,6 +3960,23 @@ function SettingsPanel(props: {
             }}
             placeholder={t("留空不修改", "Leave blank to keep unchanged")}
           />
+        </Field>
+        <Field label={t("LLM 服务商（自动填地址）", "LLM provider (auto-fills base URL)")}>
+          <select
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={providerDetect(llmBaseUrl)}
+            onChange={(event) => {
+              const v = event.target.value;
+              if (v === "302ai") setLlmBaseUrl("https://api.302ai.cn/v1");
+              else if (v === "deepseek") setLlmBaseUrl("https://api.deepseek.com/v1");
+              else if (v === "openai") setLlmBaseUrl("https://api.openai.com/v1");
+            }}
+          >
+            <option value="302ai">阿里云百炼 302AI</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI 兼容</option>
+            <option value="custom">自定义</option>
+          </select>
         </Field>
         <Field label={t("LLM 接口地址", "LLM API base URL")}>
           <Input value={llmBaseUrl} onChange={(event) => setLlmBaseUrl(event.target.value)} />
