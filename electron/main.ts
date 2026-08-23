@@ -407,6 +407,13 @@ function showErrorPage(title: string, message: string) {
     .row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:#94a3b8;font-size:12px}
     .row .ok{color:#34d399}.row .bad{color:#f87171}.row .warn{color:#fbbf24}
     .hint{margin-top:10px;color:#64748b;font-size:11px;line-height:1.6}
+    .fixbar{margin-top:14px;display:flex;flex-direction:column;gap:8px;align-items:stretch}
+    .fixbar .action{display:flex;align-items:center;gap:8px;justify-content:center}
+    button.kill{background:linear-gradient(180deg,#fbbf24,#f59e0b);color:#0b1120;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer}
+    button.kill:hover{filter:brightness(1.1)}
+    button.kill:disabled{opacity:.5;cursor:not-allowed}
+    button.kill.secondary{background:#1e293b;color:#94a3b8;border:1px solid #334155;font-weight:500}
+    #fix-status{font-size:12px;color:#94a3b8;min-height:16px}
   </style></head><body><div class="box"><h1>${title}</h1><p>${message}</p>
   <div class="panel"><h3>🔍 系统雷达（每 3 秒自动扫描）</h3>
     <div class="radar-wrap">
@@ -427,6 +434,13 @@ function showErrorPage(title: string, message: string) {
         <div class="hint">提示：端口被占用时请先关闭旧版 MarxSphere（任务管理器结束 MarxSphere.exe）再重新打开。雷达节点：<span style="color:#34d399">●</span>正常 <span style="color:#f87171">●</span>占用/异常 <span style="color:#64748b">●</span>探测中</div>
       </div>
     </div>
+    <div class="fixbar">
+      <div id="fix-status"></div>
+      <div class="action">
+        <button class="kill secondary" id="btn-retry">重新探测</button>
+        <button class="kill" id="btn-kill">⚡ 一键结束残留进程并重启</button>
+      </div>
+    </div>
   </div></div>
   <script>
     function setNode(id, cls, label) {
@@ -436,6 +450,7 @@ function showErrorPage(title: string, message: string) {
       const lbl = n.querySelector('.lbl');
       if (lbl) lbl.textContent = label;
     }
+    let lastOwner = null;
     async function refresh() {
       try {
         const s = await window.sagDesktop.portProbe();
@@ -452,8 +467,44 @@ function showErrorPage(title: string, message: string) {
         document.getElementById('st-pg').innerHTML = s.dbUp ? '<span class="ok">已就绪 ✓</span>' : '<span class="warn">未检测到</span>';
         setNode('backend', s.backendRunning ? 'ok' : 'bad', s.backendRunning ? '运行中' : '未运行');
         document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
+        // 占用者是 MarxSphere 残留 → 显示一键清理按钮；否则提示手动关闭
+        const isMs = s.portBusy && s.portOwner && /marxsphere/i.test(s.portOwner);
+        lastOwner = isMs ? s.portOwner : null;
+        document.getElementById('btn-kill').style.display = isMs ? '' : 'none';
+        document.getElementById('fix-status').textContent = isMs
+          ? '检测到残留的 MarxSphere 进程，点击下方按钮自动结束并重启后端。'
+          : (s.portBusy ? '端口被其他程序（' + (s.portOwner || '未知') + '）占用，请手动关闭后重试。' : '');
       } catch (e) { /* 桥未就绪则保持探测中 */ }
     }
+    async function killOwner() {
+      const btn = document.getElementById('btn-kill');
+      btn.disabled = true;
+      btn.textContent = '正在结束残留进程…';
+      document.getElementById('fix-status').textContent = '';
+      try {
+        const r = await window.sagDesktop.killPortOwner();
+        if (r.ok) {
+          document.getElementById('fix-status').style.color = '#34d399';
+          document.getElementById('fix-status').textContent = '✓ 残留进程已结束，正在自动重启后端…';
+          setTimeout(() => { location.reload(); }, 2500);
+        } else if (r.reason === 'not_marxsphere') {
+          document.getElementById('fix-status').style.color = '#f87171';
+          document.getElementById('fix-status').textContent = '占用者是其他程序（' + (r.owner || '未知') + '），请手动关闭后重试。';
+          btn.style.display = 'none';
+        } else {
+          document.getElementById('fix-status').style.color = '#f87171';
+          document.getElementById('fix-status').textContent = '操作失败：' + (r.error || r.reason || '未知错误') + '。请手动在任务管理器结束 MarxSphere.exe 后重试。';
+        }
+      } catch (e) {
+        document.getElementById('fix-status').style.color = '#f87171';
+        document.getElementById('fix-status').textContent = '操作失败：' + String(e?.message || e) + '。请手动关闭后重试。';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ 一键结束残留进程并重启';
+      }
+    }
+    document.getElementById('btn-kill').addEventListener('click', killOwner);
+    document.getElementById('btn-retry').addEventListener('click', refresh);
     refresh();
     setInterval(refresh, 3000);
   </script></body></html>`;
@@ -496,7 +547,7 @@ function probePortOwnerSync(port: number): string | null {
   }
 }
 
-/** V415: 错误页端口/数据库状态探测（前端每 3s 调用，让用户看清系统状态） */
+/** V416: 错误页雷达/状态探测（前端每 3s 调用，让用户看清系统状态） */
 ipcMain.handle("port:probe", async () => {
   const mcpPort = MCP_DEFAULT_PORT + (currentPort - DEFAULT_PORT);
   const out: Record<string, unknown> = {
@@ -521,6 +572,43 @@ ipcMain.handle("port:probe", async () => {
     console.error("[desktop] port:probe 异常:", String(e?.message || e).slice(0, 120));
   }
   return out;
+});
+
+/**
+ * V417: 一键结束残留进程 — 杀掉占用端口的 MarxSphere 残留后端，然后自动重启后端。
+ * 安全性：应用有单实例锁（app.requestSingleInstanceLock），当前主进程存活时不可能有第二个
+ * 正常运行的 UI 实例；占用者只可能是无主进程管理的孤儿后端（ELECTRON_RUN_AS_NODE），杀掉安全。
+ * 占用者是其他程序时不动，返回提示。
+ */
+ipcMain.handle("port:kill-owner", async () => {
+  const owner = probePortOwnerSync(currentPort);
+  if (!owner) return { ok: true, reason: "port_free" };
+  if (!/marxsphere/i.test(owner)) {
+    return { ok: false, reason: "not_marxsphere", owner };
+  }
+  try {
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    // 找占用进程 PID（netstat）→ 强杀
+    const out = execFileSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    const line = out.split("\n").find((l) => l.includes(":" + currentPort) && l.includes("LISTENING"));
+    const pid = line ? line.trim().split(/\s+/).pop() : null;
+    if (!pid || !/^\d+$/.test(pid)) return { ok: false, reason: "no_pid" };
+    execFileSync("taskkill", ["/F", "/PID", pid], { windowsHide: true, timeout: 15_000, stdio: "ignore" });
+    // 等端口释放（最多 5s）
+    for (let i = 0; i < 10; i++) {
+      if (!(await probeTcp(currentPort))) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    console.log(`[desktop] 已结束占用端口 ${currentPort} 的残留进程 (PID ${pid})`);
+    // 自动重启后端（端口已释放，startBackend 的二次确认会通过）
+    if (!backendProc || backendProc.exitCode !== null) {
+      void startBackend(currentPort);
+    }
+    return { ok: true, reason: "killed", pid };
+  } catch (e: any) {
+    console.error("[desktop] 结束残留进程失败:", String(e?.message || e).slice(0, 120));
+    return { ok: false, reason: "error", error: String(e?.message || e).slice(0, 120) };
+  }
 });
 
 /** 探测系统可用的 python 解释器（快速版: 只探测存在的路径 + PATH 首个命中, 单次超时 2s） */
