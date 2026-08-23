@@ -279,8 +279,14 @@ async function bootstrap() {
   }
   // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
   const dbReady = await waitForDbReady(port, 0);
-  if (dbReady) void startBackend(port);
-  else {
+  if (dbReady) {
+    // V442: 启动后端前显示雷达启动页（每次启动都经过雷达确认——用户要求，非一闪而过）
+    if (mainWindow) {
+      showErrorPage("正在启动 MarxSphere", "后端正在启动（首次需初始化数据库，约 1-3 分钟）。\n" +
+        `下方雷达实时检测后端端口/数据库状态，就绪后自动进入主界面。`);
+    }
+    void startBackend(port);
+  } else {
     // 引导页负责数据库启动；DB 就绪后由引导页触发 backend:start
     console.log("[desktop] 数据库未就绪 — 等待引导页完成数据库启动");
   }
