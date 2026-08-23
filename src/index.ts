@@ -13,7 +13,7 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("[sag] unhandledRejection:", reason instanceof Error ? reason.message : String(reason));
 });
-import { startHttpServer } from "./api/server.js";
+import { startHttpServer, markMigrationsReady } from "./api/server.js";
 import { logger } from "./observability/logger.js";
 import { startJournalSyncScheduler } from "./services/journal-sync-service.js";  // V395-38: 期刊实时同步管道
 import { runStartupChecks } from "./startup-check.js";  // V407: 启动环境检查（密钥/目录缺失给明确警告）
@@ -75,6 +75,9 @@ async function runMigrationsWithRetry(): Promise<void> {
     try {
       await migrate();
       console.log(`[sag] 数据库迁移完成`);
+      // V437: 迁移完成 → 放行业务请求（此前业务接口 503，防止缺表崩溃）
+      markMigrationsReady();
+      console.log("[sag] 服务已放行（迁移完成）");
       return;
     } catch (e: unknown) {
       const msg = String((e as Error)?.message || e).slice(0, 200);

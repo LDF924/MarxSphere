@@ -217,6 +217,9 @@ const aiSettingsSchema = z.object({
 });
 
 export function buildHttpServer() {
+  // V437: 迁移完成前服务降级 — 迁移未完成时业务接口返回 503（避免后端在缺表时崩溃/闪退循环）
+  // 迁移由 index.ts 的 runMigrationsWithRetry 完成（等 DB 就绪 + 重试），完成后 markMigrationsReady() 置 true
+  // 读取走 isMigrationsReady()（跨模块 globalThis 标记），闭包不缓存
   // 启动限流器桶清理 (防 Map 无限增长)
   globalRateLimiter.startCleanup();
   tokenRateLimiter.startCleanup();
@@ -229,6 +232,14 @@ export function buildHttpServer() {
         service: "marxsphere"
       }
     }
+  });
+
+  // V437: 迁移完成前降级 — 业务请求 503（避免缺表崩溃），/health 与 /api/auth/status 放行
+  app.addHook("onRequest", async (request, reply) => {
+    if (isMigrationsReady()) return;
+    const url = request.url.split("?")[0];
+    if (url === "/health" || url === "/api/auth/status" || url.startsWith("/api/auth/")) return;
+    reply.code(503).send({ error: { code: "MIGRATING", message: "数据库初始化中，请稍候重试" } });
   });
 
   // ─── 对外 API 鉴权（部署到服务器 + 多用户场景）───
@@ -669,6 +680,8 @@ export function buildHttpServer() {
     ok: boolean; service: string; db?: "up" | "down"; queueDepth?: number;
     runningTasks?: number; stuckTasks?: number; agentQueue?: { queued: number; running: number; maxConcurrent: number };
   }> => {
+    // V437: 迁移未完成 → db:down（前端/electron 等健康检查，不会误以为就绪）
+    if (!isMigrationsReady()) return { ok: false, service: "marxsphere", db: "down" };
     let db: "up" | "down" = "down";
     let queueDepth = 0;
     let runningTasks = 0;
@@ -6766,7 +6779,16 @@ except Exception as e:
   return app;
 }
 
-/** V395-13: 批量任务序列化（Set → 数组, 供 JSON 返回） */
+// V437: 迁移完成后由 index.ts 调用（runMigrationsWithRetry 完成 → 服务放行）
+export function markMigrationsReady(): void {
+  // 通过模块级闭包变量传递 — buildHttpServer 实例内捕获同一引用
+  (globalThis as any).__marxsphere_migrations_ready = true;
+}
+
+/** V437: 迁移完成标记（buildHttpServer 内部读取） */
+export function isMigrationsReady(): boolean {
+  return (globalThis as any).__marxsphere_migrations_ready === true;
+}
 function serializeBatchJob(job: any) {
   return {
     id: job.id, inputDir: job.inputDir, outputDir: job.outputDir,
