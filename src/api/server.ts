@@ -1193,10 +1193,11 @@ export function buildHttpServer() {
   });
 
   // 模式切换（写入 mode.json，重启后生效）：POST { mode: "preview" | "full" }
+  // V441: 写 cwd（userData/sag-root，可写）而非 rootDir（安装目录只读）— 与 index.ts 读取路径一致
   app.post("/api/mode", async (request) => {
     const body = (request.body ?? {}) as { mode?: string };
     const mode = body.mode === "full" ? "full" : "preview";
-    fs.writeFileSync(path.join(rootDir, "mode.json"), JSON.stringify({ mode, updatedAt: new Date().toISOString() }), "utf-8");
+    fs.writeFileSync(path.join(process.cwd(), "mode.json"), JSON.stringify({ mode, updatedAt: new Date().toISOString() }), "utf-8");
     return { ok: true, mode, note: "重启服务后生效（当前模式不变）" };
   });
 
