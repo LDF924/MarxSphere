@@ -281,11 +281,28 @@ export async function createAgentTask(input: {
   return getAgentTask(task.id) as Promise<AgentTaskRecord>;
 }
 
-/** V391(P0-1/2/3): Agentic Loop 执行器 — 多轮循环 + 失败回流 + reflect 评估 */
+/** V391(P0-1/2/3): Agentic Loop 执行器 — 多轮循环 + 失败回流 + reflect 评估
+ *  V4xx: 入队/运行用条件 UPDATE 原子领取 — planning→running 转换是幂等且互斥的,
+ *        并发/重复调用只有一个能抢到执行权（防双跑）; 已被领取或终态的任务直接返回当前状态 */
 export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskStep) => Promise<string | StepExecutionResult>): Promise<AgentTaskRecord> {
+  // 条件 UPDATE 原子领取: where status='planning' 保证同一任务只能被一个调用方转为 running;
+  // 若任务在入队后已被 controlAgentTask 置 running（resume/批准流）, 此处置回 planning 再领取,
+  // 保证执行权互斥（被占用时 rowCount=0 → 直接返回当前状态, 不重复执行）
+  await updateStatus(taskId, "planning");
+  const claim = await pool.query(
+    `update agent_tasks set status = 'running', updated_at = now()
+     where id = $1::uuid and status = 'planning'
+     returning id`,
+    [taskId]
+  );
+  if ((claim.rowCount || 0) === 0) {
+    const existing = await getAgentTask(taskId);
+    if (!existing) throw new Error("任务不存在");
+    // 已被其它调用方领取（running）或已终态 → 不重复执行, 返回当前状态
+    return existing;
+  }
   const task = await getAgentTask(taskId);
   if (!task) throw new Error("任务不存在");
-  await updateStatus(taskId, "running");
   // V2: 全局任务超时 — 总时长上限(默认10分钟), 超时置failed并沉淀失败经验
   const TASK_TIMEOUT_MS = parseInt(process.env.AGENT_TASK_TIMEOUT_MS || "600000", 10);
   const taskStartAt = Date.now();
