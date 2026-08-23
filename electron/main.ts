@@ -464,17 +464,21 @@ function showErrorPage(title: string, message: string) {
         }
         setNode('mcp', s.mcpBusy ? 'bad' : 'ok', s.mcpBusy ? '占用' : '空闲');
         document.getElementById('st-mcp').innerHTML = s.mcpBusy ? '<span class="bad">占用</span>' : '<span class="ok">空闲 ✓</span>';
-        setNode('pg', s.dbUp ? 'ok' : 'bad', s.dbUp ? '就绪' : (s.pg5540 || s.pg5432) ? '库缺失' : '未检测');
+        setNode('pg', s.dbUp ? 'ok' : 'bad', s.dbUp ? '就绪' : (s.pg5540 || s.pg5432) ? (s.dbDetail === 'migration_pending' ? '迁移未完成' : '库缺失') : '未检测');
         document.getElementById('st-pg').innerHTML = s.dbUp
           ? '<span class="ok">已就绪 ✓</span>'
           : ((s.pg5540 || s.pg5432)
-            ? '<span class="bad">端口通但数据库缺失（可一键修复）</span>'
+            ? (s.dbDetail === 'migration_pending'
+              ? '<span class="bad">数据库已建但迁移未完成（表缺失，可一键修复）</span>'
+              : '<span class="bad">端口通但数据库缺失（可一键修复）</span>')
             : '<span class="warn">未检测到</span>');
-        // 库缺失（端口通但 /health db:down）→ 显示一键修复数据库按钮
+        // 数据库异常（端口通但 /health db:down）→ 显示一键修复数据库按钮
         const dbBroken = (s.pg5540 || s.pg5432) && !s.dbUp;
         document.getElementById('btn-fixdb').style.display = dbBroken ? '' : 'none';
         document.getElementById('fix-status').textContent = dbBroken
-          ? '检测到数据库异常（sag_lite 库缺失或未初始化），点击「一键修复数据库」自动修复。'
+          ? (s.dbDetail === 'migration_pending'
+            ? '检测到迁移未完成（users/tenants 表缺失），点击「一键修复数据库」自动建表。'
+            : '检测到数据库异常（sag_lite 库缺失或未初始化），点击「一键修复数据库」自动修复。')
           : '';
         setNode('backend', s.backendRunning ? 'ok' : 'bad', s.backendRunning ? '运行中' : '未运行');
         document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
@@ -598,6 +602,7 @@ ipcMain.handle("port:probe", async () => {
     pg5540: false,
     pg5432: false,
     dbUp: false,
+    dbDetail: "up",
     backendRunning: backendProc !== null && backendProc.exitCode === null,
   };
   try {
@@ -609,6 +614,8 @@ ipcMain.handle("port:probe", async () => {
     // V418: PG 探测升级 — 端口通只代表进程在，数据库未必存在（曾出现 5540 监听但 sag_lite 库缺失
     // 导致 /health db:down 卡主界面）。用 /health 的 db 字段做最终判定，更真实反映后端可用性。
     out.dbUp = (out.pg5540 || out.pg5432) ? await probeHealthDb(currentPort) : false;
+    // V423: db:down 时细分原因（库缺失 vs 迁移未完成），供雷达显示与修复按钮文案
+    out.dbDetail = (out.pg5540 || out.pg5432) && !out.dbUp ? await probeDbDetail() : "up";
   } catch (e: any) {
     console.error("[desktop] port:probe 异常:", String(e?.message || e).slice(0, 120));
   }
@@ -632,6 +639,31 @@ function probeHealthDb(port: number): Promise<boolean> {
     });
     req.on("error", () => resolve(false));
     req.on("timeout", () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * V423: 探测数据库细分状态 — 端口通但 /health db:down 时区分：
+ * "db_missing"（sag_lite 库不存在，需建库）/ "migration_pending"（库在但表缺失，需跑迁移）
+ */
+function probeDbDetail(): Promise<"up" | "db_missing" | "migration_pending" | "pg_down"> {
+  return new Promise((resolve) => {
+    const dataRoot = sagRoot();
+    const psql = path.join(dataRoot, "pg-local", "pgsql", "bin", "psql.exe");
+    if (!fs.existsSync(psql)) { resolve("pg_down"); return; }
+    try {
+      const { execFile } = require("node:child_process") as typeof import("node:child_process");
+      execFile(psql, ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-tAc", "SELECT 1 FROM pg_database WHERE datname='sag_lite'"], { timeout: 8000, windowsHide: true }, (err, stdout) => {
+        if (err || String(stdout).trim() !== "1") { resolve("db_missing"); return; }
+        // 库在 → 查 users 表是否存在（043 迁移的产物）→ 区分迁移是否完成
+        execFile(psql, ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-tAc", "SELECT to_regclass('public.users')"], { timeout: 8000, windowsHide: true }, (err2, stdout2) => {
+          if (err2 || String(stdout2).trim() === "") { resolve("migration_pending"); return; }
+          resolve("up");
+        });
+      });
+    } catch {
+      resolve("pg_down");
+    }
   });
 }
 
@@ -666,7 +698,27 @@ ipcMain.handle("port:fix-db", async () => {
     // 2) 建 pgvector 扩展
     const ext = await run(["-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"]);
     if (ext.code !== 0) return { ok: false, reason: "ext_failed", error: ext.out.slice(0, 120) };
-    // 3) 验证后端健康（pg pool 连接失败后会自动重连，无需重启后端）
+    // 3) V423: 跑数据库迁移（建表）— 库/扩展就绪后迁移才有意义；
+    //    用 ELECTRON_RUN_AS_NODE 跑后端 dist 的 migrate.js（独立入口，幂等）
+    const root = resourceRoot();
+    const migrateJs = path.join(root, "dist", "src", "db", "migrate.js");
+    if (fs.existsSync(migrateJs)) {
+      console.log("[desktop] 修复数据库：执行迁移...");
+      const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+      try {
+        execFileSync(process.execPath, [migrateJs], {
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SAG_ROOT: root },
+          timeout: 120_000, windowsHide: true, stdio: "ignore",
+        });
+        console.log("[desktop] 修复数据库：迁移完成");
+      } catch (e: any) {
+        console.error("[desktop] 修复数据库：迁移失败:", String(e?.message || e).slice(0, 120));
+        return { ok: false, reason: "migrate_failed", error: "迁移执行失败：" + String(e?.message || e).slice(0, 100) };
+      }
+    } else {
+      console.warn("[desktop] 修复数据库：未找到 migrate.js，跳过迁移（仅建库+扩展）");
+    }
+    // 4) 验证后端健康（pg pool 连接失败后会自动重连，无需重启后端）
     const healthOk = await probeHealthDb(currentPort);
     if (!healthOk) {
       // 后端仍报 db down → 重启后端兜底
