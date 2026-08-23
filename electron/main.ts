@@ -438,7 +438,8 @@ function showErrorPage(title: string, message: string) {
       <div id="fix-status"></div>
       <div class="action">
         <button class="kill secondary" id="btn-retry">重新探测</button>
-        <button class="kill" id="btn-kill">⚡ 一键结束残留进程并重启</button>
+        <button class="kill secondary" id="btn-fixdb" style="display:none">🔧 一键修复数据库</button>
+        <button class="kill" id="btn-kill" style="display:none">⚡ 一键结束残留进程并重启</button>
       </div>
     </div>
   </div></div>
@@ -467,18 +468,51 @@ function showErrorPage(title: string, message: string) {
         document.getElementById('st-pg').innerHTML = s.dbUp
           ? '<span class="ok">已就绪 ✓</span>'
           : ((s.pg5540 || s.pg5432)
-            ? '<span class="bad">端口通但数据库缺失（需重新初始化）</span>'
+            ? '<span class="bad">端口通但数据库缺失（可一键修复）</span>'
             : '<span class="warn">未检测到</span>');
+        // 库缺失（端口通但 /health db:down）→ 显示一键修复数据库按钮
+        const dbBroken = (s.pg5540 || s.pg5432) && !s.dbUp;
+        document.getElementById('btn-fixdb').style.display = dbBroken ? '' : 'none';
+        document.getElementById('fix-status').textContent = dbBroken
+          ? '检测到数据库异常（sag_lite 库缺失或未初始化），点击「一键修复数据库」自动修复。'
+          : '';
         setNode('backend', s.backendRunning ? 'ok' : 'bad', s.backendRunning ? '运行中' : '未运行');
         document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
         // 占用者是 MarxSphere 残留 → 显示一键清理按钮；否则提示手动关闭
         const isMs = s.portBusy && s.portOwner && /marxsphere/i.test(s.portOwner);
         lastOwner = isMs ? s.portOwner : null;
         document.getElementById('btn-kill').style.display = isMs ? '' : 'none';
-        document.getElementById('fix-status').textContent = isMs
-          ? '检测到残留的 MarxSphere 进程，点击下方按钮自动结束并重启后端。'
-          : (s.portBusy ? '端口被其他程序（' + (s.portOwner || '未知') + '）占用，请手动关闭后重试。' : '');
+        if (!dbBroken && !isMs) {
+          document.getElementById('fix-status').textContent = s.portBusy
+            ? '端口被其他程序（' + (s.portOwner || '未知') + '）占用，请手动关闭后重试。'
+            : '';
+        }
       } catch (e) { /* 桥未就绪则保持探测中 */ }
+    }
+    async function fixDb() {
+      const btn = document.getElementById('btn-fixdb');
+      btn.disabled = true;
+      btn.textContent = '正在修复数据库…';
+      document.getElementById('fix-status').textContent = '';
+      try {
+        const r = await window.sagDesktop.fixDb();
+        if (r.ok) {
+          document.getElementById('fix-status').style.color = '#34d399';
+          document.getElementById('fix-status').textContent = r.reason === 'fixed_restarting'
+            ? '✓ 数据库已修复，后端重启中…'
+            : '✓ 数据库已修复，正在验证…';
+          setTimeout(() => { location.reload(); }, 2500);
+        } else {
+          document.getElementById('fix-status').style.color = '#f87171';
+          document.getElementById('fix-status').textContent = '修复失败：' + (r.error || r.reason || '未知错误') + '。请通过引导页重新初始化数据库，或手动检查 pg-local 状态。';
+        }
+      } catch (e) {
+        document.getElementById('fix-status').style.color = '#f87171';
+        document.getElementById('fix-status').textContent = '修复失败：' + String(e?.message || e) + '。';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔧 一键修复数据库';
+      }
     }
     async function killOwner() {
       const btn = document.getElementById('btn-kill');
@@ -508,6 +542,7 @@ function showErrorPage(title: string, message: string) {
       }
     }
     document.getElementById('btn-kill').addEventListener('click', killOwner);
+    document.getElementById('btn-fixdb').addEventListener('click', fixDb);
     document.getElementById('btn-retry').addEventListener('click', refresh);
     refresh();
     setInterval(refresh, 3000);
@@ -599,6 +634,54 @@ function probeHealthDb(port: number): Promise<boolean> {
     req.on("timeout", () => { req.destroy(); resolve(false); });
   });
 }
+
+/**
+ * V419: 一键修复数据库 — 端口通但 sag_lite 库缺失时（/health db:down 卡主界面的根因），
+ * 自动建库 + 建扩展 + 验证。定位 pg-local 的 psql 执行 SQL；后端连接失败会自动重连，无需重启。
+ */
+ipcMain.handle("port:fix-db", async () => {
+  const dataRoot = sagRoot();
+  const pgBin = path.join(dataRoot, "pg-local", "pgsql", "bin", "psql.exe");
+  if (!fs.existsSync(pgBin)) {
+    return { ok: false, reason: "no_psql", error: "未找到本地 PostgreSQL（pg-local 缺失），请通过引导页重新初始化数据库" };
+  }
+  try {
+    const { execFile } = require("node:child_process") as typeof import("node:child_process");
+    const run = (args: string[]) => new Promise<{ code: number | null; out: string }>((resolve) => {
+      execFile(pgBin, ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", ...args], { timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
+        let code: number | null = 0;
+        if (err) {
+          const c = (err as NodeJS.ErrnoException).code;
+          code = typeof c === "number" ? c : -1;
+        }
+        resolve({ code, out: String(stdout || stderr || "").trim() });
+      });
+    });
+    // 1) 建库（幂等：已存在则跳过 — CREATE DATABASE 失败不一定是错）
+    const create = await run(["-d", "postgres", "-c", "CREATE DATABASE sag_lite OWNER sag_lite"]);
+    if (create.code !== 0) {
+      const chk = await run(["-d", "postgres", "-tAc", "SELECT 1 FROM pg_database WHERE datname='sag_lite'"]);
+      if (chk.out.trim() !== "1") return { ok: false, reason: "create_failed", error: create.out.slice(0, 120) };
+    }
+    // 2) 建 pgvector 扩展
+    const ext = await run(["-d", "sag_lite", "-c", "CREATE EXTENSION IF NOT EXISTS vector"]);
+    if (ext.code !== 0) return { ok: false, reason: "ext_failed", error: ext.out.slice(0, 120) };
+    // 3) 验证后端健康（pg pool 连接失败后会自动重连，无需重启后端）
+    const healthOk = await probeHealthDb(currentPort);
+    if (!healthOk) {
+      // 后端仍报 db down → 重启后端兜底
+      console.log("[desktop] 修复数据库后 /health 仍异常，重启后端兜底");
+      if (backendProc && backendProc.exitCode === null) backendProc.kill();
+      await new Promise((r) => setTimeout(r, 1500));
+      void startBackend(currentPort);
+      return { ok: true, reason: "fixed_restarting" };
+    }
+    return { ok: true, reason: "fixed" };
+  } catch (e: any) {
+    console.error("[desktop] port:fix-db 异常:", String(e?.message || e).slice(0, 120));
+    return { ok: false, reason: "error", error: String(e?.message || e).slice(0, 120) };
+  }
+});
 
 /**
  * V417: 一键结束残留进程 — 杀掉占用端口的 MarxSphere 残留后端，然后自动重启后端。
