@@ -1,6 +1,6 @@
 {
   "name": "marxsphere",
-  "version": "0.1.0",
+  "version": "0.10.0",
   "description": "MarxSphere 马研星环 — AI 驱动的马克思主义理论研究科研中枢（推理/检索/知识图谱/Agent/桌面端）",
   "type": "module",
   "main": "electron/dist/main.cjs",
