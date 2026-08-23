@@ -31,7 +31,10 @@ const envSchema = z.object({
   INGEST_CONCURRENCY: z.coerce.number().int().positive().max(20).default(5),
   MCP_TRANSPORT: z.enum(["stdio", "http"]).default("stdio"),
   MCP_HTTP_PORT: z.coerce.number().int().positive().default(4174),
-  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000)
+  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  // V414: 登录认证开关 — SAG_AUTH_ENABLED=true 时前端 AuthGate 要求登录（JWT 会话）
+  // 桌面端引导页保存 .env 时自动写 true + 生成 JWT_SECRET；纯本地单机可保持默认关闭
+  SAG_AUTH_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
