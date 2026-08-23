@@ -222,7 +222,7 @@ export async function listJournalUpdates(journalId?: string, limit = 50): Promis
 /** 自动同步定时器（模块级自启动: 立即跑一次 + 每 6 小时） */
 export function startJournalSyncScheduler(): void {
   void syncAllJournals();  // 启动即同步一次
-  setInterval(() => { void syncAllJournals(); }, SYNC_INTERVAL_MS);
+  setInterval(() => { void syncAllJournals(); }, SYNC_INTERVAL_MS).unref?.();
   console.log("[journal-sync] 期刊同步管道已启动 (每6小时自动同步)");
 }
 

@@ -149,6 +149,6 @@ export function startProactiveResearchScheduler(): void {
   }
   const INTERVAL_MS = parseInt(process.env.AGENT_PROACTIVE_INTERVAL_MS || "86400000", 10);  // 默认 24h
   void runProactiveResearch();
-  setInterval(() => { void runProactiveResearch(); }, INTERVAL_MS);
+  setInterval(() => { void runProactiveResearch(); }, INTERVAL_MS).unref?.();
   console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检)`);
 }

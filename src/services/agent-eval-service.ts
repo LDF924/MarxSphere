@@ -450,7 +450,7 @@ export async function scheduledEvalSuiteRun(): Promise<{ ran: boolean; passed: n
 export function startEvalSuiteScheduler(): void {
   const EVAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
   void scheduledEvalSuiteRun();  // 启动即跑一次
-  setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS);
+  setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS).unref?.();
   console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集)");
 }
 

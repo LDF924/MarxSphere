@@ -36,13 +36,16 @@ if (!tag) {
     const newSeries = allTags.filter((t) => /^v0\.[0-9]+\.[0-9]+$/.test(t) && !t.includes("-"));
     const latest = newSeries[0] || allTags[0];
     const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
-    if (m) {
-      tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
-      console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
-    }
-  } catch { /* 无 tag 时用默认 */ }
+    if (!m) throw new Error("未找到可用的版本 tag 作为递增基准");
+    tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
+    console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
+  } catch (e: any) {
+    // 版本解析失败 → 中止（不生成 Date.now() 时间戳垃圾 tag，避免污染 Release 列表）
+    console.error(`❌ 版本号解析失败: ${String(e?.message || e)}`);
+    console.error("   请显式传入版本参数，例如: node scripts/release.mjs v0.4.0 [发布说明]");
+    process.exit(1);
+  }
 }
-tag = tag || `v${Date.now().toString(36)}`;
 
 if (!GITHUB_TOKEN && !NO_PUBLISH) {
   console.error("❌ 缺少 GITHUB_TOKEN 环境变量（GitHub API token）");
