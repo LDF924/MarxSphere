@@ -39,9 +39,38 @@ try {
 // V397 桌面端: 启动前自举数据库迁移（迁移文件幂等, 首次启动安全执行）
 // V420: 迁移失败重试 3 次（DB 未就绪时首次连接会失败），且 startHttpServer 等迁移完成——
 // 否则接口先于建表提供，注册/登录报 relation "tenants" does not exist
+// V422: 修复重试窗口不足 — 首次装 PG 要 initdb+启动+建库（30-60s），固定 3×2s 重试必然失败。
+// 改为：先等数据库就绪（pg_isready 风格探测，最多 120s）→ 再跑迁移 → 失败 3 次才放弃
 import { migrate } from "./db/migrate.js";
+import { pool } from "./db/pool.js";
+
+async function waitForDbReady(): Promise<boolean> {
+  // 最多等 120s（首次装 PG 期间数据库不可达），每 2s 探测一次
+  for (let i = 0; i < 60; i++) {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("select 1");
+        return true;
+      } finally {
+        client.release();
+      }
+    } catch {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  return false;
+}
 
 async function runMigrationsWithRetry(): Promise<void> {
+  // 1) 先等数据库就绪（首次启动 PG 初始化 30-60s，直接跑必失败）
+  const dbReady = await waitForDbReady();
+  if (!dbReady) {
+    console.error("[sag] 数据库 120s 内未就绪，迁移跳过（接口将不可用，请检查 PostgreSQL）");
+    return;
+  }
+  console.log("[sag] 数据库已就绪，执行迁移...");
+  // 2) 迁移失败重试 3 次（2s 间隔，覆盖瞬时连接问题）
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await migrate();
