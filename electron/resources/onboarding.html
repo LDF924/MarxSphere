@@ -240,9 +240,15 @@
     try {
       const r = await window.sagDesktop.dbSetup(pgMode);
       if (r.ok) {
-        $("pg-status").className = "ok-msg";
-        $("pg-status").textContent = "✓ PostgreSQL 已就绪（端口 " + r.port + "）";
+        // V434: 不再直接信任 r.ok — 用 refreshProbe 二次确认 PG 真实状态（r.port 缺失 = 未确认）
         await refreshProbe();
+        if (probe["pg:5540"] || probe["pg:5432"]) {
+          $("pg-status").className = "ok-msg";
+          $("pg-status").textContent = "✓ PostgreSQL 已就绪（端口 " + (r.port || 5540) + "）";
+        } else {
+          $("pg-status").className = "err";
+          $("pg-status").textContent = "⚠ " + (r.note || "数据库返回已就绪但端口未监听") + " — 请检查下方状态或稍后重试";
+        }
       } else {
         $("pg-status").textContent = r.error;
       }
