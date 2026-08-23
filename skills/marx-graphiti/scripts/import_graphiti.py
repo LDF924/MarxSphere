@@ -14,7 +14,7 @@ PAPERS_DIR = Path(r"D:\Desktop\ov_import")
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.environ.get("NEO4J_PASS", "password")
-API_KEY = os.environ.get("DASHSCOPE_API_KEY", "sk-ws-H.RYRRIEP.c27n.MEQCIH9Blb-_G38pAxOmXN9aOGSyyc_EjejYiztcv1di2feQAiB3d4VNAhBro7ts94OR5HD9biDhseby4C8YIeOdhjXWvw")
+API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 BASE_URL = os.environ.get("DASHSCOPE_BASE_URL", "https://ws-of9v7c4da1zhezwm.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
 TOTAL_PAPERS = 208
 import os

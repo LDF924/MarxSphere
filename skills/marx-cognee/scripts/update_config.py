@@ -8,7 +8,7 @@ with open(r"%USERPROFILE%\import_graphiti.py", "r", encoding="utf-8") as f:
 
 # Replace API_KEY
 content = content.replace(
-    'API_KEY = "sk-ws-H.RYLILHY.lsJi.MEYCIQDHgQnlt7xN53O3psWWPAy3Z-sVwXXXZmdpVDqoqmU09gIhAPv1t66dBPALsszjMrTCASZmVd75mSptGZVeYqPfUVmO"',
+    'API_KEY = ""',
     f'API_KEY = "{key}"'
 )
 

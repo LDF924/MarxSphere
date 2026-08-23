@@ -33,7 +33,7 @@ CKPT_OUT = SCRIPT_DIR / ".eval_l3_v2_checkpoint.json"
 
 SAMPLE_SIZE = 50
 TOP_K = 5
-API_KEY = "sk-ws-H.RXMHHLH.aQS0.MEUCIQCGr5pSqW59dgtOBZYzXkKDwyw_N8KW9v7nm6EbHQo2DQIgELqkOl1wmVBnDWPoedB1eqvv37kBeoMTrKrm3GtGU8g"
+API_KEY = ""
 API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-max"
 COOLDOWN = 3  # seconds between queries

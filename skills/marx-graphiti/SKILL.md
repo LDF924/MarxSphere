@@ -220,7 +220,7 @@ ERROR Error in generating LLM response: Arrearage
 WARNING Rerank failed, returning top-K candidates: Arrearage
 ```
 
-**修复**: server.py 第303行 `api_key="sk-ws-H.RXMHHLH..."` → `api_key="sk-ws-H.RXYRYME..."`
+**修复**: server.py 第303行 `api_key=""` → `api_key=""`
 
 ---
 
@@ -568,7 +568,7 @@ d.close()
 
 | 项 | 内容 |
 |----|------|
-| 位置 | `marx-graphiti/mcp_server/server.py` — `_get_reranker()` LLMConfig 与 QwenMaxClient 硬编码 `api_key`（当前 `sk-ws-H.EIYLDIH...`） |
+| 位置 | `marx-graphiti/mcp_server/server.py` — `_get_reranker()` LLMConfig 与 QwenMaxClient 硬编码 `api_key`（当前 `<REDACTED>`） |
 | 风险 | **该 Key 在 server.py 内硬编码**（非 .env），key 轮换时极易被遗忘（历史踩坑 #2：L303 硬编码 RXMHHLH 欠费导致 rerank 静默失败） |
 | 通过标准 | 至少一处 `api_key="sk-...` 且非空 |
 
@@ -1425,7 +1425,7 @@ cd %USERPROFILE%/.claude/skills/marx-graphiti/scripts
 
 | # | 现象 | 根因 | 修复 | 归类 |
 |---|---|---|---|---|---|
-| 21 | Graphiti embedding 静默失效 | MAAS 端点 (`ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com`) 对 v3/v4 embedding 均返回 Access denied | embedder 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`sk-ws-H.RXYRPIL...`) | 端点 |
+| 21 | Graphiti embedding 静默失效 | MAAS 端点 (`ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com`) 对 v3/v4 embedding 均返回 Access denied | embedder 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`<REDACTED>`) | 端点 |
 | 22 | Cognee/Graphiti 向量空间不一致 | Cognee 用 v3, Graphiti 用 v4 → 交叉验证不可比 | 统一升至 v4 (DashScope 标准端点)。Cognee `.env` + Graphiti embedder 完全一致 | 统一 |
 | 23 | Graphiti MCP 仅 5 个工具 (graphiti_mcp_server.py) | 核心 MCP server 在 `D:\Desktop\执行流程\mcp_server\server.py` (17 工具)，graphiti_mcp_server.py 是轻量版 | 两者互补使用。marx-graphiti skill 调用 17-tool server；add_paper_curated / get_entity_schema 由 graphiti_mcp_server.py 提供 | 架构 |
 

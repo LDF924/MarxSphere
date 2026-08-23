@@ -28,7 +28,7 @@
 坑1:  主密钥欠费 (Arrearage)
       现象: compatible-mode 返回 400 + "Access denied, account in good standing"
       根因: 阿里云百炼账户余额不足
-      解决: 准备备用密钥 sk-ws-H.RXMHHLH...，同时更新 qwen_max.key 和
+      解决: 准备备用密钥 <REDACTED>，同时更新 qwen_max.key 和
             qwen_embedding.key，统一使用同一工作空间密钥
 
 坑2:  备用密钥 compatible-mode 终结点不可用
@@ -537,7 +537,7 @@ if __name__ == "__main__":
 ┌──────┬────────────────────────────────┬──────────────────────────────────────┐
 │ 坑#  │ 问题                           │ 解决方案                              │
 ├──────┼────────────────────────────────┼──────────────────────────────────────┤
-│  1   │ 主密钥欠费 (Arrearage)         │ 备用密钥 sk-ws-H.RXMHHLH...            │
+│  1   │ 主密钥欠费 (Arrearage)         │ 备用密钥 <REDACTED>            │
 │  2   │ 备用密钥 compatible-mode 不兼容 │ 使用原生 DashScope API                 │
 │  3   │ DeepSeek base_url 指向错误      │ 统一为 dashscope.aliyuncs.com          │
 │  4   │ max_tokens=4096 截断 JSON       │ → 16384                               │

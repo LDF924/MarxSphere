@@ -18,7 +18,7 @@ from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 
 PAPERS_DIR = Path(r"D:\Desktop\ov_import")
-API_KEY = "sk-ws-H.RYRRIEP.c27n.MEQCIH9Blb-_G38pAxOmXN9aOGSyyc_EjejYiztcv1di2feQAiB3d4VNAhBro7ts94OR5HD9biDhseby4C8YIeOdhjXWvw"
+API_KEY = ""
 BASE_URL = "https://ws-of9v7c4da1zhezwm.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 
 FAILED_INDICES = []  # 需要从上次导入日志中提取

@@ -76,7 +76,7 @@ class EmbeddingCache:
 # CORE FUNCTIONS
 # ═══════════════════════════════════════════════════════════════
 
-API_KEY = "sk-ws-H.RXMHHLH.aQS0.MEUCIQCGr5pSqW59dgtOBZYzXkKDwyw_N8KW9v7nm6EbHQo2DQIgELqkOl1wmVBnDWPoedB1eqvv37kBeoMTrKrm3GtGU8g"
+API_KEY = ""
 BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 MODEL = "qwen3.7-max"
 

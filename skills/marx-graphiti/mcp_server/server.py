@@ -295,7 +295,7 @@ def _vector_search(nc, query: str, q_vec: list, top_k: int = 30) -> list[dict]:
         return []
 # V388: 弃用 OpenAIRerankerClient（OpenAI 兼容 API 不支持 logprobs，rerank 一直无效）
 # 改为直接调 DashScope 原生 rerank API（qwen3-rerank cross-encoder），与 SAG rerank-client 同款
-_RERANK_API_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-ws-H.EIYLDIH.3DGy.MEQCIG5LQXAHT_Dr6bTIpDpiDWorHbJ7wI3QkWs92HHHKhTXAiAhzsfJD3TOWMPacyK8JBNJMyDT4ecRFQozgFZI_EhRtg")
+_RERANK_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
 _RERANK_URL = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
 _RERANK_MODEL = "qwen3-rerank"
 
