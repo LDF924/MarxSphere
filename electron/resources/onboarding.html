@@ -236,7 +236,12 @@
   // 轮询重探测（每 3 秒）— 用户后启动 Docker/数据库也能自动识别
   setInterval(() => {
     if (!$("save").disabled) return; // 已就绪不再轮询
-    refreshProbe().catch(() => {});
+    refreshProbe().catch((e) => {
+      // V440: 轮询失败不静默 — preload 缺失/探测异常时显示，避免永久"检测中"无提示
+      $("err").textContent = window.sagDesktop
+        ? "环境检测失败（" + String(e?.message || e).slice(0, 80) + "），请稍后重试。"
+        : "初始化失败：安全桥未加载（sagDesktop 不可用）。请重新安装或重启应用。";
+    });
   }, 3000);
 
   // 数据库就绪后自动触发后端启动（DB 未就绪时 bootstrap 等待中）
