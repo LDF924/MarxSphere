@@ -4,7 +4,6 @@
 // 对可自动处理的告警执行修复动作；不可自动处理的标记"需人工"并给出诊断
 import { pool } from "../db/pool.js";
 import { recordAlert } from "./alert-service.js";
-import { execSync } from "node:child_process";
 
 type HealResult = {
   action: string;       // 执行的修复动作
@@ -94,16 +93,23 @@ function detectPort(message: string, taskType: string | null): number | null {
   return null;
 }
 
-/** 检查端口是否监听 */
+/** 检查端口是否监听（V431: execFile 参数数组，无 shell 拼接 — 消除注入模式） */
 async function isPortListening(port: number): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
     return res.ok;
   } catch {
     try {
-      const { execSync } = await import("node:child_process");
-      const out = execSync(`netstat -ano | grep ":${port} .*LISTENING"`, { encoding: "utf8" });
-      return out.trim().length > 0;
+      const { execFile } = await import("node:child_process");
+      // 先取 health 失败才用 netstat 兜底：execFile 数组参数传递，端口在 JS 侧过滤（纯数字），无命令注入面
+      const out = await new Promise<string>((resolve, reject) => {
+        execFile("netstat", ["-ano"], { encoding: "utf8" }, (err, stdout) => {
+          if (err) reject(err);
+          else resolve(String(stdout));
+        });
+      });
+      // JS 侧过滤：只认 ":<port> " 的 LISTENING 行
+      return out.split("\n").some((line) => line.includes(`:${port} `) && line.includes("LISTENING"));
     } catch { return false; }
   }
 }
@@ -113,7 +119,15 @@ async function restartService(port: number): Promise<boolean> {
   try {
     const script = port === 1933 ? "ov-start.vbs" : port === 4173 ? "sag-start.vbs" : null;
     if (!script) return false;
-    execSync(`cscript //nologo "${process.env.SAG_ROOT || "."}\\\\scripts\\\\${script}"`, { timeout: 15000 });
+    // V431: execFile 参数数组 — cscript 与脚本路径分离传参，路径来自环境变量+写死映射，无拼接注入
+    const { execFile } = await import("node:child_process");
+    const scriptPath = `${process.env.SAG_ROOT || "."}\\scripts\\${script}`;
+    await new Promise<void>((resolve, reject) => {
+      execFile("cscript", ["//nologo", scriptPath], { timeout: 15000 }, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
     // 等 8 秒验证
     await new Promise((r) => setTimeout(r, 8000));
     return await isPortListening(port);
