@@ -2,6 +2,42 @@
 
 本项目按语义化版本管理，主要变更记录于此。
 
+## [0.10.0] - 2026-08-23
+
+### ✨ 新增
+
+- **登录认证开关**（`SAG_AUTH_ENABLED=true`）：桌面端引导页保存配置时自动启用（写 `SAG_AUTH_ENABLED=true` + 生成 `JWT_SECRET`，等价 `openssl rand -hex 32`）；已存在密钥不重新生成（避免重启后登录会话失效）；WebUI AuthGate 登录页随之生效。`env:save` 改为 map 合并——重复保存不再丢失旧配置
+- **技能双目录统一**：`getSkillsRoots()` 重构所有读路径（`listSkills`/`getSkillDetail`/`auditSkillsLive` 统一读 `~/.claude/skills` + 随包 `SAG_ROOT/skills`，同名用户目录优先）
+- **OpenViking 优雅降级**：连接失败一次性警告（明确提示服务地址与 `OPENVIKING_URL` 配置）；`memoryHealth` 返回 `url/degraded/reason` 供健康面板展示
+
+### 🐛 修复
+
+- skills-service：`listSkills` 内层 `records` 遮蔽外层导致返回空数组（上次提交引入，typecheck 不报）
+- electron：`dlSpawn` 作用域越界（pgvector 下载段 ReferenceError，本地 PG 首次安装必失败）
+- 打包验证：新增 `scripts/verify-asar.mjs`（检查 app.asar 含关键修复，可复用于后续版本）
+
+## [0.9.0] - 2026-08-23
+
+### 🐛 修复
+
+- NSIS 安装后放开 Users 写权限 — 普通用户可解压 node_modules（Program Files 只读）
+- PG initdb/启动/建库全异步 + 轮询等待 — 修复 pg_ctl ETIMEDOUT
+- winget 装 Docker + compose up 改异步 — 引导页不再卡死
+- 进度条=文字百分比 — 下载 100% 进度条满，安装各阶段直接对应
+- icacls 改用 ExecWait（nsExec 插件可能未打包进 NSIS）
+- 解压前检查写权限 — Program Files 只读时 icacls 提权放开（UAC）
+
+## [0.8.0] - 2026-08-23
+
+### 🐛 修复
+
+- 打包时移除 emoji 文件名 — Windows tar/Expand-Archive 解压兼容
+- PG 下载卡死修复 + 本地 PG 按钮直接触发 + 下载提示归位
+- PG 解压异步流式 + 20min 超时（修复 spawnSync ETIMEDOUT）
+- 等待引导页 ready 后再启动后端 — 解压/进度 IPC 事件不丢失
+- 依赖解压提前到 DB 等待之前 — 修复 DB 未就绪时解压永不触发
+- 进度条百分比匹配 — 下载 5-80%（100% 满条）+ 安装 50-100% 分段
+
 ## [0.3.0] - 2026-08-23
 
 ### 🚀 无 Docker 模式（国内用户友好）
