@@ -26,5 +26,4 @@ create table if not exists page_entries (
 create index if not exists page_entries_page_id_idx on page_entries (page_id, created_at);
 create index if not exists page_entries_page_id_time_idx on page_entries (page_id, created_at desc);
 
-insert into schema_migrations (name) values ('010_knowledge_pages.sql');
 

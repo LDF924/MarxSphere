@@ -83,5 +83,4 @@ create table if not exists eval_records (
 );
 create index if not exists idx_eval_records_task on eval_records(task_id);
 
-insert into schema_migrations (name) values ('008_reasoning_schema.sql');
 
