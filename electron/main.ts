@@ -439,7 +439,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       ];
       let dlOk = false;
       let dlErr = "";
-      sendStage("准备下载 PostgreSQL 便携版（约 300MB）…", 5, "download");
+      sendStage("准备下载 PostgreSQL 便携版（约 300MB）…", 0, "download");
       for (const m of mirrors) {
         try {
           // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
@@ -448,7 +448,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
-            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, 5 + Number(m2[1]) * 0.75, "download");
+            if (m2) sendStage(`下载 PostgreSQL（${m2[1]}%）…`, Number(m2[1]), "download");
             else if (!line.includes("%")) dlErr = line.trim().slice(0, 120);
           });
           dlOk = await new Promise<boolean>((resolve) => {
@@ -456,11 +456,11 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
             // curl.exe 启动失败（ENOENT 等）→ 不卡死，立即失败
             dl.on("error", (e: Error) => { dlErr = "curl 启动失败: " + e.message.slice(0, 80); resolve(false); });
           });
-          if (dlOk) { sendStage("✓ 下载完成", 80, "download"); break; }
+          if (dlOk) { sendStage("✓ 下载完成", 100, "download"); break; }
         } catch { /* 试下一个镜像 */ }
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
-      sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 50, "install");
+      sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 30, "install");
       // 异步流式解压（不阻塞主进程；VM/低配机可能 5-15 分钟）
       const { spawn: unzipSpawn } = require("node:child_process") as typeof import("node:child_process");
       const unzip = unzipSpawn("powershell.exe", ["-NoProfile", "-Command",
@@ -477,7 +477,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
     // 初始化（幂等，异步不阻塞）
     const dataDir = path.join(pgDir, "data");
     if (!fs.existsSync(path.join(dataDir, "PG_VERSION"))) {
-      sendStage("初始化数据库（VM/低配机需几分钟）…", 70);
+      sendStage("初始化数据库（VM/低配机需几分钟）…", 50);
       const { spawn: initSpawn } = require("node:child_process") as typeof import("node:child_process");
       const initOk = await new Promise<boolean>((resolve) => {
         const p = initSpawn(path.join(pgBin, "initdb.exe"), ["-D", dataDir, "-U", "sag_lite", "-A", "trust", "-E", "UTF8", "--locale=C"], { windowsHide: true });
@@ -488,7 +488,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       if (!initOk) return { ok: false, error: "PostgreSQL 初始化失败/超时" };
     }
     // 启动（幂等，异步 + 轮询等待就绪）
-    sendStage("启动 PostgreSQL…", 80);
+    sendStage("启动 PostgreSQL…", 70);
     try {
       execFileSync(path.join(pgBin, "pg_isready.exe"), ["-h", "127.0.0.1", "-p", "5540"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
     } catch {
@@ -513,7 +513,7 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       }
     }
     // 建库 + pgvector（异步）
-    sendStage("创建数据库 + pgvector 扩展…", 90);
+    sendStage("创建数据库 + pgvector 扩展…", 85);
     const { spawn: sqlSpawn } = require("node:child_process") as typeof import("node:child_process");
     const runSql = (sql: string) => new Promise<boolean>((resolve) => {
       const p = sqlSpawn(path.join(pgBin, "psql.exe"), ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-c", sql], { windowsHide: true });
