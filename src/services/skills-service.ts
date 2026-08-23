@@ -149,11 +149,16 @@ function collectSkillMds(root: string): Array<{ name: string; dir: string; skill
 }
 
 export function listSkills(): SkillRecord[] {
-  const skillsDir = path.join(os.homedir(), ".claude", "skills");
-  if (!fs.existsSync(skillsDir)) return [];
+  // V413: 同时读用户 skills（~/.claude/skills）+ 随包自带（SAG_ROOT/skills）
+  const dirs: string[] = [path.join(os.homedir(), ".claude", "skills")];
+  if (process.env.SAG_ROOT) dirs.push(path.join(process.env.SAG_ROOT, "skills"));
 
-  // 中文说明目录：_中文说明/{skillName}.zh-CN.md
-  const zhDocsDir = path.join(skillsDir, "_中文说明");
+  const records: SkillRecord[] = [];
+  for (const skillsDir of dirs) {
+    if (!fs.existsSync(skillsDir)) continue;
+
+    // 中文说明目录：_中文说明/{skillName}.zh-CN.md
+    const zhDocsDir = path.join(skillsDir, "_中文说明");
 
   const records: SkillRecord[] = [];
   // 第一遍：顶层技能（原有逻辑）
@@ -247,6 +252,7 @@ export function listSkills(): SkillRecord[] {
         // 跳过解析失败的嵌套 skill
       }
     }
+  }
   }
 
   records.sort((a, b) => a.name.localeCompare(b.name));
