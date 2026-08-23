@@ -931,7 +931,7 @@ ipcMain.handle("py:check", async (_e, p: string) => checkPython(String(p || ""))
 
 /** 无 Docker 模式：自动安装本地 PostgreSQL 16 便携版（免管理员，国内镜像）→ 返回端口或错误
  * 注意：pg-local 必须放 dataRoot（userData 可写）——Program Files 只读会导致 initdb ENOENT */
-async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; error?: string }> {
+async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; error?: string; port?: number }> {
   const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
   const pgDir = path.join(dataRoot, "pg-local");
   const pgBin = path.join(pgDir, "pgsql", "bin");
@@ -967,7 +967,8 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
         try {
           // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
           // V421: -C - 断点续传（镜像失败换源时保留已下部分）+ --retry 5 断线重试 + --connect-timeout 15 快速失败换源
-          const dl = dlSpawn("curl.exe", ["-L", "-C", "-", "-o", zipPath, m, "--progress-bar", "--retry", "5", "--connect-timeout", "15", "--max-time", "1800"], { windowsHide: true });
+          // V434: -f 让 curl 在 HTTP 4xx/5xx 时失败（此前 404 页面也当成功存盘 → "几秒完成"假象）
+          const dl = dlSpawn("curl.exe", ["-f", "-L", "-C", "-", "-o", zipPath, m, "--progress-bar", "--retry", "5", "--connect-timeout", "15", "--max-time", "1800"], { windowsHide: true });
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
             const m2 = line.match(/(\d+(?:\.\d+)?)%/);
@@ -981,6 +982,17 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
           });
           if (dlOk) { sendStage("✓ 下载完成", 100, "download"); break; }
         } catch { /* 试下一个镜像 */ }
+      }
+      // V434: 下载后校验文件大小（PG 便携版 > 100MB；"几秒完成"很可能是 404/不完整内容）
+      if (dlOk) {
+        try {
+          const sz = fs.statSync(zipPath).size;
+          if (sz < 100 * 1024 * 1024) {
+            console.error(`[desktop] PG 下载内容异常（仅 ${Math.round(sz / 1024 / 1024)}MB），尝试下一个镜像`);
+            dlOk = false;
+            fs.rmSync(zipPath, { force: true });
+          }
+        } catch { dlOk = false; }
       }
       if (!dlOk) return { ok: false, error: `PostgreSQL 下载失败（${dlErr || "网络问题"}）。请手动下载后放入 ${pgDir}\\pg.zip，或改用 Docker。` };
       sendStage("解压 PostgreSQL（约 300MB，需几分钟）…", 30, "install");
@@ -1161,7 +1173,12 @@ Write-Output "PGDONE:$done/$total"
       env += `\nDATABASE_URL=postgres://sag_lite@127.0.0.1:5540/sag_lite\n`;
       fs.writeFileSync(envFile, env);
     }
-    return { ok: true };
+    // V434: 二次探测确认 PG 真正就绪（此前只返回 ok，前端显示"已就绪"但 PG 实际可能没起）
+    for (let i = 0; i < 10; i++) {
+      if (await probeTcp(5540)) return { ok: true, port: 5540 };
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return { ok: false, error: "PostgreSQL 安装完成但端口 5540 未监听（请检查 pg-local\\pg.log）" };
   } catch (e: any) {
     return { ok: false, error: "本地 PostgreSQL 安装失败: " + String(e?.message || e).slice(0, 150) };
   }
@@ -1184,7 +1201,7 @@ ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
     // 若 5540 已通，检查是否我们的库
     try {
       const pgCheck = execFileSync("powershell.exe", ["-NoProfile", "-Command", `& { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 5540); $c.Close(); 'ok' }`], { timeout: 5000, windowsHide: true, stdio: "pipe" });
-      if (pgCheck.toString().includes("ok")) return { ok: true, note: "数据库端口 5540 已就绪" };
+      if (pgCheck.toString().includes("ok")) return { ok: true, port: 5540, note: "数据库端口 5540 已就绪" };
     } catch { /* 继续正常流程 */ }
   } catch { /* 端口未开，继续 */ }
   // 1) 找 docker 命令
@@ -1195,7 +1212,7 @@ ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
   if (mode === "local") {
     console.log("[desktop] 用户选择本地 PostgreSQL 模式 ...");
     const r = await installLocalPostgres(dataRoot);
-    if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（用户选择）" };
+    if (r.ok) return { ok: true, port: 5540, note: "已用本地 PostgreSQL（用户选择）" };
     return { ok: false, error: r.error || "本地 PostgreSQL 安装失败" };
   }
   if (!dockerCmd && wantDocker) {
@@ -1237,7 +1254,7 @@ ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
     if (wantLocalFallback) {
       console.log("[desktop] 使用无 Docker 模式：自动安装本地 PostgreSQL ...");
       const r = await installLocalPostgres(dataRoot);
-      if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（无 Docker 模式）" };
+      if (r.ok) return { ok: true, port: 5540, note: "已用本地 PostgreSQL（无 Docker 模式）" };
       return { ok: false, error: r.error || "无 Docker 模式安装失败" };
     }
     return { ok: false, error: "Docker 不可用（docker 模式下不降级）。请安装 Docker Desktop 后重试，或选择「本地 PostgreSQL」模式。" };
@@ -1285,7 +1302,7 @@ volumes:
     if (wantLocalFallback) {
       console.log("[desktop] docker compose 失败，降级本地 PostgreSQL ...", String(e?.message || e).slice(0, 100));
       const r = await installLocalPostgres(dataRoot);
-      if (r.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker compose 失败降级）" };
+      if (r.ok) return { ok: true, port: 5540, note: "已用本地 PostgreSQL（Docker compose 失败降级）" };
       return { ok: false, error: r.error || "docker compose 与本地 PostgreSQL 均失败" };
     }
     return { ok: false, error: "docker compose 启动失败: " + String(e?.message || e).slice(0, 150) };
@@ -1299,7 +1316,7 @@ volumes:
   if (wantLocalFallback) {
     console.log("[desktop] Docker PostgreSQL 60s 未就绪，降级本地 PostgreSQL ...");
     const r2 = await installLocalPostgres(dataRoot);
-    if (r2.ok) return { ok: true, note: "已用本地 PostgreSQL（Docker 超时降级）" };
+    if (r2.ok) return { ok: true, port: 5540, note: "已用本地 PostgreSQL（Docker 超时降级）" };
     return { ok: false, error: r2.error || "PostgreSQL 容器与本地 PostgreSQL 均未就绪" };
   }
   return { ok: false, error: "PostgreSQL 容器已启动但 60 秒内未就绪，请检查 Docker Desktop 是否正常运行。" };
