@@ -11,7 +11,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = process.env.SAG_ROOT || path.resolve(__dirname, "../..");
 const migrationsDir = path.join(rootDir, "migrations");
 
+// 并发锁：防止 migrate() 被同时调用（index.ts 启动 + 手动触发时共享 pool client 状态错乱）
+let migrating = false;
 export async function migrate(): Promise<void> {
+  if (migrating) {
+    // 已有迁移在跑 — 等待完成（不并发）
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => { if (!migrating) { clearInterval(check); resolve(); } }, 500);
+    });
+  }
+  migrating = true;
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -51,6 +60,7 @@ export async function migrate(): Promise<void> {
     }
   } finally {
     client.release();
+    migrating = false;
   }
 }
 
