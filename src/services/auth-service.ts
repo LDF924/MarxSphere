@@ -8,6 +8,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 
+// V430: 内部错误不透传 — 数据库异常细节（约束名/表结构）只记日志，对客户端返回泛化文案
+function internalError(e: unknown): string {
+  console.error("[auth] 操作失败:", String((e as Error)?.message || e).slice(0, 200));
+  return "操作失败，请稍后重试";
+}
+
 // V389修复: JWT_SECRET 无默认公开值 — 未设时用随机生成(防伪造admin token), 提示显式设置
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
   const rnd = randomUUID() + randomUUID() + randomUUID();
@@ -62,7 +68,7 @@ export async function register(username: string, password: string, email?: strin
   } catch (e: any) {
     await client.query("ROLLBACK");
     if (String(e?.message || "").includes("duplicate")) return { ok: false, error: "用户名已存在" };
-    return { ok: false, error: "注册失败: " + String(e?.message || e).substring(0, 100) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
@@ -131,7 +137,7 @@ export async function registerEnterprise(userId: string, companyName: string): P
     return { ok: true, tenantId };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
@@ -155,7 +161,7 @@ export async function inviteMember(inviterUserId: string, inviteeUsername: strin
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
@@ -188,7 +194,7 @@ export async function acceptInvite(userId: string, username: string, inviteId: s
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
@@ -265,7 +271,7 @@ export async function adminAdjustBalance(adminUserId: string, targetUserId: stri
     return { ok: true, balanceCents: Number(r.rows[0]?.balance_cents || 0) };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
@@ -292,7 +298,7 @@ export async function setEmail(userId: string, email: string): Promise<{ ok: boo
     if (String(e?.message || "").includes("duplicate") || String(e?.message || "").includes("unique")) {
       return { ok: false, error: "该邮箱已被其他账号使用" };
     }
-    return { ok: false, error: "绑定失败: " + String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   }
 }
 
@@ -341,7 +347,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: "重置失败: " + String(e?.message || e).substring(0, 80) };
+    return { ok: false, error: internalError(e) };
   } finally { client.release(); }
 }
 
