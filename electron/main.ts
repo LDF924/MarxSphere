@@ -198,7 +198,15 @@ async function bootstrap() {
   await app.whenReady();
   const port = await probePort();
   if (port === null) {
-    showErrorPage("端口 " + DEFAULT_PORT + " 被占用", "检测到 4173 端口已被其他程序占用。可能是旧版 MarxSphere 实例仍在运行，请先关闭后再启动本应用。");
+    // V432: 端口全被占时仍创建窗口并显示雷达错误页（含一键结束残留进程按钮）——
+    // 原实现直接旧版静态错误页且不建窗口，用户看不到引导页/无法一键清理
+    currentPort = DEFAULT_PORT;
+    createWindow();
+    await waitForOnboardingReady();
+    showErrorPage("端口 " + DEFAULT_PORT + " 被占用", "检测到端口 4173-4183 均被其他程序占用。\n" +
+      `这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
+      `请点击下方「⚡ 一键结束残留进程并重启」，或关闭旧实例后重新打开本应用。\n` +
+      `下方状态面板会实时显示端口/数据库状态。`);
     return;
   }
   currentPort = port;
@@ -796,23 +804,37 @@ ipcMain.handle("port:kill-owner", async () => {
   }
   try {
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
-    // 找占用进程 PID（netstat）→ 强杀
+    // V432: 扫描 4173-4183 全部端口，收集所有 MarxSphere 占用进程 PID（全占场景可能分散在多个端口）
     const out = execFileSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
-    const line = out.split("\n").find((l) => l.includes(":" + currentPort) && l.includes("LISTENING"));
-    const pid = line ? line.trim().split(/\s+/).pop() : null;
-    if (!pid || !/^\d+$/.test(pid)) return { ok: false, reason: "no_pid" };
-    execFileSync("taskkill", ["/F", "/PID", pid], { windowsHide: true, timeout: 15_000, stdio: "ignore" });
+    const pids = new Set<string>();
+    for (let p = DEFAULT_PORT; p <= DEFAULT_PORT + 10; p++) {
+      const line = out.split("\n").find((l) => l.includes(":" + p) && l.includes("LISTENING"));
+      if (line) pids.add(line.trim().split(/\s+/).pop() || "");
+    }
+    if (pids.size === 0) return { ok: false, reason: "no_pid" };
+    let killed = 0;
+    for (const pid of pids) {
+      if (!/^\d+$/.test(pid)) continue;
+      try {
+        execFileSync("taskkill", ["/F", "/PID", pid], { windowsHide: true, timeout: 15_000, stdio: "ignore" });
+        killed++;
+      } catch { /* 进程可能已退出 */ }
+    }
     // 等端口释放（最多 5s）
     for (let i = 0; i < 10; i++) {
-      if (!(await probeTcp(currentPort))) break;
+      let busy = false;
+      for (let p = DEFAULT_PORT; p <= DEFAULT_PORT + 10; p++) {
+        if (await probeTcp(p)) { busy = true; break; }
+      }
+      if (!busy) break;
       await new Promise((r) => setTimeout(r, 500));
     }
-    console.log(`[desktop] 已结束占用端口 ${currentPort} 的残留进程 (PID ${pid})`);
+    console.log(`[desktop] 已结束 ${killed} 个占用端口的残留 MarxSphere 进程`);
     // 自动重启后端（端口已释放，startBackend 的二次确认会通过）
     if (!backendProc || backendProc.exitCode !== null) {
       void startBackend(currentPort);
     }
-    return { ok: true, reason: "killed", pid };
+    return { ok: true, reason: "killed", pid: [...pids].join(",") };
   } catch (e: any) {
     console.error("[desktop] 结束残留进程失败:", String(e?.message || e).slice(0, 120));
     return { ok: false, reason: "error", error: String(e?.message || e).slice(0, 120) };
