@@ -84,7 +84,7 @@ $arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
 $total = $arc.Entries.Count
 $done = 0
 foreach ($e in $arc.Entries) {
-  if ($e.FullName -match '\.\.' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
+  if ($e.FullName -match '(^|/)\\.\\.(/|$)' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
   $target = Join-Path $dst $e.FullName
   if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
   New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
@@ -160,10 +160,21 @@ Write-Output "DONE:$done/$total"
         }
       }
     }
+    // V433: 解压失败写日志文件（VM/无头环境可查错误原因）
+    const logDepsError = (msg: string) => {
+      try {
+        fs.writeFileSync(path.join(sagRoot(), "deps-error.log"), `${new Date().toISOString()} ${msg}\n`, { flag: "a" });
+      } catch { /* 日志失败忽略 */ }
+      console.error("[desktop] " + msg);
+    };
     rmSync(tmp, { recursive: true, force: true });
-    return fs.existsSync(path.join(nm, "fastify", "package.json"));
+    const ok = fs.existsSync(path.join(nm, "fastify", "package.json"));
+    if (!ok) logDepsError(`node_modules 解压后 fastify 仍缺失（zip=${zip}）`);
+    return ok;
   } catch (e: any) {
-    console.error("[desktop] node_modules 解压失败:", String(e?.message || e).slice(0, 150));
+    const msg = `node_modules 解压失败: ${String(e?.message || e).slice(0, 150)}`;
+    try { fs.writeFileSync(path.join(sagRoot(), "deps-error.log"), `${new Date().toISOString()} ${msg}\n`, { flag: "a" }); } catch { /* 忽略 */ }
+    console.error("[desktop] " + msg);
     return false;
   }
 }
@@ -214,8 +225,15 @@ async function bootstrap() {
   // 等待引导页完全加载（did-finish-load）——确保解压/进度 IPC 事件不丢失（引导页 ready 前发的事件收不到）
   await waitForOnboardingReady();
   // 依赖就绪检查（提前执行，不等 DB——否则 DB 未就绪时解压永不触发）
-  if (!(await ensureBackendDeps())) {
-    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+  // V433: 解压失败时留在引导页显示错误（含重试提示），不再覆盖成雷达错误页——
+  // 用户应看到解压进度/失败原因，而非"后端依赖缺失"黑盒跳页
+  const depsOk = await ensureBackendDeps();
+  if (!depsOk) {
+    console.error("[desktop] 后端依赖准备失败 — 引导页显示解压错误");
+    // 引导页仍在显示（解压进度面板），通过 IPC 通知引导页展示失败原因
+    for (const w of BrowserWindow.getAllWindows()) {
+      w.webContents.send("extract-error", { message: "后端依赖解压失败（node_modules 未就绪）。请检查安装目录写入权限后点击「保存并启动」重试，或重新安装本应用。" });
+    }
     return;
   }
   // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
@@ -316,8 +334,11 @@ async function startBackend(port: number) {
     const root = resourceRoot();
     const dataRoot = sagRoot();
     // 依赖就绪检查: node_modules 缺失时从 tgz 解压（首次启动）
+    // V433: 解压失败留引导页显示错误（不再黑盒跳雷达页）
     if (!(await ensureBackendDeps())) {
-      showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send("extract-error", { message: "后端依赖解压失败（node_modules 未就绪）。请检查安装目录写入权限后点击「保存并启动」重试，或重新安装本应用。" });
+      }
       return;
     }
     // V415: 启动前二次端口确认 — 探测到已被占用（探测-启动间竞态/残留进程）→ 提示而非盲目 bind 失败
@@ -973,7 +994,7 @@ $arc = [System.IO.Compression.ZipFile]::OpenRead($zip)
 $total = $arc.Entries.Count
 $done = 0
 foreach ($e in $arc.Entries) {
-  if ($e.FullName -match '\.\.' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
+  if ($e.FullName -match '(^|/)\\.\\.(/|$)' -or $e.FullName -match '^[\\/]' -or $e.FullName -match '^[a-zA-Z]:') { continue }
   $target = Join-Path $dst $e.FullName
   if ($e.FullName.EndsWith('/')) { New-Item -ItemType Directory -Force -Path $target | Out-Null; continue }
   New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
