@@ -300,6 +300,17 @@ async function startBackend(port: number) {
     showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
     return;
   }
+  // V415: 启动前二次端口确认 — 探测到已被占用（探测-启动间竞态/残留进程）→ 提示而非盲目 bind 失败
+  const busy = await probeTcp(port);
+  if (busy) {
+    const owner = probePortOwnerSync(port);
+    const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
+    showErrorPage("后端服务已退出", `端口 ${port} 已被其他程序占用${hint}。\n` +
+      `这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
+      `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
+      `下方状态面板会实时显示端口/数据库状态。`);
+    return;
+  }
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,
     ELECTRON_RUN_AS_NODE: "1",
@@ -323,11 +334,23 @@ async function startBackend(port: number) {
   backendProc.stderr?.on("data", (d) => console.error("[backend]", String(d).trimEnd()));
   backendProc.on("exit", (code) => {
     console.error("[backend] exited code=" + code);
-    if (!backendStopping && mainWindow) {
+    if (backendStopping || !mainWindow) return;
+    // V415: 退出原因分诊 — 端口被他人占用（旧实例/残留进程）→ 不盲目重启，提示用户
+    const portBusy = probeTcp(currentPort);
+    portBusy.then((busy) => {
+      if (busy) {
+        const owner = probePortOwnerSync(currentPort);
+        const hint = owner && owner !== "unknown" ? `（进程: ${owner}）` : "";
+        showErrorPage("后端服务已退出", `端口 ${currentPort} 已被其他程序占用${hint}。` +
+          `\n这通常是旧版 MarxSphere 实例仍在运行，或残留进程占用了端口。\n` +
+          `请先关闭旧实例（任务管理器结束 MarxSphere.exe），再重新打开本应用。\n` +
+          `下方状态面板会实时显示端口/数据库状态。`);
+        return;
+      }
+      // 非端口冲突 → 错误页 + 3 秒后自动重启（原逻辑）
       showErrorPage("后端服务已退出", `MarxSphere 后端进程异常退出（code=${code}），应用将自动重启后端。`);
-      // 3 秒后自动重启
       setTimeout(() => { if (mainWindow && !backendStopping) startBackend(currentPort); }, 3000);
-    }
+    });
   });
   void waitForHealth(port, 0);
 }
@@ -356,11 +379,39 @@ function waitForHealth(port: number, attempt: number) {
 
 function showErrorPage(title: string, message: string) {
   if (!mainWindow) return;
+  // V415: 错误页内置状态面板 — 实时探测端口/数据库，让用户看清系统状态（不再黑盒等待）
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     body{background:#0b1120;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-    .box{max-width:520px;padding:32px;text-align:center}
-    h1{color:#fbbf24;font-size:20px;margin:0 0 12px} p{color:#94a3b8;font-size:14px;line-height:1.7}
-  </style></head><body><div class="box"><h1>${title}</h1><p>${message}</p></div></body></html>`;
+    .box{max-width:560px;padding:32px;text-align:center}
+    h1{color:#fbbf24;font-size:20px;margin:0 0 12px}
+    p{color:#94a3b8;font-size:14px;line-height:1.7;white-space:pre-wrap}
+    .panel{margin-top:20px;text-align:left;background:#111827;border:1px solid #1f2937;border-radius:10px;padding:14px 16px;font-size:13px}
+    .panel h3{margin:0 0 10px;color:#fbbf24;font-size:13px}
+    .row{display:flex;justify-content:space-between;padding:3px 0;color:#94a3b8}
+    .row .ok{color:#34d399}.row .bad{color:#f87171}.row .warn{color:#fbbf24}
+    .hint{margin-top:12px;color:#64748b;font-size:12px}
+  </style></head><body><div class="box"><h1>${title}</h1><p>${message}</p>
+  <div class="panel"><h3>系统状态（每 3 秒自动刷新）</h3>
+    <div class="row"><span>后端端口 ${currentPort}</span><span id="st-port">探测中…</span></div>
+    <div class="row"><span>MCP 端口 ${MCP_DEFAULT_PORT + (currentPort - DEFAULT_PORT)}</span><span id="st-mcp">探测中…</span></div>
+    <div class="row"><span>PostgreSQL（5540/5432）</span><span id="st-pg">探测中…</span></div>
+    <div class="row"><span>后端进程</span><span id="st-backend">探测中…</span></div>
+    <div class="hint">提示：端口被占用时请先关闭旧版 MarxSphere（任务管理器结束 MarxSphere.exe）再重新打开。</div>
+  </div></div>
+  <script>
+    const fmt = (busy, label) => busy ? '<span class="bad">占用（' + label + '）</span>' : '<span class="ok">空闲 ✓</span>';
+    async function refresh() {
+      try {
+        const s = await window.sagDesktop.portProbe();
+        document.getElementById('st-port').innerHTML = s.portBusy ? '<span class="bad">占用（' + (s.portOwner || '未知进程') + '）</span>' : '<span class="ok">空闲 ✓</span>';
+        document.getElementById('st-mcp').innerHTML = s.mcpBusy ? '<span class="bad">占用</span>' : '<span class="ok">空闲 ✓</span>';
+        document.getElementById('st-pg').innerHTML = s.dbUp ? '<span class="ok">已就绪 ✓</span>' : '<span class="warn">未检测到</span>';
+        document.getElementById('st-backend').innerHTML = s.backendRunning ? '<span class="ok">运行中 ✓</span>' : '<span class="bad">未运行</span>';
+      } catch (e) { /* 桥未就绪则保持"探测中" */ }
+    }
+    refresh();
+    setInterval(refresh, 3000);
+  </script></body></html>`;
   void mainWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
 }
 
@@ -381,6 +432,51 @@ function probeTcp(port: number): Promise<boolean> {
     s.once("timeout", () => finish(false));
   });
 }
+
+/** V415: 查端口占用者进程名（netstat -ano → PID → tasklist）。返回 null=空闲；"unknown"=有占用但查不到进程名 */
+function probePortOwnerSync(port: number): string | null {
+  try {
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const out = execFileSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    const line = out.split("\n").find((l) => l.includes(":" + port) && l.includes("LISTENING"));
+    if (!line) return null;
+    const parts = line.trim().split(/\s+/);
+    const pid = parts[parts.length - 1];
+    if (!pid || !/^\d+$/.test(pid)) return "unknown";
+    const tl = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+    const m = tl.match(/"([^"]+)"/);
+    return m && m[1] ? m[1] : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** V415: 错误页端口/数据库状态探测（前端每 3s 调用，让用户看清系统状态） */
+ipcMain.handle("port:probe", async () => {
+  const mcpPort = MCP_DEFAULT_PORT + (currentPort - DEFAULT_PORT);
+  const out: Record<string, unknown> = {
+    port: currentPort,
+    portBusy: false,
+    portOwner: null,
+    mcpPort,
+    mcpBusy: false,
+    pg5540: false,
+    pg5432: false,
+    dbUp: false,
+    backendRunning: backendProc !== null && backendProc.exitCode === null,
+  };
+  try {
+    out.portBusy = await probeTcp(currentPort);
+    if (out.portBusy) out.portOwner = probePortOwnerSync(currentPort);
+    out.mcpBusy = await probeTcp(mcpPort);
+    out.pg5540 = await probeTcp(5540);
+    out.pg5432 = await probeTcp(5432);
+    out.dbUp = Boolean(out.pg5540) || Boolean(out.pg5432);
+  } catch (e: any) {
+    console.error("[desktop] port:probe 异常:", String(e?.message || e).slice(0, 120));
+  }
+  return out;
+});
 
 /** 探测系统可用的 python 解释器（快速版: 只探测存在的路径 + PATH 首个命中, 单次超时 2s） */
 function probeSystemPython(): string[] {
