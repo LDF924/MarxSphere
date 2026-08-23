@@ -144,12 +144,6 @@
         $("err").className = "err";
       }
     });
-    // 已有 .env 时按已存 baseUrl 回填服务商
-    if (probe?.envExists && llmBaseInput.value) {
-      if (llmBaseInput.value.includes("deepseek")) providerSelect.value = "deepseek";
-      else if (llmBaseInput.value.includes("302ai")) providerSelect.value = "302ai";
-      else if (llmBaseInput.value.includes("openai")) providerSelect.value = "openai";
-    }
   }
   let probe = null;
   const setBadge = (id, ok, text) => {
@@ -160,6 +154,12 @@
 
   async function refreshProbe() {
     probe = await window.sagDesktop.probe();
+    // V440: 服务商回填（probe 就绪后执行，此前在声明前访问 probe 导致 TDZ 中断整个 script）
+    if (probe?.envExists && llmBaseInput?.value) {
+      if (llmBaseInput.value.includes("deepseek")) providerSelect.value = "deepseek";
+      else if (llmBaseInput.value.includes("302ai")) providerSelect.value = "302ai";
+      else if (llmBaseInput.value.includes("openai")) providerSelect.value = "openai";
+    }
     const pgOk = probe["pg:5540"] || probe["pg:5432"];
     setBadge("pg", pgOk, pgOk ? "✓ 已就绪" : "✗ 未检测到");
     $("pg-actions").style.display = pgOk ? "none" : "block";
