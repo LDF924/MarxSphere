@@ -46,3 +46,17 @@ export function formatMessageDate(value: string | null | undefined) {
     minute: "2-digit"
   }).format(date);
 }
+
+/** ArrayBuffer → Base64（FileReader 分块读取，避免 btoa(String.fromCharCode(...bytes)) 展开超过 64KB 抛 RangeError） */
+export function bufferToBase64(buffer: ArrayBuffer | Uint8Array): Promise<string> {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  // 拷贝为独立 ArrayBuffer：兼容 SharedArrayBuffer 等 ArrayBufferLike（Blob 只接受 ArrayBuffer 视图）
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(new Blob([copy]));
+  });
+}

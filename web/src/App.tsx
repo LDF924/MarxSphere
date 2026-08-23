@@ -226,6 +226,8 @@ function AppShell() {
   /** V399: 顶栏「项目」弹出面板 */
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
+  /** V425: 会话切换请求序号 — 竞态防护：响应回来时若序号已过期（期间又切了会话）则丢弃 */
+  const chatSessionReqSeqRef = useRef(0);
   /** V399: 流式落库清理 — assistant 消息追加后统一清空流式态（历史消息已渲染，无闪现） */
   const lastStreamedAssistantRef = useRef<string | null>(null);
   useEffect(() => {
@@ -295,6 +297,8 @@ function AppShell() {
   // 切换会话 → 加载消息
   const selectChatSession = useCallback((sessionId: string) => {
     // V399: 切换立即清空（防止停留上一个会话内容）+ 每次都重新拉取（不信任 loaded 缓存）
+    // V425: 请求序号防竞态 — 慢响应回来时若已切到别的会话，丢弃旧数据
+    const reqSeq = ++chatSessionReqSeqRef.current;
     setChatSessionId(sessionId);
     chatAbortRef.current?.abort();
     setChatMessages([]);
@@ -302,6 +306,7 @@ function AppShell() {
     setChatStreamingText("");
     setChatReasoning("");
     void api.getMcpSession(sessionId).then((detail) => {
+      if (reqSeq !== chatSessionReqSeqRef.current) return;
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -311,7 +316,9 @@ function AppShell() {
   useEffect(() => {
     if (!chatSessionId) return;
     // V399: 挂载/变更时拉取（始终拉最新，不信任 loaded 缓存）
+    const reqSeq = ++chatSessionReqSeqRef.current;
     void api.getMcpSession(chatSessionId).then((detail) => {
+      if (reqSeq !== chatSessionReqSeqRef.current) return;
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -640,14 +647,28 @@ function AppShell() {
   }, [selectedDocumentId]);
 
   useEffect(() => {
-    const activeJobs = uploadJobs.filter((job) => job.status === "QUEUED" || job.status === "RUNNING");
-    if (activeJobs.length === 0) {
-      return undefined;
-    }
-    const timer = window.setInterval(() => {
-      void pollUploadJobs(activeJobs.map((job) => job.id));
-    }, 1000);
-    return () => window.clearInterval(timer);
+    // V425: setTimeout 链 + in-flight 标志 — 防止慢请求期间 setInterval 反复触发造成请求堆积；
+    // 只要队列里还有活跃任务就持续轮询（一轮结束再排下一轮，重试间隔 1000ms）
+    let cancelled = false;
+    let inFlight = false;
+    let timer = 0;
+    const poll = () => {
+      if (cancelled || inFlight) return;
+      const activeJobs = uploadJobs.filter((job) => job.status === "QUEUED" || job.status === "RUNNING");
+      if (activeJobs.length === 0) return;
+      inFlight = true;
+      void pollUploadJobs(activeJobs.map((job) => job.id)).finally(() => {
+        inFlight = false;
+        if (!cancelled && uploadJobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING")) {
+          timer = window.setTimeout(poll, 1000);
+        }
+      });
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [uploadJobs]);
 
   useEffect(() => {
@@ -768,7 +789,7 @@ function AppShell() {
       const responses = await Promise.all(jobIds.map((jobId) => api.getUploadJob(jobId)));
       const latestJobs = responses.map((response) => response.job);
       setUploadJobs((current) => current.map((job) => latestJobs.find((latest) => latest.id === job.id) ?? job));
-      await syncModelLogs();
+      // V425: 不再在此重复 syncModelLogs — 上传/日志面板的 653-661 轮询循环统一负责
       const completedJobs = latestJobs.filter((job) => job.status === "COMPLETED" && job.documentId);
       for (const job of completedJobs) {
         if (refreshedUploadJobsRef.current.has(job.id)) {
