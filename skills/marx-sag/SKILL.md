@@ -65,7 +65,7 @@ title_zh: SAG推理工作台
 | _rerank async bug | `server.py:315` | `def _rerank` + `asyncio.run()` | `async def _rerank` + `await` | rerank全量恢复 (之前3个月全部失败) |
 | hybrid_search async | `server.py:882` | `def hybrid_search_entities` | `async def hybrid_search_entities` | 调用链对齐 |
 | TimelineNode属性名 | `server.py:523,1485` | `core_theory`, `key_figures`, `representative` | `core_theories`, `representatives`, `key_events` | DomainKnowledge查询属性不再空 |
-| API Key切换 | `server.py:303` | `sk-ws-H.RXMHHLH...` | `sk-ws-H.RXYRYME...` | Graphiti LLM调用恢复 |
+| API Key切换 | `server.py:303` | `<REDACTED>` | `<REDACTED>` | Graphiti LLM调用恢复 |
 
 ---
 
@@ -391,7 +391,7 @@ reasonFast(query, sourceId, profile):
 - **修复**: 属性名全部修正 (server.py 第523行+第1485行)
 
 ### 坑6: Graphiti 硬编码欠费 API Key
-- **根因**: server.py 第303行硬编码 `api_key="sk-ws-H.RXMHHLH..."`
+- **根因**: server.py 第303行硬编码 `api_key=""`
 - **表现**: Graphiti rerank + HyDE 生成的 LLM 调用全部 400 Bad Request (Arrearage)
 - **修复**: 改为 RXYRYME (唯一有效 Key)
 

@@ -12,7 +12,7 @@ import requests
 PAPERS_DIR = Path(r"D:\Desktop\ov_import")
 OV_URL = "http://127.0.0.1:8000"
 
-API_KEY = "sk-ws-H.RYLILRR.PqEl.MEYCIQC9jajvHcrOM-DPshS4a9C3D0j0lmVIF_uJC6BjWDhaqQIhAM8lYJQ0ZRdx-qzz0Nlh0Fa0o_h7n57KSz3j4iFdktC0"
+API_KEY = ""
 BASE_URL = "https://ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 
 

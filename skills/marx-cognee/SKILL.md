@@ -220,7 +220,7 @@ COT 推理流程:
 **根因链**:
 ```
 Cognee MCP Python 进程读取 %USERPROFILE%\cognee\.env
-  → LLM_API_KEY="sk-ws-H.RXYEDPI..." (欠费)
+  → LLM_API_KEY="" (欠费)
   → litellm 调用 DashScope API
   → 返回: "Access denied, Arrearage"
   → tenacity 重试 3 次 (16s/32s/64s 递增延迟)
@@ -231,9 +231,9 @@ Cognee MCP Python 进程读取 %USERPROFILE%\cognee\.env
 **修复**:
 ```
 %USERPROFILE%\cognee\.env:
-  LLM_API_KEY="sk-ws-H.RXYEDPI..." → "sk-ws-H.RXYRYME..."
-  OPENAI_API_KEY="sk-ws-H.RXYEDPI..." → "sk-ws-H.RXYRYME..."
-  FALLBACK_API_KEY="sk-ws-H.RXMHHLH..." → "sk-ws-H.RXYRYME..."
+  LLM_API_KEY="" → ""
+  OPENAI_API_KEY="" → ""
+  FALLBACK_API_KEY="" → ""
 ```
 
 **验证方法**: 重启 Cognee MCP 后, SAG 日志中不再出现 Arrearage 错误, chunk 检索正常返回.
@@ -1229,7 +1229,7 @@ AGENTIC_COMPLETION             ReAct Agentic — 多轮工具调用链
 
 ### 部署优化层 (54-58) — v8 新增 (2026-07-08)
 54. **向量模型 v3→v4 升级** — Cognee 部署初期 v4 在 DashScope 标准端点返回 404 → 2026-07-08 验证 v4 已可用。.env 升级为 `EMBEDDING_MODEL=text-embedding-v4`，LanceDB 全量重建 1,167 行 v4 向量 (scripts/reembed_chunks_v2.py --reset-checkpoint)
-55. **Graphiti MAAS 端点 embedding 不通** — `ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com` 对 v3/v4 embedding 均返回 Access denied → Graphiti embedder 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`sk-ws-H.RXYRPIL...`)
+55. **Graphiti MAAS 端点 embedding 不通** — `ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com` 对 v3/v4 embedding 均返回 Access denied → Graphiti embedder 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`<REDACTED>`)
 56. **cognee_compare 缺少交叉校验** — 旧版只返回 count，无法判定两引擎是否覆盖同一批实体 → 增加规范化名称重叠分析 + Jaccard 相似度 + shared_entities/only_graphiti/only_cognee 报告 + 自动诊断 (LOW_OVERLAP/PARTIAL_OVERLAP/GRAPHITI_SILENT/GRAPHITI_SPARSE)
 57. **评测全靠人工解读指标** — eval_unified.py 输出原始分数，无缺陷归类 → eval_auto.py 新增 11 类缺陷自动诊断 (D01-D11) + 按根因分组 + 自动生成 fix_plan.json 含可执行修复脚本路径
 58. **11 类图谱缺陷无自动化** — 仅 binary dirty_source 检查 → scripts/defect_detector.py 覆盖 C1-C11 (缺失类型/空描述/孤立实体/低度数/泛型/重名/脏数据/模糊关系/弱边/缺失嵌入/过期节点)，检测后自动触发修复 (对 C1/C2/C3/C6/C7/C9/C10)

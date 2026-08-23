@@ -6,11 +6,11 @@ import os, sys
 
 os.environ["OPENAI_API_KEY"] = "placeholder"
 
-API_KEY = "sk-ws-H.RYLILRR.PqEl.MEYCIQC9jajvHcrOM-DPshS4a9C3D0j0lmVIF_uJC6BjWDhaqQIhAM8lYJQ0ZRdx-qzz0Nlh0Fa0o_h7n57KSz3j4iFdktC0"
+API_KEY = ""
 BASE_URL = "https://ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 # Embedding uses DashScope standard endpoint (MAAS has Access denied for embeddings)
 EMBED_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-EMBED_API_KEY = "sk-ws-H.RXYRPIL.bLlD.MEUCIFn47lbdE9OjuOwvg15xX4K6i_mkt3Q4K0TUQCkIpstXAiEAzWDD2-On6Z1rBn3krhixwjpAdAYeurtxGd5Qpcz_S5U"
+EMBED_API_KEY = ""
 
 from graphiti_core import Graphiti
 from graphiti_core.llm_client.config import LLMConfig

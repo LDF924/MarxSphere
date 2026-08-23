@@ -6,8 +6,8 @@ import requests, json
 from datetime import datetime
 
 # 当前配置中的两个密钥
-KEY_MAIN = "sk-ws-H.RYXYHMD.Lr3f.MEUCIQDSR5hbtq1gm2L8ys6NBwD784Rf4n7IhDM_EBQvv7-0KQIgaU5EUdXh-LDuWqg37E7euypEBLSerGSO6nk93F5Iz-4"
-KEY_BACKUP = "sk-ws-H.RXMHHLH.aQS0.MEUCIQCGr5pSqW59dgtOBZYzXkKDwyw_N8KW9v7nm6EbHQo2DQIgELqkOl1wmVBnDWPoedB1eqvv37kBeoMTrKrm3GtGU8g"
+KEY_MAIN = ""
+KEY_BACKUP = ""
 
 API_DASHSCOPE = "https://dashscope.aliyuncs.com"
 API_MAAS = "https://ws-of9v7c4da1zhezwm.cn-beijing.maas.aliyuncs.com"

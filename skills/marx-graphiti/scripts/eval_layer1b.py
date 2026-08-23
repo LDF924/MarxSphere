@@ -129,7 +129,7 @@ def _rerank_candidates(query: str, candidates: List[Dict], top_k: int = TOP_K) -
         from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
         from graphiti_core.llm_client.config import LLMConfig
         cfg = LLMConfig(
-            api_key="sk-ws-H.RXMHHLH.aQS0.MEUCIQCGr5pSqW59dgtOBZYzXkKDwyw_N8KW9v7nm6EbHQo2DQIgELqkOl1wmVBnDWPoedB1eqvv37kBeoMTrKrm3GtGU8g",
+            api_key="",
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             model="qwen3.7-max", temperature=0, max_tokens=1,
         )

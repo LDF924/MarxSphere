@@ -243,7 +243,7 @@ python neo4j_rollback.py --list
 **坑1：主密钥欠费 → API 返回 400**
 - 现象：`compatible-mode` 返回 `"Access denied, account is not in good standing"`，LLM 调用全部失败
 - 诊断：`python pipeline_ops.py --check-api` 看到 DeepSeek 和 Qwen 都 FAIL
-- 修复：准备备用密钥 `sk-ws-H.RXMHHLH...`，写入 `pipeline_config.json` 的 `qwen_max.key` 和 `qwen_embedding.key`
+- 修复：准备备用密钥 `<REDACTED>`，写入 `pipeline_config.json` 的 `qwen_max.key` 和 `qwen_embedding.key`
 - 预防：入库前运行 `python pipeline_ops.py --check-api`，预算告警阈值为 80%
 
 **坑2：备用密钥 compatible-mode 始终 400**
@@ -352,12 +352,12 @@ python neo4j_rollback.py --list
 **坑19：Embedding batch_size=50 超限 + MAAS 端点彻底不通**
 - 现象：`text-embedding-v4` API 返回 batch size 错误；更严重的是 MAAS 端点 `ws-4cbe4oorrmbrzdya.cn-beijing.maas.aliyuncs.com` 对 v3/v4 embedding 均返回 `"Access denied, account is not in good standing"`
 - 原因：API 限制每批最多 10 条；MAAS 端点不支持 embedding — Graphiti 原配置的 embedding 端点根本调不通
-- 修复：`batch_size` 从 50 改为 10；embedding 端点从 MAAS 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`sk-ws-H.RXYRPIL...`)。此修复同时影响 graphiti_init.py 和 graphiti_mcp_server.py
+- 修复：`batch_size` 从 50 改为 10；embedding 端点从 MAAS 切换至 DashScope 标准端点 `dashscope.aliyuncs.com` + Cognee 的 key (`<REDACTED>`)。此修复同时影响 graphiti_init.py 和 graphiti_mcp_server.py
 
 **坑21：v4 向量全量重建消耗大量配额** (v4 新增)
 - 现象：运行 reembed_chunks_v2.py 时主 key 报 `insufficient_quota`
 - 原因：1,167 个 DocumentChunk × 2 次 embedding 调用（初次+断点续存）= ~2,326 次 API 调用。备选 key 配额不足
-- 修复：使用主 key (`sk-ws-H.RXYRPIL...`)，确保余额 ≥ 5 RMB。备选 key (`sk-ws-H.RYLILRR...`) 配额有限，不可用于 reembed 任务
+- 修复：使用主 key (`<REDACTED>`)，确保余额 ≥ 5 RMB。备选 key (`<REDACTED>`) 配额有限，不可用于 reembed 任务
 
 ### 7.10 进程管理层（1 坑）
 
@@ -757,7 +757,7 @@ ingest_server.py (FastMCP, stdio, 7 tools)
 **坑18：DeepSeek API Key 欠费 (Arrearage)**
 - 现象：Phase 3 实体抽取完成后，Phase 4 蒸馏跑到一半（345/500）全部返回 `deepseek returned None`
 - 诊断：curltest deepseek-v4-pro 返回 400 `"Access denied, account is not in good standing"`, `"Arrearage"`
-- 修复：用户提供新 key `sk-ws-H.RXYEDPI.xsax...`，同时更新 deepseek 和 qwen_max 字段（统一为一个 key），覆盖 `pipeline_config.json` 的 deepseek.key
+- 修复：用户提供新 key `<REDACTED>`，同时更新 deepseek 和 qwen_max 字段（统一为一个 key），覆盖 `pipeline_config.json` 的 deepseek.key
 - 预防：入库前用 `curl -s https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions ...` 直接测试余额状态。Phase 3+4 共用同一把 key，累计消耗约 9.5h × ~3min/篇
 
 **坑19：pipeline_config.json 双位置不同步**
@@ -871,7 +871,7 @@ ingest_server.py (FastMCP, stdio, 7 tools)
 | `api_client.py` | max_tokens 16384, temperature 0.1, logger import, markdown 尾随截断+call_json 日志 | 24,25,26 |
 | `run_module3.py` | 硬编码路径→Path(__file__).parent | 27 |
 | `全局消歧聚类清洗.py` | sys.path 改 parent | 28 |
-| `pipeline_config.json` | deepseek key 更新为 `sk-ws-H.RXYEDPI...`，budget_limit → 50 | 18,19 |
+| `pipeline_config.json` | deepseek key 更新为 `<REDACTED>`，budget_limit → 50 | 18,19 |
 | `pipeline_config.json` (根目录) | 同步复制 | 19 |
 | `distill_robust.py` | 无代码修改（通过 key 更新+checkpoint 逻辑修复后重跑） |   |
 

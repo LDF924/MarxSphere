@@ -3,7 +3,7 @@ from openai import AsyncOpenAI
 import asyncio
 
 client = AsyncOpenAI(
-    api_key='sk-ws-H.RYRRIEP.c27n.MEQCIH9Blb-_G38pAxOmXN9aOGSyyc_EjejYiztcv1di2feQAiB3d4VNAhBro7ts94OR5HD9biDhseby4C8YIeOdhjXWvw',
+    api_key='',
     base_url='https://ws-of9v7c4da1zhezwm.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
 )
 
