@@ -6,7 +6,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 /**
- * skills-service — 扫描 ~/.claude/skills 目录下各 SKILL.md，解析 frontmatter 生成注册表
+ * skills-service — 扫描技能目录（用户 ~/.claude/skills + 随包 SAG_ROOT/skills）下各 SKILL.md，
+ * 解析 frontmatter 生成注册表
  *
  * 规范（用户 marx-* 系列统一格式）：
  *   name: kebab-case
@@ -16,6 +17,15 @@ import { promisify } from "node:util";
  */
 
 const execFileAsync = promisify(execFile);
+
+/** 技能根目录：用户自定义（~/.claude/skills）+ 随包自带（SAG_ROOT/skills）。
+ * 读技能的所有函数统一走这里，避免各函数只读其中一个目录导致列表/审计/详情不一致。
+ * 顺序：用户目录在前（用户同名技能覆盖随包），随包目录仅当 SAG_ROOT 存在时加入。 */
+export function getSkillsRoots(): string[] {
+  const dirs: string[] = [path.join(os.homedir(), ".claude", "skills")];
+  if (process.env.SAG_ROOT) dirs.push(path.join(process.env.SAG_ROOT, "skills"));
+  return dirs;
+}
 
 export interface SkillRecord {
   name: string;
@@ -149,20 +159,16 @@ function collectSkillMds(root: string): Array<{ name: string; dir: string; skill
 }
 
 export function listSkills(): SkillRecord[] {
-  // V413: 同时读用户 skills（~/.claude/skills）+ 随包自带（SAG_ROOT/skills）
-  const dirs: string[] = [path.join(os.homedir(), ".claude", "skills")];
-  if (process.env.SAG_ROOT) dirs.push(path.join(process.env.SAG_ROOT, "skills"));
-
   const records: SkillRecord[] = [];
-  for (const skillsDir of dirs) {
+  // 用户目录 + 随包目录（顺序保证：用户同名技能覆盖随包）
+  for (const skillsDir of getSkillsRoots()) {
     if (!fs.existsSync(skillsDir)) continue;
 
     // 中文说明目录：_中文说明/{skillName}.zh-CN.md
     const zhDocsDir = path.join(skillsDir, "_中文说明");
 
-  const records: SkillRecord[] = [];
-  // 第一遍：顶层技能（原有逻辑）
-  for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    // 第一遍：顶层技能（原有逻辑）
+    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
     // Windows junction 对 isDirectory() 返回 false，需用 isSymbolicLink() 兜底（嵌套技能链接到顶层）
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
     if (entry.name === "_中文说明" || entry.name === "__pycache__") continue;
@@ -255,11 +261,14 @@ export function listSkills(): SkillRecord[] {
   }
   }
 
-  records.sort((a, b) => a.name.localeCompare(b.name));
-  return records;
+  // 去重：同名技能用户目录优先（随包同名不重复列出）
+  const seen = new Set<string>();
+  const deduped = records.filter((r) => (seen.has(r.name) ? false : (seen.add(r.name), true)));
+  deduped.sort((a, b) => a.name.localeCompare(b.name));
+  return deduped;
 }
 
-/** 技能详情：SKILL.md 全文 + 中文说明 + 目录结构 */
+/** 技能详情：SKILL.md 全文 + 中文说明 + 目录结构（双目录：用户 + 随包） */
 export function getSkillDetail(name: string): {
   name: string;
   skillMd: string;
@@ -267,33 +276,38 @@ export function getSkillDetail(name: string): {
   zhDoc?: string;
   files: string[];
 } | null {
-  const skillsDir = path.join(os.homedir(), ".claude", "skills");
-  // 支持嵌套技能名（"pkg/nested" → skillsDir/pkg/nested/SKILL.md）
+  // 支持嵌套技能名（"pkg/nested" → {root}/pkg/nested/SKILL.md）
   const isNested = name.includes("/");
-  const skillDir = isNested
-    ? path.join(skillsDir, name.split("/")[0], ...name.split("/").slice(1))
-    : path.join(skillsDir, name);
-  let skillMdPath = path.join(skillDir, "SKILL.md");
-  // V399: 目录名 ≠ frontmatter name 时按 name 模糊匹配（如 searchSkill 返回 causal-inference-mixtape，
-  // 实际目录 10-Jill0099-causal-inference-mixtape）— 递归一层模糊查找
-  if (!fs.existsSync(skillMdPath) && !isNested) {
-    let matchedDir: string | null = null;
-    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const candidate = path.join(skillsDir, entry.name, "SKILL.md");
-      if (!fs.existsSync(candidate)) continue;
-      const head = fs.readFileSync(candidate, "utf8").slice(0, 500);
-      if (head.includes(`name: ${name}`) || head.includes(`name: "${name}"`) || entry.name.includes(name)) {
-        matchedDir = path.join(skillsDir, entry.name);
-        break;
+  let skillMdPath = "";
+  for (const skillsDir of getSkillsRoots()) {
+    if (!fs.existsSync(skillsDir)) continue;
+    const skillDir = isNested
+      ? path.join(skillsDir, name.split("/")[0], ...name.split("/").slice(1))
+      : path.join(skillsDir, name);
+    const candidate = path.join(skillDir, "SKILL.md");
+    if (fs.existsSync(candidate)) { skillMdPath = candidate; break; }
+    // V399: 目录名 ≠ frontmatter name 时按 name 模糊匹配（如 searchSkill 返回 causal-inference-mixtape，
+    // 实际目录 10-Jill0099-causal-inference-mixtape）— 递归一层模糊查找
+    if (!isNested) {
+      for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const cand = path.join(skillsDir, entry.name, "SKILL.md");
+        if (!fs.existsSync(cand)) continue;
+        const head = fs.readFileSync(cand, "utf8").slice(0, 500);
+        if (head.includes(`name: ${name}`) || head.includes(`name: "${name}"`) || entry.name.includes(name)) {
+          skillMdPath = cand;
+          break;
+        }
       }
     }
-    if (matchedDir) skillMdPath = path.join(matchedDir, "SKILL.md");
+    if (skillMdPath) break;
   }
-  if (!fs.existsSync(skillMdPath)) return null;
+  if (!skillMdPath) return null;
 
   const skillMd = fs.readFileSync(skillMdPath, "utf-8");
-  const zhDocPath = path.join(skillsDir, "_中文说明", `${name}.zh-CN.md`);
+  // 中文说明：跟随 skillMdPath 所在根目录（与注册表同根，保证一致）
+  const ownerRoot = getSkillsRoots().find((d) => skillMdPath.startsWith(d + path.sep)) ?? path.join(os.homedir(), ".claude", "skills");
+  const zhDocPath = path.join(ownerRoot, "_中文说明", `${name}.zh-CN.md`);
   const zhDoc = fs.existsSync(zhDocPath) ? fs.readFileSync(zhDocPath, "utf-8") : undefined;
 
   // 目录结构（一层）— 用实际存在的 skillDir（name 模糊匹配后可能是不同目录）
@@ -384,7 +398,8 @@ export async function skillify(input: SkillifyInput): Promise<{
     return { ok: false, error: "至少需要一个执行步骤" };
   }
 
-  const skillsDir = path.join(os.homedir(), ".claude", "skills");
+  // Skillify 固化写用户目录（~/.claude/skills），不写随包目录
+  const skillsDir = getSkillsRoots()[0];
   const targetDir = path.join(skillsDir, name);
   const skillMdPath = path.join(targetDir, "SKILL.md");
 
@@ -528,12 +543,13 @@ function auditSingleSkill(mdPath: string): { complete: boolean; missing: string[
   }
 }
 
-/** 实时审计全部技能（60 秒缓存） */
+/** 实时审计全部技能（60 秒缓存）——双目录：用户 + 随包 */
 export async function auditSkillsLive(): Promise<{ total: number; complete: number; gaps: Array<{ gap: string; count: number }> }> {
   const now = Date.now();
   if (auditCache && now - auditCache.at < 60_000) return auditCache.result;
-  const skillsDir = path.join(os.homedir(), ".claude", "skills");
-  const skills = collectSkillMds(skillsDir);
+  const skills = getSkillsRoots()
+    .filter((d) => fs.existsSync(d))
+    .flatMap((d) => collectSkillMds(d));
   let complete = 0;
   const gapCount: Record<string, number> = {};
   for (const s of skills) {
