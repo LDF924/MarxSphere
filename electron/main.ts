@@ -578,21 +578,36 @@ ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
     return { ok: false, error: r.error || "本地 PostgreSQL 安装失败" };
   }
   if (!dockerCmd && wantDocker) {
-    // 无 Docker → ① 先尝试自动安装 Docker Desktop（winget 静默安装）
+    // 无 Docker → ① 先尝试自动安装 Docker Desktop（winget 静默安装，异步不阻塞）
     console.log("[desktop] 未检测到 Docker，尝试自动安装 Docker Desktop ...");
-    try {
-      execFileSync("winget", ["install", "Docker.DockerDesktop", "--accept-source-agreements", "--accept-package-agreements", "--silent", "--disable-interactivity"], { timeout: 600_000, windowsHide: true, stdio: "pipe" });
+    const sendDockerStage = (stage: string, pct: number) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send("pg-progress", { stage, pct, type: "install" });
+      }
+    };
+    const { spawn: wingetSpawn } = require("node:child_process") as typeof import("node:child_process");
+    sendDockerStage("正在安装 Docker Desktop（约 5-10 分钟，需外网）…", 15);
+    const wingetOk = await new Promise<boolean>((resolve) => {
+      const p = wingetSpawn("winget", ["install", "Docker.DockerDesktop", "--accept-source-agreements", "--accept-package-agreements", "--silent", "--disable-interactivity"], { windowsHide: true });
+      p.on("close", (c: number) => resolve(c === 0));
+      p.on("error", () => resolve(false));
+      setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 900_000); // 15 分钟超时
+    });
+    if (wingetOk) {
       console.log("[desktop] Docker Desktop 安装完成，等待启动 ...");
+      sendDockerStage("Docker 已安装，等待启动（需 WSL2/虚拟化）…", 60);
       const waitStart = Date.now();
+      let dockerReady = false;
       while (Date.now() - waitStart < 600_000) {
         try {
           const ok = execFileSync("docker", ["--version"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
-          if (ok) { dockerCmd = "docker"; break; }
+          if (ok) { dockerCmd = "docker"; dockerReady = true; break; }
         } catch { /* 未就绪继续等 */ }
         await new Promise((r) => setTimeout(r, 5000));
       }
-    } catch (e: any) {
-      console.log("[desktop] Docker 自动安装失败（无 WSL2/嵌套虚拟化/注册限制）", String(e?.message || e).slice(0, 100));
+      if (dockerReady) sendDockerStage("✓ Docker 就绪", 80);
+    } else {
+      console.log("[desktop] Docker 自动安装失败（无 WSL2/嵌套虚拟化/注册限制）");
       dockerCmd = undefined;
     }
   }
@@ -635,7 +650,15 @@ volumes:
   }
   // 3) docker compose up -d
   try {
-    execFileSync(dockerCmd, ["compose", "-f", composeDst, "up", "-d"], { timeout: 120_000, windowsHide: true, stdio: "pipe" });
+    // docker compose up -d（异步不阻塞；首次拉镜像可能几分钟）
+    const { spawn: composeSpawn } = require("node:child_process") as typeof import("node:child_process");
+    const composeOk = await new Promise<boolean>((resolve) => {
+      const p = composeSpawn(dockerCmd, ["compose", "-f", composeDst, "up", "-d"], { windowsHide: true });
+      p.on("close", (c: number) => resolve(c === 0));
+      p.on("error", () => resolve(false));
+      setTimeout(() => { if (!p.exitCode) { p.kill(); resolve(false); } }, 600_000); // 10 分钟超时
+    });
+    if (!composeOk) throw new Error("compose up 失败");
   } catch (e: any) {
     // Docker 有但 compose 失败（daemon 未跑/镜像拉取失败）→ 视模式降级本地 PostgreSQL
     if (wantLocalFallback) {
