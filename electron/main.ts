@@ -1450,6 +1450,12 @@ ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: 
 });
 
 ipcMain.handle("backend:restart", async () => {
+  // V439: 重启期间显示雷达启动页（用户能看到端口/PG/后端进程实时检测），后端健康后自动进主界面
+  if (mainWindow) {
+    showErrorPage("正在启动 MarxSphere", "后端正在启动（首次需初始化数据库，约 1-3 分钟）。\n" +
+      `下方雷达实时检测后端端口/数据库状态，就绪后自动进入主界面。\n` +
+      `提示：LLM 密钥填 DeepSeek 时请选择「DeepSeek」服务商（Base URL 自动填 api.deepseek.com）。`);
+  }
   if (backendProc) {
     backendStopping = true;
     const proc = backendProc;
