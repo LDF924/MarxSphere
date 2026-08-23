@@ -7,9 +7,15 @@ import net from "node:net";
 import fs, { cpSync, rmSync } from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { randomBytes } from "node:crypto";
 
 const DEFAULT_PORT = 4173;
 const MCP_DEFAULT_PORT = 4174;
+
+/** V414: 生成 JWT 签名密钥（crypto 随机 32 字节 hex，等价 openssl rand -hex 32，跨平台无需外部命令） */
+function generateJwtSecret(): string {
+  return randomBytes(32).toString("hex");
+}
 
 /** 运行时根目录: userData/sag-root（可写数据全部落这里, 与安装目录分离） */
 function sagRoot(): string {
@@ -468,10 +474,11 @@ async function installLocalPostgres(dataRoot: string): Promise<{ ok: boolean; er
       let dlOk = false;
       let dlErr = "";
       sendStage("准备下载 PostgreSQL 便携版（约 300MB）…", 0, "download");
+      // dlSpawn 提到循环外：pgvector 下载段（下方）也要用（原作用域只在循环内 → ReferenceError）
+      const { spawn: dlSpawn } = require("node:child_process") as typeof import("node:child_process");
       for (const m of mirrors) {
         try {
           // 流式下载带进度（curl 输出进度条解析；Windows 需 curl.exe 全名）
-          const { spawn: dlSpawn } = require("node:child_process") as typeof import("node:child_process");
           const dl = dlSpawn("curl.exe", ["-L", "-o", zipPath, m, "--progress-bar", "--retry", "2"], { windowsHide: true });
           dl.stderr.on("data", (buf: Buffer) => {
             const line = buf.toString();
@@ -784,22 +791,30 @@ volumes:
 ipcMain.handle("env:save", async (_e, input: { llmApiKey?: string; llmBaseUrl?: string; llmModel?: string; embeddingApiKey?: string; cogneePython?: string; empiricalPython?: string; pgPort?: number }) => {
   const dataRoot = sagRoot();
   const envFile = path.join(dataRoot, ".env");
+  // 已有 .env 先读入 map：本次未重新填写的键保留旧值（重复保存不丢失 LLM key 等）
+  const prev = fs.existsSync(envFile) ? fs.readFileSync(envFile, "utf8") : "";
+  const kv = new Map<string, string>();
+  for (const line of prev.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq > 0) kv.set(line.slice(0, eq).trim(), line.slice(eq + 1).trim());
+  }
+  const put = (k: string, v?: string) => { if (v !== undefined && v !== "") kv.set(k, v); };
   // 数据库端口: 探测到的优先（5540 docker > 5432 本机）
   const pgPort = input.pgPort || 5540;
-  const lines: string[] = [
-    "HTTP_HOST=127.0.0.1",
-    `DATABASE_URL=postgres://sag_lite:sag_lite_pass@127.0.0.1:${pgPort}/sag_lite`,
-  ];
-  if (input.llmApiKey) {
-    lines.push(`LLM_API_KEY=${input.llmApiKey.trim()}`);
-    if (input.llmBaseUrl) lines.push(`LLM_BASE_URL=${input.llmBaseUrl.trim()}`);
-    if (input.llmModel) lines.push(`LLM_MODEL=${input.llmModel.trim()}`);
-  }
-  if (input.embeddingApiKey) lines.push(`EMBEDDING_API_KEY=${input.embeddingApiKey.trim()}`);
-  if (input.cogneePython) lines.push(`COGNEE_PYTHON=${input.cogneePython.trim()}`);
-  if (input.empiricalPython) lines.push(`EMPIRICAL_PYTHON=${input.empiricalPython.trim()}`);
-  lines.push("SAG_ROOT=" + resourceRoot());
-  fs.writeFileSync(envFile, lines.join("\n") + "\n", "utf-8");
+  put("HTTP_HOST", "127.0.0.1");
+  put("DATABASE_URL", `postgres://sag_lite:sag_lite_pass@127.0.0.1:${pgPort}/sag_lite`);
+  put("LLM_API_KEY", input.llmApiKey?.trim());
+  put("LLM_BASE_URL", input.llmBaseUrl?.trim());
+  put("LLM_MODEL", input.llmModel?.trim());
+  put("EMBEDDING_API_KEY", input.embeddingApiKey?.trim());
+  put("COGNEE_PYTHON", input.cogneePython?.trim());
+  put("EMPIRICAL_PYTHON", input.empiricalPython?.trim());
+  // V414: 桌面端默认开启登录认证（已有 .env 且手动配置过则保留用户选择）
+  if (!kv.has("SAG_AUTH_ENABLED")) kv.set("SAG_AUTH_ENABLED", "true");
+  // JWT_SECRET: 已存在不重新生成（否则重启后已登录会话全部失效）
+  if (!kv.has("JWT_SECRET")) kv.set("JWT_SECRET", generateJwtSecret());
+  kv.set("SAG_ROOT", resourceRoot());
+  fs.writeFileSync(envFile, [...kv.entries()].map(([k, v]) => `${k}=${v}`).join("\n") + "\n", "utf-8");
   return { ok: true, envFile };
 });
 
