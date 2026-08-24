@@ -18,7 +18,7 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-large"),
   EMBEDDING_API_KEY: z.string().default(""),
   EMBEDDING_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
-  LLM_MODEL: z.string().min(1).default("qwen3.6-flash"),
+  LLM_MODEL: z.string().min(1).default("deepseek-v4-flash"),
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
