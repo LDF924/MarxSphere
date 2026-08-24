@@ -407,8 +407,10 @@ async function startBackend(port: number) {
       AGENT_API_BASE: `http://127.0.0.1:${port}`,
       MCP_HTTP_PORT: String(MCP_DEFAULT_PORT + (port - DEFAULT_PORT)),
       SAG_ROOT: root,
-      // 未配置 .env（首次启动）时用 preview 模式：不拉 Python MCP 池, 配置保存重启后才进完整模式
-      MARXSPHERE_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1",
+      // V455: 模式由 mode.json 决定（用户切换持久化）— 原强制设 MARXSPHERE_PREVIEW 会覆盖
+      // mode.json（index.ts 优先级: 环境变量 > mode.json），导致模式切换永远不生效。
+      // 仅在无 mode.json 时兜底：.env 存在=完整模式，否则=预览模式
+      ...(!fs.existsSync(path.join(dataRoot, "mode.json")) ? { MARXSPHERE_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1" } : {}),
       // 运行时数据目录（userData 可写）: 通过 SAG_ROOT 指向安装资源 + cwd 指向 userData
       // 注: 后端 dotenv 从 cwd 加载 .env — 引导页写入 userData/sag-root/.env, spawn cwd 设到 dataRoot
     };
