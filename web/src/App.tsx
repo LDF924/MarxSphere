@@ -894,7 +894,9 @@ function AppShell() {
       setNewProjectName("");
       await loadProjects();
       setSelectedProjectId(response.project.id);
-      setWorkspaceView("chat");
+      // V444: 切到 home 视图（渲染分支存在）— 原 setWorkspaceView("chat") 无对应渲染分支
+      // （渲染分支只有 home/settings/assistant/documents/graph/mcp），导致新建后主区域空白"闪回初始"
+      setWorkspaceView("home");
       return true;
     } catch (err) {
       setError(getErrorMessage(err));
@@ -2271,8 +2273,8 @@ function ProjectRail(props: {
 
       {createProjectDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="presentation">
-          {/* V441: 对话框可调整大小（resize）+ 内部可滚动 — 用户要求能拉伸/滚动 */}
-          <div className="w-[420px] max-w-[90vw] max-h-[85vh] min-h-[200px] overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-lg resize-y" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
+          {/* V444: resize（双向拉伸）+ overflow-auto（内部滚动）+ 更大默认尺寸 */}
+          <div className="w-[520px] max-w-[92vw] h-[300px] max-h-[85vh] min-h-[220px] min-w-[320px] overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg resize" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
             <div id="create-project-title" className="text-sm font-semibold">{t("新建项目", "New project")}</div>
             <p className="mt-1 text-xs text-muted-foreground">{t("输入项目名称后创建，文档和对话都会归属到这个项目。", "Enter a project name. Documents and chats will belong to this project.")}</p>
             <Input
