@@ -788,10 +788,14 @@ function probeDbDetail(): Promise<"up" | "db_missing" | "migration_pending" | "p
     try {
       const { execFile } = require("node:child_process") as typeof import("node:child_process");
       execFile(psql, ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "postgres", "-tAc", "SELECT 1 FROM pg_database WHERE datname='sag_lite'"], { timeout: 8000, windowsHide: true }, (err, stdout) => {
-        if (err || String(stdout).trim() !== "1") { resolve("db_missing"); return; }
+        // V453: 连接失败（err）≠ 库缺失 — psql 连不上说明 PG 未跑（pg_down），
+        // 误判 db_missing 会让引导页报"库缺失"而实际只是 PG 没启动
+        if (err) { resolve("pg_down"); return; }
+        if (String(stdout).trim() !== "1") { resolve("db_missing"); return; }
         // 库在 → 查 users 表是否存在（043 迁移的产物）→ 区分迁移是否完成
         execFile(psql, ["-h", "127.0.0.1", "-p", "5540", "-U", "sag_lite", "-d", "sag_lite", "-tAc", "SELECT to_regclass('public.users')"], { timeout: 8000, windowsHide: true }, (err2, stdout2) => {
-          if (err2 || String(stdout2).trim() === "") { resolve("migration_pending"); return; }
+          if (err2) { resolve("pg_down"); return; }
+          if (String(stdout2).trim() === "") { resolve("migration_pending"); return; }
           resolve("up");
         });
       });

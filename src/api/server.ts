@@ -1458,7 +1458,9 @@ export function buildHttpServer() {
     let tenantIds: string[] = [];
     if (jwtPayload) {
       const u = await pool.query("select tenant_id from users where id = $1", [jwtPayload.uid]);
-      if (u.rows.length > 0) tenantIds = [PUBLIC_TENANT, u.rows[0].tenant_id];
+      // V454: 带 token 也包含 DEFAULT_TENANT_ID（default 租户）— 项目创建时归 default 租户，
+      // 若只查 PUBLIC_TENANT + 用户租户，default 项目全部不可见（刷新后列表为空）
+      if (u.rows.length > 0) tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID, u.rows[0].tenant_id];
     } else {
       // V398: 未登录（本机/无 JWT）也应可见公共库（PUBLIC_TENANT）项目 — 公开文献资产
       tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID];
