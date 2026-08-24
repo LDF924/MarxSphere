@@ -120,12 +120,22 @@ async function fetchDeepSeekModels(baseUrl: string, key: string): Promise<string
 /** 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底） */
 export async function getLlmEndpoint(overrides?: { model?: string }): Promise<{ url: string; key: string; model: string }> {
   const ds = process.env.DEEPSEEK_API_KEY || '';
-  const key = ds || (process.env.LLM_API_KEY || '');
+  // V450: 设置页保存到 DB（ai_settings），LLM 调用需读 DB 优先、.env 兜底 —
+  // 否则设置页改的 key/baseUrl/model 对 LLM 调用不生效（两边不同源）
+  let dbUrl = "", dbKey = "", dbModel = "";
+  try {
+    const { aiSettingsService } = await import("../services/ai-settings-service.js");
+    const s = await aiSettingsService.getRuntimeSettings();
+    dbUrl = s.llmBaseUrl || "";
+    dbKey = s.llmApiKey || "";
+    dbModel = s.llmModel || "";
+  } catch { /* DB 不可用（未迁移等）→ .env 兜底 */ }
+  const key = ds || dbKey || (process.env.LLM_API_KEY || '');
   const url = ds
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-    : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+    : (dbUrl || process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
   let model = resolveModelAlias(overrides?.model
-    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'deepseek-v4-flash')));
+    ?? (ds ? 'deepseek-v4-flash' : (dbModel || process.env.LLM_MODEL || 'deepseek-v4-flash')));
   // V443: 只纠正"明确是阿里云/302AI 模型名"配 DeepSeek 端点的情况（qwen-* → 400）
   // 用户已选的 deepseek-* 模型（deepseek-chat/v4-pro 等）完全尊重，不纠正
   const isDeepSeekUrl = url.includes('deepseek.com');
