@@ -257,7 +257,7 @@ async function retrieveChunks(query: string, sourceId: string, topK: number) {
 }
 
 async function llmJson(prompt: string, modelOverride?: string): Promise<any | null> {
-  const ep = getLlmEndpoint({ model: modelOverride || getRoleModel("reason") });
+  const ep = await getLlmEndpoint({ model: modelOverride || getRoleModel("reason") });
   const res = await fetchLlm({
     url: ep.url,
     key: ep.key,
