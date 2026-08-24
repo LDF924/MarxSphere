@@ -912,9 +912,9 @@ function AppShell() {
       setNewProjectName("");
       await loadProjects();
       setSelectedProjectId(response.project.id);
-      // V444: 切到 home 视图（渲染分支存在）— 原 setWorkspaceView("chat") 无对应渲染分支
-      // （渲染分支只有 home/settings/assistant/documents/graph/mcp），导致新建后主区域空白"闪回初始"
-      setWorkspaceView("home");
+      // V446: 新建成功后不跳转视图 — 留在当前视图（项目面板原地刷新看到新项目）。
+      // 原 setWorkspaceView("home") 会把用户弹回首页（"闪出到首页"）；V444 的"chat 无分支"已由
+      // 不跳转解决（项目面板是 overlay，不依赖 workspaceView）
       return true;
     } catch (err) {
       setError(getErrorMessage(err));
@@ -2117,6 +2117,10 @@ function ProjectRail(props: {
       if (created) {
         setCreateProjectDialogOpen(false);
       }
+    } catch (err) {
+      // V446: 捕获创建失败（原只有 finally，异常向上传播可能触发错误边界/闪退）
+      setError(getErrorMessage(err));
+      setCreateProjectDialogOpen(false);
     } finally {
       setIsCreatingProject(false);
     }
