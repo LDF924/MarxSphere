@@ -885,6 +885,24 @@ function AppShell() {
     setStatus(t("已清空浏览器缓存中的原始日志", "Raw logs in browser cache have been cleared"));
   }
 
+  // V444: 项目面板边缘拖拽拉伸（ew=横 / ns=纵 / se=对角）
+  function dragResize(e: React.MouseEvent, dir: "ew" | "ns" | "se") {
+    const panel = document.getElementById("project-panel");
+    if (!panel) return;
+    const startX = e.clientX, startY = e.clientY;
+    const startW = panel.offsetWidth, startH = panel.offsetHeight;
+    const onMove = (ev: MouseEvent) => {
+      if (dir !== "ns") panel.style.width = Math.max(240, Math.min(480, startW + (ev.clientX - startX))) + "px";
+      if (dir !== "ew") panel.style.height = Math.max(260, Math.min(window.innerHeight * 0.85, startH + (ev.clientY - startY))) + "px";
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   async function createProject() {
     const name = newProjectName.trim();
     if (!name) return false;
@@ -1743,29 +1761,25 @@ function AppShell() {
               onClick={() => setProjectPanelOpen(false)}
               aria-hidden
             />
-            <div id="project-panel" className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] h-[400px] min-h-[260px] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur resize">
-              {/* V444: 右下角拖拽角标（JS 拖动，CSS resize 柄太小易忽略） */}
+            <div id="project-panel" className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] h-[400px] min-h-[260px] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur">
+              {/* V444: 边缘双向箭头手柄 — 右缘 ↔ 横拉、底缘 ↕ 纵拉、角 ⤡ 对角拉 */}
+              {/* 右边缘 */}
               <div
-                className="absolute bottom-0 right-0 z-50 h-4 w-4 cursor-se-resize opacity-60 hover:opacity-100"
-                style={{ background: "linear-gradient(135deg, transparent 50%, rgba(148,163,184,.6) 50%)" }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const panel = document.getElementById("project-panel");
-                  if (!panel) return;
-                  const startX = e.clientX, startY = e.clientY;
-                  const startW = panel.offsetWidth, startH = panel.offsetHeight;
-                  const onMove = (ev: MouseEvent) => {
-                    panel.style.width = Math.max(240, Math.min(480, startW + (ev.clientX - startX))) + "px";
-                    panel.style.height = Math.max(260, Math.min(window.innerHeight * 0.85, startH + (ev.clientY - startY))) + "px";
-                  };
-                  const onUp = () => {
-                    window.removeEventListener("mousemove", onMove);
-                    window.removeEventListener("mouseup", onUp);
-                  };
-                  window.addEventListener("mousemove", onMove);
-                  window.addEventListener("mouseup", onUp);
-                }}
+                className="absolute -right-[3px] top-0 bottom-0 z-50 w-[6px] cursor-ew-resize"
+                style={{ boxShadow: "inset -1px 0 0 rgba(148,163,184,.25)" }}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "ew"); }}
+              />
+              {/* 底边缘 */}
+              <div
+                className="absolute -bottom-[3px] left-0 right-0 z-50 h-[6px] cursor-ns-resize"
+                style={{ boxShadow: "inset 0 -1px 0 rgba(148,163,184,.25)" }}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "ns"); }}
+              />
+              {/* 右下角 */}
+              <div
+                className="absolute -bottom-[3px] -right-[3px] z-50 h-[12px] w-[12px] cursor-se-resize"
+                style={{ background: "linear-gradient(135deg, transparent 50%, rgba(148,163,184,.7) 50%)" }}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "se"); }}
               />
               <ProjectRail
                 projects={projects}
