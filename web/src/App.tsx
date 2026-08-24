@@ -1743,7 +1743,7 @@ function AppShell() {
               onClick={() => setProjectPanelOpen(false)}
               aria-hidden
             />
-            <div className="absolute left-4 top-1 z-40 w-[300px] overflow-hidden rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur">
+            <div className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur resize-x">
               <ProjectRail
                 projects={projects}
                 selectedProjectId={selectedProjectId}
@@ -2101,7 +2101,7 @@ function ProjectRail(props: {
 
   return (
     <>
-      <aside className="relative z-10 flex max-h-[70vh] min-h-0 flex-col overflow-hidden border-r border-border">
+      <aside className="relative z-10 flex max-h-[85vh] min-h-0 flex-col overflow-y-auto border-r border-border scrollbar-thin">
         {/* V399: 品牌区/设置已移入顶栏 — 面板直接以「项目」列表开头 */}
 
         <div className="flex items-center justify-between px-4 py-3">
