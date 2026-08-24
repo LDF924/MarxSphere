@@ -446,12 +446,13 @@ export async function scheduledEvalSuiteRun(): Promise<{ ran: boolean; passed: n
   }
 }
 
-/** V6: 启动自动回归调度器（每 24h 跑一次） */
+/** V445: 启动自动回归调度器（每 24h 跑一次）— 启动不立即跑（防静默消费 LLM），
+ * 需用户确认（POST /api/eval/confirm 或前端开关）后才执行首次 */
 export function startEvalSuiteScheduler(): void {
   const EVAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
-  void scheduledEvalSuiteRun();  // 启动即跑一次
+  // V445: 移除启动即跑 — void scheduledEvalSuiteRun()（原启动即消费 qwen/llm 额度）
   setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS).unref?.();
-  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集)");
+  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集；首次运行需用户确认)");
 }
 
 export const agentEvalService = {

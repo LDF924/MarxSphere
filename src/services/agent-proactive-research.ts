@@ -138,7 +138,8 @@ export async function runProactiveResearch(): Promise<{ created: string[]; skipp
   return { created, skipped, signals: signals.length };
 }
 
-/** 启动每日自主巡检（幂等; 立即跑一次 + 每 24h） */
+/** 启动每日自主巡检（幂等; 每 24h）— V445: 移除启动立即跑（防静默消费 LLM），
+ * 需用户确认后才执行首次 */
 let proactiveStarted = false;
 export function startProactiveResearchScheduler(): void {
   if (proactiveStarted) return;
@@ -148,7 +149,7 @@ export function startProactiveResearchScheduler(): void {
     return;
   }
   const INTERVAL_MS = parseInt(process.env.AGENT_PROACTIVE_INTERVAL_MS || "86400000", 10);  // 默认 24h
-  void runProactiveResearch();
+  // V445: 移除 void runProactiveResearch()（原启动即调 LLM 消费额度）
   setInterval(() => { void runProactiveResearch(); }, INTERVAL_MS).unref?.();
-  console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检)`);
+  console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检；首次运行需用户确认)`);
 }

@@ -2662,6 +2662,30 @@ export function buildHttpServer() {
   // ───── 评测结果可视化（V273）─────
   // GET /api/eval/results — 列出根目录 eval_*.json 文件（排除旧格式 eval_results_*.json）
   // GET /api/eval/results?file=xxx.json — 返回该文件完整内容
+  // V445: 评测/巡检用户确认 — 启动不再自动跑（防静默消费 LLM），前端需用户确认后手动触发
+  app.post("/api/eval/confirm", async (request) => {
+    const body = (request.body ?? {}) as { action?: string };
+    const action = body.action === "proactive" ? "proactive" : "eval";
+    if (action === "eval") {
+      // 触发评测（EVAL_LIMIT=4，异步执行，结果见评测工作台运行区）
+      const { runEvalWithEvents } = await import("../services/eval-runner.js");
+      void runEvalWithEvents({ script: "eval-32-metrics", env: { EVAL_LIMIT: "4" } }, () => true);
+      return { ok: true, action, result: { started: true } };
+    }
+    const { runProactiveResearch } = await import("../services/agent-proactive-research.js");
+    const result = await runProactiveResearch();
+    return { ok: true, action, result: { created: result.created.length, skipped: result.skipped } };
+  });
+  // V445: 当前 LLM 配置与模型（前端提示"用什么模型"）
+  app.get("/api/eval/model-info", async () => {
+    const { getLlmEndpoint } = await import("../ai/llm-common.js");
+    try {
+      const ep = await getLlmEndpoint();
+      return { ok: true, model: ep.model, baseUrl: ep.url, provider: ep.url.includes("deepseek") ? "DeepSeek" : ep.url.includes("dashscope") || ep.url.includes("aliyun") ? "阿里云百炼" : "其他" };
+    } catch {
+      return { ok: false, model: "未知" };
+    }
+  });
   app.get("/api/eval/results", async (request) => {
     const params = request.query as { file?: string };
     const fs = await import("node:fs");
