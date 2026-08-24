@@ -2076,6 +2076,8 @@ function ProjectRail(props: {
   const { t } = useI18n();
   const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
+  // V446: 新建项目失败提示（ProjectRail 内本地 state，避免 setError 作用域问题）
+  const [createError, setCreateError] = useState("");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [renameProjectTarget, setRenameProjectTarget] = useState<SourceRecord | null>(null);
   const [renameProjectName, setRenameProjectName] = useState("");
@@ -2119,7 +2121,7 @@ function ProjectRail(props: {
       }
     } catch (err) {
       // V446: 捕获创建失败（原只有 finally，异常向上传播可能触发错误边界/闪退）
-      setError(getErrorMessage(err));
+      setCreateError(getErrorMessage(err));
       setCreateProjectDialogOpen(false);
     } finally {
       setIsCreatingProject(false);
@@ -2335,6 +2337,7 @@ function ProjectRail(props: {
               placeholder={t("项目名称", "Project name")}
               disabled={isCreatingProject}
             />
+            {createError ? <div className="mt-2 text-xs text-red-400">{createError}</div> : null}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={closeCreateProjectDialog} disabled={isCreatingProject}>
                 {t("取消", "Cancel")}
