@@ -95,8 +95,30 @@ export async function fetchLlm(input: {
   } catch { return null; }
 }
 
+/** V443: 缓存 DeepSeek /models 真实模型列表（5 分钟 TTL），纠正时选真实存在的模型而非硬编码 */
+let dsModelsCache: { at: number; list: string[] } | null = null;
+async function fetchDeepSeekModels(baseUrl: string, key: string): Promise<string[]> {
+  if (dsModelsCache && Date.now() - dsModelsCache.at < 300_000) return dsModelsCache.list;
+  try {
+    const modelsUrl = baseUrl.replace(/\/chat\/completions$/, "") + "/models";
+    const res = await fetch(modelsUrl, {
+      headers: { Authorization: "Bearer " + key },
+      signal: (AbortSignal as any).timeout(10_000),
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => null);
+      const list = (j?.data || []).map((m: any) => m.id).filter((id: string) => typeof id === "string");
+      if (list.length > 0) {
+        dsModelsCache = { at: Date.now(), list };
+        return list;
+      }
+    }
+  } catch { /* 网络失败用兜底 */ }
+  return [];
+}
+
 /** 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底） */
-export function getLlmEndpoint(overrides?: { model?: string }): { url: string; key: string; model: string } {
+export async function getLlmEndpoint(overrides?: { model?: string }): Promise<{ url: string; key: string; model: string }> {
   const ds = process.env.DEEPSEEK_API_KEY || '';
   const key = ds || (process.env.LLM_API_KEY || '');
   const url = ds
@@ -105,11 +127,15 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
   let model = resolveModelAlias(overrides?.model
     ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   // V443: 端点与模型不匹配自动纠正 — DeepSeek 端点配了非 deepseek 模型（如 qwen3.6-flash）→ 400
-  // 用户保存 key/baseUrl 时 model 未联动，这里兜底防止 400
+  // 从 /models 动态识别真实可用模型（优先 deepseek-v4-flash，无则第一个 deepseek-*）
   const isDeepSeekUrl = url.includes('deepseek.com');
   if (isDeepSeekUrl && !/^deepseek-/.test(model)) {
-    console.warn(`[llm] 模型 ${model} 与 DeepSeek 端点不匹配，自动纠正为 deepseek-v4-flash`);
-    model = 'deepseek-v4-flash';
+    const available = await fetchDeepSeekModels(url, key);
+    const corrected = available.find((m) => m === "deepseek-v4-flash")
+      ?? available.find((m) => m.startsWith("deepseek-"))
+      ?? "deepseek-v4-flash";
+    console.warn(`[llm] 模型 ${model} 与 DeepSeek 端点不匹配，自动纠正为 ${corrected}`);
+    model = corrected;
   }
   return { url, key, model };
 }
@@ -262,7 +288,7 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
 
 /** 实际 LLM 调用（信号量内部执行体） */
 async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null> {
-  const ep = getLlmEndpoint(input.model ? { model: input.model } : undefined);
+  const ep = await getLlmEndpoint(input.model ? { model: input.model } : undefined);
   const url = input.url ?? ep.url;
   const key = input.key ?? ep.key;
   const model = input.model ?? ep.model;
