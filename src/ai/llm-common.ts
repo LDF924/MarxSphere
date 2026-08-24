@@ -125,7 +125,7 @@ export async function getLlmEndpoint(overrides?: { model?: string }): Promise<{ 
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
     : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
   let model = resolveModelAlias(overrides?.model
-    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
+    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'deepseek-v4-flash')));
   // V443: 只纠正"明确是阿里云/302AI 模型名"配 DeepSeek 端点的情况（qwen-* → 400）
   // 用户已选的 deepseek-* 模型（deepseek-chat/v4-pro 等）完全尊重，不纠正
   const isDeepSeekUrl = url.includes('deepseek.com');
