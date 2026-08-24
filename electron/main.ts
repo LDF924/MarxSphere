@@ -1319,13 +1319,18 @@ ipcMain.handle("db:setup", async (_e, mode?: "auto" | "docker" | "local") => {
   const wantDocker = mode !== "local";
   const wantLocalFallback = mode !== "docker";
   // 0) 先探测 5540 是否已有 PG（本地模式已跑则直接成功）
+  // V456: 用 node probeTcp 可靠探测（原 PowerShell Test-NetConnection/TcpClient 在 VM/防火墙
+  // 下可能误报"已就绪"）— 且必须验证是 PG（pg_isready），不是任意占端口的服务
   try {
-    execFileSync("powershell.exe", ["-NoProfile", "-Command", "(Test-NetConnection -ComputerName 127.0.0.1 -Port 5540 -WarningAction SilentlyContinue).TcpTestSucceeded"], { timeout: 8000, windowsHide: true, stdio: "pipe" });
-    // 若 5540 已通，检查是否我们的库
-    try {
-      const pgCheck = execFileSync("powershell.exe", ["-NoProfile", "-Command", `& { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 5540); $c.Close(); 'ok' }`], { timeout: 5000, windowsHide: true, stdio: "pipe" });
-      if (pgCheck.toString().includes("ok")) return { ok: true, port: 5540, note: "数据库端口 5540 已就绪" };
-    } catch { /* 继续正常流程 */ }
+    if (await probeTcp(5540)) {
+      const pgBin = path.join(sagRoot(), "pg-local", "pgsql", "bin", "pg_isready.exe");
+      if (fs.existsSync(pgBin)) {
+        try {
+          execFileSync(pgBin, ["-h", "127.0.0.1", "-p", "5540"], { timeout: 5000, windowsHide: true, stdio: "pipe" });
+          return { ok: true, port: 5540, note: "数据库端口 5540 已就绪" };
+        } catch { /* 端口有服务但不是 PG → 继续初始化流程 */ }
+      }
+    }
   } catch { /* 端口未开，继续 */ }
   // 1) 找 docker 命令
   let dockerCmd = ["docker", "docker.exe"].find((c) => {
