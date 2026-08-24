@@ -541,6 +541,7 @@ function showErrorPage(title: string, message: string) {
       <div id="fix-status"></div>
       <div class="action">
         <button class="kill secondary" id="btn-retry">重新探测</button>
+        <button class="kill secondary" id="btn-onboarding">← 返回配置引导页</button>
         <button class="kill" id="btn-restart">🔄 手动重启后端</button>
         <button class="kill secondary" id="btn-fixdb" style="display:none">🔧 一键修复数据库</button>
         <button class="kill" id="btn-kill" style="display:none">⚡ 一键结束残留进程并重启</button>
@@ -669,6 +670,16 @@ function showErrorPage(title: string, message: string) {
     }
     document.getElementById('btn-kill').addEventListener('click', killOwner);
     document.getElementById('btn-fixdb').addEventListener('click', fixDb);
+    // V452: 返回配置引导页 — 加载 onboarding.html，同时停掉后端避免双实例/端口冲突
+    document.getElementById('btn-onboarding').addEventListener('click', () => {
+      if (mainWindow) void mainWindow.loadFile(path.join(__dirname, "resources", "onboarding.html"));
+      if (backendProc && backendProc.exitCode === null) {
+        backendStopping = true;
+        backendProc.kill();
+        backendProc = null;
+        backendStopping = false;
+      }
+    });
     document.getElementById('btn-retry').addEventListener('click', refresh);
     document.getElementById('btn-restart').addEventListener('click', restartBackend);
     refresh();
