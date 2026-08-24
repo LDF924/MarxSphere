@@ -102,8 +102,15 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
   const url = ds
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
     : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
-  const model = resolveModelAlias(overrides?.model
+  let model = resolveModelAlias(overrides?.model
     ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
+  // V443: 端点与模型不匹配自动纠正 — DeepSeek 端点配了非 deepseek 模型（如 qwen3.6-flash）→ 400
+  // 用户保存 key/baseUrl 时 model 未联动，这里兜底防止 400
+  const isDeepSeekUrl = url.includes('deepseek.com');
+  if (isDeepSeekUrl && !/^deepseek-/.test(model)) {
+    console.warn(`[llm] 模型 ${model} 与 DeepSeek 端点不匹配，自动纠正为 deepseek-v4-flash`);
+    model = 'deepseek-v4-flash';
+  }
   return { url, key, model };
 }
 
