@@ -823,6 +823,8 @@ ipcMain.handle("port:fix-db", async () => {
     if (ext.code !== 0) return { ok: false, reason: "ext_failed", error: ext.out.slice(0, 120) };
     // 3) V423: 跑数据库迁移（建表）— 库/扩展就绪后迁移才有意义；
     //    用 ELECTRON_RUN_AS_NODE 跑后端 dist 的 migrate.js（独立入口，幂等）
+    //    V451: cwd 必须设为 root（SAG_ROOT）— migrate.js 用 process.cwd() 找 migrations 目录，
+    //    原实现没设 cwd → 迁移"成功"但 0 个文件执行（表永远不建）
     const root = resourceRoot();
     const migrateJs = path.join(root, "dist", "src", "db", "migrate.js");
     if (fs.existsSync(migrateJs)) {
@@ -831,6 +833,7 @@ ipcMain.handle("port:fix-db", async () => {
       try {
         execFileSync(process.execPath, [migrateJs], {
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", SAG_ROOT: root },
+          cwd: root,  // V451: 关键 — migrate.js 从 cwd 读 migrations/
           timeout: 120_000, windowsHide: true, stdio: "ignore",
         });
         console.log("[desktop] 修复数据库：迁移完成");
