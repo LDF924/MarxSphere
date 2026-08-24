@@ -126,15 +126,15 @@ export async function getLlmEndpoint(overrides?: { model?: string }): Promise<{ 
     : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
   let model = resolveModelAlias(overrides?.model
     ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
-  // V443: 端点与模型不匹配自动纠正 — DeepSeek 端点配了非 deepseek 模型（如 qwen3.6-flash）→ 400
-  // 从 /models 动态识别真实可用模型（优先 deepseek-v4-flash，无则第一个 deepseek-*）
+  // V443: 只纠正"明确是阿里云/302AI 模型名"配 DeepSeek 端点的情况（qwen-* → 400）
+  // 用户已选的 deepseek-* 模型（deepseek-chat/v4-pro 等）完全尊重，不纠正
   const isDeepSeekUrl = url.includes('deepseek.com');
-  if (isDeepSeekUrl && !/^deepseek-/.test(model)) {
+  if (isDeepSeekUrl && /^qwen-/.test(model)) {
     const available = await fetchDeepSeekModels(url, key);
     const corrected = available.find((m) => m === "deepseek-v4-flash")
       ?? available.find((m) => m.startsWith("deepseek-"))
       ?? "deepseek-v4-flash";
-    console.warn(`[llm] 模型 ${model} 与 DeepSeek 端点不匹配，自动纠正为 ${corrected}`);
+    console.warn(`[llm] 模型 ${model}（阿里云名）与 DeepSeek 端点不匹配，自动纠正为 ${corrected}`);
     model = corrected;
   }
   return { url, key, model };
