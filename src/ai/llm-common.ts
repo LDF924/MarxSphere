@@ -257,6 +257,13 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
   const release = await acquireLlmSlot();  // G11: 获取并发槽位（超出上限排队）
   const startedAt = Date.now();
   try {
+    // V448: 统一模型纠正 — 不管 model 从哪来（session 固化/角色配置/调用方传入），
+    // 只要 DeepSeek 端点 + qwen-* 模型就纠正（旧 session 固化的 qwen3.6-flash 打 DeepSeek → 400）
+    const ep = await getLlmEndpoint(input.model ? { model: input.model } : undefined);
+    if (input.model && ep.model !== input.model) {
+      console.warn(`[llm] 模型 ${input.model} 纠正为 ${ep.model}（端点不匹配）`);
+      input = { ...input, model: ep.model };
+    }
     // G4: fallback 模型链 — 主模型重试耗尽后, 依次换备用模型（相同槽位内串行）
     const fallbacks = (input.model ? getModelFallbacks(input.model) : []).filter((m) => m !== input.model);
     if (fallbacks.length > 0) {
