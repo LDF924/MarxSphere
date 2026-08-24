@@ -52,6 +52,21 @@ const roleModelMap: Record<LlmRole, string> = {
 export function setRoleModel(role: LlmRole, modelId: string): void {
   if (LLM_MODEL_REGISTRY.some((m) => m.id === modelId)) {
     roleModelMap[role] = modelId;
+    // V450: 角色模型变更联动 LLM_MODEL（全局兜底）— 改 reason 主角色时同步，
+    // 防止"角色配置改了但 LLM_MODEL 还是旧值"导致端点不匹配
+    if (role === "reason") {
+      process.env.LLM_MODEL = modelId;
+      try {
+        const fs = require("node:fs") as typeof import("node:fs");
+        const envFile = `${process.cwd()}/.env`;
+        if (fs.existsSync(envFile)) {
+          let env = fs.readFileSync(envFile, "utf8");
+          const lines = env.split("\n").filter((l) => !l.startsWith("LLM_MODEL="));
+          lines.push(`LLM_MODEL=${modelId}`);
+          fs.writeFileSync(envFile, lines.join("\n") + "\n", "utf8");
+        }
+      } catch { /* 写 .env 失败不影响运行 */ }
+    }
   }
 }
 
