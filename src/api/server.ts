@@ -4419,6 +4419,29 @@ except Exception as e:
     return { ok: true, roleMap: getRoleModelMap() };
   });
 
+  // V449: 服务商选择联动 — 同步 LLM_MODEL（.env 兜底模型名）到服务商默认模型
+  // 防止"服务商选 DeepSeek 但 LLM_MODEL 还是 qwen3.6-flash"导致 400
+  app.post("/api/llm/provider-sync", async (request) => {
+    const body = (request.body ?? {}) as { provider?: string };
+    const provider = body.provider === "deepseek" ? "deepseek" : body.provider === "302ai" ? "302ai" : null;
+    if (!provider) return { ok: false, error: "provider 必填 (deepseek/302ai)" };
+    const defaultModel = provider === "deepseek" ? "deepseek-v4-flash" : "qwen3.6-flash";
+    // 写 .env（追加/替换 LLM_MODEL）
+    try {
+      const fs = await import("node:fs");
+      const envFile = path.join(process.cwd(), ".env");
+      let env = "";
+      if (fs.existsSync(envFile)) env = fs.readFileSync(envFile, "utf8");
+      const lines = env.split("\n").filter((l) => !l.startsWith("LLM_MODEL="));
+      lines.push(`LLM_MODEL=${defaultModel}`);
+      fs.writeFileSync(envFile, lines.join("\n") + "\n", "utf8");
+      process.env.LLM_MODEL = defaultModel;  // 当前进程即时生效
+      return { ok: true, model: defaultModel };
+    } catch (e: any) {
+      return { ok: false, error: "写 .env 失败: " + String(e?.message || e).slice(0, 80) };
+    }
+  });
+
   // ───── 自主任务 API（2026-08-07 P2：目标→拆解→执行→干预）─────
   // POST /api/agent/tasks — 创建任务（body: {goal, projectId?}），返回任务 + 计划
   // POST /api/agent/tasks/:id/run — 逐项执行（检索/推理/写作调度）

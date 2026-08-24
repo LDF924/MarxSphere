@@ -4016,7 +4016,7 @@ function SettingsPanel(props: {
             placeholder={t("留空不修改", "Leave blank to keep unchanged")}
           />
         </Field>
-        <Field label={t("LLM 服务商（自动填地址）", "LLM provider (auto-fills base URL)")}>
+        <Field label={t("LLM 服务商（自动填地址+模型）", "LLM provider (auto-fills base URL & model)")}>
           <select
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             value={providerDetect(llmBaseUrl)}
@@ -4025,6 +4025,14 @@ function SettingsPanel(props: {
               if (v === "302ai") setLlmBaseUrl("https://api.302ai.cn/v1");
               else if (v === "deepseek") setLlmBaseUrl("https://api.deepseek.com/v1");
               else if (v === "openai") setLlmBaseUrl("https://api.openai.com/v1");
+              // V449: 服务商联动 — 同步 LLM_MODEL（后端写 .env + 当前进程生效）
+              if (v === "deepseek" || v === "302ai") {
+                void fetch("/api/llm/provider-sync", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ provider: v }),
+                }).catch(() => {});
+              }
             }}
           >
             <option value="302ai">阿里云百炼 302AI</option>

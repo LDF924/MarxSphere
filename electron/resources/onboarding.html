@@ -323,6 +323,9 @@
       const r = await window.sagDesktop.saveEnv({
         llmApiKey: key || undefined,
         llmBaseUrl: $("llmBase").value.trim() || undefined,
+        // V449: 服务商联动 — 保存时按服务商写默认模型（防 DeepSeek 端点配 qwen 模型 400）
+        llmModel: ($("llmProvider")?.value === "deepseek") ? "deepseek-v4-flash"
+          : ($("llmProvider")?.value === "302ai") ? "qwen3.6-flash" : undefined,
         embeddingApiKey: $("embedKey").value.trim() || undefined,
         cogneePython: $("cogneePy").value.trim() || undefined,
         empiricalPython: $("empiricalPy").value.trim() || undefined,
