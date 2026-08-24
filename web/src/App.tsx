@@ -1743,7 +1743,30 @@ function AppShell() {
               onClick={() => setProjectPanelOpen(false)}
               aria-hidden
             />
-            <div className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] h-[400px] min-h-[260px] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur resize">
+            <div id="project-panel" className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] h-[400px] min-h-[260px] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur resize">
+              {/* V444: 右下角拖拽角标（JS 拖动，CSS resize 柄太小易忽略） */}
+              <div
+                className="absolute bottom-0 right-0 z-50 h-4 w-4 cursor-se-resize opacity-60 hover:opacity-100"
+                style={{ background: "linear-gradient(135deg, transparent 50%, rgba(148,163,184,.6) 50%)" }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const panel = document.getElementById("project-panel");
+                  if (!panel) return;
+                  const startX = e.clientX, startY = e.clientY;
+                  const startW = panel.offsetWidth, startH = panel.offsetHeight;
+                  const onMove = (ev: MouseEvent) => {
+                    panel.style.width = Math.max(240, Math.min(480, startW + (ev.clientX - startX))) + "px";
+                    panel.style.height = Math.max(260, Math.min(window.innerHeight * 0.85, startH + (ev.clientY - startY))) + "px";
+                  };
+                  const onUp = () => {
+                    window.removeEventListener("mousemove", onMove);
+                    window.removeEventListener("mouseup", onUp);
+                  };
+                  window.addEventListener("mousemove", onMove);
+                  window.addEventListener("mouseup", onUp);
+                }}
+              />
               <ProjectRail
                 projects={projects}
                 selectedProjectId={selectedProjectId}
