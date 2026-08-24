@@ -620,6 +620,14 @@ function AppShell() {
 
   useEffect(() => {
     void loadProjects();
+    // V447: 后端可能未就绪（迁移中），重试直到加载成功（避免 projects 永久空列表）
+    let retries = 0;
+    const timer = setInterval(() => {
+      retries++;
+      if (retries > 10) { clearInterval(timer); return; }
+      void loadProjects();
+    }, 5000);
+    return () => clearInterval(timer);
   }, [showArchivedProjects]);
 
   useEffect(() => {
@@ -1688,7 +1696,7 @@ function AppShell() {
           {/* V399: 顶栏「项目」按钮（原左侧常驻项目列移入弹出面板） */}
           <button
             type="button"
-            onClick={() => setProjectPanelOpen((v) => !v)}
+            onClick={() => { setProjectPanelOpen((v) => !v); if (!projectPanelOpen) void loadProjects(); }}
             title={t("项目（文献库）", "Projects")}
             className={cn(
               "flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors",
