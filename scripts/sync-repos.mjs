@@ -4,17 +4,17 @@
  * scripts/sync-repos.mjs — MarxSphere 双仓库文件级同步（非 git 合并）
  *
  * 同步两个平行仓库（方向感知，每目录固定单向，杜绝双向覆盖）：
- *   OPENSOURCE = 开源仓库（推 GitHub 的线）
- *   MAIN       = 主工作仓库 C:/Users/HUAWEI/SAG-main（桌面端开发线 + 5173 dev 服务器）
+ *   OPENSOURCE = 开发主线（推 GitHub 的线，V438+ 持续开发提交）
+ *   MAIN       = 工作副本 C:/Users/HUAWEI/SAG-main（本地运行/预览，无远端，不提交）
  *
- * 方向定义（按仓库真相调整，勿随意改动）:
- *   开源 → 主仓库:  src/ web/src/ test/ migrations/ electron/ docs/ 根配置（开源仓库领先，含登录/主题/UI/文档）
- *   主仓库 → 开源:  无（主仓库为旧版，独有内容仅启动脚本等本地文件，不入开源）
+ * 方向定义（2026-08-27 修正: open 是主线）:
+ *   开源 → 主仓库:  src/ web/src/ test/ migrations/ electron/ docs/ scripts/ 根配置（主线为准，副本跟随）
+ *   主仓库 → 开源:  禁止（副本不能覆盖主线 — 历史教训: 8/26 曾误判 main 领先, 实际 open 一直领先）
  *
  * 用法:
- *   node scripts/sync-repos.mjs             # 双向同步（两方向按上述规则）
- *   node scripts/sync-repos.mjs --to-main   # 只同步 开源 → 主仓库
- *   node scripts/sync-repos.mjs --to-open   # 只同步 主仓库 → 开源（通常为空）
+ *   node scripts/sync-repos.mjs             # 双向同步（只有 open→main 有效）
+ *   node scripts/sync-repos.mjs --to-main   # 只同步 开源 → 主仓库（主线刷新副本）
+ *   node scripts/sync-repos.mjs --to-open   # 报错（禁止, 防止覆盖主线）
  *   node scripts/sync-repos.mjs --dry-run   # 只报告差异不复制（默认显示将要复制的文件）
  *
  * 排除规则（任何方向都不同步）:
@@ -130,6 +130,12 @@ const toMain = args.includes("--to-main");
 const dryRun = args.includes("--dry-run");
 const both = !toOpen && !toMain;
 
+// 2026-08-27: 主线保护 — 禁止 副本→主线（历史教训: 曾误判方向, 差点覆盖主线）
+if (toOpen) {
+  console.error("❌ 已禁止 --to-open: SAG-main 是工作副本, 不能覆盖主线 SAG-open-source（防止覆盖开发成果）");
+  process.exit(1);
+}
+
 function sync(srcRoot, dstRoot, label, dirAllowlist, rootAllowlist) {
   console.log(`\n${"═".repeat(60)}`);
   console.log(`${label}`);
@@ -159,7 +165,6 @@ function sync(srcRoot, dstRoot, label, dirAllowlist, rootAllowlist) {
   return { copied, skipped: pending.length - copied };
 }
 
-if (both || toMain) sync(OPENSOURCE, MAIN, "同步: 开源仓库 → 主仓库（代码/文档方向）", DIR_TO_MAIN, ROOT_TO_MAIN);
-if (both || toOpen) sync(MAIN, OPENSOURCE, "同步: 主仓库 → 开源仓库（通常为空）", null, null);
+if (both || toMain) sync(OPENSOURCE, MAIN, "同步: 开源仓库(主线) → 主仓库(工作副本)", DIR_TO_MAIN, ROOT_TO_MAIN);
 
 console.log(`\n完成。${dryRun ? "预览模式，未做任何修改" : "同步结束 — 建议跑 typecheck + 测试验证"}`);
