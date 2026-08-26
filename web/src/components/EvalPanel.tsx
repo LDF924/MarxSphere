@@ -686,6 +686,8 @@ export const EvalPanel: FC = () => {
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-4">
+        {/* V445: LLM 模型提示 + 自动任务确认（防静默消费额度） */}
+        <ModelUsageBanner />
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
@@ -1395,3 +1397,86 @@ export const EvalPanel: FC = () => {
     </section>
   );
 };
+
+// V445: LLM 模型提示 + 自动评测/巡检确认（防静默消费额度）
+function ModelUsageBanner() {
+  const [info, setInfo] = useState<{ model: string; provider: string } | null>(null);
+  const [evalPending, setEvalPending] = useState(false);
+  const [proactivePending, setProactivePending] = useState(false);
+  const [log, setLog] = useState<Array<{ at: string; action: string; result: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/eval/model-info").then((r) => r.json()).then((d) => {
+      if (d?.ok) setInfo({ model: d.model, provider: d.provider });
+    }).catch(() => {});
+    // 读本地运行记录（localStorage）
+    try {
+      const saved = JSON.parse(localStorage.getItem("sag:auto-task-log") || "[]");
+      if (Array.isArray(saved)) setLog(saved.slice(0, 10));
+    } catch { /* 忽略 */ }
+  }, []);
+
+  const confirmRun = async (action: "eval" | "proactive") => {
+    if (action === "eval") setEvalPending(true); else setProactivePending(true);
+    try {
+      const r = await fetch("/api/eval/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const d = await r.json();
+      const entry = {
+        at: new Date().toLocaleString(),
+        action: action === "eval" ? "评测回归" : "主动巡检",
+        result: d?.ok ? (action === "eval" ? `完成 ${d.result?.passed}/${d.result?.total} 题通过` : `创建 ${d.result?.created} 个任务`) : "失败",
+      };
+      const next = [entry, ...log].slice(0, 10);
+      setLog(next);
+      localStorage.setItem("sag:auto-task-log", JSON.stringify(next));
+    } catch (e: any) {
+      setLog([{ at: new Date().toLocaleString(), action: action === "eval" ? "评测回归" : "主动巡检", result: "失败: " + String(e?.message || e) }, ...log].slice(0, 10));
+    } finally {
+      if (action === "eval") setEvalPending(false); else setProactivePending(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-200/30 bg-amber-50/5 p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-medium text-amber-300">⚡ 自动任务（会消耗 LLM 额度）</span>
+        <span className="text-muted-foreground">
+          当前模型：<span className="font-mono text-foreground">{info?.model || "…"}</span>
+          {info?.provider ? `（${info.provider}）` : ""}
+        </span>
+        <span className="text-muted-foreground">评测回归 / 主动巡检启动后不再自动运行，需手动确认：</span>
+        <button
+          type="button"
+          onClick={() => void confirmRun("eval")}
+          disabled={evalPending}
+          className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+        >
+          {evalPending ? "运行中…" : "▶ 运行评测回归（4 题）"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void confirmRun("proactive")}
+          disabled={proactivePending}
+          className="rounded-md border border-border px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+        >
+          {proactivePending ? "巡检中…" : "▶ 运行主动巡检"}
+        </button>
+      </div>
+      {log.length > 0 ? (
+        <div className="mt-2 space-y-0.5 border-t border-border/50 pt-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">运行记录</div>
+          {log.map((l, i) => (
+            <div key={i} className="flex justify-between gap-3 text-[11px] text-muted-foreground">
+              <span>{l.at} · {l.action}</span>
+              <span className={l.result.startsWith("失败") ? "text-red-400" : "text-emerald-400"}>{l.result}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}

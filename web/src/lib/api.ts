@@ -67,15 +67,20 @@ export interface MinionJob {
   completedAt?: string;
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
+/** 与 request() 一致的鉴权头构造（流式接口手写 fetch 时复用，避免缺失 Authorization 被 401 拦截） */
+function authHeaders(init?: { headers?: HeadersInit }): Headers {
   const headers = new Headers(init?.headers);
-  if (init?.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  // V392修复: 统一附带 JWT token（认证启用后所有 api.* 调用需带 Authorization）
   if (!headers.has("Authorization")) {
     const token = localStorage.getItem("sag_token");
     if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
+}
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = authHeaders(init);
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
   const response = await fetch(url, {
     ...init,
@@ -278,9 +283,7 @@ export const api = {
   }, onEvent: (event: SearchStreamEvent) => void) {
     const response = await fetch("/api/search/stream", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
       body: JSON.stringify({
         query: input.query,
         sourceIds: input.sourceIds,
@@ -313,7 +316,7 @@ export const api = {
   }, onEvent: (event: EvalStreamEvent) => void, signal?: AbortSignal) {
     const response = await fetch("/api/eval/run", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
       body: JSON.stringify(input),
       ...(signal ? { signal } : {})
     });
@@ -474,9 +477,7 @@ export const api = {
     const response = await fetch(`/api/mcp/sessions/${sessionId}/messages/stream`, {
       method: "POST",
       signal: options.signal,
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
       body: JSON.stringify({ content })
     });
     if (!response.ok || !response.body) {
@@ -524,9 +525,7 @@ export const api = {
     const response = await fetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
       method: "POST",
       signal: options.signal,
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
       body: JSON.stringify(input)
     });
     if (!response.ok || !response.body) {
