@@ -34,7 +34,8 @@ function parseResults(file: string): Map<string, PerqEntry> {
   }
   const map = new Map<string, PerqEntry>();
   for (const item of list) {
-    if (!item || !item.question_id) continue;
+    // V399-2 P1: 跳过指纹元数据条目（question_id='__fingerprint__', 不参与配对统计）
+    if (!item || !item.question_id || item.question_id === '__fingerprint__') continue;
     map.set(item.question_id, {
       question_id: item.question_id,
       question_type: item.question_type,

@@ -7,6 +7,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
 
+// V399-2 P1(3.5): 评测 Run 参数/环境快照 — 完成回调把参数 + 环境 + dataFingerprint 写回 agent_eval_runs
+// agent_eval_runs 主键为自增 id；RAGAS 评测经 /api/eval/run 启动, 与 agent 评测共用该表
+// 每次完成插入新行（唯一键为 id, 无法按业务键去重; 重复评测各留一行, 时间戳可区分新旧）
+
 export type EvalScript = "eval-32-metrics" | "run-eval-dual" | "ablation-eval";
 
 export interface EvalRunOptions {
@@ -64,6 +68,72 @@ function spawnEval(opts: EvalRunOptions): { child: ChildProcess; scriptPath: str
     windowsHide: true,
   });
   return { child, scriptPath };
+}
+
+// ─────────────────── V399-2 P1(3.5): Run 参数/环境快照 ───────────────────
+// 读取输出文件里的 fingerprint（eval-32-metrics.ts 落盘: 数组尾部 __fingerprint__ 条目 / perq 顶层）
+function readDataFingerprint(rootDir: string, env: Record<string, string>): string | null {
+  try {
+    const outputName = env.EVAL_OUTPUT || "eval_32metrics.json";
+    const candidates = [
+      path.join(rootDir, "evaluation", outputName),
+      path.join(rootDir, outputName),
+    ];
+    for (const p of candidates) {
+      if (!fs.existsSync(p)) continue;
+      const data = JSON.parse(fs.readFileSync(p, "utf8"));
+      const fp = Array.isArray(data)
+        ? data.find((r: any) => r?.question_id === "__fingerprint__")?.fingerprint
+        : data?.fingerprint;
+      if (fp && typeof fp.value === "string") return fp.value;
+    }
+  } catch { /* 读不到指纹不阻塞快照 */ }
+  return null;
+}
+
+/** 落库 eval run 快照（参数 + 环境 + 数据指纹）。尽力而为, 失败只打日志, 不阻塞评测流程 */
+async function persistEvalRunSnapshot(opts: EvalRunOptions, runId: string): Promise<void> {
+  const rootDir = process.env.SAG_ROOT || process.cwd();
+  const parameters: Record<string, unknown> = {};
+  const environment: Record<string, unknown> = {};
+  try {
+    // 参数快照: 仅记录本评测的覆盖项（EVAL_* 白名单前缀, 不落全量 process.env 避免泄露密钥）
+    for (const [k, v] of Object.entries(opts.env || {})) {
+      if (k.startsWith("EVAL_")) parameters[k] = v;
+    }
+    if (Object.keys(parameters).length === 0) {
+      parameters._note = "default (no EVAL_* overrides)";
+    }
+    environment.node = process.version;
+    environment.platform = process.platform;
+    environment.arch = process.arch;
+    environment.script = opts.script;
+    environment.tsxVersion = (() => {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "node_modules", "tsx", "package.json"), "utf8"));
+        return pkg.version || "unknown";
+      } catch { return "unknown"; }
+    })();
+    environment.dataFingerprint = readDataFingerprint(rootDir, opts.env || {});
+    environment.recordedAt = new Date().toISOString();
+
+    const { pool } = await import("../db/pool.js");
+    // V399-2 P1 幂等: eval_run_id 关联键, 重复评测(同 runId)更新同一条记录, 不插新行 (089 迁移)
+    // agent_eval_runs 的 suite_id/task_id 为 agent 评测语义, RAGAS 评测不适用 → 置 null
+    await pool.query(
+      `insert into agent_eval_runs (suite_id, task_id, passed, score, metrics, fault_injected, error, parameters_json, environment_json, eval_run_id)
+       values (null, null, $1, 0, '{}'::jsonb, 'none', null, $2, $3, $4)
+       on conflict (eval_run_id) do update
+         set parameters_json = excluded.parameters_json,
+             environment_json = excluded.environment_json,
+             passed = excluded.passed,
+             metrics = excluded.metrics,
+             created_at = now()`,
+      [false, JSON.stringify(parameters), JSON.stringify(environment), runId]
+    );
+  } catch (e: any) {
+    console.warn("[eval-runner] 快照落库失败(不影响评测结果): " + String(e?.message || e).substring(0, 120));
+  }
 }
 
 /**
@@ -126,6 +196,10 @@ export function runEvalWithEvents(
     child.on("close", (code) => {
       unregisterEvalKill(runId);
       if (!aborted) dispatch({ type: "phase", phase: "exit", code });
+      // V399-2 P1(3.5): 评测完成(exit 0) → 参数/环境/数据指纹快照落库, 按 runId 幂等 upsert（异步不阻塞）
+      if (!aborted && code === 0) {
+        void persistEvalRunSnapshot(opts, runId);
+      }
       // 真实事件 → 告警（评测失败/成功记录，异步不阻塞）
       try {
         const alertP = import("./alert-service.js").then(({ recordAlert }) => {

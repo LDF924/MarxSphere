@@ -4,7 +4,7 @@
 // 直连 SAG /api/p2o/*（持久化任务, 重启不丢; 管线后台异步, 2s 轮询进度）
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { FileUp, Link2, Trash2, Loader2, RefreshCw, FileText, Database, BookOpen, Settings, RotateCcw, CheckCircle2, XCircle, Clock, FolderOpen, Play, StopCircle, ListTree } from "lucide-react";
-import { cn, bufferToBase64 } from "../lib/utils";
+import { cn } from "../lib/utils";
 
 type TaskStatus = "queued" | "running" | "completed" | "failed";
 type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
@@ -173,7 +173,7 @@ export const P2OView: FC = () => {
     setBusy(true); setMessage(undefined);
     try {
       const buffer = await file.arrayBuffer();
-      const base64 = await bufferToBase64(buffer);
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
       const r = await fetch("/api/p2o/tasks", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileBase64: base64, fileName: file.name }),

@@ -23,7 +23,8 @@ function main() {
   if (existsSync(evalFile)) {
     try { evalResults = JSON.parse(readFileSync(evalFile, 'utf8')); } catch {}
   }
-  const evalMap = new Map((Array.isArray(evalResults) ? evalResults : []).map((r: any) => [r.question_id, r]));
+  // V399-2 P1: 跳过指纹元数据条目（question_id='__fingerprint__'）
+  const evalMap = new Map((Array.isArray(evalResults) ? evalResults : []).filter((r: any) => r.question_id !== '__fingerprint__').map((r: any) => [r.question_id, r]));
 
   (async () => {
     await client.connect();

@@ -69,20 +69,15 @@ export class McpAgentService {
     toolName: string;
     args: Record<string, unknown>;
     sessionId: string;
-    userId?: string;
     createdAt: number;
     resolve: (approved: boolean) => void;
     timeout: NodeJS.Timeout;
   }>();
 
-  /** V399: 审批决定（对话内 review 工具 → 前端弹窗 → 批准后强制执行）
-   *  V4xx: 审批 ID 绑定 sessionId+userId — 非本人会话的审批请求一律拒绝（防跨会话/跨用户审批） */
-  async approveToolCall(approvalId: string, approved: boolean, userId?: string): Promise<boolean> {
+  /** V399: 审批决定（对话内 review 工具 → 前端弹窗 → 批准后强制执行） */
+  async approveToolCall(approvalId: string, approved: boolean): Promise<boolean> {
     const entry = this.pendingApprovals.get(approvalId);
     if (!entry) return false;
-    // 审批绑定校验: 发起者必须是该审批所属会话的用户（userId 缺失视为未登录 → 拒绝）
-    if (entry.userId && userId !== entry.userId) return false;
-    if (!entry.userId && !userId) return false;
     clearTimeout(entry.timeout);
     this.pendingApprovals.delete(approvalId);
     entry.resolve(approved);
@@ -93,14 +88,13 @@ export class McpAgentService {
   emitApproval?: (event: { type: "tool_approval"; approvalId: string; sessionId: string; toolName: string; arguments: Record<string, unknown> }) => void;
 
   /** V399: 等待审批决定（60s 超时 → 视为拒绝） */
-  private waitToolApproval(sessionId: string, toolName: string, args: Record<string, unknown>, userId?: string): Promise<boolean> {
+  private waitToolApproval(sessionId: string, toolName: string, args: Record<string, unknown>): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       const approvalId = crypto.randomUUID();
       const entry = {
         toolName,
         args,
         sessionId,
-        userId,
         createdAt: Date.now(),
         resolve,
         timeout: setTimeout(() => {
@@ -202,8 +196,6 @@ export class McpAgentService {
     reasoningEffort?: "low" | "high" | "max";
     /** V399: 文档附件（PDF/Office/文本，attachment_read 解析） */
     docs?: McpMessageImage[];
-    /** V4xx: 当前用户 ID（工具审批绑定: 仅本人会话的审批可批准） */
-    userId?: string;
   }, tenantId = config.DEFAULT_TENANT_ID, emit?: StreamEmitter) {
     assertNotAborted(input.signal);
     emit?.({ type: "stage", label: "加载会话", detail: "正在读取当前 MCP 会话上下文" });
@@ -265,7 +257,6 @@ export class McpAgentService {
           deepMode: input.deepMode,
           reasoningEffort: input.reasoningEffort,
           docs: input.docs,
-          userId: input.userId,
           toolCalls,
           signal: input.signal,
           emit
@@ -374,8 +365,6 @@ export class McpAgentService {
     deepMode?: boolean;
     reasoningEffort?: "low" | "high" | "max";
     docs?: McpMessageImage[];
-    /** V4xx: 当前用户 ID（工具审批绑定: 仅本人会话的审批可批准） */
-    userId?: string;
     toolCalls: McpToolCallRecord[];
     signal?: AbortSignal;
     emit?: StreamEmitter;
@@ -475,13 +464,9 @@ export class McpAgentService {
 
     // ③ V399: Agent 工具循环 — LLM 规划选工具 → 执行 → 结果入上下文 → 循环
     const { callLlm } = await import("../ai/llm-common.js");
-    const { buildAgentTools, executeAgentTool, checkToolPolicy } = await import("./agent-tool-router.js");
+    const { buildAgentTools, executeAgentTool, checkToolPolicy, maskCredentials } = await import("./agent-tool-router.js");
     const { getRoleModel } = await import("./llm-model-registry.js");
-    // V441: 有远程 LLM 时忽略会话固化的 fallback 模型（local-rule-fallback 是旧会话在
-    // 保存 key 前创建的，固化后导致对话 400）— 用当前设置的模型
-    const model = input.settings.hasRemoteLlm
-      ? (input.session.model && input.session.model !== "local-rule-fallback" ? input.session.model : input.settings.llmModel || getRoleModel("reason"))
-      : (input.session.model || getRoleModel("reason") || input.settings.llmModel);
+    const model = input.session.model || getRoleModel("reason") || input.settings.llmModel;
     input.emit?.({ type: "model", model });
 
     // V405: 对话历史接入分层压缩 — 按字符预算动态截取（对齐 1M 窗口 800K 字符估算），
@@ -692,20 +677,14 @@ export class McpAgentService {
         const exec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "analyst" });
         if (exec.requiresApproval) {
           needsApproval = true;
-          // V399: 审批弹窗 — 前端批准后**重新走 executeAgentTool**（保持策略/沙箱/门控校验, 不直接 toolDef.run）
-          const approved = await this.waitToolApproval(input.session.id, toolDef.name, decision.args ?? {}, input.userId);
+          // V399: 审批弹窗 — 前端批准后强制执行（绕过策略层，直调工具 run）
+          const approved = await this.waitToolApproval(input.session.id, toolDef.name, decision.args ?? {});
           if (approved) {
-            const reExec = await executeAgentTool(toolDef, decision.args ?? {}, { role: "analyst" });
-            if (reExec.ok) {
-              resultText = reExec.result;
-              needsApproval = false;
-            } else if (reExec.requiresApproval) {
-              resultText = `工具 ${toolDef.name} 二次执行仍要求审批, 已跳过`;
-            } else {
-              failed = true;
-              needsApproval = false;
-              resultText = reExec.result;
-            }
+            const safeArgs = Object.fromEntries(
+              Object.entries(decision.args ?? {}).map(([k, v]) => [/key|token|secret|password|auth/i.test(k) ? maskCredentials(String(v)) : v].map((vv) => [k, vv])[0])
+            );
+            resultText = await toolDef.run(safeArgs);
+            needsApproval = false;
           } else {
             resultText = `工具 ${toolDef.name} 审批超时/拒绝，已跳过`;
           }

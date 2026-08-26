@@ -205,7 +205,7 @@ export const theoryReflectionService = {
 // ═══ 工具函数 ═══
 
 async function llmJson(prompt: string, modelOverride?: string, maxTokens = 4000): Promise<any | null> {
-  const ep = await getLlmEndpoint({ model: modelOverride || getRoleModel("reason") });
+  const ep = getLlmEndpoint({ model: modelOverride || getRoleModel("reason") });
   const res = await fetchLlm({
     url: ep.url,
     key: ep.key,

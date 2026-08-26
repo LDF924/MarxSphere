@@ -1270,6 +1270,33 @@ export async function getDocumentDetail(input: {
   };
 }
 
+/** 按正文内容哈希查文档（V398：内容级幂等 — 同内容重灌跳过，不依赖标题） */
+export async function findByContentHash(
+  contentHash: string,
+  tenantId: string
+): Promise<(DocumentRecord & { source: SourceRecord }) | null> {
+  const result = await pool.query(
+    `
+      select d.*, s.id as source_id_for_source, s.tenant_id, s.name as source_name,
+             s.description as source_description, s.metadata as source_metadata
+      from documents d
+      join sources s on s.id = d.source_id
+      where d.content_hash = $1 and s.tenant_id = $2 and d.archived_at is null
+      order by d.created_at desc
+      limit 1
+    `,
+    [contentHash, tenantId]
+  );
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+  return {
+    ...documentFromRow(row),
+    source: sourceFromRow(row)
+  };
+}
+
 /** 按标题查文档（入库幂等检查用：同标题已存在则跳过重复入库） */
 export async function findDocumentByTitle(
   title: string,

@@ -95,58 +95,15 @@ export async function fetchLlm(input: {
   } catch { return null; }
 }
 
-/** V443: 缓存 DeepSeek /models 真实模型列表（5 分钟 TTL），纠正时选真实存在的模型而非硬编码 */
-let dsModelsCache: { at: number; list: string[] } | null = null;
-async function fetchDeepSeekModels(baseUrl: string, key: string): Promise<string[]> {
-  if (dsModelsCache && Date.now() - dsModelsCache.at < 300_000) return dsModelsCache.list;
-  try {
-    const modelsUrl = baseUrl.replace(/\/chat\/completions$/, "") + "/models";
-    const res = await fetch(modelsUrl, {
-      headers: { Authorization: "Bearer " + key },
-      signal: (AbortSignal as any).timeout(10_000),
-    });
-    if (res.ok) {
-      const j = await res.json().catch(() => null);
-      const list = (j?.data || []).map((m: any) => m.id).filter((id: string) => typeof id === "string");
-      if (list.length > 0) {
-        dsModelsCache = { at: Date.now(), list };
-        return list;
-      }
-    }
-  } catch { /* 网络失败用兜底 */ }
-  return [];
-}
-
 /** 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底） */
-export async function getLlmEndpoint(overrides?: { model?: string }): Promise<{ url: string; key: string; model: string }> {
+export function getLlmEndpoint(overrides?: { model?: string }): { url: string; key: string; model: string } {
   const ds = process.env.DEEPSEEK_API_KEY || '';
-  // V450: 设置页保存到 DB（ai_settings），LLM 调用需读 DB 优先、.env 兜底 —
-  // 否则设置页改的 key/baseUrl/model 对 LLM 调用不生效（两边不同源）
-  let dbUrl = "", dbKey = "", dbModel = "";
-  try {
-    const { aiSettingsService } = await import("../services/ai-settings-service.js");
-    const s = await aiSettingsService.getRuntimeSettings();
-    dbUrl = s.llmBaseUrl || "";
-    dbKey = s.llmApiKey || "";
-    dbModel = s.llmModel || "";
-  } catch { /* DB 不可用（未迁移等）→ .env 兜底 */ }
-  const key = ds || dbKey || (process.env.LLM_API_KEY || '');
+  const key = ds || (process.env.LLM_API_KEY || '');
   const url = ds
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-    : (dbUrl || process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
-  let model = resolveModelAlias(overrides?.model
-    ?? (ds ? 'deepseek-v4-flash' : (dbModel || process.env.LLM_MODEL || 'deepseek-v4-flash')));
-  // V443: 只纠正"明确是阿里云/302AI 模型名"配 DeepSeek 端点的情况（qwen-* → 400）
-  // 用户已选的 deepseek-* 模型（deepseek-chat/v4-pro 等）完全尊重，不纠正
-  const isDeepSeekUrl = url.includes('deepseek.com');
-  if (isDeepSeekUrl && /^qwen-/.test(model)) {
-    const available = await fetchDeepSeekModels(url, key);
-    const corrected = available.find((m) => m === "deepseek-v4-flash")
-      ?? available.find((m) => m.startsWith("deepseek-"))
-      ?? "deepseek-v4-flash";
-    console.warn(`[llm] 模型 ${model}（阿里云名）与 DeepSeek 端点不匹配，自动纠正为 ${corrected}`);
-    model = corrected;
-  }
+    : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+  const model = resolveModelAlias(overrides?.model
+    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   return { url, key, model };
 }
 
@@ -267,13 +224,6 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
   const release = await acquireLlmSlot();  // G11: 获取并发槽位（超出上限排队）
   const startedAt = Date.now();
   try {
-    // V448: 统一模型纠正 — 不管 model 从哪来（session 固化/角色配置/调用方传入），
-    // 只要 DeepSeek 端点 + qwen-* 模型就纠正（旧 session 固化的 qwen3.6-flash 打 DeepSeek → 400）
-    const ep = await getLlmEndpoint(input.model ? { model: input.model } : undefined);
-    if (input.model && ep.model !== input.model) {
-      console.warn(`[llm] 模型 ${input.model} 纠正为 ${ep.model}（端点不匹配）`);
-      input = { ...input, model: ep.model };
-    }
     // G4: fallback 模型链 — 主模型重试耗尽后, 依次换备用模型（相同槽位内串行）
     const fallbacks = (input.model ? getModelFallbacks(input.model) : []).filter((m) => m !== input.model);
     if (fallbacks.length > 0) {
@@ -305,7 +255,7 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
 
 /** 实际 LLM 调用（信号量内部执行体） */
 async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null> {
-  const ep = await getLlmEndpoint(input.model ? { model: input.model } : undefined);
+  const ep = getLlmEndpoint(input.model ? { model: input.model } : undefined);
   const url = input.url ?? ep.url;
   const key = input.key ?? ep.key;
   const model = input.model ?? ep.model;

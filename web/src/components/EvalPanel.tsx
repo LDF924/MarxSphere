@@ -17,6 +17,17 @@ interface EvalFileInfo {
   size: number;
   questionCount: number;
   overallAvg: number;
+  /** V399-2 P2: 该结果文件的数据指纹（无指纹的旧产物为 null） */
+  fingerprint?: string | null;
+  /** V399-2 P2: 结果数据指纹 ≠ 当前数据指纹 → 数据已变更, 结果过期 */
+  stale?: boolean;
+}
+
+/** V399-2 P2: 当前数据指纹（来自 /api/eval/results, 前端 stale 徽标 + 指纹展示） */
+interface EvalFingerprintInfo {
+  algorithm?: string;
+  value?: string | null;
+  sampledAt?: string;
 }
 
 interface EvalQuestion {
@@ -356,6 +367,8 @@ export const EvalPanel: FC = () => {
   const [questions, setQuestions] = useState<EvalQuestion[]>([]);
   // W8: Agent 评测摘要（主评测与 agent 评测桥接展示）
   const [agentSummary, setAgentSummary] = useState<Record<string, number | string> | null>(null);
+  // V399-2 P2: 当前数据指纹（stale 徽标/指纹展示用）
+  const [currentFingerprint, setCurrentFingerprint] = useState<EvalFingerprintInfo | null>(null);
   const [selectedQ, setSelectedQ] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -402,6 +415,8 @@ export const EvalPanel: FC = () => {
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
       setFiles(data.files || []);
+      // V399-2 P2: 当前数据指纹（stale 徽标/指纹展示数据源）
+      setCurrentFingerprint(data.currentFingerprint || null);
       if (data.files?.length > 0 && !selectedFile) {
         // 默认选中：优先当前脚本的标准输出文件，其次有效的标准结构文件（跳过 dual/旧版对比格式）
         const prefer = SCRIPT_OUTPUT[script] || "";
@@ -671,8 +686,6 @@ export const EvalPanel: FC = () => {
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-4">
-        {/* V445: LLM 模型提示 + 自动任务确认（防静默消费额度） */}
-        <ModelUsageBanner />
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
@@ -1134,6 +1147,8 @@ export const EvalPanel: FC = () => {
                 {f.name}（{f.questionCount} 题 · 均值 {typeof f.overallAvg === "number" ? f.overallAvg.toFixed(3) : "–"}）
                 {f.name.includes("old-") ? " 旧版" : ""}
                 {f.name.includes("dual") ? " 对比格式" : ""}
+                {/* V399-2 P2: 数据指纹过期标记 — 文献数据已变更, 该结果不可与当前基线直接对比 */}
+                {f.stale ? " ⚠️数据已变更" : ""}
               </option>
             ))}
           </select>
@@ -1160,6 +1175,25 @@ export const EvalPanel: FC = () => {
         </div>
 
         {error && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
+        {/* V399-2 P2: 当前数据指纹 + 选中文件 stale 状态（数据可溯源: 文献数据变更 → 指纹变 → 旧结果判 stale） */}
+        {currentFingerprint && (
+          <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">数据指纹</span>
+            <code className="rounded bg-background px-1.5 py-0.5 font-mono">
+              {currentFingerprint.value ? currentFingerprint.value.substring(0, 16) + "…" : "不可用"}
+            </code>
+            {selectedFile && (() => {
+              const f = files.find((x) => x.name === selectedFile);
+              if (!f || !f.stale) return null;
+              return (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+                  ⚠️ {f.name} 基于旧数据（文献已变更）— 与当前基线不可直接对比
+                </span>
+              );
+            })()}
+          </div>
+        )}
 
         {/* W8: Agent 评测摘要（主评测与 agent 评测桥接） */}
         {agentSummary && (
@@ -1361,86 +1395,3 @@ export const EvalPanel: FC = () => {
     </section>
   );
 };
-
-// V445: LLM 模型提示 + 自动评测/巡检确认（防静默消费额度）
-function ModelUsageBanner() {
-  const [info, setInfo] = useState<{ model: string; provider: string } | null>(null);
-  const [evalPending, setEvalPending] = useState(false);
-  const [proactivePending, setProactivePending] = useState(false);
-  const [log, setLog] = useState<Array<{ at: string; action: string; result: string }>>([]);
-
-  useEffect(() => {
-    fetch("/api/eval/model-info").then((r) => r.json()).then((d) => {
-      if (d?.ok) setInfo({ model: d.model, provider: d.provider });
-    }).catch(() => {});
-    // 读本地运行记录（localStorage）
-    try {
-      const saved = JSON.parse(localStorage.getItem("sag:auto-task-log") || "[]");
-      if (Array.isArray(saved)) setLog(saved.slice(0, 10));
-    } catch { /* 忽略 */ }
-  }, []);
-
-  const confirmRun = async (action: "eval" | "proactive") => {
-    if (action === "eval") setEvalPending(true); else setProactivePending(true);
-    try {
-      const r = await fetch("/api/eval/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const d = await r.json();
-      const entry = {
-        at: new Date().toLocaleString(),
-        action: action === "eval" ? "评测回归" : "主动巡检",
-        result: d?.ok ? (action === "eval" ? `完成 ${d.result?.passed}/${d.result?.total} 题通过` : `创建 ${d.result?.created} 个任务`) : "失败",
-      };
-      const next = [entry, ...log].slice(0, 10);
-      setLog(next);
-      localStorage.setItem("sag:auto-task-log", JSON.stringify(next));
-    } catch (e: any) {
-      setLog([{ at: new Date().toLocaleString(), action: action === "eval" ? "评测回归" : "主动巡检", result: "失败: " + String(e?.message || e) }, ...log].slice(0, 10));
-    } finally {
-      if (action === "eval") setEvalPending(false); else setProactivePending(false);
-    }
-  };
-
-  return (
-    <div className="rounded-lg border border-amber-200/30 bg-amber-50/5 p-3 text-xs">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-medium text-amber-300">⚡ 自动任务（会消耗 LLM 额度）</span>
-        <span className="text-muted-foreground">
-          当前模型：<span className="font-mono text-foreground">{info?.model || "…"}</span>
-          {info?.provider ? `（${info.provider}）` : ""}
-        </span>
-        <span className="text-muted-foreground">评测回归 / 主动巡检启动后不再自动运行，需手动确认：</span>
-        <button
-          type="button"
-          onClick={() => void confirmRun("eval")}
-          disabled={evalPending}
-          className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
-        >
-          {evalPending ? "运行中…" : "▶ 运行评测回归（4 题）"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void confirmRun("proactive")}
-          disabled={proactivePending}
-          className="rounded-md border border-border px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
-        >
-          {proactivePending ? "巡检中…" : "▶ 运行主动巡检"}
-        </button>
-      </div>
-      {log.length > 0 ? (
-        <div className="mt-2 space-y-0.5 border-t border-border/50 pt-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">运行记录</div>
-          {log.map((l, i) => (
-            <div key={i} className="flex justify-between gap-3 text-[11px] text-muted-foreground">
-              <span>{l.at} · {l.action}</span>
-              <span className={l.result.startsWith("失败") ? "text-red-400" : "text-emerald-400"}>{l.result}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}

@@ -42,15 +42,11 @@ function MermaidBlock({ content }: { content: string }) {
       m.default.initialize({
         startOnLoad: false,
         theme: document.documentElement.classList.contains("light") ? "default" : "dark",
-        // V425: strict 模式拦截图表内容里的 click/script 注入（loose 允许任意事件回调）
-        securityLevel: "strict"
+        securityLevel: "loose"
       });
       if (!cancelled && ref.current) {
         m.default.render(`mmd-${Date.now()}`, content).then(({ svg }) => {
           if (!cancelled && ref.current) {
-            // 注: mermaid.render 返回的 SVG 是受控的公式化输出，且 securityLevel: "strict"
-            // 已在渲染层拦截 script/click 注入；此处仍需 innerHTML（SVG 元素无法由 React 直接创建）。
-            // 图表文本中的 '<' '>' '&' 会被 mermaid 转义，无直接 HTML 注入面。
             ref.current.innerHTML = svg;
           }
         }).catch((e: unknown) => {

@@ -13,7 +13,7 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   console.error("[sag] unhandledRejection:", reason instanceof Error ? reason.message : String(reason));
 });
-import { startHttpServer, markMigrationsReady } from "./api/server.js";
+import { startHttpServer } from "./api/server.js";
 import { logger } from "./observability/logger.js";
 import { startJournalSyncScheduler } from "./services/journal-sync-service.js";  // V395-38: 期刊实时同步管道
 import { runStartupChecks } from "./startup-check.js";  // V407: 启动环境检查（密钥/目录缺失给明确警告）
@@ -37,59 +37,10 @@ try {
 } catch { /* mode.json 损坏忽略 */ }
 
 // V397 桌面端: 启动前自举数据库迁移（迁移文件幂等, 首次启动安全执行）
-// V420: 迁移失败重试 3 次（DB 未就绪时首次连接会失败），且 startHttpServer 等迁移完成——
-// 否则接口先于建表提供，注册/登录报 relation "tenants" does not exist
-// V422: 修复重试窗口不足 — 首次装 PG 要 initdb+启动+建库（30-60s），固定 3×2s 重试必然失败。
-// 改为：先等数据库就绪（pg_isready 风格探测，最多 120s）→ 再跑迁移 → 失败 3 次才放弃
 import { migrate } from "./db/migrate.js";
-import { pool } from "./db/pool.js";
-
-async function waitForDbReady(): Promise<boolean> {
-  // 最多等 120s（首次装 PG 期间数据库不可达），每 2s 探测一次
-  for (let i = 0; i < 60; i++) {
-    try {
-      const client = await pool.connect();
-      try {
-        await client.query("select 1");
-        return true;
-      } finally {
-        client.release();
-      }
-    } catch {
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-  }
-  return false;
-}
-
-async function runMigrationsWithRetry(): Promise<void> {
-  // 1) 先等数据库就绪（首次启动 PG 初始化 30-60s，直接跑必失败）
-  const dbReady = await waitForDbReady();
-  if (!dbReady) {
-    console.error("[sag] 数据库 120s 内未就绪，迁移跳过（接口将不可用，请检查 PostgreSQL）");
-    return;
-  }
-  console.log("[sag] 数据库已就绪，执行迁移...");
-  // 2) 迁移失败重试 3 次（2s 间隔，覆盖瞬时连接问题）
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await migrate();
-      console.log(`[sag] 数据库迁移完成`);
-      // V437: 迁移完成 → 放行业务请求（此前业务接口 503，防止缺表崩溃）
-      markMigrationsReady();
-      console.log("[sag] 服务已放行（迁移完成）");
-      return;
-    } catch (e: unknown) {
-      const msg = String((e as Error)?.message || e).slice(0, 200);
-      if (attempt < 3) {
-        console.error(`[sag] 数据库迁移失败（第 ${attempt}/3 次，2s 后重试）:`, msg);
-        await new Promise((r) => setTimeout(r, 2000));
-      } else {
-        console.error("[sag] 数据库迁移 3 次均失败（接口可能不可用）:", msg);
-      }
-    }
-  }
-}
+migrate().catch((e: unknown) => {
+  console.error("[sag] 数据库迁移失败（首次启动可忽略, 重试中）:", String((e as Error)?.message || e).slice(0, 200));
+});
 
 startHttpServer().catch((error: unknown) => {
   const code = (error as NodeJS.ErrnoException)?.code;
@@ -101,9 +52,6 @@ startHttpServer().catch((error: unknown) => {
   }
   process.exit(1);
 });
-
-// 迁移与服务器并发启动：迁移失败不阻塞服务器（本地开发容错），但迁移重试兜底
-void runMigrationsWithRetry();
 
 // V395-38: 期刊实时同步管道（启动即同步一次 + 每6小时自动）
 startJournalSyncScheduler();

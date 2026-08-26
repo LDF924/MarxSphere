@@ -221,6 +221,32 @@ export const EmpiricalResearchPanel: FC = () => {
     }).catch(() => setNotice("演示数据加载失败"));
   };
 
+  // V399-2 P2 补齐: 数据版本登记（ScienceX 实验表格登记）— 当前解析数据存为数据版本
+  // 内容哈希(sha256) + 行数据(自动画像) 随登记提交; 同内容重传服务端判重返回 duplicate
+  const [savingVersion, setSavingVersion] = useState(false);
+  const registerDataVersion = async () => {
+    if (!parsed || parsed.rows.length === 0) { setNotice("无有效数据可登记（先上传/粘贴 CSV）"); return; }
+    setSavingVersion(true);
+    try {
+      // Web Crypto sha256（内容哈希 = 判重/溯源键）
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(csv || JSON.stringify(parsed)));
+      const contentHash = Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const name = `CSV_${parsed.rows.length}行_${new Date().toISOString().substring(0, 10)}`;
+      const res = await apiEmpiricalWorkshop.saveDataVersion({
+        name, columns: parsed.columnOrder, nRows: parsed.rows.length, contentHash,
+        rows: parsed.rows,  // V399-2 P2: 行数据 → 服务端自动生成列画像存 meta.profile
+      });
+      const v = res.version;
+      setNotice(v.duplicate
+        ? `⚠️ 同内容已登记（duplicate, 哈希命中 ${contentHash.substring(0, 8)}…）— 未新建版本`
+        : `✅ 数据版本已登记: ${name}（${parsed.rows.length} 行 × ${parsed.columnOrder.length} 列 · 哈希 ${contentHash.substring(0, 8)}…）`);
+    } catch (e: any) {
+      setError(String(e?.message || e).substring(0, 120));
+    } finally {
+      setSavingVersion(false);
+    }
+  };
+
   const loadFromPg = async (table: string) => {
     setUploading(true);
     try {
@@ -599,6 +625,17 @@ export const EmpiricalResearchPanel: FC = () => {
                     </div>
                   )}
                   {uploading && <span className="text-[10px] text-muted-foreground">读取中…</span>}
+                  {/* V399-2 P2 补齐: 数据版本登记（内容哈希判重 + 自动画像） */}
+                  <Button
+                    size="sm" variant="outline"
+                    disabled={!parsed || parsed.rows.length === 0 || savingVersion}
+                    onClick={() => void registerDataVersion()}
+                    title="将当前数据存为数据版本（内容哈希判重, 自动生成列画像）"
+                    className="text-[10px]"
+                  >
+                    <Database className="mr-1 h-3 w-3" />
+                    {savingVersion ? "登记中…" : "登记数据版本"}
+                  </Button>
                 </div>
                 {parsed && (
                   <div className="mt-2">

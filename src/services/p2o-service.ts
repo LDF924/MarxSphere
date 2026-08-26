@@ -8,14 +8,6 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-/** 服务端受控目录（临时目录）— pdfPath 用户直传仅允许落在此处 */
-export function isControlledPdfPath(pdfPath: string): boolean {
-  const target = path.resolve(pdfPath);
-  const tmp = path.resolve(tmpdir());
-  // Windows 路径大小写不敏感 → 统一小写比较
-  return target.toLowerCase().startsWith(tmp.toLowerCase() + path.sep);
-}
-
 /** 6 阶段管线（vendor importPdf 事件序列） */
 export const P2O_STEPS = ["upload", "mineru", "normalize", "translate", "obsidian_export", "quality_check"];
 
@@ -89,17 +81,13 @@ export async function deleteP2oTask(id: string): Promise<boolean> {
   return true;
 }
 
-/** 创建任务并落库（立即返回; 管线后台执行）
- * 安全: pdfPath 仅接受服务端受控目录（临时目录）内的文件 —— 拒绝用户直传任意路径（防任意文件读取） */
+/** 创建任务并落库（立即返回; 管线后台执行） */
 export async function createP2oTask(input: {
   fileName: string;
   pdfPath: string;
   source?: string;
   runAsync?: boolean;
 }): Promise<P2oTaskRecord> {
-  if (input.source !== "upload" && !isControlledPdfPath(input.pdfPath)) {
-    throw new Error("pdfPath 仅允许服务端临时目录内的文件（请用 base64 上传或 URL 导入）");
-  }
   const r = await pool.query(
     `insert into agent_p2o_tasks (file_name, pdf_path, source, status, progress, steps, updated_at)
      values ($1, $2, $3, 'queued', 0, $4::jsonb, now()) returning *`,
@@ -221,10 +209,8 @@ export async function saveUploadedPdf(buffer: Buffer, fileName: string): Promise
   return pdfPath;
 }
 
-/** 从 URL 下载 PDF（arXiv/DOI/直链 → 落盘; SSRF 防护: 仅允许公网地址） */
+/** 从 URL 下载 PDF（arXiv/DOI/直链 → 落盘） */
 export async function downloadPdfFromUrl(url: string, maxBytes = 50 * 1024 * 1024): Promise<{ pdfPath: string; fileName: string }> {
-  const { assertPublicUrl } = await import("./url-guard.js");
-  await assertPublicUrl(url.trim());
   const res = await fetch(url.trim());
   if (!res.ok) throw new Error(`URL 下载失败 (HTTP ${res.status})`);
   const buf = Buffer.from(await res.arrayBuffer());

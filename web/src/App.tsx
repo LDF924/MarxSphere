@@ -226,8 +226,6 @@ function AppShell() {
   /** V399: 顶栏「项目」弹出面板 */
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
-  /** V425: 会话切换请求序号 — 竞态防护：响应回来时若序号已过期（期间又切了会话）则丢弃 */
-  const chatSessionReqSeqRef = useRef(0);
   /** V399: 流式落库清理 — assistant 消息追加后统一清空流式态（历史消息已渲染，无闪现） */
   const lastStreamedAssistantRef = useRef<string | null>(null);
   useEffect(() => {
@@ -297,8 +295,6 @@ function AppShell() {
   // 切换会话 → 加载消息
   const selectChatSession = useCallback((sessionId: string) => {
     // V399: 切换立即清空（防止停留上一个会话内容）+ 每次都重新拉取（不信任 loaded 缓存）
-    // V425: 请求序号防竞态 — 慢响应回来时若已切到别的会话，丢弃旧数据
-    const reqSeq = ++chatSessionReqSeqRef.current;
     setChatSessionId(sessionId);
     chatAbortRef.current?.abort();
     setChatMessages([]);
@@ -306,7 +302,6 @@ function AppShell() {
     setChatStreamingText("");
     setChatReasoning("");
     void api.getMcpSession(sessionId).then((detail) => {
-      if (reqSeq !== chatSessionReqSeqRef.current) return;
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -316,9 +311,7 @@ function AppShell() {
   useEffect(() => {
     if (!chatSessionId) return;
     // V399: 挂载/变更时拉取（始终拉最新，不信任 loaded 缓存）
-    const reqSeq = ++chatSessionReqSeqRef.current;
     void api.getMcpSession(chatSessionId).then((detail) => {
-      if (reqSeq !== chatSessionReqSeqRef.current) return;
       setChatMessages(detail.messages);
       setChatToolCalls(detail.toolCalls);
       setChatModel((prev) => prev || (detail.session.model ?? ""));
@@ -494,8 +487,6 @@ function AppShell() {
   const [uploadJobs, setUploadJobs] = useState<UploadJobRecord[]>([]);
   const [isUploadQueueExpanded, setIsUploadQueueExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  // V415: 设置就地保存反馈（sticky 保存栏旁显示成功/失败）
-  const [settingsSaveStatus, setSettingsSaveStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => t(DEFAULT_SEARCH_QUERY_ZH, DEFAULT_SEARCH_QUERY_EN));
   const [searchMode, setSearchMode] = useState<SearchMode>("fast");
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
@@ -620,14 +611,6 @@ function AppShell() {
 
   useEffect(() => {
     void loadProjects();
-    // V447: 后端可能未就绪（迁移中），重试直到加载成功（避免 projects 永久空列表）
-    let retries = 0;
-    const timer = setInterval(() => {
-      retries++;
-      if (retries > 10) { clearInterval(timer); return; }
-      void loadProjects();
-    }, 5000);
-    return () => clearInterval(timer);
   }, [showArchivedProjects]);
 
   useEffect(() => {
@@ -655,28 +638,14 @@ function AppShell() {
   }, [selectedDocumentId]);
 
   useEffect(() => {
-    // V425: setTimeout 链 + in-flight 标志 — 防止慢请求期间 setInterval 反复触发造成请求堆积；
-    // 只要队列里还有活跃任务就持续轮询（一轮结束再排下一轮，重试间隔 1000ms）
-    let cancelled = false;
-    let inFlight = false;
-    let timer = 0;
-    const poll = () => {
-      if (cancelled || inFlight) return;
-      const activeJobs = uploadJobs.filter((job) => job.status === "QUEUED" || job.status === "RUNNING");
-      if (activeJobs.length === 0) return;
-      inFlight = true;
-      void pollUploadJobs(activeJobs.map((job) => job.id)).finally(() => {
-        inFlight = false;
-        if (!cancelled && uploadJobs.some((job) => job.status === "QUEUED" || job.status === "RUNNING")) {
-          timer = window.setTimeout(poll, 1000);
-        }
-      });
-    };
-    poll();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
+    const activeJobs = uploadJobs.filter((job) => job.status === "QUEUED" || job.status === "RUNNING");
+    if (activeJobs.length === 0) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void pollUploadJobs(activeJobs.map((job) => job.id));
+    }, 1000);
+    return () => window.clearInterval(timer);
   }, [uploadJobs]);
 
   useEffect(() => {
@@ -797,7 +766,7 @@ function AppShell() {
       const responses = await Promise.all(jobIds.map((jobId) => api.getUploadJob(jobId)));
       const latestJobs = responses.map((response) => response.job);
       setUploadJobs((current) => current.map((job) => latestJobs.find((latest) => latest.id === job.id) ?? job));
-      // V425: 不再在此重复 syncModelLogs — 上传/日志面板的 653-661 轮询循环统一负责
+      await syncModelLogs();
       const completedJobs = latestJobs.filter((job) => job.status === "COMPLETED" && job.documentId);
       for (const job of completedJobs) {
         if (refreshedUploadJobsRef.current.has(job.id)) {
@@ -893,24 +862,6 @@ function AppShell() {
     setStatus(t("已清空浏览器缓存中的原始日志", "Raw logs in browser cache have been cleared"));
   }
 
-  // V444: 项目面板边缘拖拽拉伸（ew=横 / ns=纵 / se=对角）
-  function dragResize(e: React.MouseEvent, dir: "ew" | "ns" | "se") {
-    const panel = document.getElementById("project-panel");
-    if (!panel) return;
-    const startX = e.clientX, startY = e.clientY;
-    const startW = panel.offsetWidth, startH = panel.offsetHeight;
-    const onMove = (ev: MouseEvent) => {
-      if (dir !== "ns") panel.style.width = Math.max(240, Math.min(480, startW + (ev.clientX - startX))) + "px";
-      if (dir !== "ew") panel.style.height = Math.max(260, Math.min(window.innerHeight * 0.85, startH + (ev.clientY - startY))) + "px";
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
   async function createProject() {
     const name = newProjectName.trim();
     if (!name) return false;
@@ -920,9 +871,7 @@ function AppShell() {
       setNewProjectName("");
       await loadProjects();
       setSelectedProjectId(response.project.id);
-      // V446: 新建成功后不跳转视图 — 留在当前视图（项目面板原地刷新看到新项目）。
-      // 原 setWorkspaceView("home") 会把用户弹回首页（"闪出到首页"）；V444 的"chat 无分支"已由
-      // 不跳转解决（项目面板是 overlay，不依赖 workspaceView）
+      setWorkspaceView("chat");
       return true;
     } catch (err) {
       setError(getErrorMessage(err));
@@ -1502,13 +1451,8 @@ function AppShell() {
       const response = await api.updateAiSettings(input);
       setAiSettings(response.settings);
       setStatus(t("设置已保存", "Settings saved"));
-      // V415: 就地成功提示（sticky 保存栏上显示）
-      setSettingsSaveStatus({ kind: "ok", message: t("✓ 设置已保存", "✓ Settings saved") });
     } catch (err) {
-      const message = getErrorMessage(err);
-      setError(message);
-      // V415: 就地失败提示（白名单 400 等错误直接显示在保存栏旁，不再只看顶部红条）
-      setSettingsSaveStatus({ kind: "error", message: t("保存失败：", "Save failed: ") + message });
+      setError(getErrorMessage(err));
     } finally {
       setIsSavingSettings(false);
     }
@@ -1696,7 +1640,7 @@ function AppShell() {
           {/* V399: 顶栏「项目」按钮（原左侧常驻项目列移入弹出面板） */}
           <button
             type="button"
-            onClick={() => { setProjectPanelOpen((v) => !v); if (!projectPanelOpen) void loadProjects(); }}
+            onClick={() => setProjectPanelOpen((v) => !v)}
             title={t("项目（文献库）", "Projects")}
             className={cn(
               "flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors",
@@ -1769,26 +1713,7 @@ function AppShell() {
               onClick={() => setProjectPanelOpen(false)}
               aria-hidden
             />
-            <div id="project-panel" className="absolute left-4 top-1 z-40 w-[300px] min-w-[240px] max-w-[480px] h-[400px] min-h-[260px] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur">
-              {/* V444: 边缘双向箭头手柄 — 右缘 ↔ 横拉、底缘 ↕ 纵拉、角 ⤡ 对角拉 */}
-              {/* 右边缘 */}
-              <div
-                className="absolute -right-[3px] top-0 bottom-0 z-50 w-[6px] cursor-ew-resize"
-                style={{ boxShadow: "inset -1px 0 0 rgba(148,163,184,.25)" }}
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "ew"); }}
-              />
-              {/* 底边缘 */}
-              <div
-                className="absolute -bottom-[3px] left-0 right-0 z-50 h-[6px] cursor-ns-resize"
-                style={{ boxShadow: "inset 0 -1px 0 rgba(148,163,184,.25)" }}
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "ns"); }}
-              />
-              {/* 右下角 */}
-              <div
-                className="absolute -bottom-[3px] -right-[3px] z-50 h-[12px] w-[12px] cursor-se-resize"
-                style={{ background: "linear-gradient(135deg, transparent 50%, rgba(148,163,184,.7) 50%)" }}
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); dragResize(e, "se"); }}
-              />
+            <div className="absolute left-4 top-1 z-40 w-[300px] overflow-hidden rounded-xl border border-border bg-background/95 shadow-xl backdrop-blur">
               <ProjectRail
                 projects={projects}
                 selectedProjectId={selectedProjectId}
@@ -1847,7 +1772,6 @@ function AppShell() {
                   language={language}
                   languagePreference={languagePreference}
                   onLanguagePreferenceChange={setLanguagePreference}
-                  saveStatus={settingsSaveStatus}
                   onSave={(input) => void saveAiSettings(input)}
                 />
                 <div className="mx-auto mt-4 max-w-4xl">
@@ -2084,8 +2008,6 @@ function ProjectRail(props: {
   const { t } = useI18n();
   const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
-  // V446: 新建项目失败提示（ProjectRail 内本地 state，避免 setError 作用域问题）
-  const [createError, setCreateError] = useState("");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [renameProjectTarget, setRenameProjectTarget] = useState<SourceRecord | null>(null);
   const [renameProjectName, setRenameProjectName] = useState("");
@@ -2127,10 +2049,6 @@ function ProjectRail(props: {
       if (created) {
         setCreateProjectDialogOpen(false);
       }
-    } catch (err) {
-      // V446: 捕获创建失败（原只有 finally，异常向上传播可能触发错误边界/闪退）
-      setCreateError(getErrorMessage(err));
-      setCreateProjectDialogOpen(false);
     } finally {
       setIsCreatingProject(false);
     }
@@ -2152,7 +2070,7 @@ function ProjectRail(props: {
 
   return (
     <>
-      <aside className="relative z-10 flex h-full min-h-0 flex-col overflow-y-auto border-r border-border scrollbar-thin">
+      <aside className="relative z-10 flex max-h-[70vh] min-h-0 flex-col overflow-hidden border-r border-border">
         {/* V399: 品牌区/设置已移入顶栏 — 面板直接以「项目」列表开头 */}
 
         <div className="flex items-center justify-between px-4 py-3">
@@ -2324,8 +2242,7 @@ function ProjectRail(props: {
 
       {createProjectDialogOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="presentation">
-          {/* V444: resize（双向拉伸）+ overflow-auto（内部滚动）+ 更大默认尺寸 */}
-          <div className="w-[520px] max-w-[92vw] h-[300px] max-h-[85vh] min-h-[220px] min-w-[320px] overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg resize" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
             <div id="create-project-title" className="text-sm font-semibold">{t("新建项目", "New project")}</div>
             <p className="mt-1 text-xs text-muted-foreground">{t("输入项目名称后创建，文档和对话都会归属到这个项目。", "Enter a project name. Documents and chats will belong to this project.")}</p>
             <Input
@@ -2345,7 +2262,6 @@ function ProjectRail(props: {
               placeholder={t("项目名称", "Project name")}
               disabled={isCreatingProject}
             />
-            {createError ? <div className="mt-2 text-xs text-red-400">{createError}</div> : null}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={closeCreateProjectDialog} disabled={isCreatingProject}>
                 {t("取消", "Cancel")}
@@ -3866,14 +3782,6 @@ function normalizeChunkingMode(value: unknown): ChunkingMode {
   return value === "token" ? "token" : DEFAULT_CHUNKING_MODE;
 }
 
-// V438: 按 base URL 推断服务商（设置页下拉回显用）
-function providerDetect(baseUrl: string): string {
-  if (baseUrl.includes("deepseek")) return "deepseek";
-  if (baseUrl.includes("302ai")) return "302ai";
-  if (baseUrl.includes("openai")) return "openai";
-  return "custom";
-}
-
 function SettingsPanel(props: {
   settings: PublicAiProviderSettings | null;
   isSaving: boolean;
@@ -3881,8 +3789,6 @@ function SettingsPanel(props: {
   languagePreference: LanguagePreference;
   onLanguagePreferenceChange: (preference: LanguagePreference) => void;
   onSave: (input: SettingsInput) => void;
-  /** V415: 就地保存反馈（成功/失败），替代远处全局 status */
-  saveStatus?: { kind: "ok" | "error"; message: string } | null;
 }) {
   const { t } = useI18n();
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState("");
@@ -4015,31 +3921,6 @@ function SettingsPanel(props: {
             }}
             placeholder={t("留空不修改", "Leave blank to keep unchanged")}
           />
-        </Field>
-        <Field label={t("LLM 服务商（自动填地址+模型）", "LLM provider (auto-fills base URL & model)")}>
-          <select
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            value={providerDetect(llmBaseUrl)}
-            onChange={(event) => {
-              const v = event.target.value;
-              if (v === "302ai") setLlmBaseUrl("https://api.302ai.cn/v1");
-              else if (v === "deepseek") setLlmBaseUrl("https://api.deepseek.com/v1");
-              else if (v === "openai") setLlmBaseUrl("https://api.openai.com/v1");
-              // V449: 服务商联动 — 同步 LLM_MODEL（后端写 .env + 当前进程生效）
-              if (v === "deepseek" || v === "302ai") {
-                void fetch("/api/llm/provider-sync", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ provider: v }),
-                }).catch(() => {});
-              }
-            }}
-          >
-            <option value="302ai">阿里云百炼 302AI</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="openai">OpenAI 兼容</option>
-            <option value="custom">自定义</option>
-          </select>
         </Field>
         <Field label={t("LLM 接口地址", "LLM API base URL")}>
           <Input value={llmBaseUrl} onChange={(event) => setLlmBaseUrl(event.target.value)} />
@@ -4176,13 +4057,7 @@ function SettingsPanel(props: {
         </label>
       </SettingsCard>
 
-      {/* V415: 保存栏 sticky 固定底部 — 长表单滚动时保存按钮始终可见；成功/失败就地提示 */}
-      <div className="sticky bottom-2 z-10 mt-2 flex items-center justify-end gap-3 rounded-lg border border-border bg-background/90 px-4 py-3 shadow-lg backdrop-blur">
-        {props.saveStatus ? (
-          <span className={cn("text-sm", props.saveStatus.kind === "ok" ? "text-emerald-500" : "text-red-400")}>
-            {props.saveStatus.message}
-          </span>
-        ) : null}
+      <div className="flex justify-end">
         <Button type="submit" disabled={props.isSaving}>
           {props.isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {t("保存设置", "Save settings")}

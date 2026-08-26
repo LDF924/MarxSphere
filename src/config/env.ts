@@ -18,7 +18,7 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-large"),
   EMBEDDING_API_KEY: z.string().default(""),
   EMBEDDING_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
-  LLM_MODEL: z.string().min(1).default("deepseek-v4-flash"),
+  LLM_MODEL: z.string().min(1).default("qwen3.6-flash"),
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
@@ -31,10 +31,7 @@ const envSchema = z.object({
   INGEST_CONCURRENCY: z.coerce.number().int().positive().max(20).default(5),
   MCP_TRANSPORT: z.enum(["stdio", "http"]).default("stdio"),
   MCP_HTTP_PORT: z.coerce.number().int().positive().default(4174),
-  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
-  // V414: 登录认证开关 — SAG_AUTH_ENABLED=true 时前端 AuthGate 要求登录（JWT 会话）
-  // 桌面端引导页保存 .env 时自动写 true + 生成 JWT_SECRET；纯本地单机可保持默认关闭
-  SAG_AUTH_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000)
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
