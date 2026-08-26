@@ -1236,7 +1236,7 @@ export interface EmpiricalDataVersion {
   /** V399-2 P2 补齐(ScienceX 实验表格哈希): 数据内容哈希 — 前端可判重/溯源 */
   contentHash?: string | null;
   /** V399-2 P2(092): 数据本体(行数组) — 下游分析选中版本时用真数据 */
-  data?: unknown[][] | null;
+  data?: (string | number | null)[][] | null;
 }
 
 export const apiEmpiricalWorkshop = {
