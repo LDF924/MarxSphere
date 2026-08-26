@@ -345,8 +345,10 @@ export async function saveDataVersion(input: {
 }
 
 export async function listDataVersions(projectId?: string): Promise<Record<string, unknown>[]> {
+  // V399-2 P2 修复: projectId 过滤时 NULL project 的数据版本也应可见（登记时未选项目的 CSV 数据）
+  // SQL 里 project_id = $1 匹配不到 NULL → 补 (project_id is null) 分支
   const r = projectId
-    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions where project_id = $1 order by created_at desc limit 50`, [projectId])
+    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions where (project_id = $1 or project_id is null) order by created_at desc limit 50`, [projectId])
     : await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions order by created_at desc limit 50`);
   return r.rows.map((row: any) => ({
     id: String(row.id),
