@@ -336,10 +336,12 @@ export async function saveDataVersion(input: {
   if (Array.isArray(input.rows) && input.rows.length > 0) {
     meta.profile = profileTableData(input.columns, input.rows);
   }
+  // V399-2 P2(092 迁移): 数据本体存 data 列 — 下游(变量敲定/管道/回归/信效度)选中版本时用真数据而非空 rows
   const r = await pool.query(
-    `insert into empirical_data_versions (project_id, name, columns, n_rows, meta, content_hash)
-     values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
-    [input.projectId ?? null, input.name, JSON.stringify(input.columns), input.nRows, JSON.stringify(meta), input.contentHash ?? null]
+    `insert into empirical_data_versions (project_id, name, columns, n_rows, meta, content_hash, data)
+     values ($1, $2, $3, $4, $5, $6, $7) returning id, created_at`,
+    [input.projectId ?? null, input.name, JSON.stringify(input.columns), input.nRows, JSON.stringify(meta), input.contentHash ?? null,
+     Array.isArray(input.rows) ? JSON.stringify(input.rows) : null]
   );
   return { id: String(r.rows[0].id), created_at: new Date(r.rows[0].created_at).toISOString() };
 }
@@ -348,13 +350,14 @@ export async function listDataVersions(projectId?: string): Promise<Record<strin
   // V399-2 P2 修复: projectId 过滤时 NULL project 的数据版本也应可见（登记时未选项目的 CSV 数据）
   // SQL 里 project_id = $1 匹配不到 NULL → 补 (project_id is null) 分支
   const r = projectId
-    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions where (project_id = $1 or project_id is null) order by created_at desc limit 50`, [projectId])
-    : await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions order by created_at desc limit 50`);
+    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, data, created_at from empirical_data_versions where (project_id = $1 or project_id is null) order by created_at desc limit 50`, [projectId])
+    : await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, data, created_at from empirical_data_versions order by created_at desc limit 50`);
   return r.rows.map((row: any) => ({
     id: String(row.id),
     projectId: row.project_id ? String(row.project_id) : null,
     name: row.name, columns: row.columns ?? [], nRows: row.n_rows, meta: row.meta ?? {},
     contentHash: row.content_hash ?? null,   // V399-2 P2 补齐: 数据哈希(前端可判重/溯源)
+    data: row.data ?? null,                   // V399-2 P2(092): 数据本体(下游分析用)
     created_at: new Date(row.created_at).toISOString(),
   }));
 }
