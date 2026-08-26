@@ -476,7 +476,16 @@ export const EmpiricalResearchPanel: FC = () => {
                   ))}
                 </div>
                 <div className="mt-2 border-t pt-2">
-                  <DataVersionBar projectId={projectId} value={dataVersionId} onChange={(v) => setDataVersionId(v?.id ?? null)} />
+                  <DataVersionBar projectId={projectId} value={dataVersionId} onChange={(v) => {
+                    setDataVersionId(v?.id ?? null);
+                    // V399-2 P2(092): 选中数据版本 → 其数据本体载入 parsed, 分析真正用该版本数据
+                    if (v?.data && v.data.length > 0) {
+                      setParsed({ columnOrder: v.columns, rows: v.data as unknown[][] });
+                      setNotice(`已载入数据版本: ${v.name}（${v.data.length} 行 × ${v.columns.length} 列）`);
+                    } else if (v?.columns) {
+                      setParsed({ columnOrder: v.columns, rows: [] });
+                    }
+                  }} />
                 </div>
                 {/* 闸门状态总览 */}
                 {projectId && (
