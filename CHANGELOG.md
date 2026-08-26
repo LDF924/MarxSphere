@@ -1,3 +1,29 @@
+## [1.1.0] - 2026-08-27
+
+### ✨ 文献入库哈希版本化（P0-P2 + ScienceX 补齐）
+
+- **内容哈希判重**（087 迁移）：文献入库按正文 sha256 判重，同内容重灌跳过（堵换标题重灌漏洞），content_version 变化感知
+- **评测数据指纹**（3.3）：评测输出携带 dataFingerprint（501 篇文献 → 6d74cb5f…），数据变更 → 指纹变 → 旧结果可判 stale
+- **eval_run 参数/环境快照**（088/089）：评测 run 记录 EVAL_* 参数 + node/tsx 环境 + 数据指纹，runId 幂等 upsert
+- **stale 判定 + 前端展示**（改动点E）：评测启动对比历史指纹警告；/api/eval/results 返回 currentFingerprint + 每文件 stale；前端指纹条 + ⚠️数据已变更徽标
+- **document_versions 版本历史表**（090）：文献内容变化自动登记历史版本
+- **实验表格哈希版本化**（091/092）：数据版本登记内容哈希判重 + 数据本体存储 + 登记时自动画像（列类型/缺失率/数值分布）
+- **agent 评测快照**：runEvalSuite 记录参数/环境
+- **产物哈希登记**（3.6）：评测输出 artifactHash
+
+### 🛡️ 仓库同步防错机制
+
+- sync-repos.mjs: --check 差异检测 / package.json 版本保护 / 同步后自动校验 / --to-open 禁止（主线保护）
+- 每日自动一致性检查（计划任务 MarxSphere-SyncCheck 09:30）
+- 修复 8/27 同步方向错误覆盖的 V4xx 桌面端修复（AuthGate V424 退出登录 / authHeaders 鉴权等）
+
+## [1.0.0] - 2026-08-25
+
+### 🚀 正式版 v1.0.0
+
+- package.json 版本对齐 + CHANGELOG 补档
+- 桌面端安装包（NSIS）正式发布
+
 # 更新日志（Changelog）
 
 本项目按语义化版本管理，主要变更记录于此。
