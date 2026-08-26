@@ -11,18 +11,8 @@ contextBridge.exposeInMainWorld("sagDesktop", {
   onExtractProgress: (cb: (p: { done: number; total: number; pct: number }) => void) => {
     ipcRenderer.on("extract-progress", (_e, data) => cb(data));
   },
-  // V433: 解压失败通知（引导页显示错误，不再黑盒跳雷达页）
-  onExtractError: (cb: (p: { message: string }) => void) => {
-    ipcRenderer.on("extract-error", (_e, data) => cb(data));
-  },
   onPgProgress: (cb: (p: { stage: string; pct: number; type: "download" | "install" }) => void) => {
     ipcRenderer.on("pg-progress", (_e, data) => cb(data));
   },
   pyCheck: (p: string) => ipcRenderer.invoke("py:check", p),
-  // V415: 端口状态探测（错误页用——"后端服务已退出"时展示端口/数据库状态，让用户放心）
-  portProbe: () => ipcRenderer.invoke("port:probe"),
-  // V417: 一键结束占用端口的残留 MarxSphere 进程（错误页按钮用）
-  killPortOwner: () => ipcRenderer.invoke("port:kill-owner"),
-  // V419: 一键修复数据库（端口通但库缺失时自动建库 + 扩展 + 验证）
-  fixDb: () => ipcRenderer.invoke("port:fix-db"),
 });

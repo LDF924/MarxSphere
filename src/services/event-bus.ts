@@ -35,9 +35,8 @@ export type EventHandler = (ev: SagEvent) => Promise<void>;
 
 interface QueueEntry { ev: SagEvent; handler: EventHandler }
 
-interface CancelSlot { ev: SagEvent; handler: EventHandler; timer: NodeJS.Timeout }
 const handlers = new Map<string, EventHandler>();      // key: `${channel}:${name}`
-const cancelSlots = new Map<string, CancelSlot>();
+const cancelSlots = new Map<string, { ev: SagEvent; handler: EventHandler; timer: NodeJS.Timeout }>();
 const queue: QueueEntry[] = [];
 const queueRunning = new Set<string>();                 // 防同事件重复入队
 let queueActive = false;
@@ -89,24 +88,11 @@ async function dispatch(ev: SagEvent, handler: EventHandler): Promise<boolean> {
     case "cancel": {
       // 取消式: 同 cancelKey 的新事件覆盖旧事件（紧急中断场景）
       if (!ev.cancelKey) break;
-      const dupKey = `${ev.channel}:${ev.cancelKey}`;
       const prev = cancelSlots.get(ev.cancelKey);
-      // V4xx: 覆盖旧槽位时, 将同 key 正在运行的 handler 并入"已运行"集合防重入 —
-      //       旧事件若已开跑（定时器触发后未结束）, 新事件覆盖槽位后不得再排一个同样的执行
-      if (prev && queueRunning.has(dupKey)) {
-        return false;
-      }
       if (prev) { clearTimeout(prev.timer); }
       const timer = setTimeout(() => {
-        // V4xx: 并入"已运行"集合 — handler 真正开跑时才标记, 运行期间同 key 再 emit 被防重入拦截
-        //       （pending 未开跑的事件仍可被新事件覆盖, 保持"最新覆盖"语义）
-        queueRunning.add(dupKey);
-        void Promise.resolve().then(() => handler(ev))
-          .catch((e) => console.error(`[event-bus] cancel handler 失败 ${ev.channel}:${ev.id}:`, e?.message?.substring(0, 80)))
-          .finally(() => {
-            queueRunning.delete(dupKey);
-            cancelSlots.delete(ev.cancelKey!);
-          });
+        cancelSlots.delete(ev.cancelKey!);
+        void handler(ev).catch((e) => console.error(`[event-bus] cancel handler 失败 ${ev.channel}:${ev.id}:`, e?.message?.substring(0, 80)));
       }, 0);
       cancelSlots.set(ev.cancelKey, { ev, handler, timer });
       return true;

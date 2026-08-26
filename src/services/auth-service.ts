@@ -8,12 +8,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
 
-// V430: 内部错误不透传 — 数据库异常细节（约束名/表结构）只记日志，对客户端返回泛化文案
-function internalError(e: unknown): string {
-  console.error("[auth] 操作失败:", String((e as Error)?.message || e).slice(0, 200));
-  return "操作失败，请稍后重试";
-}
-
 // V389修复: JWT_SECRET 无默认公开值 — 未设时用随机生成(防伪造admin token), 提示显式设置
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
   const rnd = randomUUID() + randomUUID() + randomUUID();
@@ -32,8 +26,6 @@ export interface AuthUser {
   plan: string;
   balanceCents: number;
   llmProvider: "platform" | "byok";
-  /** V390: 账号状态（disabled 后已签发 JWT 也失效） */
-  status?: "active" | "disabled";
 }
 
 export interface SessionPayload {
@@ -68,7 +60,7 @@ export async function register(username: string, password: string, email?: strin
   } catch (e: any) {
     await client.query("ROLLBACK");
     if (String(e?.message || "").includes("duplicate")) return { ok: false, error: "用户名已存在" };
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: "注册失败: " + String(e?.message || e).substring(0, 100) };
   } finally { client.release(); }
 }
 
@@ -108,10 +100,10 @@ export function verifyToken(token: string): SessionPayload | null {
 
 // ─── 按用户ID取用户（供中间件挂上下文） ───
 export async function getUserById(userId: string): Promise<AuthUser | null> {
-  const r = await pool.query("select id, username, role, tenant_id, plan, balance_cents, llm_provider, status from users where id = $1", [userId]);
+  const r = await pool.query("select id, username, role, tenant_id, plan, balance_cents, llm_provider from users where id = $1", [userId]);
   if (r.rows.length === 0) return null;
   const row = r.rows[0];
-  return { id: row.id, username: row.username, role: row.role, tenantId: row.tenant_id, plan: row.plan, balanceCents: Number(row.balance_cents), llmProvider: row.llm_provider, status: row.status };
+  return { id: row.id, username: row.username, role: row.role, tenantId: row.tenant_id, plan: row.plan, balanceCents: Number(row.balance_cents), llmProvider: row.llm_provider };
 }
 
 export { PUBLIC_TENANT_ID, ADMIN_USER_ID, JWT_SECRET };
@@ -137,7 +129,7 @@ export async function registerEnterprise(userId: string, companyName: string): P
     return { ok: true, tenantId };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: String(e?.message || e).substring(0, 80) };
   } finally { client.release(); }
 }
 
@@ -161,7 +153,7 @@ export async function inviteMember(inviterUserId: string, inviteeUsername: strin
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: String(e?.message || e).substring(0, 80) };
   } finally { client.release(); }
 }
 
@@ -194,7 +186,7 @@ export async function acceptInvite(userId: string, username: string, inviteId: s
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: String(e?.message || e).substring(0, 80) };
   } finally { client.release(); }
 }
 
@@ -271,7 +263,7 @@ export async function adminAdjustBalance(adminUserId: string, targetUserId: stri
     return { ok: true, balanceCents: Number(r.rows[0]?.balance_cents || 0) };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: String(e?.message || e).substring(0, 80) };
   } finally { client.release(); }
 }
 
@@ -298,7 +290,7 @@ export async function setEmail(userId: string, email: string): Promise<{ ok: boo
     if (String(e?.message || "").includes("duplicate") || String(e?.message || "").includes("unique")) {
       return { ok: false, error: "该邮箱已被其他账号使用" };
     }
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: "绑定失败: " + String(e?.message || e).substring(0, 80) };
   }
 }
 
@@ -347,7 +339,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     return { ok: true };
   } catch (e: any) {
     await client.query("ROLLBACK");
-    return { ok: false, error: internalError(e) };
+    return { ok: false, error: "重置失败: " + String(e?.message || e).substring(0, 80) };
   } finally { client.release(); }
 }
 

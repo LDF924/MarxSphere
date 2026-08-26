@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { config } from "../config/env.js";
 import {
@@ -9,6 +9,7 @@ import {
   deleteDocument,
   deleteSource,
   findDocumentByTitle,
+  findByContentHash,
   getEntityDetail,
   getDocumentDetail,
   getEventDetail,
@@ -200,6 +201,24 @@ export class WebuiService {
           uploadSourceId = created.rows[0].id;
         }
       } catch { /* 私有source创建失败则退回默认 */ }
+    }
+
+    // 幂等检查 V398：内容级 — 同正文哈希已存在 → 直接返回（不依赖标题，堵换标题重灌漏洞）
+    // 仅对已有 content_hash 的行生效；存量旧数据（hash 为 null）回落 title 判重
+    const contentHash = createHash("sha256").update(input.content).digest("hex");
+    const existingByHash = await findByContentHash(contentHash, effectiveTenant);
+    if (existingByHash) {
+      return {
+        sourceId: input.sourceId,
+        documentId: existingByHash.id,
+        chunkCount: 0,
+        eventCount: 0,
+        taskId: "",
+        traceId: "",
+        duplicate: true,
+        duplicateReason: "content_hash",
+        document: existingByHash
+      };
     }
 
     // 幂等检查：同标题文档已存在 → 直接返回已存在的（不重复入库）

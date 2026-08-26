@@ -69,9 +69,6 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
 
   // V390: 全局 401 拦截 — token 失效(服务重启/密钥轮换)时清 token 回登录页
   // 避免各面板静默 401 显示"已登录"假象
-  // V424: 修复"退出登录没反应" — 401 拦截器原来 setAuth({enabled:false}) 会把退出后的
-  // 登录页打回主界面（enabled=false → 放行分支）。改为 enabled:true（保持登录门禁），
-  // 只有后端明确禁用认证（/api/auth/status enabled=false）才回主界面。
   useEffect(() => {
     const origFetch = window.fetch;
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
@@ -81,8 +78,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
           // 认证接口的 401 由自身流程处理(登录失败/未登录), 业务接口 401 才视为 token 失效
           if (!url.includes("/api/auth/")) {
             safeStorage.remove("sag_token");
-            // V424: 保持 enabled=true（回登录页），不再降级 enabled=false（回主界面）
-            setAuth({ enabled: true, user: null });
+            // V399: token 失效 → 回本地模式（不跳全屏登录页）
+            setAuth({ enabled: false, user: null });
           }
         }
         return resp;
@@ -152,18 +149,6 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     logout
   };
 
-  // V420: 后端错误统一转字符串 — 后端 500 时 error 是 {code, message} 对象，
-  // 直接 setError(对象) 会触发 React #31（对象不能作为 children 渲染）
-  const errText = (v: unknown, fallback = "操作失败"): string => {
-    if (v == null) return fallback;
-    if (typeof v === "string") return v;
-    if (typeof v === "object") {
-      const m = (v as { message?: unknown }).message;
-      if (typeof m === "string" && m) return m;
-    }
-    return fallback;
-  };
-
   // V399: doSubmit/doForgot/doReset 必须在首个 return 之前声明 —
   // 模态（首个 return 内）引用它们，声明在 return 后则 TDZ 未初始化，点击无反应
   const doSubmit = async () => {
@@ -175,7 +160,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ username, password, ...(mode === "register" && email ? { email } : {}) }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(errText(d?.error)); return; }
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
       // V399: 统一登录成功处理（关模态）
       handleAuthSuccess(d);
     } catch (e: any) { setError(String(e?.message || e)); }
@@ -191,7 +176,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ email }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(errText(d?.error)); return; }
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
       if (d.smtpError) { setResetMsg("已提交。提示: 服务器 SMTP 未配置（" + d.smtpError + "），请联系管理员开启邮件服务。"); return; }
       setResetMsg("如果该邮箱已注册，重置链接已发送，请查收（15分钟内有效）。");
     } catch (e: any) { setError(String(e?.message || e)); }
@@ -207,7 +192,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
         body: JSON.stringify({ token: resetToken, newPassword: password }),
       });
       const d = await r.json();
-      if (!r.ok) { setError(errText(d?.error)); return; }
+      if (!r.ok) { setError(d.error || "操作失败"); return; }
       setResetMsg("密码已重置，请用新密码登录。");
       setPassword("");
       setTimeout(() => {

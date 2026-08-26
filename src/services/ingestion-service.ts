@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { toVectorLiteral } from "../db/vector.js";
 import { createSource, upsertEntity } from "../db/repositories.js";
@@ -125,20 +125,41 @@ export class IngestionService {
       await client.query("begin");
       // upsert：同项目内同标题已存在 → 更新内容（幂等根本保障，配合 016 唯一索引）
       // 注意：冲突时返回的是已存在行的 id（不是传入的 documentId）
+      // V398: 正文内容哈希（sha256，清洗后内容）— 内容级幂等 + 变化感知（087 迁移）
+      const contentHash = createHash("sha256").update(input.content).digest("hex");
+      // V399-2 P2(3.4): 版本历史 — upsert 前查旧行(同标题)的旧哈希, 冲突更新且内容实际变化时写 document_versions
+      const prevRow = await client.query(
+        `select id, content_version, content_hash from documents
+         where title = $1 and source_id = $2 and archived_at is null
+         limit 1`,
+        [input.title, source.id]
+      );
       const docResult = await client.query(
         `
-          insert into documents (id, source_id, title, content, status, parse_status, metadata)
-          values ($1, $2, $3, $4, 'PARSING', 'PARSING', $5::jsonb)
+          insert into documents (id, source_id, title, content, status, parse_status, metadata, content_hash)
+          values ($1, $2, $3, $4, 'PARSING', 'PARSING', $5::jsonb, $6)
           on conflict (title, source_id) do update set
             content = excluded.content,
             status = 'PARSING',
             parse_status = 'PARSING',
             metadata = excluded.metadata,
+            content_hash = excluded.content_hash,
+            content_version = documents.content_version + 1,
             updated_at = now()
           returning id
         `,
-        [documentId, source.id, input.title, input.content, JSON.stringify({ ...(input.metadata ?? {}), chunking: chunkingOptions })]
+        [documentId, source.id, input.title, input.content, JSON.stringify({ ...(input.metadata ?? {}), chunking: chunkingOptions }), contentHash]
       );
+      // V399-2 P2(3.4): 内容实际变化(旧行存在且旧哈希≠新哈希) → 登记历史版本
+      // 无变化重灌(同内容)已在上游 hash 判重拦截, 不会走到这里; 此处兜底避免写无意义历史
+      if (prevRow.rows.length > 0 && prevRow.rows[0].content_hash !== contentHash) {
+        await client.query(
+          `insert into document_versions (document_id, version, content_hash)
+           values ($1, $2, $3)
+           on conflict (document_id, version) do nothing`,
+          [String(docResult.rows[0].id), Number(prevRow.rows[0].content_version) + 1, contentHash]
+        );
+      }
       const actualDocumentId = String(docResult.rows[0].id);
       onProgress?.({
         stage: "WRITING_GRAPH",

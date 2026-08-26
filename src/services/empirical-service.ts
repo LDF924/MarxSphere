@@ -24,11 +24,10 @@ interface TaskRecord {
 
 const tasks = new Map<string, TaskRecord>();
 
-// 定期清理过期任务（V4xx: 跳过 status==="running" 的任务 — 运行中任务未过期不清理, 防执行中结果丢失）
+// 定期清理过期任务
 setInterval(() => {
   const now = Date.now();
   for (const [id, t] of tasks) {
-    if (t.status === "running") continue;
     if (now - t.createdAt > TASK_TTL_MS) tasks.delete(id);
   }
 }, 5 * 60_000).unref?.();
@@ -93,7 +92,7 @@ export async function spawnPythonTask(
     { timeout: 300_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, cwd: process.env.SAG_ROOT || process.cwd() },
     (error, _stdout, stderr) => {
       const rec = tasks.get(taskId);
-      if (!rec) return;  // V4xx: 回调兜底 — 任务已被 TTL 清理时 rec 为 undefined, 直接返回防崩溃
+      if (!rec) return;
       const resultPath = path.join(taskDir, "result.json");
       // 竞态防护: 脚本用 os.replace 原子写, 但 Windows 文件系统可能延迟可见;
       // 进程退出后若 result.json 尚未可见, 等待 1s 再查一次, 避免误判失败
@@ -307,7 +306,7 @@ export async function saveAsKnowledgePage(id: string): Promise<{ ok: boolean; pa
   }
 }
 
-/** 数据源: 列出 PG 中可导入的表（前缀白名单 data_ / user_ 开头, 排除系统表; 排除含凭据/密钥列的表, 最多前 50 行预览） */
+/** 数据源: 列出 PG 中可导入的表（排除系统表, 最多前 50 行预览） */
 export async function listEmpiricalDatasets(): Promise<Array<{ table: string; columns: string[]; rows: number; preview: string[][] }>> {
   try {
     const tables = await pool.query(
@@ -320,18 +319,14 @@ export async function listEmpiricalDatasets(): Promise<Array<{ table: string; co
     const out: Array<{ table: string; columns: string[]; rows: number; preview: string[][] }> = [];
     for (const t of tables.rows) {
       const name = String(t.tablename);
-      // V4xx: 前缀白名单 — 仅允许 data_*/user_* 前缀的表可导入（从宽正则改为显式前缀, 防误开放系统/业务表）
-      if (!/^(?:data_|user_)/i.test(name)) continue;
       try {
         const info = await pool.query(
           `select column_name from information_schema.columns where table_schema='public' and table_name=$1 order by ordinal_position limit 12`,
           [name]
         );
-        const columns = info.rows.map((r: any) => String(r.column_name));
-        // V4xx: 排除含凭据/密钥类列的表（credentials/secrets/hash 列名 → 不暴露为可导入数据源）
-        if (columns.some((c) => /credentials?|secrets?|(?:password|passwd)_?hash|api[_-]?key|token/i.test(c))) continue;
         const cnt = await pool.query(`select count(*)::int as n from "${name}"`);
         const prev = await pool.query(`select * from "${name}" limit 5`);
+        const columns = info.rows.map((r: any) => String(r.column_name));
         const preview = prev.rows.map((r: any) => columns.map((c) => {
           const v = r[c];
           return v === null || v === undefined ? "" : String(v).slice(0, 30);
@@ -352,8 +347,8 @@ export async function fetchEmpiricalDataset(
   limit = 2000
 ): Promise<{ columnOrder: string[]; rows: (string | number | null)[][] } | null> {
   try {
-    // V4xx: 前缀白名单校验 — 仅允许 data_*/user_* 前缀表（替代宽松的字母数字正则, 防读取系统/业务表）
-    if (!/^(?:data_|user_)[a-z0-9_]*$/i.test(table)) return null;
+    // 白名单校验: 只允许字母数字下划线
+    if (!/^[a-z_][a-z0-9_]*$/i.test(table)) return null;
     const cnt = await pool.query(`select count(*)::int as n from "${table}"`);
     const n = Math.min(Number(cnt.rows[0].n), limit);
     const r = await pool.query(`select * from "${table}" limit $1`, [n]);

@@ -36,16 +36,13 @@ if (!tag) {
     const newSeries = allTags.filter((t) => /^v0\.[0-9]+\.[0-9]+$/.test(t) && !t.includes("-"));
     const latest = newSeries[0] || allTags[0];
     const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
-    if (!m) throw new Error("未找到可用的版本 tag 作为递增基准");
-    tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
-    console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
-  } catch (e) {
-    // 版本解析失败 → 中止（不生成 Date.now() 时间戳垃圾 tag，避免污染 Release 列表）
-    console.error(`❌ 版本号解析失败: ${String(e?.message || e)}`);
-    console.error("   请显式传入版本参数，例如: node scripts/release.mjs v0.4.0 [发布说明]");
-    process.exit(1);
-  }
+    if (m) {
+      tag = `v${m[1]}.${Number(m[2]) + 1}.0`;
+      console.log(`[release] 未传版本参数，自动递增: ${latest} → ${tag}`);
+    }
+  } catch { /* 无 tag 时用默认 */ }
 }
+tag = tag || `v${Date.now().toString(36)}`;
 
 if (!GITHUB_TOKEN && !NO_PUBLISH) {
   console.error("❌ 缺少 GITHUB_TOKEN 环境变量（GitHub API token）");
@@ -189,11 +186,11 @@ const upload = JSON.parse(execSync(
 ));
 console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.message || "?"}`);
 
-// 6) 备份安装包到宿主机 release/（旧版同步到 SAG-main；SAG-main 停用后仅留本仓库 release/）
-const mainReleaseDir = path.join(root, "release");
+// 6) 同步安装包到主仓库（SAG-main release/）
+const mainReleaseDir = path.join("C:/Users/HUAWEI/SAG-main", "release");
 if (existsSync(mainReleaseDir)) {
   execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
-  console.log(`✅ 安装包已保留在 release/ (MarxSphere Setup ${version}.exe)`);
+  console.log(`✅ 已同步到主仓库 release/ (MarxSphere Setup ${version}.exe)`);
 }
 
 console.log("\n🎉 发布完成!");

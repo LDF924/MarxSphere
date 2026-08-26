@@ -67,20 +67,15 @@ export interface MinionJob {
   completedAt?: string;
 }
 
-/** 与 request() 一致的鉴权头构造（流式接口手写 fetch 时复用，避免缺失 Authorization 被 401 拦截） */
-function authHeaders(init?: { headers?: HeadersInit }): Headers {
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  // V392修复: 统一附带 JWT token（认证启用后所有 api.* 调用需带 Authorization）
   if (!headers.has("Authorization")) {
     const token = localStorage.getItem("sag_token");
     if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
-  return headers;
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const headers = authHeaders(init);
-  if (init?.body != null && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
   }
   const response = await fetch(url, {
     ...init,
@@ -283,7 +278,9 @@ export const api = {
   }, onEvent: (event: SearchStreamEvent) => void) {
     const response = await fetch("/api/search/stream", {
       method: "POST",
-      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         query: input.query,
         sourceIds: input.sourceIds,
@@ -316,7 +313,7 @@ export const api = {
   }, onEvent: (event: EvalStreamEvent) => void, signal?: AbortSignal) {
     const response = await fetch("/api/eval/run", {
       method: "POST",
-      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
       ...(signal ? { signal } : {})
     });
@@ -477,7 +474,9 @@ export const api = {
     const response = await fetch(`/api/mcp/sessions/${sessionId}/messages/stream`, {
       method: "POST",
       signal: options.signal,
-      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ content })
     });
     if (!response.ok || !response.body) {
@@ -525,7 +524,9 @@ export const api = {
     const response = await fetch(`/api/chat/sessions/${sessionId}/messages/stream`, {
       method: "POST",
       signal: options.signal,
-      headers: authHeaders({ headers: { "Content-Type": "application/json" } }),
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify(input)
     });
     if (!response.ok || !response.body) {
@@ -1230,7 +1231,12 @@ export interface Question {
 }
 export interface EmpiricalProject { id: string; title: string; topic: string; status: string; created_at: string }
 export interface EmpiricalQuestionnaire { id: string; projectId: string | null; title: string; source: string; columns: string[]; meta: any; created_at: string }
-export interface EmpiricalDataVersion { id: string; projectId: string | null; name: string; columns: string[]; nRows: number; meta: any; created_at: string }
+export interface EmpiricalDataVersion {
+  id: string; projectId: string | null; name: string; columns: string[]; nRows: number;
+  meta: any; created_at: string;
+  /** V399-2 P2 补齐(ScienceX 实验表格哈希): 数据内容哈希 — 前端可判重/溯源 */
+  contentHash?: string | null;
+}
 
 export const apiEmpiricalWorkshop = {
   async projects(): Promise<{ projects: EmpiricalProject[] }> {
@@ -1257,7 +1263,14 @@ export const apiEmpiricalWorkshop = {
     const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     return request(`/api/empirical/data-versions${qs}`);
   },
-  async saveDataVersion(input: { projectId?: string; name: string; columns: string[]; nRows: number; meta?: any }): Promise<{ version: { id: string } }> {
+  async saveDataVersion(input: {
+    projectId?: string; name: string; columns: string[]; nRows: number;
+    /** V399-2 P2 补齐: 数据内容 sha256（同内容重传服务端判重返回 duplicate） */
+    contentHash?: string;
+    /** V399-2 P2 补齐: 数据行（可选）— 服务端自动生成列画像存 meta.profile */
+    rows?: unknown[][];
+    meta?: any;
+  }): Promise<{ version: { id: string; duplicate?: boolean; duplicateReason?: string } }> {
     return request("/api/empirical/data-versions", { method: "POST", body: JSON.stringify(input) });
   },
 };

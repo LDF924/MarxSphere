@@ -5,7 +5,6 @@ import { ScanSearch, FileUp, Loader2, FileText } from "lucide-react";
 import { apiEmpiricalWorkshop, apiEmpiricalDemo, type Question } from "../../lib/api";
 import { QuestionForm } from "./QuestionForm";
 import { Button } from "../ui/button";
-import { bufferToBase64 } from "../../lib/utils";
 
 export function RecognizePage({ projectId }: { projectId?: string }) {
   const [title, setTitle] = useState("");
@@ -39,7 +38,7 @@ export function RecognizePage({ projectId }: { projectId?: string }) {
       setBusy(true); setError("");
       try {
         const buf = await f.arrayBuffer();
-        const base64 = await bufferToBase64(buf);
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
         const r = await apiEmpiricalWorkshop.parseQuestionnaireFile({ fileName: f.name, base64 });
         if (r.ok) { setText(r.text); setTitle(f.name.replace(/\.[^.]+$/, "")); }
         else setError(r.error ?? "解析失败");

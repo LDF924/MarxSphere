@@ -56,7 +56,7 @@ function main() {
   const raw = JSON.parse(readFileSync(evalFile, 'utf8'));
   const valid = perqMode
     ? (Array.isArray(raw.questions) ? raw.questions : []).filter((r: any) => !r.eval_error)
-    : (Array.isArray(raw) ? raw : []).filter((r: any) => !r.error && r.hypothesis);
+    : (Array.isArray(raw) ? raw : []).filter((r: any) => !r.error && r.hypothesis && r.question_id !== '__fingerprint__');
   const goldRaw = JSON.parse(readFileSync('gold_dataset.json', 'utf8'));
   const goldList: any[] = Array.isArray(goldRaw) ? goldRaw : (goldRaw.questions || []);
   const goldMap = new Map(goldList.map((g: any) => [g.id, g]));

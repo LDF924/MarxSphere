@@ -399,10 +399,24 @@ export async function runEvalSuite(input: { category?: string; fault?: FaultType
       const stepScore = s.expected_steps > 0 ? Math.min(steps / s.expected_steps, 1) : 0.5;
       const score = error ? 0 : toolScore * 0.4 + kwScore * 0.4 + stepScore * 0.2;
       const passed = !error && score >= Number(s.min_score || 0.7);
+      // V399-2 P2 补齐: agent 评测参数/环境快照（088/089 迁移列; 与 eval-runner 的 RAGAS 评测快照同模式）
+      // 参数: 本次评测的 suite/category/fault/limit; 环境: node/依赖/时间
+      const parameters = {
+        category: input.category || "gold",
+        fault: input.fault || "none",
+        limit: input.limit ?? null,
+        suite: s.name,
+      };
+      const environment = {
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        recordedAt: new Date().toISOString(),
+      };
       await pool.query(
-        `insert into agent_eval_runs (suite_id, task_id, passed, score, metrics, fault_injected, error)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
-        [s.id, taskId, passed, Number(score.toFixed(3)), JSON.stringify({ steps, usedTools, toolScore, kwScore, stepScore, resultPreview: resultText.slice(0, 150) }), input.fault || "none", error || null]
+        `insert into agent_eval_runs (suite_id, task_id, passed, score, metrics, fault_injected, error, parameters_json, environment_json)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [s.id, taskId, passed, Number(score.toFixed(3)), JSON.stringify({ steps, usedTools, toolScore, kwScore, stepScore, resultPreview: resultText.slice(0, 150) }), input.fault || "none", error || null, JSON.stringify(parameters), JSON.stringify(environment)]
       );
       results.push({ suiteId: s.id, name: s.name, passed, score: Number(score.toFixed(3)), metrics: { steps, usedTools }, fault: input.fault || "none", error });
     } catch (e: any) {
@@ -413,14 +427,19 @@ export async function runEvalSuite(input: { category?: string; fault?: FaultType
   return { total: results.length, passed, failed: results.length - passed, results };
 }
 
-/** 评测集历史(门禁趋势): 最近 N 次运行通过率 */
-export async function evalSuiteHistory(limit = 20): Promise<Array<{ created_at: string; passed: boolean; score: number; fault_injected: string; name: string }>> {
+/** 评测集历史(门禁趋势): 最近 N 次运行通过率（V399-2 P2 补齐: 含参数/环境快照供前端溯源） */
+export async function evalSuiteHistory(limit = 20): Promise<Array<{ created_at: string; passed: boolean; score: number; fault_injected: string; name: string; parameters_json?: unknown; environment_json?: unknown }>> {
   const r = await pool.query(
-    `select r.created_at, r.passed, r.score, r.fault_injected, s.name
+    `select r.created_at, r.passed, r.score, r.fault_injected, s.name, r.parameters_json, r.environment_json
      from agent_eval_runs r join agent_eval_suite s on s.id = r.suite_id
      order by r.created_at desc limit $1`, [limit]
   );
-  return r.rows;
+  return r.rows.map((row: any) => ({
+    created_at: row.created_at, passed: row.passed, score: row.score,
+    fault_injected: row.fault_injected, name: row.name,
+    parameters_json: row.parameters_json ?? null,
+    environment_json: row.environment_json ?? null,
+  }));
 }
 
 /** V6: 自动回归调度 — 每天跑一次 gold 评测集（不阻塞, 失败静默; 通过率低于基线告警日志） */
@@ -446,13 +465,12 @@ export async function scheduledEvalSuiteRun(): Promise<{ ran: boolean; passed: n
   }
 }
 
-/** V445: 启动自动回归调度器（每 24h 跑一次）— 启动不立即跑（防静默消费 LLM），
- * 需用户确认（POST /api/eval/confirm 或前端开关）后才执行首次 */
+/** V6: 启动自动回归调度器（每 24h 跑一次） */
 export function startEvalSuiteScheduler(): void {
   const EVAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
-  // V445: 移除启动即跑 — void scheduledEvalSuiteRun()（原启动即消费 qwen/llm 额度）
-  setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS).unref?.();
-  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集；首次运行需用户确认)");
+  void scheduledEvalSuiteRun();  // 启动即跑一次
+  setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS);
+  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集)");
 }
 
 export const agentEvalService = {

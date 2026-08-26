@@ -127,11 +127,6 @@ def fail(msg):
     done({"error": msg})
 
 
-def _esc(text):
-    """V430: SVG 文本 HTML 转义（纵深防御 — 防未来列名校验放宽时存储型 XSS）"""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-
 def coef_svg(rows, title):
     """回归系数图: 横线 + 菱形点 + 95%CI, 返回 SVG 字符串"""
     n = len(rows)
@@ -146,7 +141,7 @@ def coef_svg(rows, title):
     y = lambda i: 30 + i * 28 + 14
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" style="max-width:100%">',
-        f'<text x="{pad_l}" y="16" font-size="11" fill="var(--foreground)">{_esc(title)}</text>',
+        f'<text x="{pad_l}" y="16" font-size="11" fill="var(--foreground)">{title}</text>',
     ]
     # 零线
     parts.append(f'<line x1="{x(0):.1f}" y1="20" x2="{x(0):.1f}" y2="{h-8}" stroke="var(--border)" stroke-dasharray="3 3"/>')
@@ -154,7 +149,7 @@ def coef_svg(rows, title):
         yy = y(i)
         parts.append(f'<line x1="{x(r["ci_lo"]):.1f}" y1="{yy}" x2="{x(r["ci_hi"]):.1f}" y2="{yy}" stroke="var(--primary)" stroke-width="2"/>')
         parts.append(f'<rect x="{x(r["coef"])-4:.1f}" y="{yy-4}" width="8" height="8" fill="var(--primary)" transform="rotate(45 {x(r["coef"]):.1f} {yy})"/>')
-        parts.append(f'<text x="{pad_l-8}" y="{yy+4}" text-anchor="end" font-size="11" fill="var(--foreground)">{_esc(r["name"])}</text>')
+        parts.append(f'<text x="{pad_l-8}" y="{yy+4}" text-anchor="end" font-size="11" fill="var(--foreground)">{r["name"]}</text>')
     parts.append("</svg>")
     return "".join(parts)
 

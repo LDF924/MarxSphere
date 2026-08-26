@@ -52,9 +52,6 @@ extraResources:
     to: sag/skills
     filter:
       - "**/*"
-  # V421: pgvector 预编译 zip 随包（本地 PG 安装零下载，免 GitHub）
-  - from: resources/sag/pgvector-pg16.zip
-    to: sag/pgvector-pg16.zip
   - from: resources/sag/docker-compose.yml
     to: sag/docker-compose.yml
 

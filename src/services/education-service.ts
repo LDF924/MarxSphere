@@ -12,7 +12,7 @@ const SAG_URL = process.env.SAG_INTERNAL_URL || "http://127.0.0.1:4173";
 export const DEFAULT_SOURCE = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
 
 export async function llmJson(prompt: string, modelOverride?: string): Promise<any | null> {
-  const ep = await getLlmEndpoint(modelOverride ? { model: modelOverride } : undefined);
+  const ep = getLlmEndpoint(modelOverride ? { model: modelOverride } : undefined);
   const r = await callLlm({
     url: ep.url, key: ep.key, model: ep.model,
     messages: [{ role: "user", content: prompt }],

@@ -26,7 +26,13 @@ import 'dotenv/config';
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'fs';
 import * as http from 'http';
 import * as https from 'https';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+import { Client } from 'pg';
 import { classifyError } from '../src/services/error-recovery-map.js';
+
+// V399-2 文献入库哈希版本化(P1): PG 依赖用于计算评测数据指纹(3.3)/产物哈希(3.6)
+// 设计: docs/DATA-HASH-VERSIONING-DESIGN.md — 连 PG 失败降级 fingerprint=null, 不阻塞评测
 
 const SAG_API = 'http://localhost:4173';
 const PROJECT_ID = 'c609acbf-1d6e-4bd5-9ae1-92fa6c64021a';
@@ -136,6 +142,55 @@ function ts(): string { return new Date().toISOString().substring(11, 19); }
 function logInfo(msg: string) { console.log(LOG_PREFIX + ' ' + ts() + ' ' + msg); }
 function logWarn(msg: string) { console.warn(LOG_PREFIX + ' [WARN] ' + ts() + ' ' + msg); }
 function logError(msg: string) { console.error(LOG_PREFIX + ' [ERROR] ' + ts() + ' ' + msg); }
+
+// ═══════════ 评测数据指纹 / 产物哈希（V399-2 P1: 3.3 + 3.6, P2: stale 判定改动点E）═══════════
+// 目标: 每次评测输出携带"基于哪批文献数据"的指纹, 数据变更 → 指纹变 → 旧结果可判 stale
+// 实现复用 src/services/eval-fingerprint.ts 共享模块(server 侧 stale 判定同源), 此处 re-export 供单测
+import type { EvalFingerprint } from '../src/services/eval-fingerprint.js';
+import { aggregateContentHashFingerprint, artifactHashOf } from '../src/services/eval-fingerprint.js';
+export type { EvalFingerprint } from '../src/services/eval-fingerprint.js';
+export { aggregateContentHashFingerprint, artifactHashOf } from '../src/services/eval-fingerprint.js';
+
+// 本次评测的数据指纹（main 启动时计算, savePerQuestionScores 等模块函数共用）
+let lastFingerprint: EvalFingerprint = { algorithm: 'sha256-of-doc-content-hashes', value: null, sampledAt: new Date().toISOString() };
+
+/**
+ * 计算评测数据指纹: 查库内全部文献 content_hash 聚合。
+ * 连 PG 失败 → 返回 {value: null} 并打警告, 不抛异常（评测不因指纹而中断）。
+ */
+export async function computeDataFingerprint(): Promise<EvalFingerprint> {
+  const fp: EvalFingerprint = { algorithm: 'sha256-of-doc-content-hashes', value: null, sampledAt: new Date().toISOString() };
+  if (!process.env.DATABASE_URL) {
+    logWarn('DATABASE_URL 未设置, 数据指纹降级为 null');
+    return fp;
+  }
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  try {
+    await client.connect();
+    const res = await client.query(
+      `select content_hash from documents
+       where source_id = $1 and archived_at is null
+         and content_hash is not null
+       order by content_hash`,   // 排序保证确定性
+      [PROJECT_ID],
+    );
+    const hashes: string[] = res.rows.map((r: any) => r.content_hash);
+    fp.value = aggregateContentHashFingerprint(hashes);
+    logInfo('数据指纹已计算: ' + fp.value + ' (' + hashes.length + ' 篇文献)');
+  } catch (e: any) {
+    logWarn('数据指纹计算失败(PG不可用?), 降级为 null: ' + String(e?.message || e).substring(0, 120));
+  } finally {
+    try { await client.end(); } catch { /* 关闭失败可忽略 */ }
+  }
+  return fp;
+}
+
+// ═══════════ P2 改动点E: stale 判定（评测启动时对比历史指纹）═══════════
+// 当前指纹 vs 输出文件里历史指纹 → 不一致 → 警告"本评测结果基于旧数据"
+function detectStaleData(prevFp: EvalFingerprint | null | undefined, curFp: EvalFingerprint): boolean {
+  if (!prevFp?.value || !curFp.value) return false;   // 缺指纹(旧产物/降级) → 不误判
+  return prevFp.value !== curFp.value;
+}
 
 // ═══════════ SSE 进度协议（eval-server.ts 逐行解析）═══════════
 // 格式: [EVAL-SSE] {"type":"question_start"|"question_done"|"metric_done"|"phase"|"log", ...}
@@ -253,6 +308,24 @@ function safeSaveJSON(filePath: string, data: unknown) {
   try { unlinkSync(tmp); } catch (err) { logWarn('无法清理临时文件 ' + tmp + ': ' + String(err)); }
 }
 
+// ═══════════ V399-2 P1: 带指纹/产物哈希的原子落盘 (3.3 + 3.6) ═══════════
+// 产物哈希登记: 对落盘内容(不含 fingerprint/artifactHash 自身, 避免自引用)算 sha256
+// 主输出(eval_32metrics.json)顶层是数组, 消费者(significance/cross-judge/EvalPanel)按数组解析
+// → 保持数组结构, 在数组尾部追加 question_id='__fingerprint__' 的元数据条目携带指纹
+// 该条目 overall=null → 不计入均值/统计 (significance/cross-judge/backfill-failure-layers 已跳过)
+// perq 输出顶层是对象 → 按设计文档 3.3/3.6 原样加 fingerprint/artifactHash 顶层字段
+function saveMainOutput(results: SampleEvalResult[], fp: EvalFingerprint) {
+  const payload: any[] = results.filter((r: any) => r.question_id !== '__fingerprint__');
+  const artifactHash = artifactHashOf(JSON.stringify(payload));
+  payload.push({ question_id: '__fingerprint__', question_type: 'META', overall: null, dimA: null, dimB: null, dimC: null, dimD: null, metrics: {}, fingerprint: fp, artifactHash });
+  safeSaveJSON(OUTPUT, payload);
+}
+
+function savePerqOutput(perqData: Record<string, unknown>, fp: EvalFingerprint) {
+  const artifactHash = artifactHashOf(JSON.stringify(perqData));
+  safeSaveJSON(PERQ_OUTPUT, { ...perqData, fingerprint: fp, artifactHash });
+}
+
 // ═══════════ P0-1: 逐题分数导出（供 significance.ts 配对检验 / failure-attribution.ts 归因）═══════════
 // 每题输出四维分数(a/b/c/d) + overall + 达标标记(overall>=0.55) + 归因证据(low_metrics/answer/fused_context_head)，
 // 按 Q01..Q50 顺序写入 eval_32metrics_perq.json
@@ -280,7 +353,8 @@ function savePerQuestionScores(results: SampleEvalResult[]) {
     });
     // 保留 error 条目的题号（significance.ts 需要知道哪些题配对缺失）
     const errored = results.filter(r => r.error).map(r => ({ question_id: r.question_id, question_type: r.question_type, overall: 0, dimA: 0, dimB: 0, dimC: 0, dimD: 0, passed: false, eval_error: true }));
-    safeSaveJSON(PERQ_OUTPUT, { generated_at: new Date().toISOString(), question_count: valid.length + errored.length, questions: [...perq, ...errored] });
+    // V399-2 P1: 指纹/产物哈希顶层写入 perq 文件（设计文档 3.3/3.6）
+    savePerqOutput({ generated_at: new Date().toISOString(), question_count: valid.length + errored.length, questions: [...perq, ...errored] }, lastFingerprint);
     logInfo('逐题分数已导出: ' + PERQ_OUTPUT + ' (' + perq.length + ' 题有效)');
   } catch (e: any) {
     logWarn('savePerQuestionScores 失败(不影响主结果): ' + String(e).substring(0, 80));
@@ -1075,6 +1149,22 @@ async function main() {
     // 不立刻exit，让本轮循环执行完毕后自然退出；循环头部会检查 shuttingDown
   });
 
+  // V399-2 P1: 评测启动即计算数据指纹（数据变更 → 指纹变 → 旧结果可判 stale）
+  lastFingerprint = await computeDataFingerprint();
+  if (lastFingerprint.value) logInfo('dataFingerprint: ' + lastFingerprint.value);
+  // V399-2 P2(改动点E): stale 判定 — 对比输出文件里历史指纹, 数据已变 → 警告本评测基于旧数据
+  if (existsSync(OUTPUT)) {
+    try {
+      const prev = JSON.parse(readFileSync(OUTPUT, 'utf8'));
+      const prevFp = Array.isArray(prev)
+        ? prev.find((r: any) => r?.question_id === '__fingerprint__')?.fingerprint
+        : prev?.fingerprint;
+      if (detectStaleData(prevFp, lastFingerprint)) {
+        logWarn('⚠ 数据已变更(stale): 历史指纹 ' + (prevFp?.value || '').substring(0, 12) + '… ≠ 当前 ' + (lastFingerprint.value || '').substring(0, 12) + '… — 本评测结果基于旧数据, 与历史结果不可直接对比');
+      }
+    } catch { /* 输出文件损坏/无历史 → 跳过 stale 检测 */ }
+  }
+
   let gold: any[];
   try { gold = JSON.parse(readFileSync('gold_dataset.json', 'utf8')); }
   catch (e: any) { logError('gold_dataset.json 解析失败: ' + (e.message?.substring(0, 80) || String(e))); process.exit(1); }
@@ -1087,6 +1177,8 @@ async function main() {
   if (existsSync(OUTPUT)) {
     try { results = JSON.parse(readFileSync(OUTPUT, 'utf8')); }
     catch (e: any) { logWarn('输出文件损坏, 重新开始评测'); results = []; }
+    // V399-2 P1: 断点续传时剔除元数据条目（fingerprint 每次评测重新计算, 不续传旧值）
+    results = results.filter((r: any) => r.question_id !== '__fingerprint__');
   }
 
   if (EVAL_QUESTIONS) {
@@ -1139,13 +1231,13 @@ async function main() {
       console.log('失败:', e.message.substring(0, 70));
       results.push({ question_id: q.id, question_type: qType, overall: 0, dimA: 0, dimB: 0, dimC: 0, dimD: 0, metrics: {}, error: 'SAG调用异常:' + e.message });
       emitProgress({ type: 'question_done', question: q.id, ok: false, error: 'SAG调用异常:' + e.message.substring(0, 120) });
-      safeSaveJSON(OUTPUT, results); continue;
+      saveMainOutput(results, lastFingerprint); continue;
     }
     if (sagResult.error) {
       console.log('SAG业务错误:', sagResult.error);
       results.push({ question_id: q.id, question_type: qType, overall: 0, dimA: 0, dimB: 0, dimC: 0, dimD: 0, metrics: {}, error: sagResult.error });
       emitProgress({ type: 'question_done', question: q.id, ok: false, error: String(sagResult.error).substring(0, 120) });
-      safeSaveJSON(OUTPUT, results); continue;
+      saveMainOutput(results, lastFingerprint); continue;
     }
     console.log(`OK，耗时 ${(sagResult.totalMs / 1000).toFixed(1)}s`);
 
@@ -1173,11 +1265,11 @@ async function main() {
       _debugRefined: sagResult.trace?._debugRefined || {},
     });
     emitProgress({ type: 'question_done', question: q.id, ok: true, overall, dimA, dimB, dimC, dimD });
-    safeSaveJSON(OUTPUT, results);
+    saveMainOutput(results, lastFingerprint);
   }
 
   // V38.1: 循环结束后统一保存一次，确保SIGINT降级路径也落地
-  safeSaveJSON(OUTPUT, results);
+  saveMainOutput(results, lastFingerprint);
   // P0-1: 循环结束后同步导出逐题分数（significance/failure-attribution 的输入）
   savePerQuestionScores(results);
 
@@ -1255,4 +1347,9 @@ async function main() {
   clearTimeout(globalTimer);
   return results;
 }
-main().catch(err => { console.error('程序全局异常:', err); process.exit(1); });
+// 仅直接执行时启动评测（import 本模块供单测不触发评测流程）
+// 标准 ESM 入口守卫: node/tsx 直接跑该文件时, process.argv[1] 与 import.meta.url 一致
+// 被 vitest 等 import 时该判断为 false, 只导出纯函数(指纹/哈希), 不产生任何副作用
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(err => { console.error('程序全局异常:', err); process.exit(1); });
+}

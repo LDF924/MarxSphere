@@ -32,6 +32,7 @@ async function assertTaskOwnership(request: any, reply: any, taskId: string): Pr
   return true;
 }
 import { directionService } from "../services/direction-service.js";
+import { computeDataFingerprint } from "../services/eval-fingerprint.js";
 import { mcpAgentService } from "../services/mcp-agent-service.js";
 import { aiSettingsService } from "../services/ai-settings-service.js";
 import { getPublicMcpSettings } from "../services/mcp-settings-service.js";
@@ -171,27 +172,14 @@ const mcpMessageSchema = z.object({
 });
 
 // 可信 LLM/Embedding provider 域名白名单 — 防止改 baseUrl 重定向窃取调用
-// 必须包含默认值 api.302ai.cn（.env 默认 EMBEDDING_BASE_URL/LLM_BASE_URL），否则设置页首次保存必 400
 const ALLOWED_PROVIDER_HOSTS = [
-  "api.302ai.cn",
   "api.deepseek.com",
   "dashscope.aliyuncs.com",
   "maas.aliyuncs.com",
-  "api.openai.com",
-  "api.anthropic.com",
-  "openrouter.ai",
-  "generativelanguage.googleapis.com",
-  "api.moonshot.cn",
-  "api.z.ai",
-  "api.minimax.chat",
-  "api.xiaoai.mi.com",
 ];
 const isTrustedProviderUrl = (url: string) => {
   try {
-    const u = new URL(url);
-    // 本机/回环地址（Ollama http://127.0.0.1:11434、本地代理等）放行 — 单机桌面应用，不构成外部窃取
-    if (u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "::1") return true;
-    return ALLOWED_PROVIDER_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith("." + h));
+    return ALLOWED_PROVIDER_HOSTS.some((h) => new URL(url).hostname === h || new URL(url).hostname.endsWith("." + h));
   } catch {
     return false;
   }
@@ -217,9 +205,6 @@ const aiSettingsSchema = z.object({
 });
 
 export function buildHttpServer() {
-  // V437: 迁移完成前服务降级 — 迁移未完成时业务接口返回 503（避免后端在缺表时崩溃/闪退循环）
-  // 迁移由 index.ts 的 runMigrationsWithRetry 完成（等 DB 就绪 + 重试），完成后 markMigrationsReady() 置 true
-  // 读取走 isMigrationsReady()（跨模块 globalThis 标记），闭包不缓存
   // 启动限流器桶清理 (防 Map 无限增长)
   globalRateLimiter.startCleanup();
   tokenRateLimiter.startCleanup();
@@ -232,14 +217,6 @@ export function buildHttpServer() {
         service: "marxsphere"
       }
     }
-  });
-
-  // V437: 迁移完成前降级 — 业务请求 503（避免缺表崩溃），/health 与 /api/auth/status 放行
-  app.addHook("onRequest", async (request, reply) => {
-    if (isMigrationsReady()) return;
-    const url = request.url.split("?")[0];
-    if (url === "/health" || url === "/api/auth/status" || url.startsWith("/api/auth/")) return;
-    reply.code(503).send({ error: { code: "MIGRATING", message: "数据库初始化中，请稍候重试" } });
   });
 
   // ─── 对外 API 鉴权（部署到服务器 + 多用户场景）───
@@ -680,8 +657,6 @@ export function buildHttpServer() {
     ok: boolean; service: string; db?: "up" | "down"; queueDepth?: number;
     runningTasks?: number; stuckTasks?: number; agentQueue?: { queued: number; running: number; maxConcurrent: number };
   }> => {
-    // V437: 迁移未完成 → db:down（前端/electron 等健康检查，不会误以为就绪）
-    if (!isMigrationsReady()) return { ok: false, service: "marxsphere", db: "down" };
     let db: "up" | "down" = "down";
     let queueDepth = 0;
     let runningTasks = 0;
@@ -1193,11 +1168,10 @@ export function buildHttpServer() {
   });
 
   // 模式切换（写入 mode.json，重启后生效）：POST { mode: "preview" | "full" }
-  // V441: 写 cwd（userData/sag-root，可写）而非 rootDir（安装目录只读）— 与 index.ts 读取路径一致
   app.post("/api/mode", async (request) => {
     const body = (request.body ?? {}) as { mode?: string };
     const mode = body.mode === "full" ? "full" : "preview";
-    fs.writeFileSync(path.join(process.cwd(), "mode.json"), JSON.stringify({ mode, updatedAt: new Date().toISOString() }), "utf-8");
+    fs.writeFileSync(path.join(rootDir, "mode.json"), JSON.stringify({ mode, updatedAt: new Date().toISOString() }), "utf-8");
     return { ok: true, mode, note: "重启服务后生效（当前模式不变）" };
   });
 
@@ -1282,26 +1256,14 @@ export function buildHttpServer() {
   });
 
   // ───── 商业化计费 API（V389+: 余额/充值/订阅/账单/用量, JWT认证） ─────
-  // JWT 认证辅助: 从 Authorization 提取用户（V3xx: 校验 status='active', disabled 一律 403）
+  // JWT 认证辅助: 从 Authorization 提取用户
   const requireUser = async (request: any, reply: any) => {
     const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
     const payload = authService.verifyToken(token);
     if (!payload) { reply.code(401).send({ error: "未登录" }); return null; }
     const user = await authService.getUserById(payload.uid);
     if (!user) { reply.code(401).send({ error: "用户不存在" }); return null; }
-    // 已禁用账号: 拒绝一切需登录的 API（与登录校验对齐; 已签发 token 不再有效）
-    if (user.status === "disabled") { reply.code(403).send({ error: "账号已被禁用" }); return null; }
     return user;
-  };
-
-  // V3xx: 会话租户隔离 — 从 JWT 提取当前用户 tenantId（未登录/无 JWT → 默认公共租户）
-  const requestTenantId = async (request: any): Promise<string> => {
-    const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
-    if (token) {
-      const payload = authService.verifyToken(token);
-      if (payload?.tenantId) return payload.tenantId;
-    }
-    return config.DEFAULT_TENANT_ID;
   };
 
   app.get("/api/billing/balance", async (request, reply) => {
@@ -1395,9 +1357,6 @@ export function buildHttpServer() {
     const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
     const payload = authService.verifyToken(token);
     if (!payload || payload.role !== "admin") { reply.code(403).send({ error: "需要管理员权限" }); return null; }
-    // 已禁用管理员同样拒绝（disabled 状态全局生效）
-    const admin = await authService.getUserById(payload.uid);
-    if (!admin || admin.status === "disabled") { reply.code(403).send({ error: "账号已被禁用" }); return null; }
     return payload;
   };
   app.get("/api/admin/users", async (request, reply) => {
@@ -1458,9 +1417,7 @@ export function buildHttpServer() {
     let tenantIds: string[] = [];
     if (jwtPayload) {
       const u = await pool.query("select tenant_id from users where id = $1", [jwtPayload.uid]);
-      // V454: 带 token 也包含 DEFAULT_TENANT_ID（default 租户）— 项目创建时归 default 租户，
-      // 若只查 PUBLIC_TENANT + 用户租户，default 项目全部不可见（刷新后列表为空）
-      if (u.rows.length > 0) tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID, u.rows[0].tenant_id];
+      if (u.rows.length > 0) tenantIds = [PUBLIC_TENANT, u.rows[0].tenant_id];
     } else {
       // V398: 未登录（本机/无 JWT）也应可见公共库（PUBLIC_TENANT）项目 — 公开文献资产
       tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID];
@@ -1991,7 +1948,7 @@ export function buildHttpServer() {
 
   app.post("/api/mcp/sessions", async (request, reply) => {
     const input = createMcpSessionSchema.parse(request.body);
-    const session = await mcpAgentService.createSession(input, await requestTenantId(request));
+    const session = await mcpAgentService.createSession(input);
     return reply.code(201).send({ session });
   });
 
@@ -2000,7 +1957,7 @@ export function buildHttpServer() {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
     const { title } = z.object({ title: z.string().trim().min(1).max(100) }).parse(request.body);
-    const session = await mcpAgentService.updateTitle(params.sessionId, title, await requestTenantId(request));
+    const session = await mcpAgentService.updateTitle(params.sessionId, title);
     if (!session) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -2012,7 +1969,7 @@ export function buildHttpServer() {
     const params = request.params as { sessionId: string; messageId: string };
     z.string().uuid().parse(params.sessionId);
     z.string().uuid().parse(params.messageId);
-    const result = await mcpAgentService.deleteMessage(params.sessionId, params.messageId, await requestTenantId(request));
+    const result = await mcpAgentService.deleteMessage(params.sessionId, params.messageId);
     if (!result) {
       return reply.code(404).send(notFound("MCP_MESSAGE_NOT_FOUND", "消息不存在"));
     }
@@ -2020,26 +1977,26 @@ export function buildHttpServer() {
   });
 
   // V398: 通用 AI 对话会话列表（kind=chat）
-  app.get("/api/chat/sessions", async (request) => ({
-    sessions: await mcpAgentService.listSessions({ kind: "chat" }, await requestTenantId(request))
+  app.get("/api/chat/sessions", async () => ({
+    sessions: await mcpAgentService.listSessions({ kind: "chat" })
   }));
 
-  app.get("/api/mcp/sessions", async (request) => ({
-    sessions: await mcpAgentService.listSessions({}, await requestTenantId(request))
+  app.get("/api/mcp/sessions", async () => ({
+    sessions: await mcpAgentService.listSessions()
   }));
 
   app.get("/api/projects/:projectId/mcp/sessions", async (request) => {
     const params = request.params as { projectId: string };
     z.string().uuid().parse(params.projectId);
     return {
-      sessions: await mcpAgentService.listSessions({ sourceId: params.projectId }, await requestTenantId(request))
+      sessions: await mcpAgentService.listSessions({ sourceId: params.projectId })
     };
   });
 
   app.get("/api/mcp/sessions/:sessionId", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    const detail = await mcpAgentService.getSession(params.sessionId, await requestTenantId(request));
+    const detail = await mcpAgentService.getSession(params.sessionId);
     if (!detail) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -2049,7 +2006,7 @@ export function buildHttpServer() {
   app.post("/api/mcp/sessions/:sessionId/clear", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    const detail = await mcpAgentService.clearSession(params.sessionId, await requestTenantId(request));
+    const detail = await mcpAgentService.clearSession(params.sessionId);
     if (!detail) {
       return reply.code(404).send(notFound("MCP_SESSION_NOT_FOUND", "MCP 会话不存在"));
     }
@@ -2059,21 +2016,17 @@ export function buildHttpServer() {
   app.delete("/api/mcp/sessions/:sessionId", async (request) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
-    return mcpAgentService.deleteSession(params.sessionId, await requestTenantId(request));
+    return mcpAgentService.deleteSession(params.sessionId);
   });
 
   app.post("/api/mcp/sessions/:sessionId/messages", async (request, reply) => {
     const params = request.params as { sessionId: string };
     z.string().uuid().parse(params.sessionId);
     const input = mcpMessageSchema.parse(request.body);
-    const tenantId = await requestTenantId(request);
-    const authHdrU = String((request.headers.authorization || "").replace("Bearer ", "").trim());
-    const jwtU = authHdrU ? authService.verifyToken(authHdrU) : null;
     const result = await mcpAgentService.runUserMessage({
       sessionId: params.sessionId,
-      content: input.content,
-      userId: jwtU?.uid
-    }, tenantId);
+      content: input.content
+    });
     return reply.code(201).send(result);
   });
 
@@ -2177,12 +2130,10 @@ export function buildHttpServer() {
   });
 
   // V399: 对话工具审批（前端弹窗 → 批准/拒绝 review 工具）
-  // V3xx: 审批 ID 绑定 sessionId+userId — 仅本人会话的审批可批准（防跨会话/跨用户审批）
   app.post("/api/chat/approvals/:approvalId", async (request, reply) => {
     const params = request.params as { approvalId: string };
     const { approved } = z.object({ approved: z.boolean() }).parse(request.body);
-    const user = await requireUser(request, reply); if (!user) return;
-    const ok = await mcpAgentService.approveToolCall(params.approvalId, approved, user.id);
+    const ok = await mcpAgentService.approveToolCall(params.approvalId, approved);
     if (!ok) {
       return reply.code(404).send(notFound("APPROVAL_NOT_FOUND", "审批请求不存在或已超时"));
     }
@@ -2201,10 +2152,7 @@ export function buildHttpServer() {
       docs: z.array(z.object({ dataUrl: z.string().min(20), name: z.string().max(200) })).max(3).optional()
     }).parse(request.body);
 
-    const tenantId = await requestTenantId(request);
-    const authHdrU = String((request.headers.authorization || "").replace("Bearer ", "").trim());
-    const jwtU = authHdrU ? authService.verifyToken(authHdrU) : null;
-    const detail = await mcpAgentService.getSession(params.sessionId, tenantId);
+    const detail = await mcpAgentService.getSession(params.sessionId);
     if (!detail || detail.session.kind !== "chat") {
       return reply.code(404).send(notFound("CHAT_SESSION_NOT_FOUND", "AI 对话会话不存在"));
     }
@@ -2274,9 +2222,8 @@ export function buildHttpServer() {
         deepMode: input.deepMode,
         reasoningEffort: input.reasoningEffort,
         docs,
-        userId: jwtU?.uid,
         signal: abortController.signal
-      }, tenantId, (event) => {
+      }, config.DEFAULT_TENANT_ID, (event) => {
         send(event.type, event);
       });
     } catch (error) {
@@ -2339,6 +2286,8 @@ export function buildHttpServer() {
     }
     try {
       const result = await startReasonFlow(reasonQuery);
+      // V391(P1-3): 释放租户并发槽位
+      reasonQuery.releaseTenantSlot?.();
       const ctx = (request as any).tokenCtx as { tokenId: string } | undefined;
       if (ctx) {
         // reason 计月成本: 从 taskId 聚合 retrieve_steps 真实 tokens
@@ -2375,9 +2324,6 @@ export function buildHttpServer() {
       }
       logger.error({ error: msg }, "reason flow failed");
       return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "推理服务暂时不可用" } });
-    } finally {
-      // V391(P1-3): 释放租户并发槽位 — try/finally 保证异常路径也一定释放（防槽位泄漏）
-      reasonQuery.releaseTenantSlot?.();
     }
   });
 
@@ -2664,30 +2610,6 @@ export function buildHttpServer() {
   // ───── 评测结果可视化（V273）─────
   // GET /api/eval/results — 列出根目录 eval_*.json 文件（排除旧格式 eval_results_*.json）
   // GET /api/eval/results?file=xxx.json — 返回该文件完整内容
-  // V445: 评测/巡检用户确认 — 启动不再自动跑（防静默消费 LLM），前端需用户确认后手动触发
-  app.post("/api/eval/confirm", async (request) => {
-    const body = (request.body ?? {}) as { action?: string };
-    const action = body.action === "proactive" ? "proactive" : "eval";
-    if (action === "eval") {
-      // 触发评测（EVAL_LIMIT=4，异步执行，结果见评测工作台运行区）
-      const { runEvalWithEvents } = await import("../services/eval-runner.js");
-      void runEvalWithEvents({ script: "eval-32-metrics", env: { EVAL_LIMIT: "4" } }, () => true);
-      return { ok: true, action, result: { started: true } };
-    }
-    const { runProactiveResearch } = await import("../services/agent-proactive-research.js");
-    const result = await runProactiveResearch();
-    return { ok: true, action, result: { created: result.created.length, skipped: result.skipped } };
-  });
-  // V445: 当前 LLM 配置与模型（前端提示"用什么模型"）
-  app.get("/api/eval/model-info", async () => {
-    const { getLlmEndpoint } = await import("../ai/llm-common.js");
-    try {
-      const ep = await getLlmEndpoint();
-      return { ok: true, model: ep.model, baseUrl: ep.url, provider: ep.url.includes("deepseek") ? "DeepSeek" : ep.url.includes("dashscope") || ep.url.includes("aliyun") ? "阿里云百炼" : "其他" };
-    } catch {
-      return { ok: false, model: "未知" };
-    }
-  });
   app.get("/api/eval/results", async (request) => {
     const params = request.query as { file?: string };
     const fs = await import("node:fs");
@@ -2726,7 +2648,9 @@ export function buildHttpServer() {
             judgedTasks: rep.judgedTasks,
           };
         } catch { /* agent 摘要失败不影响主结果 */ }
-        return { file: safeName, data: content, agentSummary };
+        // V399-2 P2: 当前数据指纹（前端 stale 判定用; 失败降级 null）
+        const currentFp = await computeDataFingerprint(DEFAULT_SOURCE, { warn: (m) => console.warn("[eval] " + m) });
+        return { file: safeName, data: content, agentSummary, currentFingerprint: currentFp };
       } catch (e: any) {
         return { error: "JSON 解析失败: " + (e?.message || String(e)).substring(0, 100) };
       }
@@ -2734,7 +2658,9 @@ export function buildHttpServer() {
     // 列表：扫描 evaluation/ + 根目录 eval_*.json（V399: 文件已移入 evaluation/）
     try {
       const scanDirs = [evalDir, rootDir];
-      const files: Array<{ name: string; updatedAt: Date; size: number; questionCount: number; overallAvg: number }> = [];
+      const files: Array<{ name: string; updatedAt: Date; size: number; questionCount: number; overallAvg: number; fingerprint: string | null; stale: boolean }> = [];
+      // V399-2 P2: 当前数据指纹（列表/单文件 stale 判定共用; 失败降级 null 不阻塞）
+      const currentFp = await computeDataFingerprint(DEFAULT_SOURCE, { warn: (m) => console.warn("[eval] " + m) });
       for (const dir of scanDirs) {
         if (!fs.existsSync(dir)) continue;
         for (const f of fs.readdirSync(dir)) {
@@ -2743,19 +2669,28 @@ export function buildHttpServer() {
           const stat = fs.statSync(path.join(dir, f));
           let questionCount = 0;
           let overallAvg = 0;
+          let fingerprint: string | null = null;
           try {
             const data = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8"));
+            // V399-2 P1: 列表统计跳过指纹元数据条目（question_id='__fingerprint__', overall=null）
+            const fp = Array.isArray(data)
+              ? (data.find((r: any) => r?.question_id === '__fingerprint__')?.fingerprint as any)
+              : (data as any)?.fingerprint;
+            if (fp && typeof fp.value === "string") fingerprint = fp.value;
             if (Array.isArray(data) && data.length > 0) {
-              questionCount = data.length;
-              const valid = data.filter((r: any) => typeof r?.overall === "number" && !r?.error);
+              const real = data.filter((r: any) => r?.question_id !== '__fingerprint__');
+              questionCount = real.length;
+              const valid = real.filter((r: any) => typeof r?.overall === "number" && !r?.error);
               overallAvg = valid.length > 0 ? valid.reduce((s: number, r: any) => s + r.overall, 0) / valid.length : 0;
             }
           } catch { /* 解析失败跳过统计 */ }
-          files.push({ name: f, updatedAt: stat.mtime, size: stat.size, questionCount, overallAvg });
+          // V399-2 P2: stale 判定 — 该结果的数据指纹 ≠ 当前数据指纹 → 数据已变更, 结果过期
+          const stale = fingerprint !== null && currentFp.value !== null && fingerprint !== currentFp.value;
+          files.push({ name: f, updatedAt: stat.mtime, size: stat.size, questionCount, overallAvg, fingerprint, stale });
         }
       }
       files.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-      return { files };
+      return { files, currentFingerprint: currentFp };
     } catch (e: any) {
       return { error: (e?.message || String(e)).substring(0, 100) };
     }
@@ -3895,6 +3830,10 @@ except Exception as e:
     name: z.string().min(1).max(200),
     columns: z.array(z.string().min(1)).min(1),
     nRows: z.number().int().min(0).default(0),
+    // V399-2 P2 补齐: 上传数据内容 sha256（同内容重传判重, 数据变更感知）
+    contentHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+    // V399-2 P2 补齐(登记时自动画像): 数据行(可选) — 服务端自动算列画像存 meta.profile
+    rows: z.array(z.array(z.unknown())).optional(),
     meta: z.record(z.unknown()).default({}),
   });
   app.post("/api/empirical/data-versions", async (request, reply) => {
@@ -4419,29 +4358,6 @@ except Exception as e:
     if (!body.role || !body.modelId) return { error: "role 和 modelId 必填" };
     setRoleModel(body.role, body.modelId);
     return { ok: true, roleMap: getRoleModelMap() };
-  });
-
-  // V449: 服务商选择联动 — 同步 LLM_MODEL（.env 兜底模型名）到服务商默认模型
-  // 防止"服务商选 DeepSeek 但 LLM_MODEL 还是 qwen3.6-flash"导致 400
-  app.post("/api/llm/provider-sync", async (request) => {
-    const body = (request.body ?? {}) as { provider?: string };
-    const provider = body.provider === "deepseek" ? "deepseek" : body.provider === "302ai" ? "302ai" : null;
-    if (!provider) return { ok: false, error: "provider 必填 (deepseek/302ai)" };
-    const defaultModel = provider === "deepseek" ? "deepseek-v4-flash" : "qwen3.6-flash";
-    // 写 .env（追加/替换 LLM_MODEL）
-    try {
-      const fs = await import("node:fs");
-      const envFile = path.join(process.cwd(), ".env");
-      let env = "";
-      if (fs.existsSync(envFile)) env = fs.readFileSync(envFile, "utf8");
-      const lines = env.split("\n").filter((l) => !l.startsWith("LLM_MODEL="));
-      lines.push(`LLM_MODEL=${defaultModel}`);
-      fs.writeFileSync(envFile, lines.join("\n") + "\n", "utf8");
-      process.env.LLM_MODEL = defaultModel;  // 当前进程即时生效
-      return { ok: true, model: defaultModel };
-    } catch (e: any) {
-      return { ok: false, error: "写 .env 失败: " + String(e?.message || e).slice(0, 80) };
-    }
   });
 
   // ───── 自主任务 API（2026-08-07 P2：目标→拆解→执行→干预）─────
@@ -6829,16 +6745,7 @@ except Exception as e:
   return app;
 }
 
-// V437: 迁移完成后由 index.ts 调用（runMigrationsWithRetry 完成 → 服务放行）
-export function markMigrationsReady(): void {
-  // 通过模块级闭包变量传递 — buildHttpServer 实例内捕获同一引用
-  (globalThis as any).__marxsphere_migrations_ready = true;
-}
-
-/** V437: 迁移完成标记（buildHttpServer 内部读取） */
-export function isMigrationsReady(): boolean {
-  return (globalThis as any).__marxsphere_migrations_ready === true;
-}
+/** V395-13: 批量任务序列化（Set → 数组, 供 JSON 返回） */
 function serializeBatchJob(job: any) {
   return {
     id: job.id, inputDir: job.inputDir, outputDir: job.outputDir,
@@ -6933,8 +6840,7 @@ export async function startHttpServer(): Promise<void> {
   })();
   const autoTimer = setTimeout(() => {
     runAutonomousResearch();
-    // unref: 周期性定时器不阻止进程退出（关窗后 Electron 需能干净退出）
-    setInterval(runAutonomousResearch, 86400000).unref?.();
+    setInterval(runAutonomousResearch, 86400000);
   }, msTo3am);
   autoTimer.unref?.();
   console.log(`[autonomous] 自主研究定时器已启动（下次 ${new Date(Date.now() + msTo3am).toLocaleString("zh-CN")}）`);

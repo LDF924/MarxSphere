@@ -302,9 +302,6 @@ async function importFromUrl(input: {
     return { ok: false, error: "请输入完整网址（http:// 或 https:// 开头）" };
   }
   try {
-    // SSRF 防护: 仅允许公网地址（防内网/回环/元数据端点探测）
-    const { assertPublicUrl } = await import("./url-guard.js");
-    await assertPublicUrl(url);
     // 1. 抓取网页内容（15s 超时）
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);

@@ -11,15 +11,6 @@ import { recordAlert } from "./alert-service.js";
 const OV_URL = process.env.OPENVIKING_URL || "http://127.0.0.1:1933";
 const OV_TIMEOUT_MS = parseInt(process.env.OPENVIKING_TIMEOUT_MS || "15000", 10);
 
-/** 降级日志一次性开关：OpenViking 不可用时只警告一次，避免每次请求刷日志 */
-let ovWarned = false;
-function warnOnce(reason: string) {
-  if (ovWarned) return;
-  ovWarned = true;
-  console.warn(`[openviking] ${reason} — 长期记忆功能不可用，教育记忆/偏好召回/反馈沉淀已优雅降级（不阻塞主流程）。` +
-    `如需启用：启动 OpenViking 服务（默认 ${OV_URL}），或设置 OPENVIKING_URL 指向实际地址。`);
-}
-
 /** REST 调用 OpenViking——失败静默降级（记忆不可用不阻塞主流程） */
 async function ovFetch(path: string, body?: unknown, method?: string): Promise<any | null> {
   try {
@@ -32,11 +23,7 @@ async function ovFetch(path: string, body?: unknown, method?: string): Promise<a
     if (!res.ok) return null;
     const text = await res.text();
     try { return JSON.parse(text); } catch { return { raw: text }; }
-  } catch (e: any) {
-    // 一次性提示（连接拒绝/超时/网络错误均在此）；后续静默
-    warnOnce(`连接失败（${String(e?.cause?.code || e?.name || e?.message || e).slice(0, 60)}）`);
-    return null;
-  }
+  } catch { return null; }
 }
 
 /** 创建一个会话（OpenViking 侧）——响应 {status, result: {session_id}} */
@@ -105,16 +92,10 @@ export async function remember(content: string): Promise<boolean> {
   ]);
 }
 
-/** 记忆服务健康检查（返回 URL 与降级状态，供健康面板展示） */
-export async function memoryHealth(): Promise<{ ok: boolean; version?: string; url: string; degraded: boolean; reason?: string }> {
+/** 记忆服务健康检查 */
+export async function memoryHealth(): Promise<{ ok: boolean; version?: string }> {
   const r = await ovFetch("/health");
-  return {
-    ok: !!r,
-    version: r?.version,
-    url: OV_URL,
-    degraded: !r,
-    reason: !r ? `OpenViking 不可达（${OV_URL}）— 教育记忆/偏好召回已降级` : undefined,
-  };
+  return { ok: !!r, version: r?.version };
 }
 
 export const openvikingMemory = {

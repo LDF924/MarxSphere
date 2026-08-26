@@ -259,25 +259,100 @@ export async function getQuestionnaire(id: string): Promise<Record<string, unkno
   };
 }
 
+/** V399-2 P2 补齐(登记时自动数据画像): 对 rows 计算每列画像（类型/缺失率/唯一值率/数值 min-max-均值） */
+export function profileTableData(columns: string[], rows: unknown[][]): Record<string, unknown> {
+  const profile: Record<string, unknown> = {};
+  for (let ci = 0; ci < columns.length; ci++) {
+    const col = columns[ci];
+    let missing = 0;
+    let numeric = 0;
+    let nonEmpty = 0;
+    const seen = new Set<string>();
+    let numSum = 0;
+    let numMin = Infinity;
+    let numMax = -Infinity;
+    for (const row of rows) {
+      const v = row?.[ci];
+      if (v === null || v === undefined || v === "" || (typeof v === "string" && v.trim() === "")) {
+        missing++;
+        continue;
+      }
+      nonEmpty++;
+      seen.add(String(v));
+      // 数值判定: 先排除空串("" 被 Number() 转 0 会误判为数值)与非数值文本
+      const sv = String(v).replace(/,/g, "").trim();
+      const n = typeof v === "number" ? v : Number(sv);
+      if (sv !== "" && Number.isFinite(n)) {
+        numeric++;
+        numSum += n;
+        if (n < numMin) numMin = n;
+        if (n > numMax) numMax = n;
+      }
+    }
+    const total = Math.max(1, rows.length);
+    // 类型判定基于"非空值中的数值占比"（缺失率单独报告 — 有缺失的数值列不应误判为 categorical）
+    const numRatio = nonEmpty > 0 ? numeric / nonEmpty : 0;
+    const type = missing === rows.length ? "empty" : numRatio >= 0.8 ? "numeric" : "categorical";
+    const p: Record<string, unknown> = {
+      type,
+      missing_rate: Number((missing / total).toFixed(4)),
+      missing_count: missing,
+      unique_rate: Number((nonEmpty > 0 ? seen.size / nonEmpty : 0).toFixed(4)),
+    };
+    if (type === "numeric" && numeric > 0) {
+      p.min = Number(numMin.toFixed(4));
+      p.max = Number(numMax.toFixed(4));
+      p.mean = Number((numSum / numeric).toFixed(4));
+    }
+    profile[col] = p;
+  }
+  return profile;
+}
+
 export async function saveDataVersion(input: {
-  projectId?: string | null; name: string; columns: string[]; nRows: number; meta?: Record<string, unknown>;
+  projectId?: string | null; name: string; columns: string[]; nRows: number;
+  /** V399-2 P2 补齐(ScienceX 实验表格登记): 上传数据内容 sha256 — 同内容重传可判重, 数据变更可感知 */
+  contentHash?: string;
+  /** V399-2 P2 补齐(登记时自动画像): 数据行(可选) — 自动计算列画像写入 meta.profile */
+  rows?: unknown[][];
+  meta?: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
+  // V399-2 P2 补齐: 同内容哈希已登记(同项目) → 标记 duplicate 供前端提示（内容级幂等, 不依赖 name）
+  // 注意: project_id 可能为 NULL(未归属项目) — SQL 里 NULL=NULL 永假, 需显式处理
+  if (input.contentHash) {
+    const dup = await pool.query(
+      `select id, name from empirical_data_versions
+       where (project_id = $1 or ($1 is null and project_id is null))
+         and content_hash = $2
+       order by created_at desc limit 1`,
+      [input.projectId ?? null, input.contentHash]
+    );
+    if (dup.rows.length > 0) {
+      return { id: String(dup.rows[0].id), duplicate: true, duplicateReason: "content_hash", created_at: new Date().toISOString() };
+    }
+  }
+  // V399-2 P2 补齐(登记时自动画像): 有行数据 → 算画像并入 meta.profile（列类型/缺失率/唯一值率/数值分布）
+  const meta = { ...(input.meta ?? {}) };
+  if (Array.isArray(input.rows) && input.rows.length > 0) {
+    meta.profile = profileTableData(input.columns, input.rows);
+  }
   const r = await pool.query(
-    `insert into empirical_data_versions (project_id, name, columns, n_rows, meta)
-     values ($1, $2, $3, $4, $5) returning id, created_at`,
-    [input.projectId ?? null, input.name, JSON.stringify(input.columns), input.nRows, JSON.stringify(input.meta ?? {})]
+    `insert into empirical_data_versions (project_id, name, columns, n_rows, meta, content_hash)
+     values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
+    [input.projectId ?? null, input.name, JSON.stringify(input.columns), input.nRows, JSON.stringify(meta), input.contentHash ?? null]
   );
   return { id: String(r.rows[0].id), created_at: new Date(r.rows[0].created_at).toISOString() };
 }
 
 export async function listDataVersions(projectId?: string): Promise<Record<string, unknown>[]> {
   const r = projectId
-    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, created_at from empirical_data_versions where project_id = $1 order by created_at desc limit 50`, [projectId])
-    : await pool.query(`select id, project_id, name, columns, n_rows, meta, created_at from empirical_data_versions order by created_at desc limit 50`);
+    ? await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions where project_id = $1 order by created_at desc limit 50`, [projectId])
+    : await pool.query(`select id, project_id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions order by created_at desc limit 50`);
   return r.rows.map((row: any) => ({
     id: String(row.id),
     projectId: row.project_id ? String(row.project_id) : null,
     name: row.name, columns: row.columns ?? [], nRows: row.n_rows, meta: row.meta ?? {},
+    contentHash: row.content_hash ?? null,   // V399-2 P2 补齐: 数据哈希(前端可判重/溯源)
     created_at: new Date(row.created_at).toISOString(),
   }));
 }

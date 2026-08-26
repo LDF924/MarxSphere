@@ -845,12 +845,24 @@ function EvalSuitePanel({ demoOn = false }: { demoOn?: boolean }) {
         <div className="mt-2">
           <div className="mb-1 text-[9px] text-slate-500">最近评测历史（门禁趋势）</div>
           <div className="flex flex-wrap gap-1">
-            {history.slice(0, 10).map((h: any, i: number) => (
-              <span key={i} title={h.name + " · " + h.created_at}
-                className={"rounded px-1.5 py-0.5 text-[9px] " + (h.passed ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300")}>
-                {h.name.split("-")[0]} {h.passed ? "✓" : "✗"} {h.score}
-              </span>
-            ))}
+            {history.slice(0, 10).map((h: any, i: number) => {
+              // V399-2 P2 补齐: 参数/环境快照溯源提示（fault 注入方式 + 记录时间 + node 版本）
+              const params = h.parameters_json || null;
+              const env = h.environment_json || null;
+              const detail = [
+                h.name + " · " + h.created_at,
+                params?.fault ? "fault=" + params.fault : "",
+                params?.suite ? "suite=" + params.suite : "",
+                env?.node ? "node=" + env.node : "",
+                env?.recordedAt ? "记录于 " + env.recordedAt : "",
+              ].filter(Boolean).join(" | ");
+              return (
+                <span key={i} title={detail}
+                  className={"rounded px-1.5 py-0.5 text-[9px] " + (h.passed ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300")}>
+                  {h.name.split("-")[0]} {h.passed ? "✓" : "✗"} {h.score}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
