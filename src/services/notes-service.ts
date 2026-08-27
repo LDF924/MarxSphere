@@ -9,7 +9,7 @@ export function extractWikilinks(content: string): string[] {
   return [...new Set(links)];
 }
 
-/** 创建/更新笔记（自动解析 [[链接]] 写 note_links） */
+/** 创建/更新笔记（保存 [[链接]] 文本; 目标解析在读取时动态做, 避免"创建时目标尚不存在"漏链） */
 export async function saveNote(input: { title: string; content: string; sourceId?: string }): Promise<{ id: string; title: string }> {
   const title = input.title.trim();
   const r = await pool.query(
@@ -18,17 +18,7 @@ export async function saveNote(input: { title: string; content: string; sourceId
      returning id, title`,
     [title, input.content, input.sourceId || null]
   );
-  const noteId = String(r.rows[0].id);
-  // 重写链接（原链接删除 → 新链接插入）
-  await pool.query("delete from note_links where from_note_id = $1", [noteId]);
-  for (const target of extractWikilinks(input.content)) {
-    const targetNote = await pool.query("select id from notes where title = $1", [target]);
-    await pool.query(
-      "insert into note_links (from_note_id, to_note_id, to_title) values ($1, $2, $3)",
-      [noteId, targetNote.rows.length > 0 ? String(targetNote.rows[0].id) : null, target]
-    );
-  }
-  return { id: noteId, title };
+  return { id: String(r.rows[0].id), title };
 }
 
 /** 笔记列表 */
@@ -39,34 +29,40 @@ export async function listNotes(sourceId?: string): Promise<Array<{ id: string; 
   return r.rows.map((x: any) => ({ id: String(x.id), title: x.title, updated_at: new Date(x.updated_at).toISOString() }));
 }
 
-/** 单笔记（含出链/入链） */
+/** 单笔记（含出链/入链 — 动态解析, 目标存在性实时判定） */
 export async function getNote(id: string): Promise<{ id: string; title: string; content: string; links: Array<{ title: string; exists: boolean }>; backlinks: Array<{ title: string }> } | null> {
   const r = await pool.query("select * from notes where id = $1", [id]);
   if (r.rows.length === 0) return null;
   const row = r.rows[0];
-  const links = await pool.query("select to_title, to_note_id from note_links where from_note_id = $1", [id]);
-  const back = await pool.query(
-    `select n.title from note_links nl join notes n on n.id = nl.from_note_id where nl.to_note_id = $1`, [id]
-  );
+  // 出链: 从 content 提取 [[...]], 实时查目标是否存在
+  const linkTitles = extractWikilinks(row.content);
+  const links: Array<{ title: string; exists: boolean }> = [];
+  for (const t of linkTitles) {
+    const target = await pool.query("select 1 from notes where title = $1", [t]);
+    links.push({ title: t, exists: target.rows.length > 0 });
+  }
+  // 入链: 其他笔记 content 里 [[本笔记标题]]
+  const back = await pool.query("select id, title from notes where content like $1", [`%[[${row.title}]]%`]);
   return {
     id: String(row.id), title: row.title, content: row.content,
-    links: links.rows.map((l: any) => ({ title: l.to_title, exists: !!l.to_note_id })),
+    links,
     backlinks: back.rows.map((b: any) => ({ title: b.title })),
   };
 }
 
-/** 知识图谱: 节点=笔记, 边=链接 */
+/** 知识图谱: 节点=笔记, 边=链接（动态解析, 只连存在的目标） */
 export async function noteGraph(): Promise<{ nodes: Array<{ id: string; title: string }>; edges: Array<{ source: string; target: string }> }> {
-  const nodes = await pool.query("select id, title from notes limit 200");
-  const edges = await pool.query(
-    `select nf.id as source, nt.id as target from note_links nl
-     join notes nf on nf.id = nl.from_note_id
-     join notes nt on nt.id = nl.to_note_id`
-  );
-  return {
-    nodes: nodes.rows.map((n: any) => ({ id: String(n.id), title: n.title })),
-    edges: edges.rows.map((e: any) => ({ source: String(e.source), target: String(e.target) })),
-  };
+  const nodes = await pool.query("select id, title, content from notes limit 200");
+  const nodeList = nodes.rows.map((n: any) => ({ id: String(n.id), title: n.title }));
+  const idByTitle = new Map(nodeList.map((n) => [n.title, n.id]));
+  const edges: Array<{ source: string; target: string }> = [];
+  for (const n of nodes.rows) {
+    for (const t of extractWikilinks(String(n.content || ""))) {
+      const targetId = idByTitle.get(t);
+      if (targetId && targetId !== String(n.id)) edges.push({ source: String(n.id), target: targetId });
+    }
+  }
+  return { nodes: nodeList, edges };
 }
 
 export const notesService = {
