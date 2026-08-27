@@ -8,6 +8,7 @@ import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
 import { Button } from "../components/ui/button";
+import { PdfReader } from "./PdfReader";
 import type { PolicyTreeNode, VaultFileRecord } from "../types";
 
 interface PolicyHit {
@@ -313,14 +314,10 @@ export function PolicyPanel() {
                     </button>
                   </div>
                 </div>
-                {/* 预览撑满容器：宽高占满右栏，内容超高时 iframe 内部滚动 */}
+                {/* PDF → PdfReader 深度阅读（embedPDF: 页码/缩放/划词翻译/整页翻译） */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
                   <div className="min-h-0 flex-1">
-                    <iframe
-                      src={binaryUrl}
-                      title={selectedName}
-                      className="h-full w-full rounded border border-border bg-white"
-                    />
+                    <PdfReader source={binaryUrl ?? ""} fileName={selectedName} />
                   </div>
                 ) : (
                   <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
