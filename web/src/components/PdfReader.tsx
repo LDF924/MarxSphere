@@ -43,6 +43,25 @@ function cleanText(t: string): string {
   return kept.join("").replace(/\s+/g, " ").trim();
 }
 
+/** 取块内准确字符（PDFium CID 字体每字符块带乱码尾码: "坛6⭠␛␐"）
+ *  规则: CJK/标点直接取; 数字/字母仅在块内无 CJK 时取(中文 PDF 孤立数字多为尾码) */
+function firstReadableChar(t: string): string {
+  const chars = Array.from(t);
+  const isCJK = (ch: string) => {
+    const c = ch.charCodeAt(0);
+    return (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef);
+  };
+  const isAlnum = (ch: string) => {
+    const c = ch.charCodeAt(0);
+    return (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
+  };
+  // 第一优先: CJK/中文标点
+  for (const ch of chars) if (isCJK(ch) || "，。、；：？！（）《》〈〉“”‘’—…·".includes(ch)) return ch;
+  // 第二优先: 数字/字母(仅当块内无 CJK, 即西文 PDF)
+  for (const ch of chars) if (isAlnum(ch)) return ch;
+  return "";
+}
+
 export function PdfReader({ source, fileName }: PdfReaderProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null); // 滚动容器（fit-width 计算）
@@ -322,9 +341,10 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
       })
       .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
-      .map((b) => cleanText(b.content))
+      .map((b) => firstReadableChar(b.content))
       .filter((t) => t.length > 0);
-    let snippet = hit.join(" ").slice(0, 3000);
+    // 合并时去掉字符间空格: 中文 PDF 逐字块, 空格会拆散词语
+    let snippet = hit.join("").slice(0, 3000);
     // 命中为空(扫描件/乱码 PDF 文本层不可用) → 回退整页干净全文, 保证卡片一定出现
     if (hit.length === 0) {
       const pageText = pageTextsRef.current[page - 1] ?? "";
