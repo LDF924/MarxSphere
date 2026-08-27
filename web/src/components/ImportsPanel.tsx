@@ -3,7 +3,8 @@
 // 玻璃拟态宇宙风设计: 渐变头部 + 状态徽章 + 分区卡片 + 结果面板 + 操作反馈
 // Zotero 导入 / 论文搜索 / RSS·arXiv / S3 同步 / SSH 远程
 import { useEffect, useState } from "react";
-import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu } from "lucide-react";
+import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu, NotebookPen } from "lucide-react";
+import { NotesPanel } from "./NotesPanel";
 
 interface PaperHit {
   title: string; abstract?: string; authors: string[]; year?: number;
@@ -11,6 +12,8 @@ interface PaperHit {
 }
 
 export function ImportsPanel() {
+  // 2026-08-27: tab 切换 — "导入/同步" 与 "笔记/翻译/参考文献"（双链笔记集成进文献管理）
+  const [tab, setTab] = useState<"imports" | "notes">("imports");
   const [sourceId, setSourceId] = useState("");
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [notice, setNotice] = useState<{ type: "ok" | "err" | "info"; text: string } | null>(null);
@@ -111,16 +114,27 @@ export function ImportsPanel() {
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      {/* ─── 头部: 渐变 + 标题 + 状态 ─── */}
+      {/* ─── 头部: 渐变 + 标题 + tab + 状态 ─── */}
       <div className="relative overflow-hidden rounded-xl border bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent p-4">
         <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl" />
-        <div className="relative flex items-center gap-3">
+        <div className="relative flex flex-wrap items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
             <BookOpen className="h-5 w-5 text-white" />
           </div>
           <div>
             <h2 className="text-base font-bold text-foreground">文献管理</h2>
-            <p className="text-[10px] text-muted-foreground">Zotero 导入 · 论文搜索 · RSS/arXiv · 云同步 · 远程访问</p>
+            <p className="text-[10px] text-muted-foreground">Zotero 导入 · 论文搜索 · RSS/arXiv · 云同步 · 远程 · 双链笔记</p>
+          </div>
+          {/* tab 切换: 导入/同步 | 笔记/翻译/参考文献 */}
+          <div className="flex overflow-hidden rounded-lg border border-border/60">
+            <button type="button" onClick={() => setTab("imports")}
+              className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "imports" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
+              <Database className="h-3 w-3" /> 导入/同步
+            </button>
+            <button type="button" onClick={() => setTab("notes")}
+              className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "notes" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
+              <NotebookPen className="h-3 w-3" /> 笔记/翻译/参考文献
+            </button>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <StatusBadge ok={!!zoteroStatus?.connected} text={zoteroStatus?.connected ? `Zotero ${zoteroStatus.itemCount}条` : "Zotero 未连接"} />
@@ -141,6 +155,9 @@ export function ImportsPanel() {
           <button type="button" onClick={() => setNotice(null)} className="rounded p-0.5 hover:bg-white/10"><X className="h-3 w-3" /></button>
         </div>
       )}
+
+      {/* tab 内容: 笔记/翻译/参考文献（集成进文献管理） */}
+      {tab === "notes" && <NotesPanel />}
 
       {/* ─── 功能区: 网格布局 ─── */}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
