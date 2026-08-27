@@ -283,7 +283,7 @@ export function LiteraturePanel() {
           {/* 右：文献列表 + 详情（列表/详情可左右拉伸） */}
           <div className="relative min-h-0 flex-1">
             <DragHandle leftVar="--list-w" defaultWidth={480} minWidth={280} maxWidth={900} storageKey="literature-list-width" offset={-9} />
-            <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[var(--list-w,minmax(0,1fr))_minmax(0,1fr)]">
+            <div className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 xl:grid-cols-[var(--list-w,minmax(0,1fr))_minmax(0,1fr)]">
             <div className="flex min-h-0 flex-col gap-3">
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
                 {loading ? (
@@ -378,11 +378,11 @@ export function LiteraturePanel() {
               </div>
             </div>
 
-            {/* 详情面板 / PDF 深度阅读 */}
-            <div className="min-h-0 overflow-y-auto">
+            {/* 详情面板 / PDF 深度阅读（h-full: 固定高度, 内部滚动, 防止内容撑开 grid） */}
+            <div className={cn("h-full min-h-0", readerPdf ? "overflow-visible" : "overflow-y-auto")}>
               {readerPdf ? (
-                <div className="flex h-full flex-col">
-                  <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="sticky top-0 flex h-[calc(100vh-240px)] min-h-[480px] flex-col">
+                  <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
                     <div className="truncate text-sm font-medium">
                       <BookOpenCheck className="mr-1.5 inline h-4 w-4 text-emerald-600" />
                       深度阅读：{readerPdf.name}

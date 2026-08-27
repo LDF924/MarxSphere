@@ -249,7 +249,7 @@ export function VaultPanel() {
                 </div>
                 {/* PDF → PdfReader 深度阅读（embedPDF: 页码/缩放/划词翻译/整页翻译） */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="min-h-0 flex-1">
+                  <div className="h-[calc(100vh-320px)] min-h-[420px]">
                     <PdfReader source={binaryUrl ?? ""} fileName={selectedName} />
                   </div>
                 ) : (
