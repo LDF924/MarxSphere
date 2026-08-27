@@ -3769,6 +3769,18 @@ export function buildHttpServer() {
     return await translationService.translateSnippet(body.snippet, body.context, body.targetLang);
   });
 
+  // POST /api/reader/ai — PDF 选中文本 AI 卡片（Agentero 对照: 解释/总结/翻译/追问）
+  app.post("/api/reader/ai", async (request) => {
+    const body = z.object({
+      action: z.enum(["explain", "summarize", "translate", "ask"]),
+      snippet: z.string().min(1).max(5000),
+      context: z.string().max(5000).optional(),
+      question: z.string().max(1000).optional()
+    }).parse(request.body);
+    const { readerAiService } = await import("../services/reader-ai-service.js");
+    return await readerAiService.readerAiAction(body);
+  });
+
   // ───── 参考文献解析（2026-08-27, Agentero 对照: 参考文献管理）─────
   // POST /api/references/parse — 解析文本中的参考文献 {content}
   app.post("/api/references/parse", async (request) => {

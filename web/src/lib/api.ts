@@ -870,6 +870,14 @@ export const api = {
     });
   },
 
+  /** PDF 选中文本 AI 卡片（Agentero 对照: 解释/总结/翻译/追问） */
+  async readerAi(input: { action: "explain" | "summarize" | "translate" | "ask"; snippet: string; context?: string; question?: string }) {
+    return request<{ ok: boolean; result?: string; error?: string }>("/api/reader/ai", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
   // 中国政府网政策检索
   async searchPolicy(input: { keyword: string; pageSize?: number }) {
     const params = new URLSearchParams();
