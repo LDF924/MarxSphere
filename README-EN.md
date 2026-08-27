@@ -443,11 +443,16 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🧠 **52-step reasoning** | classify → 17-way coarse retrieval → Graphiti refine → hyperedge 3-way → fusion generation → self-healing |
 | 🔍 **Ask 18-step search** | multi-arm recall → weighted RRF → LLM rerank → numbered citation tracing |
 | 🗄 **Four-source retrieval** | SAG events + Graphiti hyperedges/communities + Cognee chunks + PG vector/lexical, RRF fusion |
-| 🤖 **AI Agent** | 44 tools / 5-layer security / 5-layer memory / task DAG / approval gates |
+| 🤖 **AI Agent** | 29 tools (incl. Notebook chart templates / desktop control) / 5-layer security / 5-layer memory / task DAG / approval gates |
 | 📚 **Research scenarios** | 66 scenarios × 8 stages, full-screen workbench + dedicated algorithms |
 | 📊 **Empirical workbench** | questionnaire → reliability → imputation → regression (M1–M6) → evidence ledger |
+| 📓 **Notebook workbench** | lightweight Jupyter: code/Markdown cells · 9 chart templates (3-line table/heatmap/box) · file upload · Restart & Run All |
+| 📡 **IM integration** | Feishu / DingTalk / Telegram bot remote chat (status/projects/eval/approval/alerts) |
+| 🖥 **Computer Use** | desktop control: screenshot / mouse / keyboard / window list (Agent can see & act on screen) |
+| 🔀 **Model-neutral** | DeepSeek / OpenAI / Anthropic Claude / Ollama / custom endpoints auto-detected |
+| 🔐 **Hash versioning** | doc content dedup · eval data fingerprint · stale detection · version history · data profiling |
 | 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
-| 📈 **Evaluation** | 53-question dual-track 0.884 / 154 unit tests / 21-operator ablation / CI+E2E |
+| 📈 **Evaluation** | 53-question dual-track 0.884 / 177 unit tests / 21-operator ablation / CI+E2E |
 
 ## Tech Stack
 
