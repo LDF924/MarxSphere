@@ -1574,14 +1574,30 @@ function AppShell() {
         </div>
       ) : getRegisteredView(workspaceView) ? (
         // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
-        // 2026-08-27: 插件面板包 ErrorBoundary — 渲染异常显示错误而非白屏
+        // 2026-08-27: 插件面板包 ErrorBoundary + 完整布局容器（h-dvh 防空白页）
         (() => {
           const entry = getRegisteredView(workspaceView)!;
           const P = entry.component;
           return (
-            <ErrorBoundary>
-              <P />
-            </ErrorBoundary>
+            <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
+              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start gap-3 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
+                  <button
+                    type="button"
+                    onClick={() => navigateView("home")}
+                    className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent/40"
+                  >
+                    <SymbolLogo size={28} />
+                  </button>
+                  <span className="text-sm font-semibold">{entry.label}</span>
+                </header>
+                <main className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <ErrorBoundary>
+                    <P />
+                  </ErrorBoundary>
+                </main>
+              </div>
+            </div>
           );
         })()
       ) : (
