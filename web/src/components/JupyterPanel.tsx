@@ -237,7 +237,6 @@ plt.tight_layout(); plt.show()`,
   {
     id: "threeline", label: "三线表（学术规范 C 刊）",
     code: `# 三线表: 学术规范表格（顶线/栏目线/底线, C刊标准）
-# 生成描述统计表 → 以图形式输出（三线表风格）
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -247,7 +246,6 @@ except NameError:
     rng = np.random.default_rng(42)
     df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50), "耕地流转率_pct": rng.normal(35,12,50)})
 
-# 描述统计（均值±标准差）
 stats = df.groupby("引入工商资本").agg(
     样本数=("村集体收入_万元", "count"),
     集体收入均值=("村集体收入_万元", lambda x: f"{x.mean():.1f}±{x.std():.1f}"),
@@ -257,27 +255,35 @@ rows = [["未引入"] + [str(v) for v in stats.loc[0].tolist()],
         ["已引入"] + [str(v) for v in stats.loc[1].tolist()]]
 headers = ["资本引入", "样本数", "集体收入(万元)", "流转率(%)"]
 
-# 三线表绘制: 顶线(粗) / 栏目线(细) / 底线(粗)
-fig, ax = plt.subplots(figsize=(6, 1.8))
+fig, ax = plt.subplots(figsize=(6.5, 1.6))
 ax.axis("off")
 table = ax.table(cellText=rows, colLabels=headers, loc="center", cellLoc="center")
 table.auto_set_font_size(False)
 table.set_fontsize(10)
-table.scale(1.1, 1.5)
-# 三线: 顶线/底线粗(2pt), 栏目线细(0.8pt)
-for key, cell in table.get_celld().items():
-    r, c = key
-    if r == 0:  # 栏目行: 上下细线
-        cell.set_edgecolor("black"); cell.set_linewidth(1.2); cell.set_facecolor("none")
-    elif r == 1:  # 第一数据行: 顶部栏目线
-        cell.set_edgecolor("black"); cell.set_linewidth(0.8); cell.set_facecolor("none")
-    else:  # 数据行: 仅底线(最后一行)
-        cell.set_edgecolor("none"); cell.set_facecolor("none")
-# 手动画三线(更精确)
-ax.plot([0, 1], [1.02, 1.02], color="black", linewidth=2.2, transform=ax.transAxes)   # 顶线
-ax.plot([0, 1], [0.62, 0.62], color="black", linewidth=0.8, transform=ax.transAxes)   # 栏目线
-ax.plot([0, 1], [-0.02, -0.02], color="black", linewidth=2.2, transform=ax.transAxes) # 底线
-plt.title("表1  资本引入与村集体经营状况（描述统计）", fontsize=10, pad=8)
+table.scale(1.05, 1.6)
+# 三线表核心: 只保留 顶线(粗)/栏目线(细)/底线(粗), 其余边框全去
+n_rows = len(rows) + 1  # 含表头
+for (r, c), cell in table.get_celld().items():
+    cell.set_edgecolor("none")        # 默认全无线
+    cell.set_facecolor("none")
+    if r == 0:                        # 表头行: 上边粗线(顶线) + 下边细线(栏目线)
+        cell.visible_edges = "TB"
+        cell.set_linewidth(0)
+        cell.set_edgecolor("none")
+    elif r == n_rows - 1:             # 最后数据行: 下边粗线(底线)
+        cell.visible_edges = "B"
+        cell.set_linewidth(0)
+        cell.set_edgecolor("none")
+# 手动叠加三条精确线（用 bbox 定位, 与表格对齐）
+bbox = table.get_celld()[(0, 0)].get_bbox()
+top = bbox.y1
+col_line = table.get_celld()[(1, 0)].get_bbox().y1
+bottom = table.get_celld()[(n_rows - 1, 0)].get_bbox().y0
+x0, x1 = bbox.x0, bbox.x1
+for y, w in [(top, 2.2), (col_line, 0.8), (bottom, 2.2)]:
+    ax.plot([x0, x1], [y, y], color="black", linewidth=w, clip_on=False)
+ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+plt.title("表1  资本引入与村集体经营状况（描述统计）", fontsize=10, pad=4)
 plt.tight_layout(); plt.show()`,
   },
 ];
