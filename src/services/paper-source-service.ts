@@ -79,8 +79,11 @@ export async function searchPapers(query: string, maxResults = 5): Promise<Paper
   return merged.slice(0, maxResults * 2);
 }
 
-/** 导入搜索结果到项目（external_id 判重） */
-export async function importPaper(paper: PaperHit, sourceId: string): Promise<{ imported: boolean; reason?: string }> {
+/** 导入搜索结果到项目（external_id 判重）— paper 参数兼容 API 传入的部分字段 */
+export async function importPaper(paper: {
+  title: string; abstract?: string; authors?: string[]; year?: number;
+  doi?: string; url?: string; source?: string; externalId?: string;
+}, sourceId: string): Promise<{ imported: boolean; reason?: string }> {
   if (!paper.title) return { imported: false, reason: "无标题" };
   const externalId = paper.externalId || paper.doi || `paper-${paper.title.slice(0, 40)}`;
   const dup = await pool.query("select 1 from documents where source_id = $1 and external_id = $2", [sourceId, externalId]);
