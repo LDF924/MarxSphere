@@ -156,11 +156,11 @@ export function ImportsPanel() {
         </div>
       )}
 
-      {/* tab 内容: 笔记/翻译/参考文献（集成进文献管理） */}
-      {tab === "notes" && <NotesPanel />}
-
-      {/* ─── 功能区: 网格布局 ─── */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
+      {/* tab 内容: 互斥显示 — imports tab 显示导入功能区, notes tab 显示笔记 */}
+      {tab === "notes" ? (
+        <NotesPanel />
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Zotero */}
         <div className="flex flex-col rounded-xl border bg-card/60 p-4 backdrop-blur-sm">
           <div className="mb-3 flex items-center gap-2">
@@ -296,6 +296,7 @@ export function ImportsPanel() {
           )}
         </div>
       </div>
+      )}
 
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <Cpu className="h-3 w-3" />
