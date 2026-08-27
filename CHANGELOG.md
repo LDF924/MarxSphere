@@ -17,6 +17,16 @@
 - 每日自动一致性检查（计划任务 MarxSphere-SyncCheck 09:30）
 - 修复 8/27 同步方向错误覆盖的 V4xx 桌面端修复（AuthGate V424 退出登录 / authHeaders 鉴权等）
 
+### ✨ 新能力（ScienceX 对照）
+
+- **Notebook 工作台**：轻量 Jupyter — 代码/Markdown 单元格、9 种图表模板（三线表/热力图/箱线图等）、文件上传（pandas 可读）、Restart & Run All、载入演示
+- **模型中立**：Anthropic 原生端点自动识别（/messages）、Claude Sonnet/Opus/Haiku 入注册表、前端可选
+- **IM 接入**：飞书/钉钉/Telegram webhook 机器人 — 远程对话（状态/项目/评测/审批/告警）
+- **Computer Use**：桌面控制（截屏/鼠标/键盘/窗口列表）— PowerShell 无依赖，Agent computer_use 工具
+- **跨平台打包**：electron-builder mac(dmg/zip) + linux(AppImage/deb) + 正式图标
+- **Agent 图表模板工具**：chart_template 一键出图（与 Notebook 对齐）
+- **Agent 持久运行时出图**：runtime_exec 支持 matplotlib 图表返回 + 复用实证 venv
+
 ## [1.0.0] - 2026-08-25
 
 ### 🚀 正式版 v1.0.0
