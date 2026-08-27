@@ -111,6 +111,7 @@ import { EducationPanel } from "./components/EducationPanel";
 import { EducationWorkspacePanel } from "./components/EducationWorkspacePanel";
 import { getRegisteredView } from "./components/viewRegistry";
 import { EmpiricalResearchPanel } from "./components/EmpiricalResearchPanel";
+import { JupyterPanel } from "./components/JupyterPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
@@ -1572,7 +1573,7 @@ function AppShell() {
         <div className="relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden">
           <HomePanel onChangeView={(view) => navigateView(view)} />
         </div>
-      ) : getRegisteredView(workspaceView) ? (
+      ) : workspaceView !== "jupyter" && getRegisteredView(workspaceView) ? (
         // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
         // 2026-08-27: 插件面板包 ErrorBoundary + 完整布局容器（h-dvh 防空白页）
         (() => {
@@ -2018,6 +2019,8 @@ function AppShell() {
               <EngineIngestPanel engine="cognee" />
             ) : workspaceView === "empirical-research" ? (
               <EmpiricalResearchPanel />
+            ) : workspaceView === "jupyter" ? (
+              <ErrorBoundary><JupyterPanel /></ErrorBoundary>
             ) : (
               <ConversationWorkspace
                 project={selectedProject}
