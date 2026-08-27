@@ -111,7 +111,7 @@ try:
         for i, num in enumerate(plt.get_fignums()[:5]):
             fig = plt.figure(num)
             buf = io.BytesIO()
-            fig.savefig(buf, format="png", dpi=80)
+            fig.savefig(buf, format="png", dpi=130)
             figures.append(base64.b64encode(buf.getvalue()).decode())
         plt.close("all")
     result["figures"] = figures

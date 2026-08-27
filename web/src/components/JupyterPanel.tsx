@@ -278,7 +278,7 @@ col_line = inv.transform((bbox_col.x0, bbox_col.y1))[1]
 bottom = inv.transform((bbox_bot.x0, bbox_bot.y0))[1]
 x0 = inv.transform((bbox_top.x0, 0))[0]
 x1 = inv.transform((bbox_top.x1, 0))[0]
-for y, w in [(top, 2.2), (col_line, 0.8), (bottom, 2.2)]:
+for y, w in [(top, 3.0), (col_line, 1.5), (bottom, 3.0)]:
     ax.plot([x0, x1], [y, y], color="black", linewidth=w, clip_on=False)
 ax.set_xlim(0, 1); ax.set_ylim(0, 1)
 plt.title("表1  资本引入与村集体经营状况（描述统计）", fontsize=10, pad=4)
