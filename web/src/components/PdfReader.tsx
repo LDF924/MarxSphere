@@ -195,28 +195,14 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     return { x, y };
   }, []);
 
-  // === 划词: 原生事件绑定（不经过 React 合成事件, 避免 pointer capture 兼容问题）===
-  // pointerdown 捕获指针后, 所有事件(含松开)无论鼠标在哪都派发给 canvas, 永不丢失
+  // === 划词: mousedown 在 canvas 开始, 拖选期间动态挂 window 全局监听 ===
+  // window 事件是浏览器规范保证触发的: 鼠标在页面任意位置(含拖出 canvas)松开都收到
+  // 不依赖 pointer capture / React 合成事件, 经典拖拽模式
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || status !== "ready") return;
 
-    const handleDown = (e: PointerEvent) => {
-      if (e.button !== 0) return;
-      const p = toPdfCoord(e.clientX, e.clientY);
-      if (!p) return;
-      dragStartRef.current = p;
-      draggingRef.current = true;
-      setDragging(true);
-      setSelection(null);
-      setSelHint("");
-      const blocks = textBlocksRef.current[page - 1] ?? [];
-      textHitCountRef.current = blocks.length;
-      // 指针捕获: 拖选开始后事件全部派发给 canvas
-      try { canvas.setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
-    };
-
-    const handleMove = (e: PointerEvent) => {
+    const onWinMove = (e: MouseEvent) => {
       if (!draggingRef.current || !dragStartRef.current) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
@@ -230,12 +216,41 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setSelection(sel);
     };
 
-    const handleUp = (e: PointerEvent) => {
-      try { canvas.releasePointerCapture(e.pointerId); } catch { /* 忽略 */ }
+    const onWinUp = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      // 若选区未更新(未触发过 move), 用当前位置构造
+      if (!selectionRef.current && dragStartRef.current) {
+        const p = toPdfCoord(e.clientX, e.clientY);
+        if (p) {
+          const s = dragStartRef.current;
+          selectionRef.current = {
+            x: Math.min(s.x, p.x),
+            y: Math.min(s.y, p.y),
+            width: Math.abs(p.x - s.x),
+            height: Math.abs(p.y - s.y)
+          };
+        }
+      }
       finishSelection(e.clientX, e.clientY);
     };
 
-    const handleDbl = (e: MouseEvent) => {
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const p = toPdfCoord(e.clientX, e.clientY);
+      if (!p) return;
+      dragStartRef.current = p;
+      draggingRef.current = true;
+      setDragging(true);
+      setSelection(null);
+      setSelHint("");
+      const blocks = textBlocksRef.current[page - 1] ?? [];
+      textHitCountRef.current = blocks.length;
+      // 拖选期间挂 window 监听(松开时移除)
+      window.addEventListener("mousemove", onWinMove);
+      window.addEventListener("mouseup", onWinUp);
+    };
+
+    const onDbl = (e: MouseEvent) => {
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
       const blocks = textBlocksRef.current[page - 1] ?? [];
@@ -254,15 +269,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setAiQuestion("");
     };
 
-    canvas.addEventListener("pointerdown", handleDown);
-    canvas.addEventListener("pointermove", handleMove);
-    canvas.addEventListener("pointerup", handleUp);
-    canvas.addEventListener("dblclick", handleDbl);
+    canvas.addEventListener("mousedown", onDown);
+    canvas.addEventListener("dblclick", onDbl);
     return () => {
-      canvas.removeEventListener("pointerdown", handleDown);
-      canvas.removeEventListener("pointermove", handleMove);
-      canvas.removeEventListener("pointerup", handleUp);
-      canvas.removeEventListener("dblclick", handleDbl);
+      canvas.removeEventListener("mousedown", onDown);
+      canvas.removeEventListener("dblclick", onDbl);
+      window.removeEventListener("mousemove", onWinMove);
+      window.removeEventListener("mouseup", onWinUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, page, zoom, toPdfCoord]);
@@ -394,34 +407,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   // 手动缩放（+/-/适宽按钮）退出适宽模式
   const manualZoom = (next: number) => { fitWidthRef.current = false; setZoom(next); };
-
-  // window 级 mouseup/pointerup 双兜底: 指针捕获失效时也能结束选择
-  useEffect(() => {
-    const onWinUp = (e: MouseEvent | PointerEvent) => {
-      if (!draggingRef.current) return;
-      // 若选区未更新（拖出 canvas 且 capture 失效）, 用最后坐标换算构造最小选区
-      if (!selectionRef.current && dragStartRef.current) {
-        const p = toPdfCoord(e.clientX, e.clientY);
-        if (p) {
-          const s = dragStartRef.current;
-          selectionRef.current = {
-            x: Math.min(s.x, p.x),
-            y: Math.min(s.y, p.y),
-            width: Math.abs(p.x - s.x),
-            height: Math.abs(p.y - s.y)
-          };
-        }
-      }
-      finishSelection(e.clientX, e.clientY);
-    };
-    window.addEventListener("mouseup", onWinUp);
-    window.addEventListener("pointerup", onWinUp);
-    return () => {
-      window.removeEventListener("mouseup", onWinUp);
-      window.removeEventListener("pointerup", onWinUp);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, zoom, toPdfCoord]);
 
   return (
     // 根 h-full + 渲染区 absolute: 高度由父链约束(h-full), 内部滚动
