@@ -114,7 +114,7 @@ import { EmpiricalResearchPanel } from "./components/EmpiricalResearchPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
