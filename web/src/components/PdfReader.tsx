@@ -195,8 +195,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     return { x, y };
   }, []);
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    // 仅左键
+  const onPointerDown = (e: React.PointerEvent) => {
+    // 仅左键（pointer 事件 button 0 = 左键）
     if (e.button !== 0) return;
     const p = toPdfCoord(e.clientX, e.clientY);
     if (!p) return;
@@ -205,14 +205,17 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     setDragging(true);
     setSelection(null);
     // 不在此关闭 AI 卡片: 用户轻点/滚动 canvas 不应让卡片消失
-    // 只有新的有效拖选(mouseup 命中文本)才会替换卡片
     setSelHint("");
     // 文本块坐标（用于拖选时即时反馈命中数）
     const blocks = textBlocksRef.current[page - 1] ?? [];
     textHitCountRef.current = blocks.length;
+    // 指针捕获: 拖选开始后所有事件(含 mouseup)派发给 canvas, 永不丢失
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch { /* 旧浏览器忽略 */ }
   };
 
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onPointerMove = (e: React.PointerEvent) => {
     // 用同步 ref 判断（state 有 16ms 批处理延迟, 真实拖选 mousedown→mousemove <16ms 会被 state 吞掉）
     if (!draggingRef.current || !dragStartRef.current) return;
     const p = toPdfCoord(e.clientX, e.clientY);
@@ -227,8 +230,31 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     setSelection(sel);
   };
 
-  const onMouseUp = (e: React.MouseEvent) => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    // 释放指针捕获（事件已送达 canvas, 划词必然结束）
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch { /* 忽略 */ }
     finishSelection(e.clientX, e.clientY);
+  };
+
+  /** 结束选择（window 兜底入口, 与 canvas onPointerUp 相同逻辑） */
+  const endSelectionFromWindow = (clientX: number, clientY: number) => {
+    if (!draggingRef.current) return;
+    // 若选区未更新（拖出 canvas 且 capture 失效）, 用最后坐标换算构造最小选区
+    if (!selectionRef.current && dragStartRef.current) {
+      const p = toPdfCoord(clientX, clientY);
+      if (p) {
+        const s = dragStartRef.current;
+        selectionRef.current = {
+          x: Math.min(s.x, p.x),
+          y: Math.min(s.y, p.y),
+          width: Math.abs(p.x - s.x),
+          height: Math.abs(p.y - s.y)
+        };
+      }
+    }
+    finishSelection(clientX, clientY);
   };
 
   /** 结束选择: 取选区内文本块 → 拼 snippet → 弹 AI 卡片（window 级 mouseup 兜底） */
@@ -379,15 +405,19 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   // 手动缩放（+/-/适宽按钮）退出适宽模式
   const manualZoom = (next: number) => { fitWidthRef.current = false; setZoom(next); };
 
-  // window 级 mouseup: 鼠标拖出 canvas（容器 padding 区域）也能结束选择
+  // window 级 mouseup/pointerup 双兜底: 指针捕获失效时也能结束选择
   useEffect(() => {
-    const onWinUp = (e: MouseEvent) => {
-      if (draggingRef.current) finishSelection(e.clientX, e.clientY);
+    const onWinUp = (e: MouseEvent | PointerEvent) => {
+      endSelectionFromWindow(e.clientX, e.clientY);
     };
     window.addEventListener("mouseup", onWinUp);
-    return () => window.removeEventListener("mouseup", onWinUp);
+    window.addEventListener("pointerup", onWinUp);
+    return () => {
+      window.removeEventListener("mouseup", onWinUp);
+      window.removeEventListener("pointerup", onWinUp);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, zoom]);
+  }, [page, zoom, toPdfCoord]);
 
   return (
     // 根 h-full + 渲染区 absolute: 高度由父链约束(h-full), 内部滚动
@@ -449,10 +479,10 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
             <canvas
               ref={canvasRef}
-              className="block cursor-crosshair rounded-sm bg-white shadow-md"
-              onMouseDown={onMouseDown}
-              onMouseMove={onMouseMove}
-              onMouseUp={onMouseUp}
+              className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
               onDoubleClick={onDoubleClick}
             />
             {/* 选区高亮 */}
