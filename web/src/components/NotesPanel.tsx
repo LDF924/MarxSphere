@@ -22,6 +22,17 @@ export function NotesPanel() {
   const [refText, setRefText] = useState("");
   const [refs, setRefs] = useState<any[]>([]);
 
+  // 2026-08-27 Agentero 对照: [[ 输入补全（Live Preview 风格）
+  const [wikiCandidates, setWikiCandidates] = useState<Note[]>([]);
+  const [wikiQuery, setWikiQuery] = useState("");
+
+  /** 检测 textarea 光标处是否在 [[...]] 输入中, 返回补全查询词 */
+  const wikiCompletionAt = (value: string, cursor: number): string | null => {
+    const before = value.slice(0, cursor);
+    const m = /\[\[([^\]\n]*)$/.exec(before);
+    return m ? m[1] : null;
+  };
+
   const load = async () => {
     const [n, g] = await Promise.all([
       fetch("/api/notes").then((r) => r.json()).catch(() => ({ notes: [] })),
@@ -186,9 +197,52 @@ export function NotesPanel() {
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 {editing ? (
-                  <textarea value={draft} onChange={(e) => setDraft(e.target.value)}
-                    placeholder="# 标题&#10;&#10;正文，用 [[双链]] 连接其他笔记&#10;如：参见 [[资本下乡]] 研究"
-                    className="h-full min-h-[300px] w-full resize-y rounded-lg border bg-background/60 p-3 font-mono text-[12px] leading-relaxed outline-none" />
+                  <div className="relative">
+                    {/* 2026-08-27 Agentero 对照: [[ 补全候选浮层 */}
+                    {wikiCandidates.length > 0 && (
+                      <div className="absolute bottom-full left-2 z-20 mb-1 w-64 overflow-hidden rounded-lg border bg-card shadow-xl">
+                        <div className="border-b border-border/50 px-2 py-1 text-[9px] text-muted-foreground">
+                          链接到… 输入 <code className="font-mono">[[</code> 触发 · ↑↓ 选择 · Enter 插入 · Esc 关闭
+                        </div>
+                        <div className="max-h-40 overflow-y-auto">
+                          {wikiCandidates.map((n) => (
+                            <button key={n.id} type="button"
+                              onClick={() => {
+                                const cursor = (document.activeElement as HTMLTextAreaElement)?.selectionStart ?? draft.length;
+                                const before = draft.slice(0, cursor);
+                                const insertAt = Math.max(0, before.lastIndexOf("[["));
+                                setDraft(draft.slice(0, insertAt) + `[[${n.title}]]` + draft.slice(cursor));
+                                setWikiCandidates([]);
+                                setWikiQuery("");
+                              }}
+                              className="flex w-full items-center justify-between px-2 py-1.5 text-left text-[11px] hover:bg-emerald-500/10">
+                              <span className="truncate">{n.title}</span>
+                              <span className="shrink-0 text-[9px] text-muted-foreground">↩</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <textarea value={draft}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setDraft(v);
+                        // [[ 补全: 光标处匹配 [[query 时显示候选
+                        const q = wikiCompletionAt(v, e.target.selectionStart ?? v.length);
+                        if (q !== null) {
+                          setWikiQuery(q);
+                          setWikiCandidates(notes.filter((n) => n.title.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
+                        } else {
+                          setWikiCandidates([]);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Esc 关闭候选
+                        if (e.key === "Escape" && wikiCandidates.length > 0) { setWikiCandidates([]); e.preventDefault(); }
+                      }}
+                      placeholder="# 标题&#10;&#10;正文，输入 [[ 连接其他笔记（补全候选自动弹出）&#10;如：参见 [[资本下乡]] 研究"
+                      className="h-full min-h-[300px] w-full resize-y rounded-lg border bg-background/60 p-3 font-mono text-[12px] leading-relaxed outline-none" />
+                  </div>
                 ) : (
                   <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">{renderMd(current.content)}</div>
                 )}
@@ -206,6 +260,12 @@ export function NotesPanel() {
                       className="rounded bg-purple-500/15 px-1 py-0.5 text-purple-700 hover:bg-purple-500/25">{b.title}</button>
                   ))}
                   {current.backlinks.length === 0 && <span className="text-muted-foreground/60">无</span>}
+                </span>
+                {/* 2026-08-27 Agentero 对照: 状态栏 — 反链数 + 词数 + 字符数 */}
+                <span className="ml-auto flex items-center gap-3 text-muted-foreground">
+                  <span className="flex items-center gap-0.5" title="反向链接数量"><Share2 className="h-3 w-3" /> {current.backlinks.length}</span>
+                  <span title="词数">{current.content.split(/\s+/).filter(Boolean).length} 词</span>
+                  <span title="字符数">{current.content.length} 字</span>
                 </span>
               </div>
             </div>
