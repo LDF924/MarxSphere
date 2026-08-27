@@ -13,6 +13,11 @@ import contextlib
 import traceback
 import base64
 
+# 2026-08-27 fix: 强制 Agg backend（必须在 import pyplot 之前设置 — 单元格代码可能先 import,
+# 之后再 use("Agg") 无效 → plt.show() 走 GUI backend 挂起 → 执行超时无结果）
+import matplotlib
+matplotlib.use("Agg")
+
 task_dir = sys.argv[1]
 inp = json.load(open(os.path.join(task_dir, "input.json"), encoding="utf-8"))
 code = inp.get("code", "")
@@ -61,10 +66,8 @@ try:
 except Exception:
     pass
 
-# 收集 matplotlib 图（如有）
+# 收集 matplotlib 图（如有）— backend 已在文件头设 Agg
 try:
-    import matplotlib
-    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     if len(plt.get_fignums()) > 0:
         for i, num in enumerate(plt.get_fignums()[:5]):
