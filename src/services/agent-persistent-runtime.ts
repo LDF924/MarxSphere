@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 export interface PersistentRuntime {
   sessionId: string;
   /** 执行一段代码（与上次调用共享全局变量） */
-  exec(code: string, timeoutMs?: number): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }>;
+  exec(code: string, timeoutMs?: number): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string; figures?: string[] }>;
   /** 关闭会话（回收进程） */
   close(): void;
 }
@@ -34,24 +34,37 @@ const BLACKLIST = [
   /socket|listen\(|bind\(/i,
 ];
 
-/** Python 解释器（复用 code-sandbox 探测逻辑; 保持一致的 venv） */
+/** Python 解释器（复用 code-sandbox 探测逻辑; 保持一致的 venv）
+ *  2026-08-27: EMPIRICAL_PYTHON 兜底 — Agent 复用 Notebook/实证 venv(pandas/matplotlib 全) */
 function pythonExe(): string {
   return process.env.SAG_SANDBOX_PYTHON
     || process.env.VENV_PYTHON
+    || process.env.EMPIRICAL_PYTHON
     || "";
 }
 
-/** 引导脚本: 常驻读 stdin 执行代码, JSON 回传结果（隔离 stdout/stderr） */
+/** 引导脚本: 常驻读 stdin 执行代码, JSON 回传结果（隔离 stdout/stderr; 2026-08-27 加 matplotlib 图表收集） */
 const BOOTSTRAP = `
 import sys, json, io, traceback, contextlib
+import matplotlib
+matplotlib.use("Agg")
 def _run(code):
     buf = io.StringIO()
+    figures = []
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
             exec(compile(code, '<persistent>', 'exec'), globals())
-        return {"ok": True, "out": buf.getvalue()}
+        import matplotlib.pyplot as plt
+        if len(plt.get_fignums()) > 0:
+            for num in plt.get_fignums()[:5]:
+                fig = plt.figure(num)
+                b = io.BytesIO()
+                fig.savefig(b, format="png", dpi=110)
+                figures.append(__import__("base64").b64encode(b.getvalue()).decode())
+            plt.close("all")
+        return {"ok": True, "out": buf.getvalue(), "figures": figures}
     except Exception:
-        return {"ok": False, "out": buf.getvalue(), "err": traceback.format_exc(limit=3)}
+        return {"ok": False, "out": buf.getvalue(), "err": traceback.format_exc(limit=3), "figures": figures}
 for line in sys.stdin:
     try:
         req = json.loads(line)
@@ -116,15 +129,15 @@ export function createPersistentRuntime(label = "default"): PersistentRuntime | 
 }
 
 /** 执行代码（共享上次的全局变量） */
-function execInSession(sessionId: string, code: string, timeoutMs = EXEC_TIMEOUT_MS): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> {
+function execInSession(sessionId: string, code: string, timeoutMs = EXEC_TIMEOUT_MS): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string; figures?: string[] }> {
   const rec = sessions.get(sessionId);
   if (!rec || rec.proc.killed) {
-    return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "会话已关闭, 请重新创建" });
+    return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "会话已关闭, 请重新创建", figures: [] });
   }
   // 危险操作拦截
   for (const re of BLACKLIST) {
     if (re.test(code)) {
-      return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "代码含被禁止的危险操作（持久运行时安全策略拦截）" });
+      return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "代码含被禁止的危险操作（持久运行时安全策略拦截）", figures: [] });
     }
   }
   rec.lastActive = Date.now();
@@ -142,6 +155,7 @@ function execInSession(sessionId: string, code: string, timeoutMs = EXEC_TIMEOUT
           stdout: String(v?.out || ""),
           stderr: v?.err ? String(v.err) : "",
           error: v?.err ? String(v.err).slice(0, 200) : undefined,
+          figures: Array.isArray(v?.figures) ? v.figures : [],   // 2026-08-27: matplotlib 图表
         });
       },
       reject: (e: Error) => { clearTimeout(timer); reject(e); },
