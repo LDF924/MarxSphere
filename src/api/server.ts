@@ -3641,6 +3641,54 @@ export function buildHttpServer() {
     return await s.windowList();
   });
 
+  // ───── SSH 远程访问（2026-08-27, Agentero 对照: 远程访问/数据留在用户服务器）─────
+  // POST /api/ssh/tunnel — 建立 SSH 隧道 {localPort}
+  app.post("/api/ssh/tunnel", async (request, reply) => {
+    const body = z.object({ localPort: z.number().int().min(1024).max(65535).default(24173) }).parse(request.body);
+    const { sshTunnelService } = await import("../services/ssh-tunnel-service.js");
+    if (!sshTunnelService.sshConfigured()) return reply.code(403).send({ error: { code: "DISABLED", message: "SSH 未配置 (SSH_HOST/SSH_USER)" } });
+    return sshTunnelService.openSshTunnel(body.localPort);
+  });
+
+  // DELETE /api/ssh/tunnel/:port — 关闭隧道
+  app.delete("/api/ssh/tunnel/:port", async (request) => {
+    const { port } = request.params as { port: string };
+    const { sshTunnelService } = await import("../services/ssh-tunnel-service.js");
+    return { ok: sshTunnelService.closeSshTunnel(Number(port)) };
+  });
+
+  // GET /api/ssh/tunnels — 隧道状态
+  app.get("/api/ssh/tunnels", async () => {
+    const { sshTunnelService } = await import("../services/ssh-tunnel-service.js");
+    return { tunnels: sshTunnelService.tunnelStatus(), configured: sshTunnelService.sshConfigured() };
+  });
+
+  // GET /api/ssh/proxy?port=xxx&path=/api/documents — 通过隧道浏览远程知识库
+  app.get("/api/ssh/proxy", async (request) => {
+    const q = request.query as { port?: string; path?: string };
+    const { sshTunnelService } = await import("../services/ssh-tunnel-service.js");
+    return await sshTunnelService.proxyRemoteRequest(Number(q.port || 24173), String(q.path || "/api/projects"));
+  });
+
+  // ───── S3 云同步（2026-08-27, Agentero 对照: 云同步）─────
+  // POST /api/s3/sync — 文献库快照同步到 S3
+  app.post("/api/s3/sync", async () => {
+    const { s3SyncService } = await import("../services/s3-sync-service.js");
+    return await s3SyncService.syncToS3();
+  });
+
+  // GET /api/s3/backups — S3 里的同步文件
+  app.get("/api/s3/backups", async () => {
+    const { s3SyncService } = await import("../services/s3-sync-service.js");
+    return await s3SyncService.listS3Backups();
+  });
+
+  // GET /api/s3/status — S3 配置状态
+  app.get("/api/s3/status", async () => {
+    const { s3SyncService } = await import("../services/s3-sync-service.js");
+    return { configured: s3SyncService.s3Configured(), endpoint: process.env.S3_ENDPOINT || "" };
+  });
+
   // ───── RSS / arXiv（2026-08-27, Agentero 对照: 文献导入源）─────
   // GET /api/rss/fetch?url=xxx — 抓取 RSS 源
   app.get("/api/rss/fetch", async (request, reply) => {
