@@ -3642,6 +3642,26 @@ export function buildHttpServer() {
     return jupyterService.checkJupyterReady();
   });
 
+  // POST /api/jupyter/upload — 上传数据文件（存 .cache/jupyter-uploads, pandas 可用相对路径读）
+  app.post("/api/jupyter/upload", async (request, reply) => {
+    const schema = z.object({
+      fileName: z.string().min(1).max(200).regex(/^[^\\\/:*?"<>|]+$/),  // 防路径穿越
+      content: z.string().max(5_000_000),
+    });
+    const body = schema.parse(request.body);
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const rootDir = process.env.SAG_ROOT || process.cwd();
+    const uploadsDir = path.join(rootDir, ".cache", "jupyter-uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    try {
+      fs.writeFileSync(path.join(uploadsDir, body.fileName), body.content, "utf-8");
+      return { ok: true, fileName: body.fileName, dir: uploadsDir };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message || e).slice(0, 200) } });
+    }
+  });
+
   // 实证历史记录（持久化到 PG）
   app.get("/api/empirical/history", async (request) => {
     const q = request.query as { limit?: string };
