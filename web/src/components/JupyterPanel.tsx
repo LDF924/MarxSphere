@@ -268,18 +268,18 @@ for (r, c), cell in table.get_celld().items():
     cell.set_facecolor("none")
 # 关键: 必须先 draw() 强制布局, 否则 get_bbox() 返回默认值(所有 cell 相同 → 栏目线丢失)
 fig.canvas.draw()
+# get_bbox() 返回的就是 axes 坐标(0-1) — 直接用它画线
+# 注意: cell(0,0) 只是第一列! x1 必须用最后一列的 bbox, 否则线只画到表格 1/4 处
 bbox_top = table.get_celld()[(0, 0)].get_bbox()
 bbox_col = table.get_celld()[(1, 0)].get_bbox()
 bbox_bot = table.get_celld()[(n_rows - 1, 0)].get_bbox()
-# 转 axes 坐标
-inv = ax.transAxes.inverted()
-top = inv.transform((bbox_top.x0, bbox_top.y1))[1]
-col_line = inv.transform((bbox_col.x0, bbox_col.y1))[1]
-bottom = inv.transform((bbox_bot.x0, bbox_bot.y0))[1]
-x0 = inv.transform((bbox_top.x0, 0))[0]
-x1 = inv.transform((bbox_top.x1, 0))[0]
+bbox_last = table.get_celld()[(0, len(headers) - 1)].get_bbox()
+top = bbox_top.y1
+col_line = bbox_col.y1
+bottom = bbox_bot.y0
+x0, x1 = bbox_top.x0, bbox_last.x1
 for y, w in [(top, 3.0), (col_line, 1.5), (bottom, 3.0)]:
-    ax.plot([x0, x1], [y, y], color="black", linewidth=w, clip_on=False)
+    ax.plot([x0, x1], [y, y], color="black", linewidth=w, clip_on=False, transform=ax.transAxes)
 ax.set_xlim(0, 1); ax.set_ylim(0, 1)
 plt.title("表1  资本引入与村集体经营状况（描述统计）", fontsize=10, pad=4)
 plt.tight_layout(); plt.show()`,
