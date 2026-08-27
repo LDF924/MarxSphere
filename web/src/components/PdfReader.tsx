@@ -3,8 +3,9 @@
 // 基于 @embedpdf/engines（Agentero 同款底层）: WebWorkerEngine + pdfium.wasm
 // 能力: 打开 PDF → 渲染页面 → 页码导航 → 缩放 → 文本选择(划词) → 划词翻译 → 整页翻译
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Loader2, Download, Languages, X, FileText as FileTextIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Loader2, Download, Languages, X } from "lucide-react";
 import { api } from "../lib/api";
+import { cn } from "../lib/utils";
 
 interface PdfReaderProps {
   /** PDF URL 或 base64 data URL */
@@ -44,6 +45,7 @@ function cleanText(t: string): string {
 
 export function PdfReader({ source, fileName }: PdfReaderProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null); // 滚动容器（fit-width 计算）
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [zoom, setZoom] = useState(1.0);
@@ -53,6 +55,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const docRef = useRef<any>(null);
   const textBlocksRef = useRef<TextBlock[][]>([]); // 每页文本块（页索引 → 块列表）
   const textReadyRef = useRef(false);
+  const pageSizeRef = useRef<{ width: number; height: number } | null>(null); // 首页尺寸（磅）, fit-width 基准
+  const fitWidthRef = useRef(false); // 当前是否为"适应宽度"模式
 
   // 划词选择（canvas 上鼠标拖选矩形）
   const [dragging, setDragging] = useState(false);
@@ -88,6 +92,18 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         const doc = await engine.openDocumentUrl({ id: "reader", url: blobUrl }).toPromise();
         docRef.current = doc;
         setTotal(doc.pages?.length || 0);
+        // 记录首页尺寸（磅）→ fit-width 初始缩放
+        const p0 = doc.pages?.[0];
+        if (p0?.size?.width) {
+          pageSizeRef.current = { width: p0.size.width, height: p0.size.height };
+          const cw = containerRef.current?.clientWidth;
+          if (cw && cw > 0) {
+            // 留 16px 边距, 最小 50% 最大 200%
+            fitWidthRef.current = true;
+            const fit = Math.min(2, Math.max(0.5, cw / p0.size.width));
+            setZoom(fit);
+          }
+        }
         setStatus("ready");
         setPage(1);
         // 预取全部文本块（划词翻译用）+ 每页干净全文（整页翻译兜底）— 失败不阻塞阅读
@@ -243,10 +259,34 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
   };
 
+  /** 适应宽度: 按滚动容器宽度计算缩放（宽留 16px 边距, 50%–200% 限制） */
+  const fitToWidth = useCallback(() => {
+    const ps = pageSizeRef.current;
+    const cw = containerRef.current?.clientWidth;
+    if (!ps || !cw || cw <= 0) return;
+    fitWidthRef.current = true;
+    const fit = Math.min(2, Math.max(0.5, (cw - 16) / ps.width));
+    setZoom(fit);
+  }, []);
+
+  // 容器尺寸变化（侧栏拖宽/窗口缩放）→ 适宽模式下重新适配
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (fitWidthRef.current && status === "ready") fitToWidth();
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [status, fitToWidth]);
+
+  // 手动缩放（+/-/适宽按钮）退出适宽模式
+  const manualZoom = (next: number) => { fitWidthRef.current = false; setZoom(next); };
+
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border bg-muted/20">
+    // 根 h-full + 渲染区 absolute: 高度由父链约束(h-full), 内部滚动
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-muted/20">
       {/* 工具栏: 页码/缩放/下载 */}
-      <div className="flex items-center gap-2 border-b bg-card/80 px-3 py-1.5">
+      <div className="relative z-10 flex items-center gap-2 border-b bg-card/80 px-3 py-1.5">
         <FileText className="h-3.5 w-3.5 text-emerald-600" />
         <span className="truncate text-[11px] font-medium">{fileName || "PDF 阅读"}</span>
         <div className="ml-auto flex items-center gap-1">
@@ -260,11 +300,20 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             onClick={() => setPage((p) => Math.min(total, p + 1))}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
           <div className="mx-1 h-4 w-px bg-border" />
-          <button type="button" disabled={status !== "ready"} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+          <button type="button" disabled={status !== "ready"} onClick={() => manualZoom(Math.max(0.5, +(zoom - 0.25).toFixed(2)))}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomOut className="h-3.5 w-3.5" /></button>
           <span className="min-w-[34px] text-center text-[10px]">{Math.round(zoom * 100)}%</span>
-          <button type="button" disabled={status !== "ready"} onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
+          <button type="button" disabled={status !== "ready"} onClick={() => manualZoom(Math.min(3, +(zoom + 0.25).toFixed(2)))}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomIn className="h-3.5 w-3.5" /></button>
+          <button type="button"
+            disabled={status !== "ready" || !pageSizeRef.current}
+            onClick={fitToWidth}
+            className={cn("rounded border px-2 py-0.5 text-[10px] transition-colors",
+              fitWidthRef.current ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:bg-accent")}
+            title="适应宽度（按容器宽度自动缩放）"
+          >
+            适宽
+          </button>
           <div className="mx-1 h-4 w-px bg-border" />
           <button type="button"
             disabled={status !== "ready" || pageTranslate.busy}
@@ -278,16 +327,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
           <a href={source} download={fileName} className="rounded p-1 hover:bg-accent" title="下载 PDF"><Download className="h-3.5 w-3.5" /></a>
         </div>
       </div>
-      {/* 渲染区: 划词选择 */}
-      <div className="relative min-h-0 flex-1 overflow-auto bg-muted/40 p-3">
+      {/* 渲染区: 划词选择（absolute: 填满根容器剩余空间, 内部滚动） */}
+      <div ref={containerRef} className="absolute inset-x-0 bottom-0 top-[41px] overflow-auto bg-muted/40 p-3">
         {status === "loading" && <div className="flex h-40 items-center justify-center text-[11px] text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> PDF 加载中…</div>}
         {status === "error" && <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-[11px] text-red-600">PDF 加载失败: {error}</div>}
         {status === "ready" && (
           <div className="relative inline-block">
+            {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
             <canvas
               ref={canvasRef}
-              className="mx-auto block cursor-crosshair rounded-sm bg-white shadow-md"
-              style={{ maxWidth: "100%" }}
+              className="block cursor-crosshair rounded-sm bg-white shadow-md"
               onMouseDown={onMouseDown}
               onMouseMove={onMouseMove}
               onMouseUp={onMouseUp}
@@ -305,10 +354,10 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             )}
           </div>
         )}
-        {/* 划词翻译浮层 */}
+        {/* 划词翻译浮层（fixed: 视口定位, 不受滚动容器裁剪） */}
         {translate && status === "ready" && (
-          <div className="absolute z-20 w-[320px] rounded-lg border bg-card p-3 shadow-xl"
-            style={{ left: Math.min(translate.x, window.innerWidth - 340), top: Math.min(translate.y + 12, window.innerHeight - 320) }}>
+          <div className="fixed z-50 w-[340px] max-w-[90vw] rounded-lg border bg-card p-3 shadow-2xl"
+            style={{ left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 340) }}>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
                 <Languages className="h-3.5 w-3.5" /> 划词翻译（{translate.snippet.length} 字）
