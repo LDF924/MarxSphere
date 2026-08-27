@@ -195,9 +195,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     return { x, y };
   }, []);
 
-  // === 划词: mousedown 在 canvas 开始, 拖选期间动态挂 window 全局监听 ===
-  // window 事件是浏览器规范保证触发的: 鼠标在页面任意位置(含拖出 canvas)松开都收到
-  // 不依赖 pointer capture / React 合成事件, 经典拖拽模式
+  // === 划词: mousedown 在 canvas 开始, 拖选期间挂 window/document 全部结束事件 ===
+  // 蓝色高亮出现=事件前半段正常; 用户"移出窗口才弹卡"=窗口内 mouseup 未到达
+  // → 结束选择覆盖 mouseup/pointerup/mouseleave/blur/pointercancel 全部路径
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || status !== "ready") return;
@@ -216,6 +216,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setSelection(sel);
     };
 
+    // 任意结束信号(松开/移出窗口/失焦/取消) → 结束选择
     const onWinUp = (e: MouseEvent) => {
       if (!draggingRef.current) return;
       // 若选区未更新(未触发过 move), 用当前位置构造
@@ -234,6 +235,14 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       finishSelection(e.clientX, e.clientY);
     };
 
+    // 鼠标移出窗口/文档 → 立即结束选择(用户症状: 移出窗口才出现)
+    const onLeave = () => {
+      if (!draggingRef.current) return;
+      const last = selectionRef.current;
+      if (last) finishSelection(last.x, last.y);
+      else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
+    };
+
     const onDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       const p = toPdfCoord(e.clientX, e.clientY);
@@ -245,9 +254,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setSelHint("");
       const blocks = textBlocksRef.current[page - 1] ?? [];
       textHitCountRef.current = blocks.length;
-      // 拖选期间挂 window 监听(松开时移除)
+      // 拖选期间挂 window/document 全部结束事件(结束后移除)
       window.addEventListener("mousemove", onWinMove);
       window.addEventListener("mouseup", onWinUp);
+      window.addEventListener("pointerup", onWinUp);
+      document.addEventListener("mouseleave", onLeave);   // 鼠标离开文档(拖出浏览器窗口)
+      window.addEventListener("blur", onLeave);           // 窗口失焦
+      window.addEventListener("pointercancel", onLeave);  // 指针取消
     };
 
     const onDbl = (e: MouseEvent) => {
@@ -269,13 +282,21 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setAiQuestion("");
     };
 
+    const detach = () => {
+      window.removeEventListener("mousemove", onWinMove);
+      window.removeEventListener("mouseup", onWinUp);
+      window.removeEventListener("pointerup", onWinUp);
+      document.removeEventListener("mouseleave", onLeave);
+      window.removeEventListener("blur", onLeave);
+      window.removeEventListener("pointercancel", onLeave);
+    };
+
     canvas.addEventListener("mousedown", onDown);
     canvas.addEventListener("dblclick", onDbl);
     return () => {
       canvas.removeEventListener("mousedown", onDown);
       canvas.removeEventListener("dblclick", onDbl);
-      window.removeEventListener("mousemove", onWinMove);
-      window.removeEventListener("mouseup", onWinUp);
+      detach();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, page, zoom, toPdfCoord]);
@@ -303,16 +324,22 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
       .map((b) => cleanText(b.content))
       .filter((t) => t.length > 0);
+    let snippet = hit.join(" ").slice(0, 3000);
+    // 命中为空(扫描件/乱码 PDF 文本层不可用) → 回退整页干净全文, 保证卡片一定出现
     if (hit.length === 0) {
-      setSelection(null);
-      // 无命中 → 引导提示（扫描件/乱码 PDF 无文本层）
-      setSelHint(textHitCountRef.current === 0
-        ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
-        : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
-      setTimeout(() => setSelHint(""), 4000);
-      return;
+      const pageText = pageTextsRef.current[page - 1] ?? "";
+      if (pageText && pageText.length >= 10) {
+        snippet = pageText.slice(0, 3000);
+      } else {
+        setSelection(null);
+        // 无文本层 → 引导提示（纯扫描图片 PDF）
+        setSelHint(textHitCountRef.current === 0
+          ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
+          : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
+        setTimeout(() => setSelHint(""), 4000);
+        return;
+      }
     }
-    const snippet = hit.join(" ").slice(0, 3000);
     setTranslate({ snippet, x: clientX, y: clientY });
     // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
     setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
