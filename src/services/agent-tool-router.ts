@@ -925,6 +925,12 @@ except Exception as e:
           const r = await rt.exec(String(a.code || ""), 60000);
           const parts: string[] = [`【持久Python·${sessionKey}】${r.ok ? "✓" : "✗"}`];
           if (r.stdout) parts.push(r.stdout.slice(0, 3000));
+          // 2026-08-27: matplotlib 图表 — base64 内嵌（Agent 输出可展示, 与 Notebook 一致）
+          if (r.figures && r.figures.length > 0) {
+            for (let i = 0; i < r.figures.length; i++) {
+              parts.push(`![chart-${i}](data:image/png;base64,${r.figures[i]})`);
+            }
+          }
           if (r.error) parts.push(`错误: ${r.error}`);
           if (!r.stdout && !r.error) parts.push("（无输出, 变量已保留供下次调用）");
           return parts.join("\n");
