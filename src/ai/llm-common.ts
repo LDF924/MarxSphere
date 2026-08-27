@@ -58,7 +58,9 @@ export function llmConcurrencyStats(): { active: number; waiting: number; max: n
   return { active: llmActive, waiting: llmWaiters.length, max: LLM_MAX_CONCURRENT, adaptiveCap };
 }
 
-/** 统一 LLM fetch — 从响应 usage 采真实 token，返回 { text, tokens, cacheHit } */
+/** 统一 LLM fetch — 从响应 usage 采真实 token，返回 { text, tokens, cacheHit }
+ *  模型中立（2026-08-27 ScienceX 理念）: 自动识别 Anthropic 原生格式（URL 含 /messages）
+ *  vs OpenAI 兼容格式（/chat/completions）— 两者请求/响应结构不同 */
 export async function fetchLlm(input: {
   url: string;
   key: string;
@@ -69,26 +71,41 @@ export async function fetchLlm(input: {
   timeoutMs?: number;
 }): Promise<{ text: string; tokens: { in: number; out: number } | null; cacheHit: number | null } | null> {
   try {
+    const isAnthropic = input.url.includes("/messages") && !input.url.includes("/chat/completions");
+    const headers: Record<string, string> = isAnthropic
+      ? { 'x-api-key': input.key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
+      : { 'Authorization': 'Bearer ' + input.key, 'Content-Type': 'application/json' };
+    const body = isAnthropic
+      ? {
+          model: input.model,
+          messages: input.messages,   // Anthropic: [{role:'user'|'assistant', content}]
+          temperature: input.temperature ?? 0.3,
+          ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+        }
+      : {
+          model: input.model,
+          messages: input.messages,
+          temperature: input.temperature ?? 0.3,
+          ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+          // 关键坑（P0 记忆）: deepseek-v4-flash 默认 thinking 消耗全部输出配额 → content 为空
+          // 所有结构化输出调用必须禁用 thinking，否则 finish_reason=length 且 content=""
+          thinking: { type: "disabled" },
+        };
     const resp = await fetch(input.url, {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + input.key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: input.model,
-        messages: input.messages,
-        temperature: input.temperature ?? 0.3,
-        ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
-        // 关键坑（P0 记忆）: deepseek-v4-flash 默认 thinking 消耗全部输出配额 → content 为空
-        // 所有结构化输出调用必须禁用 thinking，否则 finish_reason=length 且 content=""
-        thinking: { type: "disabled" },
-      }),
+      headers,
+      body: JSON.stringify(body),
       signal: (AbortSignal as any).timeout(input.timeoutMs ?? 180_000),
     }).catch(() => null);
     if (!resp || !resp.ok) return null;
     const j = await resp.json();
-    const text = j?.choices?.[0]?.message?.content || '';
+    // Anthropic 响应: {content:[{type:'text',text}], usage:{input_tokens, output_tokens}}
+    const text = isAnthropic
+      ? (Array.isArray(j?.content) ? j.content.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('') : '')
+      : (j?.choices?.[0]?.message?.content || '');
     const u = j?.usage;
-    const tokens = (u && typeof u.prompt_tokens === 'number')
-      ? { in: u.prompt_tokens ?? 0, out: u.completion_tokens ?? 0 }
+    const tokens = (u && typeof (isAnthropic ? u.input_tokens : u.prompt_tokens) === 'number')
+      ? { in: isAnthropic ? u.input_tokens : u.prompt_tokens, out: isAnthropic ? u.output_tokens : (u.completion_tokens ?? 0) }
       : null;
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
     return { text, tokens, cacheHit };
