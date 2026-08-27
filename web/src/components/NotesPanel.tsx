@@ -33,6 +33,41 @@ export function NotesPanel() {
     return m ? m[1] : null;
   };
 
+  // 2026-08-27 Agentero 对照: 目录大纲（从 Markdown 标题提取）
+  const extractOutline = (md: string): Array<{ level: number; title: string; line: number }> => {
+    return md.split("\n").map((l, i) => {
+      const m = /^(#{1,6})\s+(.+)$/.exec(l);
+      return m ? { level: m[1].length, title: m[2].trim(), line: i } : null;
+    }).filter((x): x is { level: number; title: string; line: number } => !!x);
+  };
+
+  // 2026-08-27 Agentero 对照: Slash 命令（/ 菜单）
+  const SLASH_COMMANDS = [
+    { id: "h1", label: "标题 1", insert: "# " },
+    { id: "h2", label: "标题 2", insert: "## " },
+    { id: "h3", label: "标题 3", insert: "### " },
+    { id: "list", label: "列表", insert: "- " },
+    { id: "quote", label: "引用", insert: "> " },
+    { id: "code", label: "代码块", insert: "```\n\n```" },
+    { id: "wiki", label: "双链", insert: "[[]]" },
+    { id: "embed", label: "嵌入笔记", insert: "![[]]" },
+    { id: "formula", label: "行内公式", insert: "$$" },
+    { id: "callout", label: "Callout 提示", insert: "> [!important]\n> " },
+  ];
+  const [slashCandidates, setSlashCandidates] = useState<Array<{ id: string; label: string; insert: string }>>([]);
+  const slashCompletionAt = (value: string, cursor: number): string | null => {
+    const before = value.slice(0, cursor);
+    const m = /(?:^|\n)(\/([a-z0-9一-鿿]*))$/.exec(before);
+    return m ? m[2] || "" : null;
+  };
+  // 嵌入展开（![[title]] → 提示占位, 真正内容渲染靠 renderMd 的 [[ ]] 已处理; 这里把 ![[ ]] 转为块引用）
+  const embedContent = (md: string): string => {
+    return md.replace(/!\[\[([^\]]+)\]\]/g, (_m, title: string) => {
+      const target = notes.find((n) => n.title === title);
+      return target ? `> 📄 嵌入「${title}」` : `> ⚠️ 嵌入「${title}」尚未创建`;
+    });
+  };
+
   const load = async () => {
     const [n, g] = await Promise.all([
       fetch("/api/notes").then((r) => r.json()).catch(() => ({ notes: [] })),
@@ -91,19 +126,52 @@ export function NotesPanel() {
   };
 
   const renderMd = (t: string) => {
-    // 渲染 [[wikilinks]] 为可点击链接
-    const parts = t.split(/(\[\[[^\]]+\]\])/g);
-    return parts.map((p, i) => {
-      const m = /^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(p);
-      if (!m) return p;
-      const title = m[1];
-      const target = notes.find((n) => n.title === title);
+    // 行渲染: 标题行加 id（供目录滚动定位）+ [[wikilinks]] 可点击
+    const lines = t.split("\n");
+    let headingIdx = 0;
+    return lines.map((line, li) => {
+      // 标题
+      const hm = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (hm) {
+        const level = hm[1].length;
+        const text = hm[2];
+        const parts = text.split(/(\[\[[^\]]+\]\])/g);
+        const content = parts.map((p, pi) => {
+          const wm = /^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(p);
+          if (!wm) return p;
+          const title = wm[1];
+          const target = notes.find((n) => n.title === title);
+          return (
+            <button key={pi} type="button" onClick={() => target && void openNote(target.id)}
+              className={`mx-0.5 rounded px-1 font-medium ${target ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25" : "bg-muted/50 text-muted-foreground line-through"}`}
+              title={target ? `打开「${title}」` : `「${title}」尚未创建`}>
+              {title}
+            </button>
+          );
+        });
+        const cls = ["text-lg font-bold", "text-base font-semibold", "text-sm font-semibold", "text-[13px] font-medium", "text-[12px] font-medium", "text-[11px] font-medium"][Math.min(level - 1, 5)];
+        return (
+          <div key={li} id={`note-heading-${headingIdx++}`} className={`mt-2 ${cls} text-foreground`}>{content}</div>
+        );
+      }
+      // [[wikilinks]]（普通行）
+      const parts = line.split(/(\[\[[^\]]+\]\])/g);
       return (
-        <button key={i} type="button" onClick={() => target && void openNote(target.id)}
-          className={`mx-0.5 rounded px-1 font-medium ${target ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25" : "bg-muted/50 text-muted-foreground line-through"}`}
-          title={target ? `打开「${title}」` : `「${title}」尚未创建`}>
-          {title}
-        </button>
+        <div key={li} className="min-h-[1.4em]">
+          {parts.map((p, pi) => {
+            const m = /^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(p);
+            if (!m) return p;
+            const title = m[1];
+            const target = notes.find((n) => n.title === title);
+            return (
+              <button key={pi} type="button" onClick={() => target && void openNote(target.id)}
+                className={`mx-0.5 rounded px-1 font-medium ${target ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25" : "bg-muted/50 text-muted-foreground line-through"}`}
+                title={target ? `打开「${title}」` : `「${title}」尚未创建`}>
+                {title}
+              </button>
+            );
+          })}
+        </div>
       );
     });
   };
@@ -195,11 +263,31 @@ export function NotesPanel() {
                   </>
                 )}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                {editing ? (
-                  <div className="relative">
-                    {/* 2026-08-27 Agentero 对照: [[ 补全候选浮层 */}
-                    {wikiCandidates.length > 0 && (
+              <div className="flex min-h-0 flex-1">
+                {/* 2026-08-27 Agentero 对照: 目录大纲（≥3 标题时显示, 点击滚动） */}
+                {!editing && current && extractOutline(current.content).length >= 3 && (
+                  <div className="w-40 shrink-0 border-r border-border/40 p-2">
+                    <div className="mb-1 text-[9px] font-semibold text-muted-foreground">目录</div>
+                    <div className="space-y-0.5">
+                      {extractOutline(current.content).map((h, i) => (
+                        <button key={i} type="button"
+                          onClick={() => {
+                            const el = document.getElementById(`note-heading-${i}`);
+                            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                          className="block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          style={{ paddingLeft: `${h.level * 8}px` }}>
+                          {h.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  {editing ? (
+                    <div className="relative">
+                      {/* 2026-08-27 Agentero 对照: [[ 补全候选浮层 */}
+                      {wikiCandidates.length > 0 && (
                       <div className="absolute bottom-full left-2 z-20 mb-1 w-64 overflow-hidden rounded-lg border bg-card shadow-xl">
                         <div className="border-b border-border/50 px-2 py-1 text-[9px] text-muted-foreground">
                           链接到… 输入 <code className="font-mono">[[</code> 触发 · ↑↓ 选择 · Enter 插入 · Esc 关闭
@@ -223,29 +311,62 @@ export function NotesPanel() {
                         </div>
                       </div>
                     )}
+                    {/* 2026-08-27 Agentero 对照: Slash 命令菜单 */}
+                    {slashCandidates.length > 0 && (
+                      <div className="absolute bottom-full left-2 z-20 mb-1 w-56 overflow-hidden rounded-lg border bg-card shadow-xl">
+                        <div className="border-b border-border/50 px-2 py-1 text-[9px] text-muted-foreground">/ 命令</div>
+                        <div className="max-h-48 overflow-y-auto">
+                          {slashCandidates.map((c) => (
+                            <button key={c.id} type="button"
+                              onClick={() => {
+                                const cursor = (document.activeElement as HTMLTextAreaElement)?.selectionStart ?? draft.length;
+                                const before = draft.slice(0, cursor);
+                                const insertAt = Math.max(0, before.lastIndexOf("/"));
+                                setDraft(draft.slice(0, insertAt) + c.insert + draft.slice(cursor));
+                                setSlashCandidates([]);
+                              }}
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-emerald-500/10">
+                              <span className="rounded bg-muted/60 px-1 font-mono text-[9px]">{c.id}</span>
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <textarea value={draft}
                       onChange={(e) => {
                         const v = e.target.value;
                         setDraft(v);
-                        // [[ 补全: 光标处匹配 [[query 时显示候选
-                        const q = wikiCompletionAt(v, e.target.selectionStart ?? v.length);
+                        const cursor = e.target.selectionStart ?? v.length;
+                        // [[ 补全
+                        const q = wikiCompletionAt(v, cursor);
                         if (q !== null) {
                           setWikiQuery(q);
                           setWikiCandidates(notes.filter((n) => n.title.toLowerCase().includes(q.toLowerCase())).slice(0, 8));
-                        } else {
-                          setWikiCandidates([]);
+                          setSlashCandidates([]);
+                          return;
                         }
+                        setWikiCandidates([]);
+                        // / Slash 命令
+                        const sq = slashCompletionAt(v, cursor);
+                        if (sq !== null) {
+                          setSlashCandidates(SLASH_COMMANDS.filter((c) => c.id.includes(sq) || c.label.includes(sq)).slice(0, 8));
+                          return;
+                        }
+                        setSlashCandidates([]);
                       }}
                       onKeyDown={(e) => {
-                        // Esc 关闭候选
-                        if (e.key === "Escape" && wikiCandidates.length > 0) { setWikiCandidates([]); e.preventDefault(); }
+                        if (e.key === "Escape" && (wikiCandidates.length > 0 || slashCandidates.length > 0)) {
+                          setWikiCandidates([]); setSlashCandidates([]); e.preventDefault();
+                        }
                       }}
-                      placeholder="# 标题&#10;&#10;正文，输入 [[ 连接其他笔记（补全候选自动弹出）&#10;如：参见 [[资本下乡]] 研究"
+                      placeholder="# 标题&#10;&#10;输入 [[ 连接笔记 · 输入 / 插入格式 · ![[笔记]] 嵌入"
                       className="h-full min-h-[300px] w-full resize-y rounded-lg border bg-background/60 p-3 font-mono text-[12px] leading-relaxed outline-none" />
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">{renderMd(current.content)}</div>
+                  <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">{renderMd(embedContent(current.content))}</div>
                 )}
+                </div>
               </div>
               <div className="flex flex-wrap gap-3 border-t border-border/50 px-3 py-2 text-[10px]">
                 <span className="flex items-center gap-1 text-muted-foreground"><Link2 className="h-3 w-3" /> 出链：
