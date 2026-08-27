@@ -155,7 +155,7 @@ plt.tight_layout(); plt.show()`,
   },
   {
     id: "heatmap", label: "热力图（相关性）",
-    code: `# 热力图: 变量相关性矩阵
+    code: `# 热力图: 变量相关性矩阵（只取数值列, 跳过字符串列如"村庄"）
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -165,7 +165,8 @@ except NameError:
     rng = np.random.default_rng(42)
     df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50), "耕地流转率_pct": rng.normal(35,12,50)})
 
-corr = df.corr()
+num_df = df.select_dtypes(include=[np.number])   # 只保留数值列
+corr = num_df.corr()
 plt.figure(figsize=(5, 4))
 im = plt.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
 plt.xticks(range(len(corr)), corr.columns, rotation=30, ha="right", fontsize=9)
