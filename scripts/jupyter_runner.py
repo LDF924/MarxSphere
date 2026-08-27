@@ -24,12 +24,26 @@ code = inp.get("code", "")
 variables = inp.get("variables", {}) or {}
 
 # 恢复持久变量（模拟 notebook 内核变量）
+# 2026-08-27: __df__ 标记的转回 DataFrame（df 跨单元格持久的关键）
+def _deserialize(v):
+    if isinstance(v, dict) and v.get("__df__") is True:
+        try:
+            import pandas as pd
+            return pd.DataFrame(v["records"], columns=v["columns"])
+        except Exception:
+            return v
+    if isinstance(v, list):
+        return [_deserialize(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _deserialize(x) for k, x in v.items()}
+    return v
+
 try:
     _vars = dict(variables)
     for k, v in _vars.items():
         # 只恢复 JSON 可序列化值（安全: 不恢复函数/对象）
         if isinstance(v, (str, int, float, bool, list, dict, type(None))):
-            globals()[k] = v
+            globals()[k] = _deserialize(v)
 except Exception:
     pass
 
@@ -51,17 +65,31 @@ except Exception:
 result["output"] = out_buf.getvalue()[-8000:]
 
 # 收集变量（JSON 可序列化的, 供下一单元继续用）
+# 2026-08-27 fix: DataFrame/numpy 类型转 JSON 可序列化(DataFrame→records, 标量→原生) — 否则 df 不持久导致下单元 NameError
+def _serialize(v):
+    if hasattr(v, "to_dict") and hasattr(v, "columns"):  # pandas DataFrame
+        return {"__df__": True, "columns": list(v.columns), "records": v.to_dict("records")}
+    if hasattr(v, "item") and hasattr(v, "shape") and len(getattr(v, "shape", ())) == 0:  # numpy 标量
+        return v.item()
+    if isinstance(v, (list, tuple)):
+        return [_serialize(x) for x in v]
+    if isinstance(v, dict):
+        return {str(k): _serialize(x) for k, x in v.items()}
+    try:
+        json.dumps(v)
+        return v
+    except Exception:
+        return None
+
 try:
     saved = {}
-    _skip = set(("sys", "os", "json", "io", "contextlib", "traceback", "base64", "inp", "code", "variables", "task_dir", "out_buf", "figures", "result", "saved", "_vars", "_skip"))
+    _skip = set(("sys", "os", "json", "io", "contextlib", "traceback", "base64", "inp", "code", "variables", "task_dir", "out_buf", "figures", "result", "saved", "_vars", "_skip", "np", "pd", "plt"))
     for k, v in list(globals().items()):
         if k.startswith("__") or k in _skip:
             continue
-        try:
-            json.dumps(v)
-            saved[k] = v
-        except Exception:
-            pass
+        sv = _serialize(v)
+        if sv is not None:
+            saved[k] = sv
     result["variables"] = saved
 except Exception:
     pass
