@@ -3,7 +3,7 @@
 // 单元格编辑 → venv 执行 → 输出/图表/持久变量；Restart & Run All 全跑
 // 设计: 复用实证沙箱（无完整 Jupyter 依赖），variables 跨单元持久模拟内核
 import React, { useEffect, useRef, useState } from "react";
-import { Play, RotateCcw, Plus, Trash2, Loader2, FileCode2 } from "lucide-react";
+import { Play, RotateCcw, Plus, Trash2, Loader2, FileCode2, Wand2 } from "lucide-react";
 
 interface CellResult {
   ok: boolean;
@@ -13,6 +13,37 @@ interface CellResult {
   variables: Record<string, unknown>;
   cellIndex?: number;
 }
+
+// 演示 notebook（2026-08-27: 载入示例 — 资本下乡调研数据探索）
+const DEMO_CELLS: string[] = [
+  `# 演示: 资本下乡调研数据探索
+# 模拟 50 个村庄样本: 是否引入工商资本、村集体收入、耕地流转率
+import pandas as pd
+import numpy as np
+
+rng = np.random.default_rng(42)
+n = 50
+df = pd.DataFrame({
+    "村庄": [f"村{i+1}" for i in range(n)],
+    "引入工商资本": rng.choice([0, 1], n, p=[0.4, 0.6]),
+    "村集体收入_万元": rng.normal(80, 25, n).round(1),
+    "耕地流转率_pct": rng.normal(35, 12, n).round(1),
+})
+print("样本量:", len(df), "| 列:", list(df.columns))`,
+  `# 描述统计: 引入资本 vs 未引入的差异
+print(df.groupby("引入工商资本")[["村集体收入_万元", "耕地流转率_pct"]].mean().round(1))`,
+  `# 可视化: 资本引入与集体收入的关系
+import matplotlib.pyplot as plt
+plt.figure(figsize=(6, 4))
+plt.scatter(df["耕地流转率_pct"], df["村集体收入_万元"], c=df["引入工商资本"], cmap="coolwarm", alpha=0.7)
+plt.xlabel("耕地流转率 (%)"); plt.ylabel("村集体收入 (万元)")
+plt.title("资本引入与集体收入")
+plt.colorbar(label="引入工商资本")
+plt.tight_layout()
+plt.show()`,
+  `# 相关性
+print(df[["引入工商资本", "村集体收入_万元", "耕地流转率_pct"]].corr().round(3))`,
+];
 
 export function JupyterPanel() {
   const [cells, setCells] = useState<string[]>(["import pandas as pd\nprint('notebook 就绪')"]);
@@ -27,6 +58,30 @@ export function JupyterPanel() {
   useEffect(() => {
     fetch("/api/jupyter/ready").then((r) => r.json()).then(setReady).catch(() => {});
   }, []);
+
+  // 2026-08-27: 载入演示 notebook（清空当前 → 填入 4 个演示单元格）
+  const loadDemo = async () => {
+    const newId = `nb-${Date.now()}`;
+    setSessionId(newId);
+    setCells(DEMO_CELLS);
+    setResults([]);
+    setVars({});
+    await fetch("/api/jupyter/reset", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: newId }),
+    }).catch(() => {});
+    setRunningAll(true);
+    for (let i = 0; i < DEMO_CELLS.length; i++) {
+      const res = await fetch("/api/jupyter/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: DEMO_CELLS[i], sessionId: newId, cellIndex: i }),
+      }).then((r) => r.json()).catch(() => ({ result: { ok: false, output: "", error: "请求失败" } }));
+      const r = res.result as CellResult;
+      setResults((prev) => { const n = [...prev]; n[i] = r; return n; });
+      if (r.variables) setVars(r.variables);
+    }
+    setRunningAll(false);
+  };
 
   const runCell = async (i: number) => {
     setRunning(i);
@@ -75,6 +130,11 @@ export function JupyterPanel() {
           {ready?.ready ? `Python: ${ready.python}` : "venv 未配置 (EMPIRICAL_PYTHON)"}
         </span>
         <div className="ml-auto flex gap-1">
+          <button type="button" onClick={() => void loadDemo()} disabled={runningAll}
+            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40"
+            title="载入资本下乡调研数据探索演示（4 个单元格自动运行）">
+            <Wand2 className="h-3 w-3" /> 载入演示
+          </button>
           <button type="button" onClick={() => void restart()} disabled={runningAll}
             className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40">
             <RotateCcw className="h-3 w-3" /> Restart
