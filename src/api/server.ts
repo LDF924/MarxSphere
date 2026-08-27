@@ -3712,6 +3712,81 @@ export function buildHttpServer() {
     return { ok: await rssService.saveRssSubscription(body.url, body.name, body.sourceId) };
   });
 
+  // ───── BYOA / ACP（2026-08-27, Agentero 对照: 连接本机 Agent）─────
+  // GET /api/byoa/status — ACP 配置状态
+  app.get("/api/byoa/status", async () => {
+    const { acpService } = await import("../services/acp-service.js");
+    return { configured: acpService.byoaConfigured(), agent: process.env.BYOA_AGENT_NAME || "未配置" };
+  });
+
+  // POST /api/byoa/run — 外部 Agent 执行任务 {task, context?}
+  app.post("/api/byoa/run", async (request) => {
+    const body = z.object({ task: z.string().min(1).max(5000), context: z.string().max(20_000).optional() }).parse(request.body);
+    const { acpService } = await import("../services/acp-service.js");
+    return await acpService.runExternalAgent(body.task, body.context);
+  });
+
+  // ───── 双链笔记 + 知识图谱（2026-08-27, Agentero 对照）─────
+  // GET /api/notes — 笔记列表
+  app.get("/api/notes", async (request) => {
+    const q = request.query as { sourceId?: string };
+    const { notesService } = await import("../services/notes-service.js");
+    return { notes: await notesService.listNotes(q.sourceId) };
+  });
+
+  // POST /api/notes — 创建/更新笔记 {title, content, sourceId?}
+  app.post("/api/notes", async (request) => {
+    const body = z.object({ title: z.string().min(1).max(200), content: z.string().max(200_000), sourceId: z.string().uuid().optional() }).parse(request.body);
+    const { notesService } = await import("../services/notes-service.js");
+    return { note: await notesService.saveNote(body) };
+  });
+
+  // GET /api/notes/:id — 单笔记（含出链/入链）
+  app.get("/api/notes/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const { notesService } = await import("../services/notes-service.js");
+    return { note: await notesService.getNote(id) };
+  });
+
+  // GET /api/notes/graph — 知识图谱（节点+边）
+  app.get("/api/notes/graph", async () => {
+    const { notesService } = await import("../services/notes-service.js");
+    return await notesService.noteGraph();
+  });
+
+  // ───── 论文翻译（2026-08-27, Agentero 对照: 全局翻译+划词并排）─────
+  // POST /api/translate — 全局翻译 {text, targetLang?}
+  app.post("/api/translate", async (request) => {
+    const body = z.object({ text: z.string().min(1).max(50_000), targetLang: z.string().max(20).optional() }).parse(request.body);
+    const { translationService } = await import("../services/translation-service.js");
+    return await translationService.translateText(body.text, body.targetLang);
+  });
+
+  // POST /api/translate/snippet — 划词并排 {snippet, context?, targetLang?}
+  app.post("/api/translate/snippet", async (request) => {
+    const body = z.object({ snippet: z.string().min(1).max(5000), context: z.string().max(5000).optional(), targetLang: z.string().max(20).optional() }).parse(request.body);
+    const { translationService } = await import("../services/translation-service.js");
+    return await translationService.translateSnippet(body.snippet, body.context, body.targetLang);
+  });
+
+  // ───── 参考文献解析（2026-08-27, Agentero 对照: 参考文献管理）─────
+  // POST /api/references/parse — 解析文本中的参考文献 {content}
+  app.post("/api/references/parse", async (request) => {
+    const body = z.object({ content: z.string().min(10).max(500_000) }).parse(request.body);
+    const { referenceService } = await import("../services/reference-service.js");
+    return { references: referenceService.parseReferencesFromContent(body.content) };
+  });
+
+  // POST /api/references/import — 导入参考文献到项目 {sourceId, refs}
+  app.post("/api/references/import", async (request) => {
+    const body = z.object({
+      sourceId: z.string().uuid(),
+      refs: z.array(z.object({ raw: z.string(), title: z.string().optional(), doi: z.string().optional(), arxivId: z.string().optional(), url: z.string().optional() })),
+    }).parse(request.body);
+    const { referenceService } = await import("../services/reference-service.js");
+    return await referenceService.importReferences(body.refs, body.sourceId);
+  });
+
   // ───── 论文搜索导入（2026-08-27, Agentero 对照: 搜索论文名导入）─────
   // GET /api/papers/search?q=xxx — 搜索论文（arXiv + Semantic Scholar 双源）
   app.get("/api/papers/search", async (request) => {
