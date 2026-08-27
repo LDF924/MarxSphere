@@ -17,6 +17,16 @@ import base64
 # 之后再 use("Agg") 无效 → plt.show() 走 GUI backend 挂起 → 执行超时无结果）
 import matplotlib
 matplotlib.use("Agg")
+# 2026-08-27 fix: 中文字体（matplotlib 默认 DejaVu Sans 无中文 → 表格/图表中文变方框）
+import matplotlib.font_manager as _fm
+for _f in ("Microsoft YaHei", "SimHei", "SimSun", "Noto Sans CJK SC", "PingFang SC"):
+    try:
+        _fm.findfont(_f, fallback_to_default=False)
+        matplotlib.rcParams["font.sans-serif"] = [_f, "DejaVu Sans"]
+        matplotlib.rcParams["axes.unicode_minus"] = False
+        break
+    except Exception:
+        continue
 
 task_dir = sys.argv[1]
 inp = json.load(open(os.path.join(task_dir, "input.json"), encoding="utf-8"))
