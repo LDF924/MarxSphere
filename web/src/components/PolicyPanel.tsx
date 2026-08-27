@@ -314,9 +314,9 @@ export function PolicyPanel() {
                     </button>
                   </div>
                 </div>
-                {/* PDF → PdfReader 深度阅读（embedPDF: 页码/缩放/划词翻译/整页翻译） */}
+                {/* PDF → PdfReader 深度阅读（h-full: 填满详情列） */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="h-[calc(100vh-320px)] min-h-[420px]">
+                  <div className="min-h-0 flex-1">
                     <PdfReader source={binaryUrl ?? ""} fileName={selectedName} />
                   </div>
                 ) : (
