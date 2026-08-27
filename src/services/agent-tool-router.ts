@@ -1103,6 +1103,49 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         }
       },
     },
+    // 2026-08-27: Computer Use — 截屏/鼠标/键盘/窗口列表（ScienceX 对照, COMPUTER_USE_ENABLED=true 启用）
+    {
+      name: "computer_use", label: "桌面控制", risk: "elevated",
+      description: "控制桌面: 截屏(看屏幕)/鼠标移动点击/键盘输入/窗口列表 — 需 COMPUTER_USE_ENABLED=true",
+      params: {
+        action: {
+          type: "string", required: true,
+          desc: "screenshot(截屏base64) / mouse(需x,y,action=move|click|dblclick) / type(需text) / windows(窗口列表)",
+        },
+        x: { type: "number", desc: "鼠标 x 坐标(屏幕像素)" },
+        y: { type: "number", desc: "鼠标 y 坐标" },
+        mouseAction: { type: "string", desc: "mouse 时的动作: move/click/dblclick" },
+        text: { type: "string", desc: "type 时的键盘输入文本" },
+      },
+      run: async (a) => {
+        const act = String(a.action || "");
+        const { computerUseService } = await import("./computer-use-service.js");
+        if (!computerUseService.isEnabled()) return "（Computer Use 未启用: 需设置 COMPUTER_USE_ENABLED=true）";
+        try {
+          if (act === "screenshot") {
+            const r = await computerUseService.screenshot();
+            if (!r.ok) return `（截屏失败: ${r.error}）`;
+            return `【截屏】![screen](data:image/png;base64,${r.image})`;
+          }
+          if (act === "windows") {
+            const r = await computerUseService.windowList();
+            if (!r.ok) return `（窗口列表失败: ${r.error}）`;
+            return `【窗口列表】\n` + (r.windows || []).map((w) => `· ${w.title} (pid ${w.pid})`).join("\n");
+          }
+          if (act === "mouse") {
+            const r = await computerUseService.mouseAction(String(a.mouseAction || "move") as any, Number(a.x || 0), Number(a.y || 0));
+            return r.ok ? `✅ 鼠标 ${a.mouseAction || "move"} (${a.x}, ${a.y})` : `（鼠标失败: ${r.error}）`;
+          }
+          if (act === "type") {
+            const r = await computerUseService.typeText(String(a.text || ""));
+            return r.ok ? `✅ 已输入: ${String(a.text || "").slice(0, 50)}` : `（输入失败: ${r.error}）`;
+          }
+          return `（未知动作: ${act} — 可选 screenshot/mouse/type/windows）`;
+        } catch (e: any) {
+          return `（桌面控制失败: ${String(e?.message || e).slice(0, 150)}）`;
+        }
+      },
+    },
     // 批次5(C2): 音频转写 — whisper 沙箱转写（不可用则 ffprobe 元数据 + 安装指引）
     {
       name: "audio_transcribe", label: "音频转写", risk: "safe",
@@ -1508,6 +1551,7 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   // wisp借鉴1: 持久运行时（有状态进程, 需 manager）
   runtime_exec: "manager",
   chart_template: "analyst",   // 2026-08-27: 图表模板（只读出图, analyst 可用）
+  computer_use: "manager",     // 2026-08-27: 桌面控制（控制操作, manager）
   // 架构B: GitHub 只读查询放行（token 来自 OAuth, 不占白名单）
   github_repo: "reader",
   // 差距H: 终端命令需 manager
