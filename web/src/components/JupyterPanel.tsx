@@ -74,6 +74,168 @@ function renderMd(text: string): React.ReactNode {
   );
 }
 
+// 图表模板库（2026-08-27: 一键生成专业图表代码单元格）
+const CHART_TEMPLATES: Array<{ id: string; label: string; code: string }> = [
+  {
+    id: "bar", label: "柱状图（分组对比）",
+    code: `# 柱状图: 引入 vs 未引入资本的集体收入对比
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 用演示数据 df（若未定义则生成）
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50)})
+
+means = df.groupby("引入工商资本")["村集体收入_万元"].mean()
+plt.figure(figsize=(5, 3.5))
+plt.bar(["未引入", "已引入"], means.values, color=["#94a3b8", "#ef4444"], alpha=0.85)
+plt.ylabel("村集体收入 (万元)")
+plt.title("工商资本引入 vs 村集体收入")
+for i, v in enumerate(means.values): plt.text(i, v+1, f"{v:.1f}", ha="center")
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "hist", label: "直方图（收入分布）",
+    code: `# 直方图: 村集体收入分布
+import matplotlib.pyplot as plt
+import numpy as np
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"村集体收入_万元": rng.normal(80,25,50)})
+
+plt.figure(figsize=(5, 3.5))
+plt.hist(df["村集体收入_万元"], bins=12, color="#3b82f6", edgecolor="white", alpha=0.8)
+plt.axvline(df["村集体收入_万元"].mean(), color="#ef4444", linestyle="--", label=f'均值 {df["村集体收入_万元"].mean():.1f}')
+plt.xlabel("村集体收入 (万元)"); plt.ylabel("村庄数")
+plt.title("村集体收入分布"); plt.legend()
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "box", label: "箱线图（分组分布）",
+    code: `# 箱线图: 按资本引入分组的收入分布
+import matplotlib.pyplot as plt
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50)})
+
+plt.figure(figsize=(5, 3.5))
+plt.boxplot([df[df["引入工商资本"]==0]["村集体收入_万元"], df[df["引入工商资本"]==1]["村集体收入_万元"]],
+            labels=["未引入", "已引入"], patch_artist=True,
+            boxprops=dict(facecolor="#93c5fd"))
+plt.ylabel("村集体收入 (万元)")
+plt.title("收入分布: 引入 vs 未引入资本")
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "scatter", label: "散点图（双变量关系）",
+    code: `# 散点图: 耕地流转率 vs 集体收入（气泡=资本引入）
+import matplotlib.pyplot as plt
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"耕地流转率_pct": rng.normal(35,12,50), "村集体收入_万元": rng.normal(80,25,50), "引入工商资本": rng.choice([0,1],50)})
+
+plt.figure(figsize=(5, 3.5))
+sc = plt.scatter(df["耕地流转率_pct"], df["村集体收入_万元"], c=df["引入工商资本"], cmap="coolwarm", s=50, alpha=0.7)
+plt.colorbar(sc, label="引入工商资本")
+plt.xlabel("耕地流转率 (%)"); plt.ylabel("村集体收入 (万元)")
+plt.title("流转率与集体收入")
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "heatmap", label: "热力图（相关性）",
+    code: `# 热力图: 变量相关性矩阵
+import matplotlib.pyplot as plt
+import numpy as np
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50), "耕地流转率_pct": rng.normal(35,12,50)})
+
+corr = df.corr()
+plt.figure(figsize=(5, 4))
+im = plt.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
+plt.xticks(range(len(corr)), corr.columns, rotation=30, ha="right", fontsize=9)
+plt.yticks(range(len(corr)), corr.columns, fontsize=9)
+plt.colorbar(im, label="相关系数")
+for i in range(len(corr)):
+    for j in range(len(corr)):
+        plt.text(j, i, f"{corr.values[i,j]:.2f}", ha="center", va="center", fontsize=9,
+                 color="white" if abs(corr.values[i,j]) > 0.5 else "black")
+plt.title("变量相关性热力图")
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "line", label: "折线图（趋势）",
+    code: `# 折线图: 2019-2026 集体收入趋势（模拟）
+import matplotlib.pyplot as plt
+import numpy as np
+
+years = list(range(2019, 2027))
+rng = np.random.default_rng(7)
+base = 60
+trend = [base + i*3 + rng.normal(0, 3) for i in range(len(years))]
+
+plt.figure(figsize=(5, 3.5))
+plt.plot(years, trend, marker="o", color="#10b981", linewidth=2)
+plt.fill_between(years, trend, min(trend)-5, color="#10b981", alpha=0.1)
+plt.xlabel("年份"); plt.ylabel("村集体收入 (万元)")
+plt.title("村集体收入趋势 (2019-2026)")
+plt.grid(alpha=0.3)
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "pie", label: "饼图（结构占比）",
+    code: `# 饼图: 引入/未引入资本村庄占比
+import matplotlib.pyplot as plt
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50)})
+
+counts = df["引入工商资本"].value_counts()
+plt.figure(figsize=(4.5, 4))
+plt.pie(counts.values, labels=["未引入", "已引入"], autopct="%1.0f%%",
+        colors=["#94a3b8", "#ef4444"], startangle=90, explode=(0, 0.05))
+plt.title("村庄资本引入结构")
+plt.tight_layout(); plt.show()`,
+  },
+  {
+    id: "time", label: "面积图（累积效应）",
+    code: `# 面积图: 引入资本 vs 未引入的累积收入差异
+import matplotlib.pyplot as plt
+import numpy as np
+
+years = list(range(2019, 2027))
+rng = np.random.default_rng(11)
+with_cap = np.cumsum(rng.normal(8, 2, len(years))) + 50
+without_cap = np.cumsum(rng.normal(3, 1.5, len(years))) + 50
+
+plt.figure(figsize=(5, 3.5))
+plt.fill_between(years, with_cap, color="#ef4444", alpha=0.6, label="引入资本")
+plt.fill_between(years, without_cap, color="#94a3b8", alpha=0.6, label="未引入")
+plt.xlabel("年份"); plt.ylabel("累计收入 (万元)")
+plt.title("资本引入的累积效应")
+plt.legend()
+plt.tight_layout(); plt.show()`,
+  },
+];
+
 export function JupyterPanel() {
   const [cells, setCells] = useState<NotebookCell[]>([{ type: "code", content: "import pandas as pd\nprint('notebook 就绪')" }]);
   const [results, setResults] = useState<(CellResult | null)[]>([]);
@@ -181,7 +343,21 @@ export function JupyterPanel() {
         <span className="text-[10px] text-muted-foreground">
           {ready?.ready ? `Python: ${ready.python}` : "venv 未配置 (EMPIRICAL_PYTHON)"}
         </span>
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          {/* 2026-08-27: 图表模板库 — 一键生成专业图表代码单元格 */}
+          <select
+            value=""
+            onChange={(e) => {
+              const t = CHART_TEMPLATES.find((x) => x.id === e.target.value);
+              if (t) { setCells((c) => [...c, { type: "code", content: t.code }]); setResults((r) => [...r, null]); }
+              e.target.value = "";
+            }}
+            className="rounded border bg-background px-1.5 py-1 text-[10px] text-muted-foreground"
+            title="插入图表模板代码单元格（运行后出图）"
+          >
+            <option value="">📊 图表模板…</option>
+            {CHART_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
           <input ref={fileRef} type="file" accept=".csv,.txt,.json" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.target.value = ""; }} />
           <button type="button" onClick={() => fileRef.current?.click()} disabled={runningAll}
