@@ -205,7 +205,7 @@ export function VaultPanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--vault-w" defaultWidth={280} storageKey="vault-width" />
-        <div className="relative grid h-[135vh] w-full grid-cols-1 gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,1fr)]" style={{"--vault-w": "280px"} as React.CSSProperties}>
+        <div className="relative grid h-[135vh] w-full grid-cols-1 grid-rows-[minmax(0,1fr)] gap-0 lg:grid-cols-[var(--vault-w,280px)_minmax(0,1fr)]" style={{"--vault-w": "280px"} as React.CSSProperties}>
           <Card className="flex min-h-0 flex-col overflow-y-auto p-2">
             {loading ? (
               <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">

@@ -270,7 +270,7 @@ export function PolicyPanel() {
         <div className="relative flex min-h-0 flex-1 flex-col">
           <DragHandle leftVar="--policy-w" defaultWidth={280} storageKey="policy-width" />
         {/* 双栏加高：135vh（比视口高 35%），外部滚动查看完整 */}
-        <div className="relative grid h-[135vh] w-full grid-cols-1 gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
+        <div className="relative grid h-[135vh] w-full grid-cols-1 grid-rows-[minmax(0,1fr)] gap-0 lg:grid-cols-[var(--policy-w,280px)_minmax(0,1fr)]" style={{"--policy-w": "280px"} as React.CSSProperties}>
           <Card className="flex min-h-0 flex-col overflow-y-auto p-2">
             <div className="mb-1 flex items-center gap-1.5 px-2 text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5" /> 本地政策库
