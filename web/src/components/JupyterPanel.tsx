@@ -3,7 +3,7 @@
 // 单元格编辑(code/markdown) → venv 执行 → 输出/图表/持久变量；Restart & Run All；文件上传供 pandas 读
 // 设计: 复用实证沙箱（无完整 Jupyter 依赖），variables 跨单元持久模拟内核
 import React, { useEffect, useRef, useState } from "react";
-import { Play, RotateCcw, Plus, Trash2, Loader2, FileCode2, Wand2, Upload, Type } from "lucide-react";
+import { Play, RotateCcw, Plus, Trash2, Loader2, FileCode2, Wand2, Upload, Type, CheckCircle2, X } from "lucide-react";
 
 interface CellResult {
   ok: boolean;
@@ -387,84 +387,127 @@ export function JupyterPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
-      <div className="flex items-center gap-2">
-        <FileCode2 className="h-4 w-4 text-emerald-600" />
-        <span className="text-xs font-semibold">Notebook 工作台</span>
-        <span className="text-[10px] text-muted-foreground">
-          {ready?.ready ? `Python: ${ready.python}` : "venv 未配置 (EMPIRICAL_PYTHON)"}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-1">
-          {/* 2026-08-27: 图表模板库 — 一键生成专业图表代码单元格 */}
-          <select
-            value=""
-            onChange={(e) => {
-              const t = CHART_TEMPLATES.find((x) => x.id === e.target.value);
-              if (t) { setCells((c) => [...c, { type: "code", content: t.code }]); setResults((r) => [...r, null]); }
-              e.target.value = "";
-            }}
-            className="rounded border bg-background px-1.5 py-1 text-[10px] text-muted-foreground"
-            title="插入图表模板代码单元格（运行后出图）"
-          >
-            <option value="">📊 图表模板…</option>
-            {CHART_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-          <input ref={fileRef} type="file" accept=".csv,.txt,.json" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.target.value = ""; }} />
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={runningAll}
-            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40"
-            title="上传 CSV/JSON 数据文件，pandas 可读">
-            <Upload className="h-3 w-3" /> 上传数据
-          </button>
-          <button type="button" onClick={() => void loadDemo()} disabled={runningAll}
-            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40"
-            title="载入资本下乡调研数据探索演示（自动运行）">
-            <Wand2 className="h-3 w-3" /> 载入演示
-          </button>
-          <button type="button" onClick={() => void restart()} disabled={runningAll}
-            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40">
-            <RotateCcw className="h-3 w-3" /> Restart
-          </button>
-          <button type="button" onClick={() => void runAllCells()} disabled={runningAll}
-            className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40">
-            {runningAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run All
-          </button>
+    <div className="flex min-h-0 flex-col gap-3">
+      {/* ─── 头部: 渐变 + 内核状态 ─── */}
+      <div className="relative overflow-hidden rounded-xl border bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent p-4">
+        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
+            <FileCode2 className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-foreground">Notebook 工作台</h2>
+            <p className="text-[10px] text-muted-foreground">Python 单元执行 · 变量持久 · 图表输出 · 三线表</p>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {/* 内核状态徽章 */}
+            <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium ${ready?.ready ? "bg-emerald-500/15 text-emerald-600" : "bg-red-500/10 text-red-500"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${ready?.ready ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+              {ready?.ready ? "内核就绪" : "venv 未配置"}
+            </span>
+            <span className="rounded-full bg-muted/50 px-2 py-0.5 text-[9px] text-muted-foreground">
+              {Object.keys(vars).length} 变量
+            </span>
+            {runningAll && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-medium text-amber-600">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" /> 运行中…
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* ─── 工具栏: 卡片化按钮 ─── */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border bg-card/60 p-2 backdrop-blur-sm">
+        <select
+          value=""
+          onChange={(e) => {
+            const t = CHART_TEMPLATES.find((x) => x.id === e.target.value);
+            if (t) { setCells((c) => [...c, { type: "code", content: t.code }]); setResults((r) => [...r, null]); }
+            e.target.value = "";
+          }}
+          className="rounded-lg border bg-background px-2 py-1.5 text-[10px] text-muted-foreground"
+          title="插入图表模板代码单元格（运行后出图）"
+        >
+          <option value="">📊 图表模板…</option>
+          {CHART_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+        <div className="h-4 w-px bg-border/60" />
+        <input ref={fileRef} type="file" accept=".csv,.txt,.json" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.target.value = ""; }} />
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={runningAll}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+          title="上传 CSV/JSON 数据文件，pandas 可读">
+          <Upload className="h-3 w-3" /> 上传数据
+        </button>
+        <button type="button" onClick={() => void loadDemo()} disabled={runningAll}
+          className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:opacity-40"
+          title="载入资本下乡调研数据探索演示（自动运行）">
+          <Wand2 className="h-3 w-3" /> 载入演示
+        </button>
+        <button type="button" onClick={() => void restart()} disabled={runningAll}
+          className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40">
+          <RotateCcw className="h-3 w-3" /> Restart
+        </button>
+        <button type="button" onClick={() => void runAllCells()} disabled={runningAll}
+          className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40">
+          {runningAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} Run All
+        </button>
+      </div>
+
       {/* 上传提示 / 持久变量 */}
-      <div className="rounded border bg-muted/20 px-2 py-1 text-[10px] text-muted-foreground">
-        {uploadMsg || `内核变量: ${Object.keys(vars).length > 0 ? Object.keys(vars).slice(0, 8).join(", ") + (Object.keys(vars).length > 8 ? ` +${Object.keys(vars).length - 8}` : "") : "（无）"}`}
+      {uploadMsg && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{uploadMsg}</span>
+          <button type="button" onClick={() => setUploadMsg("")} className="rounded p-0.5 hover:bg-white/10"><X className="h-3 w-3" /></button>
+        </div>
+      )}
+
+      {/* 内核变量条 */}
+      <div className="flex items-center gap-1.5 rounded-lg border bg-muted/20 px-3 py-1.5 text-[10px] text-muted-foreground">
+        <span className="font-medium text-foreground/70">内核变量</span>
+        {Object.keys(vars).length > 0
+          ? Object.keys(vars).map((k) => (
+              <span key={k} className="rounded bg-background/80 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700">{k}</span>
+            ))
+          : <span>（无 — 运行代码后变量在此显示，可跨单元格复用）</span>}
+        {Object.keys(vars).length > 8 && <span className="text-[9px]">+{Object.keys(vars).length - 8}</span>}
       </div>
 
       {/* 单元格列表 */}
       {cells.map((cell, i) => (
-        <div key={i} className={`flex flex-col gap-1 rounded border ${cell.type === "md" ? "border-dashed bg-muted/5" : ""}`}>
-          <div className="flex items-center gap-1 border-b bg-muted/20 px-1.5 py-0.5">
-            <span className="text-[9px] font-mono text-muted-foreground">[{i}]</span>
-            <span className={`rounded px-1 py-0.5 text-[8px] font-medium ${cell.type === "md" ? "bg-purple-500/15 text-purple-700" : "bg-emerald-500/15 text-emerald-700"}`}>
+        <div key={i} className={`group overflow-hidden rounded-xl border transition-all ${cell.type === "md" ? "border-dashed border-purple-500/20 bg-purple-500/5" : "border-border/60 bg-card/60 backdrop-blur-sm hover:border-emerald-500/30"}`}>
+          {/* 单元格头部 */}
+          <div className="flex items-center gap-1.5 border-b border-border/50 bg-muted/20 px-2 py-1">
+            <span className="w-5 text-right font-mono text-[9px] text-muted-foreground/50">[{i}]</span>
+            <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${cell.type === "md" ? "bg-purple-500/15 text-purple-600" : "bg-emerald-500/15 text-emerald-600"}`}>
               {cell.type === "md" ? "MD" : "PY"}
             </span>
             {cell.type === "code" && (
               <button type="button" onClick={() => void runCell(i)} disabled={running !== null || runningAll}
-                className="flex items-center gap-0.5 rounded bg-emerald-600/10 px-1.5 py-0.5 text-[9px] text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-40">
-                {running === i ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Play className="h-2.5 w-2.5" />} 运行
+                className="flex items-center gap-0.5 rounded-md bg-emerald-600/10 px-2 py-0.5 text-[9px] font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20 disabled:opacity-40">
+                {running === i ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Play className="h-2.5 w-2.5" />}
+                {running === i ? "运行中" : "运行"}
               </button>
             )}
+            {results[i] && results[i]!.ok && cell.type === "code" && !runningAll && (
+              <span className="flex items-center gap-0.5 text-[8px] text-emerald-500"><CheckCircle2 className="h-2.5 w-2.5" />完成</span>
+            )}
             <button type="button" onClick={() => toggleCellType(i)}
-              className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] text-muted-foreground hover:bg-accent"
+              className="rounded-md px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-accent"
               title={cell.type === "code" ? "切换为 Markdown 说明" : "切换为代码单元格"}>
               <Type className="h-2.5 w-2.5" />
             </button>
             <button type="button" onClick={() => addCell()}
-              className="rounded px-1 py-0.5 text-[9px] text-muted-foreground hover:bg-accent"><Plus className="h-2.5 w-2.5" /></button>
+              className="rounded-md px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-accent"><Plus className="h-2.5 w-2.5" /></button>
             {cells.length > 1 && (
               <button type="button" onClick={() => removeCell(i)}
-                className="ml-auto rounded px-1 py-0.5 text-[9px] text-muted-foreground hover:bg-red-50 hover:text-red-600"><Trash2 className="h-2.5 w-2.5" /></button>
+                className="ml-auto rounded-md px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"><Trash2 className="h-2.5 w-2.5" /></button>
             )}
           </div>
           {cell.type === "md" ? (
-            <div className="px-3 py-2">{renderMd(cell.content)}</div>
+            <div className="px-4 py-3">{renderMd(cell.content)}</div>
           ) : (
             <>
               <textarea
@@ -473,19 +516,19 @@ export function JupyterPanel() {
                 onChange={(e) => setCells((c) => c.map((v, j) => (j === i ? { ...v, content: e.target.value } : v)))}
                 spellCheck={false}
                 placeholder="# 输入 Python 代码，如: df = pd.DataFrame({'a':[1,2,3]})"
-                className="min-h-[60px] w-full resize-y bg-background p-2 font-mono text-[11px] outline-none placeholder:text-muted-foreground/40"
+                className="min-h-[60px] w-full resize-y bg-background/60 p-3 font-mono text-[11px] leading-relaxed outline-none placeholder:text-muted-foreground/40"
               />
               {results[i] && (
-                <div className="border-t bg-muted/10 px-2 py-1.5 text-[11px]">
+                <div className="border-t border-border/50 bg-muted/5 px-3 py-2">
                   {!results[i]!.ok && results[i]!.error && (
-                    <pre className="whitespace-pre-wrap rounded bg-red-50 p-1.5 font-mono text-[10px] text-red-700">{results[i]!.error}</pre>
+                    <pre className="whitespace-pre-wrap rounded-lg border border-red-500/20 bg-red-500/5 p-2 font-mono text-[10px] leading-relaxed text-red-600">{results[i]!.error}</pre>
                   )}
                   {results[i]!.output && (
-                    <pre className="whitespace-pre-wrap font-mono text-[10px] text-foreground/80">{results[i]!.output}</pre>
+                    <pre className="whitespace-pre-wrap rounded-lg bg-background/80 p-2 font-mono text-[10px] leading-relaxed text-foreground/80">{results[i]!.output}</pre>
                   )}
                   {results[i]!.figures.map((f, fi) => (
-                    <div key={fi} className="relative mt-1 inline-block">
-                      <img src={`data:image/png;base64,${f}`} alt={`figure-${i}-${fi}`} className="max-h-64 rounded border" />
+                    <div key={fi} className="relative mt-1.5 inline-block">
+                      <img src={`data:image/png;base64,${f}`} alt={`figure-${i}-${fi}`} className="max-h-72 rounded-lg border shadow-sm" />
                       <button
                         type="button"
                         onClick={() => {
@@ -494,7 +537,7 @@ export function JupyterPanel() {
                           a.download = `figure-${i}-${fi}.png`;
                           a.click();
                         }}
-                        className="absolute right-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white hover:bg-black/80"
+                        className="absolute right-1.5 top-1.5 rounded-md bg-black/60 px-2 py-1 text-[9px] text-white backdrop-blur transition-colors hover:bg-black/80"
                         title="下载图表"
                       >
                         下载
@@ -511,14 +554,15 @@ export function JupyterPanel() {
         </div>
       ))}
 
-      <div className="flex gap-1">
+      {/* 添加单元格 */}
+      <div className="flex gap-2">
         <button type="button" onClick={() => addCell("code")}
-          className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed py-1.5 text-[10px] text-muted-foreground hover:bg-accent">
-          <Plus className="h-3 w-3" /> 添加代码单元格
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-[11px] text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/5 hover:text-emerald-700">
+          <Plus className="h-3.5 w-3.5" /> 添加代码单元格
         </button>
         <button type="button" onClick={() => addCell("md")}
-          className="flex flex-1 items-center justify-center gap-1 rounded border border-dashed py-1.5 text-[10px] text-purple-600 hover:bg-accent">
-          <Type className="h-3 w-3" /> 添加说明（Markdown）
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-[11px] text-purple-600 transition-colors hover:border-purple-500/40 hover:bg-purple-500/5">
+          <Type className="h-3.5 w-3.5" /> 添加说明（Markdown）
         </button>
       </div>
     </div>
