@@ -380,55 +380,47 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     const sel = selectionRef.current;
     selectionRef.current = null;
     if (!sel || sel.width < 3 || sel.height < 3) { setSelection(null); return; }
-    // 优先用整页干净全文(extractText): 部分 PDF 的文本块坐标排序不可靠
-    // (艺术字/双栏标题导致块拼接乱序缺字), extractText 已验证连续准确
-    const pageText = pageTextsRef.current[page - 1] ?? "";
-    let snippet = "";
-    if (pageText && pageText.length >= 10) {
-      snippet = pageText.slice(0, 3000);
-    } else {
-      // 预取未完成(大 PDF 提取慢, 用户划词时可能还没填好) → 按需提取当前页
-      // 单页 extractText 毫秒级, 立即拿到准确全文
-      let freshText = "";
-      try {
-        const pageObj = docRef.current?.pages?.[page - 1];
-        if (pageObj && engineRef.current) {
-          const txt = await engineRef.current.extractText(docRef.current, [page - 1]).toPromise();
-          freshText = cleanText(txt || "");
-          pageTextsRef.current[page - 1] = freshText; // 缓存备用
-        }
-      } catch { /* 提取失败走兜底 */ }
-      if (freshText && freshText.length >= 10) {
-        snippet = freshText.slice(0, 3000);
+    // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
+    // → 把选区换算回 PDF 空间: / zoom
+    const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
+    const blocks = textBlocksRef.current[page - 1] ?? [];
+    // 选区内的块
+    const inSel = blocks
+      .filter((b) => {
+        const r = b.rect;
+        return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
+               r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
+      })
+      .map((b) => ({ ...b, char: firstReadableChar(b.content) }))
+      .filter((b) => b.char.length > 0);
+    // OCR 行聚合: 按 y 容差(10磅)聚合成行, 行内按 x 排序, 行间按 y 排序
+    // 解决: 标题区字基线抖动导致按 y 严格排序乱序("法"跑到"年"前)
+    const LINES_TOL = 10;
+    const lines: Array<Array<{ x: number; char: string; yAnchor: number }>> = [];
+    for (const b of [...inSel].sort((a, b) => a.rect.y - b.rect.y)) {
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(b.rect.y - last[0].yAnchor) <= LINES_TOL) {
+        last.push({ x: b.rect.x, char: b.char, yAnchor: last[0].yAnchor });
       } else {
-        // 整页文本不可用 → 兜底块拼接
-        const blocks = textBlocksRef.current[page - 1] ?? [];
-        // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
-        // → 把选区换算回 PDF 空间: / zoom
-        const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
-        const hit = blocks
-          .filter((b) => {
-            const r = b.rect;
-            return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
-                   r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
-          })
-          .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
-          .map((b) => firstReadableChar(b.content))
-          .filter((t) => t.length > 0);
-        snippet = hit.join("").slice(0, 3000);
-        if (hit.length === 0) {
-          setSelection(null);
-          // 无文本层 → 引导提示（纯扫描图片 PDF）
-          setSelHint(textHitCountRef.current === 0
-            ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
-            : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
-          setTimeout(() => setSelHint(""), 4000);
-          return;
-        }
+        lines.push([{ x: b.rect.x, char: b.char, yAnchor: b.rect.y }]);
       }
     }
+    const snippet = lines
+      .sort((a, b) => a[0].yAnchor - b[0].yAnchor)
+      .map((l) => l.sort((a, b) => a.x - b.x).map((c) => c.char).join(""))
+      .join("\n")
+      .slice(0, 3000);
+    if (snippet.length < 5) {
+      setSelection(null);
+      // 无文本层 → 引导提示（纯扫描图片 PDF）
+      setSelHint(textHitCountRef.current === 0
+        ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
+        : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
+      setTimeout(() => setSelHint(""), 4000);
+      return;
+    }
     setTranslate({ snippet, x: clientX, y: clientY });
-    diagLog(`⑥卡片弹出 (${snippet.length}字)`);
+    diagLog(`⑥卡片弹出 (${snippet.length}字, ${lines.length}行)`);
     // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
     setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
     setAiResult(null);
