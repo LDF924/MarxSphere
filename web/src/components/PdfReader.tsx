@@ -348,11 +348,19 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     setAiQuestion("");
   };
 
-  /** 卡片位置钳制在视口内 */
-  const clampCardPos = (p: { x: number; y: number }) => ({
-    x: Math.max(8, Math.min(p.x, window.innerWidth - 360)),
-    y: Math.max(8, Math.min(p.y, window.innerHeight - 200))
-  });
+  /** 卡片位置钳制在视口内（上方优先: 鼠标下方放不下则翻到上方, Agentero 同款） */
+  const clampCardPos = (p: { x: number; y: number }) => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const CARD_H = 340; // 卡片预估高度
+    let x = Math.max(8, Math.min(p.x, vw - 360));
+    let y = p.y + 12;
+    // 下方空间不足 → 翻到鼠标上方
+    if (y + CARD_H > vh - 8) y = Math.max(8, p.y - CARD_H - 12);
+    // 最终保险: 任何输入都不超出视口
+    y = Math.max(8, Math.min(y, vh - CARD_H));
+    return { x, y };
+  };
 
   /** 卡片拖拽: 标题栏按下记录偏移, 移动时更新位置 */
   const onCardDragStart = (e: React.MouseEvent) => {
