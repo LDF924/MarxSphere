@@ -54,16 +54,21 @@ print(df[["引入工商资本", "村集体收入_万元", "耕地流转率_pct"]
 // 极简 Markdown 渲染（标题/粗体/列表/代码块）
 function renderMd(text: string): React.ReactNode {
   const lines = text.split("\n");
+  // 行内粗体 **x** → <b>
+  const renderInline = (s: string): React.ReactNode => {
+    const parts = s.split(/\*\*(.+?)\*\*/g);
+    return parts.map((p, i) => (i % 2 === 1 ? <b key={i}>{p}</b> : p));
+  };
   return (
     <div className="space-y-1 text-[12px] leading-relaxed text-foreground/90">
       {lines.map((line, i) => {
-        if (line.startsWith("### ")) return <h4 key={i} className="text-[13px] font-semibold">{line.slice(4)}</h4>;
-        if (line.startsWith("## ")) return <h3 key={i} className="text-[14px] font-semibold">{line.slice(3)}</h3>;
-        if (line.startsWith("# ")) return <h2 key={i} className="text-[15px] font-bold">{line.slice(2)}</h2>;
-        if (line.startsWith("- ")) return <div key={i} className="pl-3">• {line.slice(2)}</div>;
+        if (line.startsWith("### ")) return <h4 key={i} className="text-[13px] font-semibold">{renderInline(line.slice(4))}</h4>;
+        if (line.startsWith("## ")) return <h3 key={i} className="text-[14px] font-semibold">{renderInline(line.slice(3))}</h3>;
+        if (line.startsWith("# ")) return <h2 key={i} className="text-[15px] font-bold">{renderInline(line.slice(2))}</h2>;
+        if (line.startsWith("- ")) return <div key={i} className="pl-3">• {renderInline(line.slice(2))}</div>;
         if (line.startsWith("```")) return null;
         if (line.trim() === "") return <div key={i} className="h-1" />;
-        return <div key={i}>{line.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</div>;
+        return <div key={i}>{renderInline(line)}</div>;
       })}
     </div>
   );
