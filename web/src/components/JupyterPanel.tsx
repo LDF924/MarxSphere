@@ -266,20 +266,18 @@ n_rows = len(rows) + 1  # 含表头
 for (r, c), cell in table.get_celld().items():
     cell.set_edgecolor("none")        # 默认全无线
     cell.set_facecolor("none")
-    if r == 0:                        # 表头行: 上边粗线(顶线) + 下边细线(栏目线)
-        cell.visible_edges = "TB"
-        cell.set_linewidth(0)
-        cell.set_edgecolor("none")
-    elif r == n_rows - 1:             # 最后数据行: 下边粗线(底线)
-        cell.visible_edges = "B"
-        cell.set_linewidth(0)
-        cell.set_edgecolor("none")
-# 手动叠加三条精确线（用 bbox 定位, 与表格对齐）
-bbox = table.get_celld()[(0, 0)].get_bbox()
-top = bbox.y1
-col_line = table.get_celld()[(1, 0)].get_bbox().y1
-bottom = table.get_celld()[(n_rows - 1, 0)].get_bbox().y0
-x0, x1 = bbox.x0, bbox.x1
+# 关键: 必须先 draw() 强制布局, 否则 get_bbox() 返回默认值(所有 cell 相同 → 栏目线丢失)
+fig.canvas.draw()
+bbox_top = table.get_celld()[(0, 0)].get_bbox()
+bbox_col = table.get_celld()[(1, 0)].get_bbox()
+bbox_bot = table.get_celld()[(n_rows - 1, 0)].get_bbox()
+# 转 axes 坐标
+inv = ax.transAxes.inverted()
+top = inv.transform((bbox_top.x0, bbox_top.y1))[1]
+col_line = inv.transform((bbox_col.x0, bbox_col.y1))[1]
+bottom = inv.transform((bbox_bot.x0, bbox_bot.y0))[1]
+x0 = inv.transform((bbox_top.x0, 0))[0]
+x1 = inv.transform((bbox_top.x1, 0))[0]
 for y, w in [(top, 2.2), (col_line, 0.8), (bottom, 2.2)]:
     ax.plot([x0, x1], [y, y], color="black", linewidth=w, clip_on=False)
 ax.set_xlim(0, 1); ax.set_ylim(0, 1)
