@@ -510,9 +510,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             )}
           </div>
         )}
-        {/* 划词 AI 卡片（fixed: 固定位置不随鼠标消失; 标题栏可拖动） */}
+        {/* 划词 AI 卡片（fixed: 固定位置不随鼠标消失; 标题栏可拖动; 右下角可拉伸） */}
         {translate && status === "ready" && (
-          <div className="fixed z-50 w-[340px] max-w-[90vw] rounded-lg border bg-card shadow-2xl"
+          <div className="fixed z-50 flex w-[340px] max-w-[90vw] resize flex-col overflow-hidden rounded-lg border bg-card shadow-2xl"
             style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
             {/* 可拖动标题栏 */}
             <div
@@ -528,7 +528,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               </button>
             </div>
             <div className="px-3">
-            <div className="max-h-24 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
+            <div className="max-h-64 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
               {translate.snippet.slice(0, 400)}{translate.snippet.length > 400 ? "…" : ""}
             </div>
             {/* 动作按钮: 解释 / 总结 / 翻译 */}
@@ -562,7 +562,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             </div>
             {/* AI 结果 */}
             {aiResult && (
-              <div className="mt-2 rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
+              <div className="mt-2 max-h-64 overflow-y-auto rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
                 <div className="mb-1 text-[10px] font-semibold text-blue-600">
                   {aiResult.action === "explain" ? "解释" : aiResult.action === "summarize" ? "总结" : aiResult.action === "translate" ? "译文" : "回答"}
                 </div>
