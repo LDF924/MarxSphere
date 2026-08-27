@@ -431,6 +431,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             };
           });
           textBlocksRef.current[page - 1] = blocks;
+          diagLog(`按需提取完成: ${blocks.length}块`);
         }
       } catch { /* 提取失败走空兜底 */ }
     }
