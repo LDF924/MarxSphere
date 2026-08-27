@@ -7092,10 +7092,19 @@ except Exception as e:
       root: webDistDir,
       prefix: "/"
     });
+    // 页面 HTML 禁止缓存(每次构建 hash 变化, 防浏览器缓存旧 index 引用旧 chunk)
+    app.addHook("onSend", async (request, reply, payload) => {
+      if (request.url === "/" || request.url.endsWith(".html")) {
+        reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        reply.header("Pragma", "no-cache");
+      }
+      return payload;
+    });
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith("/api/") || request.url === "/health") {
         return reply.code(404).send(notFound("NOT_FOUND", "接口不存在"));
       }
+      reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
       return reply.type("text/html").send(fs.readFileSync(webIndexFile, "utf8"));
     });
   }
