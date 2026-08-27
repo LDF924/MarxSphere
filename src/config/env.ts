@@ -31,7 +31,12 @@ const envSchema = z.object({
   INGEST_CONCURRENCY: z.coerce.number().int().positive().max(20).default(5),
   MCP_TRANSPORT: z.enum(["stdio", "http"]).default("stdio"),
   MCP_HTTP_PORT: z.coerce.number().int().positive().default(4174),
-  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000)
+  MCP_TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  // 2026-08-27: IM 接入（飞书/钉钉/Telegram webhook 机器人）
+  IM_FEISHU_WEBHOOK: z.string().default(""),
+  IM_DINGTALK_WEBHOOK: z.string().default(""),
+  IM_TELEGRAM_TOKEN: z.string().default(""),
+  IM_TELEGRAM_CHAT_ID: z.string().default(""),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

@@ -1,0 +1,192 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// im-service.ts — IM 接入（2026-08-27, ScienceX 对照: Telegram/飞书/微信/钉钉远程对话）
+// 支持: 飞书自定义机器人 webhook / 钉钉机器人 webhook / 通用 webhook
+// 能力: 接收消息 → 命令解析(查项目/切项目/审批/状态) → 回复; 审批通过 webhook 推送
+// 配置环境变量:
+//   IM_FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+//   IM_DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
+//   IM_TELEGRAM_TOKEN / IM_TELEGRAM_CHAT_ID（可选, 需要轮询或 webhook 回调）
+// 免依赖实现: 全用 fetch（Node 18+ 内置）, 不引入 SDK
+import { config } from "../config/env.js";
+
+export interface ImMessage {
+  platform: "feishu" | "dingtalk" | "telegram";
+  text: string;
+  from?: string;
+}
+
+export interface ImReply {
+  text: string;
+}
+
+// ─── 发送（webhook 机器人推送） ───
+
+/** 飞书自定义机器人推送（text 消息） */
+export async function sendFeishu(webhook: string, text: string): Promise<boolean> {
+  try {
+    const resp = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msg_type: "text", content: { text } }),
+    });
+    const j = await resp.json().catch(() => null);
+    return resp.ok && (j?.code === 0 || j?.StatusCode === 0 || j?.code === undefined);
+  } catch { return false; }
+}
+
+/** 钉钉机器人推送（text 消息） */
+export async function sendDingtalk(webhook: string, text: string): Promise<boolean> {
+  try {
+    const resp = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msgtype: "text", text: { content: text } }),
+    });
+    const j = await resp.json().catch(() => null);
+    return resp.ok && j?.errcode === 0;
+  } catch { return false; }
+}
+
+/** Telegram bot 推送（sendMessage API） */
+export async function sendTelegram(token: string, chatId: string, text: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    const j = await resp.json().catch(() => null);
+    return resp.ok && j?.ok === true;
+  } catch { return false; }
+}
+
+/** 按配置广播到全部已配 IM 平台 */
+export async function imBroadcast(text: string): Promise<{ feishu: boolean; dingtalk: boolean; telegram: boolean }> {
+  const feishu = config.IM_FEISHU_WEBHOOK ? await sendFeishu(config.IM_FEISHU_WEBHOOK, text) : false;
+  const dingtalk = config.IM_DINGTALK_WEBHOOK ? await sendDingtalk(config.IM_DINGTALK_WEBHOOK, text) : false;
+  let telegram = false;
+  if (config.IM_TELEGRAM_TOKEN && config.IM_TELEGRAM_CHAT_ID) {
+    telegram = await sendTelegram(config.IM_TELEGRAM_TOKEN, config.IM_TELEGRAM_CHAT_ID, text);
+  }
+  return { feishu, dingtalk, telegram };
+}
+
+// ─── 接收（webhook 回调解析） ───
+
+/** 解析飞书回调 body → 消息文本 */
+export function parseFeishuCallback(body: any): ImMessage | null {
+  const text = body?.event?.message?.content;
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(String(text));
+    return { platform: "feishu", text: String(parsed.text || ""), from: body?.event?.sender?.sender_id?.open_id };
+  } catch {
+    return { platform: "feishu", text: String(text).substring(0, 2000), from: body?.event?.sender?.sender_id?.open_id };
+  }
+}
+
+/** 解析钉钉回调 body → 消息文本 */
+export function parseDingtalkCallback(body: any): ImMessage | null {
+  const text = body?.text?.content;
+  if (!text) return null;
+  return { platform: "dingtalk", text: String(text), from: body?.senderStaffId };
+}
+
+/** 解析 Telegram 回调 body → 消息文本 */
+export function parseTelegramCallback(body: any): ImMessage | null {
+  const text = body?.message?.text;
+  if (!text) return null;
+  return { platform: "telegram", text: String(text), from: String(body?.message?.chat?.id || "") };
+}
+
+// ─── 命令解析（远程对话: 查状态/切项目/审批） ───
+
+/**
+ * 解析 IM 命令 → 动作
+ * 支持: 状态 / 项目列表 / 评测状态 / 审批 / 帮助
+ */
+export async function handleImCommand(msg: ImMessage): Promise<ImReply> {
+  const text = msg.text.trim();
+  const lower = text.toLowerCase();
+
+  if (lower.includes("帮助") || lower.includes("help") || lower.includes("?")) {
+    return {
+      text: [
+        "MarxSphere IM 助手可用命令：",
+        "· 状态 — 服务/评测/记忆状态",
+        "· 项目 — 项目列表",
+        "· 评测 — 最近评测结果",
+        "· 审批 — 待审批任务",
+        "· 告警 — 最近告警",
+      ].join("\n"),
+    };
+  }
+
+  if (lower.includes("状态") || lower.includes("status")) {
+    try {
+      const { checkJupyterReady } = await import("./jupyter-service.js");
+      const jp = checkJupyterReady();
+      const rows = await (await import("../db/pool.js")).pool.query("select count(*)::int n from documents where archived_at is null");
+      const docs = rows.rows[0]?.n ?? 0;
+      return { text: `✅ 服务正常\n· 文献库: ${docs} 篇\n· Notebook Python: ${jp.ready ? "就绪" : "未配置"}\n· 记忆: 见 /api/memory` };
+    } catch (e: any) {
+      return { text: `❌ 状态查询失败: ${String(e?.message || e).slice(0, 100)}` };
+    }
+  }
+
+  if (lower.includes("项目") || lower.includes("project")) {
+    try {
+      const r = await (await import("../db/pool.js")).pool.query(
+        "select name, created_at from sources where archived_at is null order by created_at desc limit 10"
+      );
+      const list = r.rows.map((x: any) => `· ${x.name}`).join("\n");
+      return { text: `📁 项目列表（${r.rows.length}）:\n${list || "（无）"}` };
+    } catch (e: any) {
+      return { text: `❌ 项目查询失败: ${String(e?.message || e).slice(0, 100)}` };
+    }
+  }
+
+  if (lower.includes("评测") || lower.includes("eval")) {
+    try {
+      const r = await (await import("../db/pool.js")).pool.query(
+        "select eval_run_id, created_at from agent_eval_runs where eval_run_id like 'eval-%' order by created_at desc limit 3"
+      );
+      const list = r.rows.map((x: any) => `· ${x.eval_run_id} @ ${new Date(x.created_at).toISOString().substring(0, 16)}`).join("\n");
+      return { text: `📊 最近评测:\n${list || "（无）"}` };
+    } catch (e: any) {
+      return { text: `❌ 评测查询失败: ${String(e?.message || e).slice(0, 100)}` };
+    }
+  }
+
+  if (lower.includes("审批") || lower.includes("approve")) {
+    try {
+      const r = await (await import("../db/pool.js")).pool.query(
+        "select id, title, status from agent_tasks where status in ('pending_approval','awaiting_approval') limit 5"
+      );
+      const list = r.rows.map((x: any) => `· ${x.title?.substring(0, 40)} [${x.status}]`).join("\n");
+      return { text: `⏳ 待审批任务:\n${list || "（无）"}` };
+    } catch (e: any) {
+      return { text: `❌ 审批查询失败: ${String(e?.message || e).slice(0, 100)}` };
+    }
+  }
+
+  if (lower.includes("告警") || lower.includes("alert")) {
+    try {
+      const r = await (await import("../db/pool.js")).pool.query(
+        "select level, category, message from alerts order by created_at desc limit 5"
+      );
+      const list = r.rows.map((x: any) => `· [${x.level}] ${x.message?.substring(0, 50)}`).join("\n");
+      return { text: `🔔 最近告警:\n${list || "（无）"}` };
+    } catch (e: any) {
+      return { text: `❌ 告警查询失败: ${String(e?.message || e).slice(0, 100)}` };
+    }
+  }
+
+  return { text: `收到: "${text.substring(0, 80)}"\n输入「帮助」查看可用命令` };
+}
+
+export const imService = {
+  sendFeishu, sendDingtalk, sendTelegram, imBroadcast,
+  parseFeishuCallback, parseDingtalkCallback, parseTelegramCallback,
+  handleImCommand,
+};
