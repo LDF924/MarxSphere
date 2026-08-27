@@ -3601,7 +3601,54 @@ export function buildHttpServer() {
     return empiricalService.getEmpiricalMeta();
   });
 
-  // ───── Jupyter 轻量 notebook 工作台（2026-08-27, ScienceX 通用计算环境）─────
+  // ───── IM 接入（2026-08-27, ScienceX 对照: 飞书/钉钉/Telegram 远程对话）─────
+  // POST /api/im/feishu — 飞书机器人回调（需在飞书开放平台配置事件订阅指向此 URL）
+  app.post("/api/im/feishu", async (request, reply) => {
+    const { imService } = await import("../services/im-service.js");
+    const msg = imService.parseFeishuCallback(request.body);
+    if (!msg) return { challenge: (request.body as any)?.challenge };  // 飞书 URL 验证
+    const r = await imService.handleImCommand(msg);
+    await imService.sendFeishu(config.IM_FEISHU_WEBHOOK, r.text).catch(() => {});
+    return { ok: true };
+  });
+
+  // POST /api/im/dingtalk — 钉钉机器人回调
+  app.post("/api/im/dingtalk", async (request, reply) => {
+    const { imService } = await import("../services/im-service.js");
+    const msg = imService.parseDingtalkCallback(request.body);
+    if (!msg) return { ok: true };
+    const r = await imService.handleImCommand(msg);
+    await imService.sendDingtalk(config.IM_DINGTALK_WEBHOOK, r.text).catch(() => {});
+    return { ok: true };
+  });
+
+  // POST /api/im/telegram — Telegram bot webhook 回调
+  app.post("/api/im/telegram", async (request, reply) => {
+    const { imService } = await import("../services/im-service.js");
+    const msg = imService.parseTelegramCallback(request.body);
+    if (!msg) return { ok: true };
+    const r = await imService.handleImCommand(msg);
+    if (config.IM_TELEGRAM_TOKEN && msg.from) {
+      await imService.sendTelegram(config.IM_TELEGRAM_TOKEN, msg.from, r.text).catch(() => {});
+    }
+    return { ok: true };
+  });
+
+  // POST /api/im/send — 手动推送（测试/告警广播）
+  app.post("/api/im/send", async (request) => {
+    const body = z.object({ text: z.string().min(1).max(2000) }).parse(request.body);
+    const { imService } = await import("../services/im-service.js");
+    return { sent: await imService.imBroadcast(body.text) };
+  });
+
+  // GET /api/im/status — IM 配置状态
+  app.get("/api/im/status", async () => {
+    return {
+      feishu: !!config.IM_FEISHU_WEBHOOK,
+      dingtalk: !!config.IM_DINGTALK_WEBHOOK,
+      telegram: !!(config.IM_TELEGRAM_TOKEN && config.IM_TELEGRAM_CHAT_ID),
+    };
+  });
   // POST /api/jupyter/execute — 执行一个代码单元（复用实证 venv 沙箱）
   // body: { code, sessionId?, restart?, cellIndex? } → { ok, output, variables, figures, sessionId }
   app.post("/api/jupyter/execute", async (request, reply) => {
