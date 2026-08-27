@@ -488,7 +488,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               setAiError("");
               setAiQuestion("");
             } else {
-              diagLog(`⑦OCR失败: ${r?.error || "无内容"}`);
+              const errMsg = typeof r?.error === "string" ? r.error : (r?.error?.message || JSON.stringify(r?.error || "无内容")).slice(0, 60);
+              diagLog(`⑦OCR失败: ${errMsg}`);
             }
           } catch (err: any) {
             diagLog(`⑦OCR异常: ${String(err?.message || err).slice(0, 60)}`);
