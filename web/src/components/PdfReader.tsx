@@ -85,6 +85,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const selectionRef = useRef<Selection | null>(null); // 同步跟踪（mouseup 读取, 避免 setState 批处理竞态）
   const [selection, setSelection] = useState<Selection | null>(null);
   const textHitCountRef = useRef(0); // 当前页文本块数（拖选即时反馈用）
+  const lastMoveRef = useRef(0); // 最近一次鼠标移动时间（停顿检测用）
+  const settleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 停顿结束定时器
   // 划词提示（无文本层/无命中时的引导）
   const [selHint, setSelHint] = useState("");
 
@@ -233,6 +235,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       if (!draggingRef.current || !dragStartRef.current) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
+      lastMoveRef.current = Date.now(); // 拖动继续, 重置停顿计时
       const sel = {
         x: Math.min(dragStartRef.current.x, p.x),
         y: Math.min(dragStartRef.current.y, p.y),
@@ -270,6 +273,15 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
     };
 
+    // click 兜底: 浏览器保证任何真实点击都会触发 click(mouseup 之后)
+    // 资料库/政策库容器 mouseup 可能丢失, click 是最后保险
+    const onWinClick = () => {
+      if (!draggingRef.current) return;
+      const last = selectionRef.current;
+      if (last) finishSelection(last.x, last.y);
+      else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
+    };
+
     // document 级 mousedown: 命中 canvas 才启动划词（三入口统一）
     const onDocDown = (e: MouseEvent) => {
       if (e.button !== 0 || !isOnCanvas(e)) return;
@@ -286,9 +298,24 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       window.addEventListener("mousemove", onWinMove);
       window.addEventListener("mouseup", onWinUp);
       window.addEventListener("pointerup", onWinUp);
+      window.addEventListener("click", onWinClick);
       document.addEventListener("mouseleave", onLeave);
       window.addEventListener("blur", onLeave);
       window.addEventListener("pointercancel", onLeave);
+      // 终极保险: 拖选停顿 600ms(选区存在且鼠标未移动) = 已完成选择意图
+      // 不依赖任何 mouseup/click 事件送达, 纯定时器触发
+      lastMoveRef.current = Date.now();
+      if (settleTimerRef.current) clearInterval(settleTimerRef.current);
+      settleTimerRef.current = setInterval(() => {
+        if (!draggingRef.current) { clearInterval(settleTimerRef.current!); settleTimerRef.current = null; return; }
+        if (Date.now() - lastMoveRef.current > 600 && selectionRef.current) {
+          clearInterval(settleTimerRef.current!);
+          settleTimerRef.current = null;
+          const last = selectionRef.current;
+          if (last) finishSelection(last.x + last.width, last.y + last.height);
+          else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
+        }
+      }, 150);
     };
 
     const onDbl = (e: MouseEvent) => {
@@ -315,9 +342,11 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       window.removeEventListener("mousemove", onWinMove);
       window.removeEventListener("mouseup", onWinUp);
       window.removeEventListener("pointerup", onWinUp);
+      window.removeEventListener("click", onWinClick);
       document.removeEventListener("mouseleave", onLeave);
       window.removeEventListener("blur", onLeave);
       window.removeEventListener("pointercancel", onLeave);
+      if (settleTimerRef.current) { clearInterval(settleTimerRef.current); settleTimerRef.current = null; }
     };
 
     // document 级委托: 所有入口统一命中
