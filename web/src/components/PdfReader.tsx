@@ -209,7 +209,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !dragStartRef.current) return;
+    // 用同步 ref 判断（state 有 16ms 批处理延迟, 真实拖选 mousedown→mousemove <16ms 会被 state 吞掉）
+    if (!draggingRef.current || !dragStartRef.current) return;
     const p = toPdfCoord(e.clientX, e.clientY);
     if (!p) return;
     const sel = {
