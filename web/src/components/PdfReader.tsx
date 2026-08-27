@@ -60,9 +60,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   // 划词选择（canvas 上鼠标拖选矩形）
   const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false); // 同步跟踪（window mouseup 兜底读取）
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const selectionRef = useRef<Selection | null>(null); // 同步跟踪（mouseup 读取, 避免 setState 批处理竞态）
   const [selection, setSelection] = useState<Selection | null>(null);
+  const textHitCountRef = useRef(0); // 当前页文本块数（拖选即时反馈用）
+  // 划词提示（无文本层/无命中时的引导）
+  const [selHint, setSelHint] = useState("");
 
   // 划词 AI 卡片（解释/总结/翻译/追问）
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
@@ -180,18 +184,28 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((clientY - rect.top) / rect.height) * canvas.height;
+    // clamp 到画布内: 鼠标拖出边界时仍按边界值计算（不触发 leave 取消）
+    const rx = Math.min(rect.right, Math.max(rect.left, clientX));
+    const ry = Math.min(rect.bottom, Math.max(rect.top, clientY));
+    const x = ((rx - rect.left) / rect.width) * canvas.width;
+    const y = ((ry - rect.top) / rect.height) * canvas.height;
     return { x, y };
   }, []);
 
   const onMouseDown = (e: React.MouseEvent) => {
+    // 仅左键
+    if (e.button !== 0) return;
     const p = toPdfCoord(e.clientX, e.clientY);
     if (!p) return;
     dragStartRef.current = p;
+    draggingRef.current = true;
     setDragging(true);
     setSelection(null);
     setTranslate(null);
+    setSelHint("");
+    // 文本块坐标（用于拖选时即时反馈命中数）
+    const blocks = textBlocksRef.current[page - 1] ?? [];
+    textHitCountRef.current = blocks.length;
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
@@ -209,7 +223,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   };
 
   const onMouseUp = (e: React.MouseEvent) => {
-    if (!dragging) return;
+    finishSelection(e.clientX, e.clientY);
+  };
+
+  /** 结束选择: 取选区内文本块 → 拼 snippet → 弹 AI 卡片（window 级 mouseup 兜底） */
+  const finishSelection = (clientX: number, clientY: number) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
     setDragging(false);
     dragStartRef.current = null;
     // 取选区内文本块 → 拼出 snippet（用 ref 同步值, 不受 setState 批处理影响）
@@ -229,9 +249,36 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
       .map((b) => cleanText(b.content))
       .filter((t) => t.length > 0);
-    if (hit.length === 0) { setSelection(null); return; }
+    if (hit.length === 0) {
+      setSelection(null);
+      // 无命中 → 引导提示（扫描件/乱码 PDF 无文本层）
+      setSelHint(textHitCountRef.current === 0
+        ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
+        : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
+      setTimeout(() => setSelHint(""), 4000);
+      return;
+    }
     const snippet = hit.join(" ").slice(0, 3000);
-    setTranslate({ snippet, x: e.clientX, y: e.clientY });
+    setTranslate({ snippet, x: clientX, y: clientY });
+    setAiResult(null);
+    setAiError("");
+    setAiQuestion("");
+  };
+
+  /** 双击: 选整段（该 y 行全部文本块） */
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const p = toPdfCoord(e.clientX, e.clientY);
+    if (!p) return;
+    const blocks = textBlocksRef.current[page - 1] ?? [];
+    const lineY = blocks.find((b) => p.y >= b.rect.y && p.y <= b.rect.y + b.rect.height)?.rect.y;
+    if (lineY === undefined) { setSelHint("该处无文本层，无法双击选段。"); setTimeout(() => setSelHint(""), 3000); return; }
+    const hit = blocks
+      .filter((b) => Math.abs(b.rect.y - lineY) < b.rect.height * 0.6)
+      .sort((a, b) => a.rect.x - b.rect.x)
+      .map((b) => cleanText(b.content))
+      .filter((t) => t.length > 0);
+    if (hit.length === 0) return;
+    setTranslate({ snippet: hit.join(" ").slice(0, 3000), x: e.clientX, y: e.clientY });
     setAiResult(null);
     setAiError("");
     setAiQuestion("");
@@ -300,6 +347,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   // 手动缩放（+/-/适宽按钮）退出适宽模式
   const manualZoom = (next: number) => { fitWidthRef.current = false; setZoom(next); };
 
+  // window 级 mouseup: 鼠标拖出 canvas（容器 padding 区域）也能结束选择
+  useEffect(() => {
+    const onWinUp = (e: MouseEvent) => {
+      if (draggingRef.current) finishSelection(e.clientX, e.clientY);
+    };
+    window.addEventListener("mouseup", onWinUp);
+    return () => window.removeEventListener("mouseup", onWinUp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, zoom]);
+
   return (
     // 根 h-full + 渲染区 absolute: 高度由父链约束(h-full), 内部滚动
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-muted/20">
@@ -351,6 +408,12 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         {status === "error" && <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-[11px] text-red-600">PDF 加载失败: {error}</div>}
         {status === "ready" && (
           <div className="relative inline-block">
+            {/* 划词引导提示 */}
+            {selHint && (
+              <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
+                {selHint}
+              </div>
+            )}
             {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
             <canvas
               ref={canvasRef}
@@ -358,7 +421,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               onMouseDown={onMouseDown}
               onMouseMove={onMouseMove}
               onMouseUp={onMouseUp}
-              onMouseLeave={() => { setDragging(false); dragStartRef.current = null; }}
+              onDoubleClick={onDoubleClick}
             />
             {/* 选区高亮 */}
             {selection && (
@@ -411,7 +474,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 placeholder="追问这段文本…（Enter 发送）"
                 className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
               />
-              <button type="button" onClick={() => void doAiAction("ask")} disabled={aiBusy || !aiQuestion.trim()}
+              <button type="button" onClick={() => void doAiAction("ask")} disabled={!!aiBusy || !aiQuestion.trim()}
                 className="rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">
                 {aiBusy === "ask" ? <Loader2 className="h-3 w-3 animate-spin" /> : "问"}
               </button>
