@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // VaultPanel.tsx — 资料库面板：左树右文浏览 Obsidian 课题库（md/PDF/图片/Office）
 import { useState, useEffect, type FC, type ReactNode } from "react";
-import { FolderOpen, FileText, FileImage, File, Download, Loader2, ChevronRight, ChevronDown, BookMarked, RefreshCw, X } from "lucide-react";
+import { FolderOpen, FileText, FileImage, File, Download, Loader2, ChevronRight, ChevronDown, BookMarked, RefreshCw, X, BookOpenCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
+import { PdfReader } from "./PdfReader";
 import type { VaultTreeNode, VaultFileRecord } from "../types";
 
 // 可内联预览的扩展名
@@ -246,14 +247,10 @@ export function VaultPanel() {
                     </button>
                   </div>
                 </div>
-                {/* 预览撑满容器：宽高占满右栏，内容超高时 iframe 内部滚动 */}
+                {/* PDF → PdfReader 深度阅读（embedPDF: 页码/缩放/划词翻译/整页翻译） */}
                 {selectedName.toLowerCase().endsWith(".pdf") ? (
                   <div className="min-h-0 flex-1">
-                    <iframe
-                      src={binaryUrl}
-                      title={selectedName}
-                      className="h-full w-full rounded border border-border bg-white"
-                    />
+                    <PdfReader source={binaryUrl ?? ""} fileName={selectedName} />
                   </div>
                 ) : (
                   // 图片等 → 撑满容器内居中，可滚动
