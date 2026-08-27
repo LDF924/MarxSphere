@@ -5739,6 +5739,21 @@ except Exception as e:
     if (!ok) return reply.code(404).send({ error: "任务不存在", code: "AGENT_NOT_FOUND" });
     return { ok: true };
   });
+
+  // POST /api/p2o/ocr — 扫描件 PDF OCR 识别（MinerU 强制 OCR, 划词兜底）
+  app.post("/api/p2o/ocr", async (request, reply) => {
+    const body = z.object({ path: z.string().min(1).max(2000) }).parse(request.body);
+    const { pdf2obsidianAdapter } = await import("../services/pdf2obsidian-adapter.js");
+    // 路径校验: 仅允许文献库/资料库目录内
+    const abs = path.resolve(body.path);
+    const scanDir = path.resolve(literatureService.scanDir);
+    if (!abs.startsWith(scanDir + path.sep) && !abs.startsWith(path.resolve(process.env.VAULT_DIR || ""))) {
+      return reply.code(403).send(notFound("OCR_PATH_FORBIDDEN", "路径不在允许目录内"));
+    }
+    const result = await pdf2obsidianAdapter.parsePdfViaP2O(abs, 100_000, { ocr: true });
+    if (!result.ok) return reply.code(500).send(notFound("OCR_FAILED", result.error || "OCR 失败"));
+    return { ok: true, content: result.content };
+  });
   // 重试失败任务
   app.post("/api/p2o/tasks/:id/retry", async (request, reply) => {
     const params = request.params as { id: string };
