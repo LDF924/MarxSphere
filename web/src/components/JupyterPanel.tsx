@@ -2,7 +2,7 @@
 // JupyterPanel.tsx — 轻量 notebook 工作台（2026-08-27, ScienceX 通用计算环境）
 // 单元格编辑 → venv 执行 → 输出/图表/持久变量；Restart & Run All 全跑
 // 设计: 复用实证沙箱（无完整 Jupyter 依赖），variables 跨单元持久模拟内核
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Play, RotateCcw, Plus, Trash2, Loader2, FileCode2 } from "lucide-react";
 
 interface CellResult {

@@ -537,7 +537,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
