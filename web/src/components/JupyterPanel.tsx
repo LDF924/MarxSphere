@@ -129,7 +129,7 @@ except NameError:
 
 plt.figure(figsize=(5, 3.5))
 plt.boxplot([df[df["引入工商资本"]==0]["村集体收入_万元"], df[df["引入工商资本"]==1]["村集体收入_万元"]],
-            labels=["未引入", "已引入"], patch_artist=True,
+            tick_labels=["未引入", "已引入"], patch_artist=True,
             boxprops=dict(facecolor="#93c5fd"))
 plt.ylabel("村集体收入 (万元)")
 plt.title("收入分布: 引入 vs 未引入资本")
