@@ -256,8 +256,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     const onWinUp = (e: MouseEvent) => {
       if (!draggingRef.current) return;
       diagLog("③mouseup 触发");
-      // 若选区未更新(未触发过 move), 用当前位置构造
-      if (!selectionRef.current && dragStartRef.current) {
+      // 选区未更新(mousemove 没到) 或 仍是 1px 占位 → 用鼠标当前位置重建
+      const cur = selectionRef.current;
+      if ((!cur || cur.width < 3 || cur.height < 3) && dragStartRef.current) {
         const p = toPdfCoord(e.clientX, e.clientY);
         if (p) {
           const s = dragStartRef.current;
@@ -272,10 +273,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       finishSelection(e.clientX, e.clientY);
     };
 
-    // 鼠标移出窗口/文档 → 立即结束选择
-    const onLeave = () => {
+    // 鼠标移出窗口/文档 → 立即结束选择（blur/pointercancel 事件类型不同, 用宽松签名）
+    const onLeave = (_e?: Event) => {
       if (!draggingRef.current) return;
       diagLog("④mouseleave/blur 触发");
+      const cur = selectionRef.current;
+      if (!cur || cur.width < 3 || cur.height < 3) {
+        // 1px 占位或未更新 → 用起点扩展一个合理选区(覆盖起点附近文本)
+        const s = dragStartRef.current;
+        if (s) selectionRef.current = { x: s.x - 2, y: s.y - 2, width: 4, height: 4 };
+      }
       const last = selectionRef.current;
       if (last) finishSelection(last.x, last.y);
       else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
@@ -301,6 +308,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       setDragging(true);
       setSelection(null);
       setSelHint("");
+      // 关键: mousedown 立即建立最小选区(起点矩形), 即使后续 mousemove
+      // 一个都不触发(环境限制), mouseup/停顿也有有效选区可用
+      selectionRef.current = { x: p.x, y: p.y, width: 1, height: 1 };
       const blocks = textBlocksRef.current[page - 1] ?? [];
       textHitCountRef.current = blocks.length;
       // 拖选期间挂 window/document 全部结束事件(结束后移除)
@@ -322,8 +332,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
           settleTimerRef.current = null;
           diagLog("⑤停顿600ms 定时器触发");
           const last = selectionRef.current;
-          if (last) finishSelection(last.x + last.width, last.y + last.height);
-          else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
+          // 选区仍是 1px 占位(mousemove 全丢失) → 扩展成覆盖起点整行区域
+          if (last && last.width < 3 && last.height < 3 && dragStartRef.current) {
+            const s = dragStartRef.current;
+            selectionRef.current = { x: 0, y: s.y - 20, width: 10000, height: 40 };
+            finishSelection(s.x, s.y);
+          } else if (last) {
+            finishSelection(last.x + last.width, last.y + last.height);
+          } else {
+            draggingRef.current = false; setDragging(false); dragStartRef.current = null;
+          }
         }
       }, 150);
     };
