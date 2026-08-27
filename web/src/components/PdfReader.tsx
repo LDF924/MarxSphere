@@ -463,11 +463,38 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       .slice(0, 3000);
     if (snippet.length < 5) {
       setSelection(null);
-      // 无文本层 → 引导提示（纯扫描图片 PDF）
+      // 无文本层 → 引导提示（纯扫描图片 PDF）+ 触发 MinerU OCR 兜底
       setSelHint(textHitCountRef.current === 0
-        ? "本页无文本层（扫描件/图片），无法划词。可点工具栏「翻译本页」或「适宽」阅读。"
+        ? "本页无文本层（扫描件/图片），正在尝试 OCR 识别…"
         : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
       setTimeout(() => setSelHint(""), 4000);
+      // 触发 OCR: 仅当 blocks 确实为空(扫描件), 且 source 是文件 URL
+      if (textHitCountRef.current === 0 && source.startsWith("/api/")) {
+        void (async () => {
+          try {
+            const pathMatch = source.match(/path=([^&]+)/);
+            if (!pathMatch) return;
+            const pdfPath = decodeURIComponent(pathMatch[1]);
+            const r = await fetch("/api/p2o/ocr", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: pdfPath })
+            }).then((x) => x.json());
+            if (r?.ok && r.content && r.content.length > 20) {
+              diagLog(`⑦OCR成功 (${r.content.length}字)`);
+              setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
+              setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
+              setAiResult(null);
+              setAiError("");
+              setAiQuestion("");
+            } else {
+              diagLog(`⑦OCR失败: ${r?.error || "无内容"}`);
+            }
+          } catch (err: any) {
+            diagLog(`⑦OCR异常: ${String(err?.message || err).slice(0, 60)}`);
+          }
+        })();
+      }
       return;
     }
     setTranslate({ snippet, x: clientX, y: clientY });
