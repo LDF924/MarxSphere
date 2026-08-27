@@ -341,27 +341,29 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     const sel = selectionRef.current;
     selectionRef.current = null;
     if (!sel || sel.width < 3 || sel.height < 3) { setSelection(null); return; }
-    const blocks = textBlocksRef.current[page - 1] ?? [];
-    // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
-    // → 把选区换算回 PDF 空间: / zoom
-    const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
-    const hit = blocks
-      .filter((b) => {
-        const r = b.rect;
-        return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
-               r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
-      })
-      .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
-      .map((b) => firstReadableChar(b.content))
-      .filter((t) => t.length > 0);
-    // 合并时去掉字符间空格: 中文 PDF 逐字块, 空格会拆散词语
-    let snippet = hit.join("").slice(0, 3000);
-    // 命中为空(扫描件/乱码 PDF 文本层不可用) → 回退整页干净全文, 保证卡片一定出现
-    if (hit.length === 0) {
-      const pageText = pageTextsRef.current[page - 1] ?? "";
-      if (pageText && pageText.length >= 10) {
-        snippet = pageText.slice(0, 3000);
-      } else {
+    // 优先用整页干净全文(extractText): 部分 PDF 的文本块坐标排序不可靠
+    // (艺术字/双栏标题导致块拼接乱序缺字), extractText 已验证连续准确
+    const pageText = pageTextsRef.current[page - 1] ?? "";
+    let snippet = "";
+    if (pageText && pageText.length >= 10) {
+      snippet = pageText.slice(0, 3000);
+    } else {
+      // 整页文本不可用 → 兜底块拼接
+      const blocks = textBlocksRef.current[page - 1] ?? [];
+      // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
+      // → 把选区换算回 PDF 空间: / zoom
+      const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
+      const hit = blocks
+        .filter((b) => {
+          const r = b.rect;
+          return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
+                 r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
+        })
+        .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x)
+        .map((b) => firstReadableChar(b.content))
+        .filter((t) => t.length > 0);
+      snippet = hit.join("").slice(0, 3000);
+      if (hit.length === 0) {
         setSelection(null);
         // 无文本层 → 引导提示（纯扫描图片 PDF）
         setSelHint(textHitCountRef.current === 0
