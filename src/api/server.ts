@@ -3712,6 +3712,25 @@ export function buildHttpServer() {
     return { ok: await rssService.saveRssSubscription(body.url, body.name, body.sourceId) };
   });
 
+  // ───── 论文搜索导入（2026-08-27, Agentero 对照: 搜索论文名导入）─────
+  // GET /api/papers/search?q=xxx — 搜索论文（arXiv + Semantic Scholar 双源）
+  app.get("/api/papers/search", async (request) => {
+    const q = request.query as { q?: string; max?: string };
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    if (!q.q) return { papers: [], error: "需要 q 参数" };
+    return { papers: await paperSourceService.searchPapers(q.q, Math.min(10, Math.max(1, Number(q.max) || 5))) };
+  });
+
+  // POST /api/papers/import — 导入搜索结果到项目 {sourceId, paper}
+  app.post("/api/papers/import", async (request, reply) => {
+    const body = z.object({
+      sourceId: z.string().uuid(),
+      paper: z.object({ title: z.string().min(1), abstract: z.string().optional(), authors: z.array(z.string()).optional(), year: z.number().optional(), doi: z.string().optional(), url: z.string().optional(), source: z.string().optional(), externalId: z.string().optional() }),
+    }).parse(request.body);
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    return await paperSourceService.importPaper(body.paper, body.sourceId);
+  });
+
   // ───── Zotero 集成（2026-08-27, Agentero 对照: Zotero 生态衔接）─────
   // POST /api/zotero/import — 导入 Zotero 书库到项目 {sourceId}
   app.post("/api/zotero/import", async (request, reply) => {
