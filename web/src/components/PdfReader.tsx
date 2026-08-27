@@ -195,69 +195,79 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     return { x, y };
   }, []);
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    // 仅左键（pointer 事件 button 0 = 左键）
-    if (e.button !== 0) return;
-    const p = toPdfCoord(e.clientX, e.clientY);
-    if (!p) return;
-    dragStartRef.current = p;
-    draggingRef.current = true;
-    setDragging(true);
-    setSelection(null);
-    // 不在此关闭 AI 卡片: 用户轻点/滚动 canvas 不应让卡片消失
-    setSelHint("");
-    // 文本块坐标（用于拖选时即时反馈命中数）
-    const blocks = textBlocksRef.current[page - 1] ?? [];
-    textHitCountRef.current = blocks.length;
-    // 指针捕获: 拖选开始后所有事件(含 mouseup)派发给 canvas, 永不丢失
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    } catch { /* 旧浏览器忽略 */ }
-  };
+  // === 划词: 原生事件绑定（不经过 React 合成事件, 避免 pointer capture 兼容问题）===
+  // pointerdown 捕获指针后, 所有事件(含松开)无论鼠标在哪都派发给 canvas, 永不丢失
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || status !== "ready") return;
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    // 用同步 ref 判断（state 有 16ms 批处理延迟, 真实拖选 mousedown→mousemove <16ms 会被 state 吞掉）
-    if (!draggingRef.current || !dragStartRef.current) return;
-    const p = toPdfCoord(e.clientX, e.clientY);
-    if (!p) return;
-    const sel = {
-      x: Math.min(dragStartRef.current.x, p.x),
-      y: Math.min(dragStartRef.current.y, p.y),
-      width: Math.abs(p.x - dragStartRef.current.x),
-      height: Math.abs(p.y - dragStartRef.current.y)
+    const handleDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const p = toPdfCoord(e.clientX, e.clientY);
+      if (!p) return;
+      dragStartRef.current = p;
+      draggingRef.current = true;
+      setDragging(true);
+      setSelection(null);
+      setSelHint("");
+      const blocks = textBlocksRef.current[page - 1] ?? [];
+      textHitCountRef.current = blocks.length;
+      // 指针捕获: 拖选开始后事件全部派发给 canvas
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
     };
-    selectionRef.current = sel;
-    setSelection(sel);
-  };
 
-  const onPointerUp = (e: React.PointerEvent) => {
-    // 释放指针捕获（事件已送达 canvas, 划词必然结束）
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    } catch { /* 忽略 */ }
-    finishSelection(e.clientX, e.clientY);
-  };
+    const handleMove = (e: PointerEvent) => {
+      if (!draggingRef.current || !dragStartRef.current) return;
+      const p = toPdfCoord(e.clientX, e.clientY);
+      if (!p) return;
+      const sel = {
+        x: Math.min(dragStartRef.current.x, p.x),
+        y: Math.min(dragStartRef.current.y, p.y),
+        width: Math.abs(p.x - dragStartRef.current.x),
+        height: Math.abs(p.y - dragStartRef.current.y)
+      };
+      selectionRef.current = sel;
+      setSelection(sel);
+    };
 
-  /** 结束选择（window 兜底入口, 与 canvas onPointerUp 相同逻辑） */
-  const endSelectionFromWindow = (clientX: number, clientY: number) => {
-    if (!draggingRef.current) return;
-    // 若选区未更新（拖出 canvas 且 capture 失效）, 用最后坐标换算构造最小选区
-    if (!selectionRef.current && dragStartRef.current) {
-      const p = toPdfCoord(clientX, clientY);
-      if (p) {
-        const s = dragStartRef.current;
-        selectionRef.current = {
-          x: Math.min(s.x, p.x),
-          y: Math.min(s.y, p.y),
-          width: Math.abs(p.x - s.x),
-          height: Math.abs(p.y - s.y)
-        };
-      }
-    }
-    finishSelection(clientX, clientY);
-  };
+    const handleUp = (e: PointerEvent) => {
+      try { canvas.releasePointerCapture(e.pointerId); } catch { /* 忽略 */ }
+      finishSelection(e.clientX, e.clientY);
+    };
 
-  /** 结束选择: 取选区内文本块 → 拼 snippet → 弹 AI 卡片（window 级 mouseup 兜底） */
+    const handleDbl = (e: MouseEvent) => {
+      const p = toPdfCoord(e.clientX, e.clientY);
+      if (!p) return;
+      const blocks = textBlocksRef.current[page - 1] ?? [];
+      const lineY = blocks.find((b) => p.y >= b.rect.y && p.y <= b.rect.y + b.rect.height)?.rect.y;
+      if (lineY === undefined) { setSelHint("该处无文本层，无法双击选段。"); setTimeout(() => setSelHint(""), 3000); return; }
+      const hit = blocks
+        .filter((b) => Math.abs(b.rect.y - lineY) < b.rect.height * 0.6)
+        .sort((a, b) => a.rect.x - b.rect.x)
+        .map((b) => cleanText(b.content))
+        .filter((t) => t.length > 0);
+      if (hit.length === 0) return;
+      setTranslate({ snippet: hit.join(" ").slice(0, 3000), x: e.clientX, y: e.clientY });
+      setCardPos(clampCardPos({ x: e.clientX + 12, y: e.clientY + 12 }));
+      setAiResult(null);
+      setAiError("");
+      setAiQuestion("");
+    };
+
+    canvas.addEventListener("pointerdown", handleDown);
+    canvas.addEventListener("pointermove", handleMove);
+    canvas.addEventListener("pointerup", handleUp);
+    canvas.addEventListener("dblclick", handleDbl);
+    return () => {
+      canvas.removeEventListener("pointerdown", handleDown);
+      canvas.removeEventListener("pointermove", handleMove);
+      canvas.removeEventListener("pointerup", handleUp);
+      canvas.removeEventListener("dblclick", handleDbl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, page, zoom, toPdfCoord]);
+
+  /** 结束选择: 取选区内文本块 → 拼 snippet → 弹 AI 卡片 */
   const finishSelection = (clientX: number, clientY: number) => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
@@ -293,26 +303,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     setTranslate({ snippet, x: clientX, y: clientY });
     // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
     setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
-    setAiResult(null);
-    setAiError("");
-    setAiQuestion("");
-  };
-
-  /** 双击: 选整段（该 y 行全部文本块） */
-  const onDoubleClick = (e: React.MouseEvent) => {
-    const p = toPdfCoord(e.clientX, e.clientY);
-    if (!p) return;
-    const blocks = textBlocksRef.current[page - 1] ?? [];
-    const lineY = blocks.find((b) => p.y >= b.rect.y && p.y <= b.rect.y + b.rect.height)?.rect.y;
-    if (lineY === undefined) { setSelHint("该处无文本层，无法双击选段。"); setTimeout(() => setSelHint(""), 3000); return; }
-    const hit = blocks
-      .filter((b) => Math.abs(b.rect.y - lineY) < b.rect.height * 0.6)
-      .sort((a, b) => a.rect.x - b.rect.x)
-      .map((b) => cleanText(b.content))
-      .filter((t) => t.length > 0);
-    if (hit.length === 0) return;
-    setTranslate({ snippet: hit.join(" ").slice(0, 3000), x: e.clientX, y: e.clientY });
-    setCardPos(clampCardPos({ x: e.clientX + 12, y: e.clientY + 12 }));
     setAiResult(null);
     setAiError("");
     setAiQuestion("");
@@ -408,7 +398,21 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   // window 级 mouseup/pointerup 双兜底: 指针捕获失效时也能结束选择
   useEffect(() => {
     const onWinUp = (e: MouseEvent | PointerEvent) => {
-      endSelectionFromWindow(e.clientX, e.clientY);
+      if (!draggingRef.current) return;
+      // 若选区未更新（拖出 canvas 且 capture 失效）, 用最后坐标换算构造最小选区
+      if (!selectionRef.current && dragStartRef.current) {
+        const p = toPdfCoord(e.clientX, e.clientY);
+        if (p) {
+          const s = dragStartRef.current;
+          selectionRef.current = {
+            x: Math.min(s.x, p.x),
+            y: Math.min(s.y, p.y),
+            width: Math.abs(p.x - s.x),
+            height: Math.abs(p.y - s.y)
+          };
+        }
+      }
+      finishSelection(e.clientX, e.clientY);
     };
     window.addEventListener("mouseup", onWinUp);
     window.addEventListener("pointerup", onWinUp);
@@ -477,13 +481,10 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               </div>
             )}
             {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
+            {/* 划词事件用原生监听(useEffect 绑定): 不经过 React 合成事件, pointer capture 可靠 */}
             <canvas
               ref={canvasRef}
               className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onDoubleClick={onDoubleClick}
             />
             {/* 选区高亮 */}
             {selection && (
