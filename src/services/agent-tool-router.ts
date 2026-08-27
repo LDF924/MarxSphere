@@ -941,6 +941,168 @@ except Exception as e:
         }
       },
     },
+    // 2026-08-27: 图表模板库 — Notebook 9 种模板一键出图（Agent 与 Notebook 能力对齐）
+    {
+      name: "chart_template", label: "图表模板", risk: "safe",
+      description: "按模板一键生成专业图表（matplotlib, 与 Notebook 工作台一致）— 柱状图/直方图/箱线图/散点图/热力图/折线图/饼图/面积图/三线表",
+      params: {
+        template: {
+          type: "string", required: true,
+          desc: "模板名: bar(柱状图对比) / hist(直方图分布) / box(箱线图) / scatter(散点图) / heatmap(热力图相关性) / line(折线趋势) / pie(饼图结构) / area(面积累积) / threeline(三线表C刊)",
+        },
+        title: { type: "string", desc: "图表标题(默认按模板)" },
+      },
+      run: async (a) => {
+        const t = String(a.template || "").toLowerCase();
+        const title = String(a.title || "");
+        const T: Record<string, string> = {
+          bar: `# 柱状图: 分组对比
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50)})
+means = df.groupby("引入工商资本")["村集体收入_万元"].mean()
+plt.figure(figsize=(5,3.5))
+plt.bar(["未引入","已引入"], means.values, color=["#94a3b8","#ef4444"], alpha=0.85)
+plt.ylabel("村集体收入 (万元)"); plt.title("${title || '柱状图: 分组对比'}")
+plt.tight_layout(); plt.show()`,
+          hist: `# 直方图: 分布
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"村集体收入_万元": rng.normal(80,25,50)})
+plt.figure(figsize=(5,3.5))
+plt.hist(df["村集体收入_万元"], bins=12, color="#3b82f6", edgecolor="white", alpha=0.8)
+plt.axvline(df["村集体收入_万元"].mean(), color="#ef4444", linestyle="--", label=f'均值 {df["村集体收入_万元"].mean():.1f}')
+plt.xlabel("值"); plt.ylabel("频数"); plt.title("${title || '直方图: 分布'}"); plt.legend()
+plt.tight_layout(); plt.show()`,
+          box: `# 箱线图: 分组分布
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50)})
+plt.figure(figsize=(5,3.5))
+plt.boxplot([df[df["引入工商资本"]==0]["村集体收入_万元"], df[df["引入工商资本"]==1]["村集体收入_万元"]], tick_labels=["未引入","已引入"], patch_artist=True, boxprops=dict(facecolor="#93c5fd"))
+plt.ylabel("值"); plt.title("${title || '箱线图: 分组分布'}")
+plt.tight_layout(); plt.show()`,
+          scatter: `# 散点图: 双变量关系
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"x": rng.normal(35,12,50), "y": rng.normal(80,25,50), "c": rng.choice([0,1],50)})
+sc = plt.scatter(df["x"], df["y"], c=df["c"], cmap="coolwarm", s=50, alpha=0.7)
+plt.colorbar(sc); plt.xlabel("x"); plt.ylabel("y"); plt.title("${title || '散点图'}")
+plt.tight_layout(); plt.show()`,
+          heatmap: `# 热力图: 相关性矩阵(只取数值列)
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"a": rng.normal(0,1,50), "b": rng.normal(0,1,50), "c": rng.normal(0,1,50)})
+num_df = df.select_dtypes(include=[np.number])
+corr = num_df.corr()
+plt.figure(figsize=(5,4))
+im = plt.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1)
+plt.xticks(range(len(corr)), corr.columns, rotation=30, ha="right", fontsize=9)
+plt.yticks(range(len(corr)), corr.columns, fontsize=9)
+plt.colorbar(im, label="相关系数")
+for i in range(len(corr)):
+    for j in range(len(corr)):
+        plt.text(j, i, f"{corr.values[i,j]:.2f}", ha="center", va="center", fontsize=9)
+plt.title("${title || '相关性热力图'}"); plt.tight_layout(); plt.show()`,
+          line: `# 折线图: 趋势
+import matplotlib.pyplot as plt
+import numpy as np
+years = list(range(2019, 2027))
+rng = np.random.default_rng(7)
+trend = [60 + i*3 + rng.normal(0,3) for i in range(len(years))]
+plt.figure(figsize=(5,3.5))
+plt.plot(years, trend, marker="o", color="#10b981", linewidth=2)
+plt.fill_between(years, trend, min(trend)-5, color="#10b981", alpha=0.1)
+plt.xlabel("年份"); plt.ylabel("值"); plt.title("${title || '趋势 (2019-2026)'}"); plt.grid(alpha=0.3)
+plt.tight_layout(); plt.show()`,
+          pie: `# 饼图: 结构占比
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50)})
+counts = df["引入工商资本"].value_counts()
+plt.figure(figsize=(4.5,4))
+plt.pie(counts.values, labels=["未引入","已引入"], autopct="%1.0f%%", colors=["#94a3b8","#ef4444"], startangle=90)
+plt.title("${title || '结构占比'}"); plt.tight_layout(); plt.show()`,
+          area: `# 面积图: 累积效应
+import matplotlib.pyplot as plt
+import numpy as np
+years = list(range(2019, 2027))
+rng = np.random.default_rng(11)
+a = np.cumsum(rng.normal(8,2,len(years))) + 50
+b = np.cumsum(rng.normal(3,1.5,len(years))) + 50
+plt.figure(figsize=(5,3.5))
+plt.fill_between(years, a, color="#ef4444", alpha=0.6, label="A")
+plt.fill_between(years, b, color="#94a3b8", alpha=0.6, label="B")
+plt.xlabel("年份"); plt.ylabel("累计"); plt.title("${title || '累积效应'}"); plt.legend()
+plt.tight_layout(); plt.show()`,
+          threeline: `# 三线表: C刊学术规范
+import matplotlib.pyplot as plt
+import numpy as np
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50), "耕地流转率_pct": rng.normal(35,12,50)})
+stats = df.groupby("引入工商资本").agg(样本数=("村集体收入_万元","count"), 均值=("村集体收入_万元", lambda x: f"{x.mean():.1f}±{x.std():.1f}"))
+rows = [["未引入"]+[str(v) for v in stats.loc[0].tolist()], ["已引入"]+[str(v) for v in stats.loc[1].tolist()]]
+headers = ["资本引入","样本数","均值"]
+fig, ax = plt.subplots(figsize=(5,1.5))
+ax.axis("off")
+table = ax.table(cellText=rows, colLabels=headers, loc="center", cellLoc="center")
+table.auto_set_font_size(False); table.set_fontsize(10); table.scale(1.05, 1.6)
+for (r,c), cell in table.get_celld().items():
+    cell.set_edgecolor("none"); cell.set_facecolor("none")
+fig.canvas.draw()
+bt = table.get_celld()[(0,0)].get_bbox(); bc = table.get_celld()[(1,0)].get_bbox()
+bb = table.get_celld()[(len(rows),0)].get_bbox(); bl = table.get_celld()[(0,len(headers)-1)].get_bbox()
+for y, w in [(bt.y1, 3.0), (bc.y1, 1.5), (bb.y0, 3.0)]:
+    ax.plot([bt.x0, bl.x1], [y, y], color="black", linewidth=w, clip_on=False, transform=ax.transAxes)
+plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
+        };
+        const code = T[t];
+        if (!code) return `（模板不存在: ${t} — 可选: ${Object.keys(T).join("/")}）`;
+        // 复用持久会话执行(变量共享, 出图)
+        const { createPersistentRuntime, closeSession } = await import("./agent-persistent-runtime.js");
+        const rt = createPersistentRuntime("chart");
+        if (!rt) return "（持久运行时创建失败）";
+        try {
+          const r = await rt.exec(code, 60000);
+          const parts: string[] = [`【图表模板·${t}】${r.ok ? "✓" : "✗"}`];
+          if (r.stdout) parts.push(r.stdout.slice(0, 1000));
+          if (r.figures && r.figures.length > 0) {
+            for (let i = 0; i < r.figures.length; i++) parts.push(`![chart-${i}](data:image/png;base64,${r.figures[i]})`);
+          }
+          if (r.error) parts.push(`错误: ${r.error}`);
+          return parts.join("\n");
+        } catch (e: any) {
+          return `（图表模板执行失败: ${String(e?.message || e).slice(0, 150)}）`;
+        }
+      },
+    },
     // 批次5(C2): 音频转写 — whisper 沙箱转写（不可用则 ffprobe 元数据 + 安装指引）
     {
       name: "audio_transcribe", label: "音频转写", risk: "safe",
@@ -1345,6 +1507,7 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   attachment_read: "reader",
   // wisp借鉴1: 持久运行时（有状态进程, 需 manager）
   runtime_exec: "manager",
+  chart_template: "analyst",   // 2026-08-27: 图表模板（只读出图, analyst 可用）
   // 架构B: GitHub 只读查询放行（token 来自 OAuth, 不占白名单）
   github_repo: "reader",
   // 差距H: 终端命令需 manager
