@@ -1574,10 +1574,15 @@ function AppShell() {
         </div>
       ) : getRegisteredView(workspaceView) ? (
         // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
+        // 2026-08-27: 插件面板包 ErrorBoundary — 渲染异常显示错误而非白屏
         (() => {
           const entry = getRegisteredView(workspaceView)!;
           const P = entry.component;
-          return <P />;
+          return (
+            <ErrorBoundary>
+              <P />
+            </ErrorBoundary>
+          );
         })()
       ) : (
       <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
