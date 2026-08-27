@@ -512,6 +512,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       <div className="relative z-10 flex items-center gap-2 border-b bg-card/80 px-3 py-1.5">
         <FileText className="h-3.5 w-3.5 text-emerald-600" />
         <span className="truncate text-[11px] font-medium">{fileName || "PDF 阅读"}</span>
+        <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700" title="PdfReader 版本(用于确认加载的是最新代码)">v4.2</span>
         <div className="ml-auto flex items-center gap-1">
           <button type="button" disabled={page <= 1 || status !== "ready"}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
