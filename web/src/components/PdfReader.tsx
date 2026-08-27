@@ -89,6 +89,11 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const settleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 停顿结束定时器
   // 划词提示（无文本层/无命中时的引导）
   const [selHint, setSelHint] = useState("");
+  // 诊断日志（事件流可视化, 用于定位划词断点）
+  const [diagLogs, setDiagLogs] = useState<string[]>([]);
+  const diagLog = (msg: string) => {
+    setDiagLogs((prev) => [...prev.slice(-5), `${new Date().toLocaleTimeString("zh-CN", { hour12: false })} ${msg}`]);
+  };
 
   // 划词 AI 卡片（解释/总结/翻译/追问）
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
@@ -236,6 +241,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
       lastMoveRef.current = Date.now(); // 拖动继续, 重置停顿计时
+      if (!selectionRef.current) diagLog(`②mousemove 选区开始 (${Math.round(e.clientX)},${Math.round(e.clientY)})`);
       const sel = {
         x: Math.min(dragStartRef.current.x, p.x),
         y: Math.min(dragStartRef.current.y, p.y),
@@ -249,6 +255,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     // 任意结束信号(松开/移出窗口/失焦/取消) → 结束选择
     const onWinUp = (e: MouseEvent) => {
       if (!draggingRef.current) return;
+      diagLog("③mouseup 触发");
       // 若选区未更新(未触发过 move), 用当前位置构造
       if (!selectionRef.current && dragStartRef.current) {
         const p = toPdfCoord(e.clientX, e.clientY);
@@ -268,6 +275,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     // 鼠标移出窗口/文档 → 立即结束选择
     const onLeave = () => {
       if (!draggingRef.current) return;
+      diagLog("④mouseleave/blur 触发");
       const last = selectionRef.current;
       if (last) finishSelection(last.x, last.y);
       else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
@@ -287,6 +295,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       if (e.button !== 0 || !isOnCanvas(e)) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
+      diagLog(`①mousedown 命中 canvas (${Math.round(e.clientX)},${Math.round(e.clientY)})`);
       dragStartRef.current = p;
       draggingRef.current = true;
       setDragging(true);
@@ -311,6 +320,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         if (Date.now() - lastMoveRef.current > 600 && selectionRef.current) {
           clearInterval(settleTimerRef.current!);
           settleTimerRef.current = null;
+          diagLog("⑤停顿600ms 定时器触发");
           const last = selectionRef.current;
           if (last) finishSelection(last.x + last.width, last.y + last.height);
           else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
@@ -403,6 +413,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       }
     }
     setTranslate({ snippet, x: clientX, y: clientY });
+    diagLog(`⑥卡片弹出 (${snippet.length}字)`);
     // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
     setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
     setAiResult(null);
@@ -561,6 +572,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             {selHint && (
               <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
                 {selHint}
+              </div>
+            )}
+            {/* 诊断日志条（划词事件流） */}
+            {diagLogs.length > 0 && (
+              <div className="mb-2 max-w-md rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-600">
+                {diagLogs.map((l, i) => <div key={i}>{l}</div>)}
+                <button type="button" onClick={() => setDiagLogs([])} className="mt-0.5 text-[9px] text-slate-400 hover:underline">清空诊断</button>
               </div>
             )}
             {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
