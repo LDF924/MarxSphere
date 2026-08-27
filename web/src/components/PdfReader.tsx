@@ -397,10 +397,18 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     // 取选区内文本块 → 拼出 snippet（用 ref 同步值, 不受 setState 批处理影响）
     const sel = selectionRef.current;
     selectionRef.current = null;
-    if (!sel || sel.width < 3 || sel.height < 3) { setSelection(null); return; }
+    if (!sel) { setSelection(null); return; } // 1px 占位也会被扩展, 不拦截
     // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
     // → 把选区换算回 PDF 空间: / zoom
-    const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
+    let selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
+    // 关键: 选区过细(用户只点/轻划, 或 mousemove 丢失) → 按 y 范围扩展选区
+    // 最小扩展 40 磅高(覆盖至少一行): 细选区也能命中文本行
+    if (selPdf.height < 40) {
+      selPdf = { ...selPdf, y: selPdf.y - 10, height: 40 };
+    }
+    if (selPdf.width < 20) {
+      selPdf = { ...selPdf, x: 0, width: 100000 };
+    }
     // 关键: 若当前页数据未预取(大 PDF 预取慢, 用户划词时可能还没好)
     // → 同步按需提取当前页文本块, 不依赖预取状态
     let blocks = textBlocksRef.current[page - 1] ?? [];
