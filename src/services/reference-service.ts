@@ -6,10 +6,10 @@ import { pool } from "../db/pool.js";
 
 export interface ReferenceHit {
   raw: string;             // 原始引用行
-  title?: string;          // 尝试提取的标题（粗提取: DOI/arXiv 有则用之）
-  doi?: string;
-  arxivId?: string;
-  url?: string;
+  title?: string | null;   // 尝试提取的标题（粗提取: DOI/arXiv 有则用之）
+  doi?: string | null;
+  arxivId?: string | null;
+  url?: string | null;
 }
 
 /** 从论文文本提取参考文献区（References/Bibliography 之后的内容） */

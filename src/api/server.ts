@@ -3781,7 +3781,7 @@ export function buildHttpServer() {
   app.post("/api/references/import", async (request) => {
     const body = z.object({
       sourceId: z.string().uuid(),
-      refs: z.array(z.object({ raw: z.string(), title: z.string().optional(), doi: z.string().optional(), arxivId: z.string().optional(), url: z.string().optional() })),
+      refs: z.array(z.object({ raw: z.string(), title: z.string().nullable().optional(), doi: z.string().nullable().optional(), arxivId: z.string().nullable().optional(), url: z.string().nullable().optional() })),
     }).parse(request.body);
     const { referenceService } = await import("../services/reference-service.js");
     return await referenceService.importReferences(body.refs, body.sourceId);
