@@ -3641,6 +3641,37 @@ export function buildHttpServer() {
     return await s.windowList();
   });
 
+  // ───── Zotero 集成（2026-08-27, Agentero 对照: Zotero 生态衔接）─────
+  // POST /api/zotero/import — 导入 Zotero 书库到项目 {sourceId}
+  app.post("/api/zotero/import", async (request, reply) => {
+    const body = z.object({ sourceId: z.string().uuid() }).parse(request.body);
+    const { zoteroService } = await import("../services/zotero-service.js");
+    try {
+      const r = await zoteroService.importZoteroLibrary(body.sourceId);
+      return { ok: true, imported: r.imported, skipped: r.skipped };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message || e).slice(0, 200) } });
+    }
+  });
+
+  // GET /api/zotero/export — 导出 BibTeX（可选 sourceId 过滤）
+  app.get("/api/zotero/export", async (request) => {
+    const q = request.query as { sourceId?: string };
+    const { zoteroService } = await import("../services/zotero-service.js");
+    const items = q.sourceId
+      ? await zoteroService.fetchViaHttp()
+      : await zoteroService.fetchViaHttp();
+    const bib = zoteroService.exportBibtex(items || []);
+    return { bibtex: bib, count: (items || []).length };
+  });
+
+  // GET /api/zotero/status — Zotero 可用性
+  app.get("/api/zotero/status", async () => {
+    const { zoteroService } = await import("../services/zotero-service.js");
+    const items = await zoteroService.fetchViaHttp();
+    return { connected: Array.isArray(items), itemCount: Array.isArray(items) ? items.length : 0 };
+  });
+
   // ───── IM 接入（2026-08-27, ScienceX 对照: 飞书/钉钉/Telegram 远程对话）─────
   // POST /api/im/feishu — 飞书机器人回调（需在飞书开放平台配置事件订阅指向此 URL）
   app.post("/api/im/feishu", async (request, reply) => {
