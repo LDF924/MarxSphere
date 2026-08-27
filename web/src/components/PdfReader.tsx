@@ -28,7 +28,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       try {
         const { createPdfiumEngine } = await import("@embedpdf/engines/pdfium-direct-engine");
         // wasm 本地化: web/public/pdfium/pdfium.wasm（vite 静态资源, 避免 CDN 依赖）
-        const wasmUrl = `${import.meta.env.BASE_URL || "/"}pdfium/pdfium.wasm`;
+        const wasmUrl = "/pdfium/pdfium.wasm";
         const engine = await createPdfiumEngine(wasmUrl);
         engineRef.current = engine;
         if (disposed) return;
