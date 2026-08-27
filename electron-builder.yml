@@ -1,4 +1,4 @@
-# electron-builder.yml — MarxSphere 桌面端 NSIS 打包配置
+# electron-builder.yml — MarxSphere 桌面端打包配置（2026-08-27: 跨平台 win/mac/linux）
 appId: com.marxsphere.desktop
 productName: MarxSphere
 directories:
@@ -60,6 +60,25 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+
+# 2026-08-27: 跨平台支持（ScienceX 理念: macOS/Windows/Linux）
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  category: public.app-category.education
+  icon: build/icon.icns
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64, arm64]
+  category: Education
+  icon: build/icon.png
 
 nsis:
   oneClick: false
