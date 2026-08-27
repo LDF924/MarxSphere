@@ -3641,6 +3641,29 @@ export function buildHttpServer() {
     return await s.windowList();
   });
 
+  // ───── RSS / arXiv（2026-08-27, Agentero 对照: 文献导入源）─────
+  // GET /api/rss/fetch?url=xxx — 抓取 RSS 源
+  app.get("/api/rss/fetch", async (request, reply) => {
+    const q = request.query as { url?: string };
+    if (!q.url) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "需要 url 参数" } });
+    const { rssService } = await import("../services/rss-service.js");
+    return await rssService.fetchRss(q.url);
+  });
+
+  // GET /api/rss/arxiv?topic=xxx — arXiv 今日推荐
+  app.get("/api/rss/arxiv", async (request) => {
+    const q = request.query as { topic?: string; max?: string };
+    const { rssService } = await import("../services/rss-service.js");
+    return await rssService.fetchArxivToday(q.topic || "machine learning", Math.min(30, Math.max(1, Number(q.max) || 10)));
+  });
+
+  // POST /api/rss/subscribe — 订阅 RSS {url, name, sourceId}
+  app.post("/api/rss/subscribe", async (request) => {
+    const body = z.object({ url: z.string().url(), name: z.string().min(1).max(100), sourceId: z.string().uuid() }).parse(request.body);
+    const { rssService } = await import("../services/rss-service.js");
+    return { ok: await rssService.saveRssSubscription(body.url, body.name, body.sourceId) };
+  });
+
   // ───── Zotero 集成（2026-08-27, Agentero 对照: Zotero 生态衔接）─────
   // POST /api/zotero/import — 导入 Zotero 书库到项目 {sourceId}
   app.post("/api/zotero/import", async (request, reply) => {
