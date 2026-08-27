@@ -3601,6 +3601,47 @@ export function buildHttpServer() {
     return empiricalService.getEmpiricalMeta();
   });
 
+  // ───── Jupyter 轻量 notebook 工作台（2026-08-27, ScienceX 通用计算环境）─────
+  // POST /api/jupyter/execute — 执行一个代码单元（复用实证 venv 沙箱）
+  // body: { code, sessionId?, restart?, cellIndex? } → { ok, output, variables, figures, sessionId }
+  app.post("/api/jupyter/execute", async (request, reply) => {
+    const schema = z.object({
+      code: z.string().min(1).max(50_000),
+      sessionId: z.string().max(64).optional(),
+      restart: z.boolean().optional(),
+      cellIndex: z.number().int().optional(),
+    });
+    const body = schema.parse(request.body);
+    const { jupyterService } = await import("../services/jupyter-service.js");
+    try {
+      return { result: await jupyterService.executeJupyterCell(body) };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message || e).slice(0, 200) } });
+    }
+  });
+
+  // POST /api/jupyter/reset — 重置会话（Restart 语义: 清变量 + 日志）
+  app.post("/api/jupyter/reset", async (request) => {
+    const body = z.object({ sessionId: z.string().max(64) }).parse(request.body);
+    const { jupyterService } = await import("../services/jupyter-service.js");
+    jupyterService.resetJupyterSession(body.sessionId);
+    return { ok: true };
+  });
+
+  // GET /api/jupyter/logs?sessionId=xxx — 会话执行日志（Restart & Run All 进度）
+  app.get("/api/jupyter/logs", async (request) => {
+    const q = request.query as { sessionId?: string };
+    const { jupyterService } = await import("../services/jupyter-service.js");
+    if (!q.sessionId) return { logs: [] };
+    return { logs: jupyterService.getJupyterSessionLog(q.sessionId) };
+  });
+
+  // GET /api/jupyter/ready — venv 就绪检查
+  app.get("/api/jupyter/ready", async () => {
+    const { jupyterService } = await import("../services/jupyter-service.js");
+    return jupyterService.checkJupyterReady();
+  });
+
   // 实证历史记录（持久化到 PG）
   app.get("/api/empirical/history", async (request) => {
     const q = request.query as { limit?: string };
