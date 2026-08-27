@@ -18,6 +18,8 @@ export interface LlmModelOption {
  * DeepSeek: /models 实测返回 deepseek-v4-flash, deepseek-v4-pro（均原生 1M 上下文；
  *   [1M] 只是显示标注——API 不接受带 [1M] 的 ID，实测报 "supported API model names"）
  * 阿里: qwen3.7-max（2026-05-20 发布，1M 上下文，旗舰）+ qwen-plus（历史默认）
+ * Claude（2026-08-27 模型中立 ScienceX）: Anthropic 官方端点自动识别(/messages),
+ *   需配置 LLM_BASE_URL=https://api.anthropic.com/v1 + LLM_API_KEY=sk-ant-...
  */
 export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
   {
@@ -35,6 +37,18 @@ export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
   {
     id: "qwen-plus", label: "通义千问 Plus", provider: "dashscope",
     desc: "阿里 DashScope（历史默认，兜底）", roles: ["reason", "judge"],
+  },
+  {
+    id: "claude-sonnet-4-8", label: "Claude Sonnet 4.8", provider: "claude",
+    desc: "Anthropic 旗舰平衡（需 Anthropic 端点配置）", roles: ["reason", "judge", "review", "plan", "verify", "strategy"],
+  },
+  {
+    id: "claude-opus-4-8", label: "Claude Opus 4.8", provider: "claude",
+    desc: "Anthropic 最强推理（需 Anthropic 端点配置）", roles: ["reason", "judge", "review"],
+  },
+  {
+    id: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "claude",
+    desc: "Anthropic 快速轻量（需 Anthropic 端点配置）", roles: ["judge", "verify", "strategy"],
   },
 ];
 

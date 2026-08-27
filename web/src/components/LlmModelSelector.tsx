@@ -84,6 +84,7 @@ export function LlmModelSelector({ roles = TASK_ROLES.full, compact = false }: {
   const providerColor: Record<string, string> = {
     deepseek: "bg-blue-100 text-blue-700",
     dashscope: "bg-orange-100 text-orange-700",
+    claude: "bg-amber-100 text-amber-700",   // 2026-08-27 模型中立: Anthropic
   };
 
   return (
