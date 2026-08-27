@@ -1105,7 +1105,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     },
     // 2026-08-27: Computer Use — 截屏/鼠标/键盘/窗口列表（ScienceX 对照, COMPUTER_USE_ENABLED=true 启用）
     {
-      name: "computer_use", label: "桌面控制", risk: "elevated",
+      name: "computer_use", label: "桌面控制", risk: "review",
       description: "控制桌面: 截屏(看屏幕)/鼠标移动点击/键盘输入/窗口列表 — 需 COMPUTER_USE_ENABLED=true",
       params: {
         action: {
