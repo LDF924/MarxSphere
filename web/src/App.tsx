@@ -2468,6 +2468,7 @@ function MainWorkspaceTabs(props: {
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
         { value: "empirical-research", label: t("实证研究", "Empirical") },
+        { value: "jupyter", label: t("Notebook 工作台", "Notebook") },   // 2026-08-27: 轻量 notebook (ScienceX 通用计算)
         { value: "p2o", label: t("PDF2Obsidian", "PDF2Obsidian") },
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
