@@ -3601,6 +3601,46 @@ export function buildHttpServer() {
     return empiricalService.getEmpiricalMeta();
   });
 
+  // ───── Computer Use（2026-08-27, ScienceX 对照: 截屏/鼠标/键盘）─────
+  // 默认关闭: COMPUTER_USE_ENABLED=true 启用
+  const cu = async () => (await import("../services/computer-use-service.js")).computerUseService;
+
+  // GET /api/computer-use/status
+  app.get("/api/computer-use/status", async () => {
+    const s = await cu();
+    return { enabled: s.isEnabled(), platform: process.platform };
+  });
+
+  // POST /api/computer-use/screenshot — 截屏 base64
+  app.post("/api/computer-use/screenshot", async (request, reply) => {
+    const s = await cu();
+    if (!s.isEnabled()) return reply.code(403).send({ error: { code: "DISABLED", message: "Computer Use 未启用 (COMPUTER_USE_ENABLED=true)" } });
+    return await s.screenshot();
+  });
+
+  // POST /api/computer-use/mouse — 鼠标 {action: move|click|dblclick, x, y}
+  app.post("/api/computer-use/mouse", async (request, reply) => {
+    const s = await cu();
+    if (!s.isEnabled()) return reply.code(403).send({ error: { code: "DISABLED", message: "Computer Use 未启用" } });
+    const body = z.object({ action: z.enum(["move", "click", "dblclick"]), x: z.number(), y: z.number() }).parse(request.body);
+    return await s.mouseAction(body.action, body.x, body.y);
+  });
+
+  // POST /api/computer-use/type — 键盘输入 {text}
+  app.post("/api/computer-use/type", async (request, reply) => {
+    const s = await cu();
+    if (!s.isEnabled()) return reply.code(403).send({ error: { code: "DISABLED", message: "Computer Use 未启用" } });
+    const body = z.object({ text: z.string().min(1).max(500) }).parse(request.body);
+    return await s.typeText(body.text);
+  });
+
+  // GET /api/computer-use/windows — 窗口列表
+  app.get("/api/computer-use/windows", async (request, reply) => {
+    const s = await cu();
+    if (!s.isEnabled()) return reply.code(403).send({ error: { code: "DISABLED", message: "Computer Use 未启用" } });
+    return await s.windowList();
+  });
+
   // ───── IM 接入（2026-08-27, ScienceX 对照: 飞书/钉钉/Telegram 远程对话）─────
   // POST /api/im/feishu — 飞书机器人回调（需在飞书开放平台配置事件订阅指向此 URL）
   app.post("/api/im/feishu", async (request, reply) => {
