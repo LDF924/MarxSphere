@@ -277,6 +277,7 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 
 - **政策库**：本地政策目录树浏览 + **gov.cn 实时检索**（经 gov-cn-policy MCP：`get_latest_policies` 检索 + `get_policy_fulltext` 抓正文，一键存入本地政策库）
 - **资料库**：Obsidian 课题库浏览（目录树 + md/PDF/图片/Office 内联预览 + 下载）
+- **文献深度阅读**：文献库「全库 PDF」1 万+ 篇 PDF 一键「深度阅读」——Agentero 同款 embedPDF 底层（Pdfium 引擎，wasm 本地化）：canvas 渲染 / 页码 / 缩放 50–300% / 划词翻译（模型中立）
 - **知识页**：Compiled Truth（最佳理解，可人工重写）+ 时间线（证据轨迹，只追加）
 - **记忆管理**：记忆统计卡（总数/归档/冲突/向量化）+ 最近记忆列表 + 睡眠学习报告（10 秒轮询）
 - **写作语料库**：四大子库（文本范例 / 核心概念 / 论证逻辑 / 词汇句式），支持粘贴积累 + LLM 辅助提取 + 打标签检索 + 写作前调取

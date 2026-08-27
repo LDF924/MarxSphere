@@ -854,6 +854,22 @@ export const api = {
     return request<{ total: number; items: PdfRecord[]; page: number; pageSize: number }>(`/api/literature/pdfs?${params.toString()}`);
   },
 
+  /** PDF 文件下载 URL（PdfReader 深度阅读用）: path=磁盘路径 或 id=文献 id */
+  pdfFileUrl(input: { path?: string; id?: string }) {
+    const params = new URLSearchParams();
+    if (input.path) params.set("path", input.path);
+    if (input.id) params.set("id", input.id);
+    return `/api/literature/pdf-file?${params.toString()}`;
+  },
+
+  /** 划词翻译（翻译服务, 模型中立） */
+  async translateSnippet(input: { snippet: string; context?: string; targetLang?: string }) {
+    return request<{ ok: boolean; original?: string; translated?: string; error?: string }>("/api/translate/snippet", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
   // 中国政府网政策检索
   async searchPolicy(input: { keyword: string; pageSize?: number }) {
     const params = new URLSearchParams();

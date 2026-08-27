@@ -6893,6 +6893,28 @@ except Exception as e:
     return literatureService.searchPdfs(input);
   });
 
+  // PDF 文件下载（PdfReader 深度阅读用）: 传 path（扫描出的磁盘路径）或 id（文献 id）
+  // 安全: 仅允许 literature 扫描目录内的绝对路径, 拒绝 ../ 等越界
+  app.get("/api/literature/pdf-file", async (request, reply) => {
+    const query = request.query as { path?: string; id?: string };
+    let filePath: string | undefined;
+    if (query.id) {
+      const detail = literatureService.getDetail(query.id);
+      if (!detail) return reply.code(404).send(notFound("LITERATURE_NOT_FOUND", "文献不存在"));
+      filePath = detail.path;
+    } else if (query.path) {
+      filePath = query.path;
+    }
+    if (!filePath) return reply.code(400).send(notFound("PDF_PATH_REQUIRED", "缺少 path 或 id 参数"));
+    const abs = path.resolve(filePath);
+    const base = path.resolve(literatureService.scanDir);
+    if (!abs.startsWith(base + path.sep) && abs !== base) {
+      return reply.code(403).send(notFound("PDF_PATH_FORBIDDEN", "PDF 路径不在文献库目录内"));
+    }
+    if (!fs.existsSync(abs)) return reply.code(404).send(notFound("PDF_NOT_FOUND", "PDF 文件不存在"));
+    return reply.type("application/pdf").send(fs.createReadStream(abs));
+  });
+
   // ───── 中国政府网政策检索（gov.cn MCP）─────
   const policySearchSchema = z.object({
     keyword: z.string().min(1),

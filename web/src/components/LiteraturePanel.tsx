@@ -3,12 +3,13 @@
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式：
 // 左=筛选器（主题/作者/年份动态生成），右=文献列表
 import { useState, useEffect, useRef, type FC, type ReactNode } from "react";
-import { Library, Loader2, Search, FileText, RefreshCw, BookOpen, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Library, Loader2, Search, FileText, RefreshCw, BookOpen, X, ChevronDown, ChevronUp, BookOpenCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
+import { PdfReader } from "./PdfReader";
 import type { LiteratureDetailRecord, PdfRecord } from "../types";
 
 interface LiteratureRecord {
@@ -83,6 +84,8 @@ export function LiteraturePanel() {
   const [showTerms, setShowTerms] = useState(false);
   const [showIndexMeta, setShowIndexMeta] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  // PDF 深度阅读（PdfReader）
+  const [readerPdf, setReaderPdf] = useState<{ url: string; name: string } | null>(null);
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -118,10 +121,11 @@ export function LiteraturePanel() {
     }
   };
 
-  const loadItems = async (pageNum = page) => {
+  const loadItems = async (pageNum = page, modeOverride?: "md" | "pdf") => {
+    const effectiveMode = modeOverride ?? mode;
     setLoading(true);
     try {
-      if (mode === "pdf") {
+      if (effectiveMode === "pdf") {
         const data = await api.searchPdfs({
           topic: topic || undefined,
           keyword: keyword || undefined,
@@ -152,7 +156,8 @@ export function LiteraturePanel() {
     setMode(next);
     setPage(1);
     setDetail(null);
-    void loadItems(1);
+    setReaderPdf(null);
+    void loadItems(1, next);
   };
 
   useEffect(() => {
@@ -290,7 +295,13 @@ export function LiteraturePanel() {
                     <div className="p-4 text-sm text-muted-foreground">无匹配 PDF</div>
                   ) : (
                     pdfItems.map((pdf) => (
-                      <Card key={pdf.path} className="flex items-start gap-3 p-3">
+                      <Card
+                        key={pdf.path}
+                        className={cn(
+                          "flex items-start gap-3 p-3",
+                          readerPdf?.name === pdf.fileName && "border-primary"
+                        )}
+                      >
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
                           <FileText className="h-4 w-4 text-primary" />
                         </div>
@@ -306,6 +317,18 @@ export function LiteraturePanel() {
                               : <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-700">仅 PDF</span>}
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setReaderPdf({ url: api.pdfFileUrl({ path: pdf.path }), name: pdf.fileName })}
+                          className={cn(
+                            "shrink-0 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-primary hover:text-primary-foreground",
+                            readerPdf?.name === pdf.fileName && "bg-primary text-primary-foreground"
+                          )}
+                          title="用 PdfReader 深度阅读（页码/缩放/划词翻译）"
+                        >
+                          <BookOpenCheck className="mr-1 inline h-3 w-3" />
+                          深度阅读
+                        </button>
                       </Card>
                     ))
                   )
@@ -355,9 +378,28 @@ export function LiteraturePanel() {
               </div>
             </div>
 
-            {/* 详情面板 */}
+            {/* 详情面板 / PDF 深度阅读 */}
             <div className="min-h-0 overflow-y-auto">
-              {detailLoading ? (
+              {readerPdf ? (
+                <div className="flex h-full flex-col">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="truncate text-sm font-medium">
+                      <BookOpenCheck className="mr-1.5 inline h-4 w-4 text-emerald-600" />
+                      深度阅读：{readerPdf.name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReaderPdf(null)}
+                      className="shrink-0 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <X className="mr-1 inline h-3 w-3" />关闭
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    <PdfReader source={readerPdf.url} fileName={readerPdf.name} />
+                  </div>
+                </div>
+              ) : detailLoading ? (
                 <Card className="flex items-center justify-center p-8 text-sm text-muted-foreground">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载详情…
                 </Card>
@@ -448,7 +490,7 @@ export function LiteraturePanel() {
                 </Card>
               ) : (
                 <Card className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
-                  点击左侧文献查看摘要/问答/术语表
+                  {mode === "pdf" ? "点击左侧「深度阅读」在右侧阅读 PDF（页码/缩放/划词翻译）" : "点击左侧文献查看摘要/问答/术语表"}
                 </Card>
               )}
             </div>
