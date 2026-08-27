@@ -64,9 +64,12 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const selectionRef = useRef<Selection | null>(null); // 同步跟踪（mouseup 读取, 避免 setState 批处理竞态）
   const [selection, setSelection] = useState<Selection | null>(null);
 
-  // 翻译浮层
+  // 划词 AI 卡片（解释/总结/翻译/追问）
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
-  const [translation, setTranslation] = useState<{ busy: boolean; original?: string; translated?: string; error?: string }>({ busy: false });
+  const [aiBusy, setAiBusy] = useState<string | null>(null); // 当前执行的动作
+  const [aiResult, setAiResult] = useState<{ action: string; text: string } | null>(null);
+  const [aiError, setAiError] = useState("");
+  const [aiQuestion, setAiQuestion] = useState("");
   // 整页翻译（划词无命中的扫描件/特殊字体 PDF 兜底）
   const [pageTranslate, setPageTranslate] = useState<{ busy: boolean; original?: string; translated?: string; error?: string }>({ busy: false });
   const pageTextsRef = useRef<string[]>([]); // 每页干净全文（extractText, 页索引 → 文本）
@@ -229,7 +232,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     if (hit.length === 0) { setSelection(null); return; }
     const snippet = hit.join(" ").slice(0, 3000);
     setTranslate({ snippet, x: e.clientX, y: e.clientY });
-    setTranslation({ busy: false });
+    setAiResult(null);
+    setAiError("");
+    setAiQuestion("");
   };
 
   /** 整页翻译（扫描件/特殊字体 PDF 划词无命中的兜底: extractText 全文翻译） */
@@ -247,15 +252,28 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
   };
 
-  const doTranslate = async () => {
-    if (!translate) return;
-    setTranslation({ busy: true });
+  /** 划词 AI 动作（解释/总结/翻译/追问） */
+  const doAiAction = async (action: "explain" | "summarize" | "translate" | "ask") => {
+    if (!translate || aiBusy) return;
+    if (action === "ask" && !aiQuestion.trim()) return;
+    setAiBusy(action);
+    setAiError("");
     try {
-      const r = await api.translateSnippet({ snippet: translate.snippet });
-      if (r?.ok) setTranslation({ busy: false, original: r.original, translated: r.translated });
-      else setTranslation({ busy: false, error: r?.error || "翻译失败" });
+      const r = await api.readerAi({
+        action,
+        snippet: translate.snippet,
+        question: action === "ask" ? aiQuestion.trim() : undefined
+      });
+      if (r?.ok) {
+        setAiResult({ action, text: r.result ?? "" });
+        if (action === "ask") setAiQuestion("");
+      } else {
+        setAiError(r?.error || "AI 处理失败");
+      }
     } catch (err: any) {
-      setTranslation({ busy: false, error: String(err?.message || err).slice(0, 120) });
+      setAiError(String(err?.message || err).slice(0, 120));
+    } finally {
+      setAiBusy(null);
     }
   };
 
@@ -354,13 +372,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             )}
           </div>
         )}
-        {/* 划词翻译浮层（fixed: 视口定位, 不受滚动容器裁剪） */}
+        {/* 划词 AI 卡片（fixed: 视口定位, 不受滚动容器裁剪; 解释/总结/翻译/追问） */}
         {translate && status === "ready" && (
           <div className="fixed z-50 w-[340px] max-w-[90vw] rounded-lg border bg-card p-3 shadow-2xl"
-            style={{ left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 340) }}>
+            style={{ left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
             <div className="mb-1.5 flex items-center justify-between">
               <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-                <Languages className="h-3.5 w-3.5" /> 划词翻译（{translate.snippet.length} 字）
+                <Languages className="h-3.5 w-3.5" /> AI 阅读助手（{translate.snippet.length} 字）
               </span>
               <button type="button" onClick={() => setTranslate(null)} className="rounded p-0.5 text-muted-foreground hover:bg-accent">
                 <X className="h-3.5 w-3.5" />
@@ -369,25 +387,48 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             <div className="max-h-24 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
               {translate.snippet.slice(0, 400)}{translate.snippet.length > 400 ? "…" : ""}
             </div>
-            {!translation.translated && !translation.error && (
-              <button
-                type="button"
-                onClick={() => void doTranslate()}
-                disabled={translation.busy}
-                className="mt-2 w-full rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-              >
-                {translation.busy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
-                {translation.busy ? "翻译中…" : "翻译为中文"}
+            {/* 动作按钮: 解释 / 总结 / 翻译 */}
+            <div className="mt-2 grid grid-cols-3 gap-1.5">
+              <button type="button" onClick={() => void doAiAction("explain")} disabled={!!aiBusy}
+                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50">
+                {aiBusy === "explain" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "解释"}
               </button>
-            )}
-            {translation.translated && (
+              <button type="button" onClick={() => void doAiAction("summarize")} disabled={!!aiBusy}
+                className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50">
+                {aiBusy === "summarize" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "总结"}
+              </button>
+              <button type="button" onClick={() => void doAiAction("translate")} disabled={!!aiBusy}
+                className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50">
+                {aiBusy === "translate" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "翻译"}
+              </button>
+            </div>
+            {/* 追问输入 */}
+            <div className="mt-2 flex gap-1.5">
+              <input
+                value={aiQuestion}
+                onChange={(e) => setAiQuestion(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && aiQuestion.trim()) void doAiAction("ask"); }}
+                placeholder="追问这段文本…（Enter 发送）"
+                className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
+              />
+              <button type="button" onClick={() => void doAiAction("ask")} disabled={aiBusy || !aiQuestion.trim()}
+                className="rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">
+                {aiBusy === "ask" ? <Loader2 className="h-3 w-3 animate-spin" /> : "问"}
+              </button>
+            </div>
+            {/* AI 结果 */}
+            {aiResult && (
               <div className="mt-2 rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
-                {translation.translated}
+                <div className="mb-1 text-[10px] font-semibold text-blue-600">
+                  {aiResult.action === "explain" ? "解释" : aiResult.action === "summarize" ? "总结" : aiResult.action === "translate" ? "译文" : "回答"}
+                </div>
+                {aiResult.text}
               </div>
             )}
-            {translation.error && <div className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 text-[11px] text-red-600">{translation.error}</div>}
-            {translation.translated && (
-              <button type="button" onClick={() => setTranslate(null)} className="mt-1.5 w-full text-center text-[10px] text-muted-foreground hover:underline">
+            {aiError && <div className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 text-[11px] text-red-600">{aiError}</div>}
+            {aiResult && (
+              <button type="button" onClick={() => { setTranslate(null); setAiResult(null); setAiError(""); setAiQuestion(""); }}
+                className="mt-1.5 w-full text-center text-[10px] text-muted-foreground hover:underline">
                 关闭
               </button>
             )}
