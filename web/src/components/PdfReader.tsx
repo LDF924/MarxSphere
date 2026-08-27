@@ -383,7 +383,31 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
     // → 把选区换算回 PDF 空间: / zoom
     const selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
-    const blocks = textBlocksRef.current[page - 1] ?? [];
+    // 关键: 若当前页数据未预取(大 PDF 预取慢, 用户划词时可能还没好)
+    // → 同步按需提取当前页文本块, 不依赖预取状态
+    let blocks = textBlocksRef.current[page - 1] ?? [];
+    if (blocks.length === 0) {
+      diagLog("预取未完成 → 按需提取当前页文本块");
+      try {
+        const pageObj = docRef.current?.pages?.[page - 1];
+        if (pageObj && engineRef.current) {
+          const rects = await engineRef.current.getPageTextRects(docRef.current, pageObj).toPromise();
+          blocks = (rects ?? []).map((r: any) => {
+            const rc = r.rect ?? {};
+            return {
+              content: r.content ?? "",
+              rect: {
+                x: rc.origin?.x ?? 0,
+                y: rc.origin?.y ?? 0,
+                width: rc.size?.width ?? 0,
+                height: rc.size?.height ?? 0
+              }
+            };
+          });
+          textBlocksRef.current[page - 1] = blocks;
+        }
+      } catch { /* 提取失败走空兜底 */ }
+    }
     // 选区内的块
     const inSel = blocks
       .filter((b) => {
