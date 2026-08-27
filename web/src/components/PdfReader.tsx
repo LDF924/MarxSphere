@@ -43,23 +43,24 @@ function cleanText(t: string): string {
   return kept.join("").replace(/\s+/g, " ").trim();
 }
 
-/** 取块内准确字符（PDFium CID 字体每字符块带乱码尾码: "坛6⭠␛␐"）
- *  规则: CJK/标点直接取; 数字/字母仅在块内无 CJK 时取(中文 PDF 孤立数字多为尾码) */
+/** 取块内准确文本（PDFium CID 字体中文逐字块带乱码尾码: "坛6⭠␛␐"）
+ *  中文块: 取第一个 CJK/中文标点（尾码数字/控制符剔除）
+ *  西文块: 块内无 CJK → 取整个清洗后内容（英文单词是完整块, 逐字取会缺漏!） */
 function firstReadableChar(t: string): string {
   const chars = Array.from(t);
   const isCJK = (ch: string) => {
     const c = ch.charCodeAt(0);
     return (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef);
   };
-  const isAlnum = (ch: string) => {
-    const c = ch.charCodeAt(0);
-    return (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a);
-  };
-  // 第一优先: CJK/中文标点
+  // 第一优先: CJK/中文标点 → 取第一个（中文逐字块）
   for (const ch of chars) if (isCJK(ch) || "，。、；：？！（）《》〈〉“”‘’—…·".includes(ch)) return ch;
-  // 第二优先: 数字/字母(仅当块内无 CJK, 即西文 PDF)
-  for (const ch of chars) if (isAlnum(ch)) return ch;
-  return "";
+  // 块内无 CJK = 西文块 → 取整块清洗后内容（保留完整单词）
+  const kept = chars.filter((ch) => {
+    const c = ch.charCodeAt(0);
+    return (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) ||
+           ".,;:!?()[]'\"-–—… ".includes(ch);
+  });
+  return kept.join("").trim();
 }
 
 export function PdfReader({ source, fileName }: PdfReaderProps) {
@@ -214,12 +215,19 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     return { x, y };
   }, []);
 
-  // === 划词: mousedown 在 canvas 开始, 拖选期间挂 window/document 全部结束事件 ===
-  // 蓝色高亮出现=事件前半段正常; 用户"移出窗口才弹卡"=窗口内 mouseup 未到达
-  // → 结束选择覆盖 mouseup/pointerup/mouseleave/blur/pointercancel 全部路径
+  // === 划词: mousedown 在 canvas 开始, 拖选期间挂 window 全局监听 ===
+  // 事件挂 document/window(而非 canvas): 三入口(文献库/资料库/政策库)容器结构
+  // 不同, canvas 级绑定在部分容器不可靠; window 事件浏览器规范保证触发
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || status !== "ready") return;
+
+    // 命中检测: 鼠标按下时是否在 canvas 内
+    const isOnCanvas = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return e.clientX >= rect.left && e.clientX <= rect.right &&
+             e.clientY >= rect.top && e.clientY <= rect.bottom;
+    };
 
     const onWinMove = (e: MouseEvent) => {
       if (!draggingRef.current || !dragStartRef.current) return;
@@ -254,7 +262,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       finishSelection(e.clientX, e.clientY);
     };
 
-    // 鼠标移出窗口/文档 → 立即结束选择(用户症状: 移出窗口才出现)
+    // 鼠标移出窗口/文档 → 立即结束选择
     const onLeave = () => {
       if (!draggingRef.current) return;
       const last = selectionRef.current;
@@ -262,8 +270,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
     };
 
-    const onDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
+    // document 级 mousedown: 命中 canvas 才启动划词（三入口统一）
+    const onDocDown = (e: MouseEvent) => {
+      if (e.button !== 0 || !isOnCanvas(e)) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
       dragStartRef.current = p;
@@ -277,12 +286,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       window.addEventListener("mousemove", onWinMove);
       window.addEventListener("mouseup", onWinUp);
       window.addEventListener("pointerup", onWinUp);
-      document.addEventListener("mouseleave", onLeave);   // 鼠标离开文档(拖出浏览器窗口)
-      window.addEventListener("blur", onLeave);           // 窗口失焦
-      window.addEventListener("pointercancel", onLeave);  // 指针取消
+      document.addEventListener("mouseleave", onLeave);
+      window.addEventListener("blur", onLeave);
+      window.addEventListener("pointercancel", onLeave);
     };
 
     const onDbl = (e: MouseEvent) => {
+      if (!isOnCanvas(e)) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
       const blocks = textBlocksRef.current[page - 1] ?? [];
@@ -310,11 +320,12 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       window.removeEventListener("pointercancel", onLeave);
     };
 
-    canvas.addEventListener("mousedown", onDown);
-    canvas.addEventListener("dblclick", onDbl);
+    // document 级委托: 所有入口统一命中
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("dblclick", onDbl);
     return () => {
-      canvas.removeEventListener("mousedown", onDown);
-      canvas.removeEventListener("dblclick", onDbl);
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("dblclick", onDbl);
       detach();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
