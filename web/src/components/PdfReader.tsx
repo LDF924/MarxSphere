@@ -74,6 +74,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const [aiResult, setAiResult] = useState<{ action: string; text: string } | null>(null);
   const [aiError, setAiError] = useState("");
   const [aiQuestion, setAiQuestion] = useState("");
+  // 卡片可拖动: 位置 state + 拖拽 ref（固定到页面, 不随鼠标消失）
+  const [cardPos, setCardPos] = useState<{ x: number; y: number } | null>(null);
+  const cardDragRef = useRef<{ dx: number; dy: number } | null>(null); // 按下时鼠标与卡片左上角偏移
   // 整页翻译（划词无命中的扫描件/特殊字体 PDF 兜底）
   const [pageTranslate, setPageTranslate] = useState<{ busy: boolean; original?: string; translated?: string; error?: string }>({ busy: false });
   const pageTextsRef = useRef<string[]>([]); // 每页干净全文（extractText, 页索引 → 文本）
@@ -201,7 +204,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     draggingRef.current = true;
     setDragging(true);
     setSelection(null);
-    setTranslate(null);
+    // 不在此关闭 AI 卡片: 用户轻点/滚动 canvas 不应让卡片消失
+    // 只有新的有效拖选(mouseup 命中文本)才会替换卡片
     setSelHint("");
     // 文本块坐标（用于拖选时即时反馈命中数）
     const blocks = textBlocksRef.current[page - 1] ?? [];
@@ -261,6 +265,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
     const snippet = hit.join(" ").slice(0, 3000);
     setTranslate({ snippet, x: clientX, y: clientY });
+    // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
+    setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
     setAiResult(null);
     setAiError("");
     setAiQuestion("");
@@ -280,9 +286,34 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       .filter((t) => t.length > 0);
     if (hit.length === 0) return;
     setTranslate({ snippet: hit.join(" ").slice(0, 3000), x: e.clientX, y: e.clientY });
+    setCardPos(clampCardPos({ x: e.clientX + 12, y: e.clientY + 12 }));
     setAiResult(null);
     setAiError("");
     setAiQuestion("");
+  };
+
+  /** 卡片位置钳制在视口内 */
+  const clampCardPos = (p: { x: number; y: number }) => ({
+    x: Math.max(8, Math.min(p.x, window.innerWidth - 360)),
+    y: Math.max(8, Math.min(p.y, window.innerHeight - 200))
+  });
+
+  /** 卡片拖拽: 标题栏按下记录偏移, 移动时更新位置 */
+  const onCardDragStart = (e: React.MouseEvent) => {
+    if (e.button !== 0 || !cardPos) return;
+    e.preventDefault();
+    cardDragRef.current = { dx: e.clientX - cardPos.x, dy: e.clientY - cardPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!cardDragRef.current) return;
+      setCardPos(clampCardPos({ x: ev.clientX - cardDragRef.current.dx, y: ev.clientY - cardDragRef.current.dy }));
+    };
+    const onUp = () => {
+      cardDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   /** 整页翻译（扫描件/特殊字体 PDF 划词无命中的兜底: extractText 全文翻译） */
@@ -436,11 +467,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             )}
           </div>
         )}
-        {/* 划词 AI 卡片（fixed: 视口定位, 不受滚动容器裁剪; 解释/总结/翻译/追问） */}
+        {/* 划词 AI 卡片（fixed: 固定位置不随鼠标消失; 标题栏可拖动） */}
         {translate && status === "ready" && (
-          <div className="fixed z-50 w-[340px] max-w-[90vw] rounded-lg border bg-card p-3 shadow-2xl"
-            style={{ left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
-            <div className="mb-1.5 flex items-center justify-between">
+          <div className="fixed z-50 w-[340px] max-w-[90vw] rounded-lg border bg-card shadow-2xl"
+            style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
+            {/* 可拖动标题栏 */}
+            <div
+              onMouseDown={onCardDragStart}
+              className="mb-1.5 flex cursor-move select-none items-center justify-between border-b border-border/60 px-3 pb-1.5 pt-2"
+              title="按住拖动"
+            >
               <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
                 <Languages className="h-3.5 w-3.5" /> AI 阅读助手（{translate.snippet.length} 字）
               </span>
@@ -448,6 +484,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
+            <div className="px-3">
             <div className="max-h-24 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
               {translate.snippet.slice(0, 400)}{translate.snippet.length > 400 ? "…" : ""}
             </div>
@@ -496,6 +533,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 关闭
               </button>
             )}
+            </div>
           </div>
         )}
         {/* 整页翻译结果（扫描件兜底, canvas 下方并排对照） */}
