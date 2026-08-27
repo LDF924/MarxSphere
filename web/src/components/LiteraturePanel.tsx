@@ -213,7 +213,7 @@ export function LiteraturePanel() {
 
         <div className="relative flex min-h-0 flex-1 flex-col">
         <DragHandle leftVar="--filter-w" defaultWidth={280} storageKey="literature-filter-width" />
-        <div className="grid h-[135vh] w-full grid-cols-1 gap-3 lg:grid-cols-[var(--filter-w,280px)_minmax(0,1fr)]" style={{ "--filter-w": `${filterWidth}px` } as React.CSSProperties}>
+        <div className="grid h-[135vh] w-full grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 lg:grid-cols-[var(--filter-w,280px)_minmax(0,1fr)]" style={{ "--filter-w": `${filterWidth}px` } as React.CSSProperties}>
           {/* 左：筛选器（meta-catalog 动态生成） */}
           <Card className="flex min-h-0 flex-col overflow-y-auto p-3">
             <div className="mb-2 text-sm font-medium">筛选条件</div>
@@ -378,10 +378,10 @@ export function LiteraturePanel() {
               </div>
             </div>
 
-            {/* 详情面板 / PDF 深度阅读（h-full: 固定高度, 内部滚动, 防止内容撑开 grid） */}
+            {/* 详情面板 / PDF 深度阅读（视口相对高度: 不受 grid 行高分配影响） */}
             <div className={cn("h-full min-h-0", readerPdf ? "overflow-visible" : "overflow-y-auto")}>
               {readerPdf ? (
-                <div className="sticky top-0 flex h-[calc(100vh-240px)] min-h-[480px] flex-col">
+                <div className="sticky top-0 flex h-[calc(100vh-260px)] min-h-[400px] flex-col">
                   <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
                     <div className="truncate text-sm font-medium">
                       <BookOpenCheck className="mr-1.5 inline h-4 w-4 text-emerald-600" />
