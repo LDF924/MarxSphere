@@ -234,6 +234,52 @@ plt.title("资本引入的累积效应")
 plt.legend()
 plt.tight_layout(); plt.show()`,
   },
+  {
+    id: "threeline", label: "三线表（学术规范 C 刊）",
+    code: `# 三线表: 学术规范表格（顶线/栏目线/底线, C刊标准）
+# 生成描述统计表 → 以图形式输出（三线表风格）
+import matplotlib.pyplot as plt
+import numpy as np
+
+try: df
+except NameError:
+    import pandas as pd, numpy as np
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({"引入工商资本": rng.choice([0,1],50), "村集体收入_万元": rng.normal(80,25,50), "耕地流转率_pct": rng.normal(35,12,50)})
+
+# 描述统计（均值±标准差）
+stats = df.groupby("引入工商资本").agg(
+    样本数=("村集体收入_万元", "count"),
+    集体收入均值=("村集体收入_万元", lambda x: f"{x.mean():.1f}±{x.std():.1f}"),
+    流转率均值=("耕地流转率_pct", lambda x: f"{x.mean():.1f}±{x.std():.1f}"),
+)
+rows = [["未引入"] + [str(v) for v in stats.loc[0].tolist()],
+        ["已引入"] + [str(v) for v in stats.loc[1].tolist()]]
+headers = ["资本引入", "样本数", "集体收入(万元)", "流转率(%)"]
+
+# 三线表绘制: 顶线(粗) / 栏目线(细) / 底线(粗)
+fig, ax = plt.subplots(figsize=(6, 1.8))
+ax.axis("off")
+table = ax.table(cellText=rows, colLabels=headers, loc="center", cellLoc="center")
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+table.scale(1.1, 1.5)
+# 三线: 顶线/底线粗(2pt), 栏目线细(0.8pt)
+for key, cell in table.get_celld().items():
+    r, c = key
+    if r == 0:  # 栏目行: 上下细线
+        cell.set_edgecolor("black"); cell.set_linewidth(1.2); cell.set_facecolor("none")
+    elif r == 1:  # 第一数据行: 顶部栏目线
+        cell.set_edgecolor("black"); cell.set_linewidth(0.8); cell.set_facecolor("none")
+    else:  # 数据行: 仅底线(最后一行)
+        cell.set_edgecolor("none"); cell.set_facecolor("none")
+# 手动画三线(更精确)
+ax.plot([0, 1], [1.02, 1.02], color="black", linewidth=2.2, transform=ax.transAxes)   # 顶线
+ax.plot([0, 1], [0.62, 0.62], color="black", linewidth=0.8, transform=ax.transAxes)   # 栏目线
+ax.plot([0, 1], [-0.02, -0.02], color="black", linewidth=2.2, transform=ax.transAxes) # 底线
+plt.title("表1  资本引入与村集体经营状况（描述统计）", fontsize=10, pad=8)
+plt.tight_layout(); plt.show()`,
+  },
 ];
 
 export function JupyterPanel() {
@@ -433,7 +479,22 @@ export function JupyterPanel() {
                     <pre className="whitespace-pre-wrap font-mono text-[10px] text-foreground/80">{results[i]!.output}</pre>
                   )}
                   {results[i]!.figures.map((f, fi) => (
-                    <img key={fi} src={`data:image/png;base64,${f}`} alt={`figure-${i}-${fi}`} className="mt-1 max-h-64 rounded border" />
+                    <div key={fi} className="relative mt-1 inline-block">
+                      <img src={`data:image/png;base64,${f}`} alt={`figure-${i}-${fi}`} className="max-h-64 rounded border" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const a = document.createElement("a");
+                          a.href = `data:image/png;base64,${f}`;
+                          a.download = `figure-${i}-${fi}.png`;
+                          a.click();
+                        }}
+                        className="absolute right-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-white hover:bg-black/80"
+                        title="下载图表"
+                      >
+                        下载
+                      </button>
+                    </div>
                   ))}
                   {results[i]!.ok && !results[i]!.output && results[i]!.figures.length === 0 && (
                     <span className="text-[10px] text-muted-foreground">✓ 执行成功（无输出）</span>
