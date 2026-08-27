@@ -58,10 +58,13 @@ export function executeJupyterCell(input: JupyterExecInput, timeoutMs = 120_000)
   );
 
   return new Promise((resolve) => {
+    // 2026-08-27: cwd 指向上传目录 — pandas 用相对路径(pd.read_csv("xxx.csv"))即可读用户上传的文件
+    const uploadsDir = path.join(process.env.SAG_ROOT || process.cwd(), ".cache", "jupyter-uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
     execFile(
       PYTHON,
       [RUNNER, taskDir],
-      { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, cwd: process.env.SAG_ROOT || process.cwd() },
+      { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true, cwd: uploadsDir },
       () => {
         const resultPath = path.join(taskDir, "result.json");
         try {
