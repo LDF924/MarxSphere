@@ -378,10 +378,10 @@ export function LiteraturePanel() {
               </div>
             </div>
 
-            {/* 详情面板 / PDF 深度阅读（视口相对高度: 不受 grid 行高分配影响） */}
+            {/* 详情面板 / PDF 深度阅读（h-full: 填满 grid 固定行高） */}
             <div className={cn("h-full min-h-0", readerPdf ? "overflow-visible" : "overflow-y-auto")}>
               {readerPdf ? (
-                <div className="sticky top-0 flex h-[calc(100vh-260px)] min-h-[400px] flex-col">
+                <div className="flex h-full min-h-0 flex-col">
                   <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
                     <div className="truncate text-sm font-medium">
                       <BookOpenCheck className="mr-1.5 inline h-4 w-4 text-emerald-600" />
