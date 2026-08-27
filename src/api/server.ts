@@ -5744,10 +5744,15 @@ except Exception as e:
   app.post("/api/p2o/ocr", async (request, reply) => {
     const body = z.object({ path: z.string().min(1).max(2000) }).parse(request.body);
     const { pdf2obsidianAdapter } = await import("../services/pdf2obsidian-adapter.js");
-    // 路径校验: 仅允许文献库/资料库目录内
+    // 路径校验: 仅允许文献库/资料库(VAULT_ROOT)/桌面(VAULT_DIR 兼容)目录内
     const abs = path.resolve(body.path);
     const scanDir = path.resolve(literatureService.scanDir);
-    if (!abs.startsWith(scanDir + path.sep) && !abs.startsWith(path.resolve(process.env.VAULT_DIR || ""))) {
+    // VAULT_ROOT 默认与 vault-service 一致: ~/1.Obsidian Vault
+    const { homedir } = await import("node:os");
+    const vaultRoot = path.resolve(process.env.VAULT_ROOT || path.join(homedir(), "1.Obsidian Vault"));
+    const vaultDir = path.resolve(process.env.VAULT_DIR || "");
+    const allowed = abs.startsWith(scanDir + path.sep) || abs.startsWith(vaultRoot + path.sep) || (vaultDir && abs.startsWith(vaultDir + path.sep));
+    if (!allowed) {
       return reply.code(403).send(notFound("OCR_PATH_FORBIDDEN", "路径不在允许目录内"));
     }
     const result = await pdf2obsidianAdapter.parsePdfViaP2O(abs, 100_000, { ocr: true });
