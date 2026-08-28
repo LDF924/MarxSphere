@@ -440,30 +440,31 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         }
       } catch { /* 提取失败走空兜底 */ }
     }
-    // 选区内的块
-    const inSel = blocks
-      .filter((b) => {
-        const r = b.rect;
-        return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
-               r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
-      })
-      .map((b) => ({ ...b, char: firstReadableChar(b.content) }))
-      .filter((b) => b.char.length > 0);
-    // OCR 行聚合: 按 y 容差(10磅)聚合成行, 行内按 x 排序, 行间按 y 排序
-    // 解决: 标题区字基线抖动导致按 y 严格排序乱序("法"跑到"年"前)
+    // 文字级选择: 先按 y 容差聚合成行(所有块), 再按【行中心 y 是否在选区内】判定
+    // 修: 之前逐块求交 — 选区边缘擦到一点就算进去, 框选不精确
+    // 现在: 整行中心在选区内才选, 边缘擦碰不误选
     const LINES_TOL = 10;
-    const lines: Array<Array<{ x: number; char: string; yAnchor: number }>> = [];
-    for (const b of [...inSel].sort((a, b) => a.rect.y - b.rect.y)) {
-      const last = lines[lines.length - 1];
+    const allLines: Array<{ x: number; char: string; yAnchor: number }[]> = [];
+    for (const b of [...blocks].sort((a, b) => a.rect.y - b.rect.y)) {
+      const char = firstReadableChar(b.content);
+      if (!char) continue;
+      const last = allLines[allLines.length - 1];
       if (last && Math.abs(b.rect.y - last[0].yAnchor) <= LINES_TOL) {
-        last.push({ x: b.rect.x, char: b.char, yAnchor: last[0].yAnchor });
+        last.push({ x: b.rect.x, char, yAnchor: last[0].yAnchor });
       } else {
-        lines.push([{ x: b.rect.x, char: b.char, yAnchor: b.rect.y }]);
+        allLines.push([{ x: b.rect.x, char, yAnchor: b.rect.y }]);
       }
     }
+    // 行中心判定: 行中心 y 在选区内 → 选中整行
+    const inSel = allLines
+      .filter((line) => {
+        const centerY = line[0].yAnchor + 5; // 行中心(块高约10磅)
+        return centerY >= selPdf.y && centerY <= selPdf.y + selPdf.height;
+      })
+      .map((line) => line.sort((a, b) => a.x - b.x));
+    const lines = inSel.sort((a, b) => a[0].yAnchor - b[0].yAnchor);
     const snippet = lines
-      .sort((a, b) => a[0].yAnchor - b[0].yAnchor)
-      .map((l) => l.sort((a, b) => a.x - b.x).map((c) => c.char).join(""))
+      .map((l) => l.map((c) => c.char).join(""))
       .join("\n")
       .slice(0, 3000);
     if (snippet.length < 5) {
