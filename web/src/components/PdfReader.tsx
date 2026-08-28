@@ -47,11 +47,15 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       scrollToPageFn(target);
       return;
     }
-    // 兜底: 手动滚动 Scroller 容器到目标页
-    const scroller = hostRef.current?.querySelector("[data-scroller]") as HTMLElement | null;
+    // 兜底: 滚动外层滚动容器(hostRef)到目标页
+    // 注意: Scroller 本身不滚动, 滚动的是它的父容器(overflow-auto)
+    const scroller = hostRef.current;
     const pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
     if (scroller && pageEl) {
-      scroller.scrollTo({ top: pageEl.offsetTop, behavior: "smooth" });
+      // pageEl.offsetTop 相对最近的定位祖先(Scroller 容器); hostRef 也是它的祖先
+      // 若 hostRef 有 padding/位置, 用 getBoundingClientRect 差值更准
+      const top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      scroller.scrollTo({ top, behavior: "smooth" });
       setCurrentPage(target);
     }
   };
@@ -138,11 +142,11 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   };
 
   /** 页面渲染（每页: RenderLayer 底图 + PagePointerProvider + SelectionLayer 文字选择）
-   *  容器尺寸 = 布局尺寸 × 手动缩放(manualZoomLevel), img 才能随缩放变大 */
+   *  容器尺寸 × 缩放(真实布局, 坐标正确), left:50%+translateX 水平居中 */
   const renderPage = useCallback(({ pageIndex, width, height }: { pageIndex: number; width: number; height: number }) => {
     const z = manualZoomLevel ?? 1;
     return (
-      <div data-page-index={pageIndex} style={{ position: "relative", width: width * z, height: height * z }}>
+      <div data-page-index={pageIndex} style={{ position: "relative", width: width * z, height: height * z, left: "50%", transform: "translateX(-50%)" }}>
         <RenderLayer documentId={docId} pageIndex={pageIndex} scale={z} style={{ position: "absolute", inset: 0 }} />
         <PagePointerProvider documentId={docId} pageIndex={pageIndex} style={{ position: "absolute", inset: 0 }}>
           <SelectionLayer
