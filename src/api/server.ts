@@ -5741,9 +5741,27 @@ except Exception as e:
   });
 
   // POST /api/p2o/ocr — 扫描件 PDF OCR 识别（MinerU 强制 OCR, 划词兜底）
+  // pageBase64: 前端提取的单页 PDF(base64) → 精确对页; 缺省走整篇
   app.post("/api/p2o/ocr", async (request, reply) => {
-    const body = z.object({ path: z.string().min(1).max(2000) }).parse(request.body);
+    const body = z.object({
+      path: z.string().min(1).max(2000).optional(),
+      pageBase64: z.string().max(50_000_000).optional()
+    }).parse(request.body);
     const { pdf2obsidianAdapter } = await import("../services/pdf2obsidian-adapter.js");
+    let ocrPath = "";
+    if (body.pageBase64) {
+      // 单页 PDF: base64 → 临时文件 → OCR
+      const { mkdtemp, writeFile, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const dir = await mkdtemp(path.join(tmpdir(), "sag-ocr-"));
+      ocrPath = path.join(dir, "page.pdf");
+      await writeFile(ocrPath, Buffer.from(body.pageBase64, "base64"));
+      const result = await pdf2obsidianAdapter.parsePdfViaP2O(ocrPath, 100_000, { ocr: true });
+      await rm(dir, { recursive: true, force: true });
+      if (!result.ok) return reply.code(500).send(notFound("OCR_FAILED", result.error || "OCR 失败"));
+      return { ok: true, content: result.content };
+    }
+    if (!body.path) return reply.code(400).send(notFound("OCR_PATH_REQUIRED", "缺少 path"));
     // 路径校验: 仅允许文献库/资料库(VAULT_ROOT)/桌面(VAULT_DIR 兼容)目录内
     const abs = path.resolve(body.path);
     const scanDir = path.resolve(literatureService.scanDir);
