@@ -135,8 +135,41 @@ export function exportBibtex(items: ZoteroItem[]): string {
   return entries.join("\n\n") + "\n";
 }
 
+/** 浏览器插件/书签导入（2026-08-29, Agentero 对照: 支持从标识符、链接或浏览器插件保存论文）
+ *  接收 Zotero 浏览器插件(或任何书签)保存的文献 JSON, 入库到项目
+ *  兼容 Zotero translators 输出字段: title/creators/DOI/url/date/abstractNote/tags
+ */
+export async function importFromBrowserPlugin(items: Array<{
+  title?: string; creators?: Array<{ firstName?: string; lastName?: string; name?: string }>;
+  date?: string; DOI?: string; url?: string; abstractNote?: string; tags?: Array<{ tag?: string } | string>;
+  itemType?: string;
+}>, sourceId: string): Promise<{ imported: number; skipped: number }> {
+  let imported = 0, skipped = 0;
+  for (const it of items) {
+    const title = String(it.title || "").trim();
+    if (!title || title.length < 3) { skipped++; continue; }
+    const doi = it.DOI ? String(it.DOI) : undefined;
+    const externalId = doi || `plugin-${title.slice(0, 40)}`;
+    const dup = await pool.query("select 1 from documents where source_id = $1 and external_id = $2", [sourceId, externalId]);
+    if (dup.rows.length > 0) { skipped++; continue; }
+    const creators = Array.isArray(it.creators) ? it.creators : [];
+    const authors = creators.map((c) => c.lastName ? `${c.lastName}${c.firstName ? ", " + c.firstName : ""}` : (c.name || "")).filter(Boolean);
+    const year = it.date ? parseInt(String(it.date).slice(0, 4), 10) : undefined;
+    const tags = Array.isArray(it.tags) ? it.tags.map((t: any) => String(t.tag || t)) : [];
+    await pool.query(
+      `insert into documents (id, source_id, external_id, title, content, status, parse_status, metadata)
+       values (gen_random_uuid(), $1, $2, $3, $4, 'COMPLETED', 'COMPLETED', $5::jsonb)`,
+      [sourceId, externalId, title, it.abstractNote || "",
+       JSON.stringify({ source: "zotero-plugin", itemType: it.itemType || "webpage", authors, year, doi, url: it.url, tags })]
+    );
+    imported++;
+  }
+  return { imported, skipped };
+}
+
 export const zoteroService = {
   importZoteroLibrary,
   exportBibtex,
   fetchViaHttp,
+  importFromBrowserPlugin,
 };

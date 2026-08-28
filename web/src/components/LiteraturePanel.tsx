@@ -417,6 +417,21 @@ export function LiteraturePanel() {
                       <div className="mt-1 text-xs text-muted-foreground">{detail.topic}</div>
                       {detail.category && <div className="mt-1 text-xs text-muted-foreground">中图分类号：{detail.category}</div>}
                       {detail.sourcePdf && <div className="mt-1 text-xs text-muted-foreground">源文件：{detail.sourcePdf}</div>}
+                      {/* 2026-08-29 Agentero 对照: arXiv / alphaXiv 快速跳转 */}
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        <a href={`https://arxiv.org/abs/${detail.title}`} target="_blank" rel="noreferrer"
+                          className="hidden rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] text-red-700 hover:bg-red-100" title="arXiv 搜索该标题">
+                          arXiv ↗
+                        </a>
+                        <a href={`https://www.alphaxiv.org/search?q=${encodeURIComponent(detail.title.slice(0, 80))}`} target="_blank" rel="noreferrer"
+                          className="rounded border border-purple-200 bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-700 hover:bg-purple-100" title="alphaXiv 搜索该标题">
+                          alphaXiv ↗
+                        </a>
+                        <a href={`https://www.semanticscholar.org/search?q=${encodeURIComponent(detail.title.slice(0, 100))}`} target="_blank" rel="noreferrer"
+                          className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700 hover:bg-blue-100" title="Semantic Scholar 搜索">
+                          Semantic Scholar ↗
+                        </a>
+                      </div>
                       {detail.keywords && detail.keywords.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {detail.keywords.slice(0, 8).map((kw) => (

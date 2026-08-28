@@ -285,7 +285,7 @@ export function NotesPanel() {
                 )}
                 <div className="min-h-0 flex-1 overflow-y-auto p-3">
                   {editing ? (
-                    <div className="relative">
+                    <div className="relative flex gap-2">
                       {/* 2026-08-27 Agentero 对照: [[ 补全候选浮层 */}
                       {wikiCandidates.length > 0 && (
                       <div className="absolute bottom-full left-2 z-20 mb-1 w-64 overflow-hidden rounded-lg border bg-card shadow-xl">
@@ -333,7 +333,8 @@ export function NotesPanel() {
                         </div>
                       </div>
                     )}
-                    <textarea value={draft}
+                    <div className="w-1/2 min-w-0">
+                      <textarea value={draft}
                       onChange={(e) => {
                         const v = e.target.value;
                         setDraft(v);
@@ -362,6 +363,14 @@ export function NotesPanel() {
                       }}
                       placeholder="# 标题&#10;&#10;输入 [[ 连接笔记 · 输入 / 插入格式 · ![[笔记]] 嵌入"
                       className="h-full min-h-[300px] w-full resize-y rounded-lg border bg-background/60 p-3 font-mono text-[12px] leading-relaxed outline-none" />
+                    </div>
+                    {/* 2026-08-29 Agentero 对照: 所见即所得 — 编辑时右侧实时预览 */}
+                    <div className="min-w-0 flex-1 overflow-y-auto rounded-lg border border-border/40 bg-background/30 p-3">
+                      <div className="mb-1.5 flex items-center gap-1 border-b border-border/40 pb-1 text-[9px] text-muted-foreground">
+                        <NotebookPen className="h-3 w-3" /> 实时预览（WYSIWYG）
+                      </div>
+                      <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">{renderMd(embedContent(draft))}</div>
+                    </div>
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">{renderMd(embedContent(current.content))}</div>
