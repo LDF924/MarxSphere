@@ -52,7 +52,14 @@ export function ImportsPanel() {
     }
   };
 
-  const tell = (type: "ok" | "err" | "info", text: string) => setNotice({ type, text });
+  // ⚠ 2026-08-29 修复: 强制字符串化 — 后端 error 可能是对象 {code,message},
+  //   直接 setState 传给 React 子节点会触发 Minified React error #31(页面渲染错误)
+  const tell = (type: "ok" | "err" | "info", text: unknown) => {
+    const s = typeof text === "string" ? text
+      : text && typeof text === "object" ? (text as any).message || JSON.stringify(text)
+      : String(text ?? "");
+    setNotice({ type, text: s.slice(0, 200) });
+  };
 
   const importZotero = async () => {
     setBusy("zotero");

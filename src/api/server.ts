@@ -3953,19 +3953,16 @@ export function buildHttpServer() {
   });
 
   // GET /api/zotero/export — 导出 BibTeX（可选 sourceId 过滤）
-  // ⚠ 2026-08-29 修复: 直接下载 .bib 文件(Content-Disposition), 避免浏览器打开 JSON 页面
+  // ⚠ 2026-08-29 修复: 无论是否带 download 参数都直接下载 .bib 文件 —
+  //   旧 bundle 的 <a target="_blank"> 打开 JSON 页面导致"闪退到新页面", 彻底消除该场景
   app.get("/api/zotero/export", async (request, reply) => {
-    const q = request.query as { sourceId?: string; download?: string };
     const { zoteroService } = await import("../services/zotero-service.js");
     const items = await zoteroService.fetchViaHttp();
     const bib = zoteroService.exportBibtex(items || []);
-    if (q.download === "1" || q.download === "true") {
-      // RFC 5987: 中文文件名用 filename* UTF-8 编码
-      reply.header("Content-Disposition", `attachment; filename="bibliography.bib"; filename*=UTF-8''bibliography.bib`);
-      reply.header("Content-Type", "application/x-bibtex; charset=utf-8");
-      return reply.send(bib);
-    }
-    return { bibtex: bib, count: (items || []).length };
+    // RFC 5987: 中文文件名用 filename* UTF-8 编码
+    reply.header("Content-Disposition", `attachment; filename="bibliography.bib"; filename*=UTF-8''bibliography.bib`);
+    reply.header("Content-Type", "application/x-bibtex; charset=utf-8");
+    return reply.send(bib);
   });
 
   // GET /api/zotero/status — Zotero 可用性
