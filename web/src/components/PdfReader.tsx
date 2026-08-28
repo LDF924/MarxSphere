@@ -496,7 +496,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             const r = await fetch("/api/p2o/ocr", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: pdfPath, page })
+              body: JSON.stringify({ path: pdfPath })
             }).then((x) => x.json());
             if (r?.ok && r.content && r.content.length > 20) {
               ocrCacheRef.current[pdfPath] = r.content;
