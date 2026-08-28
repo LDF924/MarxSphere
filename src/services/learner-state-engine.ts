@@ -41,6 +41,7 @@ export interface DerivedKnowledgeState extends KnowledgeState {
   nextReviewAt?: string;
   stateLabel: StateLabel;
   diagnosis: string;
+  nextActions?: string[];      // 与 Inno Agent next_actions 对齐(context-pack 推荐动作)
 }
 
 const LEARNING_RATE = 0.35;
@@ -153,6 +154,14 @@ export function projectKnowledgeState(
     misconception: "存在未纠正误解, 先澄清再练习",
     unknown: "尚无学习证据",
   }[stateLabel];
+  const nextActions = {
+    stable: ["进入迁移应用: 在新情境中使用该概念"],
+    fragile: ["间隔复习巩固稳定性", "完成一次应用练习"],
+    learning: ["用自己的话复述核心机制", "完成一个小练习验证掌握"],
+    review_due: ["立即复习: 重新提取核心要点", "复习后做一次应用练习"],
+    misconception: ["先澄清误解(反例/对比)", "澄清后重新练习"],
+    unknown: ["先做一次低成本诊断任务"],
+  }[stateLabel];
 
   return {
     conceptId,
@@ -165,6 +174,7 @@ export function projectKnowledgeState(
     nextReviewAt: nextReviewAt(lastSuccessfulRetrievalAt, stabilityDays),
     stateLabel,
     diagnosis,
+    nextActions,
   };
 }
 
