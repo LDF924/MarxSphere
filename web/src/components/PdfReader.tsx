@@ -130,11 +130,16 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       if (ocrInFlightRef.current === cacheKey) return;
       ocrInFlightRef.current = cacheKey;
       try {
+        // ⚠ MinerU 云端解析大文件可能耗时数分钟, 加 3 分钟超时防无限等待
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 180_000);
         const r = await fetch("/api/p2o/ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: pdfPath })
+          body: JSON.stringify({ path: pdfPath }),
+          signal: controller.signal
         }).then((x) => x.json());
+        clearTimeout(timer);
         if (r?.ok && r.content && r.content.length > 20) {
           ocrCacheRef.current[cacheKey] = r.content;
           setTranslate({ snippet: r.content.slice(0, 3000), x: window.innerWidth / 2, y: window.innerHeight / 2 });
@@ -144,6 +149,9 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             : "无内容";
           setTranslate({ snippet: `OCR 失败: ${errMsg}`, x: window.innerWidth / 2, y: window.innerHeight / 2 });
         }
+      } catch (err: any) {
+        const isTimeout = err?.name === "AbortError";
+        setTranslate({ snippet: isTimeout ? "⏱ OCR 超时(>3分钟), 该文件可能过大或云端繁忙, 请稍后重试" : `OCR 异常: ${String(err?.message || err).slice(0, 60)}`, x: window.innerWidth / 2, y: window.innerHeight / 2 });
       } finally {
         ocrInFlightRef.current = null;
       }
@@ -424,7 +432,10 @@ function SelectionWatcher({
           anchor = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
         }
         if (!quote || quote.length < 2) {
-          // 空文本(扫描件/无文字层): 交顶层走 OCR 兜底
+          // 空文本: 判断该页是否有文本层 — 有 → 选中了无字区域, 不触发 OCR; 无 → 扫描件, OCR
+          const geo = (scope.getState() as any)?.geometry?.[first.pageIndex];
+          const hasText = !!geo && Array.isArray(geo.runs) && geo.runs.length > 0;
+          if (hasText) return;
           onSelect("", anchor);
           return;
         }
@@ -439,6 +450,7 @@ function SelectionWatcher({
   }, [docId]);
 
   // 拖选兜底: 扫描件无文本层 → selection 事件永不触发 → 检测 host 级拖拽
+  // ⚠ 关键: 有文本层的 PDF 在空白区拖选也会无选择事件 → 必须先判断该页是否含文本(glyphs)
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -448,6 +460,13 @@ function SelectionWatcher({
     const scope = cap ? (cap.forDocument(docId) as any) : null;
     const markSelect = () => { lastSelectAt = Date.now(); };
     const off1 = scope?.onEndSelection?.(markSelect);
+    const hasTextLayer = (pageIndex: number) => {
+      try {
+        // geometry[pageIndex] 有 runs(字形) = 文本层; 空/undefined = 扫描件页
+        const geo = scope?.getState?.()?.geometry?.[pageIndex];
+        return !!geo && Array.isArray(geo.runs) && geo.runs.length > 0;
+      } catch { return false; }
+    };
     const onDown = (e: PointerEvent) => {
       if ((e.target as HTMLElement)?.closest?.(".pdf-page-cursor")) {
         downPos = { x: e.clientX, y: e.clientY };
@@ -462,7 +481,11 @@ function SelectionWatcher({
       // 等 onEndSelection 异步回调跑完
       setTimeout(() => {
         if (Date.now() - lastSelectAt < 1500) return; // 已有选择事件 → 不是扫描件
-        onSelect("", { x: e.clientX, y: e.clientY }); // 无任何选择 → 扫描件 OCR
+        // 判断拖选起始页是否有文本层: 有 → 空白区拖选, 不触发 OCR
+        const pageEl = (e.target as HTMLElement)?.closest?.("[data-page-index]");
+        const pageIdx = pageEl ? Number(pageEl.getAttribute("data-page-index")) : -1;
+        if (pageIdx >= 0 && hasTextLayer(pageIdx)) return;
+        onSelect("", { x: e.clientX, y: e.clientY }); // 扫描件 → OCR
       }, 600);
     };
     host.addEventListener("pointerdown", onDown, true);
