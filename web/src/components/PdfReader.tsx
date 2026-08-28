@@ -399,6 +399,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     dragStartRef.current = null;
     // 取选区内文本块 → 拼出 snippet（用 ref 同步值, 不受 setState 批处理影响）
     const sel = selectionRef.current;
+    const lastSelForCard = sel ? { ...sel } : null; // 保存供卡片定位用
     selectionRef.current = null;
     if (!sel) { setSelection(null); return; } // 1px 占位也会被扩展, 不拦截
     // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
@@ -515,11 +516,25 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
     setTranslate({ snippet, x: clientX, y: clientY });
     diagLog(`⑥卡片弹出 (${snippet.length}字, ${lines.length}行)`);
-    // 卡片初始位置: 锚点在鼠标附近, 但固定(不再随鼠标移动消失)
-    setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
+    // 卡片位置: 用选区中心对应的视口坐标(canvas 相对定位), 而非不可靠的 clientX/Y
+    // (停顿/onLeave 等路径传入的是 canvas 坐标, 直接当视口坐标用会定位到边缘)
+    setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
     setAiResult(null);
     setAiError("");
     setAiQuestion("");
+  };
+
+  /** 选区中心 → 视口坐标（canvas 上定位卡片用） */
+  const selectionCenterScreen = (s: Selection | null): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const rect = canvas.getBoundingClientRect();
+    const cx = s ? s.x + s.width / 2 : rect.width / 2;
+    const cy = s ? s.y + s.height / 2 : rect.height / 2;
+    return {
+      x: rect.left + (cx / canvas.width) * rect.width,
+      y: rect.top + (cy / canvas.height) * rect.height
+    };
   };
 
   /** 卡片位置钳制在视口内（上方优先: 鼠标下方放不下则翻到上方, Agentero 同款） */
@@ -687,6 +702,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             <canvas
               ref={canvasRef}
               className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
+              style={{ cursor: "crosshair" }}
             />
             {/* 选区高亮 */}
             {selection && (
