@@ -31,6 +31,16 @@ export function extractPaperBlocks(text: string, maxBlocks = 30): PaperBlock[] {
 
   for (let i = 0; i < lines.length && blocks.length < maxBlocks; i++) {
     const line = lines[i];
+    // ⚠ 公式检测优先于图/表内容收集: 公式行(含编号+数学符号)不能被前面的块吞掉
+    const formula = line.match(/\((\d+(?:\.\d+)?)\)\s*$/) || line.match(/^\s*\((\d+(?:\.\d+)?)\)\s*/);
+    if (formula && /[=≈≤≥×÷∑∫√±∂Δθλβγ]/.test(line)) {
+      const label = `公式 (${formula[1]})`;
+      let j = i;
+      while (j + 1 < lines.length && j + 1 < i + 4 && lines[j + 1].trim() && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm)/i.test(lines[j + 1])) j++;
+      pushBlock("formula", label, i, j);
+      i = j;
+      continue;
+    }
     // 图: Figure 1: / 图 1 / Fig. 1 开头或独立行
     const fig = line.match(/^(?:Figure|Fig\.?|图)\s*(\d+)[:：.\-—]\s*(.*)$/i);
     if (fig) {
@@ -41,6 +51,8 @@ export function extractPaperBlocks(text: string, maxBlocks = 30): PaperBlock[] {
       while (j < lines.length && j < i + 15) {
         const l = lines[j];
         if (/^(?:Figure|Fig\.?|图|Table|表|Algorithm|公式)\s*\d/i.test(l)) break;
+        // 公式行(数学符号+编号)不属于图内容, 停止收集
+        if (/\((\d+(?:\.\d+)?)\)\s*$/.test(l) && /[=≈≤≥×÷∑∫√±∂Δθλβγ]/.test(l)) break;
         if (!l.trim()) { contentLines.push(l); if (j - i > 3 && !lines[j + 1]?.trim()) break; }
         else contentLines.push(l);
         j++;
@@ -54,7 +66,8 @@ export function extractPaperBlocks(text: string, maxBlocks = 30): PaperBlock[] {
     if (tbl) {
       const label = `表 ${tbl[1]}`;
       let j = i + 1;
-      while (j < lines.length && j < i + 20 && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm|公式)\s*\d/i.test(lines[j])) j++;
+      while (j < lines.length && j < i + 20 && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm|公式)\s*\d/i.test(lines[j])
+        && !(/\((\d+(?:\.\d+)?)\)\s*$/.test(lines[j]) && /[=≈≤≥×÷∑∫√±∂Δθλβγ]/.test(lines[j]))) j++;
       pushBlock("table", label, i, Math.min(j, i + 18));
       i = j - 1;
       continue;
@@ -64,20 +77,11 @@ export function extractPaperBlocks(text: string, maxBlocks = 30): PaperBlock[] {
     if (algo) {
       const label = `算法 ${algo[1]}`;
       let j = i + 1;
-      while (j < lines.length && j < i + 25 && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm|算法)\s*\d/i.test(lines[j])) j++;
+      while (j < lines.length && j < i + 25 && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm|算法)\s*\d/i.test(lines[j])
+        && !(/\((\d+(?:\.\d+)?)\)\s*$/.test(lines[j]) && /[=≈≤≥×÷∑∫√±∂Δθλβγ]/.test(lines[j]))) j++;
       pushBlock("algorithm", label, i, Math.min(j, i + 23));
       i = j - 1;
       continue;
-    }
-    // 公式: 行尾含 "(1)" 编号且行内含数学符号, 或行以编号开头
-    const formula = line.match(/\((\d+(?:\.\d+)?)\)\s*$/) || line.match(/^\s*\((\d+(?:\.\d+)?)\)\s*/);
-    if (formula && /[=≈≤≥×÷∑∫√±∂Δθλβγ]/.test(line)) {
-      const label = `公式 (${formula[1]})`;
-      let j = i;
-      // 向后合并连续公式行
-      while (j + 1 < lines.length && j + 1 < i + 4 && lines[j + 1].trim() && !/^(?:Figure|Fig\.?|图|Table|表|Algorithm)/i.test(lines[j + 1])) j++;
-      pushBlock("formula", label, i, j);
-      i = j;
     }
   }
   return blocks;

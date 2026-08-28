@@ -351,14 +351,26 @@ export function ImportsPanel() {
             </div>
             {busy === "coolpapers" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-sky-600" />}
           </div>
+          {/* 2026-08-29: 主题卡片选择器（复杂多样可视化） */}
+          <div className="mb-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+            {cpTopics.map((t) => {
+              const active = cpTopic === t.id;
+              return (
+                <button key={t.id} type="button" onClick={() => { setCpTopic(t.id); }}
+                  className={`rounded-lg border px-2.5 py-1.5 text-left transition-all ${active
+                    ? "border-sky-500/60 bg-sky-500/15 text-sky-700 ring-1 ring-sky-500/40"
+                    : "border-border/60 bg-background/40 text-muted-foreground hover:border-sky-400/40 hover:text-foreground"}`}
+                  title={t.id}>
+                  <div className="text-[10px] font-medium leading-tight">{t.name}</div>
+                  <div className="text-[8px] font-mono opacity-60">{t.id}</div>
+                </button>
+              );
+            })}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <select value={cpTopic} onChange={(e) => setCpTopic(e.target.value)}
-              className="rounded-lg border bg-background px-2 py-2 text-[11px] outline-none">
-              {cpTopics.map((t) => <option key={t.id} value={t.id}>{t.name}（{t.id}）</option>)}
-            </select>
             <button type="button" onClick={() => void fetchCoolPapers()} disabled={!!busy}
               className="rounded-lg bg-sky-600 px-3 py-2 text-[11px] font-medium text-white transition-all hover:bg-sky-700 disabled:opacity-40">
-              浏览精选
+              {busy === "coolpapers" ? "加载中…" : `浏览 ${cpTopics.find((t) => t.id === cpTopic)?.name || cpTopic} 精选`}
             </button>
             <div className="mx-1 h-5 w-px bg-border" />
             <input value={msUrl} onChange={(e) => setMsUrl(e.target.value)}
@@ -419,28 +431,59 @@ export function ImportsPanel() {
             </div>
           )}
           {discovered.length > 0 && (
-            <div className="mt-1 space-y-1.5">
-              {discovered.map((p, i) => (
-                <div key={i} className="flex items-start gap-2 rounded-lg border bg-muted/10 px-3 py-2 transition-colors hover:bg-muted/20">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] font-medium" title={p.title}>{p.title}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
-                      {(p.authors || []).slice(0, 3).join("、")}{p.authors?.length > 3 ? " 等" : ""}
-                      {p.year ? <span>· {p.year}</span> : null}
-                      {p.citedByCount != null ? <span>· 被引 {p.citedByCount}</span> : null}
-                      {p.doi ? <span className="font-mono">· {p.doi.slice(0, 24)}</span> : null}
-                      {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="text-teal-600 hover:underline">打开 ↗</a> : null}
+            <>
+              {/* 年份分布可视化（2026-08-29: 复杂多样可视化增强） */}
+              {(() => {
+                const yearCounts: Record<number, number> = {};
+                discovered.forEach((p) => { if (p.year) yearCounts[p.year] = (yearCounts[p.year] || 0) + 1; });
+                const years = Object.keys(yearCounts).map(Number).sort();
+                const max = Math.max(1, ...Object.values(yearCounts));
+                if (years.length > 0) return (
+                  <div className="mb-2 rounded-lg border bg-muted/10 p-2.5">
+                    <div className="mb-1.5 flex items-center justify-between text-[9px] text-muted-foreground">
+                      <span>📊 年份分布（近 5 年）</span>
+                      <span>{discovered.length} 篇候选</span>
                     </div>
-                    {p.abstract && <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{p.abstract.slice(0, 160)}…</div>}
+                    <div className="flex items-end gap-1.5">
+                      {years.map((y) => (
+                        <div key={y} className="flex flex-1 flex-col items-center gap-0.5">
+                          <span className="text-[9px] font-medium text-teal-700">{yearCounts[y]}</span>
+                          <div className="w-full rounded-t bg-teal-500/60 transition-all hover:bg-teal-500"
+                            style={{ height: `${(yearCounts[y] / max) * 40}px`, minHeight: "4px" }} title={`${y}年: ${yearCounts[y]}篇`} />
+                          <span className="text-[8px] text-muted-foreground">{String(y).slice(2)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <button type="button" onClick={() => void importPaper({ title: p.title, authors: p.authors, year: p.year, doi: p.doi, url: p.url, abstract: p.abstract, externalId: p.doi || `disc-${p.title.slice(0, 40)}`, source: "semanticscholar" as const })} disabled={!!busy}
-                    className="flex shrink-0 items-center gap-1 rounded-lg border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-[10px] font-medium text-teal-700 hover:bg-teal-500/20 disabled:opacity-40">
-                    {busy === `import-${p.doi || p.title.slice(0, 30)}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                    导入
+                );
+              })()}
+              <div className="mt-1 space-y-1.5">
+                {discovered.map((p, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-lg border bg-muted/10 px-3 py-2 transition-colors hover:bg-muted/20">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-medium" title={p.title}>{p.title}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
+                        {(p.authors || []).slice(0, 3).join("、")}{p.authors?.length > 3 ? " 等" : ""}
+                        {p.year ? <span className="rounded bg-teal-500/10 px-1 py-0.5 font-medium text-teal-700">{p.year}</span> : null}
+                        {p.citedByCount != null && (
+                          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-700" title="被引用次数">
+                            ⭐ {p.citedByCount} 被引
+                          </span>
+                        )}
+                        {p.doi ? <span className="font-mono">· {p.doi.slice(0, 24)}</span> : null}
+                        {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="text-teal-600 hover:underline">打开 ↗</a> : null}
+                      </div>
+                      {p.abstract && <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{p.abstract.slice(0, 160)}…</div>}
+                    </div>
+                    <button type="button" onClick={() => void importPaper({ title: p.title, authors: p.authors, year: p.year, doi: p.doi, url: p.url, abstract: p.abstract, externalId: p.doi || `disc-${p.title.slice(0, 40)}`, source: "semanticscholar" as const })} disabled={!!busy}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-[10px] font-medium text-teal-700 hover:bg-teal-500/20 disabled:opacity-40">
+                      {busy === `import-${p.doi || p.title.slice(0, 30)}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                      导入
                   </button>
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
 
