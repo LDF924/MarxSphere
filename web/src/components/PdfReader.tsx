@@ -44,46 +44,38 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   const goToPage = (p: number) => {
     const target = Math.max(1, Math.min(p, total || p));
-    const scroller = hostRef.current;
-    if (!scroller) return;
-    // 目标页元素(可能未渲染 — Scroller buffer 只渲染部分页)
-    let pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
-    if (scroller && pageEl) {
-      // 用 offsetTop: pageEl 相对 Scroller 容器的偏移(Scroller 是定位祖先)
-      let top = pageEl.offsetTop;
-      let el: HTMLElement | null = pageEl.offsetParent as HTMLElement | null;
-      while (el && el !== scroller && el !== document.body) {
-        top += el.offsetTop;
-        el = el.offsetParent as HTMLElement | null;
-      }
-      if (el === document.body || !el) {
-        top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-      }
-      scroller.scrollTo({ top, behavior: "auto" });
-      scroller.scrollTop = top;
+    // 官方 API: scrollToPage 用 viewport.scrollTo 驱动 Scroller 渲染
+    // behavior 必须 auto/instant(smooth 在部分环境不执行)
+    if (scrollToPageFn) {
+      scrollToPageFn(target);
       currentPageRef.current = target;
       setCurrentPage(target);
-    } else {
-      // 目标页未渲染(超出 buffer) → 用已渲染的最近页估算目标位置
-      // 页高 = 已渲染页 offsetHeight(用第 1 页), 目标 top ≈ (target-1) × 页高
-      const firstPage = hostRef.current?.querySelector('[data-page-index="0"]') as HTMLElement | null;
-      if (firstPage) {
-        const pageH = firstPage.offsetHeight;
-        const top = (target - 1) * pageH;
-        scroller.scrollTo({ top, behavior: "auto" });
-        scroller.scrollTop = top;
-        // 滚动后 Scroller 会渲染目标页, 等渲染完成再精确对齐
-        setTimeout(() => {
-          const el = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
-          if (el) {
-            const exact = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-            scroller.scrollTop = exact;
-          }
-        }, 300);
-        currentPageRef.current = target;
-        setCurrentPage(target);
-      }
+      return;
     }
+    const scroller = hostRef.current;
+    if (!scroller) return;
+    // 兜底: 目标页未渲染 → 用第1页高度估算滚动, 滚动后 Scroller 渲染再对齐
+    const firstPage = hostRef.current?.querySelector('[data-page-index="0"]') as HTMLElement | null;
+    const targetEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
+    if (targetEl) {
+      const top = targetEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      scroller.scrollTo({ top, behavior: "auto" });
+      scroller.scrollTop = top;
+    } else if (firstPage) {
+      const pageH = firstPage.offsetHeight;
+      const top = (target - 1) * pageH;
+      scroller.scrollTo({ top, behavior: "auto" });
+      scroller.scrollTop = top;
+      setTimeout(() => {
+        const el = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
+        if (el) {
+          const exact = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+          scroller.scrollTop = exact;
+        }
+      }, 300);
+    }
+    currentPageRef.current = target;
+    setCurrentPage(target);
   };
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
@@ -419,7 +411,7 @@ function ScrollController({
     if (!readyRef.current) {
       readyRef.current = true;
       onReady(
-        (p: number) => provides.scrollToPage({ pageNumber: p }),
+        (p: number) => provides.scrollToPage({ pageNumber: p, behavior: "auto" }),
         provides.getCurrentPage(),
         provides.getTotalPages()
       );
