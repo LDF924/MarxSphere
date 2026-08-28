@@ -473,6 +473,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
       setTimeout(() => setSelHint(""), 4000);
       // 触发 OCR: 仅当 blocks 确实为空(扫描件), 且 source 是文件 URL
+      diagLog(`OCR条件: blocks=${textHitCountRef.current} source=${source.slice(0, 60)}`);
       if (textHitCountRef.current === 0 && source.startsWith("/api/")) {
         void (async () => {
           try {
@@ -702,7 +703,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             <canvas
               ref={canvasRef}
               className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
-              style={{ cursor: "crosshair" }}
+              style={{ cursor: "crosshair !important" }}
             />
             {/* 选区高亮 */}
             {selection && (
