@@ -771,7 +771,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             </div>
             <div className="px-3">
             <div className="max-h-64 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
-              {translate.snippet.slice(0, 400)}{translate.snippet.length > 400 ? "…" : ""}
+              {translate.snippet.slice(0, 3000)}{translate.snippet.length > 3000 ? "…" : ""}
             </div>
             {/* 动作按钮: 解释 / 总结 / 翻译 */}
             <div className="mt-2 grid grid-cols-3 gap-1.5">
