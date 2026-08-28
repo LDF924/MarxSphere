@@ -17,13 +17,17 @@ export interface NewPaperCandidate {
   abstract?: string;
 }
 
-/** 从库中取文献标题(种子), 最多取 n 篇 */
+/** 从库中取文献标题(种子), 最多取 n 篇
+ *  ⚠ 优先英文标题(OpenAlex 可索引, 引用链有效); 中文知网文献 OpenAlex 不索引, 仅作回退 */
 export async function getSeedTitles(sourceId: string | null, limit = 5): Promise<string[]> {
-  if (sourceId) {
-    const r = await pool.query("select title from documents where source_id = $1::uuid and title is not null and length(title) > 8 limit $2", [sourceId, limit]);
-    if (r.rows.length > 0) return r.rows.map((x) => x.title);
-  }
-  const r = await pool.query("select title from documents where title is not null and length(title) > 8 limit $1", [limit]);
+  const sql = sourceId
+    ? "select title from documents where source_id = $1::uuid and title is not null and length(title) > 8"
+    : "select title from documents where title is not null and length(title) > 8";
+  const params = sourceId ? [sourceId] : [];
+  // 优先英文标题(含 ≥3 个连续拉丁字母)
+  const en = await pool.query(`${sql} and title ~ '[A-Za-z]{3,}' order by updated_at desc limit $${params.length + 1}`, [...params, limit]);
+  if (en.rows.length > 0) return en.rows.map((x) => x.title);
+  const r = await pool.query(`${sql} order by updated_at desc limit $${params.length + 1}`, [...params, limit]);
   return r.rows.map((x) => x.title);
 }
 
