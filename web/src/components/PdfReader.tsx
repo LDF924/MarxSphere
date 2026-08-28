@@ -31,6 +31,15 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   // 翻页（useScroll 必须在 EmbedPDF 内, 用独立子组件提供）
   const [currentPage, setCurrentPage] = useState(1);
   const [scrollToPageFn, setScrollToPageFn] = useState<((p: number) => void) | null>(null);
+  // 缩放（手动 scale, 直接驱动 RenderLayer, 不依赖 zoom 插件）
+  const [manualZoomLevel, setManualZoomLevel] = useState<number | null>(null);
+
+  const manualZoomIn = () => {
+    setManualZoomLevel((z) => Math.min(3, (z ?? 1) * 1.2));
+  };
+  const manualZoomOut = () => {
+    setManualZoomLevel((z) => Math.max(0.5, (z ?? 1) / 1.2));
+  };
 
   const goToPage = (p: number) => {
     const target = Math.max(1, Math.min(p, total || p));
@@ -128,19 +137,23 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
   };
 
-  /** 页面渲染（每页: RenderLayer 底图 + PagePointerProvider + SelectionLayer 文字选择） */
-  const renderPage = useCallback(({ pageIndex, width, height }: { pageIndex: number; width: number; height: number }) => (
-    <div data-page-index={pageIndex} style={{ position: "relative", width, height }}>
-      <RenderLayer documentId={docId} pageIndex={pageIndex} style={{ position: "absolute", inset: 0 }} />
-      <PagePointerProvider documentId={docId} pageIndex={pageIndex} style={{ position: "absolute", inset: 0 }}>
-        <SelectionLayer
-          documentId={docId}
-          pageIndex={pageIndex}
-          textStyle={{ background: "rgba(59, 130, 246, 0.25)" }}
-        />
-      </PagePointerProvider>
-    </div>
-  ), [docId]);
+  /** 页面渲染（每页: RenderLayer 底图 + PagePointerProvider + SelectionLayer 文字选择）
+   *  容器尺寸 = 布局尺寸 × 手动缩放(manualZoomLevel), img 才能随缩放变大 */
+  const renderPage = useCallback(({ pageIndex, width, height }: { pageIndex: number; width: number; height: number }) => {
+    const z = manualZoomLevel ?? 1;
+    return (
+      <div data-page-index={pageIndex} style={{ position: "relative", width: width * z, height: height * z }}>
+        <RenderLayer documentId={docId} pageIndex={pageIndex} scale={z} style={{ position: "absolute", inset: 0 }} />
+        <PagePointerProvider documentId={docId} pageIndex={pageIndex} style={{ position: "absolute", inset: 0 }}>
+          <SelectionLayer
+            documentId={docId}
+            pageIndex={pageIndex}
+            textStyle={{ background: "rgba(59, 130, 246, 0.25)" }}
+          />
+        </PagePointerProvider>
+      </div>
+    );
+  }, [docId, manualZoomLevel]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-muted/20">
@@ -159,6 +172,14 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
           <button type="button" disabled={status !== "ready" || total === 0}
             onClick={() => goToPage(currentPage + 1)}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <button type="button" disabled={!manualZoomLevel || manualZoomLevel <= 0.5}
+            onClick={manualZoomOut}
+            className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomOut className="h-3.5 w-3.5" /></button>
+          <span className="min-w-[34px] text-center text-[10px]">{manualZoomLevel ? `${Math.round(manualZoomLevel * 100)}%` : "100%"}</span>
+          <button type="button" disabled={!!manualZoomLevel && manualZoomLevel >= 3}
+            onClick={manualZoomIn}
+            className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomIn className="h-3.5 w-3.5" /></button>
           <a href={source} download={fileName} className="rounded p-1 hover:bg-accent" title="下载 PDF"><Download className="h-3.5 w-3.5" /></a>
         </div>
       </div>
