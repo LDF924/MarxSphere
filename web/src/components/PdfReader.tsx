@@ -338,7 +338,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
           diagLog("⑤停顿800ms 纯点击兜底");
           const s = dragStartRef.current;
           if (s) {
-            selectionRef.current = { x: 0, y: s.y - 20, width: 10000, height: 40 };
+            // 从光标位置开始扩展(不是页面最左): x=s.x, 宽到页面右缘, 高 40 磅覆盖整行
+            selectionRef.current = { x: s.x - 5, y: s.y - 20, width: 10000, height: 40 };
             finishSelection(s.x, s.y);
           } else {
             draggingRef.current = false; setDragging(false); dragStartRef.current = null;
@@ -411,7 +412,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       selPdf = { ...selPdf, y: selPdf.y - 10, height: 40 };
     }
     if (selPdf.width < 20) {
-      selPdf = { ...selPdf, x: 0, width: 100000 };
+      // 宽度从光标位置向右扩展(不是页面最左, 避免框选视觉跳远)
+      selPdf = { ...selPdf, width: 100000 };
     }
     // 关键: 若当前页数据未预取(大 PDF 预取慢, 用户划词时可能还没好)
     // → 同步按需提取当前页文本块, 不依赖预取状态
@@ -484,7 +486,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             if (ocrCacheRef.current[pdfPath]) {
               diagLog(`⑦OCR缓存命中 (${ocrCacheRef.current[pdfPath].length}字)`);
               setTranslate({ snippet: ocrCacheRef.current[pdfPath].slice(0, 3000), x: clientX, y: clientY });
-              setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
+              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
               setAiResult(null);
               setAiError("");
               setAiQuestion("");
@@ -494,13 +496,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             const r = await fetch("/api/p2o/ocr", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: pdfPath })
+              body: JSON.stringify({ path: pdfPath, page })
             }).then((x) => x.json());
             if (r?.ok && r.content && r.content.length > 20) {
               ocrCacheRef.current[pdfPath] = r.content;
               diagLog(`⑦OCR成功 (${r.content.length}字)`);
               setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
-              setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
+              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
               setAiResult(null);
               setAiError("");
               setAiQuestion("");

@@ -5742,7 +5742,7 @@ except Exception as e:
 
   // POST /api/p2o/ocr — 扫描件 PDF OCR 识别（MinerU 强制 OCR, 划词兜底）
   app.post("/api/p2o/ocr", async (request, reply) => {
-    const body = z.object({ path: z.string().min(1).max(2000) }).parse(request.body);
+    const body = z.object({ path: z.string().min(1).max(2000), page: z.coerce.number().int().min(1).optional() }).parse(request.body);
     const { pdf2obsidianAdapter } = await import("../services/pdf2obsidian-adapter.js");
     // 路径校验: 仅允许文献库/资料库(VAULT_ROOT)/桌面(VAULT_DIR 兼容)目录内
     const abs = path.resolve(body.path);
@@ -5757,7 +5757,15 @@ except Exception as e:
     }
     const result = await pdf2obsidianAdapter.parsePdfViaP2O(abs, 100_000, { ocr: true });
     if (!result.ok) return reply.code(500).send(notFound("OCR_FAILED", result.error || "OCR 失败"));
-    return { ok: true, content: result.content };
+    // 按页截取: MinerU 输出按页分节(# Page N 或 ---), 提取指定页内容
+    let content = result.content || "";
+    if (body.page && content) {
+      // MinerU markdown 每页以标题/分隔线分节
+      const pages = content.split(/(?=^# |^---$|^#{1,6} )/m).filter((s) => s.trim().length > 10);
+      if (pages.length >= body.page) content = pages[body.page - 1];
+      else if (pages.length > 1) content = pages[0] + "\n" + (pages[1] ?? ""); // 页数不匹配给前两页
+    }
+    return { ok: true, content: content.slice(0, 100_000) };
   });
   // 重试失败任务
   app.post("/api/p2o/tasks/:id/retry", async (request, reply) => {
