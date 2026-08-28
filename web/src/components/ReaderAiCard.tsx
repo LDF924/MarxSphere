@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ReaderAiCard.tsx — 划词 AI 阅读卡片(共享组件)
 // 从 PdfReader 提取: 拖动定位 + 解释/总结/翻译/追问 + 结果/错误展示
-// 供 PdfReader(embedPDF 划词)与 MarkdownPreview(原生 Selection 划词)复用
+// 供 PdfReader(embedPDF 划词)与 MarkdownReader(原生 Selection 划词)复用
+// ⚠ 必须用 createPortal 渲染到 body: 卡片 fixed 定位, 若留在面板内会被祖先
+//   .glass{overflow:hidden} + :hover{transform} 裁剪/重定位(鼠标移出页面才可见的经典 bug)
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Languages, Loader2, X } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -58,7 +61,8 @@ export function ReaderAiCard({ snippet, anchor, onClose }: ReaderAiCardProps) {
 
   const close = () => { onClose(); };
 
-  return (
+  // ⚠ createPortal 到 body: 脱离面板祖先的 overflow/transform 裁剪
+  return createPortal(
     <div className="fixed z-50 flex w-[340px] max-w-[90vw] resize flex-col overflow-hidden rounded-lg border bg-card shadow-2xl"
       style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(anchor.x, window.innerWidth - 360), top: Math.min(anchor.y + 12, window.innerHeight - 360) }}>
       <div
@@ -133,6 +137,7 @@ export function ReaderAiCard({ snippet, anchor, onClose }: ReaderAiCardProps) {
           </button>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
