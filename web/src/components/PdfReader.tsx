@@ -30,6 +30,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   // 翻页（useScroll 必须在 EmbedPDF 内, 用独立子组件提供）
   const [currentPage, setCurrentPage] = useState(1);
+  const currentPageRef = useRef(1); // 同步跟踪(连续点击防闭包陈旧值)
   const [scrollToPageFn, setScrollToPageFn] = useState<((p: number) => void) | null>(null);
   // 缩放（手动 scale, 直接驱动 RenderLayer, 不依赖 zoom 插件）
   const [manualZoomLevel, setManualZoomLevel] = useState<number | null>(null);
@@ -43,29 +44,45 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   const goToPage = (p: number) => {
     const target = Math.max(1, Math.min(p, total || p));
-    // 直接 DOM 滚动(不依赖 scrollToPageFn — 2.14.4 下无效)
     const scroller = hostRef.current;
-    const pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
+    if (!scroller) return;
+    // 目标页元素(可能未渲染 — Scroller buffer 只渲染部分页)
+    let pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
     if (scroller && pageEl) {
       // 用 offsetTop: pageEl 相对 Scroller 容器的偏移(Scroller 是定位祖先)
-      // 加上滚动容器内 Scroller 的偏移
       let top = pageEl.offsetTop;
       let el: HTMLElement | null = pageEl.offsetParent as HTMLElement | null;
       while (el && el !== scroller && el !== document.body) {
         top += el.offsetTop;
         el = el.offsetParent as HTMLElement | null;
       }
-      // 若 offsetParent 链到 body(Scroller 非定位祖先), 用 rect 差值
       if (el === document.body || !el) {
         top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
       }
-      // smooth 在某些环境不生效 → 用 auto 强制滚动
       scroller.scrollTo({ top, behavior: "auto" });
-      scroller.scrollTop = top; // 双保险: 直接赋值
+      scroller.scrollTop = top;
+      currentPageRef.current = target;
       setCurrentPage(target);
-      console.log("[PdfReader] goToPage", { target, top: Math.round(top), scrollH: scroller.scrollHeight, clientH: scroller.clientHeight, pageElTop: Math.round(pageEl.getBoundingClientRect().top) });
     } else {
-      console.log("[PdfReader] goToPage: 元素未找到", { scroller: !!scroller, pageEl: !!pageEl, target });
+      // 目标页未渲染(超出 buffer) → 用已渲染的最近页估算目标位置
+      // 页高 = 已渲染页 offsetHeight(用第 1 页), 目标 top ≈ (target-1) × 页高
+      const firstPage = hostRef.current?.querySelector('[data-page-index="0"]') as HTMLElement | null;
+      if (firstPage) {
+        const pageH = firstPage.offsetHeight;
+        const top = (target - 1) * pageH;
+        scroller.scrollTo({ top, behavior: "auto" });
+        scroller.scrollTop = top;
+        // 滚动后 Scroller 会渲染目标页, 等渲染完成再精确对齐
+        setTimeout(() => {
+          const el = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
+          if (el) {
+            const exact = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+            scroller.scrollTop = exact;
+          }
+        }, 300);
+        currentPageRef.current = target;
+        setCurrentPage(target);
+      }
     }
   };
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
@@ -212,13 +229,13 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">v5.1</span>
         <div className="ml-auto flex items-center gap-1">
           <button type="button" disabled={status !== "ready" || total === 0}
-            onClick={() => goToPage(currentPage - 1)}
+            onClick={() => goToPage(currentPageRef.current - 1)}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" /></button>
           <span className="min-w-[60px] text-center text-[10px]">
             {status === "ready" ? `${currentPage} / ${total || "?"}` : status === "loading" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "错误"}
           </span>
           <button type="button" disabled={status !== "ready" || total === 0}
-            onClick={() => goToPage(currentPage + 1)}
+            onClick={() => goToPage(currentPageRef.current + 1)}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
           <div className="mx-1 h-4 w-px bg-border" />
           <button type="button" disabled={!manualZoomLevel || manualZoomLevel <= 0.5}
@@ -247,6 +264,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               }}
               onPageChange={(page, totalPages) => {
                 // 值比较防无限循环(React 185)
+                currentPageRef.current = page;
                 setCurrentPage((prev) => (prev === page ? prev : page));
                 setTotal((prev) => (prev === totalPages ? prev : totalPages));
               }}
