@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// PdfReader.tsx — embedPDF PDF 阅读器（2026-08-28, Agentero 对照: PDF 深度阅读）
-// 基于 @embedpdf/engines（Agentero 同款底层）: WebWorkerEngine + pdfium.wasm
-// 能力: 打开 PDF → 渲染页面 → 页码导航 → 缩放 → 文本选择(划词) → 划词翻译 → 整页翻译
+// PdfReader.tsx — embedPDF PDF 阅读器（Agentero 同款架构: 官方插件体系, v5）
+// 基于 @embedpdf/core@2.14.4(与 Agentero 版本对齐) + 官方插件
+// 文字选择用 SelectionLayer(原生文本层划选, 精确到字符) — 非手写矩形框选
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Loader2, Download, Languages, X } from "lucide-react";
+import { createPluginRegistration } from "@embedpdf/core";
+import { EmbedPDF } from "@embedpdf/core/react";
+import { DocumentManagerPluginPackage, DocumentContent } from "@embedpdf/plugin-document-manager/react";
+import { ScrollPluginPackage, Scroller, useScroll } from "@embedpdf/plugin-scroll/react";
+import { RenderPluginPackage, RenderLayer } from "@embedpdf/plugin-render/react";
+import { SelectionPluginPackage, useSelectionCapability, SelectionLayer } from "@embedpdf/plugin-selection/react";
+import { ViewportPluginPackage } from "@embedpdf/plugin-viewport/react";
+import { ZoomPluginPackage } from "@embedpdf/plugin-zoom/react";
+import { TilingPluginPackage } from "@embedpdf/plugin-tiling/react";
+import { InteractionManagerPluginPackage, PagePointerProvider } from "@embedpdf/plugin-interaction-manager/react";
 import { api } from "../lib/api";
-import { cn } from "../lib/utils";
 
 interface PdfReaderProps {
   /** PDF URL 或 base64 data URL */
@@ -13,614 +22,101 @@ interface PdfReaderProps {
   fileName?: string;
 }
 
-interface TextBlock {
-  content: string;
-  rect: { x: number; y: number; width: number; height: number };
-}
-
-interface Selection {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** 清洗 PDFium 提取的乱码: 保留 CJK/字母/数字/常用标点, 剔除控制码与符号杂码（⭠␛␐等） */
-function cleanText(t: string): string {
-  const kept = Array.from(t).filter((ch) => {
-    const c = ch.charCodeAt(0);
-    // 保留: CJK(0x4E00-0x9FFF) / 全角标点(0x3000-0x303F, 0xFF00-0xFFEF) / ASCII 字母数字 / 常用 ASCII 标点
-    return (
-      (c >= 0x4e00 && c <= 0x9fff) ||
-      (c >= 0x3000 && c <= 0x303f) ||
-      (c >= 0xff00 && c <= 0xffef) ||
-      (c >= 0x30 && c <= 0x39) ||
-      (c >= 0x41 && c <= 0x5a) ||
-      (c >= 0x61 && c <= 0x7a) ||
-      "，。、；：？！（）《》〈〉“”‘’—…·".includes(ch)
-    );
-  });
-  return kept.join("").replace(/\s+/g, " ").trim();
-}
-
-/** 取块内准确文本（PDFium CID 字体中文逐字块带乱码尾码: "坛6⭠␛␐"）
- *  中文块: 取第一个 CJK/中文标点（尾码数字/控制符剔除）
- *  西文块: 块内无 CJK → 取整个清洗后内容（英文单词是完整块, 逐字取会缺漏!） */
-function firstReadableChar(t: string): string {
-  const chars = Array.from(t);
-  const isCJK = (ch: string) => {
-    const c = ch.charCodeAt(0);
-    return (c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef);
-  };
-  // 第一优先: CJK/中文标点 → 取第一个（中文逐字块）
-  for (const ch of chars) if (isCJK(ch) || "，。、；：？！（）《》〈〉“”‘’—…·".includes(ch)) return ch;
-  // 块内无 CJK = 西文块 → 取整块清洗后内容（保留完整单词）
-  const kept = chars.filter((ch) => {
-    const c = ch.charCodeAt(0);
-    return (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) ||
-           ".,;:!?()[]'\"-–—… ".includes(ch);
-  });
-  return kept.join("").trim();
-}
-
 export function PdfReader({ source, fileName }: PdfReaderProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null); // 滚动容器（fit-width 计算）
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [zoom, setZoom] = useState(1.0);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
-  const engineRef = useRef<any>(null);
-  const docRef = useRef<any>(null);
-  const textBlocksRef = useRef<TextBlock[][]>([]); // 每页文本块（页索引 → 块列表）
-  const textReadyRef = useRef(false);
-  const pageSizeRef = useRef<{ width: number; height: number } | null>(null); // 首页尺寸（磅）, fit-width 基准
-  const fitWidthRef = useRef(false); // 当前是否为"适应宽度"模式
+  const [total, setTotal] = useState(0);
+  const docId = useRef(`reader-${Math.random().toString(36).slice(2)}`).current;
 
-  // 划词选择（canvas 上鼠标拖选矩形）
-  const [dragging, setDragging] = useState(false);
-  const draggingRef = useRef(false); // 同步跟踪（window mouseup 兜底读取）
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const selectionRef = useRef<Selection | null>(null); // 同步跟踪（mouseup 读取, 避免 setState 批处理竞态）
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const textHitCountRef = useRef(0); // 当前页文本块数（拖选即时反馈用）
-  const lastMoveRef = useRef(0); // 最近一次鼠标移动时间（停顿检测用）
-  const settleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 停顿结束定时器
-  const ocrCacheRef = useRef<Record<string, string>>({}); // OCR 结果缓存(source → 文本), 同 PDF 只 OCR 一次
-  const ocrInFlightRef = useRef<string | null>(null); // OCR 进行中的 PDF 路径(去重: mouseup+停顿双触发只跑一次)
-  // 划词提示（无文本层/无命中时的引导）
-  const [selHint, setSelHint] = useState("");
-  // 诊断日志（事件流可视化, 用于定位划词断点）
-  const [diagLogs, setDiagLogs] = useState<string[]>([]);
-  const diagLog = (msg: string) => {
-    setDiagLogs((prev) => [...prev.slice(-5), `${new Date().toLocaleTimeString("zh-CN", { hour12: false })} ${msg}`]);
+  // 翻页（useScroll 必须在 EmbedPDF 内, 用独立子组件提供）
+  const [currentPage, setCurrentPage] = useState(1);
+  const [scrollToPageFn, setScrollToPageFn] = useState<((p: number) => void) | null>(null);
+  // 缩放（手动 scale, 直接驱动 RenderLayer, 不依赖 zoom 插件）
+  const [manualZoomLevel, setManualZoomLevel] = useState<number | null>(null);
+
+  const manualZoomIn = () => {
+    setManualZoomLevel((z) => Math.min(3, (z ?? 1) * 1.2));
+  };
+  const manualZoomOut = () => {
+    setManualZoomLevel((z) => Math.max(0.5, (z ?? 1) / 1.2));
   };
 
-  // 划词 AI 卡片（解释/总结/翻译/追问）
+  const goToPage = (p: number) => {
+    const target = Math.max(1, Math.min(p, total || p));
+    if (scrollToPageFn) {
+      scrollToPageFn(target);
+      return;
+    }
+    // 兜底: 滚动外层滚动容器(hostRef)到目标页
+    // 注意: Scroller 本身不滚动, 滚动的是它的父容器(overflow-auto)
+    const scroller = hostRef.current;
+    const pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
+    if (scroller && pageEl) {
+      // pageEl.offsetTop 相对最近的定位祖先(Scroller 容器); hostRef 也是它的祖先
+      // 若 hostRef 有 padding/位置, 用 getBoundingClientRect 差值更准
+      const top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      scroller.scrollTo({ top, behavior: "smooth" });
+      setCurrentPage(target);
+    }
+  };
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
-  const [aiBusy, setAiBusy] = useState<string | null>(null); // 当前执行的动作
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<{ action: string; text: string } | null>(null);
   const [aiError, setAiError] = useState("");
   const [aiQuestion, setAiQuestion] = useState("");
-  // 卡片可拖动: 位置 state + 拖拽 ref（固定到页面, 不随鼠标消失）
   const [cardPos, setCardPos] = useState<{ x: number; y: number } | null>(null);
-  const cardDragRef = useRef<{ dx: number; dy: number } | null>(null); // 按下时鼠标与卡片左上角偏移
-  // 整页翻译（划词无命中的扫描件/特殊字体 PDF 兜底）
-  const [pageTranslate, setPageTranslate] = useState<{ busy: boolean; original?: string; translated?: string; error?: string }>({ busy: false });
-  const pageTextsRef = useRef<string[]>([]); // 每页干净全文（extractText, 页索引 → 文本）
-  const pageTextsReadyRef = useRef(false);
+  const cardDragRef = useRef<{ dx: number; dy: number } | null>(null);
 
-  // 初始化 engine（createPdfiumEngine + pdfium.wasm）
+  // 引擎（动态 import）
+  const [engine, setEngine] = useState<any>(null);
   useEffect(() => {
     let disposed = false;
     (async () => {
       try {
         const { createPdfiumEngine } = await import("@embedpdf/engines/pdfium-direct-engine");
-        // wasm 本地化: web/public/pdfium/pdfium.wasm（vite 静态资源, 避免 CDN 依赖）
-        const wasmUrl = "/pdfium/pdfium.wasm";
-        const engine = await createPdfiumEngine(wasmUrl);
-        engineRef.current = engine;
+        const eng = await createPdfiumEngine("/pdfium/pdfium.wasm");
         if (disposed) return;
-        // 打开 PDF（base64/data URL → Blob → objectURL → openDocumentUrl）
-        const isDataUrl = source.startsWith("data:");
-        const ab = isDataUrl
-          ? Uint8Array.from(atob(source.split(",")[1]), (c) => c.charCodeAt(0)).buffer
-          : await (await fetch(source)).arrayBuffer();
-        const blobUrl = URL.createObjectURL(new Blob([ab], { type: "application/pdf" }));
-        const doc = await engine.openDocumentUrl({ id: "reader", url: blobUrl }).toPromise();
-        docRef.current = doc;
-        setTotal(doc.pages?.length || 0);
-        // 记录首页尺寸（磅）→ fit-width 初始缩放
-        const p0 = doc.pages?.[0];
-        if (p0?.size?.width) {
-          pageSizeRef.current = { width: p0.size.width, height: p0.size.height };
-          const cw = containerRef.current?.clientWidth;
-          if (cw && cw > 0) {
-            // 留 16px 边距, 最小 50% 最大 200%
-            fitWidthRef.current = true;
-            const fit = Math.min(2, Math.max(0.5, cw / p0.size.width));
-            setZoom(fit);
-          }
-        }
-        setStatus("ready");
-        setPage(1);
-        // 预取全部文本块（划词翻译用）+ 每页干净全文（整页翻译兜底）— 失败不阻塞阅读
-        try {
-          const blocks: TextBlock[][] = [];
-          const pageTexts: string[] = [];
-          for (let i = 0; i < (doc.pages ?? []).length; i++) {
-            const p = doc.pages[i];
-            const rects = await engine.getPageTextRects(doc, p).toPromise();
-            blocks.push(
-              (rects ?? []).map((r: any) => {
-                // embedPDF rect 结构: { origin: {x,y}, size: {width,height} }
-                const rc = r.rect ?? {};
-                return {
-                  content: r.content ?? "",
-                  rect: {
-                    x: rc.origin?.x ?? 0,
-                    y: rc.origin?.y ?? 0,
-                    width: rc.size?.width ?? 0,
-                    height: rc.size?.height ?? 0
-                  }
-                };
-              })
-            );
-            // extractText 对 CID 字体/部分扫描 PDF 提取质量更高（无坐标但全文干净）
-            try {
-              const txt = await engine.extractText(doc, [i]).toPromise();
-              pageTexts.push(cleanText(txt || ""));
-            } catch { pageTexts.push(""); }
-          }
-          textBlocksRef.current = blocks;
-          textReadyRef.current = true;
-          pageTextsRef.current = pageTexts;
-          pageTextsReadyRef.current = true;
-        } catch { /* 划词不可用时仅保留阅读能力 */ }
+        setEngine(eng);
       } catch (e: any) {
         if (!disposed) { setStatus("error"); setError(String(e?.message || e).slice(0, 200)); }
       }
     })();
     return () => { disposed = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
-
-  // 渲染当前页
-  useEffect(() => {
-    if (status !== "ready" || !engineRef.current || !docRef.current) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const pageObj = docRef.current.pages?.[page - 1];
-        if (!pageObj) return;
-        const blob = await engineRef.current.renderPage(docRef.current, pageObj, { scaleFactor: zoom }).toPromise();
-        if (cancelled || !canvasRef.current) return;
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => {
-          const canvas = canvasRef.current!;
-          canvas.width = img.width;
-          canvas.height = img.height;
-          canvas.getContext("2d")!.drawImage(img, 0, 0);
-          URL.revokeObjectURL(url);
-        };
-        img.src = url;
-      } catch { /* 渲染失败忽略 */ }
-    })();
-    return () => { cancelled = true; };
-  }, [page, zoom, status]);
-
-  // 画布相对坐标 → PDF 文本块坐标系（页面像素 / 渲染缩放）
-  const toPdfCoord = useCallback((clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    // clamp 到画布内: 鼠标拖出边界时仍按边界值计算（不触发 leave 取消）
-    const rx = Math.min(rect.right, Math.max(rect.left, clientX));
-    const ry = Math.min(rect.bottom, Math.max(rect.top, clientY));
-    const x = ((rx - rect.left) / rect.width) * canvas.width;
-    const y = ((ry - rect.top) / rect.height) * canvas.height;
-    return { x, y };
   }, []);
 
-  // === 划词: mousedown 在 canvas 开始, 拖选期间挂 window 全局监听 ===
-  // 事件挂 document/window(而非 canvas): 三入口(文献库/资料库/政策库)容器结构
-  // 不同, canvas 级绑定在部分容器不可靠; window 事件浏览器规范保证触发
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || status !== "ready") return;
-
-    // 命中检测: 鼠标按下时是否在 canvas 内
-    const isOnCanvas = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      return e.clientX >= rect.left && e.clientX <= rect.right &&
-             e.clientY >= rect.top && e.clientY <= rect.bottom;
-    };
-
-    const onWinMove = (e: MouseEvent) => {
-      if (!draggingRef.current || !dragStartRef.current) return;
-      const p = toPdfCoord(e.clientX, e.clientY);
-      if (!p) return;
-      lastMoveRef.current = Date.now(); // 拖动继续, 重置停顿计时
-      if (!selectionRef.current) diagLog(`②mousemove 选区开始 (${Math.round(e.clientX)},${Math.round(e.clientY)})`);
-      const sel = {
-        x: Math.min(dragStartRef.current.x, p.x),
-        y: Math.min(dragStartRef.current.y, p.y),
-        width: Math.abs(p.x - dragStartRef.current.x),
-        height: Math.abs(p.y - dragStartRef.current.y)
-      };
-      selectionRef.current = sel;
-      setSelection(sel);
-    };
-
-    // 任意结束信号(松开/移出窗口/失焦/取消) → 结束选择
-    const onWinUp = (e: MouseEvent) => {
-      if (!draggingRef.current) return;
-      diagLog("③mouseup 触发");
-      // 选区未更新(mousemove 没到) 或 仍是 1px 占位 → 用鼠标当前位置重建
-      const cur = selectionRef.current;
-      if ((!cur || cur.width < 3 || cur.height < 3) && dragStartRef.current) {
-        const p = toPdfCoord(e.clientX, e.clientY);
-        if (p) {
-          const s = dragStartRef.current;
-          selectionRef.current = {
-            x: Math.min(s.x, p.x),
-            y: Math.min(s.y, p.y),
-            width: Math.abs(p.x - s.x),
-            height: Math.abs(p.y - s.y)
-          };
-        }
-      }
-      finishSelection(e.clientX, e.clientY);
-    };
-
-    // 鼠标移出窗口/文档 → 立即结束选择（blur/pointercancel 事件类型不同, 用宽松签名）
-    const onLeave = (_e?: Event) => {
-      if (!draggingRef.current) return;
-      diagLog("④mouseleave/blur 触发");
-      const cur = selectionRef.current;
-      if (!cur || cur.width < 3 || cur.height < 3) {
-        // 1px 占位或未更新 → 用起点扩展一个合理选区(覆盖起点附近文本)
-        const s = dragStartRef.current;
-        if (s) selectionRef.current = { x: s.x - 2, y: s.y - 2, width: 4, height: 4 };
-      }
-      const last = selectionRef.current;
-      if (last) finishSelection(last.x, last.y);
-      else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
-    };
-
-    // click 兜底: 浏览器保证任何真实点击都会触发 click(mouseup 之后)
-    // 资料库/政策库容器 mouseup 可能丢失, click 是最后保险
-    const onWinClick = () => {
-      if (!draggingRef.current) return;
-      const last = selectionRef.current;
-      if (last) finishSelection(last.x, last.y);
-      else { draggingRef.current = false; setDragging(false); dragStartRef.current = null; }
-    };
-
-    // document 级 mousedown: 命中 canvas 才启动划词（三入口统一）
-    const onDocDown = (e: MouseEvent) => {
-      // 点击源是卡片/浮层内部(不是 canvas) → 忽略, 不联动划词
-      if (e.target instanceof HTMLElement && !canvas.contains(e.target)) return;
-      if (e.button !== 0 || !isOnCanvas(e)) return;
-      const p = toPdfCoord(e.clientX, e.clientY);
-      if (!p) return;
-      diagLog(`①mousedown 命中 canvas (${Math.round(e.clientX)},${Math.round(e.clientY)})`);
-      dragStartRef.current = p;
-      draggingRef.current = true;
-      setDragging(true);
-      setSelection(null);
-      setSelHint("");
-      // 关键: mousedown 立即建立最小选区(起点矩形), 即使后续 mousemove
-      // 一个都不触发(环境限制), mouseup/停顿也有有效选区可用
-      selectionRef.current = { x: p.x, y: p.y, width: 1, height: 1 };
-      const blocks = textBlocksRef.current[page - 1] ?? [];
-      textHitCountRef.current = blocks.length;
-      // 拖选期间挂 window/document 全部结束事件(结束后移除)
-      window.addEventListener("mousemove", onWinMove);
-      window.addEventListener("mouseup", onWinUp);
-      window.addEventListener("pointerup", onWinUp);
-      window.addEventListener("click", onWinClick);
-      document.addEventListener("mouseleave", onLeave);
-      window.addEventListener("blur", onLeave);
-      window.addEventListener("pointercancel", onLeave);
-      // 终极保险: 拖选停顿 800ms 且 mousemove 从未到达(拖动事件全丢失)才兜底
-      // 正常拖选绝不截胡(移动会重置 lastMoveRef)
-      lastMoveRef.current = Date.now();
-      if (settleTimerRef.current) clearInterval(settleTimerRef.current);
-      settleTimerRef.current = setInterval(() => {
-        if (!draggingRef.current) { clearInterval(settleTimerRef.current!); settleTimerRef.current = null; return; }
-        const idle = Date.now() - lastMoveRef.current > 800;
-        const neverMoved = selectionRef.current && selectionRef.current.width < 3 && selectionRef.current.height < 3;
-        if (idle && neverMoved) {
-          clearInterval(settleTimerRef.current!);
-          settleTimerRef.current = null;
-          diagLog("⑤停顿800ms 纯点击兜底");
-          const s = dragStartRef.current;
-          if (s) {
-            // 从光标位置开始扩展(不是页面最左): x=s.x, 宽到页面右缘, 高 40 磅覆盖整行
-            selectionRef.current = { x: s.x - 5, y: s.y - 20, width: 10000, height: 40 };
-            finishSelection(s.x, s.y);
-          } else {
-            draggingRef.current = false; setDragging(false); dragStartRef.current = null;
-          }
-        }
-      }, 150);
-    };
-
-    const onDbl = (e: MouseEvent) => {
-      // 双击卡片/浮层内部 → 忽略
-      if (e.target instanceof HTMLElement && !canvas.contains(e.target)) return;
-      if (!isOnCanvas(e)) return;
-      const p = toPdfCoord(e.clientX, e.clientY);
-      if (!p) return;
-      const blocks = textBlocksRef.current[page - 1] ?? [];
-      const lineY = blocks.find((b) => p.y >= b.rect.y && p.y <= b.rect.y + b.rect.height)?.rect.y;
-      if (lineY === undefined) { setSelHint("该处无文本层，无法双击选段。"); setTimeout(() => setSelHint(""), 3000); return; }
-      const hit = blocks
-        .filter((b) => Math.abs(b.rect.y - lineY) < b.rect.height * 0.6)
-        .sort((a, b) => a.rect.x - b.rect.x)
-        .map((b) => cleanText(b.content))
-        .filter((t) => t.length > 0);
-      if (hit.length === 0) return;
-      setTranslate({ snippet: hit.join(" ").slice(0, 3000), x: e.clientX, y: e.clientY });
-      setCardPos(clampCardPos({ x: e.clientX + 12, y: e.clientY + 12 }));
-      setAiResult(null);
-      setAiError("");
-      setAiQuestion("");
-    };
-
-    const detach = () => {
-      window.removeEventListener("mousemove", onWinMove);
-      window.removeEventListener("mouseup", onWinUp);
-      window.removeEventListener("pointerup", onWinUp);
-      window.removeEventListener("click", onWinClick);
-      document.removeEventListener("mouseleave", onLeave);
-      window.removeEventListener("blur", onLeave);
-      window.removeEventListener("pointercancel", onLeave);
-      if (settleTimerRef.current) { clearInterval(settleTimerRef.current); settleTimerRef.current = null; }
-    };
-
-    // document 级委托: 所有入口统一命中
-    document.addEventListener("mousedown", onDocDown);
-    document.addEventListener("dblclick", onDbl);
-    return () => {
-      document.removeEventListener("mousedown", onDocDown);
-      document.removeEventListener("dblclick", onDbl);
-      detach();
-    };
+  // 插件注册（Agentero 同款完整列表）
+  const plugins = useMemo2(() => {
+    if (!engine) return null;
+    return [
+      createPluginRegistration(DocumentManagerPluginPackage, {
+        initialDocuments: [{ url: source, documentId: docId, name: fileName ?? docId }]
+      }),
+      createPluginRegistration(ViewportPluginPackage),
+      createPluginRegistration(ScrollPluginPackage, { defaultBufferSize: 2 }),
+      createPluginRegistration(RenderPluginPackage),
+      createPluginRegistration(TilingPluginPackage, { tileSize: 1024 }),
+      createPluginRegistration(ZoomPluginPackage, { defaultZoomLevel: 1 }),
+      createPluginRegistration(InteractionManagerPluginPackage),
+      createPluginRegistration(SelectionPluginPackage, { marquee: { enabled: false } }),
+    ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, page, zoom, toPdfCoord]);
+  }, [engine, source]);
 
-  /** 结束选择: 取选区内文本块 → 拼 snippet → 弹 AI 卡片 */
-  const finishSelection = async (clientX: number, clientY: number) => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    setDragging(false);
-    dragStartRef.current = null;
-    // 取选区内文本块 → 拼出 snippet（用 ref 同步值, 不受 setState 批处理影响）
-    const sel = selectionRef.current;
-    const lastSelForCard = sel ? { ...sel } : null; // 保存供卡片定位用
-    selectionRef.current = null;
-    if (!sel) { setSelection(null); return; } // 1px 占位也会被扩展, 不拦截
-    // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
-    // → 把选区换算回 PDF 空间: / zoom
-    let selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
-    // 仅纯点击(宽高都极小)时扩展选区 — 正常拖选完全尊重用户选区, 不扩
-    // 修: 之前高度<40就扩展, 正常拖选窄条被扩成40磅 → 卷入上下行内容
-    const isClickOnly = sel.width < 10 && sel.height < 10;
-    if (isClickOnly) {
-      // 纯点击: 扩展成覆盖整行(高度 40 磅, 从点击 x 向右)
-      selPdf = { x: selPdf.x - 2, y: selPdf.y - 10, width: 100000, height: 40 };
-    }
-    // 关键: 若当前页数据未预取(大 PDF 预取慢, 用户划词时可能还没好)
-    // → 同步按需提取当前页文本块, 不依赖预取状态
-    let blocks = textBlocksRef.current[page - 1] ?? [];
-    if (blocks.length === 0) {
-      diagLog("预取未完成 → 按需提取当前页文本块");
-      try {
-        const pageObj = docRef.current?.pages?.[page - 1];
-        if (pageObj && engineRef.current) {
-          const rects = await engineRef.current.getPageTextRects(docRef.current, pageObj).toPromise();
-          blocks = (rects ?? []).map((r: any) => {
-            const rc = r.rect ?? {};
-            return {
-              content: r.content ?? "",
-              rect: {
-                x: rc.origin?.x ?? 0,
-                y: rc.origin?.y ?? 0,
-                width: rc.size?.width ?? 0,
-                height: rc.size?.height ?? 0
-              }
-            };
-          });
-          textBlocksRef.current[page - 1] = blocks;
-          diagLog(`按需提取完成: ${blocks.length}块`);
-        }
-      } catch { /* 提取失败走空兜底 */ }
-    }
-    // 选区内的块
-    const inSel = blocks
-      .filter((b) => {
-        const r = b.rect;
-        return r.x < selPdf.x + selPdf.width && r.x + r.width > selPdf.x &&
-               r.y < selPdf.y + selPdf.height && r.y + r.height > selPdf.y;
-      })
-      .map((b) => ({ ...b, char: firstReadableChar(b.content) }))
-      .filter((b) => b.char.length > 0);
-    // OCR 行聚合: 按 y 容差(10磅)聚合成行, 行内按 x 排序, 行间按 y 排序
-    // 解决: 标题区字基线抖动导致按 y 严格排序乱序("法"跑到"年"前)
-    const LINES_TOL = 10;
-    const lines: Array<Array<{ x: number; char: string; yAnchor: number }>> = [];
-    for (const b of [...inSel].sort((a, b) => a.rect.y - b.rect.y)) {
-      const last = lines[lines.length - 1];
-      if (last && Math.abs(b.rect.y - last[0].yAnchor) <= LINES_TOL) {
-        last.push({ x: b.rect.x, char: b.char, yAnchor: last[0].yAnchor });
-      } else {
-        lines.push([{ x: b.rect.x, char: b.char, yAnchor: b.rect.y }]);
-      }
-    }
-    const snippet = lines
-      .sort((a, b) => a[0].yAnchor - b[0].yAnchor)
-      .map((l) => l.sort((a, b) => a.x - b.x).map((c) => c.char).join(""))
-      .join("\n")
-      .slice(0, 3000);
-    if (snippet.length < 5) {
-      setSelection(null);
-      // 无文本层 → 引导提示（纯扫描图片 PDF）+ 触发 MinerU OCR 兜底
-      setSelHint(textHitCountRef.current === 0
-        ? "本页无文本层（扫描件/图片），正在尝试 OCR 识别…"
-        : "划选区域未命中文字，请对准文字行拖选；或点「翻译本页」翻译整页。");
-      setTimeout(() => setSelHint(""), 4000);
-      // 触发 OCR: 仅当 blocks 确实为空(扫描件), 且 source 是文件 URL
-      diagLog(`OCR条件: blocks=${textHitCountRef.current} source=${source.slice(0, 60)}`);
-      if (textHitCountRef.current === 0 && source.startsWith("/api/")) {
-        void (async () => {
-          try {
-            const pathMatch = source.match(/path=([^&]+)/);
-            if (!pathMatch) return;
-            const pdfPath = decodeURIComponent(pathMatch[1]);
-            const cacheKey = `${pdfPath}#p${page}`; // 缓存按页区分
-            // 缓存: 同 PDF 同页只 OCR 一次, 后续划词直接复用(不卡)
-            if (ocrCacheRef.current[cacheKey]) {
-              diagLog(`⑦OCR缓存命中 (${ocrCacheRef.current[cacheKey].length}字)`);
-              setTranslate({ snippet: ocrCacheRef.current[cacheKey].slice(0, 3000), x: clientX, y: clientY });
-              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-              setAiResult(null);
-              setAiError("");
-              setAiQuestion("");
-              return;
-            }
-            // 去重: 同 PDF 同页的 OCR 已在跑(mouseup+停顿双触发) → 跳过
-            if (ocrInFlightRef.current === cacheKey) {
-              diagLog("⑦OCR 已在跑, 跳过重复触发");
-              return;
-            }
-            ocrInFlightRef.current = cacheKey;
-            try {
-              setSelHint("正在 OCR 识别当前页…");
-              // OCR 期间先弹卡片显示"识别中", 完成后更新(不静默等待)
-              setTranslate({ snippet: "⏳ 正在 OCR 识别当前页…", x: clientX, y: clientY });
-              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-              setAiResult(null);
-              setAiError("");
-              setAiQuestion("");
-              // 单页 OCR: extractPages 提取当前页为单页 PDF → base64 → 后端 OCR
-              // 精确对页, 不再返回整篇内容
-              let pageBase64 = "";
-              try {
-                const pageObj = docRef.current?.pages?.[page - 1];
-                if (pageObj && engineRef.current) {
-                  const buf = await engineRef.current.extractPages(docRef.current, [page - 1]).toPromise();
-                  const bytes = new Uint8Array(buf);
-                  let bin = "";
-                  for (let i = 0; i < bytes.length; i += 0x8000) {
-                    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
-                  }
-                  pageBase64 = btoa(bin);
-                }
-              } catch { /* 单页提取失败走整篇 */ }
-              const r = await fetch("/api/p2o/ocr", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: pdfPath, pageBase64: pageBase64 || undefined })
-              }).then((x) => x.json());
-              if (r?.ok && r.content && r.content.length > 20) {
-                ocrCacheRef.current[cacheKey] = r.content;
-                diagLog(`⑦OCR成功 (${r.content.length}字, 单页=${!!pageBase64})`);
-                setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
-                setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-                setAiResult(null);
-                setAiError("");
-                setAiQuestion("");
-              } else {
-                const errMsg = typeof r?.error === "string" ? r.error : (r?.error?.message || JSON.stringify(r?.error || "无内容")).slice(0, 60);
-                diagLog(`⑦OCR失败: ${errMsg}`);
-                setTranslate({ snippet: `OCR 失败: ${errMsg}`, x: clientX, y: clientY });
-                setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-              }
-            } finally {
-              ocrInFlightRef.current = null;
-            }
-          } catch (err: any) {
-            diagLog(`⑦OCR异常: ${String(err?.message || err).slice(0, 60)}`);
-          }
-        })();
-      }
-      return;
-    }
-    setTranslate({ snippet, x: clientX, y: clientY });
-    diagLog(`⑥卡片弹出 (${snippet.length}字, ${lines.length}行)`);
-    // 卡片位置: 用选区中心对应的视口坐标(canvas 相对定位), 而非不可靠的 clientX/Y
-    // (停顿/onLeave 等路径传入的是 canvas 坐标, 直接当视口坐标用会定位到边缘)
-    setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-    setAiResult(null);
-    setAiError("");
-    setAiQuestion("");
-  };
+  // 文字选择完成 → 弹 AI 卡片（SelectionWatcher 在 EmbedPDF 内, 见文件底部）
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
-  /** 选区中心 → 视口坐标（canvas 上定位卡片用） */
-  const selectionCenterScreen = (s: Selection | null): { x: number; y: number } => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const rect = canvas.getBoundingClientRect();
-    const cx = s ? s.x + s.width / 2 : rect.width / 2;
-    const cy = s ? s.y + s.height / 2 : rect.height / 2;
-    return {
-      x: rect.left + (cx / canvas.width) * rect.width,
-      y: rect.top + (cy / canvas.height) * rect.height
-    };
-  };
-
-  /** 卡片位置钳制在视口内（上方优先: 鼠标下方放不下则翻到上方, Agentero 同款） */
+  /** 卡片位置钳制在视口内 */
   const clampCardPos = (p: { x: number; y: number }) => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const CARD_H = 340; // 卡片预估高度
+    const CARD_H = 340;
     let x = Math.max(8, Math.min(p.x, vw - 360));
     let y = p.y + 12;
-    // 下方空间不足 → 翻到鼠标上方
     if (y + CARD_H > vh - 8) y = Math.max(8, p.y - CARD_H - 12);
-    // 最终保险: 任何输入都不超出视口
     y = Math.max(8, Math.min(y, vh - CARD_H));
     return { x, y };
   };
 
-  /** 卡片拖拽: 标题栏按下记录偏移, 移动时更新位置 */
-  const onCardDragStart = (e: React.MouseEvent) => {
-    if (e.button !== 0 || !cardPos) return;
-    e.preventDefault();
-    cardDragRef.current = { dx: e.clientX - cardPos.x, dy: e.clientY - cardPos.y };
-    const onMove = (ev: MouseEvent) => {
-      if (!cardDragRef.current) return;
-      setCardPos(clampCardPos({ x: ev.clientX - cardDragRef.current.dx, y: ev.clientY - cardDragRef.current.dy }));
-    };
-    const onUp = () => {
-      cardDragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
-  /** 整页翻译（扫描件/特殊字体 PDF 划词无命中的兜底: extractText 全文翻译） */
-  const doPageTranslate = async () => {
-    if (pageTranslate.busy) return;
-    setPageTranslate({ busy: true });
-    try {
-      const full = pageTextsRef.current[page - 1] ?? "";
-      if (!full || full.length < 10) { setPageTranslate({ busy: false, error: "本页无可用文本层（可能为纯扫描图片）" }); return; }
-      const r = await api.translateSnippet({ snippet: full.slice(0, 3000) });
-      if (r?.ok) setPageTranslate({ busy: false, original: full.slice(0, 3000), translated: r.translated });
-      else setPageTranslate({ busy: false, error: r?.error || "翻译失败" });
-    } catch (err: any) {
-      setPageTranslate({ busy: false, error: String(err?.message || err).slice(0, 120) });
-    }
-  };
-
-  /** 划词 AI 动作（解释/总结/翻译/追问） */
   const doAiAction = async (action: "explain" | "summarize" | "translate" | "ask") => {
     if (!translate || aiBusy) return;
     if (action === "ask" && !aiQuestion.trim()) return;
@@ -645,135 +141,180 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     }
   };
 
-  /** 适应宽度: 按滚动容器宽度计算缩放（宽留 16px 边距, 50%–200% 限制） */
-  const fitToWidth = useCallback(() => {
-    const ps = pageSizeRef.current;
-    const cw = containerRef.current?.clientWidth;
-    if (!ps || !cw || cw <= 0) return;
-    fitWidthRef.current = true;
-    const fit = Math.min(2, Math.max(0.5, (cw - 16) / ps.width));
-    setZoom(fit);
-  }, []);
+  // 扫描件 OCR 兜底（单页 OCR: 前端无文本层时触发）
+  const ocrCacheRef = useRef<Record<string, string>>({});
+  const ocrInFlightRef = useRef<string | null>(null);
+  const triggerOcr = async () => {
+    try {
+      const pathMatch = source.match(/path=([^&]+)/);
+      if (!pathMatch) return;
+      const pdfPath = decodeURIComponent(pathMatch[1]);
+      const cacheKey = `${pdfPath}#p${currentPage}`;
+      if (ocrCacheRef.current[cacheKey]) {
+        setTranslate({ snippet: ocrCacheRef.current[cacheKey].slice(0, 3000), x: window.innerWidth / 2, y: window.innerHeight / 2 });
+        return;
+      }
+      if (ocrInFlightRef.current === cacheKey) return;
+      ocrInFlightRef.current = cacheKey;
+      try {
+        const r = await fetch("/api/p2o/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: pdfPath })
+        }).then((x) => x.json());
+        if (r?.ok && r.content && r.content.length > 20) {
+          ocrCacheRef.current[cacheKey] = r.content;
+          setTranslate({ snippet: r.content.slice(0, 3000), x: window.innerWidth / 2, y: window.innerHeight / 2 });
+        } else {
+          setTranslate({ snippet: `OCR 失败: ${r?.error || "无内容"}`, x: window.innerWidth / 2, y: window.innerHeight / 2 });
+        }
+      } finally {
+        ocrInFlightRef.current = null;
+      }
+    } catch (err: any) {
+      setTranslate({ snippet: `OCR 异常: ${String(err?.message || err).slice(0, 60)}`, x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    }
+  };
 
-  // 容器尺寸变化（侧栏拖宽/窗口缩放）→ 适宽模式下重新适配
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(() => {
-      if (fitWidthRef.current && status === "ready") fitToWidth();
-    });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [status, fitToWidth]);
-
-  // 手动缩放（+/-/适宽按钮）退出适宽模式
-  const manualZoom = (next: number) => { fitWidthRef.current = false; setZoom(next); };
+  /** 页面渲染（每页: RenderLayer 底图 + PagePointerProvider + SelectionLayer 文字选择）
+   *  容器尺寸 × 缩放(真实布局, 坐标正确), left:50%+translateX 水平居中 */
+  const renderPage = useCallback(({ pageIndex, width, height }: { pageIndex: number; width: number; height: number }) => {
+    const z = manualZoomLevel ?? 1;
+    return (
+      <div data-page-index={pageIndex} style={{ position: "relative", width: width * z, height: height * z, left: "50%", transform: "translateX(-50%)" }}>
+        <RenderLayer documentId={docId} pageIndex={pageIndex} scale={z} style={{ position: "absolute", inset: 0 }} />
+        <PagePointerProvider documentId={docId} pageIndex={pageIndex} style={{ position: "absolute", inset: 0 }}>
+          <SelectionLayer
+            documentId={docId}
+            pageIndex={pageIndex}
+            textStyle={{ background: "rgba(59, 130, 246, 0.25)" }}
+          />
+        </PagePointerProvider>
+      </div>
+    );
+  }, [docId, manualZoomLevel]);
 
   return (
-    // 根 h-full + 渲染区 absolute: 高度由父链约束(h-full), 内部滚动
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-muted/20">
-      {/* 工具栏: 页码/缩放/下载 */}
+      {/* 工具栏 */}
       <div className="relative z-10 flex items-center gap-2 border-b bg-card/80 px-3 py-1.5">
         <FileText className="h-3.5 w-3.5 text-emerald-600" />
         <span className="truncate text-[11px] font-medium">{fileName || "PDF 阅读"}</span>
-        <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700" title="PdfReader 版本(用于确认加载的是最新代码)">v4.2</span>
+        <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">v5.1</span>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" disabled={page <= 1 || status !== "ready"}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          <button type="button" disabled={status !== "ready" || total === 0}
+            onClick={() => goToPage(currentPage - 1)}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" /></button>
           <span className="min-w-[60px] text-center text-[10px]">
-            {status === "ready" ? `${page} / ${total}` : status === "loading" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "错误"}
+            {status === "ready" ? `${currentPage} / ${total || "?"}` : status === "loading" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "错误"}
           </span>
-          <button type="button" disabled={page >= total || status !== "ready"}
-            onClick={() => setPage((p) => Math.min(total, p + 1))}
+          <button type="button" disabled={status !== "ready" || total === 0}
+            onClick={() => goToPage(currentPage + 1)}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
           <div className="mx-1 h-4 w-px bg-border" />
-          <button type="button" disabled={status !== "ready"} onClick={() => manualZoom(Math.max(0.5, +(zoom - 0.25).toFixed(2)))}
+          <button type="button" disabled={!manualZoomLevel || manualZoomLevel <= 0.5}
+            onClick={manualZoomOut}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomOut className="h-3.5 w-3.5" /></button>
-          <span className="min-w-[34px] text-center text-[10px]">{Math.round(zoom * 100)}%</span>
-          <button type="button" disabled={status !== "ready"} onClick={() => manualZoom(Math.min(3, +(zoom + 0.25).toFixed(2)))}
+          <span className="min-w-[34px] text-center text-[10px]">{manualZoomLevel ? `${Math.round(manualZoomLevel * 100)}%` : "100%"}</span>
+          <button type="button" disabled={!!manualZoomLevel && manualZoomLevel >= 3}
+            onClick={manualZoomIn}
             className="rounded p-1 hover:bg-accent disabled:opacity-30"><ZoomIn className="h-3.5 w-3.5" /></button>
-          <button type="button"
-            disabled={status !== "ready" || !pageSizeRef.current}
-            onClick={fitToWidth}
-            className={cn("rounded border px-2 py-0.5 text-[10px] transition-colors",
-              fitWidthRef.current ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border text-muted-foreground hover:bg-accent")}
-            title="适应宽度（按容器宽度自动缩放）"
-          >
-            适宽
-          </button>
-          <div className="mx-1 h-4 w-px bg-border" />
-          <button type="button"
-            disabled={status !== "ready" || pageTranslate.busy}
-            onClick={() => void doPageTranslate()}
-            className="flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50"
-            title="翻译当前整页（扫描件/特殊字体 PDF 划词无命中时的兜底）"
-          >
-            {pageTranslate.busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-            翻译本页
-          </button>
           <a href={source} download={fileName} className="rounded p-1 hover:bg-accent" title="下载 PDF"><Download className="h-3.5 w-3.5" /></a>
         </div>
       </div>
-      {/* 渲染区: 划词选择（absolute: 填满根容器剩余空间, 内部滚动） */}
-      <div ref={containerRef} className="absolute inset-x-0 bottom-0 top-[41px] overflow-auto bg-muted/40 p-3">
+
+      {/* 渲染区 */}
+      <div ref={hostRef} className="relative min-h-0 flex-1 overflow-auto bg-muted/40">
         {status === "loading" && <div className="flex h-40 items-center justify-center text-[11px] text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> PDF 加载中…</div>}
         {status === "error" && <div className="rounded border border-red-500/30 bg-red-500/10 p-3 text-[11px] text-red-600">PDF 加载失败: {error}</div>}
-        {status === "ready" && (
-          <div className="relative inline-block">
-            {/* 划词引导提示 */}
-            {selHint && (
-              <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
-                {selHint}
-              </div>
-            )}
-            {/* 诊断日志条（划词事件流） */}
-            {diagLogs.length > 0 && (
-              <div className="mb-2 max-w-md rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-600">
-                {diagLogs.map((l, i) => <div key={i}>{l}</div>)}
-                <button type="button" onClick={() => setDiagLogs([])} className="mt-0.5 text-[9px] text-slate-400 hover:underline">清空诊断</button>
-              </div>
-            )}
-            {/* 不设 maxWidth: canvas 按渲染像素显示, 放大后由容器滚动 */}
-            {/* 划词事件用原生监听(useEffect 绑定): 不经过 React 合成事件, pointer capture 可靠 */}
-            <canvas
-              ref={canvasRef}
-              className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
-              style={{ cursor: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M16 2v28M2 16h28' stroke='%23dc2626' stroke-width='3'/><path d='M16 6v20M6 16h20' stroke='white' stroke-width='1'/></svg>\") 16 16, crosshair" }}
+        {engine && plugins && (
+          <EmbedPDF key={docId} engine={engine} plugins={plugins}>
+            <ScrollController
+              docId={docId}
+              onReady={(scrollToPage, currentPage, totalPages) => {
+                setScrollToPageFn(() => scrollToPage);
+                setCurrentPage((prev) => (prev === currentPage ? prev : currentPage));
+                setTotal((prev) => (prev === totalPages ? prev : totalPages));
+              }}
+              onPageChange={(page, totalPages) => {
+                // 值比较防无限循环(React 185)
+                setCurrentPage((prev) => (prev === page ? prev : page));
+                setTotal((prev) => (prev === totalPages ? prev : totalPages));
+              }}
             />
-            {/* 选区高亮 */}
-            {selection && (
-              <div className="pointer-events-none absolute border border-blue-500/70 bg-blue-400/25"
-                style={{
-                  left: `${(selection.x / (canvasRef.current?.width ?? 1)) * 100}%`,
-                  top: `${(selection.y / (canvasRef.current?.height ?? 1)) * 100}%`,
-                  width: `${(selection.width / (canvasRef.current?.width ?? 1)) * 100}%`,
-                  height: `${(selection.height / (canvasRef.current?.height ?? 1)) * 100}%`
-                }} />
-            )}
-          </div>
+            <SelectionWatcher
+              docId={docId}
+              hostRef={hostRef}
+              onSelect={(quote, anchor) => {
+                // 选区有文本 → 直接弹卡; 空文本(扫描件) → OCR 兜底
+                if (quote && quote.length >= 2) {
+                  setTranslate({ snippet: quote.slice(0, 3000), x: anchor.x, y: anchor.y });
+                  setCardPos(clampCardPos(anchor));
+                  setAiResult(null);
+                  setAiError("");
+                  setAiQuestion("");
+                } else {
+                  // 扫描件: 触发单页 OCR
+                  setTranslate({ snippet: "⏳ 正在 OCR 识别当前页…", x: anchor.x, y: anchor.y });
+                  setCardPos(clampCardPos(anchor));
+                  void triggerOcr();
+                }
+              }}
+              onClear={() => setTranslate(null)}
+            />
+            <DocumentContent documentId={docId}>
+              {({ isLoaded, documentState }) => {
+                if (!isLoaded) {
+                  return <div className="flex h-40 items-center justify-center text-[11px] text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> 文档加载中…</div>;
+                }
+                setStatus("ready");
+                // 从 documentState 拿页数
+                const pageCount = documentState?.document?.pages?.length;
+                if (pageCount && pageCount !== total) setTotal(pageCount);
+                return (
+                  <Scroller documentId={docId} renderPage={renderPage} data-scroller style={{ height: "100%" }} />
+                );
+              }}
+            </DocumentContent>
+          </EmbedPDF>
         )}
-        {/* 划词 AI 卡片（fixed: 固定位置不随鼠标消失; 标题栏可拖动; 右下角可拉伸） */}
-        {translate && status === "ready" && (
-          <div className="fixed z-50 flex w-[340px] max-w-[90vw] resize flex-col overflow-hidden rounded-lg border bg-card shadow-2xl"
-            style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
-            {/* 可拖动标题栏 */}
-            <div
-              onMouseDown={onCardDragStart}
-              className="mb-1.5 flex cursor-move select-none items-center justify-between border-b border-border/60 px-3 pb-1.5 pt-2"
-              title="按住拖动"
-            >
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-                <Languages className="h-3.5 w-3.5" /> AI 阅读助手（{translate.snippet.length} 字）
-              </span>
-              <button type="button" onClick={() => setTranslate(null)} className="rounded p-0.5 text-muted-foreground hover:bg-accent">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <div className="px-3">
+      </div>
+
+      {/* AI 卡片 */}
+      {translate && (
+        <div className="fixed z-50 flex w-[340px] max-w-[90vw] resize flex-col overflow-hidden rounded-lg border bg-card shadow-2xl"
+          style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
+          <div
+            onMouseDown={(e) => {
+              if (e.button !== 0 || !cardPos) return;
+              e.preventDefault();
+              cardDragRef.current = { dx: e.clientX - cardPos.x, dy: e.clientY - cardPos.y };
+              const onMove = (ev: MouseEvent) => {
+                if (!cardDragRef.current) return;
+                setCardPos(clampCardPos({ x: ev.clientX - cardDragRef.current.dx, y: ev.clientY - cardDragRef.current.dy }));
+              };
+              const onUp = () => {
+                cardDragRef.current = null;
+                window.removeEventListener("mousemove", onMove);
+                window.removeEventListener("mouseup", onUp);
+              };
+              window.addEventListener("mousemove", onMove);
+              window.addEventListener("mouseup", onUp);
+            }}
+            className="mb-1.5 flex cursor-move select-none items-center justify-between border-b border-border/60 px-3 pb-1.5 pt-2"
+            title="按住拖动"
+          >
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
+              <Languages className="h-3.5 w-3.5" /> AI 阅读助手（{translate.snippet.length} 字）
+            </span>
+            <button type="button" onClick={() => setTranslate(null)} className="rounded p-0.5 text-muted-foreground hover:bg-accent">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="px-3">
             <div className="max-h-64 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
               {translate.snippet.slice(0, 3000)}{translate.snippet.length > 3000 ? "…" : ""}
             </div>
-            {/* 动作按钮: 解释 / 总结 / 翻译 */}
             <div className="mt-2 grid grid-cols-3 gap-1.5">
               <button type="button" onClick={() => void doAiAction("explain")} disabled={!!aiBusy}
                 className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50">
@@ -788,7 +329,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 {aiBusy === "translate" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "翻译"}
               </button>
             </div>
-            {/* 追问输入 */}
             <div className="mt-2 flex gap-1.5">
               <input
                 value={aiQuestion}
@@ -802,7 +342,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 {aiBusy === "ask" ? <Loader2 className="h-3 w-3 animate-spin" /> : "问"}
               </button>
             </div>
-            {/* AI 结果 */}
             {aiResult && (
               <div className="mt-2 max-h-64 overflow-y-auto rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
                 <div className="mb-1 text-[10px] font-semibold text-blue-600">
@@ -818,41 +357,114 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
                 关闭
               </button>
             )}
-            </div>
           </div>
-        )}
-        {/* 整页翻译结果（扫描件兜底, canvas 下方并排对照） */}
-        {(pageTranslate.busy || pageTranslate.translated || pageTranslate.error) && status === "ready" && (
-          <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-card/90 p-3">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-                <Languages className="h-3.5 w-3.5" /> 整页翻译（第 {page} 页）
-              </span>
-              <button type="button" onClick={() => setPageTranslate({ busy: false })} className="rounded p-0.5 text-muted-foreground hover:bg-accent">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            {pageTranslate.busy && (
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> 翻译中…（长文可能需数十秒）
-              </div>
-            )}
-            {pageTranslate.original && (
-              <div className="max-h-32 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
-                {pageTranslate.original}
-              </div>
-            )}
-            {pageTranslate.translated && (
-              <div className="max-h-48 overflow-y-auto rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
-                {pageTranslate.translated}
-              </div>
-            )}
-            {pageTranslate.error && (
-              <div className="rounded border border-red-500/20 bg-red-500/10 p-2 text-[11px] text-red-600">{pageTranslate.error}</div>
-            )}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** useMemo 兼容 */
+function useMemo2<T>(factory: () => T, deps: any[]): T | null {
+  const ref = useRef<{ v: T; d: any[] } | null>(null);
+  if (!ref.current || deps.some((d, i) => d !== ref.current!.d[i])) {
+    ref.current = { v: factory(), d: deps };
+  }
+  return ref.current!.v;
+}
+
+/** 翻页控制器（必须在 EmbedPDF provider 内调用 useScroll） */
+function ScrollController({
+  docId,
+  onReady,
+  onPageChange
+}: {
+  docId: string;
+  onReady: (scrollToPage: (p: number) => void, currentPage: number, totalPages: number) => void;
+  onPageChange: (page: number, totalPages: number) => void;
+}) {
+  const { provides } = useScroll(docId);
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    if (!provides) return;
+    // onReady 只调用一次(provides 每次渲染都是新引用, 直接依赖会死循环)
+    if (!readyRef.current) {
+      readyRef.current = true;
+      onReady(
+        (p: number) => provides.scrollToPage({ pageNumber: p }),
+        provides.getCurrentPage(),
+        provides.getTotalPages()
+      );
+    }
+    return provides.onPageChange((event) => {
+      onPageChange(event.pageNumber, event.totalPages);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provides, docId]);
+
+  return null;
+}
+
+/** 文字选择监听（必须在 EmbedPDF provider 内调用 useSelectionCapability） */
+function SelectionWatcher({
+  docId,
+  hostRef,
+  onSelect,
+  onClear
+}: {
+  docId: string;
+  hostRef: React.RefObject<HTMLDivElement | null>;
+  onSelect: (quote: string, anchor: { x: number; y: number }) => void;
+  onClear: () => void;
+}) {
+  const { provides: selectionCap } = useSelectionCapability();
+  const capRef = useRef(selectionCap);
+
+  useEffect(() => {
+    // selectionCap 每次渲染可能是新引用 → 用 ref 稳定化, 只订阅一次
+    if (selectionCap && !capRef.current) capRef.current = selectionCap;
+    const cap = capRef.current;
+    if (!cap) return;
+    const scope = cap.forDocument(docId);
+    if (!scope) return;
+    const offEnd = scope.onEndSelection(() => {
+      const pages = scope.getFormattedSelection();
+      if (!pages.length) return;
+      void (async () => {
+        let quote = "";
+        try {
+          const lines = await scope.getSelectedText().toPromise();
+          quote = (lines ?? []).join(" ").replace(/\s+/g, " ").trim();
+        } catch { /* best effort */ }
+        if (!quote || quote.length < 2) return;
+        // 卡片定位: 选区中心
+        const first = pages[0];
+        const pageEl = hostRef.current?.querySelector(`[data-page-index="${first.pageIndex}"]`) as HTMLElement | null;
+        let anchor = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        if (pageEl && first.rect) {
+          const pr = pageEl.getBoundingClientRect();
+          const rx = first.rect.origin.x;
+          const ry = first.rect.origin.y;
+          const rw = first.rect.size.width;
+          const rh = first.rect.size.height;
+          const selRect = {
+            left: pr.left + rx * (pr.width / 100),
+            top: pr.top + ry * (pr.height / 100),
+            width: rw * (pr.width / 100),
+            height: rh * (pr.height / 100)
+          };
+          anchor = { x: selRect.left + selRect.width / 2, y: selRect.top + selRect.height / 2 };
+        }
+        onSelect(quote, anchor);
+      })();
+    });
+    const offChange = scope.onSelectionChange((sel) => {
+      if (!sel) onClear();
+    });
+    return () => { offEnd(); offChange(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]); // 只订阅一次, 不依赖 selectionCap(新引用)
+
+  return null;
 }
