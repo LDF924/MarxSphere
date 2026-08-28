@@ -78,6 +78,7 @@ import { TaskPanel } from "./components/TaskPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板级错误边界
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
 import { StructurePanel } from "./components/StructurePanel";
+import { LearnerPanel } from "./components/LearnerPanel";
 import { AgentConsole } from "./components/AgentConsole";
 import { P2OView } from "./components/P2OView";
 import { CJournalPanel } from "./components/CJournalPanel";
@@ -117,7 +118,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "learner";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -540,7 +541,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "learner"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -2015,6 +2016,10 @@ function AppShell() {
               <ScenariosPanel onChangeView={(view) => navigateView(view)} />
             ) : workspaceView === "education" ? (
               <EducationWorkspacePanel />
+            ) : workspaceView === "learner" ? (
+              <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+                <ErrorBoundary><LearnerPanel /></ErrorBoundary>
+              </section>
             ) : workspaceView === "graphiti-ingest" ? (
               <EngineIngestPanel engine="graphiti" />
             ) : workspaceView === "cognee-ingest" ? (
@@ -2503,6 +2508,7 @@ function MainWorkspaceTabs(props: {
         { value: "sciverse", label: t("外部检索", "Sciverse") },
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
+        { value: "learner", label: t("学习者画像", "Learner") },        // 2026-08-29: Inno Agent 学习引擎前端
         { value: "empirical-research", label: t("实证研究", "Empirical") },
         { value: "jupyter", label: t("Notebook 工作台", "Notebook") },   // 2026-08-27: 轻量 notebook (ScienceX 通用计算)
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
