@@ -483,38 +483,54 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             const pathMatch = source.match(/path=([^&]+)/);
             if (!pathMatch) return;
             const pdfPath = decodeURIComponent(pathMatch[1]);
-            // 缓存: 同 PDF 只 OCR 一次, 后续划词直接复用(不卡)
-            if (ocrCacheRef.current[pdfPath]) {
-              diagLog(`⑦OCR缓存命中 (${ocrCacheRef.current[pdfPath].length}字)`);
-              setTranslate({ snippet: ocrCacheRef.current[pdfPath].slice(0, 3000), x: clientX, y: clientY });
+            const cacheKey = `${pdfPath}#p${page}`; // 缓存按页区分
+            // 缓存: 同 PDF 同页只 OCR 一次, 后续划词直接复用(不卡)
+            if (ocrCacheRef.current[cacheKey]) {
+              diagLog(`⑦OCR缓存命中 (${ocrCacheRef.current[cacheKey].length}字)`);
+              setTranslate({ snippet: ocrCacheRef.current[cacheKey].slice(0, 3000), x: clientX, y: clientY });
               setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
               setAiResult(null);
               setAiError("");
               setAiQuestion("");
               return;
             }
-            // 去重: 同 PDF 的 OCR 已在跑(mouseup+停顿双触发) → 跳过
-            if (ocrInFlightRef.current === pdfPath) {
+            // 去重: 同 PDF 同页的 OCR 已在跑(mouseup+停顿双触发) → 跳过
+            if (ocrInFlightRef.current === cacheKey) {
               diagLog("⑦OCR 已在跑, 跳过重复触发");
               return;
             }
-            ocrInFlightRef.current = pdfPath;
+            ocrInFlightRef.current = cacheKey;
             try {
-              setSelHint("正在 OCR 识别（首次约 30-60 秒，后续秒开）…");
+              setSelHint("正在 OCR 识别当前页…");
               // OCR 期间先弹卡片显示"识别中", 完成后更新(不静默等待)
-              setTranslate({ snippet: "⏳ 正在 OCR 识别该 PDF…（首次约 30-60 秒）", x: clientX, y: clientY });
+              setTranslate({ snippet: "⏳ 正在 OCR 识别当前页…", x: clientX, y: clientY });
               setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
               setAiResult(null);
               setAiError("");
               setAiQuestion("");
+              // 单页 OCR: extractPages 提取当前页为单页 PDF → base64 → 后端 OCR
+              // 精确对页, 不再返回整篇内容
+              let pageBase64 = "";
+              try {
+                const pageObj = docRef.current?.pages?.[page - 1];
+                if (pageObj && engineRef.current) {
+                  const buf = await engineRef.current.extractPages(docRef.current, [page - 1]).toPromise();
+                  const bytes = new Uint8Array(buf);
+                  let bin = "";
+                  for (let i = 0; i < bytes.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
+                  }
+                  pageBase64 = btoa(bin);
+                }
+              } catch { /* 单页提取失败走整篇 */ }
               const r = await fetch("/api/p2o/ocr", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: pdfPath })
+                body: JSON.stringify({ path: pdfPath, pageBase64: pageBase64 || undefined })
               }).then((x) => x.json());
               if (r?.ok && r.content && r.content.length > 20) {
-                ocrCacheRef.current[pdfPath] = r.content;
-                diagLog(`⑦OCR成功 (${r.content.length}字)`);
+                ocrCacheRef.current[cacheKey] = r.content;
+                diagLog(`⑦OCR成功 (${r.content.length}字, 单页=${!!pageBase64})`);
                 setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
                 setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
                 setAiResult(null);
