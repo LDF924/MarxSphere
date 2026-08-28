@@ -3726,6 +3726,36 @@ export function buildHttpServer() {
     return await acpService.runExternalAgent(body.task, body.context);
   });
 
+  // ───── Agent 管理（2026-08-29, Agentero 对照: 支持快速安装、配置、卸载 Agent）─────
+  // GET /api/byoa/agent-status — 运行状态(进程/配置/命令)
+  app.get("/api/byoa/agent-status", async () => {
+    const { acpService } = await import("../services/acp-service.js");
+    return acpService.agentStatus();
+  });
+
+  // POST /api/byoa/agent/start — 启动 Agent 进程
+  app.post("/api/byoa/agent/start", async () => {
+    const { acpService } = await import("../services/acp-service.js");
+    return acpService.startAgent();
+  });
+
+  // POST /api/byoa/agent/stop — 停止 Agent 进程
+  app.post("/api/byoa/agent/stop", async () => {
+    const { acpService } = await import("../services/acp-service.js");
+    return acpService.stopAgent();
+  });
+
+  // POST /api/byoa/agent/test — 测试连接(发 initialize 请求)
+  app.post("/api/byoa/agent/test", async () => {
+    const { acpService } = await import("../services/acp-service.js");
+    try {
+      const r = await acpService.acpRequest("initialize", { protocolVersion: "2024-11-05" }, 15_000);
+      return { ok: true, result: r };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message || e).slice(0, 200) };
+    }
+  });
+
   // ───── 双链笔记 + 知识图谱（2026-08-27, Agentero 对照）─────
   // GET /api/notes — 笔记列表
   app.get("/api/notes", async (request) => {
@@ -3818,6 +3848,80 @@ export function buildHttpServer() {
     return await paperSourceService.importPaper(body.paper, body.sourceId);
   });
 
+  // ───── Cool Papers / 魔搭导入（2026-08-29, Agentero 对照: 软件内浏览 Cool Papers 并导入文献）─────
+  // GET /api/papers/coolpapers/topics — 可用主题列表
+  app.get("/api/papers/coolpapers/topics", async () => {
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    return { topics: paperSourceService.coolPapersTopics() };
+  });
+
+  // GET /api/papers/coolpapers?topic=cs.AI&max=20 — Cool Papers 每日精选
+  app.get("/api/papers/coolpapers", async (request) => {
+    const q = request.query as { topic?: string; max?: string };
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    return { papers: await paperSourceService.fetchCoolPapers(q.topic || "cs.AI", Math.min(50, Math.max(1, Number(q.max) || 20))) };
+  });
+
+  // GET /api/papers/modelscope/status — 魔搭站点可达性
+  app.get("/api/papers/modelscope/status", async () => {
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    return await paperSourceService.modelscopeReachable();
+  });
+
+  // POST /api/papers/modelscope/import — 魔搭链接导入 {sourceId, url}
+  app.post("/api/papers/modelscope/import", async (request, reply) => {
+    const body = z.object({ sourceId: z.string().uuid(), url: z.string().url().max(500) }).parse(request.body);
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    const paper = await paperSourceService.fetchModelScopeLink(body.url);
+    if (!paper) return reply.code(400).send({ error: { code: "FETCH_FAILED", message: "无法解析魔搭链接, 请确认链接可访问" } });
+    return await paperSourceService.importPaper(paper, body.sourceId);
+  });
+
+  // ───── 论文结构解析（2026-08-29, Agentero 对照: 解析论文中的图/表/公式/算法并结合上下文理解）─────
+  // POST /api/papers/structure — 从文本定位图表公式算法 {content}
+  app.post("/api/papers/structure", async (request) => {
+    const body = z.object({ content: z.string().min(10).max(1_000_000) }).parse(request.body);
+    const { paperStructureService } = await import("../services/paper-structure-service.js");
+    return { overview: paperStructureService.structureOverview(body.content) };
+  });
+
+  // POST /api/papers/structure/explain — 对单个块生成理解摘要 {block}
+  app.post("/api/papers/structure/explain", async (request) => {
+    const body = z.object({
+      block: z.object({
+        kind: z.enum(["figure", "table", "formula", "algorithm"]),
+        label: z.string(), content: z.string().max(2000),
+        contextBefore: z.string().max(300), contextAfter: z.string().max(300),
+      }),
+    }).parse(request.body);
+    const { paperStructureService } = await import("../services/paper-structure-service.js");
+    return await paperStructureService.explainBlock(body.block);
+  });
+
+  // POST /api/papers/links — arXiv/alphaXiv 跳转链接解析 {arxivId?, doi?, title?}
+  app.post("/api/papers/links", async (request) => {
+    const body = z.object({
+      arxivId: z.string().max(100).optional(),
+      doi: z.string().max(200).optional(),
+      title: z.string().max(300).optional(),
+    }).parse(request.body);
+    const { paperSourceService } = await import("../services/paper-source-service.js");
+    return { links: paperSourceService.resolvePaperLinks(body) };
+  });
+
+  // ───── 引用库文献→查找新文献（2026-08-29, Agentero 对照: 一键查找引用库文献的新文献）─────
+  // GET /api/papers/discover?sourceId=&maxSeeds=3 — 以库中文献为种子找新文献(OpenAlex 引用)
+  app.get("/api/papers/discover", async (request) => {
+    const q = request.query as { sourceId?: string; maxSeeds?: string; maxPerSeed?: string };
+    const { citationDiscoveryService } = await import("../services/citation-discovery-service.js");
+    const candidates = await citationDiscoveryService.discoverNewPapers(
+      q.sourceId && /^[0-9a-f-]{36}$/i.test(q.sourceId) ? q.sourceId : null,
+      Math.min(5, Math.max(1, Number(q.maxSeeds) || 3)),
+      Math.min(10, Math.max(1, Number(q.maxPerSeed) || 6))
+    );
+    return { candidates, seeds: await citationDiscoveryService.getSeedTitles(q.sourceId && /^[0-9a-f-]{36}$/i.test(q.sourceId) ? q.sourceId : null, 5) };
+  });
+
   // ───── Zotero 集成（2026-08-27, Agentero 对照: Zotero 生态衔接）─────
   // POST /api/zotero/import — 导入 Zotero 书库到项目 {sourceId}
   app.post("/api/zotero/import", async (request, reply) => {
@@ -3829,6 +3933,23 @@ export function buildHttpServer() {
     } catch (e: any) {
       return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message || e).slice(0, 200) } });
     }
+  });
+
+  // POST /api/zotero/plugin-import — 浏览器插件/书签导入（2026-08-29, Agentero 对照）
+  // 兼容 Zotero 浏览器插件 translators 输出: {items: [{title, creators, DOI, url, date, abstractNote, tags}]}
+  app.post("/api/zotero/plugin-import", async (request, reply) => {
+    const body = z.object({
+      sourceId: z.string().uuid(),
+      items: z.array(z.object({
+        title: z.string().optional(), creators: z.array(z.object({ firstName: z.string().optional(), lastName: z.string().optional(), name: z.string().optional() })).optional(),
+        date: z.string().optional(), DOI: z.string().optional(), url: z.string().optional(), abstractNote: z.string().optional(),
+        tags: z.array(z.union([z.object({ tag: z.string().optional() }), z.string()])).optional(),
+        itemType: z.string().optional(),
+      })).min(1).max(200),
+    }).parse(request.body);
+    const { zoteroService } = await import("../services/zotero-service.js");
+    const r = await zoteroService.importFromBrowserPlugin(body.items, body.sourceId);
+    return { ok: true, imported: r.imported, skipped: r.skipped };
   });
 
   // GET /api/zotero/export — 导出 BibTeX（可选 sourceId 过滤）
@@ -6443,6 +6564,31 @@ except Exception as e:
     const q = request.query as { status?: string };
     const { agentSkillDistillService } = await import("../services/agent-skill-distill.js");
     return { skills: await agentSkillDistillService.listSkills(q.status) };
+  });
+
+  // ───── Skill 导入（2026-08-29, Agentero 对照: 支持 Skill 导入）─────
+  // GET /api/agent/skills/installed — 已安装技能(目录含 SKILL.md)
+  app.get("/api/agent/skills/installed", async () => {
+    const { skillImportService } = await import("../services/skill-import-service.js");
+    return { skills: skillImportService.listInstalledSkills(), home: skillImportService.SKILLS_HOME };
+  });
+
+  // POST /api/agent/skills/import — 从本地路径导入 {sourcePath}
+  app.post("/api/agent/skills/import", async (request, reply) => {
+    const body = z.object({ sourcePath: z.string().min(1).max(1000) }).parse(request.body);
+    const { skillImportService } = await import("../services/skill-import-service.js");
+    const r = skillImportService.importSkillPackage(body.sourcePath);
+    if (!r.ok) return reply.code(400).send({ error: { code: "IMPORT_FAILED", message: r.error } });
+    return { ok: true, name: r.name };
+  });
+
+  // POST /api/agent/skills/:name/remove — 卸载技能
+  app.post("/api/agent/skills/:name/remove", async (request, reply) => {
+    const params = request.params as { name: string };
+    const { skillImportService } = await import("../services/skill-import-service.js");
+    const r = skillImportService.removeSkillPackage(params.name);
+    if (!r.ok) return reply.code(400).send({ error: { code: "REMOVE_FAILED", message: r.error } });
+    return { ok: true };
   });
   app.post("/api/agent/skills/distill", async (request) => {
     const body = request.body as { taskId?: string; goal?: string; result?: string; toolsUsed?: string[] };

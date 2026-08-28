@@ -57,6 +57,23 @@ export function ImportsPanel() {
     setBusy(null);
   };
 
+  // ── 浏览器插件导入（2026-08-29, Agentero 对照）──
+  const [pluginJson, setPluginJson] = useState("");
+
+  const importPluginJson = async () => {
+    let items: any[];
+    try {
+      const parsed = JSON.parse(pluginJson.trim());
+      items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+    } catch { tell("err", "JSON 解析失败，请检查格式"); return; }
+    if (!items.length) { tell("err", "未找到文献条目"); return; }
+    setBusy("plugin");
+    const r = await call("/api/zotero/plugin-import", { method: "POST", body: JSON.stringify({ sourceId, items }) });
+    r?.ok ? tell("ok", `插件导入完成：${r.imported} 篇${r.skipped ? `（跳过 ${r.skipped}）` : ""}`)
+          : tell("err", r?.error?.message || "导入失败");
+    setBusy(null);
+  };
+
   const searchPapers = async () => {
     if (!searchQ.trim()) return;
     setBusy("search");
@@ -70,6 +87,56 @@ export function ImportsPanel() {
     setBusy(`import-${p.externalId}`);
     const r = await call("/api/papers/import", { method: "POST", body: JSON.stringify({ sourceId, paper: p }) });
     r?.imported ? tell("ok", `已导入「${p.title.slice(0, 40)}」`) : tell("info", r?.reason === "已存在" ? "这篇已在库中" : "导入失败");
+    setBusy(null);
+  };
+
+  // ── Cool Papers / 魔搭（2026-08-29, Agentero 对照）──
+  const [cpTopic, setCpTopic] = useState("cs.AI");
+  const [cpTopics, setCpTopics] = useState<Array<{ id: string; name: string }>>([]);
+  const [cpPapers, setCpPapers] = useState<PaperHit[]>([]);
+  const [msUrl, setMsUrl] = useState("");
+  const [msStatus, setMsStatus] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  const loadCpTopics = async () => {
+    const r = await call("/api/papers/coolpapers/topics");
+    if (r?.topics?.length) setCpTopics(r.topics);
+  };
+  useEffect(() => { void loadCpTopics(); }, []);
+
+  const fetchCoolPapers = async () => {
+    setBusy("coolpapers");
+    const r = await call(`/api/papers/coolpapers?topic=${encodeURIComponent(cpTopic)}&max=20`);
+    setCpPapers(r?.papers || []);
+    r?.papers?.length ? tell("ok", `Cool Papers 精选（${cpTopic}）：${r.papers.length} 篇`) : tell("info", "无结果（网络受限？）");
+    setBusy(null);
+  };
+
+  const importModelScope = async () => {
+    if (!msUrl.trim()) return;
+    setBusy("ms-import");
+    const r = await call("/api/papers/modelscope/import", { method: "POST", body: JSON.stringify({ sourceId, url: msUrl.trim() }) });
+    r?.imported ? tell("ok", "魔搭文献已导入") : tell("err", r?.error?.message || "导入失败");
+    setBusy(null);
+  };
+
+  const checkModelScope = async () => {
+    setBusy("ms-check");
+    const r = await call("/api/papers/modelscope/status");
+    setMsStatus(r || { ok: false });
+    r?.ok ? tell("ok", "魔搭站点可访问") : tell("info", "魔搭站点不可达（网络受限？）");
+    setBusy(null);
+  };
+
+  // ── 引用发现（2026-08-29, Agentero 对照: 一键查找引用库文献的新文献）──
+  const [discovered, setDiscovered] = useState<Array<{ title: string; authors: string[]; year?: number; doi?: string; url?: string; citedByCount?: number; abstract?: string }>>([]);
+  const [discoverSeeds, setDiscoverSeeds] = useState<string[]>([]);
+
+  const discoverPapers = async () => {
+    setBusy("discover");
+    const r = await call(`/api/papers/discover?sourceId=${encodeURIComponent(sourceId || "")}&maxSeeds=3&maxPerSeed=6`);
+    setDiscovered(r?.candidates || []);
+    setDiscoverSeeds(r?.seeds || []);
+    r?.candidates?.length ? tell("ok", `发现 ${r.candidates.length} 篇新文献（基于库中 ${(r.seeds || []).length} 篇种子）`) : tell("info", "未发现新文献（网络受限？）");
     setBusy(null);
   };
 
@@ -182,6 +249,20 @@ export function ImportsPanel() {
             </a>
             <span className="ml-auto text-[9px] text-muted-foreground">{zoteroStatus?.connected ? `${zoteroStatus.itemCount} 条可导入` : "需 Zotero 桌面运行"}</span>
           </div>
+          {/* 2026-08-29 Agentero 对照: 浏览器插件导入 — 粘贴插件/书签导出的文献 JSON */}
+          <div className="mt-2 border-t border-border/40 pt-2">
+            <div className="mb-1 text-[9px] font-medium text-muted-foreground">浏览器插件导入（Zotero 插件 / 书签导出 JSON 粘贴）</div>
+            <div className="flex gap-2">
+              <textarea value={pluginJson} onChange={(e) => setPluginJson(e.target.value)}
+                placeholder={'粘贴文献 JSON：\n[{"title":"…","creators":[{"lastName":"…"}],"DOI":"10.…","date":"2024","url":"…"}]'}
+                className="h-16 min-w-0 flex-1 resize-y rounded-lg border bg-background/60 p-2 font-mono text-[10px] outline-none" />
+              <button type="button" onClick={() => void importPluginJson()} disabled={!!busy || !pluginJson.trim() || !sourceId}
+                className="flex shrink-0 items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-700 hover:bg-blue-500/20 disabled:opacity-40">
+                {busy === "plugin" ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                导入
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* S3 + SSH 合并 */}
@@ -254,6 +335,109 @@ export function ImportsPanel() {
                   {paperExpanded === i && p.abstract && (
                     <p className="mt-1.5 border-t border-border/50 pt-1.5 text-[10px] leading-relaxed text-muted-foreground">{p.abstract.slice(0, 300)}…</p>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Cool Papers / 魔搭（2026-08-29, Agentero 对照: 软件内浏览并导入） */}
+        <div className="flex flex-col rounded-xl border bg-card/60 p-4 backdrop-blur-sm lg:col-span-2">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-sky-500/15"><Globe className="h-3.5 w-3.5 text-sky-600" /></div>
+            <div>
+              <div className="text-xs font-semibold">Cool Papers / 魔搭导入</div>
+              <div className="text-[9px] text-muted-foreground">arXiv 每日精选（Cool Papers）· 魔搭链接导入</div>
+            </div>
+            {busy === "coolpapers" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-sky-600" />}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={cpTopic} onChange={(e) => setCpTopic(e.target.value)}
+              className="rounded-lg border bg-background px-2 py-2 text-[11px] outline-none">
+              {cpTopics.map((t) => <option key={t.id} value={t.id}>{t.name}（{t.id}）</option>)}
+            </select>
+            <button type="button" onClick={() => void fetchCoolPapers()} disabled={!!busy}
+              className="rounded-lg bg-sky-600 px-3 py-2 text-[11px] font-medium text-white transition-all hover:bg-sky-700 disabled:opacity-40">
+              浏览精选
+            </button>
+            <div className="mx-1 h-5 w-px bg-border" />
+            <input value={msUrl} onChange={(e) => setMsUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void importModelScope()}
+              placeholder="魔搭(modelscope.cn)论文链接"
+              className="min-w-0 flex-1 rounded-lg border bg-background px-3 py-2 text-[11px] outline-none focus:border-sky-500/50" />
+            <button type="button" onClick={() => void importModelScope()} disabled={!!busy || !msUrl.trim()}
+              className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] font-medium text-sky-700 hover:bg-sky-500/20 disabled:opacity-40">
+              导入魔搭链接
+            </button>
+            <button type="button" onClick={() => void checkModelScope()} disabled={!!busy}
+              className="rounded-lg border px-2 py-2 text-[10px] text-muted-foreground hover:bg-accent disabled:opacity-40">
+              {msStatus === null ? "检测可达性" : msStatus.ok ? "✓ 可达" : "✗ 不可达"}
+            </button>
+          </div>
+          {cpPapers.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {cpPapers.map((p, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-lg border bg-muted/10 px-3 py-2 transition-colors hover:bg-muted/20">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-medium">{p.title}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
+                      <span className="rounded bg-sky-500/10 px-1 py-0.5 text-sky-700">Cool Papers</span>
+                      {(p.authors || []).slice(0, 3).join("、")}{p.authors?.length > 3 ? " 等" : ""}
+                      {p.year ? <span>· {p.year}</span> : null}
+                      {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">arXiv ↗</a> : null}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => void importPaper(p)} disabled={!!busy}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-500/20 disabled:opacity-40">
+                    {busy === `import-${p.externalId}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                    导入
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 引用发现（2026-08-29, Agentero 对照: 一键查找引用库文献的新文献） */}
+        <div className="flex flex-col rounded-xl border bg-card/60 p-4 backdrop-blur-sm lg:col-span-2">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-teal-500/15"><Search className="h-3.5 w-3.5 text-teal-600" /></div>
+            <div>
+              <div className="text-xs font-semibold">引用发现（新文献推荐）</div>
+              <div className="text-[9px] text-muted-foreground">以库中文献为种子 · OpenAlex 查引用它的近 5 年新文献 · 一键入库</div>
+            </div>
+            {busy === "discover" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-teal-600" />}
+            <button type="button" onClick={() => void discoverPapers()} disabled={!!busy}
+              className="ml-auto rounded-lg bg-teal-600 px-3 py-2 text-[11px] font-medium text-white transition-all hover:bg-teal-700 disabled:opacity-40">
+              {busy === "discover" ? "查找中…" : "查找新文献"}
+            </button>
+          </div>
+          {discoverSeeds.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1 text-[9px] text-muted-foreground">
+              <span>种子文献：</span>
+              {discoverSeeds.map((s, i) => <span key={i} className="rounded bg-teal-500/10 px-1 py-0.5 text-teal-700">{s.slice(0, 24)}{s.length > 24 ? "…" : ""}</span>)}
+            </div>
+          )}
+          {discovered.length > 0 && (
+            <div className="mt-1 space-y-1.5">
+              {discovered.map((p, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-lg border bg-muted/10 px-3 py-2 transition-colors hover:bg-muted/20">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] font-medium" title={p.title}>{p.title}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
+                      {(p.authors || []).slice(0, 3).join("、")}{p.authors?.length > 3 ? " 等" : ""}
+                      {p.year ? <span>· {p.year}</span> : null}
+                      {p.citedByCount != null ? <span>· 被引 {p.citedByCount}</span> : null}
+                      {p.doi ? <span className="font-mono">· {p.doi.slice(0, 24)}</span> : null}
+                      {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="text-teal-600 hover:underline">打开 ↗</a> : null}
+                    </div>
+                    {p.abstract && <div className="mt-1 text-[10px] leading-relaxed text-muted-foreground">{p.abstract.slice(0, 160)}…</div>}
+                  </div>
+                  <button type="button" onClick={() => void importPaper({ title: p.title, authors: p.authors, year: p.year, doi: p.doi, url: p.url, abstract: p.abstract, externalId: p.doi || `disc-${p.title.slice(0, 40)}`, source: "semanticscholar" as const })} disabled={!!busy}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-[10px] font-medium text-teal-700 hover:bg-teal-500/20 disabled:opacity-40">
+                    {busy === `import-${p.doi || p.title.slice(0, 30)}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                    导入
+                  </button>
                 </div>
               ))}
             </div>

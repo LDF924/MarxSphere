@@ -78,7 +78,7 @@ const DEMO_EVAL_HISTORY: any[] = [
 ];
 
 export const AgentConsole: FC = () => {
-  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills">("rules");
+  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent">("rules");
   // V392: 演示模式 — demo 数据填充三 tab（沙箱不调 API）
   const [demoOn, setDemoOn] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
@@ -137,7 +137,7 @@ export const AgentConsole: FC = () => {
     <section className="flex min-h-0 flex-1 flex-col">
       {/* tab 头 */}
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-4 py-2">
-        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"]] as const).map(([id, label]) => (
+        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"], ["agent", "Agent 管理"]] as const).map(([id, label]) => (
           <button key={id} type="button" aria-label={`切换到${label}标签页`} aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn("shrink-0 rounded-md px-3 py-1.5 text-xs transition-colors", tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
             {label}
@@ -170,6 +170,7 @@ export const AgentConsole: FC = () => {
           {tab === "tools" && <ToolsTab demoOn={demoOn} />}
           {tab === "episodic" && <EpisodicTab demoOn={demoOn} />}
           {tab === "skills" && <SkillsTab demoOn={demoOn} />}
+          {tab === "agent" && <AgentManageTab />}
         </div>
       </div>
     </section>
@@ -1916,6 +1917,43 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
   // 审计修复: 技能召回检索（跨任务复用蒸馏技能）
   const [recallQ, setRecallQ] = useState("");
   const [recallResults, setRecallResults] = useState<any[]>([]);
+  // 2026-08-29 Agentero 对照: Skill 导入/卸载
+  const [importPath, setImportPath] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+  const [installed, setInstalled] = useState<Array<{ name: string; hasHealthcheck: boolean }>>([]);
+
+  const loadInstalled = async () => {
+    try {
+      const r = await fetch("/api/agent/skills/installed");
+      const d = await r.json();
+      setInstalled(d.skills || []);
+    } catch { setInstalled([]); }
+  };
+  useEffect(() => { void loadInstalled(); }, []);
+
+  const doImportSkill = async () => {
+    if (!importPath.trim()) return;
+    setImportMsg("导入中…");
+    try {
+      const r = await fetch("/api/agent/skills/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcePath: importPath.trim() }),
+      });
+      const d = await r.json();
+      if (d.ok) { setImportMsg(`✅ 已导入技能「${d.name}」（~/.claude/skills/${d.name}）`); setImportPath(""); await loadInstalled(); }
+      else setImportMsg(`❌ ${d.error?.message || "导入失败"}`);
+    } catch (e: any) { setImportMsg(`❌ ${e.message || "导入失败"}`); }
+  };
+
+  const doRemoveSkill = async (name: string) => {
+    if (!confirm(`卸载技能「${name}」？`)) return;
+    try {
+      const r = await fetch(`/api/agent/skills/${encodeURIComponent(name)}/remove`, { method: "POST" });
+      const d = await r.json();
+      if (d.ok) { setImportMsg(`✅ 已卸载「${name}」`); await loadInstalled(); }
+      else setImportMsg(`❌ ${d.error?.message || "卸载失败"}`);
+    } catch (e: any) { setImportMsg(`❌ ${e.message || "卸载失败"}`); }
+  };
   const load = async () => {
     try {
       // G-demo: 演示模式用 DEMO_SKILLS 填充（沙箱不调 API）
@@ -1967,6 +2005,41 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
   };
   return (
     <div className="space-y-3">
+      {/* 2026-08-29 Agentero 对照: Skill 导入（本地路径 → ~/.claude/skills/） */}
+      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-indigo-300">
+          <Wrench className="h-3.5 w-3.5" /> Skill 导入 / 卸载
+          <span className="text-[9px] font-normal text-muted-foreground">从本地目录导入 SKILL.md 技能包 → ~/.claude/skills/</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={importPath} onChange={(e) => setImportPath(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void doImportSkill(); }}
+            placeholder="技能包路径，如 D:/skills/my-skill 或 …/SKILL.md"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-800 px-3 py-1.5 text-xs text-white outline-none" />
+          <button type="button" onClick={() => void doImportSkill()} disabled={!importPath.trim()}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40">
+            导入
+          </button>
+          <button type="button" onClick={() => void loadInstalled()}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent">
+            查看已安装
+          </button>
+        </div>
+        {importMsg && <div className="mt-1.5 text-[10px] text-indigo-300">{importMsg}</div>}
+        {installed.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[9px] text-muted-foreground">已安装：</span>
+            {installed.map((s) => (
+              <span key={s.name} className="flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-300">
+                {s.name}
+                {s.hasHealthcheck && <span title="含健康检查">✓</span>}
+                <button type="button" onClick={() => void doRemoveSkill(s.name)}
+                  className="text-indigo-400 hover:text-red-400" title="卸载">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <Wrench className="h-5 w-5 text-indigo-500" />
         <h2 className="text-lg font-semibold">技能库</h2>
@@ -2023,6 +2096,98 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══ Agent 管理 tab（2026-08-29, Agentero 对照: 支持快速安装、配置、卸载 Agent）═══
+function AgentManageTab() {
+  const [status, setStatus] = useState<{ running: boolean; configured: boolean; name: string; command: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [taskInput, setTaskInput] = useState("");
+  const [taskResult, setTaskResult] = useState("");
+
+  const refresh = async () => {
+    const r = await fetch("/api/byoa/agent-status").then((x) => x.json()).catch(() => null);
+    setStatus(r || { running: false, configured: false, name: "", command: "" });
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const act = async (action: "start" | "stop" | "test", label: string) => {
+    setBusy(action);
+    const r = await fetch(`/api/byoa/agent/${action}`, { method: "POST" }).then((x) => x.json()).catch(() => null);
+    setBusy(null);
+    if (r?.ok) setNotice({ type: "ok", text: `${label}成功` });
+    else setNotice({ type: "err", text: r?.error || `${label}失败` });
+    void refresh();
+  };
+
+  const runTask = async () => {
+    if (!taskInput.trim()) return;
+    setBusy("run");
+    const r = await fetch("/api/byoa/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task: taskInput }) }).then((x) => x.json()).catch(() => null);
+    setBusy(null);
+    r?.ok ? setTaskResult(String(r.result || "（无返回）").slice(0, 3000)) : setNotice({ type: "err", text: r?.error || "任务失败" });
+  };
+
+  return (
+    <div className="rounded-xl border bg-card/60 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="text-xs font-semibold">外部 Agent 管理（ACP）</div>
+        <span className={`ml-auto rounded px-1.5 py-0.5 text-[9px] ${status?.running ? "bg-green-100 text-green-700" : "bg-muted/40 text-muted-foreground"}`}>
+          {status?.running ? "运行中" : "未运行"}
+        </span>
+        <span className={`rounded px-1.5 py-0.5 text-[9px] ${status?.configured ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}>
+          {status?.configured ? "已配置" : "未配置"}
+        </span>
+      </div>
+      <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="rounded-lg bg-muted/20 p-2">
+          <div className="text-[9px] text-muted-foreground">Agent 名称</div>
+          <div className="truncate text-[12px] font-medium">{status?.name || "—"}</div>
+        </div>
+        <div className="rounded-lg bg-muted/20 p-2 md:col-span-2">
+          <div className="text-[9px] text-muted-foreground">启动命令（.env 配置 BYOA_AGENT_COMMAND / BYOA_AGENT_ARGS）</div>
+          <div className="truncate font-mono text-[11px]">{status?.command || "—"}</div>
+        </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => void act("start", "启动")} disabled={!!busy || status?.running}
+          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
+          {busy === "start" ? "启动中…" : "启动 Agent"}
+        </button>
+        <button type="button" onClick={() => void act("stop", "停止")} disabled={!!busy || !status?.running}
+          className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-40">
+          {busy === "stop" ? "停止中…" : "停止 Agent"}
+        </button>
+        <button type="button" onClick={() => void act("test", "连接测试")} disabled={!!busy}
+          className="rounded-lg border px-3 py-1.5 text-[11px] hover:bg-accent disabled:opacity-40">
+          {busy === "test" ? "测试中…" : "测试连接"}
+        </button>
+        <span className="text-[9px] text-muted-foreground">配置/卸载：编辑 .env 的 BYOA_* 变量后重启服务</span>
+      </div>
+      {notice && (
+        <div className={`mb-3 rounded border px-2 py-1 text-[10px] ${notice.type === "ok" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+          {notice.text}
+        </div>
+      )}
+      <div className="rounded-lg border bg-muted/10 p-3">
+        <div className="mb-1.5 text-[10px] font-medium text-muted-foreground">委派任务（写入/检索/整理工作流）</div>
+        <div className="flex gap-2">
+          <input value={taskInput} onChange={(e) => setTaskInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void runTask()}
+            placeholder="如：把这篇论文的要点整理成双链笔记"
+            className="min-w-0 flex-1 rounded-lg border bg-background px-3 py-2 text-[11px] outline-none" />
+          <button type="button" onClick={() => void runTask()} disabled={!!busy || !taskInput.trim() || !status?.running}
+            className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-40">
+            {busy === "run" ? "执行中…" : "执行"}
+          </button>
+        </div>
+        {taskResult && (
+          <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-background/60 p-2 text-[10px] leading-relaxed">{taskResult}</pre>
+        )}
       </div>
     </div>
   );

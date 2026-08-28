@@ -57,6 +57,30 @@ export function startAgent(): { ok: boolean; error?: string } {
   }
 }
 
+/** 停止外部 Agent 进程（2026-08-29, Agentero 对照: 支持卸载 Agent） */
+export function stopAgent(): { ok: boolean; error?: string } {
+  if (!agentProc || agentProc.killed) return { ok: true };
+  try {
+    agentProc.kill();
+    agentProc = null;
+    pending.clear();
+    buffer = "";
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e).slice(0, 150) };
+  }
+}
+
+/** Agent 运行状态 */
+export function agentStatus(): { running: boolean; configured: boolean; name: string; command: string } {
+  return {
+    running: !!agentProc && !agentProc.killed,
+    configured: byoaConfigured(),
+    name: AGENT_NAME,
+    command: AGENT_CMD ? `${AGENT_CMD} ${AGENT_ARGS.join(" ")}`.trim() : "",
+  };
+}
+
 /** 发送 JSON-RPC 请求到外部 Agent */
 export function acpRequest(method: string, params: Record<string, unknown> = {}, timeoutMs = 120_000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -108,6 +132,8 @@ export async function runExternalAgent(task: string, context?: string): Promise<
 export const acpService = {
   byoaConfigured,
   startAgent,
+  stopAgent,
+  agentStatus,
   acpRequest,
   runExternalAgent,
 };
