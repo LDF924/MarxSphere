@@ -11,7 +11,7 @@
 //              改用官方 zoom 插件 requestZoom(核心 scale 联动, 自动居中+滚动补偿)
 //   [高亮错位] SelectionLayer 传 scale, 缩放后高亮 rect 正确
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Loader2, Download, Languages, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText, Loader2, Download } from "lucide-react";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { DocumentManagerPluginPackage, DocumentContent } from "@embedpdf/plugin-document-manager/react";
@@ -23,6 +23,7 @@ import { ZoomPluginPackage, useZoom } from "@embedpdf/plugin-zoom/react";
 import { TilingPluginPackage } from "@embedpdf/plugin-tiling/react";
 import { InteractionManagerPluginPackage, PagePointerProvider } from "@embedpdf/plugin-interaction-manager/react";
 import { api } from "../lib/api";
+import { ReaderAiCard } from "./ReaderAiCard";
 
 // ── 划词光标: selection 插件 setCursor("text") 只在 global scope 应用, page scope 冻结 cursor:auto
 //   PagePointerProvider 还会在页面层上内联 cursor: auto 覆盖外层样式。
@@ -74,12 +75,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   };
 
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
-  const [aiBusy, setAiBusy] = useState<string | null>(null);
-  const [aiResult, setAiResult] = useState<{ action: string; text: string } | null>(null);
-  const [aiError, setAiError] = useState("");
-  const [aiQuestion, setAiQuestion] = useState("");
-  const [cardPos, setCardPos] = useState<{ x: number; y: number } | null>(null);
-  const cardDragRef = useRef<{ dx: number; dy: number } | null>(null);
 
   // 引擎(动态 import)
   const [engine, setEngine] = useState<any>(null);
@@ -117,42 +112,6 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   }, [engine, source]);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
-
-  /** 卡片位置钳制在视口内 */
-  const clampCardPos = (p: { x: number; y: number }) => {
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const CARD_H = 340;
-    let x = Math.max(8, Math.min(p.x, vw - 360));
-    let y = p.y + 12;
-    if (y + CARD_H > vh - 8) y = Math.max(8, p.y - CARD_H - 12);
-    y = Math.max(8, Math.min(y, vh - CARD_H));
-    return { x, y };
-  };
-
-  const doAiAction = async (action: "explain" | "summarize" | "translate" | "ask") => {
-    if (!translate || aiBusy) return;
-    if (action === "ask" && !aiQuestion.trim()) return;
-    setAiBusy(action);
-    setAiError("");
-    try {
-      const r = await api.readerAi({
-        action,
-        snippet: translate.snippet,
-        question: action === "ask" ? aiQuestion.trim() : undefined
-      });
-      if (r?.ok) {
-        setAiResult({ action, text: r.result ?? "" });
-        if (action === "ask") setAiQuestion("");
-      } else {
-        setAiError(r?.error || "AI 处理失败");
-      }
-    } catch (err: any) {
-      setAiError(String(err?.message || err).slice(0, 120));
-    } finally {
-      setAiBusy(null);
-    }
-  };
 
   // 扫描件 OCR 兜底(单页 OCR: 前端无文本层时触发)
   const ocrCacheRef = useRef<Record<string, string>>({});
@@ -274,13 +233,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               onSelect={(quote, anchor) => {
                 if (quote && quote.length >= 2) {
                   setTranslate({ snippet: quote.slice(0, 3000), x: anchor.x, y: anchor.y });
-                  setCardPos(clampCardPos(anchor));
-                  setAiResult(null);
-                  setAiError("");
-                  setAiQuestion("");
                 } else {
                   setTranslate({ snippet: "⏳ 正在 OCR 识别当前页…", x: anchor.x, y: anchor.y });
-                  setCardPos(clampCardPos(anchor));
                   void triggerOcr();
                 }
               }}
@@ -305,85 +259,14 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
         )}
       </div>
 
-      {/* AI 卡片 */}
+      {/* AI 卡片(共享组件) */}
       {translate && (
-        <div className="fixed z-50 flex w-[340px] max-w-[90vw] resize flex-col overflow-hidden rounded-lg border bg-card shadow-2xl"
-          style={cardPos ? { left: cardPos.x, top: cardPos.y } : { left: Math.min(translate.x, window.innerWidth - 360), top: Math.min(translate.y + 12, window.innerHeight - 360) }}>
-          <div
-            onMouseDown={(e) => {
-              if (e.button !== 0 || !cardPos) return;
-              e.preventDefault();
-              cardDragRef.current = { dx: e.clientX - cardPos.x, dy: e.clientY - cardPos.y };
-              const onMove = (ev: MouseEvent) => {
-                if (!cardDragRef.current) return;
-                setCardPos(clampCardPos({ x: ev.clientX - cardDragRef.current.dx, y: ev.clientY - cardDragRef.current.dy }));
-              };
-              const onUp = () => {
-                cardDragRef.current = null;
-                window.removeEventListener("mousemove", onMove);
-                window.removeEventListener("mouseup", onUp);
-              };
-              window.addEventListener("mousemove", onMove);
-              window.addEventListener("mouseup", onUp);
-            }}
-            className="mb-1.5 flex cursor-move select-none items-center justify-between border-b border-border/60 px-3 pb-1.5 pt-2"
-            title="按住拖动"
-          >
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-600">
-              <Languages className="h-3.5 w-3.5" /> AI 阅读助手（{translate.snippet.length} 字）
-            </span>
-            <button type="button" onClick={() => setTranslate(null)} className="rounded p-0.5 text-muted-foreground hover:bg-accent">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="px-3">
-            <div className="max-h-64 overflow-y-auto rounded bg-muted/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
-              {translate.snippet.slice(0, 3000)}{translate.snippet.length > 3000 ? "…" : ""}
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              <button type="button" onClick={() => void doAiAction("explain")} disabled={!!aiBusy}
-                className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50">
-                {aiBusy === "explain" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "解释"}
-              </button>
-              <button type="button" onClick={() => void doAiAction("summarize")} disabled={!!aiBusy}
-                className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50">
-                {aiBusy === "summarize" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "总结"}
-              </button>
-              <button type="button" onClick={() => void doAiAction("translate")} disabled={!!aiBusy}
-                className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50">
-                {aiBusy === "translate" ? <Loader2 className="mx-auto h-3 w-3 animate-spin" /> : "翻译"}
-              </button>
-            </div>
-            <div className="mt-2 flex gap-1.5">
-              <input
-                value={aiQuestion}
-                onChange={(e) => setAiQuestion(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && aiQuestion.trim()) void doAiAction("ask"); }}
-                placeholder="追问这段文本…（Enter 发送）"
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[11px]"
-              />
-              <button type="button" onClick={() => void doAiAction("ask")} disabled={!!aiBusy || !aiQuestion.trim()}
-                className="rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50">
-                {aiBusy === "ask" ? <Loader2 className="h-3 w-3 animate-spin" /> : "问"}
-              </button>
-            </div>
-            {aiResult && (
-              <div className="mt-2 max-h-64 overflow-y-auto rounded border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-relaxed text-blue-900">
-                <div className="mb-1 text-[10px] font-semibold text-blue-600">
-                  {aiResult.action === "explain" ? "解释" : aiResult.action === "summarize" ? "总结" : aiResult.action === "translate" ? "译文" : "回答"}
-                </div>
-                {aiResult.text}
-              </div>
-            )}
-            {aiError && <div className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 text-[11px] text-red-600">{aiError}</div>}
-            {aiResult && (
-              <button type="button" onClick={() => { setTranslate(null); setAiResult(null); setAiError(""); setAiQuestion(""); }}
-                className="mt-1.5 w-full text-center text-[10px] text-muted-foreground hover:underline">
-                关闭
-              </button>
-            )}
-          </div>
-        </div>
+        <ReaderAiCard
+          key={`${currentPage}-${translate.snippet.slice(0, 40)}`}
+          snippet={translate.snippet}
+          anchor={{ x: translate.x, y: translate.y }}
+          onClose={() => setTranslate(null)}
+        />
       )}
     </div>
   );
@@ -430,27 +313,28 @@ function ZoomController({
   }, [provides, docId]);
 
   // gate 补偿: 等 viewport 有真实尺寸后释放 zoom gate
+  // ⚠ 关键: forDocument/getMetrics 在文档未注册时 throw。
+  //   setTimeout 链 + catch return 依赖组件重渲染重启 effect — ZoomController 无重渲染源时死锁。
+  //   setInterval 每次重新 forDocument, 与渲染完全解耦, 文档注册后自然成功。
   useEffect(() => {
     if (!viewportProvides || !docId) return;
-    let scope: any = null;
-    try { scope = viewportProvides.forDocument(docId); } catch { return; }
-    if (!scope) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
     let tries = 0;
-    const check = () => {
+    const iv = setInterval(() => {
       tries++;
-      let m: any = null;
-      try { m = scope.getMetrics?.(); } catch { return; }
-      if (m && m.clientHeight > 0 && m.clientWidth > 0) {
-        if (scope.isGated?.() && scope.hasGate?.("zoom")) {
-          scope.releaseGate("zoom");
+      try {
+        const scope = viewportProvides.forDocument(docId);
+        const m = scope.getMetrics();
+        if (m && m.clientHeight > 0 && m.clientWidth > 0) {
+          if (scope.isGated() && scope.hasGate("zoom")) {
+            scope.releaseGate("zoom");
+          }
+          clearInterval(iv);
+          return;
         }
-        return;
-      }
-      if (tries < 40) timer = setTimeout(check, 250);
-    };
-    timer = setTimeout(check, 100);
-    return () => { if (timer) clearTimeout(timer); };
+      } catch { /* 文档未注册, 继续轮询 */ }
+      if (tries > 160) clearInterval(iv); // 最多 48 秒
+    }, 300);
+    return () => clearInterval(iv);
   }, [viewportProvides, docId]);
 
   return null;

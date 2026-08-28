@@ -9,6 +9,7 @@ import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
 import { Button } from "../components/ui/button";
 import { PdfReader } from "./PdfReader";
+import { MarkdownReader } from "./MarkdownReader";
 import type { PolicyTreeNode, VaultFileRecord } from "../types";
 
 interface PolicyHit {
@@ -58,57 +59,6 @@ function TreeItem({ node, depth, onSelect }: { node: PolicyTreeNode; depth: numb
       ))}
     </div>
   );
-}
-
-function MarkdownPreview({ content }: { content: string }) {
-  const blocks: ReactNode[] = [];
-  const lines = content.split("\n");
-  let codeBlock: string[] | null = null;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (codeBlock) {
-      if (line.trim().startsWith("```")) {
-        blocks.push(<pre key={index} className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">{codeBlock.join("\n")}</pre>);
-        codeBlock = null;
-      } else {
-        codeBlock.push(line);
-      }
-      continue;
-    }
-    if (line.trim().startsWith("```")) {
-      codeBlock = [];
-      continue;
-    }
-    const headingMatch = line.match(/^(#{1,4})\s+(.*)/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      blocks.push(
-        <div key={index} className={cn("mt-2 font-semibold", level <= 2 ? "text-base" : "text-sm")}>
-          {headingMatch[2].replace(/\*\*(.*?)\*\*/g, "$1")}
-        </div>
-      );
-      continue;
-    }
-    if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
-      blocks.push(
-        <div key={index} className="flex gap-1.5 text-sm">
-          <span className="text-muted-foreground">•</span>
-          <span>{line.trim().slice(2)}</span>
-        </div>
-      );
-      continue;
-    }
-    if (!line.trim()) {
-      blocks.push(<div key={index} className="h-1" />);
-      continue;
-    }
-    blocks.push(<div key={index} className="text-sm">{line}</div>);
-  }
-  if (codeBlock) {
-    blocks.push(<pre key="tail" className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">{codeBlock.join("\n")}</pre>);
-  }
-  // A4 纸阅读版式：行宽限制 + 舒适行高（长文档阅读体验）
-  return <div className="mx-auto max-w-3xl space-y-1.5 px-4 py-2 text-sm leading-7">{blocks}</div>;
 }
 
 export function PolicyPanel() {
@@ -366,7 +316,7 @@ export function PolicyPanel() {
                     </button>
                   </div>
                 </div>
-                <MarkdownPreview content={file.content.slice(0, 20000)} />
+                <MarkdownReader content={file.content.slice(0, 20000)} />
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
