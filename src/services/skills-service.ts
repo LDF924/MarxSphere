@@ -160,7 +160,6 @@ export function listSkills(): SkillRecord[] {
     // 中文说明目录：_中文说明/{skillName}.zh-CN.md
     const zhDocsDir = path.join(skillsDir, "_中文说明");
 
-  const records: SkillRecord[] = [];
   // 第一遍：顶层技能（原有逻辑）
   for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
     // Windows junction 对 isDirectory() 返回 false，需用 isSymbolicLink() 兜底（嵌套技能链接到顶层）

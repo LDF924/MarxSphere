@@ -3953,13 +3953,18 @@ export function buildHttpServer() {
   });
 
   // GET /api/zotero/export — 导出 BibTeX（可选 sourceId 过滤）
-  app.get("/api/zotero/export", async (request) => {
-    const q = request.query as { sourceId?: string };
+  // ⚠ 2026-08-29 修复: 直接下载 .bib 文件(Content-Disposition), 避免浏览器打开 JSON 页面
+  app.get("/api/zotero/export", async (request, reply) => {
+    const q = request.query as { sourceId?: string; download?: string };
     const { zoteroService } = await import("../services/zotero-service.js");
-    const items = q.sourceId
-      ? await zoteroService.fetchViaHttp()
-      : await zoteroService.fetchViaHttp();
+    const items = await zoteroService.fetchViaHttp();
     const bib = zoteroService.exportBibtex(items || []);
+    if (q.download === "1" || q.download === "true") {
+      // RFC 5987: 中文文件名用 filename* UTF-8 编码
+      reply.header("Content-Disposition", `attachment; filename="bibliography.bib"; filename*=UTF-8''bibliography.bib`);
+      reply.header("Content-Type", "application/x-bibtex; charset=utf-8");
+      return reply.send(bib);
+    }
     return { bibtex: bib, count: (items || []).length };
   });
 
