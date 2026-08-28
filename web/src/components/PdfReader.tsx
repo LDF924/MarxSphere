@@ -300,6 +300,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
     // document 级 mousedown: 命中 canvas 才启动划词（三入口统一）
     const onDocDown = (e: MouseEvent) => {
+      // 点击源是卡片/浮层内部(不是 canvas) → 忽略, 不联动划词
+      if (e.target instanceof HTMLElement && !canvas.contains(e.target)) return;
       if (e.button !== 0 || !isOnCanvas(e)) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
@@ -346,6 +348,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     };
 
     const onDbl = (e: MouseEvent) => {
+      // 双击卡片/浮层内部 → 忽略
+      if (e.target instanceof HTMLElement && !canvas.contains(e.target)) return;
       if (!isOnCanvas(e)) return;
       const p = toPdfCoord(e.clientX, e.clientY);
       if (!p) return;
