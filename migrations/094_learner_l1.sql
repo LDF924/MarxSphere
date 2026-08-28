@@ -33,3 +33,12 @@ CREATE TABLE IF NOT EXISTS learner_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_learner_events_student ON learner_events(student_id, created_at);
+
+-- 094b: 自动画像事件补表(2026-08-29, auto-profile 持久化)
+CREATE TABLE IF NOT EXISTS learner_profile_snapshots (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id text NOT NULL DEFAULT 'default',
+  profile jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_learner_profile_snapshots ON learner_profile_snapshots(student_id, created_at);

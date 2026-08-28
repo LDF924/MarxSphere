@@ -1189,6 +1189,57 @@ export function buildHttpServer() {
     return await learnerGoalsService.buildProfileContext({ studentId: q.studentId, subject: q.subject });
   });
 
+  // ─── 自动画像（2026-08-29, 移植 Inno Agent auto-profile.ts）───
+  // POST /api/education/learner/events — 学习事件 → 自动更新画像
+  app.post("/api/education/learner/events", async (request) => {
+    const body = (request.body ?? {}) as {
+      studentId?: string;
+      event: {
+        eventType: string;
+        timestamp?: string;
+        conceptIds?: string[];
+        payload?: Record<string, unknown>;
+        derivedSignals?: { masteryDelta?: number; preferenceCandidates?: string[]; misconceptionCandidates?: string[] };
+      };
+    };
+    const { autoProfileService } = await import("../services/auto-profile.js");
+    const studentId = body.studentId || "default";
+    // 加载画像快照(最新)
+    const { pool } = await import("../db/pool.js");
+    const snap = await pool.query(
+      "select profile from learner_profile_snapshots where student_id=$1 order by created_at desc limit 1",
+      [studentId]
+    ).catch(() => ({ rows: [] }));
+    const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+    const event = {
+      eventType: body.event?.eventType || "exercise_attempt",
+      timestamp: body.event?.timestamp || new Date().toISOString(),
+      conceptIds: body.event?.conceptIds ?? [],
+      payload: body.event?.payload ?? {},
+      derivedSignals: body.event?.derivedSignals ?? {},
+      eventId: body.event?.timestamp ? `evt:${body.event.timestamp}` : undefined,
+    };
+    const changed = autoProfileService.applyLearningEventToProfile(profile, event);
+    if (changed) {
+      await pool.query(
+        "insert into learner_profile_snapshots (student_id, profile) values ($1, $2::jsonb)",
+        [studentId, JSON.stringify(profile)]
+      ).catch(() => {});
+    }
+    return { ok: true, changed, profile };
+  });
+
+  // GET /api/education/learner/events — 查看画像快照
+  app.get("/api/education/learner/events", async (request) => {
+    const q = request.query as { studentId?: string };
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      "select profile from learner_profile_snapshots where student_id=$1 order by created_at desc limit 1",
+      [q.studentId || "default"]
+    ).catch(() => ({ rows: [] }));
+    return { ok: true, profile: r.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} } };
+  });
+
   // ─── 教育复用资产（个人/公共隔离：学生 personal + public，教师 public）───
   app.get("/api/education/asset-store", async (request) => {
     const { educationAssetStoreService } = await import("../services/education-asset-store.js");
