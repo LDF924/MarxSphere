@@ -703,7 +703,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             <canvas
               ref={canvasRef}
               className="block cursor-crosshair touch-none rounded-sm bg-white shadow-md"
-              style={{ cursor: "crosshair !important" }}
+              style={{ cursor: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M16 2v28M2 16h28' stroke='%23dc2626' stroke-width='3'/><path d='M16 6v20M6 16h20' stroke='white' stroke-width='1'/></svg>\") 16 16, crosshair" }}
             />
             {/* 选区高亮 */}
             {selection && (
