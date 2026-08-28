@@ -493,6 +493,12 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               return;
             }
             setSelHint("正在 OCR 识别（首次约 30-60 秒，后续秒开）…");
+            // OCR 期间先弹卡片显示"识别中", 完成后更新(不静默等待)
+            setTranslate({ snippet: "⏳ 正在 OCR 识别该 PDF…（首次约 30-60 秒）", x: clientX, y: clientY });
+            setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
+            setAiResult(null);
+            setAiError("");
+            setAiQuestion("");
             const r = await fetch("/api/p2o/ocr", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -509,6 +515,8 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             } else {
               const errMsg = typeof r?.error === "string" ? r.error : (r?.error?.message || JSON.stringify(r?.error || "无内容")).slice(0, 60);
               diagLog(`⑦OCR失败: ${errMsg}`);
+              setTranslate({ snippet: `OCR 失败: ${errMsg}`, x: clientX, y: clientY });
+              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
             }
           } catch (err: any) {
             diagLog(`⑦OCR异常: ${String(err?.message || err).slice(0, 60)}`);
