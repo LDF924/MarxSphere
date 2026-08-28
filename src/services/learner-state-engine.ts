@@ -36,6 +36,7 @@ export interface KnowledgeState {
 }
 
 export interface DerivedKnowledgeState extends KnowledgeState {
+  conceptId: string;           // 与 Inno Agent concept_id 对齐(前置解析按 id 匹配)
   retrievability?: number;     // 0-1 当前可提取性
   nextReviewAt?: string;
   stateLabel: StateLabel;
@@ -154,6 +155,7 @@ export function projectKnowledgeState(
   }[stateLabel];
 
   return {
+    conceptId,
     mastery, confidence, stabilityDays,
     lastSuccessfulRetrievalAt, lastResult,
     exposureCount, retrievalCount, lapseCount, successfulTransferCount,
