@@ -43,8 +43,13 @@ export function ImportsPanel() {
   }, []);
 
   const call = async (url: string, opts?: RequestInit): Promise<any> => {
-    const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
-    return r.json().catch(() => null);
+    try {
+      const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+      return await r.json().catch(() => null);
+    } catch (e: any) {
+      // ⚠ 2026-08-29: fetch 网络异常也会抛, 必须捕获避免 React 错误边界
+      return { ok: false, error: String(e?.message || e).slice(0, 120) };
+    }
   };
 
   const tell = (type: "ok" | "err" | "info", text: string) => setNotice({ type, text });
@@ -161,7 +166,8 @@ export function ImportsPanel() {
   const syncS3 = async () => {
     setBusy("s3");
     const r = await call("/api/s3/sync", { method: "POST" });
-    r?.ok ? tell("ok", `文献快照已同步 S3（${r.exported} 篇）`) : tell("err", r?.error || "S3 未配置");
+    r?.ok ? tell("ok", `文献快照已同步 S3（${r.exported} 篇）`)
+          : tell("err", typeof r?.error === "string" ? r.error : (r?.error?.message || "S3 未配置或同步失败"));
     setBusy(null);
   };
 
@@ -243,7 +249,7 @@ export function ImportsPanel() {
               className="flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-40">
               <Database className="h-3 w-3" /> 导入书库
             </button>
-            <a href="/api/zotero/export" target="_blank" rel="noreferrer"
+            <a href="/api/zotero/export?download=1" target="_blank" rel="noreferrer"
               className="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent">
               <FileText className="h-3 w-3" /> 导出 BibTeX
             </a>
