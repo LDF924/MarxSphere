@@ -61,12 +61,12 @@ export function MarkdownReader({ content }: MarkdownReaderProps) {
   }
 
   // ── 划词监听: 原生 Selection API ──
-  // ⚠ 卡片常驻策略: 划选后卡片一直显示, 直到:
-  //   1. 点击卡片内任意位置(卡片内交互不关闭)
-  //   2. 在预览区外点击(点击预览区内的文字会清除选择, 但保持卡片以便二次划选)
-  //   3. 用户点卡片 X/关闭按钮
+  // ⚠ 卡片常驻策略(用户明确要求): 划选后卡片一直存在, 直到:
+  //   1. 用户点卡片 X 或「关闭」按钮
+  //   2. 切换文件(组件卸载)
+  //   3. 再次划选 → 新内容替换卡片
+  //   ❌ 不做任何自动关闭(selectionchange/mousedown 误判曾导致卡片莫名消失)
   const bodyRef = useRef<HTMLDivElement | null>(null);
-  const cardRef = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<{ snippet: string; anchor: { x: number; y: number } } | null>(null);
 
   useEffect(() => {
@@ -83,36 +83,8 @@ export function MarkdownReader({ content }: MarkdownReaderProps) {
       const rect = range.getBoundingClientRect();
       setSelection({ snippet: text, anchor: { x: rect.left + rect.width / 2, y: rect.top } });
     };
-    const onSelectionChange = () => {
-      // 选区清除(collapsed)时: 若点击在卡片内 → 不关闭; 在预览区外 → 关闭
-      const sel = window.getSelection();
-      if (!sel || !sel.isCollapsed) return;
-      const card = cardRef.current;
-      if (card) {
-        const active = document.activeElement as HTMLElement | null;
-        const insideCard = card.contains(active) || card.matches(":hover");
-        if (insideCard) return; // 卡片内交互 → 保持
-      }
-      // 预览区内的点击(无新选择)也保持卡片, 便于继续划词; 只有点击预览区外才关
-      const clickTarget = document.activeElement as HTMLElement | null;
-      if (clickTarget && el.contains(clickTarget)) return;
-      setSelection((prev) => (prev ? null : prev));
-    };
-    const onDocMouseDown = (e: MouseEvent) => {
-      // 点击在卡片内 → 标记不关闭; 点击在预览区外且非卡片 → 关卡片
-      const t = e.target as HTMLElement;
-      if (cardRef.current?.contains(t)) return;
-      if (el.contains(t)) return; // 预览区内点击保持(可继续划词)
-      setSelection(null);
-    };
     el.addEventListener("mouseup", onMouseUp);
-    document.addEventListener("selectionchange", onSelectionChange);
-    document.addEventListener("mousedown", onDocMouseDown, true);
-    return () => {
-      el.removeEventListener("mouseup", onMouseUp);
-      document.removeEventListener("selectionchange", onSelectionChange);
-      document.removeEventListener("mousedown", onDocMouseDown, true);
-    };
+    return () => el.removeEventListener("mouseup", onMouseUp);
   }, []);
 
   // A4 纸阅读版式: 行宽限制 + 舒适行高(与原 MarkdownPreview 一致)
@@ -122,14 +94,12 @@ export function MarkdownReader({ content }: MarkdownReaderProps) {
         {blocks}
       </div>
       {selection && (
-        <div ref={cardRef}>
-          <ReaderAiCard
-            key={`${selection.snippet.slice(0, 40)}`}
-            snippet={selection.snippet}
-            anchor={selection.anchor}
-            onClose={() => setSelection(null)}
-          />
-        </div>
+        <ReaderAiCard
+          key={`${selection.snippet.slice(0, 40)}`}
+          snippet={selection.snippet}
+          anchor={selection.anchor}
+          onClose={() => setSelection(null)}
+        />
       )}
     </>
   );
