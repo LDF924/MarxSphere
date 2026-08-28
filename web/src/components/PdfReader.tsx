@@ -87,6 +87,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const textHitCountRef = useRef(0); // 当前页文本块数（拖选即时反馈用）
   const lastMoveRef = useRef(0); // 最近一次鼠标移动时间（停顿检测用）
   const settleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 停顿结束定时器
+  const ocrCacheRef = useRef<Record<string, string>>({}); // OCR 结果缓存(source → 文本), 同 PDF 只 OCR 一次
   // 划词提示（无文本层/无命中时的引导）
   const [selHint, setSelHint] = useState("");
   // 诊断日志（事件流可视化, 用于定位划词断点）
@@ -321,24 +322,22 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
       document.addEventListener("mouseleave", onLeave);
       window.addEventListener("blur", onLeave);
       window.addEventListener("pointercancel", onLeave);
-      // 终极保险: 拖选停顿 600ms(选区存在且鼠标未移动) = 已完成选择意图
-      // 不依赖任何 mouseup/click 事件送达, 纯定时器触发
+      // 终极保险: 拖选停顿 800ms 且 mousemove 从未到达(拖动事件全丢失)才兜底
+      // 正常拖选绝不截胡(移动会重置 lastMoveRef)
       lastMoveRef.current = Date.now();
       if (settleTimerRef.current) clearInterval(settleTimerRef.current);
       settleTimerRef.current = setInterval(() => {
         if (!draggingRef.current) { clearInterval(settleTimerRef.current!); settleTimerRef.current = null; return; }
-        if (Date.now() - lastMoveRef.current > 600 && selectionRef.current) {
+        const idle = Date.now() - lastMoveRef.current > 800;
+        const neverMoved = selectionRef.current && selectionRef.current.width < 3 && selectionRef.current.height < 3;
+        if (idle && neverMoved) {
           clearInterval(settleTimerRef.current!);
           settleTimerRef.current = null;
-          diagLog("⑤停顿600ms 定时器触发");
-          const last = selectionRef.current;
-          // 选区仍是 1px 占位(mousemove 全丢失) → 扩展成覆盖起点整行区域
-          if (last && last.width < 3 && last.height < 3 && dragStartRef.current) {
-            const s = dragStartRef.current;
+          diagLog("⑤停顿800ms 纯点击兜底");
+          const s = dragStartRef.current;
+          if (s) {
             selectionRef.current = { x: 0, y: s.y - 20, width: 10000, height: 40 };
             finishSelection(s.x, s.y);
-          } else if (last) {
-            finishSelection(last.x + last.width, last.y + last.height);
           } else {
             draggingRef.current = false; setDragging(false); dragStartRef.current = null;
           }
@@ -475,12 +474,24 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
             const pathMatch = source.match(/path=([^&]+)/);
             if (!pathMatch) return;
             const pdfPath = decodeURIComponent(pathMatch[1]);
+            // 缓存: 同 PDF 只 OCR 一次, 后续划词直接复用(不卡)
+            if (ocrCacheRef.current[pdfPath]) {
+              diagLog(`⑦OCR缓存命中 (${ocrCacheRef.current[pdfPath].length}字)`);
+              setTranslate({ snippet: ocrCacheRef.current[pdfPath].slice(0, 3000), x: clientX, y: clientY });
+              setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
+              setAiResult(null);
+              setAiError("");
+              setAiQuestion("");
+              return;
+            }
+            setSelHint("正在 OCR 识别（首次约 30-60 秒，后续秒开）…");
             const r = await fetch("/api/p2o/ocr", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ path: pdfPath })
             }).then((x) => x.json());
             if (r?.ok && r.content && r.content.length > 20) {
+              ocrCacheRef.current[pdfPath] = r.content;
               diagLog(`⑦OCR成功 (${r.content.length}字)`);
               setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
               setCardPos(clampCardPos({ x: clientX + 12, y: clientY + 12 }));
