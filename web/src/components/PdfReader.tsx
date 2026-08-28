@@ -407,14 +407,12 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
     // 选区是 canvas 渲染像素（已含 scaleFactor 缩放）; 文本块 rect 是 PDF 空间（磅, 未缩放）
     // → 把选区换算回 PDF 空间: / zoom
     let selPdf = { x: sel.x / zoom, y: sel.y / zoom, width: sel.width / zoom, height: sel.height / zoom };
-    // 关键: 选区过细(用户只点/轻划, 或 mousemove 丢失) → 按 y 范围扩展选区
-    // 最小扩展 40 磅高(覆盖至少一行): 细选区也能命中文本行
-    if (selPdf.height < 40) {
-      selPdf = { ...selPdf, y: selPdf.y - 10, height: 40 };
-    }
-    if (selPdf.width < 20) {
-      // 宽度从光标位置向右扩展(不是页面最左, 避免框选视觉跳远)
-      selPdf = { ...selPdf, width: 100000 };
+    // 仅纯点击(宽高都极小)时扩展选区 — 正常拖选完全尊重用户选区, 不扩
+    // 修: 之前高度<40就扩展, 正常拖选窄条被扩成40磅 → 卷入上下行内容
+    const isClickOnly = sel.width < 10 && sel.height < 10;
+    if (isClickOnly) {
+      // 纯点击: 扩展成覆盖整行(高度 40 磅, 从点击 x 向右)
+      selPdf = { x: selPdf.x - 2, y: selPdf.y - 10, width: 100000, height: 40 };
     }
     // 关键: 若当前页数据未预取(大 PDF 预取慢, 用户划词时可能还没好)
     // → 同步按需提取当前页文本块, 不依赖预取状态
