@@ -1240,6 +1240,33 @@ export function buildHttpServer() {
     return { ok: true, profile: r.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} } };
   });
 
+  // POST /api/education/learner/gate — 教学入口判断(前置知识诊断 + 回复协议)
+  app.post("/api/education/learner/gate", async (request) => {
+    const body = (request.body ?? {}) as { targetConceptId?: string; prerequisiteConceptId?: string; states?: any[] };
+    const { teachingEntryGateService } = await import("../services/teaching-entry-gate.js");
+    if (!body.targetConceptId || !body.prerequisiteConceptId) {
+      return { ok: false, error: "需要 targetConceptId 与 prerequisiteConceptId" };
+    }
+    const decision = teachingEntryGateService.evaluateTeachingEntry({
+      targetConceptId: body.targetConceptId,
+      taskScope: `学习「${body.targetConceptId}」`,
+      mode: "learning",
+      isAtomic: false,
+      prerequisites: [{
+        targetConceptId: body.targetConceptId,
+        prerequisiteConceptId: body.prerequisiteConceptId,
+        relation: "required",
+        requiredLevel: 0.6,
+        importance: 0.8,
+        source: "curated",
+        sourceConfidence: 0.9,
+        rationale: "教学诊断前置",
+      }],
+    }, (body.states || []) as any);
+    const protocol = teachingEntryGateService.formatTeachingEntryDecision(decision);
+    return { ok: true, action: decision.action, reason: decision.reason, protocol };
+  });
+
   // ─── 教育复用资产（个人/公共隔离：学生 personal + public，教师 public）───
   app.get("/api/education/asset-store", async (request) => {
     const { educationAssetStoreService } = await import("../services/education-asset-store.js");
