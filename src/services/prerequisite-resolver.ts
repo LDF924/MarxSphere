@@ -33,6 +33,7 @@ export interface PrerequisiteAssessment {
   estimateConfidence: number;
   reason: string;
   recommendedAction: PrerequisiteAction;
+  edge: PrerequisiteEdge;   // 与 Inno Agent 一致: 保留评估所基于的前置边
 }
 
 export interface PrerequisiteResolution {
