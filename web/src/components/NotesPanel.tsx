@@ -90,39 +90,48 @@ export function NotesPanel() {
     const title = prompt("笔记标题（可用 [[双链]] 指向其他笔记）", "新笔记");
     if (!title) return;
     setBusy(true);
-    const r = await fetch("/api/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content: `# ${title}\n\n` }) }).then((x) => x.json());
+    try {
+      const r = await fetch("/api/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content: `# ${title}\n\n` }) }).then((x) => x.json());
+      if (r?.note) { await load(); void openNote(r.note.id); setEditing(true); }
+      else setNotice({ type: "err", text: r?.error || "创建失败" });
+    } catch (e: any) { setNotice({ type: "err", text: String(e?.message || e).slice(0, 80) }); }
     setBusy(false);
-    if (r?.note) { await load(); void openNote(r.note.id); setEditing(true); }
   };
 
   const saveNote = async () => {
     if (!current) return;
     setBusy(true);
-    const r = await fetch("/api/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: current.title, content: draft }) }).then((x) => x.json());
+    try {
+      const r = await fetch("/api/notes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: current.title, content: draft }) }).then((x) => x.json());
+      if (r?.note) {
+        setNotice({ type: "ok", text: "✅ 已保存（[[双链]] 已更新）" });
+        setEditing(false);
+        await load();
+        void openNote(r.note.id);
+      } else setNotice({ type: "err", text: r?.error || "保存失败" });
+    } catch (e: any) { setNotice({ type: "err", text: String(e?.message || e).slice(0, 80) }); }
     setBusy(false);
-    if (r?.note) {
-      setNotice({ type: "ok", text: "✅ 已保存（[[双链]] 已更新）" });
-      setEditing(false);
-      await load();
-      void openNote(r.note.id);
-    }
   };
 
   const doTranslate = async () => {
     if (!translateSrc.trim()) return;
     setBusy(true);
-    const r = await fetch("/api/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: translateSrc }) }).then((x) => x.json());
+    try {
+      const r = await fetch("/api/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: translateSrc }) }).then((x) => x.json());
+      r?.ok ? setTranslated(r.translated) : setNotice({ type: "err", text: r?.error || "翻译失败" });
+    } catch (e: any) { setNotice({ type: "err", text: String(e?.message || e).slice(0, 80) }); }
     setBusy(false);
-    r?.ok ? setTranslated(r.translated) : setNotice({ type: "err", text: r?.error || "翻译失败" });
   };
 
   const parseRefs = async () => {
     if (!refText.trim()) return;
     setBusy(true);
-    const r = await fetch("/api/references/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: refText }) }).then((x) => x.json());
+    try {
+      const r = await fetch("/api/references/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: refText }) }).then((x) => x.json());
+      setRefs(r?.references || []);
+      setNotice({ type: "ok", text: `解析到 ${(r?.references || []).length} 条参考文献` });
+    } catch (e: any) { setNotice({ type: "err", text: String(e?.message || e).slice(0, 80) }); }
     setBusy(false);
-    setRefs(r?.references || []);
-    setNotice({ type: "ok", text: `解析到 ${(r?.references || []).length} 条参考文献` });
   };
 
   const renderMd = (t: string) => {
