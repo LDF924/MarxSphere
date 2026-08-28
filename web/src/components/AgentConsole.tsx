@@ -2120,7 +2120,7 @@ function AgentManageTab() {
     const r = await fetch(`/api/byoa/agent/${action}`, { method: "POST" }).then((x) => x.json()).catch(() => null);
     setBusy(null);
     if (r?.ok) setNotice({ type: "ok", text: `${label}成功` });
-    else setNotice({ type: "err", text: r?.error || `${label}失败` });
+    else setNotice({ type: "err", text: (typeof r?.error === "string" ? r.error : r?.error?.message || `${label}失败`).slice(0, 200) });
     void refresh();
   };
 
@@ -2129,7 +2129,7 @@ function AgentManageTab() {
     setBusy("run");
     const r = await fetch("/api/byoa/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task: taskInput }) }).then((x) => x.json()).catch(() => null);
     setBusy(null);
-    r?.ok ? setTaskResult(String(r.result || "（无返回）").slice(0, 3000)) : setNotice({ type: "err", text: r?.error || "任务失败" });
+    r?.ok ? setTaskResult(String(r.result || "（无返回）").slice(0, 3000)) : setNotice({ type: "err", text: (typeof r?.error === "string" ? r.error : r?.error?.message || "任务失败").slice(0, 200) });
   };
 
   return (
