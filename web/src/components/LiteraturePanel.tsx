@@ -378,8 +378,10 @@ export function LiteraturePanel() {
               </div>
             </div>
 
-            {/* 详情面板 / PDF 深度阅读（h-full: 填满 grid 固定行高） */}
-            <div className={cn("h-full min-h-0", readerPdf ? "overflow-visible" : "overflow-y-auto")}>
+            {/* 详情面板 / PDF 深度阅读
+                xl+: 填满 grid 固定行高(minmax(0,1fr))
+                窄屏(<xl): grid 第二行隐式 auto 被内容压塌(Viewport height:100% 循环解析 → 20px), 给固定高度 */}
+            <div className={cn("min-h-0", readerPdf ? "h-[60vh] overflow-visible xl:h-full" : "h-full overflow-y-auto")}>
               {readerPdf ? (
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
