@@ -88,6 +88,7 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
   const lastMoveRef = useRef(0); // 最近一次鼠标移动时间（停顿检测用）
   const settleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null); // 停顿结束定时器
   const ocrCacheRef = useRef<Record<string, string>>({}); // OCR 结果缓存(source → 文本), 同 PDF 只 OCR 一次
+  const ocrInFlightRef = useRef<string | null>(null); // OCR 进行中的 PDF 路径(去重: mouseup+停顿双触发只跑一次)
   // 划词提示（无文本层/无命中时的引导）
   const [selHint, setSelHint] = useState("");
   // 诊断日志（事件流可视化, 用于定位划词断点）
@@ -492,31 +493,41 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
               setAiQuestion("");
               return;
             }
-            setSelHint("正在 OCR 识别（首次约 30-60 秒，后续秒开）…");
-            // OCR 期间先弹卡片显示"识别中", 完成后更新(不静默等待)
-            setTranslate({ snippet: "⏳ 正在 OCR 识别该 PDF…（首次约 30-60 秒）", x: clientX, y: clientY });
-            setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
-            setAiResult(null);
-            setAiError("");
-            setAiQuestion("");
-            const r = await fetch("/api/p2o/ocr", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: pdfPath })
-            }).then((x) => x.json());
-            if (r?.ok && r.content && r.content.length > 20) {
-              ocrCacheRef.current[pdfPath] = r.content;
-              diagLog(`⑦OCR成功 (${r.content.length}字)`);
-              setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
+            // 去重: 同 PDF 的 OCR 已在跑(mouseup+停顿双触发) → 跳过
+            if (ocrInFlightRef.current === pdfPath) {
+              diagLog("⑦OCR 已在跑, 跳过重复触发");
+              return;
+            }
+            ocrInFlightRef.current = pdfPath;
+            try {
+              setSelHint("正在 OCR 识别（首次约 30-60 秒，后续秒开）…");
+              // OCR 期间先弹卡片显示"识别中", 完成后更新(不静默等待)
+              setTranslate({ snippet: "⏳ 正在 OCR 识别该 PDF…（首次约 30-60 秒）", x: clientX, y: clientY });
               setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
               setAiResult(null);
               setAiError("");
               setAiQuestion("");
-            } else {
-              const errMsg = typeof r?.error === "string" ? r.error : (r?.error?.message || JSON.stringify(r?.error || "无内容")).slice(0, 60);
-              diagLog(`⑦OCR失败: ${errMsg}`);
-              setTranslate({ snippet: `OCR 失败: ${errMsg}`, x: clientX, y: clientY });
-              setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
+              const r = await fetch("/api/p2o/ocr", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: pdfPath })
+              }).then((x) => x.json());
+              if (r?.ok && r.content && r.content.length > 20) {
+                ocrCacheRef.current[pdfPath] = r.content;
+                diagLog(`⑦OCR成功 (${r.content.length}字)`);
+                setTranslate({ snippet: r.content.slice(0, 3000), x: clientX, y: clientY });
+                setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
+                setAiResult(null);
+                setAiError("");
+                setAiQuestion("");
+              } else {
+                const errMsg = typeof r?.error === "string" ? r.error : (r?.error?.message || JSON.stringify(r?.error || "无内容")).slice(0, 60);
+                diagLog(`⑦OCR失败: ${errMsg}`);
+                setTranslate({ snippet: `OCR 失败: ${errMsg}`, x: clientX, y: clientY });
+                setCardPos(clampCardPos(selectionCenterScreen(lastSelForCard)));
+              }
+            } finally {
+              ocrInFlightRef.current = null;
             }
           } catch (err: any) {
             diagLog(`⑦OCR异常: ${String(err?.message || err).slice(0, 60)}`);
