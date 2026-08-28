@@ -1149,6 +1149,46 @@ export function buildHttpServer() {
     return educationResourceSourcesService.importFromSource(request.body as any);
   });
 
+  // ─── L1 学习者画像（2026-08-29, 借鉴 Inno Agent L1 learner profile）───
+  // GET /api/education/learner/goals — 学习目标列表
+  app.get("/api/education/learner/goals", async (request) => {
+    const q = request.query as { studentId?: string };
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.listGoals({ studentId: q.studentId });
+  });
+  // POST /api/education/learner/goals — 创建/更新学习目标
+  app.post("/api/education/learner/goals", async (request) => {
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.upsertGoal(request.body as any);
+  });
+  // POST /api/education/learner/goals/:id/archive — 归档目标
+  app.post("/api/education/learner/goals/:id/archive", async (request) => {
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.archiveGoal({ id: (request.params as any).id, reason: ((request.body ?? {}) as any).reason });
+  });
+  // GET /api/education/learner/misconceptions — 误解列表
+  app.get("/api/education/learner/misconceptions", async (request) => {
+    const q = request.query as { studentId?: string; status?: "open" | "resolved" };
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.listMisconceptions({ studentId: q.studentId, status: q.status });
+  });
+  // POST /api/education/learner/misconceptions — 记录误解(答错诊断)
+  app.post("/api/education/learner/misconceptions", async (request) => {
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.recordMisconception(request.body as any);
+  });
+  // POST /api/education/learner/misconceptions/:id/resolve — 标记已纠正
+  app.post("/api/education/learner/misconceptions/:id/resolve", async (request) => {
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.resolveMisconception({ id: (request.params as any).id });
+  });
+  // GET /api/education/learner/context — 画像上下文包(注入系统提示词)
+  app.get("/api/education/learner/context", async (request) => {
+    const q = request.query as { studentId?: string; subject?: string };
+    const { learnerGoalsService } = await import("../services/learner-goals-service.js");
+    return await learnerGoalsService.buildProfileContext({ studentId: q.studentId, subject: q.subject });
+  });
+
   // ─── 教育复用资产（个人/公共隔离：学生 personal + public，教师 public）───
   app.get("/api/education/asset-store", async (request) => {
     const { educationAssetStoreService } = await import("../services/education-asset-store.js");
@@ -3784,6 +3824,20 @@ export function buildHttpServer() {
     return await notesService.noteGraph();
   });
 
+  // ───── L2 wiki 维护器（2026-08-29, 借鉴 Inno Agent L2 wiki-maintainer）─────
+  // GET /api/notes/audit — 巡检: 破损链接/孤立页/过期/重定向建议
+  app.get("/api/notes/audit", async (request) => {
+    const q = request.query as { days?: string };
+    const { wikiMaintainerService } = await import("../services/wiki-maintainer.js");
+    return await wikiMaintainerService.auditWiki(Number(q.days) || 60);
+  });
+  // POST /api/notes/audit/fix — 一键创建缺失笔记(createAll=true 忽略重定向建议)
+  app.post("/api/notes/audit/fix", async (request) => {
+    const body = (request.body ?? {}) as { createAll?: boolean };
+    const { wikiMaintainerService } = await import("../services/wiki-maintainer.js");
+    return await wikiMaintainerService.createMissingNotes(!!body.createAll);
+  });
+
   // ───── 论文翻译（2026-08-27, Agentero 对照: 全局翻译+划词并排）─────
   // POST /api/translate — 全局翻译 {text, targetLang?}
   app.post("/api/translate", async (request) => {
@@ -5175,10 +5229,15 @@ except Exception as e:
   });
 
   // 差距Q①(DSH session-query): 会话全文检索
+  // ⚠ 2026-08-29 升级: L3 评分+阈值门控(借鉴 Inno Agent), 低相关片段不召回
   app.get("/api/agent/sessions/search", async (request) => {
-    const q = request.query as { q?: string };
-    const { agentChatMemory } = await import("../services/agent-chat-memory.js");
-    return { sessions: await agentChatMemory.searchAgentSessions(q?.q || "") };
+    const q = request.query as { q?: string; threshold?: string; limit?: string };
+    const { l3SessionRecallService } = await import("../services/l3-session-recall.js");
+    const r = await l3SessionRecallService.recallSessions(q?.q || "", {
+      threshold: Number(q.threshold) || undefined,
+      limit: Number(q.limit) || undefined,
+    });
+    return { sessions: r.hits, gated: r.gated };
   });
 
   // 架构F1: 会话图（会话→任务→工具 可视化）
