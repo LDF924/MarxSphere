@@ -43,20 +43,29 @@ export function PdfReader({ source, fileName }: PdfReaderProps) {
 
   const goToPage = (p: number) => {
     const target = Math.max(1, Math.min(p, total || p));
-    if (scrollToPageFn) {
-      scrollToPageFn(target);
-      return;
-    }
-    // 兜底: 滚动外层滚动容器(hostRef)到目标页
-    // 注意: Scroller 本身不滚动, 滚动的是它的父容器(overflow-auto)
+    // 直接 DOM 滚动(不依赖 scrollToPageFn — 2.14.4 下无效)
     const scroller = hostRef.current;
     const pageEl = hostRef.current?.querySelector(`[data-page-index="${target - 1}"]`) as HTMLElement | null;
     if (scroller && pageEl) {
-      // pageEl.offsetTop 相对最近的定位祖先(Scroller 容器); hostRef 也是它的祖先
-      // 若 hostRef 有 padding/位置, 用 getBoundingClientRect 差值更准
-      const top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-      scroller.scrollTo({ top, behavior: "smooth" });
+      // 用 offsetTop: pageEl 相对 Scroller 容器的偏移(Scroller 是定位祖先)
+      // 加上滚动容器内 Scroller 的偏移
+      let top = pageEl.offsetTop;
+      let el: HTMLElement | null = pageEl.offsetParent as HTMLElement | null;
+      while (el && el !== scroller && el !== document.body) {
+        top += el.offsetTop;
+        el = el.offsetParent as HTMLElement | null;
+      }
+      // 若 offsetParent 链到 body(Scroller 非定位祖先), 用 rect 差值
+      if (el === document.body || !el) {
+        top = pageEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      }
+      // smooth 在某些环境不生效 → 用 auto 强制滚动
+      scroller.scrollTo({ top, behavior: "auto" });
+      scroller.scrollTop = top; // 双保险: 直接赋值
       setCurrentPage(target);
+      console.log("[PdfReader] goToPage", { target, top: Math.round(top), scrollH: scroller.scrollHeight, clientH: scroller.clientHeight, pageElTop: Math.round(pageEl.getBoundingClientRect().top) });
+    } else {
+      console.log("[PdfReader] goToPage: 元素未找到", { scroller: !!scroller, pageEl: !!pageEl, target });
     }
   };
   const [translate, setTranslate] = useState<{ snippet: string; x: number; y: number } | null>(null);
