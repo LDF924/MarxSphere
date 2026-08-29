@@ -1,3 +1,24 @@
+## [1.2.0] - 2026-08-30
+
+### 🎓 学习引擎(TraitTutor 借鉴, V386-V393)
+
+- **学习者事件账本 + BKT 概念掌握**(096 迁移): append-only 账本 + void amendment + 强证据闸门(仅服务端判分进 BKT) + 诚实读(未校准/观察<3 不显示数字) + 时间衰减读投影
+- **BKT 离线校准脚本**(scripts/calibrate-bkt.ts): 约束随机搜索 2 万候选 + 学生级 5 折 + 质量门
+- **版本化学习计划链**(097 迁移): 只重规划未开始尾部(已开始前缀不可变) + supersede 审计链 + 组件状态机(依赖前置校验)
+- **确定性组件选择器**: 源码移植 TraitTutor select/_stage(BKT 四阶段分支 / 评估-校准成对 / 孤儿评估抑制 / 14 种组件中文文案)
+- **产物审查三态机**(098 迁移): needs_review→confirmed/discarded, 未确认不可挂载不可评分, 审查历史可审计
+- **材料分析快照**(098): 学科/难度/概念候选/页证据/模态适配 + augmentation 补充决策(LLM 判定+启发式降级)
+- **一材多工件**: artifacts(courseware/flashcards/quiz)挂载到学习计划, 仅 confirmed 经 generation_id, 投影剥除答案键(correct_answer/is_correct/explanation/back)
+- **间隔重复复习队列**(100 迁移): 4 类知识间隔序列 + 连中 2 跳 2 档/答错退 1 档/连错 2 重置 + 错误未修复优先 + 与事件账本联动
+- **Compass 记忆治理**(099 迁移): 偏好三态(显式/推断/拒绝) + 90 天 TTL + 候选确认门(≥2 证据) + 删除即重建 + 边界声明随数据走
+- **学习意图双层路由**: 5 类注入扫描(中英双语) + LLM 分类(conversation vs learning_path) + 低置信度 fail-closed 需确认 + 附件文本永不进分类器 prompt
+- **Quota Rotation LLM 网关**: 总 deadline + per-model 路由熔断(连续失败≥3/60s) + 配额/认证立即轮换 + 错误摘要不静默
+- **组件白名单 + 答案服务端持有**: 类型/字段白名单 + 答案键物理缺席 + 可执行标记拒绝 + 违规降级文本页
+- **全屏学习画布**: 路径侧栏/组件/"为何此步"证据同屏 + 挂载折叠 + 状态推进(幂等/409 自愈/依赖锁定)
+- **前端**: E9 学习引擎面板(材料分析/意图路由/复习队列/Compass/熔断) + 产物中心(确认/丢弃/挂载) + learning.css 设计体系(40+ 类移植)
+- **Agent 接入**: education_service 工具新增 plan-chain/intent/material-analyze/pref-*/reviews-* action
+
+
 ## [1.1.0] - 2026-08-27
 
 ### ✨ 文献入库哈希版本化（P0-P2 + ScienceX 补齐）

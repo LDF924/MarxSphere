@@ -3380,8 +3380,13 @@ export function buildHttpServer() {
   });
   app.post("/api/memory/preferences/:id/decide", async (request) => {
     const { educationCompassService } = await import("../services/education-compass-service.js");
-    const body = z.object({ decision: z.enum(["confirm", "reject"]), note: z.string().optional() }).parse(request.body);
-    return educationCompassService.decidePreference({ id: (request.params as any).id, decision: body.decision, note: body.note });
+    const body = z.object({ decision: z.enum(["confirm", "reject"]), note: z.string().optional(), key: z.string().optional() }).parse(request.body);
+    // V393: 支持按 key 定位(Agent 无 id 场景); :id 传 "by-key" 时走 key
+    return educationCompassService.decidePreference(
+      (request.params as any).id === "by-key"
+        ? { key: body.key, decision: body.decision, note: body.note }
+        : { id: (request.params as any).id, decision: body.decision, note: body.note }
+    );
   });
   app.post("/api/memory/preferences/:id/evidence", async (request) => {
     const { educationCompassService } = await import("../services/education-compass-service.js");

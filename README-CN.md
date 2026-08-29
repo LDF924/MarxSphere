@@ -523,6 +523,7 @@ npm run typecheck       # 前后端类型检查
 | 📊 运行截图 | [docs/assets/](docs/assets/)（首页/对话/推理/Ask/文献/图谱/场景/实证/Agent/评测 10 张） |
 | 📈 评测报告样例 | `reports/`（7 份报告）· `evaluation/`（评测结果+金标+历史归档） |
 | ✅ 单元测试 | `npm test`（154 项） |
+| 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习, TraitTutor 借鉴 V386-V393） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `examples/`（同批示例）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 检索：`examples/seed-corpus/`（50 篇种子语料）· 评测：`evaluation/gold_dataset.json`（53 题金标）· 图谱：`knowledge-graph/` |
 | 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |
