@@ -129,4 +129,17 @@ ${ctx}`;
   };
 }
 
-export const componentExecutorService = { generateLesson, generateAssessment, gradeAssessmentItem, generateRetrievalCards };
+// ═══ 产物→三态机接线(V394: 生成的工件执行计划, 经 needs_review 确认后挂载) ═══
+import type { ArtifactKind } from "./material-review-service.js";
+
+export async function submitToReview(input: {
+  studentId?: string; subject: string; goal: string;
+  kind: ArtifactKind; content: unknown;
+  issues?: Array<{ dimension: string; score: number; note?: string }>;
+  planId?: string;
+}): Promise<Record<string, unknown>> {
+  const { materialReviewService } = await import("./material-review-service.js");
+  return materialReviewService.createGeneration(input as any);
+}
+
+export const componentExecutorService = { generateLesson, generateAssessment, gradeAssessmentItem, generateRetrievalCards, submitToReview };

@@ -153,6 +153,18 @@ export async function recordLearnerEvent(input: RecordEventInput): Promise<Recor
      input.userAnswer ?? null, input.expectedAnswer ?? null, isCorrect, evidenceStrength, gradedBy,
      input.difficulty || "medium", idem]
   );
+  // V394: 事件→图谱联动投影 — 强证据同步 learner_events(学习者模型/图谱消费)
+  if (evidenceStrength === "strong") {
+    await pool.query(
+      `insert into learner_events (student_id, event_type, payload)
+       values ($1, 'mastery_attempt', $2::jsonb)`,
+      [studentId, JSON.stringify({
+        source_event_id: r.rows[0].id, subject: input.subject, knowledge_point: input.knowledgePoint,
+        is_correct: isCorrect, evidence_strength: "strong", surface_type: input.surfaceType || "practice",
+        graded_by: gradedBy, created_at: new Date().toISOString(),
+      })]
+    ).catch(() => {});
+  }
   return { ok: true, duplicate: false, eventId: r.rows[0].id, isCorrect, evidenceStrength, gradedBy };
 }
 

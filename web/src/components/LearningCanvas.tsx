@@ -50,6 +50,62 @@ const STAGE_LABEL: Record<string, string> = {
   mission: "本轮任务", learn: "理解", try: "尝试", decide: "校准与下一步", remember: "今日复习",
 };
 
+/** V394: 助手面板 — 学习问答(接 tutoring API, 分步引导不直接给答案) */
+function CanvasAssistant({ subject, knowledgePoint }: { subject: string; knowledgePoint: string }) {
+  const [q, setQ] = useState("");
+  const [msgs, setMsgs] = useState<Array<{ role: "user" | "ai"; text: string }>>([]);
+  const [busy, setBusy] = useState(false);
+
+  const ask = async () => {
+    if (!q.trim() || busy) return;
+    const text = q.trim();
+    setQ("");
+    setMsgs((m) => [...m, { role: "user", text }]);
+    setBusy(true);
+    try {
+      const r = await fetch("/api/education/tutoring", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, topic: `${knowledgePoint}: ${text}` }),
+      });
+      const j = await r.json();
+      const tut = j.tutoring || {};
+      const reply = [
+        tut.breakdown?.length ? `**拆解**:\n${tut.breakdown.join("\n")}` : "",
+        tut.stepHints?.length ? `**分步提示**:\n${tut.stepHints.join("\n")}` : "",
+        tut.fullExplanation ? `**完整讲解** (供核对):\n${String(tut.fullExplanation).slice(0, 400)}` : "",
+      ].filter(Boolean).join("\n\n") || "暂时无法回答, 换个问法试试。";
+      setMsgs((m) => [...m, { role: "ai", text: reply }]);
+    } catch (e: any) {
+      setMsgs((m) => [...m, { role: "ai", text: `出错了: ${String(e?.message || e).slice(0, 80)}` }]);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <aside className="hidden min-h-0 flex-col border-l border-border xl:flex" style={{ background: "hsl(var(--card) / 0.5)" }}>
+      <div className="border-b px-3 py-2 text-[11px] font-semibold text-muted-foreground">学习助手</div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+        {msgs.length === 0 && (
+          <div className="text-[11px] leading-5 text-muted-foreground">
+            关于「{knowledgePoint}」有疑问? 输入问题, 助手分步引导(不直接给答案)。
+          </div>
+        )}
+        {msgs.map((m, i) => (
+          <div key={i} className={`rounded-lg px-2.5 py-2 text-[11px] leading-5 ${m.role === "user" ? "bg-primary/10 text-foreground" : "bg-muted/40 text-muted-foreground"}`}>
+            {m.text.split("\n").map((l, j) => <div key={j} className={l.startsWith("**") ? "font-semibold text-foreground/80" : ""}>{l.replace(/\*\*/g, "")}</div>)}
+          </div>
+        ))}
+        {busy && <div className="text-[10px] text-muted-foreground"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />思考中…</div>}
+      </div>
+      <div className="flex gap-1.5 border-t p-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void ask()}
+          placeholder="问当前知识点…" className="learning-input text-[11px]" />
+        <button type="button" onClick={() => void ask()} disabled={!q.trim() || busy} className="learning-button learning-button--primary shrink-0">问</button>
+      </div>
+    </aside>
+  );
+}
+
 /** V394: 组件内容执行器 — 按组件类型拉取真实内容(lesson/assessment/retrieval) */
 function ComponentContent({ selected, onDone }: { selected: CanvasComponent; onDone: () => void }) {
   const [content, setContent] = useState<any>(null);
@@ -293,6 +349,7 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
   };
 
   const selected = visibleActions.find((c) => c.id === selectedId) || visibleActions[0];
+  const kp = selected?.concept_refs?.[0] || selected?.title || plan?.subject || "";
   const completedCount = visibleActions.filter((c) => c.status === "completed").length;
   const stage = selected ? componentStage(selected.type) : "mission";
 
@@ -405,6 +462,9 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
             </div>
           )}
         </section>
+
+        {/* V394: 助手面板(源码 learning-canvas__assistant-panel — 学习问答) */}
+        <CanvasAssistant subject={plan.subject} knowledgePoint={kp} />
       </div>
     </div>
   );
