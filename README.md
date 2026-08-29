@@ -461,7 +461,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
 | 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
 | 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
-| 🤖 **AI Agent** | 29 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
+| 🤖 **AI Agent** | 54 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
 | 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
 | 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
 | 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
