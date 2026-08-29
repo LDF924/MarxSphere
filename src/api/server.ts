@@ -3341,6 +3341,16 @@ export function buildHttpServer() {
     return r;
   });
 
+  // V388: 学习意图双层路由(借鉴 TraitTutor learning/intent.py: 注入扫描→LLM分类→低置信度确认)
+  // POST /api/education/intent — {text, attachmentsText?} → {mode, confidence, safetyAction, fallbackRequired}
+  app.post("/api/education/intent", async (request, reply) => {
+    const { educationIntentService } = await import("../services/education-intent-service.js");
+    const body = z.object({ text: z.string().max(4000), attachmentsText: z.string().max(20000).optional() }).parse(request.body);
+    const r = await educationIntentService.classifyLearnIntent({ text: body.text, attachmentsText: body.attachmentsText });
+    if (r.safetyAction === "block") return reply.code(400).send({ error: { code: "INTENT_BLOCKED", message: r.rationale }, result: r });
+    return r;
+  });
+
   // V387: 产物审查三态机 + 材料分析(借鉴 TraitTutor needs_review)
   // POST /api/materials/analyze — 材料分析快照{title, content, sourceId?}
   // POST /api/generations — 登记生成产物{subject, goal, kind, content, issues?} → needs_review/confirmed
