@@ -25,7 +25,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 44-tool matrix / 10 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 54-tool matrix / 10 empirical features / desktop details / eval metrics)
 
 ### 🏗 System Architecture
 
@@ -52,14 +52,14 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **44-tool dispatch**: 26 Agent tools (search/reason/empirical/writing/code/web/image/file) + 18 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 33-view coverage)
+- **54-tool dispatch**: 36 Agent tools (search/reason/empirical/writing/code/web/image/file) + 18 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 33-view coverage)
 - **Command syntax**: `/` opens the skill command palette (190+ skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
 - **Light / dark themes**: one-click toggle in the header, persisted in localStorage
 - **Empty-state home**: welcome message + hot-topic suggestions (click to ask) + core entry points (Ask / 52-step / Empirical workbench)
 
-### 🤖 AI Agent (50+ capabilities · 44 tools · 5-layer security · 5-layer memory)
+### 🤖 AI Agent (50+ capabilities · 54 tools · 5-layer security · 5-layer memory)
 
 > All 50 Agent capabilities are implemented. Full capability profile: [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md).
 
@@ -76,7 +76,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | Task DAG | LLM decomposes subtasks → depends_on orchestration → concurrent queue (semaphore) → SSE progress |
 | Failure handling | tool timeout circuit breaker (90s) → exponential backoff → failure feedback loop → error classification (recoverable/unrecoverable) |
 
-**② Tool Matrix (26 Agent tools; plus 18 view tools = 44)**
+**② Tool Matrix (36 Agent tools; plus 18 view tools = 54)**
 
 | Category | Tools | Engineering |
 |---|---|---|
