@@ -25,7 +25,7 @@ reports/             评测报告
 knowledge-graph/     知识图谱数据
 skills/              自研 Skill（10 个, 覆盖文献获取→科研调度）
 migrations/          PostgreSQL schema（80+ 迁移）
-test/                单元测试（154 项, Vitest）
+test/                单元测试（263 项, Vitest）
 docs/                文档
 ```
 
@@ -43,7 +43,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 
 | 命令 | 说明 |
 |---|---|
-| `npm test` | 154 项单元测试（Vitest） |
+| `npm test` | 263 项单元测试（Vitest） |
 | `npm run typecheck` | 前后端类型检查 |
 | `npm run build` | 后端 tsc + 前端 vite 构建 |
 | `npm start` | 生产模式（4173） |
@@ -76,7 +76,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 3. **新增环境变量** → 同步 `.env.example` + `src/config/env.ts`
 4. **新增数据库表** → `migrations/` 幂等 SQL（编号递增）
 5. **评测相关改动** → 跑 `npx tsx scripts/eval-32-metrics.ts` 验证分数不退化
-6. **提交前** → `npm test` 154 项全绿
+6. **提交前** → `npm test` 263 项全绿
 
 ## 外部 Agent 接入（MCP）
 
