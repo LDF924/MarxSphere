@@ -195,6 +195,8 @@ export interface CallLlmOptions {
   onStream?: (delta: string) => void;
   /** V398: 流式思考链回调（DeepSeek reasoning_content）— AI 对话页「已深度思考」折叠区 */
   onReasoning?: (reasoning: string) => void;
+  /** V389: Quota Rotation 总 deadline(ms, 默认 180s) — 整个 fallback 链的最长耗时 */
+  totalTimeoutMs?: number;
 }
 
 export interface CallLlmResult {
@@ -206,7 +208,9 @@ export interface CallLlmResult {
   /** G1: 失败原因（重试耗尽/不可重试错误），成功时为空。调用方不再静默吞错 */
   error?: string;
   /** G1: 错误分类（429/5xx/timeout/network/other），便于调用方区分处理 */
-  errorType?: "rate_limit" | "server_error" | "timeout" | "network" | "other";
+  errorType?: "rate_limit" | "server_error" | "timeout" | "network" | "auth" | "other";
+  /** V389: HTTP 状态码(失败时附上, 供 Quota Rotation 判定) */
+  status?: number;
 }
 
 /**
@@ -218,7 +222,8 @@ export function classifyLlmError(err: unknown, status?: number): { retryable: bo
   if (typeof status === "number") {
     if (status === 429) return { retryable: true, errorType: "rate_limit" };
     if (status >= 500) return { retryable: true, errorType: "server_error" };
-    if (status === 401 || status === 403 || status === 400) return { retryable: false, errorType: "other" };
+    if (status === 401 || status === 403) return { retryable: false, errorType: "auth" };
+    if (status === 400) return { retryable: false, errorType: "other" };
   }
   if (/timeout|aborted/i.test(msg)) return { retryable: true, errorType: "timeout" };
   if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed|socket|network|网络/i.test(msg)) return { retryable: true, errorType: "network" };
@@ -270,6 +275,93 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
   }
 }
 
+// ═══ V389: Quota Rotation(借鉴 TraitTutor gateway/quota_rotation.py) ═══
+// per-model 路由熔断: 连续失败 ≥ MODEL_CIRCUIT_FAILURES(3) 次 → OPEN 60s(期间跳过该模型)
+// 与全局 breakers 区分: 这里按具体模型名(deepseek-v4-flash/qwen3.7-max...)独立熔断, 失败不拖累其他路由
+const MODEL_CIRCUIT_FAILURES = Math.max(1, parseInt(process.env.LLM_MODEL_CIRCUIT_FAILURES || "3", 10));
+const MODEL_CIRCUIT_COOLDOWN_MS = Math.max(5_000, parseInt(process.env.LLM_MODEL_CIRCUIT_COOLDOWN_MS || "60000", 10));
+const modelCircuitState = new Map<string, { failures: number; openedAt: number }>();
+
+function modelCircuitIsOpen(model: string): boolean {
+  const st = modelCircuitState.get(model);
+  if (!st || st.openedAt === 0) return false;
+  if (Date.now() - st.openedAt >= MODEL_CIRCUIT_COOLDOWN_MS) {
+    // 冷却已过 → HALF_OPEN 放行一次试探(失败则重新计时)
+    modelCircuitState.set(model, { failures: 1, openedAt: 0 });  // 试探中: 复位失败计数, 若失败立即再开
+    return false;
+  }
+  return true;
+}
+function modelCircuitRecordFailure(model: string): void {
+  const st = modelCircuitState.get(model) || { failures: 0, openedAt: 0 };
+  st.failures += 1;
+  if (st.failures >= MODEL_CIRCUIT_FAILURES && st.openedAt === 0) {
+    st.openedAt = Date.now();
+    console.warn(`[llm-common] V389 路由熔断 OPEN: ${model} (连续失败 ${st.failures} 次, 冷却 ${MODEL_CIRCUIT_COOLDOWN_MS / 1000}s)`);
+  }
+  modelCircuitState.set(model, st);
+}
+function modelCircuitRecordSuccess(model: string): void {
+  const st = modelCircuitState.get(model);
+  if (st) modelCircuitState.set(model, { failures: 0, openedAt: st.openedAt });  // 保留 OPEN 计时, 清零失败
+}
+
+/** 路由熔断状态(前端/诊断用) */
+export function modelCircuitStats(): Record<string, { failures: number; open: boolean; openedAt: number }> {
+  const out: Record<string, { failures: number; open: boolean; openedAt: number }> = {};
+  for (const [model, st] of modelCircuitState) {
+    out[model] = { failures: st.failures, open: modelCircuitIsOpen(model), openedAt: st.openedAt };
+  }
+  return out;
+}
+
+/**
+ * V389: 带 Quota Rotation 的 LLM 调用
+ * 对照 TraitTutor quota_rotation.py:
+ *   1. 总 deadline: 整个 fallback 链在 totalTimeoutMs(默认 180s) 内完成, 超时抛真实错误
+ *   2. 路由熔断: per-model 连续失败 ≥3 次 → 跳过该模型(60s 冷却), 失败不拖累其他路由
+ *   3. 配额/认证错误(429/401/403) → 立即轮换不回退; timeout/5xx → 同路由重试后轮换
+ *   4. 全部失败 → 返回含各路由错误摘要的真实错误(不静默)
+ */
+export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLlmResult | null> {
+  const startedAt = Date.now();
+  const totalTimeoutMs = input.totalTimeoutMs ?? 180_000;
+  const model = input.model ?? getLlmEndpoint().model;
+  const fallbacks = [model, ...getModelFallbacks(model).filter((m) => m !== model)];
+
+  let errors: Array<{ model: string; error: string }> = [];
+  for (const candidate of fallbacks) {
+    if (Date.now() - startedAt >= totalTimeoutMs) break;  // 总 deadline
+    if (modelCircuitIsOpen(candidate)) {
+      console.log(`[llm-common] V389 跳过熔断路由: ${candidate}`);
+      continue;
+    }
+    const remaining = Math.max(5_000, totalTimeoutMs - (Date.now() - startedAt));
+    const r = await callLlmInner({ ...input, model: candidate, timeoutMs: Math.min(input.timeoutMs ?? 180_000, remaining) });
+    if (r && !r.error) {
+      modelCircuitRecordSuccess(candidate);
+      recordLatency(Date.now() - startedAt);
+      return r;
+    }
+    if (r?.error) {
+      modelCircuitRecordFailure(candidate);
+      errors.push({ model: candidate, error: r.error.slice(0, 120) });
+      const cls = classifyLlmError(r.error, r.status);
+      // 配额/认证错误 → 立即轮换(不回退等待)
+      if (cls.errorType === "rate_limit" || cls.errorType === "auth") continue;
+      // 业务错误(4xx 非重试) → 不再尝试其他路由
+      if (!cls.retryable && cls.errorType === "other") break;
+      // timeout/5xx/网络 → 同路由重试后轮换(callLlmInner 内部已重试)
+    }
+    recordLatency(Date.now() - startedAt);
+  }
+  return {
+    text: "", tokens: null, cacheHit: null,
+    error: `模型链 ${fallbacks.join(" → ")} 全部失败: ${errors.map((e) => `${e.model}: ${e.error}`).join("; ") || "未知"}`,
+    errorType: "other",
+  };
+}
+
 /** 实际 LLM 调用（信号量内部执行体） */
 async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null> {
   const ep = getLlmEndpoint(input.model ? { model: input.model } : undefined);
@@ -296,6 +388,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
 
   let lastError = "";
   let lastErrorType: CallLlmResult["errorType"] = "other";
+  let lastStatus: number | undefined;
   const baseTimeout = input.timeoutMs ?? 180_000;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -312,6 +405,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
         // 重试前等待
       } else if (!resp.ok) {
         const status = resp.status;
+        lastStatus = status;
         const detail = (await resp.text().catch(() => "")).slice(0, 200);
         lastError = `HTTP ${status}${detail ? ": " + detail : ""}`;
         const cls = classifyLlmError(lastError, status);
@@ -375,5 +469,5 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
   }
 
   // G1: 失败原因返回给调用方（不静默 null）— 保留结构化错误供上层决策
-  return { text: "", tokens: null, cacheHit: null, error: lastError || "未知错误", errorType: lastErrorType };
+  return { text: "", tokens: null, cacheHit: null, error: lastError || "未知错误", errorType: lastErrorType, status: lastStatus };
 }
