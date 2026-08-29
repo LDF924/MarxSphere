@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // EducationWorkspacePanel.tsx — 顶部「AI+教育」Tab 工作台（复赛冲刺期）
-// 下拉两个子 Tab：学生端「我的学习」/ 教师端「教师工作台」
+// 三个子 Tab：学生端「我的学习」/ 教师端「教师工作台」/ 学习者画像（2026-08-29, Inno Agent 学习引擎）
 // 原科研工作台（33 视图）不做任何改动、不分角色、人人可用；教育能力全部内聚在此。
 // 学生端：学习计划 / 作业辅导 / 错题本 / 学情画像 / 学习进度 / 苏格拉底辅导 / 自动闭环周报 / 学习陪伴
 // 教师端：备课教案 / 命题组卷 / 作业批改 / 班级学情 / 板书识别 / 思政内容审核
 // 公共：教育复用资产（模板/案例）入口
 import { useState } from "react";
-import { GraduationCap, Presentation } from "lucide-react";
+import { GraduationCap, Presentation, Brain } from "lucide-react";
 import { EducationPanel } from "./EducationPanel";
 import { StudentLearningPanel } from "./StudentLearningPanel";
 import { TeacherWorkspacePanel } from "./TeacherWorkspacePanel";
 import { EducationAssetsPanel } from "./EducationAssetsPanel";
+import { LearnerPanel } from "./LearnerPanel";
 
-export type EducationRole = "student" | "teacher";
+export type EducationRole = "student" | "teacher" | "learner";
 
 export function EducationWorkspacePanel() {
   const [role, setRole] = useState<EducationRole>("student");
@@ -42,11 +43,21 @@ export function EducationWorkspacePanel() {
           >
             <Presentation className="h-3.5 w-3.5" /> 教师端 · 教师工作台
           </button>
+          <button
+            onClick={() => setRole("learner")}
+            className={`flex items-center gap-1 rounded px-3 py-1 transition-colors ${
+              role === "learner" ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Brain className="h-3.5 w-3.5" /> 学习者画像
+          </button>
         </div>
       </div>
 
       {/* 子 Tab 内容：新增能力 + 六大核心能力按角色分发（学生端 E1/E2/E3/E4/E6，教师端 E5） */}
-      {role === "student" ? (
+      {role === "learner" ? (
+        <LearnerPanel />
+      ) : role === "student" ? (
         <>
           <StudentLearningPanel />
           <EducationAssetsPanel role="student" />
