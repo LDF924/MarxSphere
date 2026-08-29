@@ -5426,6 +5426,19 @@ except Exception as e:
     agentPersistentRuntime.closeSession(params.id);
     return { ok: true };
   });
+  // 2026-08-29 Practice Lab: 持久运行时执行 Python(全局复用, 变量跨调用保持)
+  app.post("/api/agent/persistent-runtime/exec", async (request, reply) => {
+    const body = (request.body ?? {}) as { code?: string; timeoutMs?: number };
+    if (!body.code?.trim()) return reply.code(400).send({ error: "code 必填", code: "BAD_REQUEST" });
+    const { agentPersistentRuntime } = await import("../services/agent-persistent-runtime.js");
+    return await agentPersistentRuntime.execLab(body.code, body.timeoutMs || 30_000);
+  });
+  // Practice Lab: 重置运行时
+  app.post("/api/agent/persistent-runtime/reset", async () => {
+    const { agentPersistentRuntime } = await import("../services/agent-persistent-runtime.js");
+    agentPersistentRuntime.closeLab();
+    return { ok: true };
+  });
 
   // 架构A2: Provider 抽象状态（LLM/沙箱实现列表）
   app.get("/api/agent/providers", async () => {

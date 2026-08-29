@@ -198,4 +198,18 @@ export function persistentRuntimeStatus(): Array<{ sessionId: string; idleMs: nu
   return [...sessions.entries()].map(([id, s]) => ({ sessionId: id, idleMs: now - s.lastActive, alive: !s.proc.killed }));
 }
 
-export const agentPersistentRuntime = { createPersistentRuntime, closeSession, reapIdleSessions, persistentRuntimeStatus };
+/** Practice Lab: 全局复用 lab 运行时(变量跨调用保持; 首次创建, closeLab 后重建) */
+let labRuntime: { sessionId: string; exec: (code: string, timeoutMs?: number) => Promise<any>; close: () => void } | null = null;
+export function execLab(code: string, timeoutMs = 30_000): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string; sessionId: string }> {
+  if (!labRuntime) labRuntime = createPersistentRuntime("lab");
+  if (!labRuntime) return Promise.resolve({ ok: false, stdout: "", stderr: "", error: "运行时不可用(需 Python)", sessionId: "" });
+  return labRuntime.exec(code, timeoutMs).then((r) => {
+    // 进程死亡 → 清空下次重建
+    if (!r.ok && /已关闭|已退出/.test(r.error || "")) { labRuntime = null; }
+    return { ...r, sessionId: labRuntime?.sessionId ?? "" };
+  });
+}
+/** 关闭 lab 运行时 */
+export function closeLab(): void { if (labRuntime) { labRuntime.close(); labRuntime = null; } }
+
+export const agentPersistentRuntime = { createPersistentRuntime, closeSession, reapIdleSessions, persistentRuntimeStatus, execLab, closeLab };
