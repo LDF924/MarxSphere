@@ -3423,6 +3423,32 @@ export function buildHttpServer() {
 
   // V388: 学习意图双层路由(借鉴 TraitTutor learning/intent.py: 注入扫描→LLM分类→低置信度确认)
   // POST /api/education/intent — {text, attachmentsText?} → {mode, confidence, safetyAction, fallbackRequired}
+  // V394: 组件执行器(对照 TraitTutor executors — 生成组件真实内容)
+  // POST /api/education/components/lesson — 概念讲解/例题/目标地图{subject, knowledgePoint, kind}
+  // POST /api/education/components/assessment — 题目生成{subject, knowledgePoint, kind}
+  // POST /api/education/components/assessment/grade — 判分{item, userAnswer}
+  // POST /api/education/components/retrieval — 回忆卡生成{subject, knowledgePoint, count?}
+  app.post("/api/education/components/lesson", async (request) => {
+    const { componentExecutorService } = await import("../services/component-executor-service.js");
+    const body = z.object({ subject: z.string(), knowledgePoint: z.string(), goal: z.string().optional(), kind: z.enum(["concept_explanation", "worked_example", "goal_map", "visual_map"]), sourceId: z.string().optional() }).parse(request.body);
+    return componentExecutorService.generateLesson(body);
+  });
+  app.post("/api/education/components/assessment", async (request) => {
+    const { componentExecutorService } = await import("../services/component-executor-service.js");
+    const body = z.object({ subject: z.string(), knowledgePoint: z.string(), kind: z.enum(["guided_practice", "transfer_challenge", "diagnostic_check"]), sourceId: z.string().optional() }).parse(request.body);
+    return componentExecutorService.generateAssessment(body);
+  });
+  app.post("/api/education/components/assessment/grade", async (request) => {
+    const { componentExecutorService } = await import("../services/component-executor-service.js");
+    const body = z.object({ assessmentId: z.string(), questionId: z.number(), userAnswer: z.string() }).parse(request.body);
+    return componentExecutorService.gradeAssessmentItem(body);
+  });
+  app.post("/api/education/components/retrieval", async (request) => {
+    const { componentExecutorService } = await import("../services/component-executor-service.js");
+    const body = z.object({ subject: z.string(), knowledgePoint: z.string(), count: z.number().optional(), sourceId: z.string().optional() }).parse(request.body);
+    return componentExecutorService.generateRetrievalCards(body);
+  });
+
   app.post("/api/education/intent", async (request, reply) => {
     const { educationIntentService } = await import("../services/education-intent-service.js");
     const body = z.object({ text: z.string().max(4000), attachmentsText: z.string().max(20000).optional() }).parse(request.body);
