@@ -27,6 +27,9 @@
     "demo:ingest": "tsx scripts/demo-ingest.ts",
     "demo:search": "tsx scripts/demo-search.ts",
     "test": "vitest run",
+    "docs:sync": "tsx scripts/doc-sync.ts",
+    "docs:check": "tsx scripts/doc-sync.ts --check",
+    "sync:open": "node scripts/sync-open.mjs",
     "release": "node scripts/release.mjs",
     "quickstart": "node scripts/quickstart.mjs",
     "deploy": "node scripts/deploy.mjs"
