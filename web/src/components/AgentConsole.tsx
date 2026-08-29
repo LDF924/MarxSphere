@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, type FC } from "react";
 import { ShieldAlert, Brain, ScrollText, Plus, Trash2, Power, RefreshCw, Sparkles, FileSearch, BarChart3, Wrench, ShieldCheck } from "lucide-react";
 import { cn } from "../lib/utils";
+import { PracticeLab } from "./PracticeLab";
 
 // ─── 防错规则 ───
 interface Rule { id: number; category: string; pattern: string; rule: string; source: string; hitCount: number; enabled: boolean; createdAt: string; }
@@ -78,7 +79,7 @@ const DEMO_EVAL_HISTORY: any[] = [
 ];
 
 export const AgentConsole: FC = () => {
-  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent">("rules");
+  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent" | "lab">("rules");
   // V392: 演示模式 — demo 数据填充三 tab（沙箱不调 API）
   const [demoOn, setDemoOn] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
@@ -137,7 +138,7 @@ export const AgentConsole: FC = () => {
     <section className="flex min-h-0 flex-1 flex-col">
       {/* tab 头 */}
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-4 py-2">
-        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"], ["agent", "Agent 管理"]] as const).map(([id, label]) => (
+        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"], ["agent", "Agent 管理"], ["lab", "练习实验室"]] as const).map(([id, label]) => (
           <button key={id} type="button" aria-label={`切换到${label}标签页`} aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn("shrink-0 rounded-md px-3 py-1.5 text-xs transition-colors", tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
             {label}
@@ -171,6 +172,7 @@ export const AgentConsole: FC = () => {
           {tab === "episodic" && <EpisodicTab demoOn={demoOn} />}
           {tab === "skills" && <SkillsTab demoOn={demoOn} />}
           {tab === "agent" && <AgentManageTab />}
+          {tab === "lab" && <PracticeLab />}
         </div>
       </div>
     </section>
