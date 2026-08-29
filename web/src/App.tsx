@@ -2910,6 +2910,9 @@ function ProjectDocumentsWorkspace(props: {
   const { language, t } = useI18n();
   const [resultTitleQuery, setResultTitleQuery] = useState("");
   const [resultPage, setResultPage] = useState(1);
+  // 论文分享（2026-08-29, frowang /s/:token 分享模式: 生成链接复制发给他人）
+  const [shareBusyDocId, setShareBusyDocId] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const searchableResultView = props.resultView === "chunks" || props.resultView === "events" || props.resultView === "entities";
   const normalizedResultTitleQuery = normalizeKeyword(resultTitleQuery);
   const filteredChunks = useMemo(
@@ -2956,6 +2959,26 @@ function ProjectDocumentsWorkspace(props: {
   useEffect(() => {
     setResultPage(1);
   }, [normalizedResultTitleQuery, props.resultView, props.selectedDocumentId]);
+
+  // 生成分享链接并复制到剪贴板
+  const handleCreateShare = async (documentId: string) => {
+    setShareBusyDocId(documentId);
+    setShareUrl(null);
+    try {
+      const r = await api.createPaperShare(documentId);
+      const url = `${window.location.origin}${r.url}`;
+      setShareUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        // 剪贴板不可用时仍展示链接, 用户可手动复制
+      }
+    } catch (e) {
+      setShareUrl(null);
+    } finally {
+      setShareBusyDocId(null);
+    }
+  };
 
   useEffect(() => {
     if (resultPage > resultPageCount) {
@@ -3052,6 +3075,14 @@ function ProjectDocumentsWorkspace(props: {
                         {document.archivedAt ? t("恢复", "Restore") : t("归档", "Archive")}
                       </MiniButton>
                       <MiniButton danger onClick={() => props.onDeleteDocument(document)}>{t("永久删除", "Delete forever")}</MiniButton>
+                      <MiniButton onClick={() => void handleCreateShare(document.id)}>
+                        {shareBusyDocId === document.id ? t("生成中…", "Creating…") : t("分享链接", "Share link")}
+                      </MiniButton>
+                      {shareUrl && shareBusyDocId === null && (
+                        <span className="w-full truncate rounded bg-emerald-500/10 px-2 py-1 font-mono text-[11px] text-emerald-700" title={shareUrl}>
+                          ✓ {t("已复制: ", "Copied: ")}{shareUrl}
+                        </span>
+                      )}
                     </div>
                   ) : null}
                 </div>

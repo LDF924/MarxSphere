@@ -3,7 +3,7 @@
 // 玻璃拟态宇宙风设计: 渐变头部 + 状态徽章 + 分区卡片 + 结果面板 + 操作反馈
 // Zotero 导入 / 论文搜索 / RSS·arXiv / S3 同步 / SSH 远程
 import { useEffect, useState } from "react";
-import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu, NotebookPen } from "lucide-react";
+import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu, NotebookPen, Share2 } from "lucide-react";
 import { NotesPanel } from "./NotesPanel";
 
 interface PaperHit {
@@ -29,6 +29,21 @@ export function ImportsPanel() {
   const [zoteroStatus, setZoteroStatus] = useState<any>(null);
   const [s3Status, setS3Status] = useState<any>(null);
   const [sshStatus, setSshStatus] = useState<any>(null);
+
+  // ── 论文分享（2026-08-29, frowang /s/:token 分享模式: 生成链接 → 他人接收导入）──
+  const [shareToken, setShareToken] = useState("");
+  const [sharePreview, setSharePreview] = useState<{ title?: string; imported?: boolean; error?: string } | null>(null);
+
+  const receiveShare = async () => {
+    const token = shareToken.trim().split("/").filter(Boolean).pop() || shareToken.trim();
+    if (!token) { tell("err", "请输入分享 token 或链接"); return; }
+    setBusy("share");
+    const r = await call(`/api/papers/share/${encodeURIComponent(token)}/receive`, { method: "POST", body: JSON.stringify({ sourceId }) });
+    setSharePreview(r || { error: "接收失败" });
+    r?.ok ? tell("ok", r.imported ? `已导入「${(r.title || "").slice(0, 40)}」` : "库中已存在同名文献，跳过")
+          : tell("err", r?.error?.message || "接收失败（token 无效或已过期）");
+    setBusy(null);
+  };
 
   useEffect(() => {
     fetch("/api/projects").then((r) => r.json()).then((j) => {
@@ -299,6 +314,34 @@ export function ImportsPanel() {
               {busy === "ssh" ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3 text-muted-foreground" />}
             </button>
           </div>
+        </div>
+
+        {/* 论文分享（2026-08-29, frowang /s/:token 分享模式: 他人 token/链接 → 接收导入） */}
+        <div className="flex flex-col rounded-xl border bg-card/60 p-4 backdrop-blur-sm lg:col-span-2">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-fuchsia-500/15"><Share2 className="h-3.5 w-3.5 text-fuchsia-600" /></div>
+            <div>
+              <div className="text-xs font-semibold">论文分享接收</div>
+              <div className="text-[9px] text-muted-foreground">粘贴分享链接或 token · 一键导入到当前文献库（自动去重）</div>
+            </div>
+            {busy === "share" && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-fuchsia-600" />}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input value={shareToken} onChange={(e) => setShareToken(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void receiveShare()}
+              placeholder="分享链接或 token，如 /s/paper/5d1371ab97a6562fc07d80d5"
+              className="min-w-0 flex-1 rounded-lg border bg-background px-3 py-2 font-mono text-[11px] outline-none focus:border-fuchsia-500/50" />
+            <button type="button" onClick={() => void receiveShare()} disabled={!!busy || !shareToken.trim() || !sourceId}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-2 text-[11px] font-medium text-white transition-all hover:bg-fuchsia-700 disabled:opacity-40">
+              {busy === "share" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Share2 className="h-3 w-3" />}
+              接收导入
+            </button>
+          </div>
+          {sharePreview && (
+            <div className={`mt-2 rounded-lg border px-3 py-1.5 text-[10px] ${sharePreview.error ? "border-red-500/30 bg-red-500/10 text-red-600" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"}`}>
+              {sharePreview.error || (sharePreview.imported ? `✓ 已导入「${sharePreview.title}」` : `ℹ 库中已存在「${sharePreview.title}」，跳过重复`)}
+            </div>
+          )}
         </div>
 
         {/* 论文搜索 */}

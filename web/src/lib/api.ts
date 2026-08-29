@@ -192,6 +192,25 @@ export const api = {
     });
   },
 
+  // ── 论文分享（2026-08-29, frowang /s/:token 分享模式）──
+  async createPaperShare(documentId: string, opts: { expiresHours?: number; maxUses?: number } = {}) {
+    return request<{ ok: boolean; url: string; token: string }>("/api/papers/share", {
+      method: "POST",
+      body: JSON.stringify({ documentId, ...opts })
+    });
+  },
+
+  async receivePaperShare(token: string, sourceId: string) {
+    return request<{ ok: boolean; imported: boolean; title?: string }>(`/api/papers/share/${encodeURIComponent(token)}/receive`, {
+      method: "POST",
+      body: JSON.stringify({ sourceId })
+    });
+  },
+
+  async listMyShares() {
+    return request<{ ok: boolean; shares: Array<{ token: string; title: string; useCount: number; maxUses: number | null; expiresAt: string | null }> }>("/api/papers/share/my");
+  },
+
   async getEvent(eventId: string) {
     return request<EventDetailRecord>(`/api/events/${eventId}`);
   },
