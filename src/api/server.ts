@@ -5174,6 +5174,12 @@ except Exception as e:
     roleMap: getRoleModelMap(),
   }));
 
+  // V389: Quota Rotation 路由熔断状态(前端诊断用)
+  app.get("/api/llm/circuit-state", async () => {
+    const { modelCircuitStats } = await import("../ai/llm-common.js");
+    return { ok: true, circuits: modelCircuitStats() };
+  });
+
   app.put("/api/llm/models", async (request) => {
     const body = request.body as { role?: LlmRole; modelId?: string };
     if (!body.role || !body.modelId) return { error: "role 和 modelId 必填" };
