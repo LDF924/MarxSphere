@@ -247,6 +247,18 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Pacing**: difficulty/duration tuned to mastery (no repetitive or overwhelming tasks)
 - **Differentiated teaching**: same concept at multiple levels (basic/advanced/challenge)
 
+**Learning engine** (V386-V393, ported from TraitTutor source, [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md)) — evidence-driven adaptive learning loop:
+- **Learner event ledger + BKT mastery**: append-only ledger + strong-evidence gate (only server-graded answers update BKT) + honest reads (no numbers until calibrated) + time-decay read projection + offline calibration script
+- **Versioned learning plan chain**: replan only the unstarted tail (started prefix immutable) + supersede audit chain + component state machine
+- **Deterministic component selector**: BKT four-stage branches (goal map → concept → diagnostic → guided practice+calibration → transfer → retrieval)
+- **Material analysis snapshot**: subject/difficulty/concept candidates/page evidence/modality + augmentation decision (LLM + heuristic fallback)
+- **Review tri-state + one material many artifacts**: needs_review→confirm→attach (courseware/flashcards/quiz share the pack), answers held server-side (stripped from projections)
+- **Spaced repetition queue**: 4 knowledge-type interval sequences + jump/back/reset + repair-first ordering
+- **Compass memory governance**: preference tri-state + 90-day TTL + candidate-confirm gate + delete-and-rebuild
+- **Intent double-layer routing** (injection scan → LLM classify → low-confidence confirm) + **Quota Rotation gateway** (circuit breaker + deadline) + component whitelist
+- **Full-screen learning canvas**: path/component/"why this step" evidence; E9 learning-engine panel + artifact hub
+- Agent one-liner calls (`education_service` tool: plan-chain/intent/material-analyze/pref-*/reviews-* actions)
+
 ### 🖥 Desktop App (Electron + NSIS)
 
 - Single-process architecture: `node dist/src/index.js` serves both API + frontend (zero extra dependencies)

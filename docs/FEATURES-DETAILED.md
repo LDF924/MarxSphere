@@ -263,3 +263,26 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 反馈统计 | `GET /api/education/feedback/stats` | 满意率、按场景/角色聚合、负评热点 top5（教学效果指标 ⑫ 数据源） |
 | 教育评测（12 项） | `GET /api/education/eval`（`education-eval-service.ts`） | 技术 6 项（BKT/诊断/路径/批改/思政/闭环）+ 教学效果 6 项（掌握度/辅导对照/备课效率/批改效率/规划覆盖/满意度） |
 | 自动改进建议 | 同上（suggestions 字段） | 低分指标（BKT<0.75 等）+ 负评热点 → 高/中优先级改进建议，评测工作台展示 |
+
+### 9.4 学习引擎（V386-V393, 借鉴 TraitTutor 源码移植）
+
+> 完整文档: [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) · 调研: [docs/TRAITTUTOR-REVIEW.md](docs/TRAITTUTOR-REVIEW.md)
+
+| 能力 | 路由/文件 | 说明 |
+|---|---|---|
+| 学习者事件账本 | `learning-evidence-service.ts`（迁移 096） | append-only 账本 + void amendment + 幂等键；强证据闸门（仅服务端判分+可靠归属进 BKT）；诚实读（未校准/观察<3 不显示数字）；时间衰减读投影 |
+| BKT 概念掌握 | 同上（`bktUpdate`） | 贝叶斯后验更新（transition/guess/slip/prior），4 档定性状态（insufficient/needs_support/developing/supported） |
+| BKT 离线校准 | `scripts/calibrate-bkt.ts` | 约束随机搜索 2 万候选 + 学生级 5 折 + 质量门（log-loss 优于基线才写校准工件） |
+| 版本化计划链 | `learning-plan-service.ts`（迁移 097） | 只重规划未开始尾部 + supersede 审计链 + 组件状态机（依赖前置校验） |
+| 确定性组件选择器 | `learning-selector-service.ts` | 源码移植 select/_stage：BKT 四阶段分支 + 评估-校准成对 + 孤儿评估抑制 + 14 组件中文文案 |
+| 产物审查三态机 | `material-review-service.ts`（迁移 098） | needs_review→confirmed/discarded；未确认不可挂载不可评分；审查历史可审计 |
+| 材料分析快照 | 同上 | 学科/难度/概念候选/页证据/模态适配 + augmentation 补充决策（LLM 判定+启发式降级恒 true） |
+| 一材多工件 | 同上（`attachArtifactToPlan`） | courseware/flashcards/quiz 挂载到学习计划，仅 confirmed 经 generation_id，投影剥答案键 |
+| 组件白名单 | 同上（`validateComponentInstance`） | 类型/字段白名单 + 答案键物理缺席 + 可执行标记拒绝 + 违规降级文本页 |
+| 间隔重复复习 | `spaced-repetition-service.ts`（迁移 100） | 4 类间隔序列 + 连中 2 跳 2 档/答错退 1 档/连错 2 重置 + 错误未修复优先 |
+| Compass 治理 | `education-compass-service.ts`（迁移 099） | 偏好三态 + 90 天 TTL + 候选确认门（≥2 证据）+ 删除即重建 + 边界声明 |
+| 意图双层路由 | `education-intent-service.ts` | 5 类注入扫描（中英双语）+ LLM 分类 + 低置信度 fail-closed + 附件不进分类器 |
+| Quota Rotation 网关 | `llm-common.ts`（`callLlmWithRotation`） | 总 deadline + per-model 熔断 + 配额/认证立即轮换 + 错误摘要 |
+| 全屏学习画布 | `web/src/components/LearningCanvas.tsx` | 路径/组件/"为何此步"同屏 + 挂载折叠 + 状态推进（幂等/409 自愈/依赖锁定） |
+| 前端入口 | `web/src/components/EducationPanel.tsx`（E9 学习引擎 + 产物中心） | 材料分析/意图路由/复习队列/Compass/熔断 5 tab + 确认/丢弃/挂载 |
+| Agent 接入 | `agent-tool-router.ts`（education_service） | 新增 plan-chain/intent/material-analyze/pref-*/reviews-* 动作 |
