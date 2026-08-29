@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import {
   Loader2, Plus, PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Pin, PinOff,
-  MessageSquare, Send, Square, Globe, Paperclip, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap
+  MessageSquare, Send, Square, Globe, Paperclip, CheckCircle2, XCircle, Wrench, ChevronDown, ChevronRight, RotateCcw, Zap, Play
 } from "lucide-react";
 import { api } from "../lib/api";
 import type { McpMessageRecord, McpSessionRecord, McpToolCallRecord } from "../types";
@@ -295,6 +295,20 @@ function ReasoningBlock({ text, streaming = false }: { text: string; streaming?:
 export const ChatPanel: FC<ChatPanelProps> = (props) => {
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<ChatDraftImage[]>([]);
+  // 会话回放导出(2026-08-29, 借鉴 Inno Agent case-exporter)
+  const exportReplay = async (sessionId: string, title: string) => {
+    try {
+      const r = await fetch(`/api/chat/sessions/${sessionId}/replay`).then((x) => x.json());
+      if (!r?.ok) { alert(`回放导出失败: ${r?.error || "未知错误"}`); return; }
+      const blob = new Blob([JSON.stringify(r.replay, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `replay-${(title || "session").slice(0, 20)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { alert(`回放导出失败: ${String(e?.message || e).slice(0, 80)}`); }
+  };
   // V399: 文档附件（PDF/Office/文本，发送后由服务端 attachment_read 解析）
   const [draftDocs, setDraftDocs] = useState<ChatDraftImage[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -567,6 +581,14 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                               className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-red-400"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="会话回放(导出 JSON)"
+                              onClick={() => void exportReplay(session.id, session.title)}
+                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-emerald-400"
+                            >
+                              <Play className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         )}

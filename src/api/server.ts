@@ -2140,6 +2140,18 @@ export function buildHttpServer() {
     sessions: await mcpAgentService.listSessions({ kind: "chat" })
   }));
 
+  // ─── 会话回放（2026-08-29, 借鉴 Inno Agent case-exporter）───
+  // GET /api/chat/sessions/replay/list — 可回放会话列表
+  app.get("/api/chat/sessions/replay/list", async () => {
+    const { sessionReplayService } = await import("../services/session-replay.js");
+    return { ok: true, sessions: await sessionReplayService.listReplayableSessions() };
+  });
+  // GET /api/chat/sessions/:id/replay — 导出会话回放 JSON(消息+工具调用+脱敏)
+  app.get("/api/chat/sessions/:id/replay", async (request) => {
+    const { sessionReplayService } = await import("../services/session-replay.js");
+    return await sessionReplayService.exportSessionReplay((request.params as any).id);
+  });
+
   app.get("/api/mcp/sessions", async () => ({
     sessions: await mcpAgentService.listSessions()
   }));
