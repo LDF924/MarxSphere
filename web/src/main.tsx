@@ -7,6 +7,7 @@ import { registerView } from "./components/viewRegistry";
 import { JupyterPanel } from "./components/JupyterPanel";
 import "./styles.css";
 import "./cosmos.css";
+import "./learning.css";
 
 // 2026-08-27: 轻量 notebook 工作台（ScienceX 通用计算环境）— 插件面板注册
 registerView({

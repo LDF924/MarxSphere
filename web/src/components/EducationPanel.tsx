@@ -684,7 +684,7 @@ function LearningEngineHub() {
       <div className="flex flex-wrap gap-1.5">
         {tabs.map((t) => (
           <button key={t.id} type="button" onClick={() => setTab(t.id)}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${tab === t.id ? "bg-violet-600 text-white shadow-sm" : "border border-border bg-background/60 text-muted-foreground hover:bg-accent"}`}>
+            className={`learning-button ${tab === t.id ? "learning-button--primary" : "learning-button--secondary"}`}>
             {t.label}
           </button>
         ))}
@@ -714,13 +714,13 @@ function MaterialAnalyzer() {
     setBusy(false);
   };
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="learning-card">
       <div className="mb-2 text-[11px] font-semibold">材料分析快照（学科/难度/概念候选/模态适配）</div>
       <div className="space-y-2">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="材料标题" className="w-full rounded border bg-background px-2 py-1.5 text-[11px] outline-none" />
         <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="粘贴材料内容（LLM 分析, 失败自动降级启发式）" className="h-24 w-full resize-y rounded border bg-background p-2 text-[11px] outline-none" />
         <button type="button" onClick={() => void analyze()} disabled={busy || !content.trim()}
-          className="rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-violet-700 disabled:opacity-40">
+          className="learning-button learning-button--primary">
           {busy ? "分析中…" : "开始分析"}
         </button>
         {result?.analysis && (
@@ -770,12 +770,12 @@ function IntentRouter() {
     setBusy(false);
   };
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="learning-card">
       <div className="mb-2 text-[11px] font-semibold">学习意图路由（注入扫描 → LLM 分类 → 低置信度需确认）</div>
       <div className="space-y-2">
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="输入学习提问, 如: 我想系统学习考研政治" className="h-20 w-full resize-y rounded border bg-background p-2 text-[11px] outline-none" />
         <button type="button" onClick={() => void classify()} disabled={busy || !text.trim()}
-          className="rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-violet-700 disabled:opacity-40">
+          className="learning-button learning-button--primary">
           {busy ? "分类中…" : "识别意图"}
         </button>
         {result && (
@@ -824,7 +824,7 @@ function ReviewQueuePanel() {
     } catch (e: any) { setMsg(String(e?.message || e)); }
   };
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="learning-card">
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[11px] font-semibold">间隔重复复习队列（到期优先, 错误未修复置顶）</span>
         <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
@@ -876,7 +876,7 @@ function CompassPanel() {
     void load();
   };
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="learning-card">
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[11px] font-semibold">Compass 记忆治理（候选→确认门, 推断 90 天 TTL）</span>
         <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
@@ -924,7 +924,7 @@ function CircuitPanel() {
   };
   useEffect(() => { void load(); }, []);
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
+    <div className="learning-card">
       <div className="mb-2 flex items-center gap-2">
         <span className="text-[11px] font-semibold">模型路由熔断（连续失败 ≥3 次 → 60s 冷却跳过）</span>
         <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
@@ -1014,9 +1014,9 @@ function CircuitPanel() {
               {r.status === "needs_review" && (
                 <>
                   <button type="button" onClick={() => void act(r.id, "confirm")}
-                    className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">✓ 确认可用</button>
+                    className="learning-button learning-button--secondary">✓ 确认可用</button>
                   <button type="button" onClick={() => void act(r.id, "discard")}
-                    className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-100">✗ 丢弃</button>
+                    className="learning-button learning-button--danger">✗ 丢弃</button>
                 </>
               )}
               {r.status === "confirmed" && (
@@ -1024,7 +1024,7 @@ function CircuitPanel() {
                   <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">✓ 已确认</span>
                   {/* V392: 一材多工件 — 挂载到进行中的学习计划 */}
                   <button type="button" onClick={() => void attach(r.id)}
-                    className="rounded border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-100">📎 挂载到计划</button>
+                    className="learning-button learning-button--primary">📎 挂载到计划</button>
                 </>
               )}
               {r.status === "discarded" && <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">已丢弃</span>}
@@ -1887,25 +1887,26 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* 左侧工具列表 */}
-        <div className="w-[200px] shrink-0 space-y-1 overflow-y-auto border-r p-2">
+        {/* 左侧工具列表(V393: learning-* 设计类) */}
+        <div className="w-[210px] shrink-0 space-y-1 overflow-y-auto border-r p-2.5">
           {tools.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTool(t.id)}
-              className={`w-full rounded-lg px-3 py-2.5 text-left transition-colors ${activeTool === t.id ? "bg-emerald-50 text-emerald-800" : "hover:bg-muted"}`}
+              className={`learning-step ${activeTool === t.id ? "learning-step--active" : ""}`}
             >
-              <div className="flex items-center gap-2 text-[13px] font-medium">
-                {t.icon} {t.title}
-              </div>
-              <div className="mt-1 pl-6 text-[11px] leading-4 text-muted-foreground">{t.desc}</div>
+              <span className="learning-icon-badge">{t.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">{t.title}</span>
+                <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted-foreground">{t.desc}</span>
+              </span>
             </button>
           ))}
         </div>
 
         {/* 右侧：主区（工具表单 + 结果，flex-1 自适应） */}
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="mb-3 text-[11px] text-muted-foreground">{active.desc}</div>
+          <div className="learning-eyebrow mb-3">{active.desc}</div>
           <div className="space-y-2">
             {active.fields.map((f) => (
               <div key={f.key}>
@@ -1914,7 +1915,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
                   <select
                     value={inputs[active.id]?.[f.key] || ""}
                     onChange={(e) => setInputs((prev) => ({ ...prev, [active.id]: { ...(prev[active.id] || {}), [f.key]: e.target.value } }))}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13px]"
+                    className="learning-input"
                   >
                     <option value="">选择…</option>
                     {f.options!.map((o) => <option key={o} value={o}>{o}</option>)}

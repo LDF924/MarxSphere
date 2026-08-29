@@ -1,0 +1,164 @@
+/* learning.css — 学习设计体系(V393, 移植 TraitTutor globals.css learning-* 类, 适配 MarxSphere 变量)
+ * 覆盖: 画布/卡片/按钮/徽标/状态点/步骤条/产物中心 — 替代 EducationPanel 的 9-11px 内联样式
+ * 变量: 复用 SAG :root(--background/--card/--primary/--border...)
+ */
+.learning-card {
+  @apply rounded-lg border bg-card/70 p-4 backdrop-blur-sm;
+  border-color: hsl(var(--border) / 0.65);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+.learning-card--large {
+  @apply rounded-xl p-5 md:p-6;
+  background: linear-gradient(180deg, hsl(var(--card) / 0.85), hsl(var(--card) / 0.6));
+  border-color: hsl(var(--primary) / 0.18);
+}
+.learning-card--active {
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--primary) / 0.06);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.12);
+}
+
+/* ─── 按钮体系 ─── */
+.learning-button {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium transition-all disabled:opacity-40;
+}
+.learning-button--primary {
+  @apply text-white;
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.85));
+  box-shadow: 0 1px 3px hsl(var(--primary) / 0.35);
+}
+.learning-button--primary:hover { filter: brightness(1.08); }
+.learning-button--secondary {
+  @apply text-foreground;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+}
+.learning-button--secondary:hover { background: hsl(var(--accent)); }
+.learning-button--ghost {
+  @apply text-muted-foreground;
+}
+.learning-button--ghost:hover { @apply bg-accent text-foreground; }
+.learning-button--danger {
+  @apply text-red-500;
+  border: 1px solid hsl(var(--destructive) / 0.3);
+  background: hsl(var(--destructive) / 0.08);
+}
+.learning-button--danger:hover { background: hsl(var(--destructive) / 0.15); }
+
+/* ─── 徽标/状态 ─── */
+.learning-status-pill {
+  @apply rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-wide;
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+}
+.learning-chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium;
+}
+.learning-chip--success { @apply bg-emerald-500/10 text-emerald-600; }
+.learning-chip--warning { @apply bg-amber-500/10 text-amber-600; }
+.learning-chip--danger { @apply bg-red-500/10 text-red-500; }
+.learning-chip--info { @apply bg-sky-500/10 text-sky-600; }
+.learning-chip--neutral { @apply bg-muted text-muted-foreground; }
+
+/* ─── 状态点(源码 learning-status-dot) ─── */
+.learning-status-dot {
+  @apply relative inline-block h-4 w-4 rounded-full;
+  border: 2px solid hsl(var(--primary));
+}
+.learning-status-dot::after {
+  content: "";
+  @apply absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full;
+  background: hsl(var(--primary));
+}
+
+/* ─── 排版 ─── */
+.learning-eyebrow {
+  @apply text-[11px] font-medium uppercase tracking-wider;
+  color: hsl(var(--muted-foreground) / 0.85);
+}
+.learning-copy-muted {
+  color: hsl(var(--muted-foreground) / 0.9);
+}
+.learning-meta {
+  @apply font-mono;
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+/* ─── 画布布局(源码 learning-canvas 三栏) ─── */
+.learning-canvas {
+  @apply flex h-full min-h-0 w-full flex-col overflow-hidden;
+  background: hsl(var(--background));
+}
+.learning-canvas__header {
+  @apply shrink-0 border-b px-4 py-3;
+  background: color-mix(in srgb, hsl(var(--background)) 90%, hsl(var(--card)));
+}
+.learning-canvas__layout {
+  @apply grid min-h-0 w-full flex-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_292px];
+}
+.learning-canvas__path-panel {
+  @apply shrink-0 border-b px-4 py-3 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-4;
+  background: color-mix(in srgb, hsl(var(--card)) 76%, hsl(var(--secondary)));
+}
+.learning-canvas__content {
+  @apply flex min-h-0 min-w-0 flex-col overflow-y-auto p-4 md:p-6;
+}
+
+/* ─── 步骤条(路径侧栏条目) ─── */
+.learning-step {
+  @apply flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors;
+}
+.learning-step:hover { @apply bg-accent/60; }
+.learning-step--active {
+  @apply font-medium;
+  background: hsl(var(--primary) / 0.1);
+  box-shadow: inset 2px 0 0 hsl(var(--primary));
+}
+.learning-step--locked { @apply opacity-60; }
+
+/* ─── 提示/反馈 ─── */
+.learning-notice {
+  @apply rounded-lg border px-3 py-2 text-xs leading-5;
+}
+.learning-notice--info { @apply border-sky-500/30 bg-sky-500/10 text-sky-700; }
+.learning-notice--success { @apply border-emerald-500/30 bg-emerald-500/10 text-emerald-700; }
+.learning-notice--warning { @apply border-amber-500/30 bg-amber-500/10 text-amber-700; }
+.learning-notice--error { @apply border-red-500/30 bg-red-500/10 text-red-600; }
+
+/* ─── 图标徽标(工具图标容器) ─── */
+.learning-icon-badge {
+  @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg;
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+}
+.learning-icon-badge--success { background: hsl(150 55% 40% / 0.12); color: hsl(150 55% 40%); }
+.learning-icon-badge--warning { background: hsl(38 92% 50% / 0.12); color: hsl(38 92% 45%); }
+.learning-icon-badge--info { background: hsl(200 90% 45% / 0.12); color: hsl(200 90% 45%); }
+
+/* ─── 布局: 分区头 / 分隔 ─── */
+.learning-section-heading {
+  @apply mb-3 flex items-start justify-between gap-3 border-b pb-3;
+  border-color: hsl(var(--border) / 0.6);
+}
+.learning-divider {
+  @apply my-3 h-px w-full;
+  background: hsl(var(--border) / 0.6);
+}
+
+/* ─── 输入 ─── */
+.learning-input {
+  @apply w-full rounded-lg border bg-background px-3 py-2 text-xs outline-none transition-colors;
+  border-color: hsl(var(--border));
+}
+.learning-input:focus {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.12);
+}
+.learning-textarea {
+  @apply w-full resize-y rounded-lg border bg-background p-3 text-xs leading-5 outline-none transition-colors;
+  border-color: hsl(var(--border));
+}
+.learning-textarea:focus {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.12);
+}

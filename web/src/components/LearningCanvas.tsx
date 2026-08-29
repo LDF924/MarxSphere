@@ -142,9 +142,9 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
   if (!plan) return null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="learning-canvas">
       {/* 顶栏(源码 learning-canvas__header) */}
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+      <header className="learning-canvas__header flex shrink-0 items-center justify-between gap-3">
         <button type="button" onClick={onExit} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent" title="退出画布">
           <X className="h-3.5 w-3.5" /> 退出
         </button>
@@ -157,10 +157,10 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
         </button>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div className="learning-canvas__layout">
         {/* 路径侧栏(源码 learning-canvas__path-panel) */}
         {!pathCollapsed && (
-          <aside className="min-h-0 overflow-y-auto border-r border-border p-3">
+          <aside className="learning-canvas__path-panel">
             <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
               <Route className="h-3 w-3" /> 学习路径
             </div>
@@ -171,7 +171,7 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
                     type="button"
                     disabled={c.locked}
                     onClick={() => setSelectedId(c.id)}
-                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${selected?.id === c.id ? "bg-primary/10 font-medium text-primary" : "hover:bg-accent"} ${c.locked ? "opacity-60" : ""}`}
+                    className={`learning-step ${selected?.id === c.id ? "learning-step--active" : ""} ${c.locked ? "learning-step--locked" : ""}`}
                     title={c.locked ? "此组件需要先完成相关练习" : c.reason}
                   >
                     {c.locked
@@ -198,7 +198,7 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
         )}
 
         {/* 内容区(源码 learning-canvas__content) */}
-        <section className="min-h-0 overflow-y-auto p-4 md:p-6">
+        <section className="learning-canvas__content">
           {selected && (
             <div className="mx-auto max-w-3xl">
               {/* 标题 + "为何此步"证据(源码 L1131-1149) */}
@@ -210,13 +210,13 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
                     {REASON_ZH[selected.type] || selected.reason || "完成此步骤以推进学习。"}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-md border px-2 py-1 font-mono text-[9px] uppercase text-muted-foreground">
+                <span className="learning-status-pill">
                   {STATUS_LABEL[selected.status] || selected.status}
                 </span>
               </div>
 
               {/* 组件内容(占位: 按模态渲染) */}
-              <div className="rounded-lg border border-border bg-card/60 p-4 text-sm leading-6">
+              <div className="learning-card text-sm leading-6">
                 {selected.type === "retrieval_card" || selected.type === "review_queue" ? (
                   <div className="text-center text-muted-foreground">
                     <div className="mb-2">🔁 主动回忆</div>
@@ -242,21 +242,21 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
                     type="button"
                     disabled={busy || selected.locked}
                     onClick={() => void applyEvent(selected.id, selected.status === "pending" ? "start" : "complete")}
-                    className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+                    className="learning-button learning-button--primary"
                   >
                     {busy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
                     {selected.status === "pending" ? "开始此步骤" : "标记完成"}
                   </button>
                   {selected.required === false && selected.status === "pending" && (
                     <button type="button" disabled={busy} onClick={() => void applyEvent(selected.id, "skip")}
-                      className="rounded-lg border px-3 py-2 text-xs text-muted-foreground hover:bg-accent disabled:opacity-40">
+                      className="learning-button learning-button--secondary">
                       跳过(可选)
                     </button>
                   )}
                 </div>
               )}
               {["completed", "skipped"].includes(selected.status) && (
-                <div className="mt-4 rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                <div className="learning-notice learning-notice--success">
                   {selected.status === "completed" ? "✓ 已完成此步骤" : "已跳过"}
                 </div>
               )}
