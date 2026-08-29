@@ -1267,6 +1267,28 @@ export function buildHttpServer() {
     return { ok: true, action: decision.action, reason: decision.reason, protocol };
   });
 
+  // POST /api/education/learner/rebuild — 从事件日志重建画像(升级 L1 规则后)
+  app.post("/api/education/learner/rebuild", async (request) => {
+    const body = (request.body ?? {}) as { studentId?: string };
+    const { rebuildProfileService } = await import("../services/rebuild-profile.js");
+    return await rebuildProfileService.rebuildProfileFromEvents(body.studentId || "default");
+  });
+
+  // GET /api/notes/wiki/query — L2 wiki 查询(索引+关键词检索, 供 Agent 注入)
+  app.get("/api/notes/wiki/query", async (request) => {
+    const q = request.query as { q?: string };
+    const { wikiQueryService } = await import("../services/wiki-query.js");
+    return { ok: true, result: await wikiQueryService.queryWiki(q?.q || "") };
+  });
+
+  // GET /api/notes/wiki/graph — L2 wiki 加权图谱(节点/边/权重/统计)
+  app.get("/api/notes/wiki/graph", async (request) => {
+    const { wikiGraphService } = await import("../services/wiki-graph.js");
+    const graph = await wikiGraphService.buildWikiGraph();
+    const stats = await wikiGraphService.computeWikiGraphStats();
+    return { ok: true, nodes: graph.nodes, edges: graph.edges, stats };
+  });
+
   // ─── 教育复用资产（个人/公共隔离：学生 personal + public，教师 public）───
   app.get("/api/education/asset-store", async (request) => {
     const { educationAssetStoreService } = await import("../services/education-asset-store.js");

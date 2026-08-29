@@ -57,6 +57,14 @@ export function LearnerPanel() {
   };
   useEffect(() => { void loadAll(); }, []);
 
+  const rebuildProfile = async () => {
+    setBusy(true);
+    const r = await fetch("/api/education/learner/rebuild", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((x) => x.json()).catch(() => null);
+    setBusy(false);
+    r?.ok ? tell("ok", `已从 ${r.events} 个事件重建画像(${r.applied} 项变更)`) : tell("err", "重建失败");
+    void loadAll();
+  };
+
   const tell = (t: "ok" | "err", text: string) => setNotice({ type: t, text: text.slice(0, 150) });
 
   const addGoal = async () => {
@@ -125,9 +133,15 @@ export function LearnerPanel() {
         <Brain className="h-5 w-5 text-violet-500" />
         <h2 className="text-lg font-semibold">学习者画像</h2>
         <span className="text-xs text-muted-foreground">Inno Agent 学习引擎 · 掌握度状态机 / 前置诊断 / 自动画像</span>
-        <button type="button" onClick={() => void loadAll()} className="ml-auto flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] hover:bg-accent">
-          <RefreshCw className="h-3 w-3" /> 刷新
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button type="button" onClick={() => void rebuildProfile()} disabled={busy}
+            className="flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-[11px] text-violet-700 hover:bg-violet-500/20 disabled:opacity-40" title="从事件日志重放重建画像">
+            <Sparkles className="h-3 w-3" /> 重建画像
+          </button>
+          <button type="button" onClick={() => void loadAll()} className="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] hover:bg-accent">
+            <RefreshCw className="h-3 w-3" /> 刷新
+          </button>
+        </div>
       </div>
 
       {/* Tab */}
