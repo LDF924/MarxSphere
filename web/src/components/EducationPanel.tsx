@@ -3,7 +3,7 @@
 // 个性化学习规划 / 专业课课程辅导 / 学情诊断 / 预习与复习 / 教师备课 / 学习陪伴
 // V383: 固定 Obsidian 资料库侧栏（目录树 + md/PDF/图片内联预览 + Office 下载）
 import { useState, useEffect, useRef, type FC } from "react";
-import { Loader2, Play, GraduationCap, BookOpen, Stethoscope, CalendarClock, ClipboardList, HeartHandshake, ChevronDown, ChevronRight, File, FileText, FileImage, Download, X } from "lucide-react";
+import { Loader2, Play, GraduationCap, BookOpen, Stethoscope, CalendarClock, ClipboardList, HeartHandshake, ChevronDown, ChevronRight, File, FileText, FileImage, Download, X, Cpu } from "lucide-react";
 import { cn } from "../lib/utils";
 
 const API_BASE = "/api/education";
@@ -648,8 +648,266 @@ function renderPlanResult(r: any): React.ReactNode {
   );
 }
 
-/** V387: 待审查产物列表(needs_review 三态机, 借鉴 TraitTutor: 未确认不可附加) */
-function PendingReviews() {
+/** V390-E9: 学习引擎中心(借鉴 TraitTutor: 材料分析/意图路由/复习队列/Compass偏好/模型熔断) */
+function LearningEngineHub() {
+  const [tab, setTab] = useState<"material" | "intent" | "review" | "compass" | "circuit">("material");
+  const tabs = [
+    { id: "material" as const, label: "📄 材料分析" },
+    { id: "intent" as const, label: "🧭 意图路由" },
+    { id: "review" as const, label: "🔁 复习队列" },
+    { id: "compass" as const, label: "🧲 Compass" },
+    { id: "circuit" as const, label: "🛡 模型熔断" },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)}
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all ${tab === t.id ? "bg-violet-600 text-white shadow-sm" : "border border-border bg-background/60 text-muted-foreground hover:bg-accent"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "material" && <MaterialAnalyzer />}
+      {tab === "intent" && <IntentRouter />}
+      {tab === "review" && <ReviewQueuePanel />}
+      {tab === "compass" && <CompassPanel />}
+      {tab === "circuit" && <CircuitPanel />}
+    </div>
+  );
+}
+
+/** 材料分析(analyzeMaterial): 学科/难度/概念/模态适配 */
+function MaterialAnalyzer() {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const analyze = async () => {
+    if (!content.trim()) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/materials/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title || "未命名材料", content }) });
+      setResult(await r.json());
+    } catch (e: any) { setResult({ error: String(e?.message || e) }); }
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="mb-2 text-[11px] font-semibold">材料分析快照（学科/难度/概念候选/模态适配）</div>
+      <div className="space-y-2">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="材料标题" className="w-full rounded border bg-background px-2 py-1.5 text-[11px] outline-none" />
+        <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="粘贴材料内容（LLM 分析, 失败自动降级启发式）" className="h-24 w-full resize-y rounded border bg-background p-2 text-[11px] outline-none" />
+        <button type="button" onClick={() => void analyze()} disabled={busy || !content.trim()}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-violet-700 disabled:opacity-40">
+          {busy ? "分析中…" : "开始分析"}
+        </button>
+        {result?.analysis && (
+          <div className="rounded border border-violet-200/50 bg-violet-50/40 p-2.5 text-[11px]">
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-700">{result.analysis.subject}</span>
+              <span className="rounded bg-muted px-1.5 py-0.5">{result.analysis.difficulty}</span>
+              <span className="rounded bg-muted px-1.5 py-0.5">{result.analysis.language === "zh" ? "中文" : "English"}</span>
+              <span className={`rounded px-1.5 py-0.5 ${result.source === "llm" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{result.source === "llm" ? "LLM 分析" : "启发式降级"}</span>
+            </div>
+            {(result.analysis.concept_candidates || []).length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {(result.analysis.concept_candidates || []).slice(0, 6).map((c: string) => <span key={c} className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">{c}</span>)}
+              </div>
+            )}
+            <div className="mt-1.5 text-[10px] text-muted-foreground">
+              模态: {Object.entries(result.analysis.component_affordances || {}).map(([k, v]: [string, any]) => `${k}=${v.suitable ? "✓" : "✗"}`).join(" ")}
+            </div>
+          </div>
+        )}
+        {result?.error && <div className="rounded bg-red-50 p-2 text-[11px] text-red-600">{result.error}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** 意图路由(双层: 注入扫描→LLM分类→低置信度确认) */
+function IntentRouter() {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const classify = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/education/intent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      setResult({ status: r.status, body: await r.json() });
+    } catch (e: any) { setResult({ status: 0, body: { error: String(e?.message || e) } }); }
+    setBusy(false);
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="mb-2 text-[11px] font-semibold">学习意图路由（注入扫描 → LLM 分类 → 低置信度需确认）</div>
+      <div className="space-y-2">
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="输入学习提问, 如: 我想系统学习考研政治" className="h-20 w-full resize-y rounded border bg-background p-2 text-[11px] outline-none" />
+        <button type="button" onClick={() => void classify()} disabled={busy || !text.trim()}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-violet-700 disabled:opacity-40">
+          {busy ? "分类中…" : "识别意图"}
+        </button>
+        {result && (
+          <div className={`rounded border p-2.5 text-[11px] ${result.status === 400 ? "border-red-200 bg-red-50 text-red-600" : "border-violet-200/50 bg-violet-50/40"}`}>
+            {result.status === 400
+              ? <>🚫 注入拦截: {result.body.error?.message}</>
+              : <>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${result.body.mode === "learning_path" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>
+                      {result.body.mode === "learning_path" ? "持续学习路径" : "一次性问答"}
+                    </span>
+                    <span className="rounded bg-muted px-1.5 py-0.5">置信度 {(result.body.confidence * 100).toFixed(0)}%</span>
+                    <span className={`rounded px-1.5 py-0.5 ${result.body.safetyAction === "proceed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {result.body.safetyAction === "proceed" ? "可直接执行" : "需用户确认"}
+                    </span>
+                  </div>
+                  {result.body.rationale && <div className="mt-1 text-[10px] text-muted-foreground">{result.body.rationale}</div>}
+                </>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 复习队列(间隔重复: 到期列表 + 记录结果) */
+function ReviewQueuePanel() {
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch("/api/education/reviews/due?limit=8");
+      const j = await r.json();
+      setReviews(j.reviews || []);
+      setMsg(j.reviews?.length ? `到期 ${j.reviews.length} 个知识点` : "暂无到期复习");
+    } catch { setReviews([]); }
+    setBusy(false);
+  };
+  useEffect(() => { void load(); }, []);
+  const record = async (kp: string, correct: boolean) => {
+    try {
+      await fetch("/api/education/reviews/result", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subject: "默认", knowledgePoint: kp, question: `复习:${kp}`, userAnswer: correct ? "对" : "错", expectedAnswer: "对" }) });
+      void load();
+    } catch (e: any) { setMsg(String(e?.message || e)); }
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold">间隔重复复习队列（到期优先, 错误未修复置顶）</span>
+        <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
+      </div>
+      {busy && <div className="text-[10px] text-muted-foreground">加载中…</div>}
+      {msg && <div className="mb-2 rounded bg-muted/40 px-2 py-1 text-[10px] text-muted-foreground">{msg}</div>}
+      {reviews.length === 0 && !busy && <div className="text-[10px] text-muted-foreground">暂无到期复习(在「作答记录」中答题后自动入队)</div>}
+      <div className="space-y-1.5">
+        {reviews.map((r) => (
+          <div key={r.id} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${r.needs_repair ? "bg-red-500" : "bg-emerald-500"}`} title={r.needs_repair ? "错误未修复" : "正常复习"} />
+            <span className="min-w-0 flex-1 truncate text-[11px]">{r.knowledge_point}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{r.knowledge_type}</span>
+            <span className="text-[9px] text-muted-foreground">档{r.interval_idx}</span>
+            <button type="button" onClick={() => void record(r.knowledge_point, true)} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-700 hover:bg-emerald-200">✓ 答对</button>
+            <button type="button" onClick={() => void record(r.knowledge_point, false)} className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600 hover:bg-red-200">✗ 答错</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Compass 偏好管理(三态 + 确认门 + 编译输出) */
+function CompassPanel() {
+  const [prefs, setPrefs] = useState<any[]>([]);
+  const [compass, setCompass] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    setBusy(true);
+    try {
+      const [p, c] = await Promise.all([
+        fetch("/api/memory/preferences").then((r) => r.json()),
+        fetch("/api/memory/compass").then((r) => r.json()),
+      ]);
+      setPrefs(p.preferences || []);
+      setCompass(c.compass);
+    } catch { }
+    setBusy(false);
+  };
+  useEffect(() => { void load(); }, []);
+  const decide = async (id: string, decision: string) => {
+    await fetch(`/api/memory/preferences/${id}/decide`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) });
+    void load();
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold">Compass 记忆治理（候选→确认门, 推断 90 天 TTL）</span>
+        <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
+      </div>
+      {busy && <div className="text-[10px] text-muted-foreground">加载中…</div>}
+      <div className="space-y-1.5">
+        {prefs.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${p.state === "explicit" ? "bg-emerald-500" : p.state === "rejected" ? "bg-red-400" : "bg-amber-400"}`} title={p.state} />
+            <span className="min-w-0 flex-1 truncate text-[11px]">{p.key}: <span className="font-mono">{p.value}</span></span>
+            <span className={`rounded px-1.5 py-0.5 text-[9px] ${p.state === "explicit" ? "bg-emerald-100 text-emerald-700" : p.state === "rejected" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
+              {p.state === "explicit" ? "已确认" : p.state === "rejected" ? "已拒绝" : `候选(${p.evidence_count}/2)`}
+            </span>
+            {p.state !== "explicit" && p.state !== "rejected" && (
+              <button type="button" onClick={() => void decide(p.id, "confirm")} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-700 hover:bg-emerald-200">确认</button>
+            )}
+            {p.state !== "rejected" && (
+              <button type="button" onClick={() => void decide(p.id, "reject")} className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600 hover:bg-red-200">拒绝</button>
+            )}
+          </div>
+        ))}
+        {!busy && prefs.length === 0 && <div className="text-[10px] text-muted-foreground">暂无偏好(通过作答/反馈自动推断)</div>}
+      </div>
+      {compass && (
+        <div className="mt-2 rounded border border-violet-200/50 bg-violet-50/40 p-2.5 text-[10px]">
+          <div className="font-medium text-violet-700">编译结果: 偏好 {compass.preferences?.length ?? 0} 条 / 约束 {compass.constraints?.length ?? 0} 条</div>
+          <div className="mt-1 text-muted-foreground">{compass.boundary}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 模型熔断状态(Quota Rotation 诊断) */
+function CircuitPanel() {
+  const [circuits, setCircuits] = useState<Record<string, any>>({});
+  const load = async () => {
+    try {
+      const r = await fetch("/api/llm/circuit-state");
+      const j = await r.json();
+      setCircuits(j.circuits || {});
+    } catch { }
+  };
+  useEffect(() => { void load(); }, []);
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold">模型路由熔断（连续失败 ≥3 次 → 60s 冷却跳过）</span>
+        <button type="button" onClick={() => void load()} className="ml-auto rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">刷新</button>
+      </div>
+      {Object.keys(circuits).length === 0 && <div className="text-[10px] text-muted-foreground">暂无熔断记录(所有模型健康)</div>}
+      <div className="space-y-1.5">
+        {Object.entries(circuits).map(([model, c]: [string, any]) => (
+          <div key={model} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${c.open ? "bg-red-500" : c.failures > 0 ? "bg-amber-400" : "bg-emerald-500"}`} />
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{model}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.open ? `已熔断 ${Math.round((Date.now() - c.openedAt) / 1000)}s前` : `失败 ${c.failures} 次`}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** V387: 待审查产物列表(needs_review 三态机, 借鉴 TraitTutor: 未确认不可附加) */function PendingReviews() {
   const [reviews, setReviews] = useState<Array<{ id: string; kind: string; goal: string; status: string; issues: Array<{ dimension: string; score: number; note?: string }>; content: any; created_at: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1386,6 +1644,14 @@ const TOOLS: ToolDef[] = [
       stuckAt: "不理解利润率为何小于剩余价值率",
     },
     render: (r) => renderResult(r),
+  },
+  {
+    id: "E9", title: "学习引擎", desc: "材料分析·意图路由·复习队列·Compass偏好·模型熔断（V387-V391 借鉴 TraitTutor）",
+    icon: <Cpu className="h-4 w-4" />,
+    role: "student",
+    resultKey: "engine",
+    fields: [],
+    render: () => <LearningEngineHub />,
   },
 ];
 
