@@ -3340,6 +3340,45 @@ export function buildHttpServer() {
     if (!r.ok) return reply.code(400).send({ error: { code: "PLAN_INVALID", message: r.error } });
     return r;
   });
+
+  // V387: 产物审查三态机 + 材料分析(借鉴 TraitTutor needs_review)
+  // POST /api/materials/analyze — 材料分析快照{title, content, sourceId?}
+  // POST /api/generations — 登记生成产物{subject, goal, kind, content, issues?} → needs_review/confirmed
+  // POST /api/generations/:id/confirm | /discard | /attach — 三态机流转
+  // GET  /api/generations?status=needs_review — 待审查列表
+  app.post("/api/materials/analyze", async (request) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    return materialReviewService.analyzeMaterial(request.body as any);
+  });
+  app.post("/api/generations", async (request) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    return materialReviewService.createGeneration(request.body as any);
+  });
+  app.get("/api/generations", async (request) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return materialReviewService.listReviews({ studentId: q.studentId, status: q.status });
+  });
+  app.post("/api/generations/:id/confirm", async (request, reply) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    const r = await materialReviewService.confirmGeneration({ id: (request.params as any).id });
+    if (!r.ok) return reply.code(400).send({ error: { code: "REVIEW_INVALID", message: r.error } });
+    return r;
+  });
+  app.post("/api/generations/:id/discard", async (request, reply) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    const body = (request.body || {}) as { note?: string };
+    const r = await materialReviewService.discardGeneration({ id: (request.params as any).id, note: body.note });
+    if (!r.ok) return reply.code(400).send({ error: { code: "REVIEW_INVALID", message: r.error } });
+    return r;
+  });
+  app.post("/api/generations/:id/attach", async (request, reply) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    const body = (request.body || {}) as { planId?: string };
+    const r = await materialReviewService.attachToPlan({ id: (request.params as any).id, planId: body.planId ?? "" });
+    if (!r.ok) return reply.code(400).send({ error: { code: "REVIEW_INVALID", message: r.error } });
+    return r;
+  });
   app.post("/api/education/tutoring", async (request) => {
     const { educationService } = await import("../services/education-service.js");
     return educationService.courseTutoring(request.body as any);
