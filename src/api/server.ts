@@ -4060,6 +4060,36 @@ export function buildHttpServer() {
     return await paperSourceService.importPaper(paper, body.sourceId);
   });
 
+  // ───── 论文分享链接(2026-08-29, 借鉴 frowang /s/:token 分享模式)─────
+  // POST /api/papers/share — 生成分享链接 {documentId, expiresHours?, maxUses?}
+  app.post("/api/papers/share", async (request, reply) => {
+    const body = z.object({ documentId: z.string().uuid(), expiresHours: z.number().optional(), maxUses: z.number().optional() }).parse(request.body);
+    const { paperShareService } = await import("../services/paper-share-service.js");
+    const r = await paperShareService.createShareLink({ documentId: body.documentId, expiresHours: body.expiresHours, maxUses: body.maxUses });
+    if (!r.ok) return reply.code(400).send({ error: { code: "SHARE_FAILED", message: r.error } });
+    return { ok: true, url: r.url, token: r.share!.token, share: r.share };
+  });
+  // GET /api/papers/share/:token — 解析分享链接(校验过期/次数, 返回论文信息)
+  app.get("/api/papers/share/:token", async (request, reply) => {
+    const { paperShareService } = await import("../services/paper-share-service.js");
+    const r = await paperShareService.resolveShare((request.params as any).token);
+    if (!r.ok) return reply.code(404).send({ error: { code: "SHARE_INVALID", message: r.error } });
+    return { ok: true, title: r.document?.title, share: r.share };
+  });
+  // POST /api/papers/share/:token/receive — 接收导入 {sourceId}
+  app.post("/api/papers/share/:token/receive", async (request, reply) => {
+    const body = z.object({ sourceId: z.string().uuid() }).parse(request.body);
+    const { paperShareService } = await import("../services/paper-share-service.js");
+    const r = await paperShareService.receiveShare({ token: (request.params as any).token, sourceId: body.sourceId });
+    if (!r.ok) return reply.code(404).send({ error: { code: "SHARE_INVALID", message: r.error } });
+    return { ok: true, imported: r.imported, title: r.title };
+  });
+  // GET /api/papers/share/my — 我的分享列表
+  app.get("/api/papers/share/my", async () => {
+    const { paperShareService } = await import("../services/paper-share-service.js");
+    return { ok: true, shares: await paperShareService.listMyShares() };
+  });
+
   // ───── 论文结构解析（2026-08-29, Agentero 对照: 解析论文中的图/表/公式/算法并结合上下文理解）─────
   // POST /api/papers/structure — 从文本定位图表公式算法 {content}
   app.post("/api/papers/structure", async (request) => {
