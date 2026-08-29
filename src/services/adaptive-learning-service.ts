@@ -8,67 +8,73 @@
 // 复用: 教育服务 + 知识库(source_chunks) + OpenViking 记忆
 import { pool } from "../db/pool.js";
 import { llmJson, retrieveChunks, recallStudentMemory, DEFAULT_SOURCE } from "./education-service.js";
+import { recordLearnerEvent, rebuildMastery, getActiveBktParams, MIN_OBSERVATIONS_FOR_PROBABILITY, SUPPORTED_THRESHOLD } from "./learning-evidence-service.js";
 
-// ═══ ① 学情建模：记录答题 → 更新掌握度 ═══
+// ═══ 兼容投影: BKT 重建结果写回 legacy knowledge_mastery 表(旧服务继续可读) ═══
+// 说明: 事实源是 learner_event_ledger 账本; knowledge_mastery 只是兼容投影,
+//       由写路径维护(ADR-0002 精神: 读视图/投影不回写事实源, 反之亦然)
+async function syncKnowledgeMasteryLegacy(studentId: string): Promise<void> {
+  const cells = await rebuildMastery(studentId);
+  for (const cell of cells) {
+    const level = cell.evidence_state === "supported" ? "mastered"
+      : cell.evidence_state === "insufficient_evidence" ? "unlearned" : "fuzzy";
+    await pool.query(
+      `insert into knowledge_mastery (student_id, subject, knowledge_point, mastery_level, score, attempts, correct_count, last_answer_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (student_id, subject, knowledge_point) do update
+         set mastery_level = $4, score = $5, attempts = $6, correct_count = $7, last_answer_at = $8, updated_at = now()`,
+      [cell.student_id, cell.subject, cell.knowledge_point, level,
+       cell.mastery_probability ?? 0, cell.attempts, cell.correct_count, cell.last_answer_at ?? new Date()]
+    ).catch(() => {});
+  }
+}
+
+// ═══ ① 学情建模：记录答题 → BKT 概念掌握(V386, 借鉴 TraitTutor) ═══
+// 走事件账本: 提供 expectedAnswer 则服务端判分(强证据, 进 BKT); 否则仅记录参与(永不进 BKT)
 export async function recordAnswer(input: {
   studentId?: string;
   subject: string;
   knowledgePoint: string;
   question: string;
   userAnswer?: string;
-  isCorrect: boolean;
+  expectedAnswer?: string;
+  isCorrect?: boolean | null;
+  questionType?: "choice" | "tf" | "short" | "open";
   difficulty?: string;
 }): Promise<Record<string, unknown>> {
   const studentId = input.studentId || "default";
-  const difficulty = input.difficulty || "medium";
-
-  // 写答题历史
+  const ev = await recordLearnerEvent({
+    studentId,
+    subject: input.subject,
+    knowledgePoint: input.knowledgePoint,
+    question: input.question,
+    userAnswer: input.userAnswer,
+    expectedAnswer: input.expectedAnswer,
+    isCorrect: input.isCorrect,
+    questionType: input.questionType,
+    difficulty: input.difficulty,
+    surfaceType: "practice",
+  });
+  // 写回兼容视图(掌握度以账本重放为准)
   await pool.query(
     `insert into answer_history (student_id, subject, knowledge_point, question, user_answer, is_correct, difficulty)
      values ($1, $2, $3, $4, $5, $6, $7)`,
-    [studentId, input.subject, input.knowledgePoint, input.question, input.userAnswer ?? null, input.isCorrect, difficulty]
-  );
-
-  // 更新掌握度（加权平滑：正确 +0.15，错误 -0.25；难度加成 hard 对正确 +0.05）
-  const delta = input.isCorrect ? (difficulty === "hard" ? 0.2 : 0.15) : -0.25;
-  const updated = await pool.query(
-    `insert into knowledge_mastery (student_id, subject, knowledge_point, mastery_level, score, attempts, correct_count, last_answer_at)
-     values ($1, $2, $3, 'unlearned', 0, 0, 0, now())
-     on conflict (student_id, subject, knowledge_point) do update
-       set score = least(1, greatest(0, knowledge_mastery.score + $4)),
-           attempts = knowledge_mastery.attempts + 1,
-           correct_count = knowledge_mastery.correct_count + $5,
-           mastery_level = case
-             when least(1, greatest(0, knowledge_mastery.score + $4)) >= 0.7 then 'mastered'
-             when least(1, greatest(0, knowledge_mastery.score + $4)) >= 0.4 then 'fuzzy'
-             else 'unlearned' end,
-           last_answer_at = now(),
-           updated_at = now()
-     returning mastery_level, score, attempts, correct_count`,
-    [studentId, input.subject, input.knowledgePoint, delta, input.isCorrect ? 1 : 0]
-  );
-
-  return { ok: true, mastery: updated.rows[0] };
+    [studentId, input.subject, input.knowledgePoint, input.question, input.userAnswer ?? null, ev.isCorrect ?? null, input.difficulty || "medium"]
+  ).catch(() => {});
+  await syncKnowledgeMasteryLegacy(studentId);
+  const cell = (await rebuildMastery(studentId)).find((m) => m.subject === input.subject && m.knowledge_point === input.knowledgePoint) ?? null;
+  return { ok: true, ...ev, mastery: cell };
 }
 
-// ═══ 学情画像：当前学生各知识点掌握度 ═══
+// ═══ 学情画像：BKT 定性状态 + 诚实读(未校准/观察不足不显示数字) ═══
 export async function getStudentProfile(input: { studentId?: string; subject?: string }): Promise<Record<string, unknown>> {
   const studentId = input.studentId || "default";
-  const params: unknown[] = [studentId];
-  let where = "student_id = $1";
-  if (input.subject) { params.push(input.subject); where += " and subject = $" + params.length; }
+  const cells = await rebuildMastery(studentId);
+  const points = input.subject ? cells.filter((c) => c.subject === input.subject) : cells;
+  const mastered = points.filter((p) => p.evidence_state === "supported").length;
+  const fuzzy = points.filter((p) => p.evidence_state === "developing" || p.evidence_state === "needs_support").length;
+  const unlearned = points.filter((p) => p.evidence_state === "insufficient_evidence").length;
 
-  const r = await pool.query(
-    `select knowledge_point, mastery_level, score, attempts, correct_count, last_answer_at
-     from knowledge_mastery where ${where} order by score asc`,
-    params
-  );
-  const points = r.rows;
-  const mastered = points.filter((p) => p.mastery_level === "mastered").length;
-  const fuzzy = points.filter((p) => p.mastery_level === "fuzzy").length;
-  const unlearned = points.filter((p) => p.mastery_level === "unlearned").length;
-
-  // 最近答题历史
   const hist = await pool.query(
     `select knowledge_point, is_correct, difficulty, answered_at from answer_history
      where student_id = $1 order by answered_at desc limit 20`,
@@ -79,9 +85,12 @@ export async function getStudentProfile(input: { studentId?: string; subject?: s
     ok: true,
     studentId,
     summary: { total: points.length, mastered, fuzzy, unlearned },
-    weakPoints: points.filter((p) => p.mastery_level !== "mastered").slice(0, 8),
-    masteredPoints: points.filter((p) => p.mastery_level === "mastered").slice(0, 8),
+    weakPoints: points.filter((p) => p.evidence_state !== "supported").slice(0, 8),
+    masteredPoints: points.filter((p) => p.evidence_state === "supported").slice(0, 8),
     recentAnswers: hist.rows,
+    params: await getActiveBktParams(),
+    // 诚实读: 未达到观察门槛的知识点不暴露数字, 只给定性状态
+    note: "掌握度为 BKT 定性状态: 未校准参数或观察不足(少于 3 次服务端判分)时不显示概率, 只给定性状态",
   };
 }
 
@@ -94,29 +103,18 @@ export async function adaptivePush(input: {
   const studentId = input.studentId || "default";
   const limit = input.limit || 5;
 
-  // 薄弱点（模糊/未掌握）
-  const weak = await pool.query(
-    `select knowledge_point, mastery_level, score from knowledge_mastery
-     where student_id = $1 and subject = $2 and mastery_level != 'mastered'
-     order by score asc limit $3`,
-    [studentId, input.subject, limit]
-  );
+  // 薄弱点（BKT 定性: needs_support/developing/insufficient_evidence）
+  const cells = (await rebuildMastery(studentId)).filter((c) => c.subject === input.subject);
+  const weak = cells.filter((c) => c.evidence_state !== "supported").sort((a, b) => (a.mastery_probability ?? 0) - (b.mastery_probability ?? 0)).slice(0, limit);
+  const strong = cells.filter((c) => c.evidence_state === "supported").slice(0, 3);
 
-  // 已掌握（学有余力 → 拔高）
-  const strong = await pool.query(
-    `select knowledge_point, score from knowledge_mastery
-     where student_id = $1 and subject = $2 and mastery_level = 'mastered'
-     order by score desc limit 3`,
-    [studentId, input.subject]
-  );
-
-  const weakPoints = weak.rows;
-  const strongPoints = strong.rows;
+  const weakPoints = weak.map((c) => ({ knowledge_point: c.knowledge_point, evidence_state: c.evidence_state, score: c.mastery_probability }));
+  const strongPoints = strong.map((c) => ({ knowledge_point: c.knowledge_point, score: c.mastery_probability }));
 
   // 记忆联动：学生历史画像
   const memory = await recallStudentMemory(`${input.subject} 学习 ${weakPoints.map((w) => w.knowledge_point).join("、") || ""}`);
 
-  const prompt = `你是自适应学习推导师。学生画像：${input.subject}，薄弱点：${weakPoints.map((w) => `${w.knowledge_point}(${w.mastery_level})`).join("、") || "暂无"}，已掌握：${strongPoints.map((s) => s.knowledge_point).join("、") || "暂无"}。${memory}
+  const prompt = `你是自适应学习推导师。学生画像：${input.subject}，薄弱点：${weakPoints.map((w) => `${w.knowledge_point}(${w.evidence_state})`).join("、") || "暂无"}，已掌握：${strongPoints.map((s) => s.knowledge_point).join("、") || "暂无"}。${memory}
 
 请为每个薄弱点推荐针对性学习内容（微课/例题/拓展材料），为已掌握点推荐拔高内容：
 输出 JSON: {
@@ -135,17 +133,13 @@ export async function paceAdapt(input: {
 }): Promise<Record<string, unknown>> {
   const studentId = input.studentId || "default";
 
-  const r = await pool.query(
-    `select mastery_level, count(*)::int as n from knowledge_mastery
-     where student_id = $1 and subject = $2 group by mastery_level`,
-    [studentId, input.subject]
-  );
+  const cells = (await rebuildMastery(studentId)).filter((c) => c.subject === input.subject);
   const counts: Record<string, number> = {};
-  for (const row of r.rows) counts[row.mastery_level] = row.n;
+  for (const cell of cells) counts[cell.evidence_state] = (counts[cell.evidence_state] || 0) + 1;
 
-  const mastered = counts.mastered || 0;
-  const fuzzy = counts.fuzzy || 0;
-  const unlearned = counts.unlearned || 0;
+  const mastered = counts.supported || 0;
+  const fuzzy = (counts.developing || 0) + (counts.needs_support || 0);
+  const unlearned = counts.insufficient_evidence || 0;
   const total = mastered + fuzzy + unlearned;
 
   // 节奏规则（基于掌握度分布）
