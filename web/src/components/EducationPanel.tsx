@@ -368,15 +368,22 @@ function Timeline({ items }: { items: Array<{ time?: string; title: string; deta
 }
 
 /** 掌握度分组进度条（按知识点） */
-function MasteryBars({ points }: { points: Array<{ knowledge_point?: string; point?: string; score?: number | string; mastery_level?: string }> }) {
+function MasteryBars({ points }: { points: Array<{ knowledge_point?: string; point?: string; score?: number | string; mastery_level?: string; evidence_state?: string; mastery_probability?: number | null }> }) {
   if (!Array.isArray(points) || points.length === 0) return null;
-  const colors: Record<string, string> = { mastered: "#188038", fuzzy: "#e8710a", unlearned: "#c5221f" };
+  // V386 兼容: BKT 结构用 evidence_state/supported-developing-needs_support-insufficient_evidence
+  const colors: Record<string, string> = { mastered: "#188038", fuzzy: "#e8710a", unlearned: "#c5221f", supported: "#188038", developing: "#e8710a", needs_support: "#c5221f", insufficient_evidence: "#888" };
+  const stateToLevel: Record<string, string> = { supported: "已掌握", developing: "发展中", needs_support: "需巩固", insufficient_evidence: "证据不足" };
   return (
     <div className="space-y-2">
       {points.map((p, i) => {
-        const score = typeof p.score === "number" ? p.score : parseFloat(String(p.score ?? 0));
-        const level = p.mastery_level || (score >= 0.7 ? "mastered" : score >= 0.4 ? "fuzzy" : "unlearned");
-        const label = { mastered: "已掌握", fuzzy: "模糊", unlearned: "未掌握" }[level] || level;
+        const isBkt = !!p.evidence_state;
+        // BKT: 未校准/观察不足时 mastery_probability 为 null(诚实读: 不显示数字)
+        const rawScore = isBkt ? p.mastery_probability : p.score;
+        const score = typeof rawScore === "number" ? rawScore : (rawScore != null ? parseFloat(String(rawScore)) : NaN);
+        const level = isBkt
+          ? (p.evidence_state || "insufficient_evidence")
+          : (p.mastery_level || (Number.isFinite(score) ? (score >= 0.7 ? "mastered" : score >= 0.4 ? "fuzzy" : "unlearned") : "unlearned"));
+        const label = isBkt ? (stateToLevel[level] || level) : ({ mastered: "已掌握", fuzzy: "模糊", unlearned: "未掌握" }[level] || level);
         return (
           <div key={i} className="rounded-lg border border-border bg-card p-2">
             <div className="mb-1 flex items-center gap-2">
@@ -384,7 +391,8 @@ function MasteryBars({ points }: { points: Array<{ knowledge_point?: string; poi
               <span className="rounded px-1.5 py-0.5 text-[9px] text-white" style={{ backgroundColor: colors[level] || "#888" }}>{label}</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full" style={{ width: `${Math.round(score * 100)}%`, backgroundColor: colors[level] || "#888" }} />
+              {/* 诚实读: BKT 未校准/观察不足 → 满条置灰, 不显示伪精确百分比 */}
+              <div className="h-full rounded-full" style={{ width: isBkt && !Number.isFinite(score) ? "100%" : `${Math.round((Number.isFinite(score) ? score : 0) * 100)}%`, backgroundColor: isBkt && !Number.isFinite(score) ? "#e5e7eb" : colors[level] || "#888" }} />
             </div>
           </div>
         );
@@ -487,7 +495,7 @@ function TagList({ title, items, color = "bg-muted text-foreground/80" }: { titl
       {title && <div className="mb-1.5 text-xs font-semibold text-foreground/90">{title}</div>}
       <div className="flex flex-wrap gap-1.5">
         {items.map((it, i) => (
-          <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] ${color}`}>{typeof it === "string" ? it : (it.point || it.name || it.title || JSON.stringify(it).slice(0, 20))}</span>
+          <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] ${color}`}>{typeof it === "string" ? it : (it.point || it.name || it.title || it.knowledge_point || JSON.stringify(it).slice(0, 20))}</span>
         ))}
       </div>
     </div>
