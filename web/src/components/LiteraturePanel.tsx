@@ -10,6 +10,7 @@ import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
 import { PdfReader } from "./PdfReader";
+import { ReaderAiCard } from "./ReaderAiCard";
 import type { LiteratureDetailRecord, PdfRecord } from "../types";
 
 interface LiteratureRecord {
@@ -86,6 +87,8 @@ export function LiteraturePanel() {
   const [showOriginal, setShowOriginal] = useState(false);
   // PDF 深度阅读（PdfReader）
   const [readerPdf, setReaderPdf] = useState<{ url: string; name: string } | null>(null);
+  // 详情容器 ref(划词 AI 卡片监听)
+  const detailRef = useRef<HTMLDivElement | null>(null);
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -406,7 +409,9 @@ export function LiteraturePanel() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载详情…
                 </Card>
               ) : detail ? (
+                <div ref={detailRef} className="min-h-0 flex-1">
                 <Card className="flex min-h-0 flex-col space-y-3 overflow-y-auto p-4">
+                  <DetailSelectionWatcher containerRef={detailRef} />
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <h3 className="text-base font-semibold leading-snug">{detail.title}</h3>
@@ -505,17 +510,18 @@ export function LiteraturePanel() {
                     </div>
                   )}
                 </Card>
+                </div>
               ) : (
                 <Card className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
                   {mode === "pdf" ? "点击左侧「深度阅读」在右侧阅读 PDF（页码/缩放/划词翻译）" : "点击左侧文献查看摘要/问答/术语表"}
                 </Card>
               )}
+              </div>
             </div>
           </div>
           </div>
         </div>
         </div>
-      </div>
     </section>
   );
 }
@@ -529,6 +535,40 @@ function DetailMarkdown({ text }: { text: string }) {
         return <p key={i}>{line}</p>;
       })}
     </div>
+  );
+}
+
+/** 文献库详情划词 → AI 卡片(2026-08-29, 与 MD 划词阅读器一致)
+ *  监听详情容器内划选, 弹 ReaderAiCard(解释/总结/翻译/追问) */
+function DetailSelectionWatcher({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
+  const [selection, setSelection] = useState<{ snippet: string; anchor: { x: number; y: number } } | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onMouseUp = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) return;
+      const text = sel.toString().replace(/\s+/g, " ").trim();
+      if (text.length < 2 || text.length > 3000) return;
+      const rect = range.getBoundingClientRect();
+      setSelection({ snippet: text, anchor: { x: rect.left + rect.width / 2, y: rect.top } });
+    };
+    el.addEventListener("mouseup", onMouseUp);
+    return () => el.removeEventListener("mouseup", onMouseUp);
+  }, [containerRef]);
+  return (
+    <>
+      {selection && (
+        <ReaderAiCard
+          key={selection.snippet.slice(0, 40)}
+          snippet={selection.snippet}
+          anchor={selection.anchor}
+          onClose={() => setSelection(null)}
+        />
+      )}
+    </>
   );
 }
 
