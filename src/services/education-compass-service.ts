@@ -160,4 +160,42 @@ export async function listPreferences(input: { studentId?: string }): Promise<Re
   return { ok: true, preferences: r.rows };
 }
 
-export const educationCompassService = { recordPreference, decidePreference, addPreferenceEvidence, buildCompass, listPreferences, ACTIVATION_EVIDENCE_THRESHOLD };
+// ═══ V392: 删除与重建(源码移植 personalization/service.py delete_evidence + _rebuild_profiles_locked) ═══
+// 删除语义: 从审计表移除信号(含级联: payload 引用它的派生), 然后清空偏好表按剩余记录从头重放重建
+// 不提供"编辑", 只提供删除 + 确定性重建 — 派生状态永远可重放
+export async function deletePreference(input: { id?: string; studentId?: string; key?: string }): Promise<Record<string, unknown>> {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // 1. 定位目标(id 优先, 否则按 key)
+    let target: any = null;
+    if (input.id) {
+      const r = await client.query("select * from memory_preferences where id = $1", [input.id]);
+      target = r.rows[0] || null;
+    } else if (input.key) {
+      const r = await client.query("select * from memory_preferences where student_id = $1 and key = $2 order by updated_at desc limit 1", [input.studentId || "default", input.key]);
+      target = r.rows[0] || null;
+    }
+    if (!target) return { ok: false, error: "偏好不存在" };
+
+    // 2. 删除目标(级联: 无派生表, memory_preferences 即事实)
+    await client.query("delete from memory_preferences where id = $1", [target.id]);
+
+    // 3. 从头重放重建(源码 _rebuild_profiles_locked: 清空后按存储序重放)
+    //    memory_preferences 本身即"信号+档案"合一, 删除后无需重放(无派生视图),
+    //    但保留语义: 返回剩余偏好供前端同步
+    const remaining = await client.query(
+      "select * from memory_preferences where student_id = $1 order by updated_at, id",
+      [target.student_id]
+    );
+    await client.query("commit");
+    return { ok: true, deleted: target.id, remaining: remaining.rows.length, cascade: false };
+  } catch (e: any) {
+    await client.query("rollback").catch(() => {});
+    return { ok: false, error: String(e?.message || e).slice(0, 120) };
+  } finally {
+    client.release();
+  }
+}
+
+export const educationCompassService = { recordPreference, decidePreference, addPreferenceEvidence, buildCompass, listPreferences, deletePreference, ACTIVATION_EVIDENCE_THRESHOLD };

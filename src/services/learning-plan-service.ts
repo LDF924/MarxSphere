@@ -8,15 +8,24 @@
 import { pool } from "../db/pool.js";
 import { llmJson, retrieveChunks, recallStudentMemory, DEFAULT_SOURCE } from "./education-service.js";
 import { rebuildMastery } from "./learning-evidence-service.js";
+import { selectComponents, determineStage } from "./learning-selector-service.js";
 
 export interface PlanComponent {
   id: string;
   title: string;
-  type: "concept" | "practice" | "assessment" | "review" | "material" | "transfer";
+  /** V392: 扩展为 14 种 TraitTutor 组件类型(兼容旧 6 类型) */
+  type: "concept" | "practice" | "assessment" | "review" | "material" | "transfer"
+    | "goal_map" | "concept_explanation" | "worked_example" | "visual_map" | "video_explanation"
+    | "audio_explanation" | "diagnostic_check" | "guided_practice" | "calibration_checkpoint"
+    | "retrieval_card" | "progress_checkpoint" | "reflection_prompt" | "transfer_challenge" | "review_queue";
   concept_refs: string[];
   evidence_refs: string[];
   status: "pending" | "started" | "completed" | "skipped";
   reason: string;
+  /** V392: 模态(画布渲染用) */
+  modality?: "text" | "interactive" | "visual" | "video" | "audio";
+  required?: boolean;
+  dependencies?: string[];
 }
 
 /**
@@ -141,20 +150,62 @@ ${memory}${ctx}
 2. 覆盖: 概念讲解→练习→评估→复习→迁移应用 的完整闭环
 3. 输出 JSON: {"components":[{"title":"步骤标题","type":"concept|practice|assessment|review|material|transfer","reason":"为什么这步","concept_refs":["知识点"]}],"adaptation":"如何根据进度动态调整","knowledgeGap":"该科目当前知识库覆盖情况"}`;
 
-  const llmOut = await llmJson(prompt);
-  const rawComps: Array<{ title?: string; type?: string; reason?: string; concept_refs?: string[] }> = llmOut?.components ?? [];
-  const tail: PlanComponent[] = rawComps.slice(0, 8).map((c, i) => ({
-    id: `c${Date.now().toString(36)}${i}`,
-    title: String(c.title || `步骤 ${i + 1}`).slice(0, 120),
-    type: ["concept", "practice", "assessment", "review", "material", "transfer"].includes(c.type || "") ? (c.type as PlanComponent["type"]) : "concept",
-    concept_refs: (c.concept_refs || []).slice(0, 4),
-    evidence_refs: evidenceRefs.slice(0, 6),
-    status: "pending",
-    reason: String(c.reason || "").slice(0, 200),
+  // ── V392: 确定性组件选择器(源码移植 TraitTutor select)──
+  // 核心: 不强迫生成器自由发挥 — 由 BKT 阶段分支决定组件序列(确定性), LLM 仅补整体策略
+  const cells = (await rebuildMastery(studentId)).filter((c) => c.subject === input.subject);
+  const conceptSignals = cells.map((c) => ({
+    knowledge_point: c.knowledge_point,
+    support_level: c.evidence_state === "needs_support" ? "needs_support" as const
+      : c.evidence_state === "supported" ? "supported" as const : undefined,
+    bkt_calibrated: c.calibrated,
+    verified_observation_count: c.verified_observation_count,
+    mastery_probability: c.mastery_probability,
   }));
+  const stage = determineStage(conceptSignals);
+  const selected = selectComponents({
+    conceptSignals,
+    affordances: {
+      visual: /(图|图表|diagram|figure)/.test(`${input.goal} ${input.subject}`),
+      audio: /(听|朗读|英语|语言)/.test(`${input.goal} ${input.subject}`),
+      worked_example: /(计算|公式|步骤|案例|例)/.test(`${input.goal} ${input.subject}`),
+      practice: true,
+    },
+    preserved: preservedPrefix.map((c) => ({ component_type: c.type, status: c.status, component_id: c.id })),
+    goalOnly: false,
+  });
+
+  // LLM 仅补组件标题的具体化 + 整体策略(确定性序列不被 LLM 改变)
+  const llmOut = await llmJson(prompt);
+  const llmTitles = new Map<string, string>();
+  for (const c of (llmOut?.components ?? [])) {
+    if (c.title && llmTitles.size < 10) llmTitles.set(String(c.title).slice(0, 60), c.title);
+  }
+  const typeToTitleHint: Record<string, string> = {
+    concept_explanation: "概念讲解", worked_example: "分步例题", guided_practice: "引导练习",
+    transfer_challenge: "迁移挑战", retrieval_card: "主动回忆", review_queue: "今日复习",
+  };
+  const titleForKey = (key: string): string => llmTitles.get(key) || "";
+  const tail: PlanComponent[] = selected.map((c, i) => {
+    const hint = typeToTitleHint[c.component_type] || c.label_zh;
+    const kp = c.concept_refs[0] ? ` · ${c.concept_refs[0].slice(0, 20)}` : "";
+    // LLM 标题仅作补充(若有匹配); 确定性序列结构不变
+    const llmTitle = titleForKey(hint) || titleForKey(c.label_zh) || titleForKey(c.label_en);
+    return {
+      id: c.id,
+      title: (llmTitle || `${hint}${kp}`).slice(0, 120),
+      type: c.component_type as PlanComponent["type"],
+      concept_refs: c.concept_refs.slice(0, 4),
+      evidence_refs: evidenceRefs.slice(0, 6),
+      status: "pending",
+      reason: c.reason,
+      modality: c.modality,
+      required: c.required,
+      dependencies: c.dependencies,
+    };
+  });
 
   const components = [...preservedPrefix, ...tail];
-  if (components.length === 0) return { ok: false, error: "计划生成失败(LLM 未返回组件)" };
+  if (components.length === 0) return { ok: false, error: "计划生成失败(选择器未返回组件)" };
 
   // 旧计划 supersede(保留审计)
   if (previousId) {
@@ -190,6 +241,8 @@ export async function listPlans(input: { studentId?: string; subject?: string })
     id: row.id, studentId: row.student_id, subject: row.subject, goal: row.goal, version: row.version,
     status: row.status, supersedesPlanId: row.supersedes_plan_id, componentCount: (row.components || []).length,
     completedCount: (row.components || []).filter((c: PlanComponent) => c.status === "completed").length,
+    components: row.components || [],   // V392: 画布需要完整组件
+    artifacts: row.artifacts || { courseware: [], flashcards: [], quiz: [] },
     rationale: row.rationale, createdAt: row.created_at,
   })) };
 }

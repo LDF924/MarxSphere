@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, type FC } from "react";
 import { Loader2, Play, GraduationCap, BookOpen, Stethoscope, CalendarClock, ClipboardList, HeartHandshake, ChevronDown, ChevronRight, File, FileText, FileImage, Download, X, Cpu } from "lucide-react";
 import { cn } from "../lib/utils";
+import { LearningCanvas } from "./LearningCanvas";
 
 const API_BASE = "/api/education";
 
@@ -643,7 +644,27 @@ function renderPlanResult(r: any): React.ReactNode {
           📚 知识库覆盖：{String(plan.rationale.knowledgeGap).slice(0, 150)}
         </div>
       )}
+      {/* V392: 全屏学习画布入口(源码移植 LearningCanvas) */}
+      <PlanCanvasLauncher planId={plan.id} />
       <PendingReviews />
+    </div>
+  );
+}
+
+/** V392: 学习画布启动器 — 全屏覆盖 + 退出恢复 */
+function PlanCanvasLauncher({ planId }: { planId: string }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="w-full rounded-lg bg-primary px-3 py-2 text-[11px] font-medium text-white hover:opacity-90">
+        🎯 进入全屏学习画布（路径 / 组件 / 为何此步 同屏）
+      </button>
+    );
+  }
+  return (
+    <div className="fixed inset-0 z-50 bg-background">
+      <LearningCanvas planId={planId} onExit={() => setOpen(false)} />
     </div>
   );
 }

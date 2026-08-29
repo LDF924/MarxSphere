@@ -74,12 +74,14 @@ export async function analyzeMaterial(input: { studentId?: string; title: string
 2. concept_candidates: 最多8个核心概念候选
 3. page_evidence: 从材料中提取的关键知识点及所在片段(evidence: 片段文本)
 4. component_affordances: 适合哪些学习组件(visual/audio/worked_example/practice, 各含 suitable 布尔与 reason)
+5. augmentation_needed: 仅当材料存在具体缺口时为 true(如内容过短、缺少练习、无实例) — 语义: "true only when the uploaded material has a concrete gap"
+6. augmentation_reason: 若需要补充, 说明缺什么
 
 材料标题: ${input.title}
 材料内容(前6000字):
 ${input.content.slice(0, 6000)}${ctx}
 
-输出 JSON: {"subject":"","difficulty":"basic|intermediate|advanced","language":"zh|en","confidence":0.8,"concept_candidates":[""],"page_evidence":[{"concept":"","evidence":""}],"component_affordances":{"visual":{"suitable":true,"reason":""},"audio":{"suitable":false,"reason":""},"worked_example":{"suitable":true,"reason":""},"practice":{"suitable":true,"reason":""}}}`).catch(() => null);
+输出 JSON: {"subject":"","difficulty":"basic|intermediate|advanced","language":"zh|en","confidence":0.8,"concept_candidates":[""],"page_evidence":[{"concept":"","evidence":""}],"component_affordances":{"visual":{"suitable":true,"reason":""},"audio":{"suitable":false,"reason":""},"worked_example":{"suitable":true,"reason":""},"practice":{"suitable":true,"reason":""}},"augmentation_needed":false,"augmentation_reason":""}`).catch(() => null);
 
   let row: any;
   if (llm?.subject) {
@@ -91,22 +93,28 @@ ${input.content.slice(0, 6000)}${ctx}
       conceptCandidates: Array.isArray(llm.concept_candidates) ? llm.concept_candidates.slice(0, 8) : [],
       pageEvidence: Array.isArray(llm.page_evidence) ? llm.page_evidence.slice(0, 12) : [],
       affordances: llm.component_affordances || {},
+      augmentationNeeded: llm.augmentation_needed === true,
+      augmentationReason: String(llm.augmentation_reason || "").slice(0, 200),
       source: "llm",
     };
   } else {
-    // 降级: 确定性启发式
+    // 降级: 确定性启发式(源码 _heuristic: 材料不足以可靠判定 → 恒需补充)
     const h = heuristicMaterialAnalysis(input.content, input.title);
     row = {
       subject: h.subject, difficulty: h.difficulty, language: h.language, confidence: 0.4,
-      conceptCandidates: h.conceptCandidates, pageEvidence: [], affordances: h.affordances, source: "heuristic",
+      conceptCandidates: h.conceptCandidates, pageEvidence: [], affordances: h.affordances,
+      augmentationNeeded: true,
+      augmentationReason: "材料过于有限, 无法可靠判定学科等级。",
+      source: "heuristic",
     };
   }
 
   const r = await pool.query(
-    `insert into material_analyses (student_id, title, content_hash, subject, difficulty, language, confidence, concept_candidates, page_evidence, component_affordances, source)
-     values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11) returning *`,
+    `insert into material_analyses (student_id, title, content_hash, subject, difficulty, language, confidence, concept_candidates, page_evidence, component_affordances, source, augmentation_needed, augmentation_reason)
+     values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13) returning *`,
     [studentId, input.title.slice(0, 200), contentHash, row.subject, row.difficulty, row.language, row.confidence,
-     JSON.stringify(row.conceptCandidates), JSON.stringify(row.pageEvidence), JSON.stringify(row.affordances), row.source]
+     JSON.stringify(row.conceptCandidates), JSON.stringify(row.pageEvidence), JSON.stringify(row.affordances), row.source,
+     row.augmentationNeeded, row.augmentationReason]
   );
   return { ok: true, analysis: r.rows[0], source: row.source, degraded: row.source === "heuristic" };
 }
@@ -193,6 +201,53 @@ export async function listReviews(input: { studentId?: string; status?: string }
   return { ok: true, reviews: r.rows };
 }
 
+// ═══ 一材多工件(源码移植 learning_packs.py: 工件共享学习包, 只经 generation_id 挂载) ═══
+export type ArtifactKind = "courseware" | "flashcards" | "quiz";
+
+/**
+ * 挂载工件到学习计划(源码: 客户端只能通过 generation_id 挂载, 禁止直接 POST artifact)
+ * - 仅 confirmed 产物可挂载; 同 verified_generation_id 去重(原子)
+ * - 完整答案只在服务端存储; 对外投影剥除 correct_answer/is_correct/explanation/back
+ */
+export async function attachArtifactToPlan(input: { generationId: string; planId: string }): Promise<Record<string, unknown>> {
+  const gen = await pool.query("select * from generation_reviews where id = $1", [input.generationId]).catch(() => ({ rows: [] }));
+  if (gen.rows.length === 0) return { ok: false, error: "产物不存在" };
+  if (gen.rows[0].status !== "confirmed") return { ok: false, error: `未确认产物不可挂载(当前 ${gen.rows[0].status})` };
+  const kind: ArtifactKind = ["courseware", "flashcards", "quiz"].includes(gen.rows[0].kind) ? gen.rows[0].kind : "courseware";
+  const artifact = { ...(gen.rows[0].content || {}), verified_generation_id: input.generationId };
+
+  // 原子去重挂载(源码: JSONB 谓词 + verified_generation_id)
+  // 坑: jsonb_set 的 path 参数必须是 text[] 数组(如 {quiz}), 字符串 "quiz" 会静默失败
+  const r = await pool.query(
+    `update learning_plans set
+       artifacts = jsonb_set(artifacts, $2::text[], (artifacts->$3) || $4::jsonb),
+       updated_at = now()
+     where id = $1
+       and not exists (select 1 from jsonb_array_elements(artifacts->$3) a where a->>'verified_generation_id' = $5)
+     returning artifacts`,
+    [input.planId, `{${kind}}`, kind, JSON.stringify([artifact]), input.generationId]
+  ).catch((e: any) => { console.warn(`[material-review] attachArtifactToPlan SQL: ${String(e?.message || e).slice(0, 120)}`); return { rows: [] }; });
+  if (r.rows.length === 0) return { ok: false, error: "计划不存在或工件已挂载(重复)" };
+  return { ok: true, attached: true, kind, artifactCount: (r.rows[0].artifacts?.[kind] || []).length };
+}
+
+/** 学习计划工件(投影剥除答案键 — 源码 _learner_pack) */
+export async function listPlanArtifacts(input: { planId: string }): Promise<Record<string, unknown>> {
+  const r = await pool.query("select artifacts from learning_plans where id = $1", [input.planId]).catch(() => ({ rows: [] }));
+  if (r.rows.length === 0) return { ok: false, error: "计划不存在" };
+  const arts = r.rows[0].artifacts || { courseware: [], flashcards: [], quiz: [] };
+  // 答案服务端持有: 对外投影剥除 correct_answer/is_correct/explanation/back
+  const strip = (items: any[]): any[] => (items || []).map((a) => ({
+    ...a,
+    items: (a.items || []).map((it: any) => {
+      const { correct_answer, is_correct, explanation, back, ...pub } = it;
+      if (pub.options) pub.options = pub.options.map((o: any) => ({ text: o.text }));
+      return pub;
+    }),
+  }));
+  return { ok: true, artifacts: { courseware: strip(arts.courseware), flashcards: strip(arts.flashcards), quiz: strip(arts.quiz) } };
+}
+
 // ═══ 组件白名单 + 答案服务端持有(V390, 借鉴 TraitTutor components/validation.py) ═══
 // 核心: 模型只能产出白名单组件类型与字段; 答案键在公共 schema 中物理缺席; 违规降级文本页
 
@@ -248,4 +303,4 @@ function sha256(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-export const materialReviewService = { analyzeMaterial, createGeneration, confirmGeneration, discardGeneration, attachToPlan, listReviews, heuristicMaterialAnalysis, validateComponentInstance, degradeToText };
+export const materialReviewService = { analyzeMaterial, createGeneration, confirmGeneration, discardGeneration, attachToPlan, listReviews, heuristicMaterialAnalysis, validateComponentInstance, degradeToText, attachArtifactToPlan, listPlanArtifacts };
