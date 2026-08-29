@@ -739,6 +739,14 @@ function MaterialAnalyzer() {
             <div className="mt-1.5 text-[10px] text-muted-foreground">
               模态: {Object.entries(result.analysis.component_affordances || {}).map(([k, v]: [string, any]) => `${k}=${v.suitable ? "✓" : "✗"}`).join(" ")}
             </div>
+            {/* V392: augmentation 补充决策(源码: 材料有具体缺口时 true) */}
+            {result.analysis.augmentation_needed != null && (
+              <div className={`mt-1.5 rounded px-2 py-1 text-[10px] ${result.analysis.augmentation_needed ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                {result.analysis.augmentation_needed
+                  ? <>⚠️ 需要补充材料: {result.analysis.augmentation_reason || "材料存在具体缺口"}</>
+                  : "✓ 材料充分, 无需补充"}
+              </div>
+            )}
           </div>
         )}
         {result?.error && <div className="rounded bg-red-50 p-2 text-[11px] text-red-600">{result.error}</div>}
@@ -862,6 +870,11 @@ function CompassPanel() {
     await fetch(`/api/memory/preferences/${id}/decide`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) });
     void load();
   };
+  // V392: 删除(删除即重建语义 — 源码 delete_evidence)
+  const del = async (id: string) => {
+    await fetch(`/api/memory/preferences/${id}`, { method: "DELETE" });
+    void load();
+  };
   return (
     <div className="rounded-lg border border-border bg-card/60 p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -883,6 +896,8 @@ function CompassPanel() {
             {p.state !== "rejected" && (
               <button type="button" onClick={() => void decide(p.id, "reject")} className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600 hover:bg-red-200">拒绝</button>
             )}
+            {/* V392: 删除(删除即重建) */}
+            <button type="button" onClick={() => void del(p.id)} className="rounded border border-red-200 px-1.5 py-0.5 text-[9px] text-red-400 hover:bg-red-50" title="删除此偏好(从审计移除+重建)">🗑</button>
           </div>
         ))}
         {!busy && prefs.length === 0 && <div className="text-[10px] text-muted-foreground">暂无偏好(通过作答/反馈自动推断)</div>}
@@ -936,7 +951,7 @@ function CircuitPanel() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/generations?status=needs_review");
+      const res = await fetch("/api/generations");
       const j = await res.json();
       setReviews(j.reviews || []);
     } catch { setReviews([]); }
@@ -953,6 +968,20 @@ function CircuitPanel() {
       else setMsg(j.error?.message || "操作失败");
     } catch (e: any) { setMsg(String(e?.message || e)); }
   };
+  // V392: 挂载工件到学习计划(一材多工件: 仅 confirmed 可挂载)
+  const attach = async (id: string) => {
+    setMsg(null);
+    try {
+      const plansRes = await fetch("/api/learning-plans?studentId=default");
+      const plans = (await plansRes.json()).plans || [];
+      const active = plans.find((p: any) => p.status === "active");
+      if (!active) { setMsg("无进行中的学习计划, 先创建计划再挂载"); return; }
+      const res = await fetch(`/api/learning-plans/${active.id}/artifacts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ generationId: id }) });
+      const j = await res.json();
+      if (j.ok) setMsg(`✓ 已挂载到计划「${active.goal.slice(0, 20)}」(${j.kind}, 共 ${j.artifactCount} 个)`);
+      else setMsg(j.error?.message || "挂载失败");
+    } catch (e: any) { setMsg(String(e?.message || e)); }
+  };
 
   if (loading) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">加载待审查产物…</div>;
   if (reviews.length === 0) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">暂无待审查产物(自动确认的产物直接可用)</div>;
@@ -960,8 +989,8 @@ function CircuitPanel() {
   return (
     <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold text-amber-800">⏳ 待审查产物（{reviews.length}）</span>
-        <span className="text-[9px] text-amber-700/70">未确认前不可附加到学习计划</span>
+        <span className="text-xs font-semibold text-amber-800">📦 产物中心（{reviews.length}）</span>
+        <span className="text-[9px] text-amber-700/70">未确认不可挂载 · 确认后一键挂载到学习计划</span>
         <button type="button" onClick={() => void load()} className="ml-auto rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[9px] text-amber-700 hover:bg-amber-100">刷新</button>
       </div>
       {msg && <div className="mb-2 rounded bg-white px-2 py-1 text-[10px] text-amber-800">{msg}</div>}
@@ -981,11 +1010,24 @@ function CircuitPanel() {
                 {i.note && <span className="truncate text-muted-foreground">{i.note}</span>}
               </div>
             ))}
-            <div className="mt-1.5 flex gap-1.5">
-              <button type="button" onClick={() => void act(r.id, "confirm")}
-                className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">✓ 确认可用</button>
-              <button type="button" onClick={() => void act(r.id, "discard")}
-                className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-100">✗ 丢弃</button>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {r.status === "needs_review" && (
+                <>
+                  <button type="button" onClick={() => void act(r.id, "confirm")}
+                    className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">✓ 确认可用</button>
+                  <button type="button" onClick={() => void act(r.id, "discard")}
+                    className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-100">✗ 丢弃</button>
+                </>
+              )}
+              {r.status === "confirmed" && (
+                <>
+                  <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">✓ 已确认</span>
+                  {/* V392: 一材多工件 — 挂载到进行中的学习计划 */}
+                  <button type="button" onClick={() => void attach(r.id)}
+                    className="rounded border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 hover:bg-violet-100">📎 挂载到计划</button>
+                </>
+              )}
+              {r.status === "discarded" && <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">已丢弃</span>}
             </div>
           </div>
         ))}
