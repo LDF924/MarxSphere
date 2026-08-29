@@ -3315,6 +3315,31 @@ export function buildHttpServer() {
     const { educationService } = await import("../services/education-service.js");
     return educationService.learningPlan(request.body as any);
   });
+
+  // V386: 版本化学习计划链(借鉴 TraitTutor: 只重规划未开始尾部 + supersede 审计)
+  // GET  /api/learning-plans — 计划列表(含 superseded 审计链)
+  // POST /api/learning-plans — 创建/重建计划{subject, goal, ...} (重建时保留已开始前缀)
+  // PATCH /api/learning-plans/:id/components/:componentId — 组件状态推进{status}
+  app.get("/api/learning-plans", async (request) => {
+    const { learningPlanService } = await import("../services/learning-plan-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return learningPlanService.listPlans({ studentId: q.studentId, subject: q.subject });
+  });
+  app.post("/api/learning-plans", async (request) => {
+    const { learningPlanService } = await import("../services/learning-plan-service.js");
+    return learningPlanService.createOrRebuildPlan(request.body as any);
+  });
+  app.patch("/api/learning-plans/:id/components/:componentId", async (request, reply) => {
+    const { learningPlanService } = await import("../services/learning-plan-service.js");
+    const body = z.object({ status: z.enum(["started", "completed", "skipped"]) }).parse(request.body);
+    const r = await learningPlanService.updateComponentStatus({
+      planId: (request.params as any).id,
+      componentId: (request.params as any).componentId,
+      status: body.status,
+    });
+    if (!r.ok) return reply.code(400).send({ error: { code: "PLAN_INVALID", message: r.error } });
+    return r;
+  });
   app.post("/api/education/tutoring", async (request) => {
     const { educationService } = await import("../services/education-service.js");
     return educationService.courseTutoring(request.body as any);

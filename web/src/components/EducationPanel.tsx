@@ -198,7 +198,8 @@ interface ToolDef {
 }
 
 async function callApi(path: string, body: Record<string, unknown>) {
-  const res = await fetch(API_BASE + path, {
+  const url = path.startsWith("/api/") ? path : API_BASE + path;
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -562,12 +563,86 @@ function RiskCard({ level, signals }: { level: string; signals: any[] }) {
   );
 }
 
+/** V386: 版本化学习计划链结果渲染 — 组件时间线 + 版本徽标 + 证据引用(TraitTutor 借鉴) */
+function renderPlanResult(r: any): React.ReactNode {
+  if (!r) return null;
+  if (r.error) return <div className="rounded bg-red-50 p-2 text-xs text-red-700">{r.error}</div>;
+  const plan = r.plan;
+  if (!plan) return renderResult(r);
+
+  const statusColor = plan.status === "completed" ? "bg-emerald-100 text-emerald-700"
+    : plan.status === "superseded" ? "bg-muted text-muted-foreground" : "bg-sky-100 text-sky-700";
+  const typeLabel: Record<string, string> = {
+    concept: "概念讲解", practice: "练习", assessment: "评估", review: "复习", material: "材料阅读", transfer: "迁移应用",
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* 头部: 标题 + 版本/状态徽标 + 重建说明 */}
+      <div className="rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">{plan.goal}</div>
+            <div className="mt-0.5 text-[10px] text-muted-foreground">{plan.subject} · v{plan.version}</div>
+          </div>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor}`}>
+            {plan.status === "completed" ? "✓ 已完成" : plan.status === "superseded" ? "已归档" : "● 进行中"}
+          </span>
+          {r.rebuilt && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700" title="已保留已开始步骤, 只重规划了未开始的尾部">
+              已重规划（保留 {r.preservedPrefixCount} 个已开始步骤）
+            </span>
+          )}
+        </div>
+        {plan.rationale?.adaptation && (
+          <div className="mt-2 border-t border-border/60 pt-2 text-[11px] leading-5 text-muted-foreground">
+            <span className="font-medium text-foreground/80">动态调整：</span>{String(plan.rationale.adaptation).slice(0, 200)}
+          </div>
+        )}
+        {plan.supersedesPlanId && (
+          <div className="mt-1 text-[9px] font-mono text-muted-foreground/60">supersedes: {plan.supersedesPlanId.slice(0, 8)}…</div>
+        )}
+      </div>
+
+      {/* 组件时间线 */}
+      <div className="space-y-1.5">
+        {(plan.components || []).map((c: any, i: number) => (
+          <div key={c.id || i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${c.status === "completed" ? "border-emerald-300/50 bg-emerald-50/50" : c.status === "started" ? "border-amber-300/60 bg-amber-50/40" : "border-border bg-card/60"}`}>
+            <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
+              c.status === "completed" ? "bg-emerald-500 text-white" : c.status === "started" ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+            }`}>
+              {c.status === "completed" ? "✓" : c.status === "started" ? "▶" : i + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[12px] font-medium">{c.title}</span>
+                <span className="rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">{typeLabel[c.type] || c.type}</span>
+                {c.status === "started" && <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] text-amber-700">进行中</span>}
+              </div>
+              {c.reason && <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{c.reason}</div>}
+              {(c.concept_refs || []).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {(c.concept_refs || []).map((k: string) => <span key={k} className="rounded bg-sky-50 px-1.5 py-0.5 text-[9px] text-sky-700">{k}</span>)}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {plan.rationale?.knowledgeGap && (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground">
+          📚 知识库覆盖：{String(plan.rationale.knowledgeGap).slice(0, 150)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** V390: 智能结果渲染 — 识别常见结构输出专业 UI，兜底用 renderJson */
 function renderResult(r: any): React.ReactNode {
   if (!r) return null;
   if (r.error) return <div className="rounded bg-red-50 p-2 text-xs text-red-700">{r.error}</div>;
-
-  // 学情画像 summary（E7 profile）— V391: 环形图 + 掌握度条 + 统计卡
   if (r.summary && typeof r.summary === "object" && "total" in r.summary) {
     const s = r.summary;
     return (
@@ -1069,25 +1144,23 @@ function ObsidianTools({ topic, subject }: { topic: string; subject: string }) {
 
 const TOOLS: ToolDef[] = [
   {
-    id: "E1", title: "个性化学习规划", desc: "按目标/水平/时间生成分阶段学习计划，动态调整路径",
+    id: "E1", title: "个性化学习规划", desc: "版本化学习计划链 · 只重规划未开始尾部 · 证据引用（V386 借鉴 TraitTutor）",
     icon: <GraduationCap className="h-4 w-4" />,
     role: "student",
     resultKey: "plan",
     fields: [
       { key: "subject", label: "科目", placeholder: "如：马克思主义基本原理", type: "text" },
       { key: "goal", label: "学习目标", placeholder: "如：期末考 90 分 / 考研政治 75+", type: "text" },
-      { key: "currentLevel", label: "当前水平", placeholder: "如：基础薄弱 / 中等", type: "text" },
       { key: "hoursPerWeek", label: "每周小时", placeholder: "4", type: "text" },
       { key: "deadline", label: "目标期限", placeholder: "如：12 月底", type: "text" },
     ],
     demo: {
       subject: "马克思主义基本原理",
       goal: "考研政治 75 分以上",
-      currentLevel: "中等（学过一遍但基础不牢）",
       hoursPerWeek: "6",
       deadline: "3 个月后",
     },
-    render: (r) => renderResult(r.plan),
+    render: (r) => renderPlanResult(r),
   },
   {
     id: "E2", title: "专业课课程辅导", desc: "分步引导式辅导，先提示再示范，不直接给答案",
@@ -1339,6 +1412,11 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
       } else {
         path = `/companion/${action === "qna" ? "qna" : action === "motivate" ? "motivate" : action === "review" ? "review" : "plan"}`;
       }
+    } else if (tool.id === "E1") {
+      // V386: 版本化学习计划链(借鉴 TraitTutor: 只重规划未开始尾部 + supersede 审计)
+      path = "/api/learning-plans";
+      // currentLevel 旧字段不在新接口, 剥离
+      delete body.currentLevel;
     } else {
       path = `/${tool.id === "E1" ? "learning-plan" : tool.id === "E2" ? "tutoring" : tool.id === "E4" ? "preview-review" : "companion"}`;
     }
