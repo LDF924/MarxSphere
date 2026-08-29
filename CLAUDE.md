@@ -6,7 +6,7 @@
 
 ```bash
 npm run typecheck   # 前后端类型检查（改代码后必跑）
-npm test            # 154 项单元测试
+npm test            # 263 项单元测试
 npm run dev         # 开发: WebUI 5173 / API 4173
 npx tsx src/index.ts  # 单跑后端
 ```
