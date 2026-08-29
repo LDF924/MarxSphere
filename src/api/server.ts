@@ -3341,6 +3341,24 @@ export function buildHttpServer() {
     return r;
   });
 
+  // V391: 间隔重复复习队列(借鉴 TraitTutor learning/scheduler.py)
+  // POST /api/education/reviews/enqueue — 注册知识点进复习队列{subject, knowledgePoint}
+  // POST /api/education/reviews/result — 记录复习结果{subject, knowledgePoint, question, userAnswer?, expectedAnswer?}
+  // GET  /api/education/reviews/due — 到期复习队列(错误未修复优先)
+  app.post("/api/education/reviews/enqueue", async (request) => {
+    const { spacedRepetitionService } = await import("../services/spaced-repetition-service.js");
+    return spacedRepetitionService.enqueueReview(request.body as any);
+  });
+  app.post("/api/education/reviews/result", async (request) => {
+    const { spacedRepetitionService } = await import("../services/spaced-repetition-service.js");
+    return spacedRepetitionService.recordReviewResult(request.body as any);
+  });
+  app.get("/api/education/reviews/due", async (request) => {
+    const { spacedRepetitionService } = await import("../services/spaced-repetition-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return spacedRepetitionService.dueReviews({ studentId: q.studentId, subject: q.subject, limit: q.limit ? Number(q.limit) : undefined });
+  });
+
   // V390: 组件校验 + Compass 记忆治理(借鉴 TraitTutor components/validation.py + Reflection/Compass)
   // POST /api/components/validate — 组件白名单校验{component} → {ok, reason?}
   app.post("/api/components/validate", async (request) => {
