@@ -193,10 +193,59 @@ export async function listReviews(input: { studentId?: string; status?: string }
   return { ok: true, reviews: r.rows };
 }
 
+// ═══ 组件白名单 + 答案服务端持有(V390, 借鉴 TraitTutor components/validation.py) ═══
+// 核心: 模型只能产出白名单组件类型与字段; 答案键在公共 schema 中物理缺席; 违规降级文本页
+
+/** 组件类型白名单(与学习计划组件一致) */
+const COMPONENT_TYPE_WHITELIST = new Set(["concept", "practice", "assessment", "review", "material", "transfer", "goal_map", "worked_example", "calibration_checkpoint", "retrieval_card"]);
+/** 组件字段白名单(答案/评分键永远不在其中 — invariant: answer/rubric/back/key 物理缺席) */
+const COMPONENT_FIELD_WHITELIST = new Set(["id", "title", "type", "content", "concept_refs", "evidence_refs", "reason", "status", "hint", "media_url", "options", "prompt"]);
+/** 答案键(出现即拒绝, 防泄漏) */
+const ANSWER_LEAK_KEYS = /^(answer|answers|rubric|rubrics|back|backs|key|keys|solution|solutions|correct_answer|expected_answer|grade_key)$/i;
+/** 可执行标记(出现即拒绝) */
+const EXECUTABLE_MARKERS = /<script|<\/script>|<iframe|<object|<embed|<svg|javascript:|onclick=|onerror=|onload=|onmouseover=|data:text\/html/i;
+
+/**
+ * 校验组件实例(白名单 + 答案键 + 可执行标记)
+ * @returns { ok, reason } — 违规时 ok=false(调用方降级文本页)
+ */
+export function validateComponentInstance(comp: unknown): { ok: boolean; reason?: string } {
+  if (!comp || typeof comp !== "object") return { ok: false, reason: "组件为空" };
+  const c = comp as Record<string, unknown>;
+  // 类型白名单
+  if (!COMPONENT_TYPE_WHITELIST.has(String(c.type || ""))) return { ok: false, reason: `组件类型不在白名单: ${String(c.type)}` };
+  // 字段白名单(出现白名单外字段即拒绝 — 答案/评分键物理缺席)
+  for (const key of Object.keys(c)) {
+    if (!COMPONENT_FIELD_WHITELIST.has(key)) return { ok: false, reason: `字段不在白名单: ${key}` };
+    if (ANSWER_LEAK_KEYS.test(key)) return { ok: false, reason: `答案键泄漏: ${key}` };
+  }
+  // 可执行标记(内容区)
+  const content = String(c.content || "") + String(c.hint || "");
+  if (EXECUTABLE_MARKERS.test(content)) return { ok: false, reason: "内容含可执行标记" };
+  // media_url 只许 http(s)/同源/data:image
+  if (c.media_url) {
+    const url = String(c.media_url);
+    if (!/^(https?:|\/|data:image\/(png|jpeg|gif|webp);base64,)/.test(url)) return { ok: false, reason: "media_url 非白名单协议" };
+  }
+  return { ok: true };
+}
+
+/** 校验失败 → 确定性文本降级页(TraitTutor text_degrade_page: 体验永不死亡) */
+export function degradeToText(comp: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: String(comp.id || "degraded"),
+    title: String(comp.title || "内容页"),
+    type: "material",
+    content: `[该组件未通过安全校验, 已降级为纯文本] ${String(comp.title || "").slice(0, 80)}`,
+    status: "pending",
+    reason: "",
+  };
+}
+
 function sha256(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return (h >>> 0).toString(36);
 }
 
-export const materialReviewService = { analyzeMaterial, createGeneration, confirmGeneration, discardGeneration, attachToPlan, listReviews, heuristicMaterialAnalysis };
+export const materialReviewService = { analyzeMaterial, createGeneration, confirmGeneration, discardGeneration, attachToPlan, listReviews, heuristicMaterialAnalysis, validateComponentInstance, degradeToText };
