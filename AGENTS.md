@@ -4,7 +4,7 @@
 
 ## 项目概览
 
-MarxSphere 马研星环 — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），84 教育路由（教育服务在 `src/services/education-*.ts` 等 12 文件），对话可经 `education_service` 工具一句话调用。
+MarxSphere 马研星环 — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），112 教育路由 + 32 学习引擎顶层（教育服务 `src/services/education-*.ts` 等 19 文件），对话可经 `education_service` 工具一句话调用。
 
 ## 仓库结构
 
