@@ -46,10 +46,17 @@ export function LearnerPanel() {
   const [wikiStats, setWikiStats] = useState<any>(null);
   // 知识图谱统计(2026-08-29, Inno Agent L2 wiki-graph)
   const [graphStats, setGraphStats] = useState<any>(null);
+  // 上下文包(2026-08-29, Inno Agent context-pack 服务)
+  const [contextPack, setContextPack] = useState<string | null>(null);
 
   const loadGraphStats = async () => {
     const r = await fetch("/api/notes/wiki/graph").then((x) => x.json()).catch(() => null);
     if (r?.ok) setGraphStats(r.stats);
+  };
+
+  const loadContextPack = async () => {
+    const r = await fetch("/api/education/learner/context-pack").then((x) => x.json()).catch(() => null);
+    if (r?.ok) setContextPack(r.formatted);
   };
 
   const loadAll = async () => {
@@ -198,17 +205,17 @@ export function LearnerPanel() {
             </div>
           )}
           <div className="rounded-xl border bg-card/60 p-4">
-            <div className="mb-2 text-xs font-medium">学习者上下文包(注入系统提示词)</div>
-            <pre className="max-h-48 overflow-y-auto rounded-lg bg-muted/20 p-2 text-[9px] leading-relaxed text-muted-foreground">
-              {(() => {
-                const lines: string[] = ["## 学习者上下文"];
-                const active = (profile?.goals || []).find((g: any) => g.status === "active");
-                lines.push(active ? `\n当前目标：${active.title}` : "\n当前目标：暂未设定");
-                if (knowledge.length) { lines.push("\n相关概念："); knowledge.slice(0, 5).forEach((k: any) => lines.push(`- ${k.conceptId}: 掌握度 ${(k.mastery || 0).toFixed(2)}，状态 ${k.stateLabel || "unknown"}`)); }
-                if (profile?.misconceptions?.length) { lines.push("\n活跃误区："); profile.misconceptions.filter((m: any) => m.status !== "resolved").forEach((m: any) => lines.push(`- ${m.description}`)); }
-                return lines.join("\n");
-              })()}
-            </pre>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-medium">学习者上下文包(注入系统提示词)</div>
+              <button type="button" onClick={() => void loadContextPack()} className="text-[10px] text-violet-600 hover:underline">
+                {contextPack ? "刷新" : "加载"}
+              </button>
+            </div>
+            {contextPack ? (
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted/20 p-2 text-[9px] leading-relaxed text-muted-foreground">{contextPack}</pre>
+            ) : (
+              <div className="text-[10px] text-muted-foreground">加载后显示 context-pack 服务生成的完整上下文(状态机投影+偏好映射+复习调度)</div>
+            )}
           </div>
         </div>
       )}
