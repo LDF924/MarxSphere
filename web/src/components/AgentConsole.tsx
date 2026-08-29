@@ -1156,7 +1156,8 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
   const [workflows, setWorkflows] = useState<Array<{ id: string; name: string; desc: string }>>([]);
   const [workflowMsg, setWorkflowMsg] = useState("");
   const [sessionSearchQ, setSessionSearchQ] = useState("");
-  const [sessionResults, setSessionResults] = useState<Array<{ snippet: string }>>([]);
+  const [sessionResults, setSessionResults] = useState<Array<{ snippet: string; score?: number; sessionId?: string }>>([]);
+  const [sessionGated, setSessionGated] = useState(0);
   const [credNames, setCredNames] = useState<string[]>([]);
   const [autonomyLevel, setAutonomyLevel] = useState("auto-edit");
   const loadWorkflows = async () => {
@@ -1181,8 +1182,10 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
   const searchSessions = async () => {
     try {
       const r = await fetch("/api/agent/sessions/search?q=" + encodeURIComponent(sessionSearchQ));
-      setSessionResults((await r.json()).sessions || []);
-    } catch { setSessionResults([]); }
+      const d = await r.json();
+      setSessionResults(d.sessions || []);
+      setSessionGated(d.gated || 0);
+    } catch { setSessionResults([]); setSessionGated(0); }
   };
   const loadCreds = async () => {
     try {
@@ -1550,9 +1553,18 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
         {sessionResults.length > 0 && (
           <div className="mb-2 max-h-24 space-y-0.5 overflow-y-auto">
             {sessionResults.map((s, i) => (
-              <div key={i} className="rounded bg-slate-900/50 px-2 py-1 text-[9px] text-muted-foreground">{s.snippet}</div>
+              <div key={i} className="flex items-center gap-1.5 rounded bg-slate-900/50 px-2 py-1 text-[9px] text-muted-foreground">
+                <span className="shrink-0" title="相关度评分">{s.score != null ? `★${s.score}` : ""}</span>
+                <span className="min-w-0 flex-1 truncate">{s.snippet}</span>
+              </div>
             ))}
           </div>
+        )}
+        {sessionSearchQ.trim() && sessionResults.length === 0 && (
+          <div className="mb-2 text-[9px] text-muted-foreground">无匹配会话{sessionGated > 0 ? `（${sessionGated} 条因低相关被门控过滤）` : "（L3 门控: 低相关不召回）"}</div>
+        )}
+        {sessionSearchQ.trim() && sessionResults.length > 0 && sessionGated > 0 && (
+          <div className="mb-2 text-[9px] text-amber-500/80">⚠ {sessionGated} 条低相关会话被门控过滤(L3)</div>
         )}
         <div className="flex flex-wrap items-center gap-2">
           {/* 自主级别读写 */}
