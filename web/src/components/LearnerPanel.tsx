@@ -44,6 +44,13 @@ export function LearnerPanel() {
   // wiki 巡检
   const [wikiIssues, setWikiIssues] = useState<any[]>([]);
   const [wikiStats, setWikiStats] = useState<any>(null);
+  // 知识图谱统计(2026-08-29, Inno Agent L2 wiki-graph)
+  const [graphStats, setGraphStats] = useState<any>(null);
+
+  const loadGraphStats = async () => {
+    const r = await fetch("/api/notes/wiki/graph").then((x) => x.json()).catch(() => null);
+    if (r?.ok) setGraphStats(r.stats);
+  };
 
   const loadAll = async () => {
     const [g, m, snap] = await Promise.all([
@@ -340,6 +347,37 @@ export function LearnerPanel() {
               ))}
             </div>
           )}
+          {/* 2026-08-29: 知识图谱统计(Inno Agent L2 wiki-graph) */}
+          <div className="rounded-xl border bg-card/60 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-medium">知识图谱统计(L2 wiki-graph)</div>
+              <button type="button" onClick={() => void loadGraphStats()} className="text-[10px] text-sky-600 hover:underline">
+                {graphStats ? "刷新" : "加载"}
+              </button>
+            </div>
+            {graphStats ? (
+              <div className="grid grid-cols-4 gap-2 text-center">
+                {[["节点", graphStats.nodes], ["边", graphStats.edges], ["孤立页", graphStats.isolated], ["中心度TOP", graphStats.topCentral?.[0]?.title?.slice(0, 6)]].map(([label, v]) => (
+                  <div key={String(label)} className="rounded-lg bg-muted/10 px-2 py-2">
+                    <div className="text-lg font-bold text-sky-600">{v}</div>
+                    <div className="text-[9px] text-muted-foreground">{label}</div>
+                  </div>
+                ))}
+                {graphStats.topCentral && (
+                  <div className="col-span-4 mt-1 flex flex-wrap gap-1">
+                    <span className="text-[9px] text-muted-foreground">核心概念:</span>
+                    {graphStats.topCentral.slice(0, 5).map((c: any) => (
+                      <span key={c.title} className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] text-sky-700" title={`度 ${c.degree}`}>
+                        {c.title.slice(0, 12)}·{c.degree}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-[10px] text-muted-foreground">点击加载知识图谱统计(节点/边/孤立/中心度)</div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -303,6 +303,32 @@ export async function buildAgentTools(opts?: {
     },
     // 借鉴4(DSH subagent-claude-code): 调外部 Agent 子进程（Claude Code CLI 桥）
     // 复用 ai-execute-service 的 executeWithClaude; 严格成功映射 + 超时清理
+    // ── 2026-08-29 Inno Agent 对照: L2 wiki 查询/图谱工具 ──
+    {
+      name: "wiki_query", label: "L2知识库查询", risk: "safe",
+      description: "查询双链笔记知识库(L2 wiki): 按关键词定位相关笔记并返回内容(Agent 注入知识库上下文)",
+      params: { query: { type: "string", required: true, desc: "检索关键词, 如: 剩余价值" } },
+      run: async (a) => {
+        try {
+          const { wikiQueryService } = await import("./wiki-query.js");
+          return await wikiQueryService.queryWiki(String(a.query || ""));
+        } catch (e: any) { return `（wiki 查询异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
+      name: "wiki_graph", label: "知识图谱统计", risk: "safe",
+      description: "获取双链笔记知识图谱统计(节点/边/孤立页/中心度) — 了解知识库结构与核心概念",
+      params: {},
+      run: async () => {
+        try {
+          const { wikiGraphService } = await import("./wiki-graph.js");
+          const stats = await wikiGraphService.computeWikiGraphStats(8);
+          const lines = [`节点 ${stats.nodes} · 边 ${stats.edges} · 孤立 ${stats.isolated}`];
+          lines.push("核心概念(按度): " + stats.topCentral.map((c) => `${c.title}(${c.degree})`).join("、"));
+          return lines.join("\n");
+        } catch (e: any) { return `（图谱统计异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
     {
       name: "agent_subagent", label: "外部Agent调用", risk: "review",
       description: "将子任务委托给外部 Agent（Claude Code CLI）执行（编程/代码任务; 需人工审批）",
