@@ -1274,6 +1274,23 @@ export function buildHttpServer() {
     return await rebuildProfileService.rebuildProfileFromEvents(body.studentId || "default");
   });
 
+  // GET /api/education/learner/context-pack — 学习者上下文包(每轮注入系统提示词)
+  // 组合 context-pack 服务(状态机投影 + 偏好映射 + 复习调度) + 格式化
+  app.get("/api/education/learner/context-pack", async (request) => {
+    const q = request.query as { studentId?: string };
+    const { pool } = await import("../db/pool.js");
+    const studentId = q.studentId || "default";
+    const snap = await pool.query(
+      "select profile from learner_profile_snapshots where student_id=$1 order by created_at desc limit 1",
+      [studentId]
+    ).catch(() => ({ rows: [] }));
+    const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+    const { contextPackService } = await import("../services/context-pack.js");
+    const pack = contextPackService.buildContextPack(profile);
+    const formatted = contextPackService.formatContextPackForPrompt(pack);
+    return { ok: true, pack, formatted };
+  });
+
   // GET /api/notes/wiki/query — L2 wiki 查询(索引+关键词检索, 供 Agent 注入)
   app.get("/api/notes/wiki/query", async (request) => {
     const q = request.query as { q?: string };
