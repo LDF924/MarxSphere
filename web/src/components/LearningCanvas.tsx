@@ -50,6 +50,165 @@ const STAGE_LABEL: Record<string, string> = {
   mission: "本轮任务", learn: "理解", try: "尝试", decide: "校准与下一步", remember: "今日复习",
 };
 
+/** V394: 组件内容执行器 — 按组件类型拉取真实内容(lesson/assessment/retrieval) */
+function ComponentContent({ selected, onDone }: { selected: CanvasComponent; onDone: () => void }) {
+  const [content, setContent] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [results, setResults] = useState<Record<number, boolean>>({});
+  const [assessmentId, setAssessmentId] = useState<string>("");
+  const [cardIdx, setCardIdx] = useState(0);
+  const [cardRevealed, setCardRevealed] = useState(false);
+  const kp = selected.concept_refs?.[0] || selected.title;
+
+  const load = async () => {
+    setLoading(true); setError(null); setAnswers({}); setResults({}); setAssessmentId("");
+    try {
+      const kind = selected.type;
+      let path = "";
+      const body: Record<string, unknown> = { subject: "通用", knowledgePoint: kp };
+      if (["concept_explanation", "worked_example", "goal_map", "visual_map"].includes(kind)) {
+        path = "/api/education/components/lesson"; body.kind = kind;
+      } else if (["guided_practice", "transfer_challenge", "diagnostic_check"].includes(kind)) {
+        path = "/api/education/components/assessment"; body.kind = kind;
+      } else if (["retrieval_card", "review_queue"].includes(kind)) {
+        path = "/api/education/components/retrieval";
+      } else {
+        setLoading(false); return;
+      }
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!j.ok) { setError(j.error?.message || "生成失败"); setLoading(false); return; }
+      if (j.assessmentId) setAssessmentId(j.assessmentId);
+      setContent(j.component);
+      setLoading(false);
+    } catch (e: any) { setError(String(e?.message || e)); setLoading(false); }
+  };
+  useEffect(() => { void load(); }, [selected.id]);
+
+  const grade = async (item: any, idx: number) => {
+    try {
+      // 判分走服务端(答案服务端持有, 前端无 correct_answer)
+      const r = await fetch("/api/education/components/assessment/grade", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assessmentId, questionId: item.question_id, userAnswer: answers[idx] || "" }),
+      });
+      const j = await r.json();
+      setResults((prev) => ({ ...prev, [idx]: j.correct }));
+    } catch { /* 忽略 */ }
+  };
+
+  if (loading) return <div className="learning-card flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />生成学习内容…</div>;
+  if (error) return <div className="learning-notice learning-notice--error">{error}</div>;
+  if (!content) return null;
+
+  // ── Lesson: 概念讲解/例题/目标地图 ──
+  if (content.kind !== "assessment" && content.kind !== "retrieval_card" && !content.items) {
+    return (
+      <div className="learning-card text-sm leading-6">
+        <h3 className="mb-2 text-base font-semibold">{content.title}</h3>
+        <div className="whitespace-pre-wrap text-foreground/90">{content.content}</div>
+        {(content.key_points || []).length > 0 && (
+          <div className="mt-3">
+            <div className="mb-1 text-xs font-semibold text-muted-foreground">要点</div>
+            <ul className="space-y-1">{content.key_points.map((k: string, i: number) => <li key={i} className="text-xs text-muted-foreground">• {k}</li>)}</ul>
+          </div>
+        )}
+        {(content.references || []).length > 0 && (
+          <div className="mt-3 border-t pt-2 text-[10px] text-muted-foreground">
+            <span className="font-semibold">来源:</span> {content.references.map((r: any) => r.source).join(" · ")}
+          </div>
+        )}
+        <div className="mt-3 flex justify-end">
+          <button type="button" onClick={onDone} className="learning-button learning-button--primary">完成此步骤</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Assessment: 题目作答(服务端判分) ──
+  if (content.items) {
+    return (
+      <div className="learning-card space-y-4 text-sm">
+        <h3 className="text-base font-semibold">{content.title}</h3>
+        <div className="text-[11px] text-muted-foreground">作答后服务端判分 → 形成可审计学习证据(BKT)</div>
+        {content.items.map((item: any, idx: number) => (
+          <div key={idx} className="rounded-lg border border-border p-3">
+            <div className="mb-2 font-medium">{idx + 1}. {item.question}</div>
+            {item.question_type === "choice" ? (
+              <div className="space-y-1">
+                {(item.options || []).map((o: any, oi: number) => (
+                  <label key={oi} className="flex items-center gap-2 rounded border border-border/60 px-2 py-1.5 text-xs hover:bg-accent/40 cursor-pointer">
+                    <input type="radio" name={`q${idx}`} checked={answers[idx] === o.text} onChange={() => setAnswers((p) => ({ ...p, [idx]: o.text }))} />
+                    {o.text}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <textarea value={answers[idx] || ""} onChange={(e) => setAnswers((p) => ({ ...p, [idx]: e.target.value }))}
+                placeholder="输入你的答案…" className="learning-textarea h-16" />
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <button type="button" onClick={() => void grade(item, idx)} disabled={!answers[idx]?.trim()}
+                className="learning-button learning-button--secondary">提交</button>
+              {results[idx] !== undefined && (
+                <span className={`learning-chip ${results[idx] ? "learning-chip--success" : "learning-chip--danger"}`}>
+                  {results[idx] ? "✓ 回答正确" : "✗ 回答错误"}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+        <div className="flex justify-end">
+          <button type="button" onClick={onDone} className="learning-button learning-button--primary">完成练习</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Retrieval: 回忆卡(front/back 分离) ──
+  if (content.cards) {
+    const card = content.cards[cardIdx];
+    return (
+      <div className="learning-card text-sm">
+        <h3 className="mb-3 text-base font-semibold">{content.title}</h3>
+        {card ? (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-center">
+            {!cardRevealed ? (
+              <>
+                <div className="text-xs text-muted-foreground">回忆卡 {cardIdx + 1}/{content.cards.length}</div>
+                <div className="mt-2 font-medium">{card.front}</div>
+                <button type="button" onClick={() => setCardRevealed(true)} className="learning-button learning-button--secondary mt-4">显示答案</button>
+              </>
+            ) : (
+              <>
+                <div className="text-xs text-muted-foreground">答案</div>
+                <div className="mt-2">{card.back}</div>
+                <div className="mt-4 flex gap-2">
+                  <button type="button" onClick={() => { setCardRevealed(false); setCardIdx((i) => i + 1); }}
+                    className="learning-button learning-button--primary">✓ 记住了</button>
+                  <button type="button" onClick={() => { setCardRevealed(false); setCardIdx((i) => i + 1); }}
+                    className="learning-button learning-button--danger">✗ 忘了</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="text-center text-muted-foreground">全部回忆卡完成</div>
+        )}
+        {(cardIdx >= content.cards.length || !card) && (
+          <div className="mt-3 flex justify-end">
+            <button type="button" onClick={onDone} className="learning-button learning-button--primary">完成复习</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function componentStage(type: string): string {
   if (type === "goal_map") return "mission";
   if (["concept_explanation", "worked_example", "visual_map", "video_explanation", "audio_explanation"].includes(type)) return "learn";
@@ -215,25 +374,8 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
                 </span>
               </div>
 
-              {/* 组件内容(占位: 按模态渲染) */}
-              <div className="learning-card text-sm leading-6">
-                {selected.type === "retrieval_card" || selected.type === "review_queue" ? (
-                  <div className="text-center text-muted-foreground">
-                    <div className="mb-2">🔁 主动回忆</div>
-                    <div className="text-xs">复习 {selected.concept_refs?.slice(0, 3).join("、") || "当前概念"}</div>
-                  </div>
-                ) : selected.type.includes("practice") || selected.type.includes("challenge") || selected.type === "diagnostic_check" ? (
-                  <div className="text-center text-muted-foreground">
-                    <div className="mb-2">✍️ 服务端判分练习</div>
-                    <div className="text-xs">作答后形成可审计的学习证据(仅服务端判分更新 BKT)</div>
-                  </div>
-                ) : (
-                  <div className="text-muted-foreground">
-                    <div className="mb-2">📖 {selected.type === "concept_explanation" ? "概念讲解" : selected.title}</div>
-                    <div className="text-xs">结合当前知识状态补足核心概念。{selected.concept_refs?.length ? `关联: ${selected.concept_refs.join("、")}` : ""}</div>
-                  </div>
-                )}
-              </div>
+              {/* V394: 组件内容 — 执行器生成真实内容(lesson/assessment/retrieval) */}
+              <ComponentContent selected={selected} onDone={() => void applyEvent(selected.id, "complete")} />
 
               {/* 操作按钮(源码 ActionBar: complete/skip, completed 不渲染) */}
               {!["completed", "skipped"].includes(selected.status) && (
