@@ -3341,6 +3341,41 @@ export function buildHttpServer() {
     return r;
   });
 
+  // V390: 组件校验 + Compass 记忆治理(借鉴 TraitTutor components/validation.py + Reflection/Compass)
+  // POST /api/components/validate — 组件白名单校验{component} → {ok, reason?}
+  app.post("/api/components/validate", async (request) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    return materialReviewService.validateComponentInstance((request.body as any)?.component);
+  });
+  // GET/POST /api/memory/preferences — 偏好列表 / 记录偏好(三态+TTL)
+  // POST /api/memory/preferences/:id/decide — 用户确认/拒绝{decision}
+  // POST /api/memory/preferences/:id/evidence — 追加独立证据{evidenceRef}
+  // GET /api/memory/compass — 编译 Compass(仅 confirmed 且未过期)
+  app.get("/api/memory/preferences", async (request) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return educationCompassService.listPreferences({ studentId: q.studentId });
+  });
+  app.post("/api/memory/preferences", async (request) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    return educationCompassService.recordPreference(request.body as any);
+  });
+  app.post("/api/memory/preferences/:id/decide", async (request) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    const body = z.object({ decision: z.enum(["confirm", "reject"]), note: z.string().optional() }).parse(request.body);
+    return educationCompassService.decidePreference({ id: (request.params as any).id, decision: body.decision, note: body.note });
+  });
+  app.post("/api/memory/preferences/:id/evidence", async (request) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    const body = z.object({ evidenceRef: z.string() }).parse(request.body);
+    return educationCompassService.addPreferenceEvidence({ id: (request.params as any).id, evidenceRef: body.evidenceRef });
+  });
+  app.get("/api/memory/compass", async (request) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return educationCompassService.buildCompass({ studentId: q.studentId, subject: q.subject });
+  });
+
   // V388: 学习意图双层路由(借鉴 TraitTutor learning/intent.py: 注入扫描→LLM分类→低置信度确认)
   // POST /api/education/intent — {text, attachmentsText?} → {mode, confidence, safetyAction, fallbackRequired}
   app.post("/api/education/intent", async (request, reply) => {
