@@ -3393,6 +3393,28 @@ export function buildHttpServer() {
     const q = request.query as Record<string, string | undefined>;
     return educationCompassService.buildCompass({ studentId: q.studentId, subject: q.subject });
   });
+  // V392: Compass 删除(删除即重建语义)
+  app.delete("/api/memory/preferences/:id", async (request, reply) => {
+    const { educationCompassService } = await import("../services/education-compass-service.js");
+    const r = await educationCompassService.deletePreference({ id: (request.params as any).id });
+    if (!r.ok) return reply.code(404).send({ error: { code: "PREF_NOT_FOUND", message: r.error } });
+    return r;
+  });
+
+  // V392: 一材多工件(源码移植: 工件共享学习包, 只经 generation_id 挂载, 答案服务端持有)
+  // POST /api/learning-plans/:id/artifacts — 挂载 confirmed 产物 {generationId}
+  // GET  /api/learning-plans/:id/artifacts — 工件列表(投影剥除答案键)
+  app.post("/api/learning-plans/:id/artifacts", async (request, reply) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    const body = z.object({ generationId: z.string().uuid() }).parse(request.body);
+    const r = await materialReviewService.attachArtifactToPlan({ generationId: body.generationId, planId: (request.params as any).id });
+    if (!r.ok) return reply.code(400).send({ error: { code: "ARTIFACT_INVALID", message: r.error } });
+    return r;
+  });
+  app.get("/api/learning-plans/:id/artifacts", async (request) => {
+    const { materialReviewService } = await import("../services/material-review-service.js");
+    return materialReviewService.listPlanArtifacts({ planId: (request.params as any).id });
+  });
 
   // V388: 学习意图双层路由(借鉴 TraitTutor learning/intent.py: 注入扫描→LLM分类→低置信度确认)
   // POST /api/education/intent — {text, attachmentsText?} → {mode, confidence, safetyAction, fallbackRequired}
