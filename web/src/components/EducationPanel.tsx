@@ -635,6 +635,74 @@ function renderPlanResult(r: any): React.ReactNode {
           📚 知识库覆盖：{String(plan.rationale.knowledgeGap).slice(0, 150)}
         </div>
       )}
+      <PendingReviews />
+    </div>
+  );
+}
+
+/** V387: 待审查产物列表(needs_review 三态机, 借鉴 TraitTutor: 未确认不可附加) */
+function PendingReviews() {
+  const [reviews, setReviews] = useState<Array<{ id: string; kind: string; goal: string; status: string; issues: Array<{ dimension: string; score: number; note?: string }>; content: any; created_at: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/generations?status=needs_review");
+      const j = await res.json();
+      setReviews(j.reviews || []);
+    } catch { setReviews([]); }
+    setLoading(false);
+  };
+  useEffect(() => { void load(); }, []);
+
+  const act = async (id: string, action: "confirm" | "discard") => {
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/generations/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: "EducationPanel 操作" }) });
+      const j = await res.json();
+      if (j.ok) { setMsg(action === "confirm" ? "✓ 已确认(现在可附加到学习计划)" : "已丢弃"); void load(); }
+      else setMsg(j.error?.message || "操作失败");
+    } catch (e: any) { setMsg(String(e?.message || e)); }
+  };
+
+  if (loading) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">加载待审查产物…</div>;
+  if (reviews.length === 0) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">暂无待审查产物(自动确认的产物直接可用)</div>;
+
+  return (
+    <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-xs font-semibold text-amber-800">⏳ 待审查产物（{reviews.length}）</span>
+        <span className="text-[9px] text-amber-700/70">未确认前不可附加到学习计划</span>
+        <button type="button" onClick={() => void load()} className="ml-auto rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[9px] text-amber-700 hover:bg-amber-100">刷新</button>
+      </div>
+      {msg && <div className="mb-2 rounded bg-white px-2 py-1 text-[10px] text-amber-800">{msg}</div>}
+      <div className="space-y-1.5">
+        {reviews.map((r) => (
+          <div key={r.id} className="rounded-lg border border-amber-200/60 bg-white p-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">{r.kind}</span>
+              <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{r.goal}</span>
+              <span className="text-[9px] text-muted-foreground">{new Date(r.created_at).toLocaleString().slice(5, 16)}</span>
+            </div>
+            {(r.issues || []).map((i, idx) => (
+              <div key={idx} className="mt-1 flex items-center gap-1.5 text-[10px]">
+                <span className={`rounded px-1.5 py-0.5 font-medium ${i.score < 0.6 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                  {i.dimension} {Number(i.score).toFixed(2)}
+                </span>
+                {i.note && <span className="truncate text-muted-foreground">{i.note}</span>}
+              </div>
+            ))}
+            <div className="mt-1.5 flex gap-1.5">
+              <button type="button" onClick={() => void act(r.id, "confirm")}
+                className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">✓ 确认可用</button>
+              <button type="button" onClick={() => void act(r.id, "discard")}
+                className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-100">✗ 丢弃</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
