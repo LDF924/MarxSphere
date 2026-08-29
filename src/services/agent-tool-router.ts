@@ -330,6 +330,158 @@ export async function buildAgentTools(opts?: {
       },
     },
     {
+      name: "get_learner_context", label: "读取学习者上下文", risk: "safe",
+      description: "读取当前学习者画像上下文包(活跃目标/相关概念掌握度/活跃误区/教学提示) — 教学对话开始时调用",
+      params: {},
+      run: async () => {
+        try {
+          const { pool } = await import("../db/pool.js");
+          const snap = await pool.query("select profile from learner_profile_snapshots where student_id='default' order by created_at desc limit 1").catch(() => ({ rows: [] }));
+          const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+          const { contextPackService } = await import("./context-pack.js");
+          return contextPackService.formatContextPackForPrompt(contextPackService.buildContextPack(profile));
+        } catch (e: any) { return `（读取上下文异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
+      name: "record_learning_event", label: "记录学习事件", risk: "safe",
+      description: "记录结构化学习事件并自动合入 L1 学习者画像。当观察到学习者声明/停止/切换目标、完成练习、接受讲解、自我评估、表达偏好、接收反馈或达到里程碑时调用。(持久事实走工具, 不写在回复里)",
+      params: {
+        event_type: { type: "string", required: true, desc: "goal_declared|exercise_attempt|concept_explained|self_assessed|preference_stated|feedback_received|milestone_reached" },
+        concept_ids: { type: "string", desc: "逗号分隔的相关概念ID, 如: 剩余价值,商品二因素" },
+        topic: { type: "string", desc: "事件主题(写入诊断)" },
+        goal_description: { type: "string", desc: "goal_declared 时: 目标描述; 停止目标时含'不再学X'等放弃意图" },
+        previous_goal: { type: "string", desc: "切换目标时的旧目标" },
+        misconception_candidates: { type: "string", desc: "逗号分隔的观察到的学习者误解/错误模式(证据驱动, 非无证据标签)" },
+        preference_candidates: { type: "string", desc: "逗号分隔的观察到的学习者偏好, 如: prefers code-first explanations" },
+      },
+      run: async (a) => {
+        try {
+          const { autoProfileService } = await import("./auto-profile.js");
+          const { pool } = await import("../db/pool.js");
+          const studentId = "default";
+          const snap = await pool.query("select profile from learner_profile_snapshots where student_id=$1 order by created_at desc limit 1", [studentId]).catch(() => ({ rows: [] }));
+          const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+          const evt = {
+            eventType: String(a.event_type || "exercise_attempt"),
+            timestamp: new Date().toISOString(),
+            conceptIds: String(a.concept_ids || "").split(/[,，]/).map((s: string) => s.trim()).filter(Boolean),
+            payload: {
+              topic: a.topic,
+              goal: a.goal_description,
+              previous_goal: a.previous_goal,
+            },
+            derivedSignals: {
+              misconceptionCandidates: String(a.misconception_candidates || "").split(/[,，]/).map((s: string) => s.trim()).filter(Boolean),
+              preferenceCandidates: String(a.preference_candidates || "").split(/[,，]/).map((s: string) => s.trim()).filter(Boolean),
+            },
+            eventId: `evt:${Date.now()}`,
+          };
+          const changed = autoProfileService.applyLearningEventToProfile(profile, evt);
+          // 持久化事件 + 快照
+          await pool.query("insert into learner_events (student_id, event_type, payload) values ($1, $2, $3::jsonb)", [studentId, evt.eventType, JSON.stringify(evt.payload)]).catch(() => {});
+          if (changed) {
+            await pool.query("insert into learner_profile_snapshots (student_id, profile) values ($1, $2::jsonb)", [studentId, JSON.stringify(profile)]).catch(() => {});
+          }
+          const mis = profile.misconceptions?.filter((m: any) => m.status !== "resolved");
+          return `已记录学习事件 ${evt.eventType}${changed ? "并更新画像" : ""}。当前: 目标 ${profile.goals?.filter((g: any) => g.status === "active").length ?? 0} 个, 概念 ${profile.knowledge?.length ?? 0} 个, 活跃误解 ${mis?.length ?? 0} 个`;
+        } catch (e: any) { return `（记录事件异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
+      name: "patch_learner_profile", label: "更新学习者画像", risk: "safe",
+      description: "细粒度补丁更新学习者画像(概念掌握度增量/诊断/推荐动作/偏好追加) — 有证据时调用, 禁止无证据标签",
+      params: {
+        concept_id: { type: "string", required: true, desc: "概念ID" },
+        mastery_delta: { type: "string", desc: "掌握度增量(0-1, 如 0.1)" },
+        diagnosis: { type: "string", desc: "诊断文本(证据驱动)" },
+        next_actions: { type: "string", desc: "逗号分隔的推荐动作" },
+        preferences: { type: "string", desc: "偏好追加, 如: explanation_style=example_first" },
+      },
+      run: async (a) => {
+        try {
+          const { profileUpdaterService } = await import("./profile-updater.js");
+          const { pool } = await import("../db/pool.js");
+          const studentId = "default";
+          const snap = await pool.query("select profile from learner_profile_snapshots where student_id=$1 order by created_at desc limit 1", [studentId]).catch(() => ({ rows: [] }));
+          const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+          const prefs: Record<string, string[]> = {};
+          const prefRaw = String(a.preferences || "");
+          if (prefRaw.includes("=")) {
+            const [k, ...rest] = prefRaw.split("=");
+            prefs[k.trim()] = [rest.join("=").trim()];
+          }
+          profileUpdaterService.patchProfile(profile, {
+            conceptId: String(a.concept_id || ""),
+            masteryDelta: Number(a.mastery_delta) || undefined,
+            diagnosis: a.diagnosis ? String(a.diagnosis) : undefined,
+            nextActionsAppend: String(a.next_actions || "").split(/[,，]/).map((s: string) => s.trim()).filter(Boolean),
+            preferencesAppend: prefs,
+          });
+          await pool.query("insert into learner_profile_snapshots (student_id, profile) values ($1, $2::jsonb)", [studentId, JSON.stringify(profile)]).catch(() => {});
+          return "画像已更新(证据驱动)";
+        } catch (e: any) { return `（更新画像异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
+      name: "assess_learning_prerequisites", label: "前置知识诊断", risk: "safe",
+      description: "诊断目标概念的前置知识是否满足(required/supporting + 掌握度证据), 输出教学动作(direct/diagnose/teach/repair)与回复协议",
+      params: {
+        target_concept: { type: "string", required: true, desc: "目标概念, 如: 剩余价值" },
+        prerequisites: { type: "string", required: true, desc: "逗号分隔的前置概念, 如: 商品二因素,劳动二重性" },
+      },
+      run: async (a) => {
+        try {
+          const { teachingEntryGateService } = await import("./teaching-entry-gate.js");
+          const { learnerStateEngine } = await import("./learner-state-engine.js");
+          const { pool } = await import("../db/pool.js");
+          const snap = await pool.query("select profile from learner_profile_snapshots where student_id='default' order by created_at desc limit 1").catch(() => ({ rows: [] }));
+          const profile = snap.rows[0]?.profile || { knowledge: [] };
+          const pres = String(a.prerequisites || "").split(/[,，]/).map((s: string) => s.trim()).filter(Boolean);
+          // 用状态机投影每个前置概念状态
+          const states = (profile.knowledge || []).map((k: any) =>
+            learnerStateEngine.projectKnowledgeState({ mastery: k.mastery, confidence: k.confidence ?? 0.1, stabilityDays: k.stabilityDays ?? 0.25, lastSuccessfulRetrievalAt: k.lastSuccessfulRetrievalAt, lastResult: k.lastResult, exposureCount: 0, retrievalCount: (k.evidenceIds || []).length > 0 ? 1 : 0, lapseCount: k.lastResult === "incorrect" ? 1 : 0, successfulTransferCount: 0, evidenceIds: k.evidenceIds || [] }, k.conceptId, []));
+          const decision = teachingEntryGateService.evaluateTeachingEntry({
+            targetConceptId: String(a.target_concept || ""),
+            taskScope: `学习「${a.target_concept}」`,
+            mode: "learning",
+            isAtomic: false,
+            prerequisites: pres.map((p: string) => ({
+              targetConceptId: String(a.target_concept || ""),
+              prerequisiteConceptId: p,
+              relation: "required", requiredLevel: 0.65, importance: 0.8,
+              source: "imported", sourceConfidence: 0.65,
+              rationale: `教学诊断前置 ${p}`,
+            })),
+          }, states as any);
+          return teachingEntryGateService.formatTeachingEntryDecision(decision);
+        } catch (e: any) { return `（前置诊断异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
+      name: "review_learner_profile", label: "审查学习者画像", risk: "safe",
+      description: "审查当前画像的完整状态(目标/概念/误解/偏好) — 学习者可检查可纠正, 输出当前画像供确认",
+      params: {},
+      run: async () => {
+        try {
+          const { pool } = await import("../db/pool.js");
+          const snap = await pool.query("select profile from learner_profile_snapshots where student_id='default' order by created_at desc limit 1").catch(() => ({ rows: [] }));
+          const profile = snap.rows[0]?.profile || { goals: [], knowledge: [], misconceptions: [], preferences: {} };
+          const lines: string[] = ["## 学习者画像(可检查可纠正)"];
+          lines.push("\n### 目标");
+          lines.push((profile.goals || []).filter((g: any) => g.status === "active").map((g: any) => `- ${g.title}(${g.type || "skill"} 优先${g.priority})`).join("\n") || "- (无)");
+          lines.push("\n### 概念掌握度");
+          lines.push((profile.knowledge || []).map((k: any) => `- ${k.conceptId}: ${Math.round((k.mastery || 0) * 100)}% ${k.stateLabel || ""}`).join("\n") || "- (无)");
+          lines.push("\n### 活跃误解");
+          lines.push((profile.misconceptions || []).filter((m: any) => m.status !== "resolved").map((m: any) => `- ${m.description}${m.evidenceIds?.length ? `(证据${m.evidenceIds.length})` : ""}`).join("\n") || "- (无)");
+          lines.push("\n### 偏好");
+          const prefs = Object.entries(profile.preferences || {}).map(([k, v]) => `- ${k}: ${(v as string[]).join(", ")}`).join("\n");
+          lines.push(prefs || "- (无)");
+          return lines.join("\n");
+        } catch (e: any) { return `（审查画像异常: ${String(e?.message || e).slice(0, 100)}）`; }
+      },
+    },
+    {
       name: "agent_subagent", label: "外部Agent调用", risk: "review",
       description: "将子任务委托给外部 Agent（Claude Code CLI）执行（编程/代码任务; 需人工审批）",
       params: {
