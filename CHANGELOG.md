@@ -1,5 +1,18 @@
 ## [1.2.0] - 2026-08-30
 
+### 🎓 学习引擎(LingxiLearn 借鉴, V396-V397)
+
+- **深度调研报告**(docs/LINGXILEARN-REVIEW.md): 单循环图/三词汇表分层/GoalStack 可撤销路由/证据系统/教学 Skills/四层评测/差距清单
+- **verification_debt 验证债务**(101 迁移): 强帮助后记债务, 独立正确还债, 进到期队列排序
+- **内容寻址去重**: sha256 摘要即 evidence_digest, 同观察重复追加自动坍缩
+- **闭式状态转移表**: 组件状态 pending→started→completed 闭式校验, 非法转移拒绝
+- **评测纪律**: not_observed≠pass, 缺失维度显式报告不抬分
+- **状态提案(proposal-only)**: 事件压缩成谨慎提案(needs_recheck 需≥2次/答错=misconception), 只提案不写入
+- **review_priority 单尺子**: 0.45×逾期+0.35×薄弱+0.20×不确定
+- **Capability 注册表**: 封闭 20 tag 词表 + 确定性候选生成(收益/成本排序) + 意图过滤; E9 能力推荐 tab + Agent capability-recommend
+- **可视化产物**: visual_map 执行器生成 SVG 关系图(节点/连线), 画布直接渲染
+- **学习多 Agent 协作**: 讲解(content.lesson)→出题(assess.generate)→反馈(assess.grade) 链式共享上下文, 失败降级; E9 多Agent tab + Agent learn-agents
+
 ### 🎓 学习引擎(TraitTutor 借鉴, V386-V393)
 
 - **学习者事件账本 + BKT 概念掌握**(096 迁移): append-only 账本 + void amendment + 强证据闸门(仅服务端判分进 BKT) + 诚实读(未校准/观察<3 不显示数字) + 时间衰减读投影

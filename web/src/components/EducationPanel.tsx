@@ -671,7 +671,7 @@ function PlanCanvasLauncher({ planId }: { planId: string }) {
 
 /** V390-E9: 学习引擎中心(借鉴 TraitTutor: 材料分析/意图路由/复习队列/Compass偏好/模型熔断) */
 function LearningEngineHub() {
-  const [tab, setTab] = useState<"material" | "intent" | "review" | "compass" | "circuit" | "capability">("material");
+  const [tab, setTab] = useState<"material" | "intent" | "review" | "compass" | "circuit" | "capability" | "agents">("material");
   const tabs = [
     { id: "material" as const, label: "📄 材料分析" },
     { id: "intent" as const, label: "🧭 意图路由" },
@@ -679,6 +679,7 @@ function LearningEngineHub() {
     { id: "compass" as const, label: "🧲 Compass" },
     { id: "circuit" as const, label: "🛡 模型熔断" },
     { id: "capability" as const, label: "🧩 能力推荐" },
+    { id: "agents" as const, label: "🤝 多Agent协作" },
   ];
   return (
     <div className="space-y-3">
@@ -696,6 +697,7 @@ function LearningEngineHub() {
       {tab === "compass" && <CompassPanel />}
       {tab === "circuit" && <CircuitPanel />}
       {tab === "capability" && <CapabilityPanel />}
+      {tab === "agents" && <LearningAgentsPanel />}
     </div>
   );
 }
@@ -915,6 +917,76 @@ function CompassPanel() {
 }
 
 /** 模型熔断状态(Quota Rotation 诊断) */
+/** V397: 多 Agent 协作(讲解→出题→反馈, 借鉴 LingxiLearn) */
+function LearningAgentsPanel() {
+  const [subject, setSubject] = useState("政治经济学");
+  const [kp, setKp] = useState("剩余价值");
+  const [answer, setAnswer] = useState("");
+  const [result, setResult] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    if (!kp.trim()) return;
+    setBusy(true); setResult(null);
+    try {
+      const r = await fetch("/api/education/agents/orchestrate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, knowledgePoint: kp, userAnswer: answer || undefined }),
+      });
+      setResult(await r.json());
+    } catch (e: any) { setResult({ error: String(e?.message || e) }); }
+    setBusy(false);
+  };
+  return (
+    <div className="learning-card space-y-3">
+      <div className="text-[11px] font-semibold">🤝 多 Agent 协作（讲解 → 出题 → 反馈）</div>
+      <div className="flex flex-wrap gap-2">
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="科目" className="learning-input w-32 text-[10px]" />
+        <input value={kp} onChange={(e) => setKp(e.target.value)} placeholder="知识点" className="learning-input w-40 text-[10px]" />
+        <input value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="作答(可选, 触发反馈Agent)" className="learning-input min-w-0 flex-1 text-[10px]" />
+        <button type="button" onClick={() => void run()} disabled={busy} className="learning-button learning-button--primary">
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "运行三 Agent"}
+        </button>
+      </div>
+
+      {result?.summary && (
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className={`rounded-full px-2 py-0.5 font-medium ${result.summary.degraded === 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>
+            {result.summary.ok}/{result.summary.total} Agent 成功{result.summary.degraded > 0 ? ` (降级 ${result.summary.degraded})` : ""}
+          </span>
+        </div>
+      )}
+
+      {result?.lesson && (
+        <div className="rounded-lg border border-border p-3">
+          <div className="mb-1 text-[10px] font-semibold text-sky-600">Agent 1 · 讲解 (content.lesson)</div>
+          <div className="text-xs font-medium">{result.lesson.title}</div>
+          {result.lesson.svg && <div className="mt-2 overflow-hidden rounded-lg" dangerouslySetInnerHTML={{ __html: result.lesson.svg }} />}
+          <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground">{result.lesson.content}</div>
+        </div>
+      )}
+      {result?.quiz && (
+        <div className="rounded-lg border border-border p-3">
+          <div className="mb-1 text-[10px] font-semibold text-emerald-600">Agent 2 · 出题 (assess.generate)</div>
+          {result.quiz.items?.map((it: any, i: number) => (
+            <div key={i} className="mb-1.5 text-[11px]">
+              <div className="font-medium">{i + 1}. {it.question}</div>
+              {it.options?.length > 0 && <div className="mt-0.5 text-[10px] text-muted-foreground">{it.options.map((o: any) => o.text).join(" / ")}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {result?.feedback && (
+        <div className={`rounded-lg border p-3 ${result.feedback.correct === false ? "border-amber-500/30 bg-amber-500/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
+          <div className="mb-1 text-[10px] font-semibold text-violet-600">Agent 3 · 反馈 (assess.grade)</div>
+          <div className="text-[11px] leading-5">{result.feedback.feedback}</div>
+          {result.feedback.next_step && <div className="mt-1 text-[10px] text-muted-foreground">下一步: {result.feedback.next_step}</div>}
+        </div>
+      )}
+      {result?.error && <div className="rounded bg-red-500/10 p-2 text-[10px] text-red-500">{result.error}</div>}
+    </div>
+  );
+}
+
 /** V397: 能力推荐(借鉴 LingxiLearn 确定性候选生成) */
 function CapabilityPanel() {
   const [result, setResult] = useState<any>(null);
