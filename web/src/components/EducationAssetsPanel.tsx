@@ -158,7 +158,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
           {/* 列表区 */}
           <div className="space-y-1.5">
             {tab === "templates" && templates.map((t) => (
-              <div key={t.file} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
+              <div key={t.file} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-2">
                 <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12px] font-medium">{t.name || t.file}</div>
@@ -171,7 +171,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             {tab === "cases" && cases.map((c) => (
               <div key={c.id}
                 onClick={() => setSelected({ name: c.title || c.id || "", data: c })}
-                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background/60 hover:bg-muted/40"}`}>
+                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-[12px] font-medium">{c.title}</span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.scenario}</span>
@@ -186,7 +186,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             ))}
             {tab === "courses" && courses && (
               <>
-                <div className="rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
+                <div className="rounded-lg border border-border/70 bg-background px-2.5 py-2">
                   <div className="flex items-center gap-2">
                     <Database className="h-3.5 w-3.5 text-emerald-600" />
                     <span className="text-[12px] font-medium">示例课程（政治经济学 / 数学）</span>
@@ -206,7 +206,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                 {(courses.courses || []).map((c, i) => (
                   <div key={i}
                     onClick={() => setSelected({ name: c.title, data: { title: c.title, subject: c.subject, content: c.content } })}
-                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background/60 hover:bg-muted/40"}`}>
+                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-medium">{c.title}</span>
                       <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.subject}</span>
@@ -218,12 +218,12 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             )}
             {tab === "external" && (
               <div className="space-y-1.5">
-                <div className="rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
+                <div className="rounded-lg border border-border/70 bg-background px-2.5 py-2">
                   <div className="text-[11px] font-medium text-foreground/80">接入外部教育资源共享（学校资源库 / 公开平台 / HTTP JSON 接口）</div>
                   <div className="mt-1 text-[10px] text-muted-foreground">配置来源地址后一键拉取并导入资产库（课程切片直接入库可检索）</div>
                 </div>
                 {sources.map((s2) => (
-                  <div key={s2.id} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2">
+                  <div key={s2.id} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[12px] font-medium">{s2.name}</span>
@@ -252,7 +252,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             )}
           </div>
           {/* 详情区 */}
-          <div className="rounded-lg border border-border/60 bg-background/40 p-2.5">
+          <div className="rounded-lg border border-border/60 bg-background p-2.5">
             {selected ? (
               <>
                 <div className="mb-1.5 text-[11px] font-semibold text-foreground/80">{selected.name}</div>

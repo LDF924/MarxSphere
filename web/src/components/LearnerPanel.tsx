@@ -172,7 +172,7 @@ export function LearnerPanel() {
       {/* ── 总览: 掌握度状态机 + 遗忘曲线 + 到期复习 ── */}
       {tab === "overview" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Sparkles className="h-3.5 w-3.5 text-violet-500" /> 掌握度状态(状态机投影)</div>
             {knowledge.length === 0 && <div className="text-[10px] text-muted-foreground">暂无学习记录 — 在教育答题或调用 learner/events 后自动生成</div>}
             {knowledge.length > 0 && (
@@ -204,7 +204,7 @@ export function LearnerPanel() {
               ))}
             </div>
           )}
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
               <div className="text-xs font-medium">学习者上下文包(注入系统提示词)</div>
               <button type="button" onClick={() => void loadContextPack()} className="text-[10px] text-violet-600 hover:underline">
@@ -223,7 +223,7 @@ export function LearnerPanel() {
       {/* ── 学习目标 ── */}
       {tab === "goals" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Target className="h-3.5 w-3.5 text-emerald-600" /> 新建学习目标</div>
             <div className="flex flex-wrap gap-2">
               <input value={newGoalTitle} onChange={(e) => setNewGoalTitle(e.target.value)} placeholder="目标标题，如：马克思主义政治经济学"
@@ -242,7 +242,7 @@ export function LearnerPanel() {
           </div>
           <div className="space-y-1.5">
             {goals.map((g) => (
-              <div key={g.id} className="flex items-center gap-2 rounded-lg border bg-card/60 px-3 py-2">
+              <div key={g.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${g.status === "active" ? "bg-emerald-500/15 text-emerald-700" : "bg-muted/40 text-muted-foreground"}`}>{g.status}</span>
                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{g.title}</span>
                 <span className="rounded bg-muted/40 px-1.5 py-0.5 text-[9px] text-muted-foreground">{g.type}</span>
@@ -263,7 +263,7 @@ export function LearnerPanel() {
       {/* ── 误解诊断 ── */}
       {tab === "misconceptions" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium"><AlertTriangle className="h-3.5 w-3.5 text-red-500" /> 记录误解(带证据)</div>
             <div className="flex flex-wrap gap-2">
               <input value={newMisTopic} onChange={(e) => setNewMisTopic(e.target.value)} placeholder="主题，如：剩余价值"
@@ -295,7 +295,7 @@ export function LearnerPanel() {
       {/* ── 前置诊断(教学入口门) ── */}
       {tab === "gate" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium"><GitBranch className="h-3.5 w-3.5 text-violet-500" /> 教学入口判断(前置知识诊断)</div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] text-muted-foreground">学</span>
@@ -315,7 +315,7 @@ export function LearnerPanel() {
             </div>
           )}
           {!gateResult && (
-            <div className="rounded-xl border border-dashed bg-card/30 p-6 text-center text-[10px] text-muted-foreground">
+            <div className="rounded-xl border border-dashed bg-card p-6 text-center text-[10px] text-muted-foreground">
               输入目标概念与前置概念 → 诊断前置是否满足 → 生成教学动作(direct/diagnose/teach/repair)与回复协议
             </div>
           )}
@@ -325,7 +325,7 @@ export function LearnerPanel() {
       {/* ── Wiki 巡检 ── */}
       {tab === "wiki" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          <div className="flex items-center gap-2 rounded-xl border bg-card/60 p-4">
+          <div className="flex items-center gap-2 rounded-xl border bg-card p-4">
             <div className="flex-1">
               <div className="text-xs font-medium"><NotebookPen className="mr-1 inline h-3.5 w-3.5 text-sky-600" /> 知识库巡检(L2 wiki 维护器)</div>
               <div className="mt-0.5 text-[9px] text-muted-foreground">
@@ -355,7 +355,7 @@ export function LearnerPanel() {
             </div>
           )}
           {/* 2026-08-29: 知识图谱统计(Inno Agent L2 wiki-graph) */}
-          <div className="rounded-xl border bg-card/60 p-4">
+          <div className="rounded-xl border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
               <div className="text-xs font-medium">知识图谱统计(L2 wiki-graph)</div>
               <button type="button" onClick={() => void loadGraphStats()} className="text-[10px] text-sky-600 hover:underline">
