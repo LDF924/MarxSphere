@@ -3971,6 +3971,22 @@ function SettingsPanel(props: {
   const [defaultChunkingMode, setDefaultChunkingMode] = useState<ChunkingMode>("heading_strict");
   const [chunkTokenLimit, setChunkTokenLimit] = useState(512);
   const [chunkOverlapTokens, setChunkOverlapTokens] = useState(100);
+  // V395: Agent 运行时设置(全局沙箱级别/自主级别) — 独立持久化到 /api/agent/settings
+  const [agentSandboxProfile, setAgentSandboxProfile] = useState("read-only");
+  const [agentAutonomy, setAgentAutonomy] = useState("auto-edit");
+  useEffect(() => {
+    void fetch("/api/agent/settings").then((r) => r.json()).then((d) => {
+      const s = d.settings || {};
+      if (s.sandbox_profile) setAgentSandboxProfile(s.sandbox_profile);
+      if (s.autonomy) setAgentAutonomy(s.autonomy);
+    }).catch(() => {});
+  }, []);
+  const saveAgentRuntime = (key: string, value: string) => {
+    void fetch("/api/agent/settings", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: value }),
+    });
+  };
 
   useEffect(() => {
     if (!props.settings) return;
@@ -4244,6 +4260,43 @@ function SettingsPanel(props: {
           />
           {t("清空 LLM 密钥", "Clear LLM key")}
         </label>
+      </SettingsCard>
+
+      {/* V395: Agent 运行时设置(全局沙箱级别 — 影响整个 AI Agent 工具执行) */}
+      <SettingsCard title={t("Agent 运行时", "Agent runtime")} badge={t("全局", "Global")}>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {t("沙箱级别控制 AI Agent 代码/命令执行的隔离强度(影响 run_code/run_command 全部工具)", "Sandbox level controls isolation strength for all Agent code/command execution (run_code / run_command)")}
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <select
+              value={agentSandboxProfile}
+              onChange={(e) => { setAgentSandboxProfile(e.target.value); saveAgentRuntime("sandbox_profile", e.target.value); }}
+              className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="read-only">read-only(只读, 默认)</option>
+              <option value="workspace-write">workspace-write(工作区可写)</option>
+              <option value="full-access">full-access(完全访问, 危险操作门控)</option>
+            </select>
+            <span className="text-xs text-muted-foreground">
+              {agentSandboxProfile === "read-only" ? "禁止一切文件写/网络/进程操作"
+                : agentSandboxProfile === "workspace-write" ? "仅允许 agent_workspace 内读写"
+                : "完全访问(危险命令默认禁止, 需 sidecar 门控)"}
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <select
+              value={agentAutonomy}
+              onChange={(e) => { setAgentAutonomy(e.target.value); saveAgentRuntime("autonomy", e.target.value); }}
+              className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="suggest">suggest(建议)</option>
+              <option value="auto-edit">auto-edit(自动编辑)</option>
+              <option value="full-auto">full-auto(全自动)</option>
+            </select>
+            <span className="text-xs text-muted-foreground">{t("自主级别: 高危操作的人工介入程度", "Autonomy: human-in-the-loop level for high-risk operations")}</span>
+          </label>
+        </div>
       </SettingsCard>
 
       {/* V415: 保存栏 sticky 固定底部 — 长表单滚动时保存按钮始终可见；成功/失败就地提示 */}

@@ -5790,15 +5790,26 @@ except Exception as e:
     ]);
     return { settings: { preset, autonomy, sandbox_profile: sandbox } };
   });
-  // V395: 保存运行时设置(沙箱级别/预设/自主级别)
+  // V395: 保存运行时设置(沙箱级别/预设/自主级别) — 即时同步 env 全局生效
   app.put("/api/agent/settings", async (request) => {
     const { agentSettingsService } = await import("../services/agent-settings.js");
     const body = z.object({ preset: z.string().optional(), autonomy: z.string().optional(), sandbox_profile: z.enum(["read-only", "workspace-write", "full-access"]).optional() }).parse(request.body);
     const saved: string[] = [];
     if (body.preset) { await agentSettingsService.setAgentSetting("preset", body.preset); saved.push("preset"); }
-    if (body.autonomy) { await agentSettingsService.setAgentSetting("autonomy", body.autonomy); saved.push("autonomy"); }
-    if (body.sandbox_profile) { await agentSettingsService.setAgentSetting("sandbox_profile", body.sandbox_profile); saved.push("sandbox_profile"); }
-    return { ok: true, saved };
+    if (body.autonomy) {
+      await agentSettingsService.setAgentSetting("autonomy", body.autonomy);
+      // 即时同步 autonomy 模块
+      const { setAutonomyLevel } = await import("../services/agent-autonomy.js");
+      setAutonomyLevel(body.autonomy as any);
+      saved.push("autonomy");
+    }
+    if (body.sandbox_profile) {
+      await agentSettingsService.setAgentSetting("sandbox_profile", body.sandbox_profile);
+      // 即时同步 env(影响整个 AI Agent 全部沙箱工具执行)
+      process.env.AGENT_SANDBOX_PROFILE = body.sandbox_profile;
+      saved.push("sandbox_profile");
+    }
+    return { ok: true, saved, activeSandbox: process.env.AGENT_SANDBOX_PROFILE || "read-only" };
   });
   app.get("/api/agent/subprocesses", async () => {
     const { subprocessStatus } = await import("../services/agent-runtime-utils.js");
