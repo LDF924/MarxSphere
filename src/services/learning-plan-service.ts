@@ -78,6 +78,18 @@ export async function getActivePlan(input: { studentId?: string; subject: string
 }
 
 /** 组件状态推进(校验合法迁移: 依赖前置必须 completed) */
+/** V396: 组件状态闭式转移表(借鉴 LingxiLearn IllegalTransition)
+ * pending → started | skipped(可选组件)
+ * started → completed | skipped(可选)
+ * completed / skipped → (终态, 无出边 — 不可回退)
+ */
+const COMPONENT_TRANSITIONS: Record<string, Set<string>> = {
+  pending: new Set(["started", "skipped"]),
+  started: new Set(["completed", "skipped"]),
+  completed: new Set([]),
+  skipped: new Set([]),
+};
+
 export async function updateComponentStatus(input: { planId: string; componentId: string; status: "started" | "completed" | "skipped" }): Promise<Record<string, unknown>> {
   const planR = await pool.query("select * from learning_plans where id = $1", [input.planId]).catch(() => ({ rows: [] }));
   if (planR.rows.length === 0) return { ok: false, error: "计划不存在" };
@@ -87,12 +99,16 @@ export async function updateComponentStatus(input: { planId: string; componentId
   if (idx === -1) return { ok: false, error: "组件不存在" };
   const comp = comps[idx];
 
+  // 闭式转移校验(先于依赖检查): 非法转移直接拒绝
+  if (!COMPONENT_TRANSITIONS[comp.status]?.has(input.status)) {
+    return { ok: false, error: `非法状态转移: ${comp.status} → ${input.status}(闭式转移表拒绝)` };
+  }
+
   // 依赖: 前面的组件(同计划内)必须全部 completed 才能 completed/skipped
   if (input.status === "completed" || input.status === "skipped") {
     const prevIncomplete = comps.slice(0, idx).find((c) => c.status !== "completed");
     if (prevIncomplete) return { ok: false, error: `前置组件「${prevIncomplete.title}」未完成` };
   }
-  if (comp.status === "completed" && input.status !== "completed") return { ok: false, error: "已完成的组件不能回退" };
 
   comps[idx] = { ...comp, status: input.status };
   const allDone = comps.every((c) => c.status === "completed");

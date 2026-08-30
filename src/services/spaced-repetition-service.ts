@@ -178,4 +178,53 @@ export async function dueReviews(input: { studentId?: string; subject?: string; 
   return { ok: true, reviews: r.rows };
 }
 
-export const spacedRepetitionService = { enqueueReview, recordReviewResult, dueReviews, advanceReviewState, INTERVAL_SEQUENCES };
+/**
+ * V396: 状态更新提案(借鉴 LingxiLearn learner-state-reflector: proposal-only)
+ * 把一段时间的学习事件压缩成"谨慎的状态更新提案" — 只返回提案, 由调用方决定是否写入
+ * 一条正确答案 ≠ 永久掌握(needs_recheck 需 ≥2 次分级观察)
+ */
+export async function proposeStateUpdate(input: { studentId?: string; subject?: string }): Promise<Record<string, unknown>> {
+  const studentId = input.studentId || "default";
+  const r = await pool.query(
+    `select student_id, knowledge_point, knowledge_type, interval_idx, consecutive_correct, consecutive_wrong,
+            last_result, needs_repair, verification_debt, review_priority, due_at
+     from review_queue where student_id = $1 order by review_priority desc limit 10`,
+    [studentId]
+  ).catch(() => ({ rows: [] }));
+
+  const proposals = r.rows.map((row: any) => {
+    const gradedCount = row.consecutive_correct + row.consecutive_wrong;
+    // 保守分类(与 LingxiLearn 同哲学): 独立正确≥2 次才算 demonstrated
+    let learningState = "unknown";
+    if (row.needs_repair) learningState = "misconception_evidence";
+    else if (gradedCount < 2) learningState = "needs_recheck";
+    else if (row.last_result && row.consecutive_correct >= 2) learningState = "demonstrated";
+    else if (row.consecutive_correct >= 1) learningState = "emerging";
+    return {
+      knowledge_point: row.knowledge_point,
+      learning_state: learningState,
+      reason: learningState === "needs_recheck" ? "分级观察不足 2 次, 不能宣称掌握"
+        : learningState === "demonstrated" ? `连续 ${row.consecutive_correct} 次正确`
+        : learningState === "misconception_evidence" ? "最近答错, 需修复" : "证据不足以定性",
+      verification_debt: row.verification_debt,
+      review_priority: Number(row.review_priority),
+      due_at: row.due_at,
+      evidence_refs: [`review:${row.knowledge_point}`],
+    };
+  });
+
+  return {
+    ok: true,
+    proposal_only: true,  // 只提案, 不写入
+    learner_id: studentId,
+    proposals,
+    summary: {
+      demonstrated: proposals.filter((p: any) => p.learning_state === "demonstrated").length,
+      needs_recheck: proposals.filter((p: any) => p.learning_state === "needs_recheck").length,
+      misconception: proposals.filter((p: any) => p.learning_state === "misconception_evidence").length,
+      with_debt: proposals.filter((p: any) => p.verification_debt).length,
+    },
+  };
+}
+
+export const spacedRepetitionService = { enqueueReview, recordReviewResult, dueReviews, advanceReviewState, proposeStateUpdate, INTERVAL_SEQUENCES };
