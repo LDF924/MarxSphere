@@ -126,10 +126,22 @@ const releaseMeta = {
   prerelease: false,
 };
 // 先查该 tag 是否已有 Release（存在则更新，避免 POST 重复创建 422）
-const existing = JSON.parse(execSync(
-  `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
-  { encoding: "utf8" }
-));
+// V397 修复: API 空响应/瞬时失败时重试(CI 环境偶发), 避免 JSON.parse("") 崩溃
+let existingRaw = "";
+for (let attempt = 1; attempt <= 3; attempt++) {
+  existingRaw = execSync(
+    `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
+    { encoding: "utf8" }
+  ).trim();
+  if (existingRaw) break;
+  console.log(`[release] Release 查询空响应, 重试 ${attempt}/3...`);
+  execSync(`ping -n 2 127.0.0.1 >nul`, { shell: "cmd", stdio: "ignore" });
+}
+if (!existingRaw) {
+  console.error("❌ Release 查询连续 3 次空响应(GitHub API 不可达), 跳过创建直接上传资产");
+  process.exit(1);
+}
+const existing = JSON.parse(existingRaw);
 let release;
 if (existing.id) {
   // 已存在：不覆盖已有 body（保留手动写的发布说明），只更新 name/draft/prerelease
