@@ -93,6 +93,8 @@ export async function recordReviewResult(input: {
   expectedAnswer?: string;
   isCorrect?: boolean | null;
   questionType?: "choice" | "tf" | "short" | "open";
+  /** V396: 提示级别(0=独立作答) — 强帮助(hint>=2)后答对记验证债务 */
+  hintLevel?: number;
 }): Promise<Record<string, unknown>> {
   const studentId = input.studentId || "default";
   // 事件账本(强证据闸门)
@@ -103,21 +105,38 @@ export async function recordReviewResult(input: {
   });
   const correct = ev.isCorrect === true;
 
-  // 推进调度
+  // 推进调度(V396: verification_debt 验证债务 — 借鉴 LingxiLearn)
+  // 强帮助(hint_level>=2)后答对: 记债务不立即还; 独立正确(无提示)还债
+  const hintLevel = input.hintLevel ?? 0;
   const cur = await pool.query(
     "select * from review_queue where student_id = $1 and subject = $2 and knowledge_point = $3",
     [studentId, input.subject, input.knowledgePoint]
   ).catch(() => ({ rows: [] }));
 
+  // review_priority 单尺子(借鉴 LingxiLearn: 0.45×逾期 + 0.35×薄弱 + 0.20×不确定)
+  const calcPriority = (dueAt: Date | null, wasCorrect: boolean, hasMisconception: boolean): number => {
+    let p = 0;
+    if (dueAt && new Date(dueAt).getTime() < Date.now()) {
+      const daysLate = (Date.now() - new Date(dueAt).getTime()) / 86_400_000;
+      p += 0.45 * Math.min(1, daysLate / 7);
+    }
+    if (!wasCorrect) p += 0.35;
+    if (hasMisconception) p += 0.20;
+    return Math.min(1, p);
+  };
+
   let next: ReturnType<typeof advanceReviewState>;
   if (cur.rows.length === 0) {
     // 未入队: 从 0 档开始
     next = advanceReviewState({ correct, intervalIdx: 0, consecutiveCorrect: 0, consecutiveWrong: 0, knowledgeType: knowledgeTypeOf(input.knowledgePoint) });
+    const debt = !correct || hintLevel >= 2;
     await pool.query(
-      `insert into review_queue (student_id, subject, knowledge_point, knowledge_type, interval_idx, consecutive_correct, consecutive_wrong, due_at, last_result, needs_repair)
-       values ($1,$2,$3,$4,$5,$6,$7, now() + ($8 || ' days')::interval, $9, $10)`,
+      `insert into review_queue (student_id, subject, knowledge_point, knowledge_type, interval_idx, consecutive_correct, consecutive_wrong, due_at, last_result, needs_repair, verification_debt, debt_reason, review_priority)
+       values ($1,$2,$3,$4,$5,$6,$7, now() + ($8 || ' days')::interval, $9, $10, $11, $12, $13)`,
       [studentId, input.subject, input.knowledgePoint, knowledgeTypeOf(input.knowledgePoint),
-       next.intervalIdx, next.consecutiveCorrect, next.consecutiveWrong, next.dueInDays, correct, next.needsRepair]
+       next.intervalIdx, next.consecutiveCorrect, next.consecutiveWrong, next.dueInDays, correct, next.needsRepair,
+       debt, debt ? (hintLevel >= 2 ? "强帮助后需独立验证" : "答错需修复") : null,
+       calcPriority(null, correct, debt)]
     ).catch(() => {});
   } else {
     const row = cur.rows[0];
@@ -128,26 +147,32 @@ export async function recordReviewResult(input: {
       consecutiveWrong: row.consecutive_wrong,
       knowledgeType: row.knowledge_type || knowledgeTypeOf(input.knowledgePoint),
     });
+    // 还债: 独立正确(无提示)且此前有债务 → 清除
+    const debtCleared = correct && hintLevel === 0 && row.verification_debt;
+    const debtStill = !correct || hintLevel >= 2;
+    const priority = calcPriority(row.due_at, correct, debtStill);
     await pool.query(
       `update review_queue set interval_idx = $1, consecutive_correct = $2, consecutive_wrong = $3,
-         due_at = now() + ($4 || ' days')::interval, last_result = $5, needs_repair = $6, updated_at = now()
-       where student_id = $7 and subject = $8 and knowledge_point = $9`,
+         due_at = now() + ($4 || ' days')::interval, last_result = $5, needs_repair = $6,
+         verification_debt = $7, debt_reason = $8, review_priority = $9, updated_at = now()
+       where student_id = $10 and subject = $11 and knowledge_point = $12`,
       [next.intervalIdx, next.consecutiveCorrect, next.consecutiveWrong, next.dueInDays, correct, next.needsRepair,
-       studentId, input.subject, input.knowledgePoint]
+       debtCleared ? false : debtStill, debtCleared ? null : (debtStill ? (hintLevel >= 2 ? "强帮助后需独立验证" : "答错需修复") : null),
+       priority, studentId, input.subject, input.knowledgePoint]
     ).catch(() => {});
   }
 
   return { ok: true, correct, ...next, dueInDays: next.dueInDays };
 }
 
-/** 到期复习队列(错误未修复优先, 再按到期时间) */
+/** 到期复习队列(错误未修复+验证债务优先, 再按 review_priority 与到期时间) */
 export async function dueReviews(input: { studentId?: string; subject?: string; limit?: number }): Promise<Record<string, unknown>> {
   const params: unknown[] = [input.studentId || "default"];
   let where = "student_id = $1 and due_at <= now()";
   if (input.subject) { params.push(input.subject); where += " and subject = $" + params.length; }
   const r = await pool.query(
     `select * from review_queue where ${where}
-     order by needs_repair desc, due_at asc limit $${params.length + 1}`,
+     order by needs_repair desc, verification_debt desc, review_priority desc, due_at asc limit $${params.length + 1}`,
     [...params, input.limit || 10]
   ).catch(() => ({ rows: [] }));
   return { ok: true, reviews: r.rows };

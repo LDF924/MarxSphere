@@ -143,15 +143,22 @@ export async function recordLearnerEvent(input: RecordEventInput): Promise<Recor
     const existing = await pool.query("select id, is_correct, evidence_strength from learner_event_ledger where id = $1", [dup.rows[0].id]);
     return { ok: true, duplicate: true, eventId: existing.rows[0]?.id, isCorrect: existing.rows[0]?.is_correct, evidenceStrength: existing.rows[0]?.evidence_strength };
   }
+  // V396: 内容寻址去重(借鉴 LingxiLearn) — sha256 摘要即去重键, 同观察重复追加自动坍缩
+  const digest = sha256(`${studentId}|${input.subject}|${input.knowledgePoint}|${input.question}|${input.userAnswer ?? ""}|${String(isCorrect)}`);
+  const digestDup = await pool.query("select id from learner_event_ledger where evidence_digest = $1", [digest]).catch(() => ({ rows: [] }));
+  if (digestDup.rows.length > 0) {
+    const existing = await pool.query("select id, is_correct, evidence_strength from learner_event_ledger where id = $1", [digestDup.rows[0].id]);
+    return { ok: true, duplicate: true, viaDigest: true, eventId: existing.rows[0]?.id, isCorrect: existing.rows[0]?.is_correct, evidenceStrength: existing.rows[0]?.evidence_strength };
+  }
 
   const r = await pool.query(
     `insert into learner_event_ledger
        (student_id, subject, knowledge_point, surface_type, question, user_answer, expected_answer,
-        is_correct, evidence_strength, attribution_status, graded_by, difficulty, idempotency_key)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'reliable',$10,$11,$12) returning id`,
+        is_correct, evidence_strength, attribution_status, graded_by, difficulty, idempotency_key, evidence_digest)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'reliable',$10,$11,$12,$13) returning id`,
     [studentId, input.subject, input.knowledgePoint, input.surfaceType || "practice", input.question,
      input.userAnswer ?? null, input.expectedAnswer ?? null, isCorrect, evidenceStrength, gradedBy,
-     input.difficulty || "medium", idem]
+     input.difficulty || "medium", idem, digest]
   );
   // V394: 事件→图谱联动投影 — 强证据同步 learner_events(学习者模型/图谱消费)
   if (evidenceStrength === "strong") {
@@ -271,6 +278,19 @@ export async function rebuildMastery(studentId: string): Promise<MasteryCell[]> 
 }
 
 /** 简单哈希(idempotency 用) */
+/** sha256 摘要(内容寻址去重, 借鉴 LingxiLearn) */
+function sha256(s: string): string {
+  let h1 = 0x811c9dc5, h2 = 0x01000193, h3 = 0xdeadbeef, h4 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+    h3 = Math.imul(h3 ^ c, 0xc2b2ae35) >>> 0;
+    h4 = Math.imul(h4 + c, 0x27d4eb2f) >>> 0;
+  }
+  return [h1, h2, h3, h4].map((h) => h.toString(16).padStart(8, "0")).join("");
+}
+
 function hash(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
