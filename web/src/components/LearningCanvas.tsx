@@ -4,7 +4,7 @@
 // 侧边栏折叠: 挂载时无条件折叠(专注), 卸载时用户手动展开的偏好胜出
 // 状态推进: 逐题提交(末题 complete), 409 自愈, 依赖锁定
 import { useEffect, useState, useCallback } from "react";
-import { Check, ChevronRight, Circle, Lock, Loader2, X, Route } from "lucide-react";
+import { Check, ChevronRight, Circle, Lock, Loader2, X, Route, Sparkles } from "lucide-react";
 
 interface CanvasComponent {
   id: string;
@@ -49,6 +49,46 @@ const REASON_ZH: Record<string, string> = {
 const STAGE_LABEL: Record<string, string> = {
   mission: "本轮任务", learn: "理解", try: "尝试", decide: "校准与下一步", remember: "今日复习",
 };
+
+/** V395: 批量生成按钮 — 为计划全部组件生成真实内容(执行器→三态机) */
+function BatchGenerateButton({ plan, onDone }: { plan: PlanData; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const run = async () => {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const comps = plan.components
+        .filter((c) => ["goal_map", "concept_explanation", "worked_example", "visual_map", "guided_practice", "transfer_challenge", "diagnostic_check", "retrieval_card", "review_queue"].includes(c.type))
+        .map((c) => ({ type: c.type, knowledgePoint: c.concept_refs?.[0] || c.title }));
+      if (comps.length === 0) { setMsg("无需要生成的组件"); setBusy(false); return; }
+      const r = await fetch("/api/education/components/batch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: plan.subject, goal: plan.goal, components: comps }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        const s = j.summary;
+        setMsg(`✅ 生成 ${s.generated}/${s.total} · 需审查 ${s.reviewCount}`);
+      } else {
+        setMsg(j.error?.message || "批量生成失败");
+      }
+      onDone();
+    } catch (e: any) { setMsg(String(e?.message || e).slice(0, 80)); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button type="button" onClick={() => void run()} disabled={busy}
+        className="learning-button learning-button--secondary shrink-0" title="为计划全部组件生成真实学习内容(讲解/练习/回忆卡)">
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} 生成全部内容
+      </button>
+      {msg && <span className="max-w-[180px] truncate text-[10px] text-muted-foreground">{msg}</span>}
+    </div>
+  );
+}
 
 /** V394: 助手面板 — 学习问答(接 tutoring API, 分步引导不直接给答案) */
 function CanvasAssistant({ subject, knowledgePoint }: { subject: string; knowledgePoint: string }) {
@@ -368,6 +408,8 @@ export function LearningCanvas({ planId, onExit }: { planId: string; onExit: () 
           <div className="truncate text-sm font-semibold">{plan.goal}</div>
           <div className="text-[10px] text-muted-foreground">{plan.subject} · v{plan.version} · {completedCount}/{visibleActions.length} 个组件已完成</div>
         </div>
+        {/* V395: 批量生成 — 为计划组件生成真实内容(lesson/assessment/retrieval → 三态机) */}
+        <BatchGenerateButton plan={plan} onDone={() => void loadPlan()} />
         <button type="button" onClick={() => setPathCollapsed((v) => !v)} className="rounded-md border px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent" title="切换路径侧栏">
           {pathCollapsed ? "展开路径" : "收起路径"}
         </button>
