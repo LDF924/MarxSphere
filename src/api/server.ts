@@ -3358,6 +3358,12 @@ export function buildHttpServer() {
     const q = request.query as Record<string, string | undefined>;
     return spacedRepetitionService.dueReviews({ studentId: q.studentId, subject: q.subject, limit: q.limit ? Number(q.limit) : undefined });
   });
+  // V396: 状态更新提案(借鉴 LingxiLearn: proposal-only, 只提案不写入)
+  app.get("/api/education/reviews/proposal", async (request) => {
+    const { spacedRepetitionService } = await import("../services/spaced-repetition-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return spacedRepetitionService.proposeStateUpdate({ studentId: q.studentId, subject: q.subject });
+  });
 
   // V390: 组件校验 + Compass 记忆治理(借鉴 TraitTutor components/validation.py + Reflection/Compass)
   // POST /api/components/validate — 组件白名单校验{component} → {ok, reason?}

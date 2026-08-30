@@ -229,6 +229,23 @@ export async function runEducationEval(): Promise<Record<string, unknown>> {
       { id: 11, name: "学习规划覆盖率", value: Number(planCov.coverage.toFixed(3)), sample: planCov.sample, group: "教学效果" },
       { id: 12, name: "用户满意度", value: Number(satis.likeRate.toFixed(3)), sample: satis.sample, group: "教学效果" },
     ],
+    // V396: not_observed≠pass 纪律(借鉴 LingxiLearn skill-eval-harness)
+    // 缺失/无法评估的维度显式报告为 not_observed, 不静默当 0 分也不抬分
+    observed: {
+      bkt: true, diagnosis: true, path: true, grading: true, ideology: true, loop: true,
+      mastery: mastery.sample !== "暂无真实作答数据" && mastery.rate > 0,
+      tutoring: tutoring.sample !== "暂无前后对照数据" && tutoring.lift > 0,
+      lesson: lesson.seconds > 0,
+      planCoverage: planCov.objectives > 0,
+      satisfaction: Number(satis.total ?? 0) > 0,
+    },
+    notObserved: [
+      ...(mastery.sample === "暂无真实作答数据" || mastery.rate <= 0 ? [{ id: 7, name: "学生掌握度提升率", reason: "无真实作答数据" }] : []),
+      ...(tutoring.sample === "暂无前后对照数据" || tutoring.lift <= 0 ? [{ id: 8, name: "辅导有效性", reason: "无前后对照数据" }] : []),
+      ...(lesson.seconds <= 0 ? [{ id: 9, name: "教师备课效率", reason: "LLM 未配置" }] : []),
+      ...(planCov.objectives <= 0 ? [{ id: 11, name: "学习规划覆盖率", reason: "规划生成失败" }] : []),
+      ...(Number(satis.total ?? 0) <= 0 ? [{ id: 12, name: "用户满意度", reason: "暂无反馈数据" }] : []),
+    ],
     suggestions,
   };
 }
