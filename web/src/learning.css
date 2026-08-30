@@ -92,14 +92,14 @@
 }
 .learning-canvas__header {
   @apply shrink-0 border-b px-4 py-3;
-  background: color-mix(in srgb, hsl(var(--background)) 90%, hsl(var(--card)));
+  background: hsl(var(--background));
 }
 .learning-canvas__layout {
   @apply grid min-h-0 w-full flex-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_292px];
 }
 .learning-canvas__path-panel {
   @apply shrink-0 border-b px-4 py-3 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:p-4;
-  background: color-mix(in srgb, hsl(var(--card)) 76%, hsl(var(--secondary)));
+  background: hsl(var(--card));
 }
 .learning-canvas__content {
   @apply flex min-h-0 min-w-0 flex-col overflow-y-auto p-4 md:p-6;
