@@ -616,7 +616,7 @@ function renderPlanResult(r: any): React.ReactNode {
       {/* 组件时间线 */}
       <div className="space-y-1.5">
         {(plan.components || []).map((c: any, i: number) => (
-          <div key={c.id || i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${c.status === "completed" ? "border-emerald-300/50 bg-emerald-50/50" : c.status === "started" ? "border-amber-300/60 bg-amber-50/40" : "border-border bg-card/60"}`}>
+          <div key={c.id || i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${c.status === "completed" ? "border-emerald-300/50 bg-emerald-50/50" : c.status === "started" ? "border-amber-300/60 bg-amber-50/40" : "border-border bg-card"}`}>
             <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
               c.status === "completed" ? "bg-emerald-500 text-white" : c.status === "started" ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
             }`}>
@@ -834,7 +834,7 @@ function ReviewQueuePanel() {
       {reviews.length === 0 && !busy && <div className="text-[10px] text-muted-foreground">暂无到期复习(在「作答记录」中答题后自动入队)</div>}
       <div className="space-y-1.5">
         {reviews.map((r) => (
-          <div key={r.id} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <div key={r.id} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
             <span className={`h-2 w-2 shrink-0 rounded-full ${r.needs_repair ? "bg-red-500" : "bg-emerald-500"}`} title={r.needs_repair ? "错误未修复" : "正常复习"} />
             <span className="min-w-0 flex-1 truncate text-[11px]">{r.knowledge_point}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{r.knowledge_type}</span>
@@ -884,7 +884,7 @@ function CompassPanel() {
       {busy && <div className="text-[10px] text-muted-foreground">加载中…</div>}
       <div className="space-y-1.5">
         {prefs.map((p) => (
-          <div key={p.id} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <div key={p.id} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
             <span className={`h-2 w-2 shrink-0 rounded-full ${p.state === "explicit" ? "bg-emerald-500" : p.state === "rejected" ? "bg-red-400" : "bg-amber-400"}`} title={p.state} />
             <span className="min-w-0 flex-1 truncate text-[11px]">{p.key}: <span className="font-mono">{p.value}</span></span>
             <span className={`rounded px-1.5 py-0.5 text-[9px] ${p.state === "explicit" ? "bg-emerald-100 text-emerald-700" : p.state === "rejected" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
@@ -932,7 +932,7 @@ function CircuitPanel() {
       {Object.keys(circuits).length === 0 && <div className="text-[10px] text-muted-foreground">暂无熔断记录(所有模型健康)</div>}
       <div className="space-y-1.5">
         {Object.entries(circuits).map(([model, c]: [string, any]) => (
-          <div key={model} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <div key={model} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
             <span className={`h-2 w-2 shrink-0 rounded-full ${c.open ? "bg-red-500" : c.failures > 0 ? "bg-amber-400" : "bg-emerald-500"}`} />
             <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{model}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.open ? `已熔断 ${Math.round((Date.now() - c.openedAt) / 1000)}s前` : `失败 ${c.failures} 次`}</span>
@@ -983,8 +983,8 @@ function CircuitPanel() {
     } catch (e: any) { setMsg(String(e?.message || e)); }
   };
 
-  if (loading) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">加载待审查产物…</div>;
-  if (reviews.length === 0) return <div className="rounded border border-border bg-card/60 p-2 text-[10px] text-muted-foreground">暂无待审查产物(自动确认的产物直接可用)</div>;
+  if (loading) return <div className="rounded border border-border bg-card p-2 text-[10px] text-muted-foreground">加载待审查产物…</div>;
+  if (reviews.length === 0) return <div className="rounded border border-border bg-card p-2 text-[10px] text-muted-foreground">暂无待审查产物(自动确认的产物直接可用)</div>;
 
   return (
     <div className="rounded-lg border border-amber-300/50 bg-amber-50/40 p-3">

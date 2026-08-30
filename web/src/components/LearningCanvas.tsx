@@ -122,7 +122,7 @@ function CanvasAssistant({ subject, knowledgePoint }: { subject: string; knowled
   };
 
   return (
-    <aside className="hidden min-h-0 flex-col border-l border-border xl:flex" style={{ background: "hsl(var(--card) / 0.5)" }}>
+    <aside className="hidden min-h-0 flex-col border-l border-border xl:flex" style={{ background: "hsl(var(--card))" }}>
       <div className="border-b px-3 py-2 text-[11px] font-semibold text-muted-foreground">学习助手</div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {msgs.length === 0 && (
