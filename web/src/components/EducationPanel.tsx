@@ -671,13 +671,14 @@ function PlanCanvasLauncher({ planId }: { planId: string }) {
 
 /** V390-E9: 学习引擎中心(借鉴 TraitTutor: 材料分析/意图路由/复习队列/Compass偏好/模型熔断) */
 function LearningEngineHub() {
-  const [tab, setTab] = useState<"material" | "intent" | "review" | "compass" | "circuit">("material");
+  const [tab, setTab] = useState<"material" | "intent" | "review" | "compass" | "circuit" | "capability">("material");
   const tabs = [
     { id: "material" as const, label: "📄 材料分析" },
     { id: "intent" as const, label: "🧭 意图路由" },
     { id: "review" as const, label: "🔁 复习队列" },
     { id: "compass" as const, label: "🧲 Compass" },
     { id: "circuit" as const, label: "🛡 模型熔断" },
+    { id: "capability" as const, label: "🧩 能力推荐" },
   ];
   return (
     <div className="space-y-3">
@@ -694,6 +695,7 @@ function LearningEngineHub() {
       {tab === "review" && <ReviewQueuePanel />}
       {tab === "compass" && <CompassPanel />}
       {tab === "circuit" && <CircuitPanel />}
+      {tab === "capability" && <CapabilityPanel />}
     </div>
   );
 }
@@ -913,6 +915,61 @@ function CompassPanel() {
 }
 
 /** 模型熔断状态(Quota Rotation 诊断) */
+/** V397: 能力推荐(借鉴 LingxiLearn 确定性候选生成) */
+function CapabilityPanel() {
+  const [result, setResult] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [subject, setSubject] = useState("");
+  const load = async () => {
+    setBusy(true);
+    try {
+      const url = `/api/education/capabilities/recommend?intent=learning_path${subject ? `&subject=${encodeURIComponent(subject)}` : ""}`;
+      const r = await fetch(url);
+      setResult(await r.json());
+    } catch (e: any) { setResult({ error: String(e?.message || e) }); }
+    setBusy(false);
+  };
+  useEffect(() => { void load(); }, []);
+  return (
+    <div className="learning-card">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold">🧩 能力推荐（按学习者状态确定性排序）</span>
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="科目(可选)" className="learning-input w-36 text-[10px]" />
+        <button type="button" onClick={() => void load()} disabled={busy} className="learning-button learning-button--secondary">
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "刷新"}
+        </button>
+      </div>
+      {result?.learnerContext && (
+        <div className="mb-2 rounded border border-border/60 bg-muted/30 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+          薄弱点: {result.learnerContext.weakPoints?.length ? result.learnerContext.weakPoints.join("、") : "无"} ·
+          未观察: {result.learnerContext.unobservedPoints?.length ? result.learnerContext.unobservedPoints.slice(0, 3).join("、") : "无"} ·
+          到期复习: {result.learnerContext.dueReviews}
+        </div>
+      )}
+      <div className="space-y-1.5">
+        {(result?.top || []).map((c: any) => (
+          <div key={c.capability} className="flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+            <span className="rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] text-sky-600">{c.capability}</span>
+            <span className="min-w-0 flex-1 truncate text-[11px]">{c.label}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.service}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">u={c.utility}</span>
+          </div>
+        ))}
+        {result?.all?.filter((c: any) => c.blocked)?.length > 0 && (
+          <div className="mt-2 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+            <div className="mb-1 font-medium">被前置条件阻塞:</div>
+            {result.all.filter((c: any) => c.blocked).map((c: any) => (
+              <div key={c.capability}>· {c.capability} — {c.blockedReason}</div>
+            ))}
+          </div>
+        )}
+        {result?.note && <div className="mt-2 text-[9px] text-muted-foreground/70">{result.note}</div>}
+        {result?.error && <div className="rounded bg-red-500/10 p-2 text-[10px] text-red-500">{result.error}</div>}
+      </div>
+    </div>
+  );
+}
+
 function CircuitPanel() {
   const [circuits, setCircuits] = useState<Record<string, any>>({});
   const load = async () => {
