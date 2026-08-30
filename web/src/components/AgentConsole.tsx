@@ -1384,7 +1384,24 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
           </div>
           <div className="rounded bg-slate-900/50 p-2">
             <div className="text-muted-foreground">沙箱级别</div>
-            <div className="mt-0.5 font-medium text-cyan-300">{settings.sandbox_profile || "read-only"}</div>
+            {/* V395: 沙箱级别可切换(3 级, 持久化) */}
+            <select
+              value={settings.sandbox_profile || "read-only"}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSettings((s) => ({ ...s, sandbox_profile: v }));
+                void fetch("/api/agent/settings", {
+                  method: "PUT", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ sandbox_profile: v }),
+                });
+              }}
+              className="mt-0.5 w-full rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none"
+              title="沙箱隔离级别: 只读(默认)/工作区可写/完全访问(危险操作门控)"
+            >
+              <option value="read-only">read-only(只读)</option>
+              <option value="workspace-write">workspace-write(工作区可写)</option>
+              <option value="full-access">full-access(完全访问)</option>
+            </select>
           </div>
         </div>
         <button type="button" aria-label="刷新设置" onClick={() => void loadSettings()}
