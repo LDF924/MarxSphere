@@ -80,6 +80,16 @@ const DEMO_EVAL_HISTORY: any[] = [
 
 export const AgentConsole: FC = () => {
   const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent" | "lab">("rules");
+  // V395: 运行时设置(沙箱/预设/自主级别) — 提升到顶部, 底部设置条可见
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const loadSettings = async () => {
+    try {
+      const r = await fetch("/api/agent/settings");
+      const d = await r.json();
+      const s = d.settings || {};
+      setSettings({ preset: s.preset || "academic", autonomy: s.autonomy || "auto-edit", sandbox_profile: s.sandbox_profile || "read-only" });
+    } catch { setSettings({}); }
+  };
   // V392: 演示模式 — demo 数据填充三 tab（沙箱不调 API）
   const [demoOn, setDemoOn] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
@@ -173,6 +183,41 @@ export const AgentConsole: FC = () => {
           {tab === "skills" && <SkillsTab demoOn={demoOn} />}
           {tab === "agent" && <AgentManageTab />}
           {tab === "lab" && <PracticeLab />}
+        </div>
+
+        {/* V395: 运行时设置(沙箱级别/预设/自主级别) — 移到 tab 区下方, 打开即见 */}
+        <div className="shrink-0 border-t border-border px-4 py-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[11px] font-medium text-cyan-400">⚙️ 运行时设置</span>
+            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              预设
+              <select value={settings.preset || "academic"}
+                onChange={(e) => { const v = e.target.value; setSettings((s) => ({ ...s, preset: v })); void fetch("/api/agent/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ preset: v }) }); }}
+                className="rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none">
+                {["academic", "code", "research", "general"].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              自主级别
+              <select value={settings.autonomy || "auto-edit"}
+                onChange={(e) => { const v = e.target.value; setSettings((s) => ({ ...s, autonomy: v })); void fetch("/api/agent/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autonomy: v }) }); }}
+                className="rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none">
+                {["suggest", "auto-edit", "full-auto"].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="沙箱隔离级别: 只读(默认)/工作区可写/完全访问(危险操作门控)">
+              沙箱级别
+              <select value={settings.sandbox_profile || "read-only"}
+                onChange={(e) => { const v = e.target.value; setSettings((s) => ({ ...s, sandbox_profile: v })); void fetch("/api/agent/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sandbox_profile: v }) }); }}
+                className="rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none">
+                <option value="read-only">read-only(只读)</option>
+                <option value="workspace-write">workspace-write(可写)</option>
+                <option value="full-access">full-access(完全)</option>
+              </select>
+            </label>
+            <button type="button" aria-label="刷新设置" onClick={() => void loadSettings()}
+              className="ml-auto rounded bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400 hover:bg-cyan-500/20">刷新</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1035,7 +1080,6 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
   };
   // 收尾①: Hooks 管理 + 运行时设置
   const [hooksList, setHooksList] = useState<Array<{ id: string; event: string; name: string; enabled: boolean }>>([]);
-  const [settings, setSettings] = useState<Record<string, string>>({});
   const loadHooks = async () => {
     try {
       const r = await fetch("/api/agent/hooks");
@@ -1060,14 +1104,6 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
       setHookName("");
       void loadHooks();
     } catch { setPluginMsg("❌ 注册失败"); }
-  };
-  const loadSettings = async () => {
-    try {
-      const r = await fetch("/api/agent/settings");
-      const d = await r.json();
-      const s = d.settings || {};
-      setSettings({ preset: s.preset || "academic", autonomy: s.autonomy || "auto-edit", sandbox_profile: s.sandbox_profile || "read-only" });
-    } catch { setSettings({}); }
   };
   // 批次4: OAuth 账号管理 + 插件模板
   const [oauthAccounts, setOauthAccounts] = useState<Array<{ provider: string; account: string; scope?: string }>>([]);
@@ -1369,43 +1405,6 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
           <button type="button" aria-label="注册钩子" onClick={() => void addHook()}
             className="shrink-0 rounded bg-indigo-500/10 px-2.5 py-1 text-[10px] text-indigo-300 hover:bg-indigo-500/20">注册</button>
         </div>
-      </div>
-      {/* 收尾①: 运行时设置（预设/自主级别/沙箱持久化状态） */}
-      <div className="rounded-lg border border-cyan-500/20 p-3">
-        <div className="mb-2 text-xs font-medium text-cyan-400">运行时设置（持久化到 DB）</div>
-        <div className="grid grid-cols-3 gap-2 text-[10px]">
-          <div className="rounded bg-slate-900/50 p-2">
-            <div className="text-muted-foreground">预设模式</div>
-            <div className="mt-0.5 font-medium text-cyan-300">{settings.preset || "academic"}</div>
-          </div>
-          <div className="rounded bg-slate-900/50 p-2">
-            <div className="text-muted-foreground">自主级别</div>
-            <div className="mt-0.5 font-medium text-cyan-300">{settings.autonomy || "auto-edit"}</div>
-          </div>
-          <div className="rounded bg-slate-900/50 p-2">
-            <div className="text-muted-foreground">沙箱级别</div>
-            {/* V395: 沙箱级别可切换(3 级, 持久化) */}
-            <select
-              value={settings.sandbox_profile || "read-only"}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSettings((s) => ({ ...s, sandbox_profile: v }));
-                void fetch("/api/agent/settings", {
-                  method: "PUT", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ sandbox_profile: v }),
-                });
-              }}
-              className="mt-0.5 w-full rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none"
-              title="沙箱隔离级别: 只读(默认)/工作区可写/完全访问(危险操作门控)"
-            >
-              <option value="read-only">read-only(只读)</option>
-              <option value="workspace-write">workspace-write(工作区可写)</option>
-              <option value="full-access">full-access(完全访问)</option>
-            </select>
-          </div>
-        </div>
-        <button type="button" aria-label="刷新设置" onClick={() => void loadSettings()}
-          className="mt-2 rounded bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400 hover:bg-cyan-500/20">刷新设置</button>
       </div>
       {/* 批次4: OAuth 授权管理（GitHub/飞书/Notion 账号） */}
       <div className="rounded-lg border border-emerald-500/20 p-3">
