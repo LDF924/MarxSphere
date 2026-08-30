@@ -11,9 +11,9 @@ interface Misconception { id: string; topic: string; description: string; eviden
 const STATE_COLORS: Record<string, string> = {
   stable: "bg-green-500/15 text-green-700 border-green-500/30",
   fragile: "bg-blue-500/15 text-blue-700 border-blue-500/30",
-  learning: "bg-amber-500/15 text-amber-700 border-amber-500/30",
+  learning: "bg-amber-500/100/15 text-amber-600 border-amber-500/30",
   review_due: "bg-orange-500/15 text-orange-700 border-orange-500/30",
-  misconception: "bg-red-500/15 text-red-700 border-red-500/30",
+  misconception: "bg-red-500/100/15 text-red-500 border-red-500/30",
   unknown: "bg-muted/40 text-muted-foreground border-border/40",
 };
 
@@ -149,7 +149,7 @@ export function LearnerPanel() {
         <span className="text-xs text-muted-foreground">Inno Agent 学习引擎 · 掌握度状态机 / 前置诊断 / 自动画像</span>
         <div className="ml-auto flex items-center gap-1.5">
           <button type="button" onClick={() => void rebuildProfile()} disabled={busy}
-            className="flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1.5 text-[11px] text-violet-700 hover:bg-violet-500/20 disabled:opacity-40" title="从事件日志重放重建画像">
+            className="flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/100/10 px-2.5 py-1.5 text-[11px] text-violet-700 hover:bg-violet-500/100/20 disabled:opacity-40" title="从事件日志重放重建画像">
             <Sparkles className="h-3 w-3" /> 重建画像
           </button>
           <button type="button" onClick={() => void loadAll()} className="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] hover:bg-accent">
@@ -167,7 +167,7 @@ export function LearnerPanel() {
           </button>
         ))}
       </div>
-      {notice && <div className={`rounded-lg px-3 py-1.5 text-[10px] ${notice.type === "ok" ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-600"}`}>{notice.text}</div>}
+      {notice && <div className={`rounded-lg px-3 py-1.5 text-[10px] ${notice.type === "ok" ? "bg-green-500/10 text-green-700" : "bg-red-500/100/10 text-red-600"}`}>{notice.text}</div>}
 
       {/* ── 总览: 掌握度状态机 + 遗忘曲线 + 到期复习 ── */}
       {tab === "overview" && (
@@ -186,7 +186,7 @@ export function LearnerPanel() {
                       <span className="text-[9px] text-muted-foreground">掌握 {((k.mastery || 0) * 100).toFixed(0)}%</span>
                       {k.retrievability != null && (
                         <div className="w-24" title={`可提取性 ${(k.retrievability * 100).toFixed(0)}%`}>
-                          <div className="h-1.5 rounded bg-muted/40"><div className="h-1.5 rounded bg-violet-500" style={{ width: `${k.retrievability * 100}%` }} /></div>
+                          <div className="h-1.5 rounded bg-muted/40"><div className="h-1.5 rounded bg-violet-500/100" style={{ width: `${k.retrievability * 100}%` }} /></div>
                         </div>
                       )}
                       {k.reviewDueAt && <span title={`复习到期 ${k.reviewDueAt}`}><CalendarClock className="h-3 w-3 text-orange-500" /></span>}
@@ -197,8 +197,8 @@ export function LearnerPanel() {
             )}
           </div>
           {profile?.misconceptions?.length > 0 && (
-            <div className="rounded-xl border bg-red-500/5 p-4">
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-red-700"><AlertTriangle className="h-3.5 w-3.5" /> 活跃误解(自动画像)</div>
+            <div className="rounded-xl border bg-red-500/100/5 p-4">
+              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-red-500"><AlertTriangle className="h-3.5 w-3.5" /> 活跃误解(自动画像)</div>
               {profile.misconceptions.filter((m: any) => m.status !== "resolved").map((m: any, i: number) => (
                 <div key={i} className="text-[11px] text-red-800">• {m.description}</div>
               ))}
@@ -243,7 +243,7 @@ export function LearnerPanel() {
           <div className="space-y-1.5">
             {goals.map((g) => (
               <div key={g.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${g.status === "active" ? "bg-emerald-500/15 text-emerald-700" : "bg-muted/40 text-muted-foreground"}`}>{g.status}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${g.status === "active" ? "bg-emerald-500/100/15 text-emerald-600" : "bg-muted/40 text-muted-foreground"}`}>{g.status}</span>
                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{g.title}</span>
                 <span className="rounded bg-muted/40 px-1.5 py-0.5 text-[9px] text-muted-foreground">{g.type}</span>
                 <span className="text-[9px] text-muted-foreground">优先 {g.priority}</span>
@@ -276,12 +276,12 @@ export function LearnerPanel() {
           </div>
           <div className="space-y-1.5">
             {misconceptions.map((m) => (
-              <div key={m.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${m.status === "open" ? "bg-red-500/5 border-red-500/20" : "bg-muted/10"}`}>
-                <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[9px] font-medium text-red-700">{m.topic}</span>
+              <div key={m.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${m.status === "open" ? "bg-red-500/100/5 border-red-500/20" : "bg-muted/10"}`}>
+                <span className="rounded bg-red-500/100/10 px-1.5 py-0.5 text-[9px] font-medium text-red-500">{m.topic}</span>
                 <span className="min-w-0 flex-1 truncate text-[11px]">{m.description}</span>
                 <span className="text-[9px] text-muted-foreground">{m.evidence?.length || 0} 证据</span>
                 {m.status === "open" && (
-                  <button type="button" onClick={() => void resolveMis(m.id)} className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[9px] text-emerald-700 hover:bg-emerald-500/20" title="标记已纠正">
+                  <button type="button" onClick={() => void resolveMis(m.id)} className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/100/10 px-2 py-1 text-[9px] text-emerald-600 hover:bg-emerald-500/100/20" title="标记已纠正">
                     <CheckCircle2 className="h-3 w-3" /> 已纠正
                   </button>
                 )}
@@ -309,7 +309,7 @@ export function LearnerPanel() {
             </div>
           </div>
           {gateResult && (
-            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/100/5 p-3">
               <div className="mb-1 text-[9px] font-semibold text-violet-600">下一条回复协议</div>
               <pre className="whitespace-pre-wrap text-[10px] leading-relaxed text-violet-900">{gateResult}</pre>
             </div>
@@ -337,7 +337,7 @@ export function LearnerPanel() {
             <button type="button" onClick={() => void auditWiki()} disabled={busy} className="rounded-lg bg-sky-600 px-3 py-2 text-[11px] font-medium text-white hover:bg-sky-700 disabled:opacity-40">
               {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "巡检"}
             </button>
-            <button type="button" onClick={() => void fixWiki()} disabled={busy} className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-700 hover:bg-sky-500/20 disabled:opacity-40">
+            <button type="button" onClick={() => void fixWiki()} disabled={busy} className="rounded-lg border border-sky-500/30 bg-sky-500/100/10 px-3 py-2 text-[11px] text-sky-600 hover:bg-sky-500/100/20 disabled:opacity-40">
               一键修复
             </button>
           </div>
@@ -345,7 +345,7 @@ export function LearnerPanel() {
             <div className="space-y-1">
               {wikiIssues.slice(0, 30).map((iss, i) => (
                 <div key={i} className="flex items-start gap-2 rounded-lg border bg-muted/10 px-3 py-1.5 text-[10px]">
-                  <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-medium ${iss.kind === "broken_link" ? "bg-red-500/10 text-red-600" : iss.kind === "orphan" ? "bg-amber-500/10 text-amber-700" : "bg-muted/40 text-muted-foreground"}`}>
+                  <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-medium ${iss.kind === "broken_link" ? "bg-red-500/100/10 text-red-600" : iss.kind === "orphan" ? "bg-amber-500/100/10 text-amber-600" : "bg-muted/40 text-muted-foreground"}`}>
                     {iss.kind === "broken_link" ? "破损链接" : iss.kind === "orphan" ? "孤立页" : "过期"}
                   </span>
                   <span className="min-w-0 flex-1 text-muted-foreground">{iss.detail}</span>
@@ -374,7 +374,7 @@ export function LearnerPanel() {
                   <div className="col-span-4 mt-1 flex flex-wrap gap-1">
                     <span className="text-[9px] text-muted-foreground">核心概念:</span>
                     {graphStats.topCentral.slice(0, 5).map((c: any) => (
-                      <span key={c.title} className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] text-sky-700" title={`度 ${c.degree}`}>
+                      <span key={c.title} className="rounded-full border border-sky-500/30 bg-sky-500/100/10 px-2 py-0.5 text-[9px] text-sky-600" title={`度 ${c.degree}`}>
                         {c.title.slice(0, 12)}·{c.degree}
                       </span>
                     ))}

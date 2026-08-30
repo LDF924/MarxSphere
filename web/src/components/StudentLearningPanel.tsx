@@ -309,7 +309,7 @@ export function StudentLearningPanel() {
   const DemoBtn = ({ onClick, label = "Demo 演示" }: { onClick: () => void; label?: string }) => (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+      className="flex items-center gap-1 rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/100/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-600 hover:bg-emerald-500/100/20 transition-colors"
       title="一键填入示例并运行"
     >
       <Play className="h-3 w-3" /> {label}
@@ -327,7 +327,7 @@ export function StudentLearningPanel() {
         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
           <Sparkles className="h-3.5 w-3.5 text-emerald-600" /> 苏格拉底追问 · 五步打磨
           <span className="ml-auto">
-            <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${polishDoneCount > 0 ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+            <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${polishDoneCount > 0 ? "bg-emerald-100 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
               完成度 {polishDoneCount}/5
             </span>
             <DemoBtn label="示例想法" onClick={() => setSocraticQ("为什么说价值规律是商品经济的基本规律？")} />
@@ -341,7 +341,7 @@ export function StudentLearningPanel() {
             {ideaCards.length === 0 && <span className="text-[10px] text-muted-foreground/60">（暂无，保存当前想法后出现）</span>}
             {ideaCards.map((card) => (
               <span key={card.id} className={`group inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
-                activeCardId === card.id ? "border-emerald-400 bg-emerald-50 text-emerald-700" : "border-border bg-muted/40 text-foreground/70 hover:bg-muted"
+                activeCardId === card.id ? "border-emerald-500/40 bg-emerald-500/100/10 text-emerald-600" : "border-border bg-muted/40 text-foreground/70 hover:bg-muted"
               }`}>
                 <button onClick={() => selectIdeaCard(card)} className="max-w-[120px] truncate" title={card.raw_idea}>
                   {card.title}
@@ -373,7 +373,7 @@ export function StudentLearningPanel() {
         </div>
 
         {/* 原始想法输入（空值时高亮提示） */}
-        <div className={`mb-1 rounded-lg border-2 p-2 transition-colors ${polishWarnEmpty ? "border-red-400 bg-red-50" : "border-transparent bg-muted/30"}`}>
+        <div className={`mb-1 rounded-lg border-2 p-2 transition-colors ${polishWarnEmpty ? "border-red-500/40 bg-red-500/100/10" : "border-transparent bg-muted/30"}`}>
           <div className="mb-1 flex items-center gap-1.5">
             <label className="text-[11px] font-semibold text-foreground/80">① 记录想法（原始研究问题）</label>
             {polishWarnEmpty && <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white animate-pulse">⚠ 请先填写研究问题</span>}
@@ -394,7 +394,7 @@ export function StudentLearningPanel() {
               <button
                 key={i}
                 onClick={() => { setSocraticQ(ex); setPolishWarnEmpty(false); }}
-                className="rounded-full border border-dashed border-emerald-300 bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-100 transition-colors"
+                className="rounded-full border border-dashed border-emerald-300 bg-emerald-500/100/15 px-2 py-0.5 text-[10px] text-emerald-600 hover:bg-emerald-500/20 transition-colors"
               >
                 {ex.slice(0, 18)}…
               </button>
@@ -402,7 +402,7 @@ export function StudentLearningPanel() {
           </div>
         </div>
 
-        {/* 五步流程条（进度锁 + 完成度） */}
+        {/* 五步流程条（进度锁 + 完成度）— V395 统一: 完成=绿 / 当前=主题色 / 锁定=灰 */}
         <div className="mb-1 flex items-center gap-1">
           {POLISH_STEPS.map((label, i) => {
             const stepKey = (i === 1 ? "diverge" : i === 2 ? "verify" : i === 3 ? "focus" : "stress") as "diverge" | "verify" | "focus" | "stress";
@@ -410,9 +410,13 @@ export function StudentLearningPanel() {
             const locked = i >= 2 && !done; // 聚焦/压力测试默认锁（前置未完成）
             return (
               <div key={i} className={`flex flex-1 items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] ${
-                done ? "border-emerald-300 bg-emerald-50 text-emerald-700" : locked ? "border-amber-200 bg-amber-500/15 text-amber-700" : "border-border bg-muted/40 text-muted-foreground"
+                done ? "border-emerald-500/30 bg-emerald-500/100/10 text-emerald-600"
+                : locked ? "border-border bg-muted/40 text-muted-foreground"
+                : "border-primary/30 bg-primary/10 text-foreground"
               }`}>
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] ${done ? "bg-emerald-600 text-white" : locked ? "bg-amber-400 text-white" : "bg-muted text-muted-foreground"}`}>
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] ${
+                  done ? "bg-emerald-600 text-white" : locked ? "bg-muted text-muted-foreground" : "bg-primary text-white"
+                }`}>
                   {done ? "✓" : locked ? "🔒" : i + 1}
                 </span>
                 <span className="truncate">{label}</span>
@@ -420,25 +424,29 @@ export function StudentLearningPanel() {
             );
           })}
         </div>
-        {/* 跳步降级警告（醒目） */}
+        {/* 跳步降级警告（醒目）— V395: 深色适配 */}
         {polishSkipped && (
-          <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+          <div className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/100/10 px-2.5 py-1.5 text-[11px] text-amber-600">
             ⚠ 已跳步执行：未完成「{polishSkipped}」直接执行后续步骤，输出将<strong>丢失前置上下文、质量降级</strong>。建议按顺序完成。
           </div>
         )}
 
-        {/* 步骤执行按钮 */}
+        {/* 步骤执行按钮 — V395 统一: 各步固定色系(绿/青/蓝/紫/红) */}
         <div className="flex flex-wrap items-center gap-1">
           <button disabled={busy !== null} onClick={() => runPolish("diverge", "发散拓展")}
             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[13px] text-white disabled:opacity-50">
             {busy === "polish-diverge" ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "🌱"} 发散拓展
           </button>
+          <button disabled={busy !== null} onClick={() => runPolish("verify", "初步验证")}
+            className={`rounded-lg px-3 py-1.5 text-[13px] text-white disabled:opacity-50 ${polishSteps.diverge?.done ? "bg-teal-600" : "bg-muted text-muted-foreground"}`}>
+            {busy === "polish-verify" ? <Loader2 className="inline h-3 w-3 animate-spin" /> : polishSteps.diverge?.done ? "🔬" : "🔓"} 初步验证
+          </button>
           <button disabled={busy !== null} onClick={() => runPolish("focus", "聚焦收敛")}
-            className={`rounded-lg px-3 py-1.5 text-[13px] text-white disabled:opacity-50 ${polishSteps.diverge?.done ? "bg-emerald-600" : "bg-amber-500"}`}>
-            {busy === "polish-focus" ? <Loader2 className="inline h-3 w-3 animate-spin" /> : polishSteps.diverge?.done ? "🎯" : "🔓"} 聚焦收敛
+            className={`rounded-lg px-3 py-1.5 text-[13px] text-white disabled:opacity-50 ${polishSteps.verify?.done ? "bg-sky-600" : "bg-muted text-muted-foreground"}`}>
+            {busy === "polish-focus" ? <Loader2 className="inline h-3 w-3 animate-spin" /> : polishSteps.verify?.done ? "🎯" : "🔓"} 聚焦收敛
           </button>
           <button disabled={busy !== null} onClick={() => runPolish("stress", "压力测试")}
-            className={`rounded-lg px-3 py-1.5 text-[13px] text-white disabled:opacity-50 ${polishSteps.focus?.done ? "bg-red-600" : "bg-amber-500"}`}>
+            className={`rounded-lg px-3 py-1.5 text-[13px] text-white disabled:opacity-50 ${polishSteps.focus?.done ? "bg-violet-600" : "bg-muted text-muted-foreground"}`}>
             {busy === "polish-stress" ? <Loader2 className="inline h-3 w-3 animate-spin" /> : polishSteps.focus?.done ? "⚡" : "🔓"} 压力测试
           </button>
           <button disabled={busy !== null} onClick={runDecompose}
@@ -461,8 +469,8 @@ export function StudentLearningPanel() {
 
         {/* 子问题结果 */}
         {subQuestions && subQuestions.length > 0 ? (
-          <div className="mt-2 rounded-lg border border-sky-200 bg-sky-500/15 p-2">
-            <div className="mb-1.5 text-[11px] font-semibold text-sky-700">🔍 子问题拆解（{(subQuestions?.length || 0) + manualSubQs.length} 个）</div>
+          <div className="mt-2 rounded-lg border border-sky-200 bg-sky-500/100/15 p-2">
+            <div className="mb-1.5 text-[11px] font-semibold text-sky-600">🔍 子问题拆解（{(subQuestions?.length || 0) + manualSubQs.length} 个）</div>
             <div className="space-y-1">
               {(subQuestions || []).map((q: any, i: number) => (
                 <div key={i} className="rounded-md bg-card px-2 py-1.5 text-[12px]">
@@ -532,7 +540,7 @@ export function StudentLearningPanel() {
               <button
                 onClick={runDecompose}
                 disabled={busy !== null}
-                className="rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 hover:bg-sky-100 transition-colors disabled:opacity-50"
+                className="rounded border border-sky-500/30 bg-sky-500/100/10 px-2 py-0.5 text-[10px] text-sky-600 hover:bg-sky-500/100/20 transition-colors disabled:opacity-50"
               >
                 {busy === "decompose" ? <Loader2 className="inline h-2.5 w-2.5 animate-spin" /> : "✨"} AI 拆解
               </button>
@@ -579,7 +587,7 @@ export function StudentLearningPanel() {
       <div className="rounded-xl border bg-card p-3">
         <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
           <Sparkles className="h-3.5 w-3.5 text-emerald-600" /> 苏格拉底对话
-          {socraticRound > 0 && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">第 {socraticRound}/3 轮</span>}
+          {socraticRound > 0 && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-600">第 {socraticRound}/3 轮</span>}
           <span className="ml-auto"><DemoBtn label="示例" onClick={() => { setSocraticQ("为什么说价值规律是商品经济的基本规律？"); }} /></span>
         </div>
         {socraticMsgs.length > 0 && (
@@ -602,7 +610,7 @@ export function StudentLearningPanel() {
           <input value={socraticA} onChange={(e) => setSocraticA(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void continueSocraticChat(); }}
             disabled={!socraticState} className="min-w-0 flex-1 rounded-lg border bg-background px-2.5 py-1.5 text-[12px] disabled:opacity-50" placeholder="你的回答…" />
           <button disabled={busy !== null || !socraticA || !socraticState} onClick={() => void continueSocraticChat()}
-            className="rounded-lg bg-emerald-100 px-3 py-1.5 text-[12px] text-emerald-700 disabled:opacity-50">回答</button>
+            className="rounded-lg bg-emerald-100 px-3 py-1.5 text-[12px] text-emerald-600 disabled:opacity-50">回答</button>
         </div>
       </div>
 

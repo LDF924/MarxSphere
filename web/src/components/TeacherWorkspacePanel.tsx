@@ -61,7 +61,7 @@ export function TeacherWorkspacePanel() {
   const DemoBtn = ({ onClick, label = "Demo 演示" }: { onClick: () => void; label?: string }) => (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+      className="flex items-center gap-1 rounded-lg border border-dashed border-emerald-300 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-600 hover:bg-emerald-500/20 transition-colors"
       title="一键填入示例并运行"
     >
       <Play className="h-3 w-3" /> {label}

@@ -163,7 +163,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12px] font-medium">{t.name || t.file}</div>
                   <div className="truncate text-[10px] text-muted-foreground">{t.description}</div>
-                  {t.route?.path && <div className="text-[9px] font-mono text-emerald-700">{t.route.method} {t.route.path}</div>}
+                  {t.route?.path && <div className="text-[9px] font-mono text-emerald-600">{t.route.method} {t.route.path}</div>}
                 </div>
                 <button onClick={() => void loadTemplate(t)} className="shrink-0 rounded bg-muted px-2 py-1 text-[10px] hover:bg-muted/70">查看</button>
               </div>
@@ -171,7 +171,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             {tab === "cases" && cases.map((c) => (
               <div key={c.id}
                 onClick={() => setSelected({ name: c.title || c.id || "", data: c })}
-                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-500/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
+                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-500/100/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-[12px] font-medium">{c.title}</span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.scenario}</span>
@@ -179,7 +179,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                 </div>
                 {(c.highlights || []).length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {c.highlights!.map((h, i) => <span key={i} className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] text-emerald-700">{h}</span>)}
+                    {c.highlights!.map((h, i) => <span key={i} className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-600">{h}</span>)}
                   </div>
                 )}
               </div>
@@ -206,7 +206,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                 {(courses.courses || []).map((c, i) => (
                   <div key={i}
                     onClick={() => setSelected({ name: c.title, data: { title: c.title, subject: c.subject, content: c.content } })}
-                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-500/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
+                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-500/100/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-medium">{c.title}</span>
                       <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.subject}</span>
@@ -227,7 +227,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[12px] font-medium">{s2.name}</span>
-                        <span className={`rounded px-1.5 py-0.5 text-[9px] ${s2.enabled ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{s2.enabled ? "已启用" : "未配置"}</span>
+                        <span className={`rounded px-1.5 py-0.5 text-[9px] ${s2.enabled ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-muted-foreground"}`}>{s2.enabled ? "已启用" : "未配置"}</span>
                         <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{s2.kind}</span>
                       </div>
                       <div className="truncate text-[10px] text-muted-foreground">{s2.url || "（未配置地址）"}</div>

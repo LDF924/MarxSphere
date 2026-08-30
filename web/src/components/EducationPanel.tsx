@@ -131,7 +131,7 @@ function ObsidianVaultSidebar({ onCollapse }: { onCollapse?: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 border-b px-2 py-1.5 text-[10px] font-semibold text-sky-700">
+      <div className="flex items-center gap-1 border-b px-2 py-1.5 text-[10px] font-semibold text-sky-600">
         <BookOpen className="h-3 w-3" /> Obsidian 资料库
         {onCollapse && (
           <button onClick={onCollapse} className="ml-auto rounded px-1 text-[10px] text-muted-foreground hover:bg-accent" title="折叠资料库">
@@ -425,8 +425,8 @@ function BehaviorPanel({ behavior }: { behavior: any }) {
         </div>
       </div>
       {fearPoints?.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-500/12 p-2.5">
-          <div className="mb-1.5 text-[11px] font-semibold text-red-700">😰 畏难点</div>
+        <div className="rounded-lg border border-red-200 bg-red-500/100/12 p-2.5">
+          <div className="mb-1.5 text-[11px] font-semibold text-red-500">😰 畏难点</div>
           <div className="space-y-1">
             {fearPoints.map((f: any, i: number) => (
               <div key={i} className="flex items-center gap-1.5 text-[10px]">
@@ -439,11 +439,11 @@ function BehaviorPanel({ behavior }: { behavior: any }) {
         </div>
       )}
       {topErrorTypes?.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-500/12 p-2.5">
-          <div className="mb-1.5 text-[11px] font-semibold text-amber-700">⚠️ 高频错误</div>
+        <div className="rounded-lg border border-amber-200 bg-amber-500/100/12 p-2.5">
+          <div className="mb-1.5 text-[11px] font-semibold text-amber-600">⚠️ 高频错误</div>
           <div className="flex flex-wrap gap-1.5">
             {topErrorTypes.map((e: any, i: number) => (
-              <span key={i} className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-600">{e.mistake_type} ×{e.n}</span>
+              <span key={i} className="rounded-full bg-amber-500/100/15 px-2 py-0.5 text-[10px] text-amber-600">{e.mistake_type} ×{e.n}</span>
             ))}
           </div>
         </div>
@@ -506,7 +506,7 @@ function TagList({ title, items, color = "bg-muted text-foreground/80" }: { titl
 /** 版本卡片（分层教学 versions） */
 function VersionCards({ versions }: { versions: any[] }) {
   if (!Array.isArray(versions) || versions.length === 0) return null;
-  const levelColors: Record<string, string> = { basic: "bg-emerald-100 text-emerald-700", advanced: "bg-sky-100 text-sky-700", challenge: "bg-violet-100 text-violet-700" };
+  const levelColors: Record<string, string> = { basic: "bg-emerald-100 text-emerald-600", advanced: "bg-sky-100 text-sky-600", challenge: "bg-violet-100 text-violet-700" };
   return (
     <div className="grid gap-2 sm:grid-cols-3">
       {versions.map((v, i) => (
@@ -531,7 +531,7 @@ function QuestionCards({ title, questions }: { title: string; questions: any[] }
         {questions.map((q, i) => (
           <div key={i} className="rounded-lg border border-border bg-card p-2.5">
             <div className="flex items-start gap-2">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">{i + 1}</span>
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-600">{i + 1}</span>
               <div className="min-w-0">
                 <div className="text-[11px] leading-4">{q.question || q.variant_question || q.selfCheck || ""}</div>
                 {(q.answer || q.variant_answer) && <div className="mt-1 text-[10px] text-muted-foreground">答: {(q.answer || q.variant_answer).slice(0, 60)}</div>}
@@ -548,7 +548,7 @@ function QuestionCards({ title, questions }: { title: string; questions: any[] }
 /** 风险/预警卡 */
 function RiskCard({ level, signals }: { level: string; signals: any[] }) {
   if (!level || !Array.isArray(signals)) return null;
-  const colorMap: Record<string, string> = { high: "bg-red-600", medium: "bg-amber-500", low: "bg-emerald-500", ok: "bg-sky-500" };
+  const colorMap: Record<string, string> = { high: "bg-red-600", medium: "bg-amber-500/100", low: "bg-emerald-500/100", ok: "bg-sky-500/100" };
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-center gap-2">
@@ -575,12 +575,12 @@ function RiskCard({ level, signals }: { level: string; signals: any[] }) {
 /** V386: 版本化学习计划链结果渲染 — 组件时间线 + 版本徽标 + 证据引用(TraitTutor 借鉴) */
 function renderPlanResult(r: any): React.ReactNode {
   if (!r) return null;
-  if (r.error) return <div className="rounded bg-red-50 p-2 text-xs text-red-700">{r.error}</div>;
+  if (r.error) return <div className="rounded bg-red-500/10 p-2 text-xs text-red-500">{r.error}</div>;
   const plan = r.plan;
   if (!plan) return renderResult(r);
 
-  const statusColor = plan.status === "completed" ? "bg-emerald-100 text-emerald-700"
-    : plan.status === "superseded" ? "bg-muted text-muted-foreground" : "bg-sky-100 text-sky-700";
+  const statusColor = plan.status === "completed" ? "bg-emerald-100 text-emerald-600"
+    : plan.status === "superseded" ? "bg-muted text-muted-foreground" : "bg-sky-100 text-sky-600";
   const typeLabel: Record<string, string> = {
     concept: "概念讲解", practice: "练习", assessment: "评估", review: "复习", material: "材料阅读", transfer: "迁移应用",
   };
@@ -598,7 +598,7 @@ function renderPlanResult(r: any): React.ReactNode {
             {plan.status === "completed" ? "✓ 已完成" : plan.status === "superseded" ? "已归档" : "● 进行中"}
           </span>
           {r.rebuilt && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700" title="已保留已开始步骤, 只重规划了未开始的尾部">
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-600" title="已保留已开始步骤, 只重规划了未开始的尾部">
               已重规划（保留 {r.preservedPrefixCount} 个已开始步骤）
             </span>
           )}
@@ -616,9 +616,9 @@ function renderPlanResult(r: any): React.ReactNode {
       {/* 组件时间线 */}
       <div className="space-y-1.5">
         {(plan.components || []).map((c: any, i: number) => (
-          <div key={c.id || i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${c.status === "completed" ? "border-emerald-300/50 bg-emerald-500/15" : c.status === "started" ? "border-amber-300/60 bg-amber-500/12" : "border-border bg-card"}`}>
+          <div key={c.id || i} className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${c.status === "completed" ? "border-emerald-300/50 bg-emerald-500/100/15" : c.status === "started" ? "border-amber-300/60 bg-amber-500/100/12" : "border-border bg-card"}`}>
             <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
-              c.status === "completed" ? "bg-emerald-500 text-white" : c.status === "started" ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+              c.status === "completed" ? "bg-emerald-500/100 text-white" : c.status === "started" ? "bg-amber-500/100 text-white" : "bg-muted text-muted-foreground"
             }`}>
               {c.status === "completed" ? "✓" : c.status === "started" ? "▶" : i + 1}
             </span>
@@ -626,12 +626,12 @@ function renderPlanResult(r: any): React.ReactNode {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[12px] font-medium">{c.title}</span>
                 <span className="rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">{typeLabel[c.type] || c.type}</span>
-                {c.status === "started" && <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] text-amber-700">进行中</span>}
+                {c.status === "started" && <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] text-amber-600">进行中</span>}
               </div>
               {c.reason && <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{c.reason}</div>}
               {(c.concept_refs || []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {(c.concept_refs || []).map((k: string) => <span key={k} className="rounded bg-sky-50 px-1.5 py-0.5 text-[9px] text-sky-700">{k}</span>)}
+                  {(c.concept_refs || []).map((k: string) => <span key={k} className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[9px] text-sky-600">{k}</span>)}
                 </div>
               )}
             </div>
@@ -724,16 +724,16 @@ function MaterialAnalyzer() {
           {busy ? "分析中…" : "开始分析"}
         </button>
         {result?.analysis && (
-          <div className="rounded border border-violet-200/50 bg-violet-500/12 p-2.5 text-[11px]">
+          <div className="rounded border border-violet-200/50 bg-violet-500/100/12 p-2.5 text-[11px]">
             <div className="flex flex-wrap gap-1.5">
               <span className="rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-700">{result.analysis.subject}</span>
               <span className="rounded bg-muted px-1.5 py-0.5">{result.analysis.difficulty}</span>
               <span className="rounded bg-muted px-1.5 py-0.5">{result.analysis.language === "zh" ? "中文" : "English"}</span>
-              <span className={`rounded px-1.5 py-0.5 ${result.source === "llm" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{result.source === "llm" ? "LLM 分析" : "启发式降级"}</span>
+              <span className={`rounded px-1.5 py-0.5 ${result.source === "llm" ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"}`}>{result.source === "llm" ? "LLM 分析" : "启发式降级"}</span>
             </div>
             {(result.analysis.concept_candidates || []).length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {(result.analysis.concept_candidates || []).slice(0, 6).map((c: string) => <span key={c} className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">{c}</span>)}
+                {(result.analysis.concept_candidates || []).slice(0, 6).map((c: string) => <span key={c} className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-600">{c}</span>)}
               </div>
             )}
             <div className="mt-1.5 text-[10px] text-muted-foreground">
@@ -741,7 +741,7 @@ function MaterialAnalyzer() {
             </div>
             {/* V392: augmentation 补充决策(源码: 材料有具体缺口时 true) */}
             {result.analysis.augmentation_needed != null && (
-              <div className={`mt-1.5 rounded px-2 py-1 text-[10px] ${result.analysis.augmentation_needed ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+              <div className={`mt-1.5 rounded px-2 py-1 text-[10px] ${result.analysis.augmentation_needed ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600"}`}>
                 {result.analysis.augmentation_needed
                   ? <>⚠️ 需要补充材料: {result.analysis.augmentation_reason || "材料存在具体缺口"}</>
                   : "✓ 材料充分, 无需补充"}
@@ -749,7 +749,7 @@ function MaterialAnalyzer() {
             )}
           </div>
         )}
-        {result?.error && <div className="rounded bg-red-50 p-2 text-[11px] text-red-600">{result.error}</div>}
+        {result?.error && <div className="rounded bg-red-500/10 p-2 text-[11px] text-red-600">{result.error}</div>}
       </div>
     </div>
   );
@@ -779,16 +779,16 @@ function IntentRouter() {
           {busy ? "分类中…" : "识别意图"}
         </button>
         {result && (
-          <div className={`rounded border p-2.5 text-[11px] ${result.status === 400 ? "border-red-200 bg-red-500/15 text-red-500" : "border-violet-200/50 bg-violet-500/12"}`}>
+          <div className={`rounded border p-2.5 text-[11px] ${result.status === 400 ? "border-red-200 bg-red-500/100/15 text-red-500" : "border-violet-200/50 bg-violet-500/100/12"}`}>
             {result.status === 400
               ? <>🚫 注入拦截: {result.body.error?.message}</>
               : <>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${result.body.mode === "learning_path" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-700"}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${result.body.mode === "learning_path" ? "bg-emerald-100 text-emerald-600" : "bg-sky-100 text-sky-600"}`}>
                       {result.body.mode === "learning_path" ? "持续学习路径" : "一次性问答"}
                     </span>
                     <span className="rounded bg-muted px-1.5 py-0.5">置信度 {(result.body.confidence * 100).toFixed(0)}%</span>
-                    <span className={`rounded px-1.5 py-0.5 ${result.body.safetyAction === "proceed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    <span className={`rounded px-1.5 py-0.5 ${result.body.safetyAction === "proceed" ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"}`}>
                       {result.body.safetyAction === "proceed" ? "可直接执行" : "需用户确认"}
                     </span>
                   </div>
@@ -835,11 +835,11 @@ function ReviewQueuePanel() {
       <div className="space-y-1.5">
         {reviews.map((r) => (
           <div key={r.id} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${r.needs_repair ? "bg-red-500" : "bg-emerald-500"}`} title={r.needs_repair ? "错误未修复" : "正常复习"} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${r.needs_repair ? "bg-red-500/100" : "bg-emerald-500/100"}`} title={r.needs_repair ? "错误未修复" : "正常复习"} />
             <span className="min-w-0 flex-1 truncate text-[11px]">{r.knowledge_point}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{r.knowledge_type}</span>
             <span className="text-[9px] text-muted-foreground">档{r.interval_idx}</span>
-            <button type="button" onClick={() => void record(r.knowledge_point, true)} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-700 hover:bg-emerald-200">✓ 答对</button>
+            <button type="button" onClick={() => void record(r.knowledge_point, true)} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-600 hover:bg-emerald-200">✓ 答对</button>
             <button type="button" onClick={() => void record(r.knowledge_point, false)} className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600 hover:bg-red-200">✗ 答错</button>
           </div>
         ))}
@@ -885,25 +885,25 @@ function CompassPanel() {
       <div className="space-y-1.5">
         {prefs.map((p) => (
           <div key={p.id} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${p.state === "explicit" ? "bg-emerald-500" : p.state === "rejected" ? "bg-red-400" : "bg-amber-400"}`} title={p.state} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${p.state === "explicit" ? "bg-emerald-500/100" : p.state === "rejected" ? "bg-red-400" : "bg-amber-400"}`} title={p.state} />
             <span className="min-w-0 flex-1 truncate text-[11px]">{p.key}: <span className="font-mono">{p.value}</span></span>
-            <span className={`rounded px-1.5 py-0.5 text-[9px] ${p.state === "explicit" ? "bg-emerald-100 text-emerald-700" : p.state === "rejected" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}>
+            <span className={`rounded px-1.5 py-0.5 text-[9px] ${p.state === "explicit" ? "bg-emerald-100 text-emerald-600" : p.state === "rejected" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"}`}>
               {p.state === "explicit" ? "已确认" : p.state === "rejected" ? "已拒绝" : `候选(${p.evidence_count}/2)`}
             </span>
             {p.state !== "explicit" && p.state !== "rejected" && (
-              <button type="button" onClick={() => void decide(p.id, "confirm")} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-700 hover:bg-emerald-200">确认</button>
+              <button type="button" onClick={() => void decide(p.id, "confirm")} className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] text-emerald-600 hover:bg-emerald-200">确认</button>
             )}
             {p.state !== "rejected" && (
               <button type="button" onClick={() => void decide(p.id, "reject")} className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600 hover:bg-red-200">拒绝</button>
             )}
             {/* V392: 删除(删除即重建) */}
-            <button type="button" onClick={() => void del(p.id)} className="rounded border border-red-200 px-1.5 py-0.5 text-[9px] text-red-400 hover:bg-red-50" title="删除此偏好(从审计移除+重建)">🗑</button>
+            <button type="button" onClick={() => void del(p.id)} className="rounded border border-red-200 px-1.5 py-0.5 text-[9px] text-red-400 hover:bg-red-500/10" title="删除此偏好(从审计移除+重建)">🗑</button>
           </div>
         ))}
         {!busy && prefs.length === 0 && <div className="text-[10px] text-muted-foreground">暂无偏好(通过作答/反馈自动推断)</div>}
       </div>
       {compass && (
-        <div className="mt-2 rounded border border-violet-200/50 bg-violet-500/12 p-2.5 text-[10px]">
+        <div className="mt-2 rounded border border-violet-200/50 bg-violet-500/100/12 p-2.5 text-[10px]">
           <div className="font-medium text-violet-700">编译结果: 偏好 {compass.preferences?.length ?? 0} 条 / 约束 {compass.constraints?.length ?? 0} 条</div>
           <div className="mt-1 text-muted-foreground">{compass.boundary}</div>
         </div>
@@ -933,7 +933,7 @@ function CircuitPanel() {
       <div className="space-y-1.5">
         {Object.entries(circuits).map(([model, c]: [string, any]) => (
           <div key={model} className="flex items-center gap-2 rounded border border-border bg-background px-2.5 py-1.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${c.open ? "bg-red-500" : c.failures > 0 ? "bg-amber-400" : "bg-emerald-500"}`} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${c.open ? "bg-red-500/100" : c.failures > 0 ? "bg-amber-400" : "bg-emerald-500/100"}`} />
             <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{model}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.open ? `已熔断 ${Math.round((Date.now() - c.openedAt) / 1000)}s前` : `失败 ${c.failures} 次`}</span>
           </div>
@@ -987,24 +987,24 @@ function CircuitPanel() {
   if (reviews.length === 0) return <div className="rounded border border-border bg-card p-2 text-[10px] text-muted-foreground">暂无待审查产物(自动确认的产物直接可用)</div>;
 
   return (
-    <div className="rounded-lg border border-amber-300/50 bg-amber-500/12 p-3">
+    <div className="rounded-lg border border-amber-300/50 bg-amber-500/100/12 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold text-amber-800">📦 产物中心（{reviews.length}）</span>
-        <span className="text-[9px] text-amber-700/70">未确认不可挂载 · 确认后一键挂载到学习计划</span>
-        <button type="button" onClick={() => void load()} className="ml-auto rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[9px] text-amber-700 hover:bg-amber-100">刷新</button>
+        <span className="text-xs font-semibold text-amber-600">📦 产物中心（{reviews.length}）</span>
+        <span className="text-[9px] text-amber-600/70">未确认不可挂载 · 确认后一键挂载到学习计划</span>
+        <button type="button" onClick={() => void load()} className="ml-auto rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[9px] text-amber-600 hover:bg-amber-100">刷新</button>
       </div>
-      {msg && <div className="mb-2 rounded bg-white px-2 py-1 text-[10px] text-amber-800">{msg}</div>}
+      {msg && <div className="mb-2 rounded bg-white px-2 py-1 text-[10px] text-amber-600">{msg}</div>}
       <div className="space-y-1.5">
         {reviews.map((r) => (
           <div key={r.id} className="rounded-lg border border-amber-200/60 bg-white p-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">{r.kind}</span>
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-600">{r.kind}</span>
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{r.goal}</span>
               <span className="text-[9px] text-muted-foreground">{new Date(r.created_at).toLocaleString().slice(5, 16)}</span>
             </div>
             {(r.issues || []).map((i, idx) => (
               <div key={idx} className="mt-1 flex items-center gap-1.5 text-[10px]">
-                <span className={`rounded px-1.5 py-0.5 font-medium ${i.score < 0.6 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                <span className={`rounded px-1.5 py-0.5 font-medium ${i.score < 0.6 ? "bg-red-100 text-red-500" : "bg-emerald-100 text-emerald-600"}`}>
                   {i.dimension} {Number(i.score).toFixed(2)}
                 </span>
                 {i.note && <span className="truncate text-muted-foreground">{i.note}</span>}
@@ -1021,7 +1021,7 @@ function CircuitPanel() {
               )}
               {r.status === "confirmed" && (
                 <>
-                  <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">✓ 已确认</span>
+                  <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600">✓ 已确认</span>
                   {/* V392: 一材多工件 — 挂载到进行中的学习计划 */}
                   <button type="button" onClick={() => void attach(r.id)}
                     className="learning-button learning-button--primary">📎 挂载到计划</button>
@@ -1039,7 +1039,7 @@ function CircuitPanel() {
 /** V390: 智能结果渲染 — 识别常见结构输出专业 UI，兜底用 renderJson */
 function renderResult(r: any): React.ReactNode {
   if (!r) return null;
-  if (r.error) return <div className="rounded bg-red-50 p-2 text-xs text-red-700">{r.error}</div>;
+  if (r.error) return <div className="rounded bg-red-500/10 p-2 text-xs text-red-500">{r.error}</div>;
   if (r.summary && typeof r.summary === "object" && "total" in r.summary) {
     const s = r.summary;
     return (
@@ -1062,8 +1062,8 @@ function renderResult(r: any): React.ReactNode {
             <MasteryBars points={[...(r.weakPoints || []), ...(r.masteredPoints || [])].slice(0, 8)} />
           </div>
         </div>
-        {r.weakPoints?.length > 0 && <TagList title="🔴 待攻克" items={r.weakPoints} color="bg-red-50 text-red-700" />}
-        {r.masteredPoints?.length > 0 && <TagList title="🟢 已掌握" items={r.masteredPoints} color="bg-emerald-50 text-emerald-700" />}
+        {r.weakPoints?.length > 0 && <TagList title="🔴 待攻克" items={r.weakPoints} color="bg-red-500/10 text-red-500" />}
+        {r.masteredPoints?.length > 0 && <TagList title="🟢 已掌握" items={r.masteredPoints} color="bg-emerald-500/10 text-emerald-600" />}
         {r.recentAnswers?.length > 0 && (
           <div>
             <div className="mb-1.5 text-xs font-semibold text-foreground/90">最近作答</div>
@@ -1071,7 +1071,7 @@ function renderResult(r: any): React.ReactNode {
               time: (a.answered_at || "").slice(11, 16),
               title: a.knowledge_point,
               detail: a.is_correct ? "✓ 回答正确" : "✗ 回答错误",
-              color: a.is_correct ? "bg-emerald-500" : "bg-red-500",
+              color: a.is_correct ? "bg-emerald-500/100" : "bg-red-500/100",
             }))} />
           </div>
         )}
@@ -1094,7 +1094,7 @@ function renderResult(r: any): React.ReactNode {
     const rep = r.report;
     return (
       <div className="space-y-3">
-        {rep.overall && <div className="rounded-lg border border-sky-200 bg-sky-500/15 p-3 text-[11px] leading-5 text-sky-900">{rep.overall}</div>}
+        {rep.overall && <div className="rounded-lg border border-sky-200 bg-sky-500/100/15 p-3 text-[11px] leading-5 text-sky-900">{rep.overall}</div>}
         <Tabs tabs={[
           { id: "gaps", label: "漏洞", content: <div className="space-y-1.5">{rep.gapSummary?.map((g: any, i: number) => (
             <div key={i} className="rounded-lg border border-border bg-card p-2 text-[11px]">
@@ -1107,12 +1107,12 @@ function renderResult(r: any): React.ReactNode {
               <div className="mt-0.5 text-[10px] text-muted-foreground">影响: {b.implication}</div>
             </div>))}</div> },
           { id: "action", label: "行动计划", content: <div className="space-y-1.5">{rep.actionPlan?.map((a: any, i: number) => (
-            <div key={i} className={`rounded-lg border p-2 text-[11px] ${a.priority === "高" ? "border-red-200 bg-red-500/15 text-red-800" : a.priority === "中" ? "border-amber-200 bg-amber-500/15 text-amber-800" : "border-emerald-200 bg-emerald-500/15 text-emerald-800"}`}>
+            <div key={i} className={`rounded-lg border p-2 text-[11px] ${a.priority === "高" ? "border-red-200 bg-red-500/100/15 text-red-800" : a.priority === "中" ? "border-amber-200 bg-amber-500/100/15 text-amber-600" : "border-emerald-200 bg-emerald-500/100/15 text-emerald-800"}`}>
               <span className="font-medium">[{a.priority}]</span> {a.action}
               <div className="mt-0.5 text-[10px] opacity-70">→ {a.expectedOutcome}</div>
             </div>))}</div> },
         ]} />
-        {rep.attention && <div className="rounded-lg bg-red-50 p-2.5 text-[11px] text-red-700">⚠️ 最需关注: {rep.attention}</div>}
+        {rep.attention && <div className="rounded-lg bg-red-500/10 p-2.5 text-[11px] text-red-500">⚠️ 最需关注: {rep.attention}</div>}
       </div>
     );
   }
@@ -1132,7 +1132,7 @@ function renderResult(r: any): React.ReactNode {
     return (
       <div className="space-y-3">
         <VersionCards versions={r.versions} />
-        {r.recommendation && <div className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800">💡 {r.recommendation}</div>}
+        {r.recommendation && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800">💡 {r.recommendation}</div>}
       </div>
     );
   }
@@ -1142,7 +1142,7 @@ function renderResult(r: any): React.ReactNode {
     return (
       <div className="space-y-3">
         <StageCards title={r.plan?.totalWeeks ? `分阶段学习计划（共 ${r.plan.totalWeeks} 周）` : "分阶段学习计划"} stages={r.plan.stages} />
-        {r.plan?.adaptation && <div className="rounded-lg bg-sky-50 p-2.5 text-[11px] text-sky-800">🔄 {r.plan.adaptation}</div>}
+        {r.plan?.adaptation && <div className="rounded-lg bg-sky-500/10 p-2.5 text-[11px] text-sky-800">🔄 {r.plan.adaptation}</div>}
         {r.linked && <div className="text-[10px] text-emerald-600">✅ 已关联知识库文献（{r.plan?.knowledgeGap || ""}）</div>}
       </div>
     );
@@ -1153,7 +1153,7 @@ function renderResult(r: any): React.ReactNode {
     return (
       <div className="space-y-3">
         <div className="text-sm font-semibold">{r.lesson.lessonTitle}</div>
-        {r.lesson.objectives?.length > 0 && <TagList title="教学目标" items={r.lesson.objectives} color="bg-sky-50 text-sky-700" />}
+        {r.lesson.objectives?.length > 0 && <TagList title="教学目标" items={r.lesson.objectives} color="bg-sky-500/10 text-sky-600" />}
         <StageCards title="课堂流程" stages={r.lesson.classFlow} />
         {r.lesson.pptOutline?.length > 0 && (
           <div>
@@ -1185,13 +1185,13 @@ function renderResult(r: any): React.ReactNode {
                 <div key={qi} className="flex items-center gap-1.5 text-[11px]">
                   <span className="text-muted-foreground/60">{q.num}.</span>
                   <span className="min-w-0 flex-1 truncate">{q.question}</span>
-                  <span className={`shrink-0 rounded px-1 text-[9px] ${q.difficulty === "hard" ? "bg-red-500/15 text-red-500" : q.difficulty === "easy" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>{q.difficulty}</span>
+                  <span className={`shrink-0 rounded px-1 text-[9px] ${q.difficulty === "hard" ? "bg-red-500/100/15 text-red-500" : q.difficulty === "easy" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>{q.difficulty}</span>
                 </div>
               ))}
             </div>
           </div>
         ))}
-        {r.exam.answers?.length > 0 && <div className="rounded-lg bg-emerald-50 p-2.5 text-[10px] text-emerald-800">✅ 含 {r.exam.answers.length} 条参考答案</div>}
+        {r.exam.answers?.length > 0 && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[10px] text-emerald-800">✅ 含 {r.exam.answers.length} 条参考答案</div>}
       </div>
     );
   }
@@ -1210,7 +1210,7 @@ function renderResult(r: any): React.ReactNode {
   if (r.commonGaps?.length > 0) {
     return (
       <div className="space-y-3">
-        {r.summary?.classProfile && <div className="rounded-lg bg-sky-50 p-2.5 text-[11px] text-sky-800">📊 {r.summary.classProfile}</div>}
+        {r.summary?.classProfile && <div className="rounded-lg bg-sky-500/10 p-2.5 text-[11px] text-sky-800">📊 {r.summary.classProfile}</div>}
         {r.summary?.commonBlindSpots?.length > 0 && (
           <div>
             <div className="mb-1.5 text-xs font-semibold">🎯 班级共性盲区</div>
@@ -1229,7 +1229,7 @@ function renderResult(r: any): React.ReactNode {
             <div className="mb-1.5 text-xs font-semibold">📚 授课调整建议</div>
             <div className="space-y-1.5">
               {r.summary.teachingFocus.map((t: any, i: number) => (
-                <div key={i} className="rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">▸ {t.adjustment}</div>
+                <div key={i} className="rounded-lg bg-amber-500/10 p-2 text-[11px] text-amber-600">▸ {t.adjustment}</div>
               ))}
             </div>
           </div>
@@ -1243,8 +1243,8 @@ function renderResult(r: any): React.ReactNode {
     return (
       <div className="space-y-3">
         <StageCards title={r.totalWeeks ? `分阶段学习计划（共 ${r.totalWeeks} 周）` : "分阶段学习计划"} stages={r.stages} />
-        {r.adaptation && <div className="rounded-lg bg-sky-50 p-2.5 text-[11px] text-sky-800">🔄 {r.adaptation}</div>}
-        {r.knowledgeGap && <div className="rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-700">📚 {r.knowledgeGap}</div>}
+        {r.adaptation && <div className="rounded-lg bg-sky-500/10 p-2.5 text-[11px] text-sky-800">🔄 {r.adaptation}</div>}
+        {r.knowledgeGap && <div className="rounded-lg bg-amber-500/10 p-2.5 text-[11px] text-amber-600">📚 {r.knowledgeGap}</div>}
       </div>
     );
   }
@@ -1267,7 +1267,7 @@ function renderResult(r: any): React.ReactNode {
             <div className="mb-1.5 text-[11px] font-semibold text-foreground/80">💡 分步提示（先自己思考）</div>
             <div className="space-y-1">
               {r.stepHints.map((h: string, i: number) => (
-                <div key={i} className="rounded-lg border-l-2 border-emerald-300 bg-emerald-500/12 p-2 text-[11px]">{h}</div>
+                <div key={i} className="rounded-lg border-l-2 border-emerald-300 bg-emerald-500/100/12 p-2 text-[11px]">{h}</div>
               ))}
             </div>
           </div>
@@ -1278,7 +1278,7 @@ function renderResult(r: any): React.ReactNode {
             <div className="mt-1.5 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground">{r.fullExplanation}</div>
           </details>
         )}
-        {r.commonMistakes?.length > 0 && <TagList title="常见错误" items={r.commonMistakes} color="bg-amber-50 text-amber-700" />}
+        {r.commonMistakes?.length > 0 && <TagList title="常见错误" items={r.commonMistakes} color="bg-amber-500/10 text-amber-600" />}
         {r.citations?.length > 0 && (
           <div className="rounded-lg bg-muted/40 p-2.5 text-[10px] text-muted-foreground">📎 引用: {r.citations.map((c: any) => c.source).join("、")}</div>
         )}
@@ -1292,7 +1292,7 @@ function renderResult(r: any): React.ReactNode {
     return (
       <div className="space-y-3">
         <div className="text-xs font-semibold text-foreground/90">{isReview ? "🔁 复习材料" : "📚 预习材料"}</div>
-        {r.objectives?.length > 0 && <TagList title="预习目标" items={r.objectives} color="bg-sky-50 text-sky-700" />}
+        {r.objectives?.length > 0 && <TagList title="预习目标" items={r.objectives} color="bg-sky-500/10 text-sky-600" />}
         {r.framework && <div className="rounded-lg border border-border bg-card p-2.5 text-[11px] leading-5">{r.framework}</div>}
         {r.keyPoints?.length > 0 && (
           <div>
@@ -1318,9 +1318,9 @@ function renderResult(r: any): React.ReactNode {
             </div>
           </div>
         )}
-        {r.pitfalls?.length > 0 && <TagList title="易错点" items={r.pitfalls} color="bg-red-50 text-red-700" />}
+        {r.pitfalls?.length > 0 && <TagList title="易错点" items={r.pitfalls} color="bg-red-500/10 text-red-500" />}
         {r.selfCheck?.length > 0 && <QuestionCards title="自测" questions={r.selfCheck} />}
-        {r.recommendedReadings?.length > 0 && <TagList title="推荐阅读" items={r.recommendedReadings} color="bg-emerald-50 text-emerald-700" />}
+        {r.recommendedReadings?.length > 0 && <TagList title="推荐阅读" items={r.recommendedReadings} color="bg-emerald-500/10 text-emerald-600" />}
       </div>
     );
   }
@@ -1335,7 +1335,7 @@ function renderResult(r: any): React.ReactNode {
             <div className="mb-1.5 text-[11px] font-semibold text-red-600">薄弱点专项（{r.weakContent.length} 项）</div>
             <div className="space-y-2">
               {r.weakContent.map((w: any, i: number) => (
-                <div key={i} className="rounded-lg border border-red-200 bg-red-500/10 p-2.5">
+                <div key={i} className="rounded-lg border border-red-200 bg-red-500/100/10 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-medium">{w.point}</span>
                     <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] text-red-600">{w.materialType}</span>
@@ -1353,7 +1353,7 @@ function renderResult(r: any): React.ReactNode {
             <div className="mb-1.5 text-[11px] font-semibold text-violet-600">🚀 拔高拓展（学有余力）</div>
             <div className="space-y-1.5">
               {r.advancedContent.map((a: any, i: number) => (
-                <div key={i} className="rounded-lg border border-violet-200 bg-violet-500/10 p-2 text-[11px]">
+                <div key={i} className="rounded-lg border border-violet-200 bg-violet-500/100/10 p-2 text-[11px]">
                   <span className="font-medium">{a.point}</span> → {a.advancedTopic}
                   <div className="text-[10px] text-muted-foreground">{a.material}</div>
                 </div>
@@ -1361,7 +1361,7 @@ function renderResult(r: any): React.ReactNode {
             </div>
           </div>
         )}
-        {r.strategy && <div className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800">🧭 {r.strategy}</div>}
+        {r.strategy && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800">🧭 {r.strategy}</div>}
       </div>
     );
   }
@@ -1370,7 +1370,7 @@ function renderResult(r: any): React.ReactNode {
   if (r?.analysis) {
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-sky-200 bg-sky-500/15 p-2.5 text-[11px] leading-5 text-sky-900">🔍 题目拆解: {r.analysis}</div>
+        <div className="rounded-lg border border-sky-200 bg-sky-500/100/15 p-2.5 text-[11px] leading-5 text-sky-900">🔍 题目拆解: {r.analysis}</div>
         {r.steps?.length > 0 && (
           <div>
             <div className="mb-1.5 text-[11px] font-semibold text-foreground/80">分步思路（不直接给答案）</div>
@@ -1385,9 +1385,9 @@ function renderResult(r: any): React.ReactNode {
             </div>
           </div>
         )}
-        {r.keyFormula && <div className="rounded-lg bg-amber-50 p-2.5 font-mono text-[11px] text-amber-800">📐 {r.keyFormula}</div>}
-        {r.pitfalls?.length > 0 && <TagList title="易错点" items={r.pitfalls} color="bg-red-50 text-red-700" />}
-        {r.finalAnswer && <div className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800">✅ {r.finalAnswer}</div>}
+        {r.keyFormula && <div className="rounded-lg bg-amber-500/10 p-2.5 font-mono text-[11px] text-amber-600">📐 {r.keyFormula}</div>}
+        {r.pitfalls?.length > 0 && <TagList title="易错点" items={r.pitfalls} color="bg-red-500/10 text-red-500" />}
+        {r.finalAnswer && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800">✅ {r.finalAnswer}</div>}
         {r.similarPractice && <div className="rounded-lg border border-border bg-card p-2.5 text-[11px]">📝 同类练习: {r.similarPractice}</div>}
       </div>
     );
@@ -1397,8 +1397,8 @@ function renderResult(r: any): React.ReactNode {
   if (r?.diagnosis && r?.followUpQuestions) {
     return (
       <div className="space-y-3">
-        {r.acknowledge && <div className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800">👍 {r.acknowledge}</div>}
-        <div className="rounded-lg border border-amber-200 bg-amber-500/15 p-2.5 text-[11px] text-amber-800">🔍 卡点诊断: {r.diagnosis}</div>
+        {r.acknowledge && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800">👍 {r.acknowledge}</div>}
+        <div className="rounded-lg border border-amber-200 bg-amber-500/100/15 p-2.5 text-[11px] text-amber-600">🔍 卡点诊断: {r.diagnosis}</div>
         <div>
           <div className="mb-1.5 text-[11px] font-semibold text-foreground/80">追问式引导</div>
           <div className="space-y-1.5">
@@ -1410,7 +1410,7 @@ function renderResult(r: any): React.ReactNode {
             ))}
           </div>
         </div>
-        {r.nextStep && <div className="rounded-lg bg-sky-50 p-2.5 text-[11px] text-sky-800">➡️ 下一步: {r.nextStep}</div>}
+        {r.nextStep && <div className="rounded-lg bg-sky-500/10 p-2.5 text-[11px] text-sky-800">➡️ 下一步: {r.nextStep}</div>}
       </div>
     );
   }
@@ -1419,10 +1419,10 @@ function renderResult(r: any): React.ReactNode {
   if (r?.empathy) {
     return (
       <div className="space-y-3">
-        <div className="rounded-lg border border-violet-200 bg-violet-500/15 p-3 text-[12px] leading-5 text-violet-900">💜 {r.empathy}</div>
+        <div className="rounded-lg border border-violet-200 bg-violet-500/100/15 p-3 text-[12px] leading-5 text-violet-900">💜 {r.empathy}</div>
         {r.reframe && <div className="rounded-lg border border-border bg-card p-2.5 text-[11px]">🔄 换个视角: {r.reframe}</div>}
-        {r.smallAction && <div className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800">👣 现在就能做: {r.smallAction}</div>}
-        {r.encouragement && <div className="rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800">🔥 {r.encouragement}</div>}
+        {r.smallAction && <div className="rounded-lg bg-emerald-500/10 p-2.5 text-[11px] text-emerald-800">👣 现在就能做: {r.smallAction}</div>}
+        {r.encouragement && <div className="rounded-lg bg-amber-500/10 p-2.5 text-[11px] text-amber-600">🔥 {r.encouragement}</div>}
         {r.ifStuck && <div className="text-[10px] text-muted-foreground">如果还是不行: {r.ifStuck}</div>}
       </div>
     );
@@ -1452,8 +1452,8 @@ function LinkageEvidence({ r }: { r: any }) {
   const active = badges.filter((b) => b.ok);
   if (active.length === 0 && !r.deepReason) return null;
   return (
-    <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-500/12 p-2">
-      <div className="mb-1 text-[10px] font-semibold text-emerald-700">⚡ Agent 联动（不只是单次 LLM）</div>
+    <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-500/100/12 p-2">
+      <div className="mb-1 text-[10px] font-semibold text-emerald-600">⚡ Agent 联动（不只是单次 LLM）</div>
       <div className="flex flex-wrap gap-1">
         {badges.map((b) => (
           <span key={b.label} className={`rounded px-1.5 py-0.5 text-[9px] ${b.ok ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground line-through"}`}>
@@ -1505,8 +1505,8 @@ function ObsidianTools({ topic, subject }: { topic: string; subject: string }) {
   };
 
   return (
-    <div className="mt-3 rounded-md border border-sky-200 bg-sky-500/12 p-2">
-      <div className="mb-1.5 text-[10px] font-semibold text-sky-700">📚 Obsidian 资料联动</div>
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-500/100/12 p-2">
+      <div className="mb-1.5 text-[10px] font-semibold text-sky-600">📚 Obsidian 资料联动</div>
       <div className="flex items-center gap-2">
         <button onClick={() => void search()} disabled={searching} className="rounded bg-sky-600 px-2 py-1 text-[10px] text-white hover:bg-sky-700 disabled:opacity-50">
           {searching ? "搜索中…" : `🔍 查阅「${topic.slice(0, 12)}」资料`}
@@ -1850,14 +1850,14 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
         </span>
         <div className="ml-auto flex items-center gap-2">
           {fbStats?.summary && (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700" title="教育反馈统计（教学效果指标）">
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-600" title="教育反馈统计（教学效果指标）">
               👍 {fbStats.summary.likes} · 👎 {fbStats.summary.dislikes} · 满意率 {fbStats.summary.likeRate}%
             </span>
           )}
           <button
             type="button"
             onClick={() => { setFbOpen((c) => !c); setFbSent(false); }}
-            className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[10px] text-emerald-700 hover:bg-emerald-50"
+            className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[10px] text-emerald-600 hover:bg-emerald-500/10"
             title="功能反馈（帮助改进教育功能）"
           >
             💬 功能反馈
@@ -1866,15 +1866,15 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
       </div>
 
       {fbOpen && (
-        <div className="border-b bg-emerald-500/15 px-4 py-2.5">
+        <div className="border-b bg-emerald-500/100/15 px-4 py-2.5">
           <div className="mb-1.5 text-[11px] text-emerald-800">
             这个功能对你有帮助吗？（{active.title}）
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void submitFeedback(1)}
-              className="rounded-lg border border-emerald-300 bg-white px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-100">👍 有帮助</button>
+              className="rounded-lg border border-emerald-300 bg-white px-3 py-1 text-xs text-emerald-600 hover:bg-emerald-500/20">👍 有帮助</button>
             <button type="button" onClick={() => void submitFeedback(-1)}
-              className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs text-red-600 hover:bg-red-50">👎 没帮助</button>
+              className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs text-red-600 hover:bg-red-500/10">👎 没帮助</button>
             <input
               value={fbNote}
               onChange={(e) => setFbNote(e.target.value)}
@@ -1947,7 +1947,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
                   void run(active, active.demo);
                 }}
                 disabled={running === active.id}
-                className="flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 disabled:opacity-50"
                 title="填入示例数据并运行"
               >
                 🎬 Demo 演示
@@ -1956,7 +1956,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
           </div>
 
           <div className="mt-4">
-            {results[active.id]?.error && <div className="rounded bg-red-50 p-2 text-xs text-red-700">{results[active.id].error}</div>}
+            {results[active.id]?.error && <div className="rounded bg-red-500/10 p-2 text-xs text-red-500">{results[active.id].error}</div>}
             {results[active.id] && !results[active.id].error && !results[active.id].ok === false && (
               <>
                 {/* V383: 联动证据区（知识库/推理/记忆） */}
@@ -1970,7 +1970,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
               </>
             )}
             {results[active.id] && results[active.id].ok === false && (
-              <div className="rounded bg-amber-50 p-2 text-xs text-amber-700">{results[active.id].error || "请求未成功"}</div>
+              <div className="rounded bg-amber-500/10 p-2 text-xs text-amber-600">{results[active.id].error || "请求未成功"}</div>
             )}
           </div>
         </div>
@@ -1988,7 +1988,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
         {obsCollapsed ? (
           <button
             onClick={() => setObsCollapsed(false)}
-            className="flex w-7 shrink-0 items-center justify-center border-l bg-sky-50 text-[10px] text-sky-600 hover:bg-sky-100"
+            className="flex w-7 shrink-0 items-center justify-center border-l bg-sky-500/10 text-[10px] text-sky-600 hover:bg-sky-500/20"
             title="展开 Obsidian 资料库"
           >
             📚
