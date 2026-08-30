@@ -1,0 +1,17 @@
+MarxSphere
+
+MarxSphere 的开发借鉴了以下开源项目的设计,特此声明:
+
+TraitTutor — https://github.com/traittutor/traittutor (Apache License 2.0)
+  学习引擎核心设计: BKT 概念掌握模型、确定性组件选择器、事件账本、
+  学习画布 UI、组件白名单与答案服务端持有。
+  许可文本: https://www.apache.org/licenses/LICENSE-2.0
+  上游 NOTICE 原文: "TraitTutor is a learner-centered study workspace.
+  Third-party dependencies remain governed by their respective licenses."
+
+LingxiLearn — https://github.com/LingXi-Org/LingxiLearn (MIT License)
+  验证债务、内容寻址去重、闭式状态转移表、状态提案、Capability 注册表、
+  学习多 Agent 协作。
+  Copyright (c) 2026 LingXi-Org
+
+详细清单见 THIRD_PARTY_NOTICES.md。
