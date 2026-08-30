@@ -26,7 +26,8 @@
   - ✅ 版权与来源声明(文件头注释)
   - ✅ 修改说明(注释标注 "源码移植/对照")
   - ✅ 本 NOTICE 文件
-  - ⚠️ 若 TraitTutor 附带 NOTICE 文件需一并保留——当前仓库根未发现 NOTICE,如有将补充
+  - ✅ 上游 NOTICE 已保留(仓库根 NOTICE 文件)
+  - ✅ Apache 2.0 完整文本归档于 THIRD_PARTY_LICENSES/apache-2.0.txt
 
 ## 2. LingxiLearn
 
@@ -44,7 +45,7 @@
   - `src/services/material-review-service.ts`
 - **MIT 义务履行**:
   - ✅ 版权声明保留(本 NOTICE + 文件头)
-  - ✅ 许可文本随分发(如需附 MIT LICENSE 文本,见本文件末尾)
+  - ✅ 许可文本随分发(MIT 全文归档于 THIRD_PARTY_LICENSES/mit.txt)
 
 ---
 
