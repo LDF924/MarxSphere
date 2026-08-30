@@ -394,7 +394,7 @@ export function StudentLearningPanel() {
               <button
                 key={i}
                 onClick={() => { setSocraticQ(ex); setPolishWarnEmpty(false); }}
-                className="rounded-full border border-dashed border-emerald-300 bg-emerald-50/60 px-2 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-100 transition-colors"
+                className="rounded-full border border-dashed border-emerald-300 bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-100 transition-colors"
               >
                 {ex.slice(0, 18)}…
               </button>
@@ -410,7 +410,7 @@ export function StudentLearningPanel() {
             const locked = i >= 2 && !done; // 聚焦/压力测试默认锁（前置未完成）
             return (
               <div key={i} className={`flex flex-1 items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] ${
-                done ? "border-emerald-300 bg-emerald-50 text-emerald-700" : locked ? "border-amber-200 bg-amber-50/60 text-amber-700" : "border-border bg-muted/40 text-muted-foreground"
+                done ? "border-emerald-300 bg-emerald-50 text-emerald-700" : locked ? "border-amber-200 bg-amber-500/15 text-amber-700" : "border-border bg-muted/40 text-muted-foreground"
               }`}>
                 <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] ${done ? "bg-emerald-600 text-white" : locked ? "bg-amber-400 text-white" : "bg-muted text-muted-foreground"}`}>
                   {done ? "✓" : locked ? "🔒" : i + 1}
@@ -461,7 +461,7 @@ export function StudentLearningPanel() {
 
         {/* 子问题结果 */}
         {subQuestions && subQuestions.length > 0 ? (
-          <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50/50 p-2">
+          <div className="mt-2 rounded-lg border border-sky-200 bg-sky-500/15 p-2">
             <div className="mb-1.5 text-[11px] font-semibold text-sky-700">🔍 子问题拆解（{(subQuestions?.length || 0) + manualSubQs.length} 个）</div>
             <div className="space-y-1">
               {(subQuestions || []).map((q: any, i: number) => (
