@@ -4,7 +4,7 @@
 
 ## 项目概览
 
-MarxSphere 马研星环 — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），118 教育路由 + 32 学习引擎顶层（教育服务 `src/services/education-*.ts` 等 19 文件），对话可经 `education_service` 工具一句话调用。
+MarxSphere 马研星环 — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），121 教育路由 + 32 学习引擎顶层（教育服务 `src/services/education-*.ts` 等 19 文件），对话可经 `education_service` 工具一句话调用。
 
 ## 仓库结构
 
@@ -25,7 +25,7 @@ reports/             评测报告
 knowledge-graph/     知识图谱数据
 skills/              自研 Skill（10 个, 覆盖文献获取→科研调度）
 migrations/          PostgreSQL schema（80+ 迁移）
-test/                单元测试（263 项, Vitest）
+test/                单元测试（273 项, Vitest）
 docs/                文档
 ```
 
@@ -43,7 +43,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 
 | 命令 | 说明 |
 |---|---|
-| `npm test` | 263 项单元测试（Vitest） |
+| `npm test` | 273 项单元测试（Vitest） |
 | `npm run typecheck` | 前后端类型检查 |
 | `npm run build` | 后端 tsc + 前端 vite 构建 |
 | `npm start` | 生产模式（4173） |
@@ -76,7 +76,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 3. **新增环境变量** → 同步 `.env.example` + `src/config/env.ts`
 4. **新增数据库表** → `migrations/` 幂等 SQL（编号递增）
 5. **评测相关改动** → 跑 `npx tsx scripts/eval-32-metrics.ts` 验证分数不退化
-6. **提交前** → `npm test` 263 项全绿
+6. **提交前** → `npm test` 273 项全绿
 
 ## 外部 Agent 接入（MCP）
 
