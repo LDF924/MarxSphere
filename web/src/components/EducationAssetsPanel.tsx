@@ -171,7 +171,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
             {tab === "cases" && cases.map((c) => (
               <div key={c.id}
                 onClick={() => setSelected({ name: c.title || c.id || "", data: c })}
-                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background hover:bg-muted/40"}`}>
+                className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === (c.title || c.id) ? "border-emerald-400 bg-emerald-500/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-[12px] font-medium">{c.title}</span>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.scenario}</span>
@@ -206,7 +206,7 @@ export function EducationAssetsPanel({ role = "teacher" }: { role?: "student" | 
                 {(courses.courses || []).map((c, i) => (
                   <div key={i}
                     onClick={() => setSelected({ name: c.title, data: { title: c.title, subject: c.subject, content: c.content } })}
-                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-50/50" : "border-border/70 bg-background hover:bg-muted/40"}`}>
+                    className={`cursor-pointer rounded-lg border px-2.5 py-2 transition-colors ${selected?.name === c.title ? "border-emerald-400 bg-emerald-500/15" : "border-border/70 bg-background hover:bg-muted/40"}`}>
                     <div className="flex items-center gap-2">
                       <span className="text-[12px] font-medium">{c.title}</span>
                       <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{c.subject}</span>
