@@ -3466,6 +3466,12 @@ export function buildHttpServer() {
     const body = z.object({ subject: z.string(), knowledgePoint: z.string(), count: z.number().optional(), sourceId: z.string().optional() }).parse(request.body);
     return componentExecutorService.generateRetrievalCards(body);
   });
+  // V397: 学习多 Agent 协作(讲解→出题→反馈, 借鉴 LingxiLearn)
+  app.post("/api/education/agents/orchestrate", async (request) => {
+    const { learningAgentOrchestrator } = await import("../services/learning-agent-orchestrator.js");
+    const body = z.object({ studentId: z.string().optional(), subject: z.string(), knowledgePoint: z.string(), userAnswer: z.string().optional(), sourceId: z.string().optional() }).parse(request.body);
+    return learningAgentOrchestrator.orchestrateLearningAgents(body);
+  });
   // V394: 执行器产物 → needs_review 三态机(确认后可挂载到学习计划)
   // V395: 批量生成工作流(计划全部组件 → 执行器 → 三态机)
   app.post("/api/education/components/batch", async (request) => {

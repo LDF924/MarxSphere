@@ -204,6 +204,10 @@ function ComponentContent({ selected, onDone }: { selected: CanvasComponent; onD
     return (
       <div className="learning-card text-sm leading-6">
         <h3 className="mb-2 text-base font-semibold">{content.title}</h3>
+        {/* V397: visual_map SVG 图解(节点+关系) */}
+        {content.svg ? (
+          <div className="mb-3 overflow-hidden rounded-lg" dangerouslySetInnerHTML={{ __html: content.svg }} />
+        ) : null}
         <div className="whitespace-pre-wrap text-foreground/90">{content.content}</div>
         {(content.key_points || []).length > 0 && (
           <div className="mt-3">

@@ -277,6 +277,14 @@ export function validateComponentInstance(comp: unknown): { ok: boolean; reason?
   // 可执行标记(内容区)
   const content = String(c.content || "") + String(c.hint || "");
   if (EXECUTABLE_MARKERS.test(content)) return { ok: false, reason: "内容含可执行标记" };
+  // V397: 生成的 SVG 图解专用校验(允许自产 svg, 但拒绝可执行内容)
+  if (c.svg) {
+    const svg = String(c.svg);
+    // 只允许白名单 SVG 标签与样式属性(防 script/on* 注入)
+    if (/<script|<\/script>|<foreignObject|<use\s|onclick=|onerror=|onload=|javascript:/i.test(svg)) {
+      return { ok: false, reason: "SVG 含可执行内容" };
+    }
+  }
   // media_url 只许 http(s)/同源/data:image
   if (c.media_url) {
     const url = String(c.media_url);

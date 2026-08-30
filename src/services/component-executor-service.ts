@@ -24,18 +24,53 @@ export async function generateLesson(input: {
   const prompt = `你是学习内容生成器。为「${input.knowledgePoint}」(${input.subject}) 生成${kindLabel[input.kind]}。
 要求:
 1. 内容基于系统知识库(引用来源), 不编造
-2. 概念讲解: 200-400字, 分点; 分步例题: 3-5 步带每步说明; 目标地图: 里程碑+完成标准; 关系图: 节点+连线描述
-3. 输出 JSON: {"title":"","content":"正文(分点/步骤)","key_points":["要点"],"references":[{"source":"来源文献","note":"依据"}]}
+2. 概念讲解: 200-400字, 分点; 分步例题: 3-5 步带每步说明; 目标地图: 里程碑+完成标准; 关系图: nodes+edges 结构(3-8 个概念节点, 节点含 id/label, 边含 from/to/relation)
+3. 输出 JSON: {"title":"","content":"正文(分点/步骤)","key_points":["要点"],"references":[{"source":"来源文献","note":"依据"}],${input.kind === "visual_map" ? '"nodes":[{"id":"","label":""}],"edges":[{"from":"","to":"","relation":""}]' : ""}}
 ${ctx}`;
   const out = await llmJson(prompt);
+  // V397: visual_map 生成 SVG 关系图(节点+连线, 前端直接渲染)
+  let svg = "";
+  if (input.kind === "visual_map" && Array.isArray(out?.nodes) && out.nodes.length > 0) {
+    svg = buildRelationSvg(out.nodes, out.edges || [], out.title || input.knowledgePoint);
+  }
   return {
     ok: true,
     component: {
       kind: input.kind, title: out?.title || `${kindLabel[input.kind]}: ${input.knowledgePoint}`,
       content: out?.content || "", key_points: out?.key_points || [],
       references: out?.references || [], concept_refs: [input.knowledgePoint],
+      ...(svg ? { svg } : {}),
     },
   };
+}
+
+/** V397: 概念关系图 SVG 渲染(节点圆形 + 连线, 深色主题配色) */
+export function buildRelationSvg(nodes: Array<{ id?: string; label?: string }>, edges: Array<{ from?: string; to?: string; relation?: string }>, title: string): string {
+  const W = 560, H = 380;
+  const positions = nodes.slice(0, 8).map((_, i) => {
+    const angle = (i / Math.max(1, nodes.length)) * Math.PI * 2 - Math.PI / 2;
+    return { x: W / 2 + Math.cos(angle) * 170, y: H / 2 + Math.sin(angle) * 130 };
+  });
+  const color = (i: number) => ["#60a5fa", "#34d399", "#f472b6", "#fbbf24", "#a78bfa", "#22d3ee", "#fb7185", "#4ade80"][i % 8];
+  const lines = edges.slice(0, 12).map((e, i) => {
+    const from = nodes.findIndex((n) => n.id === e.from || n.label === e.from);
+    const to = nodes.findIndex((n) => n.id === e.to || n.label === e.to);
+    if (from < 0 || to < 0 || from === to) return "";
+    const p1 = positions[from], p2 = positions[to];
+    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+    return `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#475569" stroke-width="1.5"/>
+      <text x="${mx + 6}" y="${my - 6}" font-size="9" fill="#94a3b8">${String(e.relation || "")}</text>`;
+  }).join("\n  ");
+  const circles = nodes.slice(0, 8).map((n, i) => {
+    const p = positions[i];
+    return `<circle cx="${p.x}" cy="${p.y}" r="34" fill="${color(i)}22" stroke="${color(i)}" stroke-width="2"/>
+      <text x="${p.x}" y="${p.y + 3}" text-anchor="middle" font-size="10" fill="#e2e8f0" font-weight="600">${String(n.label || n.id || "").slice(0, 8)}</text>`;
+  }).join("\n  ");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="auto" style="background:#0f172a;border-radius:8px">
+  <text x="16" y="22" font-size="12" fill="#fbbf24" font-weight="bold">${title}</text>
+  ${lines}
+  ${circles}
+</svg>`;
 }
 
 // ═══ Assessment 执行器: 题目生成(答案服务端持有) ═══
