@@ -225,7 +225,7 @@ export async function buildAgentTools(opts?: {
       name: "education_service", label: "教育能力", risk: "safe",
       description: "调用教育功能（学习规划/作业辅导/学情诊断/预习复习/备课/陪伴/苏格拉底/五步打磨等）",
       params: {
-        action: { type: "string", required: true, desc: "学习规划=learning-plan|课程辅导=tutoring|学情诊断=diagnosis|预习复习=preview-review|备课=lesson-plan|陪伴=companion|苏格拉底=socratic|作业辅导=homework-solve|错题归集=wrong|变式=variant|出题=questions|批改=grade|BKT追踪=bkt-track|先修检测=check-prereq|路径规划=plan-path|记录答题=record-answer|计划链=plan-chain|意图分类=intent|材料分析=material-analyze|偏好记录=pref-record|偏好确认=pref-decide|偏好列表=pref-list|到期复习=reviews-due|复习记录=review-result|复习入队=review-enqueue" },
+        action: { type: "string", required: true, desc: "学习规划=learning-plan|课程辅导=tutoring|学情诊断=diagnosis|预习复习=preview-review|备课=lesson-plan|陪伴=companion|苏格拉底=socratic|作业辅导=homework-solve|错题归集=wrong|变式=variant|出题=questions|批改=grade|BKT追踪=bkt-track|先修检测=check-prereq|路径规划=plan-path|记录答题=record-answer|计划链=plan-chain|意图分类=intent|材料分析=material-analyze|偏好记录=pref-record|偏好确认=pref-decide|偏好列表=pref-list|到期复习=reviews-due|复习记录=review-result|复习入队=review-enqueue|能力推荐=capability-recommend" },
         subject: { type: "string", required: true, desc: "科目（如：政治经济学）" },
         topic: { type: "string", desc: "知识点/题目/章节（按 action 需要）" },
       },
@@ -269,6 +269,7 @@ export async function buildAgentTools(opts?: {
           "plan-chain": "/learning-plans", "intent": "/intent", "material-analyze": "/materials/analyze",
           "pref-record": "/memory/preferences", "pref-decide": "/memory/preferences/by-key/decide", "pref-list": "/memory/preferences",
           "reviews-due": "/reviews/due", "review-result": "/reviews/result", "review-enqueue": "/reviews/enqueue",
+          "capability-recommend": "/capabilities/recommend",
           // 多模态
           "photo-solve": "/multimodal/photo-solve", "speech-assessment": "/multimodal/speech-assessment", "blackboard": "/multimodal/blackboard",
           // 学生服务
