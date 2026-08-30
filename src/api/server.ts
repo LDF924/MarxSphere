@@ -3364,6 +3364,18 @@ export function buildHttpServer() {
     const q = request.query as Record<string, string | undefined>;
     return spacedRepetitionService.proposeStateUpdate({ studentId: q.studentId, subject: q.subject });
   });
+  // V397: Capability 注册表 + 确定性候选生成(借鉴 LingxiLearn 三词汇表分层)
+  // GET /api/education/capabilities — 注册表清单(能力/成本/前置)
+  // GET /api/education/capabilities/recommend — 按学习者状态生成确定性候选
+  app.get("/api/education/capabilities", async () => {
+    const { capabilityRegistryService } = await import("../services/capability-registry-service.js");
+    return { ok: true, capabilities: capabilityRegistryService.CAPABILITY_REGISTRY };
+  });
+  app.get("/api/education/capabilities/recommend", async (request) => {
+    const { capabilityRegistryService } = await import("../services/capability-registry-service.js");
+    const q = request.query as Record<string, string | undefined>;
+    return capabilityRegistryService.recommendForIntent({ intent: q.intent, subject: q.subject, studentId: q.studentId });
+  });
 
   // V390: 组件校验 + Compass 记忆治理(借鉴 TraitTutor components/validation.py + Reflection/Compass)
   // POST /api/components/validate — 组件白名单校验{component} → {ok, reason?}
