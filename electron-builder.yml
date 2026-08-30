@@ -54,6 +54,17 @@ extraResources:
       - "**/*"
   - from: resources/sag/docker-compose.yml
     to: sag/docker-compose.yml
+  # V397: 开源合规文件随包携带
+  - from: resources/sag/NOTICE
+    to: sag/NOTICE
+  - from: resources/sag/THIRD_PARTY_NOTICES.md
+    to: sag/THIRD_PARTY_NOTICES.md
+  - from: resources/sag/LICENSE
+    to: sag/LICENSE
+  - from: resources/sag/THIRD_PARTY_LICENSES
+    to: sag/THIRD_PARTY_LICENSES
+    filter:
+      - "**/*"
 
 win:
   target:
