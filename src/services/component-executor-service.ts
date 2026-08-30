@@ -142,4 +142,62 @@ export async function submitToReview(input: {
   return materialReviewService.createGeneration(input as any);
 }
 
-export const componentExecutorService = { generateLesson, generateAssessment, gradeAssessmentItem, generateRetrievalCards, submitToReview };
+// ═══ V395: 深水区② — 批量生成工作流(一次调用为计划全部组件生成内容) ═══
+// 顺序: lesson 组件 → assessment 组件 → retrieval 组件; 每类可并发生成, 失败降级跳过
+// 产物统一经 submitToReview 进三态机(可审查, 确认后挂载)
+export async function generatePlanComponents(input: {
+  studentId?: string; subject: string; goal: string;
+  components: Array<{ type: string; knowledgePoint?: string }>;
+  sourceId?: string;
+}): Promise<Record<string, unknown>> {
+  const results: Array<{ type: string; ok: boolean; kind?: string; error?: string; generationId?: string; status?: string }> = [];
+  let generated = 0, failed = 0;
+
+  for (const comp of input.components.slice(0, 20)) {
+    const kp = comp.knowledgePoint || input.goal;
+    try {
+      let out: Record<string, unknown> = { ok: false, error: "unknown" };
+      const kind: ArtifactKind = "courseware";
+      // lesson 类
+      if (["goal_map", "concept_explanation", "worked_example", "visual_map"].includes(comp.type)) {
+        out = await generateLesson({ subject: input.subject, knowledgePoint: kp, goal: input.goal, kind: comp.type as any, sourceId: input.sourceId });
+      } else if (["guided_practice", "transfer_challenge", "diagnostic_check"].includes(comp.type)) {
+        out = await generateAssessment({ subject: input.subject, knowledgePoint: kp, kind: comp.type as any, sourceId: input.sourceId });
+      } else if (["retrieval_card", "review_queue"].includes(comp.type)) {
+        out = await generateRetrievalCards({ subject: input.subject, knowledgePoint: kp, count: 4, sourceId: input.sourceId });
+      } else {
+        results.push({ type: comp.type, ok: false, error: "不支持的组件类型" });
+        failed++;
+        continue;
+      }
+      if (!out.ok || !out.component) {
+        results.push({ type: comp.type, ok: false, error: String(out.error || "生成失败") });
+        failed++;
+        continue;
+      }
+      // 产物进三态机(默认无 issues → 直接 confirmed, 可审查)
+      const sub = await submitToReview({
+        studentId: input.studentId, subject: input.subject, goal: `${input.goal} · ${kp}`,
+        kind: comp.type.includes("practice") || comp.type.includes("challenge") || comp.type.includes("diagnostic") ? "quiz" : "courseware",
+        content: out.component,
+      });
+      results.push({
+        type: comp.type, ok: true,
+        kind: comp.type, generationId: String(sub.generationId || ""),
+        status: String(sub.status || "confirmed"),
+      });
+      generated++;
+    } catch (e: any) {
+      results.push({ type: comp.type, ok: false, error: String(e?.message || e).slice(0, 100) });
+      failed++;
+    }
+  }
+
+  return {
+    ok: true,
+    summary: { total: results.length, generated, failed, reviewCount: results.filter((r) => r.status === "needs_review").length },
+    results,
+  };
+}
+
+export const componentExecutorService = { generateLesson, generateAssessment, gradeAssessmentItem, generateRetrievalCards, submitToReview, generatePlanComponents };

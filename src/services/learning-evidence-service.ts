@@ -164,6 +164,16 @@ export async function recordLearnerEvent(input: RecordEventInput): Promise<Recor
         graded_by: gradedBy, created_at: new Date().toISOString(),
       })]
     ).catch(() => {});
+    // V395: 深水区① — 学习事件写入 Neo4j 知识图谱(异步, 失败降级不阻塞学习)
+    void (async () => {
+      try {
+        const { syncLearningEventToGraph } = await import("./learning-events-graph-sync.js");
+        await syncLearningEventToGraph({
+          studentId, knowledgePoint: input.knowledgePoint, subject: input.subject,
+          isCorrect: isCorrect === true, sourceEventId: r.rows[0].id,
+        });
+      } catch { /* Neo4j 离线降级 */ }
+    })();
   }
   return { ok: true, duplicate: false, eventId: r.rows[0].id, isCorrect, evidenceStrength, gradedBy };
 }

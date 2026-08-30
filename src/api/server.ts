@@ -3449,6 +3449,13 @@ export function buildHttpServer() {
     return componentExecutorService.generateRetrievalCards(body);
   });
   // V394: 执行器产物 → needs_review 三态机(确认后可挂载到学习计划)
+  // V395: 批量生成工作流(计划全部组件 → 执行器 → 三态机)
+  app.post("/api/education/components/batch", async (request) => {
+    const { componentExecutorService } = await import("../services/component-executor-service.js");
+    const body = z.object({ studentId: z.string().optional(), subject: z.string(), goal: z.string(), components: z.array(z.object({ type: z.string(), knowledgePoint: z.string().optional() })), sourceId: z.string().optional() }).parse(request.body);
+    return componentExecutorService.generatePlanComponents(body);
+  });
+
   app.post("/api/education/components/submit", async (request) => {
     const { componentExecutorService } = await import("../services/component-executor-service.js");
     const body = z.object({ studentId: z.string().optional(), subject: z.string(), goal: z.string(), kind: z.enum(["courseware", "flashcards", "quiz"]), content: z.any(), issues: z.any().optional() }).parse(request.body);
