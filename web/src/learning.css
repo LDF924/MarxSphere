@@ -3,13 +3,14 @@
  * 变量: 复用 SAG :root(--background/--card/--primary/--border...)
  */
 .learning-card {
-  @apply rounded-lg border bg-card/70 p-4 backdrop-blur-sm;
+  /* V395 修复: bg-card/70+毛玻璃在深色背景上形成白色雾层 → 实底 + 细边 */
+  @apply rounded-lg border bg-card p-4;
   border-color: hsl(var(--border) / 0.65);
   box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
 }
 .learning-card--large {
   @apply rounded-xl p-5 md:p-6;
-  background: linear-gradient(180deg, hsl(var(--card) / 0.85), hsl(var(--card) / 0.6));
+  background: hsl(var(--card));
   border-color: hsl(var(--primary) / 0.18);
 }
 .learning-card--active {
