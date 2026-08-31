@@ -95,7 +95,8 @@ export const CitationVerifyPanel: FC = () => {
   const overall = result?.overall;
 
   return (
-    <div className="space-y-4">
+    <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+      <div className="mx-auto w-full max-w-[1200px] space-y-4">
       <div className="flex items-center gap-2">
         <SearchCheck className="h-4 w-4 text-violet-400" />
         <h2 className="text-sm font-semibold">引文三维核验</h2>
@@ -200,6 +201,7 @@ export const CitationVerifyPanel: FC = () => {
           <DimensionCard title="③ 断言支持度" icon={<CheckCircle2 className="h-3.5 w-3.5" />} dim={result.dimensions.support} />
         </div>
       )}
-    </div>
+      </div>
+    </section>
   );
 };
