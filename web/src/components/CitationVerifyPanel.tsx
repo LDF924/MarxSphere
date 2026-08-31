@@ -99,61 +99,72 @@ export const CitationVerifyPanel: FC = () => {
       <div className="flex items-center gap-2">
         <SearchCheck className="h-4 w-4 text-violet-400" />
         <h2 className="text-sm font-semibold">引文三维核验</h2>
-        <span className="text-[10px] text-muted-foreground">
-          （V399 · citation-lab 方法论 · 元数据真伪 / 语境相关性 / 断言支持度）
-        </span>
+        <span className="text-[10px] text-muted-foreground">元数据真伪 · 语境相关性 · 断言支持度</span>
       </div>
 
       {/* 输入区 */}
-      <div className="space-y-2 rounded-lg border bg-card p-3">
+      <div className="rounded-lg border bg-card p-4">
+        {/* 断言 */}
         <label className="block">
-          <span className="mb-1 block text-[10px] font-medium text-muted-foreground">断言句（引用所在句, 必填）</span>
+          <span className="mb-1.5 block text-[11px] font-medium text-foreground/80">断言句（引用所在句, 必填）</span>
           <textarea
             value={claim}
             onChange={(e) => setClaim(e.target.value)}
             placeholder="如：该研究利用野外监测数据揭示了全球飞行昆虫生物量在27年间下降超过75%"
             rows={2}
-            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
+            className="w-full rounded-md border bg-background px-3 py-2 text-xs leading-5"
           />
         </label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+
+        {/* 参考文献 */}
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <div className="mb-2 text-[11px] font-medium text-foreground/80">参考文献</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-muted-foreground">DOI（可选, 优先）</span>
+              <input
+                value={doi}
+                onChange={(e) => setDoi(e.target.value)}
+                placeholder="10.1371/journal.pone.0185809"
+                className="w-full rounded-md border bg-background px-3 py-2 text-xs"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] text-muted-foreground">标题（可选）</span>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="论文标题（无 DOI 时用于检索）"
+                className="w-full rounded-md border bg-background px-3 py-2 text-xs"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* 上下文 */}
+        <div className="mt-4 border-t border-border/60 pt-4">
           <label className="block">
-            <span className="mb-1 block text-[10px] font-medium text-muted-foreground">参考文献 DOI（可选, 优先）</span>
-            <input
-              value={doi}
-              onChange={(e) => setDoi(e.target.value)}
-              placeholder="10.1371/journal.pone.0185809"
-              className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[10px] font-medium text-muted-foreground">参考文献标题（可选）</span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="论文标题（无 DOI 时用于检索）"
-              className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
+            <span className="mb-1 block text-[10px] text-muted-foreground">引用上下文段落（可选, 提升相关性判定）</span>
+            <textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="该引用所在段落的上下文…"
+              rows={2}
+              className="w-full rounded-md border bg-background px-3 py-2 text-xs leading-5"
             />
           </label>
         </div>
-        <label className="block">
-          <span className="mb-1 block text-[10px] font-medium text-muted-foreground">引用上下文段落（可选, 提升相关性判定）</span>
-          <textarea
-            value={context}
-            onChange={(e) => setContext(e.target.value)}
-            placeholder="该引用所在段落的上下文…"
-            rows={1}
-            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-          />
-        </label>
-        <button
-          onClick={run}
-          disabled={loading || claim.trim().length < 5}
-          className="mt-1 flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
-        >
-          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
-          {loading ? "核验中…" : "开始核验"}
-        </button>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={run}
+            disabled={loading || claim.trim().length < 5}
+            className="flex items-center gap-1.5 rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+            {loading ? "核验中…" : "开始核验"}
+          </button>
+        </div>
       </div>
 
       {/* 结果区 */}
@@ -164,7 +175,7 @@ export const CitationVerifyPanel: FC = () => {
       )}
 
       {overall && result?.dimensions && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {/* 整体状态 */}
           <div className="flex items-center justify-between rounded-lg border bg-card p-3">
             <div className="flex items-center gap-2 text-xs font-semibold">
