@@ -13,7 +13,7 @@
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
-# MarxSphere (马研星环)
+# MarxSphere
 
 **An AI-driven research hub for humanities & social sciences** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.
 

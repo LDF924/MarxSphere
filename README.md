@@ -13,7 +13,7 @@
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
-# MarxSphere 星环科研
+# MarxSphere
 
 **AI 驱动的文科·哲社科学术科研平台** — 一个 AI Agent 承载科研与教学全能力：科研端（文献检索、知识图谱、52 步推理、科研场景工作台、实证分析）+ 教育端（个性化学习规划、作业辅导、学情诊断、教师备课）。
 

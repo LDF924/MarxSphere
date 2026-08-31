@@ -10,7 +10,7 @@ export const SymbolLogo: FC<{ size?: number }> = ({ size = 40 }) => {
     >
       <img
         src="/marx-logo.png"
-        alt="MarxSphere 马研星环"
+        alt="MarxSphere"
         className="symbol-logo-img"
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />

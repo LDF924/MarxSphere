@@ -6,7 +6,7 @@
 </linearGradient>
 </defs>
 <rect width="1200" height="1500" fill="url(#bg)"/>
-<text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere 马研星环 — 系统架构（V400）</text>
+<text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere — 系统架构（V400）</text>
 <text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 三库图谱 · Agent 65 工具 · 技能 201 · 实证 17 方法 · 测试 296 · Codex 对齐</text>
 <text x="30" y="128" font-size="16" font-weight="bold" fill="#fbbf24">① 交互层</text>
 <rect x="30" y="138" width="1140" height="70" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>

@@ -1159,7 +1159,7 @@ async function planWithLlm(goal: string, previousIssues: string[], contextHint?:
   // 差距J④(DSH identity): Agent 身份注入 — 名称/角色/会话身份（系统提示一致性）
   try {
     const identity = process.env.AGENT_IDENTITY
-      || "SAG 学术研究助理（MarxSphere 马研星环）— 马理论+社会科学研究助手";
+      || "SAG 学术研究助理（MarxSphere）— 马理论+社会科学研究助手";
     memoryHint += `\n【Agent 身份】${identity.slice(0, 120)}`;
   } catch { /* 身份注入失败忽略 */ }
   // 差距G①(Codex current_time): 当前时间注入 — 研究需时效感知（政策/数据引用年份校准）
