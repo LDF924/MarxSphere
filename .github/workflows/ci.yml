@@ -52,6 +52,8 @@ jobs:
         run: pip install pandas requests
 
       - name: Unit tests (154)
+        env:
+          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
         run: npm test
 
       - name: Frontend build
