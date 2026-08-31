@@ -27,6 +27,13 @@ for (const dir of ["skills"]) {
   const src = path.join(root, dir);
   if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
 }
+// V397: 开源合规文件随包携带 — NOTICE / THIRD_PARTY_NOTICES / 许可证全文
+for (const f of ["NOTICE", "THIRD_PARTY_NOTICES.md", "LICENSE"]) {
+  const src = path.join(root, f);
+  if (existsSync(src)) cpSync(src, path.join(sagResDir, f));
+}
+const licensesDir = path.join(root, "THIRD_PARTY_LICENSES");
+if (existsSync(licensesDir)) cpSync(licensesDir, path.join(sagResDir, "THIRD_PARTY_LICENSES"), { recursive: true });
 // 前端产物: 后端期望 <SAG_ROOT>/web/dist — 需拷到 sag/web/dist 而非 sag/web-dist
 const webDist = path.join(root, "web", "dist");
 if (existsSync(webDist)) {
