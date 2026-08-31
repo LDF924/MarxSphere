@@ -81,6 +81,7 @@ import { StructurePanel } from "./components/StructurePanel";
 import { AgentConsole } from "./components/AgentConsole";
 import { P2OView } from "./components/P2OView";
 import { CJournalPanel } from "./components/CJournalPanel";
+import { CitationVerifyPanel } from "./components/CitationVerifyPanel";
 import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
@@ -117,7 +118,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -540,7 +541,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -1977,6 +1978,8 @@ function AppShell() {
               <ErrorBoundary><AgentConsole /></ErrorBoundary>
             ) : workspaceView === "p2o" ? (
               <P2OView />
+            ) : workspaceView === "citation-verify" ? (
+              <CitationVerifyPanel />
             ) : workspaceView === "cjournal" ? (
               <CJournalPanel />
             ) : workspaceView === "corpus" ? (
@@ -2507,6 +2510,7 @@ function MainWorkspaceTabs(props: {
         { value: "jupyter", label: t("Notebook 工作台", "Notebook") },   // 2026-08-27: 轻量 notebook (ScienceX 通用计算)
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
+        { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
         { value: "p2o", label: t("PDF2Obsidian", "PDF2Obsidian") },
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },

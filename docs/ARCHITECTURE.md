@@ -34,7 +34,7 @@
 └──────────────────────────────────────────┘
 ```
 
-**规模**：198 服务文件（36 agent-* + 16 教育服务：12 核心 + 学习引擎 7 新）· 489+ 路由（112 教育 + 32 学习引擎顶层）· 101 迁移 · 37 前端视图 · 273 测试
+**规模**：200 服务文件（36 agent-* + 16 教育服务：12 核心 + 学习引擎 7 新 + V399 新增 3 适配）· 492+ 路由（112 教育 + 32 学习引擎顶层 + 引文核验）· 101 迁移 · 37 前端视图 · 273 测试
 
 ## 2. 推理链路（52 步）
 
@@ -65,11 +65,29 @@
 
 ## 4. AI Agent 编排
 
-- **44 通用工具**（26 基础 + 18 视图）+ 教育工具集（84 路由）
-- **5 层安全**：Guardian 策略 / 3 级沙箱 / 网络审批(SSRF) / 审批门 / 凭证隔离
+- **65 通用工具**（26 基础 + 33 视图 + 6 V399 新增）+ 教育工具集（84 路由）
+- **5 层安全**：Guardian 策略(拒绝熔断) / 3 级沙箱 / 网络审批(SSRF) / 审批门(三级链: Hook→Guardian→User + 缓存) / 凭证隔离
 - **5 层记忆**：情景 / 战略 / 技能蒸馏 / 防错规则 / 语料库
 - **插件系统**：A1 工具插件（`agent_plugins` 表）/ A2 服务接口（Llm/Sandbox/Guard Provider）/ A3 前端注册表（`viewRegistry.tsx`）
 - **外部服务**：OAuth（GitHub 适配器）/ 多 Agent 协作（动态角色 + 协商循环）/ 会话图 + checkpoint 分叉
+- **V400 Codex 对齐**(2026-09-01): 预算/时间提醒注入(窗口去重) · Mid-turn 压缩不终止(滚动窗口) · Elicitation 暂停协调 · Stop/PreToolUse/PostToolUse/PermissionRequest/SessionStart 钩子 · 世界状态 diff(reflectLog 增量) · Steer 转向输入 · Mailbox 双通道 · 挂起检查点 · 评审会话隔离(read-only 暴露矩阵) · 共享上下文 LRU · 全链路插桩审计
+
+## 4.5 V399 开源能力融入（Rimagination 生态, 2026-08-31）
+
+| 能力 | 来源 | 融入方式 | 落点 |
+|---|---|---|---|
+| PDF/文档双模式转换 | mineru-go | 源码直用 vendor + TS 适配 | `pdf_convert` 工具（Agent 轻量 ≤10MB≤20页 / Precision 精准, 扫描件 OCR） |
+| 研究选题打磨 | good-question | 源码直用技能 | S01/S04 场景 + 教育五步打磨 stress 注入 |
+| 公文起草 | gongwen-draft | 源码直用技能 | `gongwen_draft` 工具（23 文种, 先查先核再写） |
+| 视频学习笔记 | bili-note/dy-note | 源码直用技能 | `video_note` 工具（B站/抖音 → Markdown 素材池） |
+| 元分析 | easymeta | 方法论移植 | 实证第 17 方法 `meta_analysis`（固定/随机效应+Q/I²/τ²+HK+森林/漏斗图） |
+| 英文文献 OA | instsci | 源提炼 vendor | `view_openalex_search` / `view_oa_lookup`（OpenAlex+Unpaywall, 国内可达） |
+| Markdown 清洗 | scansci-pdf | 源提炼 vendor | `cleanMarkdown()`（变音符号折叠+NFC+替换字符审计） |
+| 科学叙事 | good-story | 源码直用技能 | `view_truth_narrative`（六段张力结构+证据阶梯） |
+| 图表数字化 | thu-digitizer | 源码直用技能 | `view_chart_digitize`（两阶段: 预检→坐标确认→CSV） |
+| 引文三维核验 | citation-lab | 方法论移植 | `POST /api/citations/verify`（元数据真伪/语境相关性/断言支持度） |
+
+工具增量：+8（pdf_convert / gongwen_draft / video_note / view_openalex_search / view_oa_lookup / view_truth_narrative / view_chart_digitize / 实证 meta_analysis 方法）；技能注册 195→201。
 
 ## 5. AI+教育层（84 路由）
 

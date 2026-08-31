@@ -36,6 +36,10 @@ setInterval(() => {
 export async function runEmpirical(
   input: { data: { columnOrder: string[]; rows: unknown[][] }; method: string; params: Record<string, unknown> }
 ): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+  // V399: meta_analysis 走独立脚本（easymeta 方法论: 证据综合）
+  if (input.method === "meta_analysis") {
+    return spawnPythonTask("empirical_metaanalysis.py", { script: "metaanalysis", method: "meta_analysis", data: input.data, params: input.params });
+  }
   return spawnPythonTask("empirical_runner.py", input as any);
 }
 
@@ -86,9 +90,13 @@ export async function spawnPythonTask(
   tasks.set(taskId, { status: "running", createdAt: Date.now() });
 
   // 异步 spawn（不阻塞主线程; 结果由轮询读取; stderr 完整保留供诊断）
+  // V399: 元分析等独立脚本按 scriptName 分发（empirical_runner.py 委托模式）
+  const runnerPath = scriptName === "empirical_metaanalysis.py"
+    ? path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "empirical_metaanalysis.py")
+    : RUNNER;
   execFile(
     PYTHON,
-    [RUNNER, taskDir],
+    [runnerPath, taskDir],
     { timeout: 300_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, cwd: process.env.SAG_ROOT || process.cwd() },
     (error, _stdout, stderr) => {
       const rec = tasks.get(taskId);

@@ -27,6 +27,9 @@ for (const dir of ["skills"]) {
   const src = path.join(root, dir);
   if (existsSync(src)) cpSync(src, path.join(sagResDir, dir), { recursive: true });
 }
+// V399: 第三方 vendor 随包携带（mineru-go/instsci-oa/scansci-pdf/citation-lab — 否则 pdf_convert/OA回退/引文核验/md清洗在桌面端失效）
+const vendorSrc = path.join(root, "vendor");
+if (existsSync(vendorSrc)) cpSync(vendorSrc, path.join(sagResDir, "vendor"), { recursive: true });
 // V397: 开源合规文件随包携带 — NOTICE / THIRD_PARTY_NOTICES / 许可证全文
 for (const f of ["NOTICE", "THIRD_PARTY_NOTICES.md", "LICENSE"]) {
   const src = path.join(root, f);

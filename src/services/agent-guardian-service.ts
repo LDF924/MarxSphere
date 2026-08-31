@@ -34,6 +34,20 @@ const TOOL_RISK: Record<string, RiskLevel> = {
   sag_ingest: "medium",     // 入库 → 中(数据写)
 };
 
+// V400: 拒绝熔断 (codex guardian/mod.rs L63 对齐) — 连续拒绝 ≥3 次触发熔断(阻止继续尝试)
+const MAX_CONSECUTIVE_DENIES = 3;
+let consecutiveDenies = 0;
+
+/** 重置熔断计数(每轮开始调用) */
+export function resetGuardianBreaker(): void {
+  consecutiveDenies = 0;
+}
+
+/** 熔断是否打开(连续拒绝过多 → 上层应停止高危尝试) */
+export function guardianBreakerOpen(): boolean {
+  return consecutiveDenies >= MAX_CONSECUTIVE_DENIES;
+}
+
 /** 判定矩阵（guardian-policy.md）: risk × authorization → verdict */
 function verdictMatrix(risk: RiskLevel, auth: AuthorizationLevel): GuardianVerdict {
   if (auth === "high") return risk === "high" ? "review" : "allow";
@@ -81,11 +95,14 @@ export function guardianReview(
     }
   }
   const verdict = verdictMatrix(effectiveRisk, authorization);
+  // V400: 熔断计数 — deny 递增, allow/review 重置
+  if (verdict === "deny") consecutiveDenies = Math.min(consecutiveDenies + 1, MAX_CONSECUTIVE_DENIES + 1);
+  else consecutiveDenies = 0;
   return {
     verdict,
     riskLevel: effectiveRisk,
     authorization,
-    reason: `风险${effectiveRisk} × 授权${authorization} → ${verdict}${clause ? "（" + clause + "）" : ""}`,
+    reason: `风险${effectiveRisk} × 授权${authorization} → ${verdict}${clause ? "（" + clause + "）" : ""}${consecutiveDenies >= MAX_CONSECUTIVE_DENIES ? "（熔断: 连续拒绝过多, 建议暂停高危尝试）" : ""}`,
     policyClause: clause,
   };
 }
@@ -110,4 +127,6 @@ export const guardianService = {
   guardianBatchReview,
   readGuardianPolicy,
   reloadGuardianPolicy,
+  resetGuardianBreaker,
+  guardianBreakerOpen,
 };

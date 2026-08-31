@@ -1,3 +1,31 @@
+## [1.3.0] - 2026-09-01
+
+### 🚀 Rimagination 开源生态融入(V399, 2026-08-31)
+
+- **PDF/文档双模式转换**(mineru-go): vendor 源码直用 + `pdf_convert` 工具(Agent 轻量 ≤10MB≤20页 / Precision 精准, 扫描件 OCR); `cleanMarkdown()` md 清洗(scansci-pdf 提炼, 变音符号折叠+NFC+替换字符审计)
+- **科研技能 ×6 源码直用**: good-question(选题打磨, 挂 S01/S04 场景+教育 stress 注入) / gongwen-draft(23 文种公文起草, `gongwen_draft` 工具) / bili-note+dy-note(视频笔记, `video_note` 工具) / good-story(科学叙事, `view_truth_narrative`) / thu-digitizer(图表数字化, `view_chart_digitize` 两阶段)
+- **元分析第 17 方法**(easymeta 方法论移植): 固定/随机效应+Q/I²/τ²+HK 校正+森林图/漏斗图+依赖审计; 前端表单+契约对齐
+- **英文文献 OA 回退**(instsci 提炼): `view_openalex_search` / `view_oa_lookup`(OpenAlex+Unpaywall, 国内可达; arXiv 被墙→替代)
+- **引文三维核验**(citation-lab 移植): `POST /api/citations/verify`(元数据真伪 Crossref+OpenAlex / 语境相关性 / 断言支持度)+ 前端核验面板
+- **引用网络图算法**(paper-atlas 提炼): 文献耦合+共被引 0.5/0.5 余弦 → 加权度裁剪 → top-K 边
+- **技能注册 195→201**, 基线 v29 确认归类; 合规 15 项声明; 桌面端 vendor 随包携带
+
+### ⚙️ Codex 开源对齐(V400, 2026-09-01)
+
+- **预算/时间提醒注入**: agent-reminder-service(Rollout 50K / TokenBudget 6_144 / 时间 / 压缩回退四提醒, 窗口 claim 去重, 注入 reflect prompt)
+- **Mid-turn 压缩不终止**: 上下文超窗 90% → compressContext → 继续(不再失败); 滚动窗口推进
+- **Elicitation 暂停协调**: agent-elicitation-service(计数暂停, 工具结果等追问完成)
+- **钩子系统对齐**: Stop(should_stop/block) / PreToolUse(输入改写) / PostToolUse(反馈替换) / PermissionRequest(三级链第一级) / SessionStart(上下文注入)
+- **审批三级链**: PermissionHook→Guardian→User + 审批缓存(指纹, 同任务免重复)
+- **Guardian 拒绝熔断**: 连续 deny≥3 触发
+- **世界状态 diff**: reflectLog.reviewedStepIds 增量注入(防多轮上下文爆炸)
+- **Steer 转向输入**: POST /api/agent/tasks/:id/steer(运行中注入, 隐含 resume)
+- **Mailbox 双通道**: agent-mailbox-service(入队/drain/deferToNextTurn)
+- **挂起优雅关停**: pause/cancel 前写检查点+邮箱延迟(可恢复)
+- **工具暴露矩阵**: buildAgentTools exposure=read-only(评审会话只读)
+- **评审会话隔离 + 共享上下文 LRU**: reviewer 只读工具+约束; sharedResults 容量 5 淘汰
+- **测试 287→295**; CODEX-GAP-ROADMAP 六层 30 项差距清零; Apache 2.0 合规声明
+
 ## [1.2.0] - 2026-08-30
 
 ### 🎓 学习引擎(LingxiLearn 借鉴, V396-V397)

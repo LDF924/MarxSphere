@@ -49,7 +49,7 @@ export const ROLE_LIBRARY: Record<string, DynamicRole> = {
   general: { name: "通用", prompt: "综合处理研究子任务", tools: ["sag_reason", "sag_retrieve", "summarize"] },
   retriever: { name: "检索", prompt: "专注文献/资料检索与整理, 返回结构化摘要", tools: ["sag_retrieve", "sag_search", "web_search", "summarize"] },
   writer: { name: "写作", prompt: "专注写作产出, 借鉴语料库句式, 结构清晰", tools: ["llm_write", "sag_retrieve", "review_output"] },
-  reviewer: { name: "评审", prompt: "专注评审质量, 找问题给建议", tools: ["review_output", "sag_retrieve"] },
+  reviewer: { name: "评审", prompt: "专注评审质量, 找问题给建议", tools: ["review_output", "sag_retrieve", "sag_search", "sag_get_event"] },
   empirical: { name: "实证", prompt: "专注数据分析/实证检验, 结论须来自真实计算", tools: ["empirical_analysis", "run_code", "file_read"] },
   code: { name: "代码", prompt: "专注代码实现, 先读后写, 变更最小化", tools: ["code_search", "run_code", "file_read", "file_write"] },
 };
@@ -124,6 +124,19 @@ export async function dispatchWorkers(input: {
   // 并行执行工人（Promise.allSettled: 单工人失败不影响其他）
   // V394-6: 工人间知识共享 — 完成工人产出实时共享, 后续工人执行时可见（避免重复检索）
   const sharedResults = new Map<string, string>();  // workerName → result
+  // V400 E4: 共享上下文驻留 LRU (codex residency.rs 对齐) — 容量满时淘汰最久未用的完成工人产出
+  const SHARED_MAX = 5;
+  const sharedOrder: string[] = [];  // 最近使用序(尾部=最新)
+  const touchShared = (name: string) => {
+    const idx = sharedOrder.indexOf(name);
+    if (idx >= 0) sharedOrder.splice(idx, 1);
+    sharedOrder.push(name);
+    if (sharedOrder.length > SHARED_MAX) {
+      const evicted = sharedOrder.shift()!;
+      sharedResults.delete(evicted);
+      console.log(`[agent] V400 E4 共享上下文 LRU 淘汰: ${evicted}`);
+    }
+  };
   const results = await Promise.allSettled(workers.map(async (w) => {
     await pool.query("update worker_tasks set status='running', updated_at=now() where id=$1", [w.id]);
     await sendAgentMessage({ taskId: w.parentTaskId, fromAgent: w.workerName, toAgent: "orchestrator", msgType: "status", payload: { status: "running" } });
@@ -132,6 +145,7 @@ export async function dispatchWorkers(input: {
       const shared = [...sharedResults.entries()].map(([name, r]) => `[${name} 已产出] ${r.slice(0, 300)}`).join("\n");
       const result = await input.workerRunner(shared ? { ...w, sharedContext: shared } : w);
       sharedResults.set(w.workerName, result);
+      touchShared(w.workerName);  // V400 E4: LRU touch
       // V396-4: worker 结果完整落库（不再 4000 字符截断, 完整存 jsonb 供审计/重放）
       await pool.query("update worker_tasks set status='done', result=$2, updated_at=now() where id=$1", [w.id, result]);
       // V396-14: 消息完整化 — 不再 2000 截断（完整结果入 agent_messages, 前端按需展示）
@@ -235,6 +249,9 @@ export async function reviewWorkerOutputs(goal: string, workers: Array<{ workerN
   verdict: "approved" | "needs_revision" | "rejected";
   report: string;
 }> {
+  // V400 F2: 评审会话工具隔离 (codex spec_plan.rs:973 对齐) — 评审只读, 明确禁止写/执行类工具
+  const REVIEW_TOOLS = ["review_output", "sag_retrieve", "sag_search", "sag_get_event"];
+  const REVIEW_BANNED = ["file_write", "run_code", "sag_ingest", "apply_patch", "computer_use"];
   const model = resolveModelAlias(getRoleModel("plan"));
   const workerParts = workers.map((w) => `[${w.workerName}] ${w.goal}\n${(w.result || "").slice(0, 400)}`).join("\n\n");
   const reviews: Array<{ reviewer: string; verdict: string; strengths: string; weaknesses: string; score: number }> = [];
@@ -250,6 +267,7 @@ export async function reviewWorkerOutputs(goal: string, workers: Array<{ workerN
         messages: [{
           role: "user",
           content: `你是${rv.role}。独立评审以下多 Agent 研究报告（关注: ${rv.focus}）:
+【评审会话约束】你仅可读取材料与检索, 禁止任何写/执行类操作(文件写入/代码执行/入库/补丁)。
 ${guardUserInput(goal, "研究目标")}
 工人产出:
 ${workerParts.slice(0, 2500)}

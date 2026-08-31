@@ -46,6 +46,8 @@ export interface ReflectEntry {
   score: number;
   issues: string[];
   action: "complete" | "replan";
+  /** V400: 本轮已评估的步骤 id(供下轮世界状态 diff) */
+  reviewedStepIds?: string[];
 }
 
 export interface AgentTaskRecord {
@@ -294,7 +296,18 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
   // 差距D(DSH hooks): 任务开始钩子
   try {
     const { agentHooks } = await import("./agent-hooks.js");
-    void agentHooks.emit("task_start", { taskId, goal: task.goal });
+    // V400 D3: SessionStart 上下文注入 (codex hook_runtime.rs:124 对齐) — 钩子输出写入启动上下文
+    try {
+      const { agentHooks: hooks2 } = await import("./agent-hooks.js");
+      const startOut = await hooks2.emit("task_start", { taskId, goal: task.goal, phase: "session_start" });
+      const ctx = startOut.map((r) => r.output).filter(Boolean).join("\n");
+      if (ctx) {
+        await pool.query(
+          `update agent_tasks set progress = $2, updated_at = now() where id = $1::uuid`,
+          [taskId, `启动上下文: ${ctx.slice(0, 200)}`]
+        );
+      }
+    } catch { /* SessionStart 钩子失败不阻塞 */ }
     // 差距E③(Codex turn_diff_tracker): 工作区快照（任务结束时对比变更）
     const { snapshotWorkspace } = await import("./agent-hooks.js");
     snapshotWorkspace(taskId);
@@ -356,9 +369,46 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
     for (let i = current.currentStep; i < current.plan.length; i++) {
       const latest = await getAgentTask(taskId);
       if (!latest || latest.status === "paused" || latest.status === "cancelled") break;
-      const step = latest.plan[i];
+      let step = latest.plan[i];
       // V391(P0-4): 人工审批门 — 高危步骤执行前挂起等用户批准（已批准的步骤跳过检查）
       if (isHighRiskStep(step) && !(step as any).approved) {
+        // V400 C6: 审批缓存命中 → 直接跳过 (codex ApprovalCacheKey 对齐)
+        try {
+          const { getCachedApproval } = await import("./approval-cache-service.js");
+          const cached = getCachedApproval(taskId, step.title, step.query || step.title);
+          if (cached === "allow") {
+            (step as any).approved = true;
+            console.log(`[agent] V400 C6 审批缓存命中: ${step.title}`);
+            await logAgentExec({ taskId, stepId: step.id, action: "approval", tool: "cache-gate", inputSummary: step.title, outputSummary: "缓存命中自动允许" });
+          } else if (cached === "deny") {
+            const msg = `步骤被审批缓存拒绝(先前已拒绝): ${step.title}`;
+            await updateStep(taskId, i, { status: "failed", result: msg });
+            failures.push(`[${step.title}] ${msg}`);
+            console.log(`[agent] V400 C6 审批缓存拒绝: ${step.title}`);
+            await logAgentExec({ taskId, stepId: step.id, action: "approval", tool: "cache-gate", inputSummary: step.title, outputSummary: "缓存拒绝", status: "failed" });
+            continue;
+          }
+        } catch { /* 缓存不可用降级正常审批 */ }
+      }
+      if (isHighRiskStep(step) && !(step as any).approved) {
+        // V400: PermissionRequest 钩子 (codex approvals.rs:495 三级链第一级) — allow/deny 即终局, 无则降级人工
+        let hookDecision: "allow" | "deny" | "none" = "none";
+        try {
+          const { agentHooks } = await import("./agent-hooks.js");
+          hookDecision = await agentHooks.emitPermissionRequest({ taskId, stepId: step.id, tool: step.type, action: step.query || step.title, reason: `高危操作: ${step.query || step.title}` });
+        } catch { /* 钩子失败降级人工 */ }
+        if (hookDecision === "allow") {
+          await updateStep(taskId, i, { status: "done" } as any);
+          (step as any).approved = true;
+          console.log(`[agent] V400 Permission钩子允许: ${step.title}`);
+          await logAgentExec({ taskId, stepId: step.id, action: "approval", tool: "hook-gate", inputSummary: step.title, outputSummary: "钩子自动允许" });
+        } else if (hookDecision === "deny") {
+          const msg = `步骤被 Permission 钩子拒绝: ${step.query || step.title}`;
+          await updateStep(taskId, i, { status: "failed", result: msg });
+          failures.push(`[${step.title}] ${msg}`);
+          console.log(`[agent] V400 Permission钩子拒绝: ${step.title}`);
+          await logAgentExec({ taskId, stepId: step.id, action: "approval", tool: "hook-gate", inputSummary: step.title, outputSummary: "钩子拒绝", status: "failed" });
+        } else {
         const req = { stepIdx: i, title: step.title, action: `${step.type}「${step.title}」`, reason: `高危操作: ${step.query || step.title}` };
         await pool.query(
           `update agent_tasks set status = 'awaiting_approval', approval_request = $2::jsonb, progress = $3, updated_at = now() where id = $1::uuid`,
@@ -367,6 +417,7 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
         await logAgentExec({ taskId, stepId: step.id, action: "approval", tool: "human-gate", inputSummary: step.title, outputSummary: "等待用户批准" });
         // V395-2: SSE — 挂起等待审批事件
         publishAgentProgress({ type: "task", taskId, data: { status: "awaiting_approval", progress: `等待批准: ${step.title}`, approvalRequest: req } });
+        }
         // 返回给调用方（任务挂起, 等 approve/reject 后 resume 继续）
         return getAgentTask(taskId) as Promise<AgentTaskRecord>;
       }
@@ -375,14 +426,45 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
       publishAgentProgress({ type: "step", taskId, data: { stepIndex: i, step, status: "running" } });
       const execStart = Date.now();
       try {
+        // V400: PreToolUse 钩子 (codex hook_runtime.rs:184 对齐) — 可拒绝或改写输入
+        try {
+          const { agentHooks } = await import("./agent-hooks.js");
+          const pre = await agentHooks.emitPreToolUse({ taskId, stepId: step.id, tool: step.type, input: (step.query || "").slice(0, 2000), title: step.title });
+          if (pre.blocked) {
+            const msg = `步骤被 PreToolUse 钩子拒绝: ${pre.reason || "无理由"}`;
+            await updateStep(taskId, i, { status: "failed", result: msg });
+            failures.push(`[${step.title}] ${msg}`);
+            continue;
+          }
+          if (pre.updatedInput) {
+            step = { ...step, query: String(pre.updatedInput.query ?? pre.updatedInput.input ?? step.query) };
+          }
+        } catch { /* 钩子失败不阻塞 */ }
         // V395-5: 步骤级重试退避（指数退避 1s/2s/4s 最多 3 次, 持续故障放弃）
         const exec = await runStepWithRetry(taskId, step, stepRunner);
+        // V400: Elicitation 等待 (codex elicitation.rs 对齐) — 工具结果返回模型前等追问完成, 避免乱序
+        try {
+          const { agentElicitationService } = await import("./agent-elicitation-service.js");
+          if (agentElicitationService.isPaused()) {
+            await agentElicitationService.waitUntilClear(30_000);
+            console.log(`[agent] V400 elicitation wait cleared (step ${step.title})`);
+          }
+        } catch { /* 等待失败不阻塞 */ }
         const out = typeof exec === "string" ? { result: exec } : exec;
         // V323: 完成验证（retrieve→db_check, 其他→llm_check）
         const verification = step.type === "retrieve"
           ? { verified: !!out.result && out.result.length > 0, how: "db_check" as const, evidence: out.result ? `检索返回 ${out.result.length} 字符` : "无结果" }
           : { verified: !!out.result, how: "llm_check" as const, evidence: out.result ? "步骤执行完成" : "无输出" };
         await updateStep(taskId, i, { status: "done", result: out.result, detail: out.detail, source: out.source, verification });
+        // V400: PostToolUse 钩子 (codex hook_runtime.rs:285 对齐) — 可替换模型可见输出
+        try {
+          const { agentHooks } = await import("./agent-hooks.js");
+          const post = await agentHooks.emitPostToolUse({ taskId, stepId: step.id, tool: step.type, toolInput: (step.query || "").slice(0, 1000), toolResponse: String(out.result || "").slice(0, 2000) });
+          if (post.failureMessage) {
+            out.result = `【钩子反馈】${post.failureMessage}`;
+            await updateStep(taskId, i, { status: "done", result: out.result });
+          }
+        } catch { /* PostToolUse 失败不阻塞 */ }
         // V395-2: SSE — 步骤完成事件（含结果/验证）
         publishAgentProgress({ type: "step", taskId, data: { stepIndex: i, step: { ...step, status: "done", result: out.result, detail: out.detail, source: out.source, verification }, verification } });
         // V391(P2-4): 统一执行日志
@@ -390,6 +472,7 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
           taskId, stepId: step.id, action: "tool_call", tool: step.type,
           inputSummary: step.query || step.title, outputSummary: out.result,
           status: verification.verified ? "ok" : "failed", durationMs: Date.now() - execStart,
+          spanType: "TOOL",
         });
         // V391: 失败回流 — 未验证的结果视为失败原因，注入下一轮计划
         if (!verification.verified) failures.push(`[${step.title}] ${verification.evidence}`);
@@ -397,6 +480,27 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
           `update agent_tasks set current_step = $2, progress = $3, updated_at = now() where id = $1`,
           [taskId, i + 1, `第 ${i + 1}/${latest.plan.length} 步完成: ${step.title}`]
         );
+        // V400: Mid-turn 滚动压缩 (codex turn.rs:414 对齐) — 步骤结果累积超窗 → 压缩历史继续, 不终止
+        try {
+          const { estimateTokens, contextWindowLimit, taskContextTokens, advanceContextWindow } = await import("./agent-reminder-service.js");
+          const { compressContext } = await import("./context-compressor.js");
+          const stepChars = String(out.result || "").length;
+          const ctxTokens = await taskContextTokens(taskId);
+          if (ctxTokens > contextWindowLimit() * 0.9) {
+            const latest2 = await getAgentTask(taskId);
+            const doneSteps = (latest2?.plan || []).filter((s: any) => s.status === "done" && s.result);
+            const messages = doneSteps.map((s: any) => ({ role: "user" as const, content: `[${s.title}] ${s.result}` }));
+            const compressed = compressContext(latest2?.goal || "", messages);
+            // 压缩摘要写回 reflect_log 上下文标记(提示后续轮次基于摘要)
+            await pool.query(
+              `update agent_tasks set progress = $2, updated_at = now() where id = $1`,
+              [taskId, `上下文已达 ${Math.round(ctxTokens / 1000)}K tokens, 已滚动压缩(保留最新 2 轮, ${compressed.compressedCount} 段)`]
+            );
+            // V400 A9: 滚动窗口推进 — 新窗口使 tokenBudgetReminder 重新去重
+            advanceContextWindow(taskId, `compact-${loop + 1}`);
+            console.log(`[agent] V400 mid-turn compact: ${Math.round(ctxTokens / 1000)}K → ${compressed.outputChars} chars (${compressed.compressedCount} 段)`);
+          }
+        } catch { /* 压缩失败不阻塞(下轮 reflect 仍会压缩) */ }
       } catch (e: any) {
         const errMsg = String(e?.message || e).slice(0, 200);
         await updateStep(taskId, i, { status: "failed", result: errMsg });
@@ -417,7 +521,14 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
     // ─── observe + reflect: LLM 评估本轮产出质量 ───
     const latest = await getAgentTask(taskId);
     if (!latest || latest.status !== "running") break;
-    const reflect = await reflectOnTask(latest, failures);
+    // V400: 预算/时间提醒注入 (codex 对齐) — 模型可见的预算约束, 窗口去重
+    let reminders = "";
+    try {
+      const { buildReminders, currentTimeReminder } = await import("./agent-reminder-service.js");
+      const windowId = `loop-${loop + 1}`;
+      reminders = (await buildReminders(taskId, latest.goal, windowId)) + "\n" + currentTimeReminder();
+    } catch { /* 提醒失败不阻塞 */ }
+    const reflect = await reflectOnTask(latest, failures, reminders);
     await appendReflect(taskId, reflect);
     // 借鉴3(DSH): 每轮完成写 checkpoint（进程重启后按快照续跑）
     await writeRoundCheckpoint(taskId, loop + 1, latest.plan, failures);
@@ -431,6 +542,14 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
 
     if (reflect.verdict === "pass") {
       // ─── 达标 → 汇总完成 ───
+      // V400: Stop 钩子 (codex run_turn_stop_hooks 对齐) — 回合结束前, 可 block 注入继续
+      try {
+        const { agentHooks } = await import("./agent-hooks.js");
+        const stop = await agentHooks.emitStop({ taskId, goal: latest.goal, loopCount: loop + 1, reflectScore: reflect.score, status: "completed" });
+        if (stop.shouldBlock) {
+          console.log(`[agent] V400 Stop钩子 block: ${stop.blockMessages[0]?.slice(0, 80)}`);
+        }
+      } catch { /* Stop 钩子失败不阻塞 */ }
       const verifiedSteps = latest.plan.filter((s) => s.status === "done" && s.verification?.verified);
       const summary = await summarizeResult(latest.goal, verifiedSteps);
       await pool.query(
@@ -629,7 +748,62 @@ export async function controlAgentTask(taskId: string, action: "pause" | "resume
   const status = action === "pause" ? "paused" : action === "resume" ? "running" : "cancelled";
   await pool.query("update agent_tasks set status = $2, updated_at = now() where id = $1", [taskId, status]);
   if (action === "cancel") void clearTaskTerminalState(taskId);  // G10: 终态清理
+  // V400 B3: 挂起优雅关停 (codex turn_suspension.rs 对齐) — 挂起/取消前写检查点(进程重启后可恢复)
+  if (action === "pause" || action === "cancel") {
+    try {
+      const task = await getAgentTask(taskId);
+      if (task && task.status !== "completed" && task.status !== "failed") {
+        await writeRoundCheckpoint(taskId, (task.loopCount || 0) + 1, task.plan, []);
+        // 同步审批缓存/邮箱状态到日志(供恢复)
+        try {
+          const { agentMailboxService } = await import("./agent-mailbox-service.js");
+          agentMailboxService.deferToNextTurn(taskId);
+        } catch { /* 邮箱状态失败不阻塞 */ }
+        console.log(`[agent] V400 B3 ${action} 前检查点已写: ${taskId.slice(0, 8)} loop=${(task.loopCount || 0) + 1}`);
+      }
+    } catch { /* 检查点失败不阻塞 */ }
+  }
   return getAgentTask(taskId) as Promise<AgentTaskRecord>;
+}
+
+/** V400 B1: steer 允许的任务状态(纯函数供测试) */
+export function isSteerableStatus(status: string): boolean {
+  return ["running", "awaiting_approval", "paused"].includes(status);
+}
+
+/**
+ * V400 B1: Steer 输入 (codex turn_input.rs:551 对齐)
+ * 任务运行中注入新输入(用户中途补充/转向), 合并进下一轮 reflect/replan prompt
+ * 校验: 任务必须 running/awaiting_approval; 输入非空
+ */
+export async function steerAgentTask(taskId: string, input: string): Promise<{ ok: boolean; task?: AgentTaskRecord; error?: string }> {
+  const text = String(input || "").trim();
+  if (!text) return { ok: false, error: "steer 输入不能为空" };
+  const task = await getAgentTask(taskId);
+  if (!task) return { ok: false, error: "任务不存在" };
+  if (!isSteerableStatus(task.status)) {
+    return { ok: false, error: `任务状态 ${task.status} 不可 steer（仅 running/awaiting_approval/paused）` };
+  }
+  // 追加到 reflect_log 作为用户反馈(下轮 reflect 会合并), 并标记 progress
+  const feedback = `【用户转向输入】${text.slice(0, 1000)}`;
+  const newLog = [...(task.reflectLog || []), {
+    round: (task.loopCount || 0) + 1,
+    verdict: "fail" as const,
+    score: 0,
+    issues: [feedback],
+    action: "replan" as const,
+  }].slice(-10);
+  await pool.query(
+    `update agent_tasks set reflect_log = $2::jsonb, progress = $3, updated_at = now() where id = $1`,
+    [taskId, JSON.stringify(newLog), `收到转向输入, 将在下一轮评估中合并`]
+  );
+  // 若 paused → 恢复运行(steer 隐含继续)
+  if (task.status === "paused") {
+    await pool.query(`update agent_tasks set status = 'running', updated_at = now() where id = $1`, [taskId]);
+  }
+  console.log(`[agent] V400 B1 steer: ${taskId.slice(0, 8)} ← ${text.slice(0, 40)}`);
+  const updated = await getAgentTask(taskId);
+  return { ok: true, task: updated ?? undefined };
 }
 
 /** 差距C③: 目标清晰度评估 — 过短/无动词/模糊词 → ambiguous（对齐 Codex elicitation） */
@@ -707,6 +881,13 @@ export async function approveAgentStep(taskId: string, approve: boolean, note?: 
   if (!task) throw new Error("任务不存在");
   if (task.status !== "awaiting_approval" || !task.approvalRequest) throw new Error("任务不在等待审批状态");
   const req = task.approvalRequest as any;
+  // V400 C6: 审批缓存 (codex approvals.rs:155 ApprovalCacheKey 对齐) — 批准的命令写入缓存, 同任务同操作免重复审批
+  if (approve || action === "approve" || action === "edit") {
+    try {
+      const { cacheApproval } = await import("./approval-cache-service.js");
+      await cacheApproval(taskId, String(req.title || ""), String(req.action || ""), true);
+    } catch { /* 缓存失败不阻塞 */ }
+  }
   if (approve || action === "approve" || action === "edit") {
     // S2: 只标记当前步骤 approved（不再批量标记后续高危步骤 — 每个高危步骤须单独审批）
     // 编辑时用修改后的参数覆盖当前步骤参数
@@ -732,6 +913,11 @@ export async function approveAgentStep(taskId: string, approve: boolean, note?: 
     );
   } else {
     // 拒绝: 该步跳过标记 done(未验证)，继续后续步骤
+    // V400 C6: 拒绝写缓存(同任务同操作后续直接拒绝)
+    try {
+      const { cacheApproval } = await import("./approval-cache-service.js");
+      await cacheApproval(taskId, String(req.title || ""), String(req.action || ""), false);
+    } catch { /* 缓存失败不阻塞 */ }
     const plan = [...task.plan];
     plan[req.stepIdx] = { ...plan[req.stepIdx], status: "done", result: `（已被用户拒绝执行: ${note || "无理由"}）` };
     await pool.query(
@@ -865,11 +1051,22 @@ export async function backfillActualCost(taskId: string): Promise<void> {
 }
 
 /** V391: reflect — LLM 评估本轮产出（问题+评分+判定） */
-async function reflectOnTask(task: AgentTaskRecord, failures: string[]): Promise<ReflectEntry> {
+async function reflectOnTask(task: AgentTaskRecord, failures: string[], reminders = ""): Promise<ReflectEntry> {
   const doneSteps = task.plan.filter((s) => s.status === "done");
-  // V393-2: 上下文压缩 — 步骤结果超过阈值时用摘要（防多轮循环上下文爆炸）
-  // V396-4: 改用分层压缩器 compressContext（保留关键信息, 替代纯截断）
-  let stepSummary = doneSteps.map((s) => `- ${s.title} (${s.type}): ${(s.result || "").slice(0, 80)}${s.verification?.verified ? " [已验证]" : " [未验证]"}`).join("\n");
+  // V400: 世界状态 diff (codex mod.rs:3308 对齐) — 只注入本轮新增/更新的步骤
+  // 已评估步骤 id 集合(来自 reflectLog 的 reviewedStepIds), 本轮只带新步骤 + 失败项
+  const evaluatedIds = new Set<string>();
+  for (const r of task.reflectLog || []) {
+    for (const sid of r.reviewedStepIds || []) evaluatedIds.add(sid);
+  }
+  const freshSteps = doneSteps.filter((s) => !evaluatedIds.has(s.id));
+  const diffSteps = freshSteps.length > 0 ? freshSteps : doneSteps;
+  let stepSummary = diffSteps
+    .map((s) => `- ${s.title} (${s.type}): ${(s.result || "").slice(0, 80)}${s.verification?.verified ? " [已验证]" : " [未验证]"}`).join("\n");
+  // 多轮时附加"已评估步骤"标记(防止 reflect 忘记上下文, 但不再全量注入)
+  if (evaluatedIds.size > 0 && freshSteps.length > 0) {
+    stepSummary = `[本轮新增/更新步骤]\n${stepSummary}\n[已评估历史步骤 ${evaluatedIds.size} 个, 结论已在上轮记录]`;
+  }
   const rawLen = doneSteps.reduce((a, s) => a + (s.result || "").length + (s.detail || "").length, 0);
   if (rawLen > 30_000) {
     try {
@@ -898,6 +1095,7 @@ ${guardUserInput(task.goal, "研究目标")}
 本轮执行结果:
 ${stepSummary || "（无步骤产出）"}
 ${failures.length > 0 ? `失败/未验证项:\n${failures.map((f) => "- " + f).join("\n")}` : ""}
+${reminders}
 请判断: 产出是否已覆盖目标的关键维度并达到可交付质量？
 只返回 JSON: {"verdict":"pass|fail","score":0~1,"issues":["问题1","问题2"]}
 - score ≥ ${PASS_THRESHOLD} 才判 pass
@@ -916,6 +1114,7 @@ ${failures.length > 0 ? `失败/未验证项:\n${failures.map((f) => "- " + f).j
       score,
       issues: Array.isArray(parsed.issues) ? parsed.issues.map(String).slice(0, 5) : [],
       action: verdict === "pass" ? "complete" : "replan",
+      reviewedStepIds: task.plan.filter((s) => s.status === "done").map((s) => s.id),
     };
   } catch {
     // reflect 失败 → 保守判定: 有已验证步骤即 pass（避免无限循环）
@@ -926,6 +1125,7 @@ ${failures.length > 0 ? `失败/未验证项:\n${failures.map((f) => "- " + f).j
       score: verified > 0 ? 0.7 : 0.3,
       issues: verified > 0 ? [] : ["无有效产出"],
       action: verified > 0 ? "complete" : "replan",
+      reviewedStepIds: task.plan.filter((s) => s.status === "done").map((s) => s.id),
     };
   }
 }
@@ -1170,6 +1370,7 @@ export const agentTaskService = {
   getAgentTask,
   listAgentTasks,
   controlAgentTask,
+  steerAgentTask,    // V400 B1: 运行中转向输入
   deleteAgentTask,  // V388: 删除任务
   approveAgentStep, // V391(P0-4): 人工审批门
   timeoutPendingApprovals, // V396-11: 审批超时=拒绝

@@ -46,6 +46,30 @@ export const pdfParseTool = {
   },
 };
 
+/** Agent 工具定义（pdf_convert）— V399: mineru-go 双模式转换（Agent 轻量/Precision 精准自动路由, 支持扫描件/图片/Office 文档） */
+export const pdfConvertTool = {
+  name: "pdf_convert",
+  label: "文档转换(MinerU)",
+  description: "转换 PDF/图片/Office 文档为 Markdown（mineru-go 自动路由: ≤10MB≤20页走 Agent 轻量 API, 大文件/扫描件走 Precision 精准 API; 产出 manifest + 资源归一化）",
+  params: {
+    filePath: { type: "string", required: true, desc: "文档路径(pdf/png/jpg/docx/pptx/xlsx)" },
+    mode: { type: "string", desc: "强制模式 auto/agent/precision(默认auto)" },
+    ocr: { type: "boolean", desc: "启用OCR(扫描件)" },
+    maxChars: { type: "number", desc: "最多返回字符数(默认8000; 0=全部)" },
+  },
+  risk: "safe" as const,
+  run: async (args: Record<string, unknown>): Promise<string> => {
+    const { convertViaMineruGo } = await import("./mineru-go-adapter.js");
+    const r = convertViaMineruGo(String(args.filePath), {
+      mode: (args.mode as any) || "auto",
+      ocr: !!args.ocr,
+      maxChars: args.maxChars === undefined ? 8000 : Number(args.maxChars),
+    });
+    if (!r.ok) return "文档转换失败: " + (r.error || "");
+    return `【文档转换·mineru-go · ${r.mode}】\n${r.content || "(转换完成, 内容为空)"}`;
+  },
+};
+
 /**
  * 语料库提取: PDF 解析后自动识别"可引用句式候选"（积累入口之一）
  * 启发式规则: 找 2-3 句的学术性表述（含学术动词/连接词/引用标记）, 标注来源供人工筛选
@@ -82,4 +106,4 @@ export async function extractCorpusCandidatesFromPdf(
   return { ok: true, candidates };
 }
 
-export const agentPdfTool = { parsePdf, importPdfFull, pdfParseTool, extractCorpusCandidatesFromPdf };
+export const agentPdfTool = { parsePdf, importPdfFull, pdfParseTool, pdfConvertTool, extractCorpusCandidatesFromPdf };
