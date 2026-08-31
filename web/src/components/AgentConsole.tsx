@@ -1154,6 +1154,13 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
   };
   // 前端缺口⑥⑦: 运行时诊断（Provider/并发/队列/内存/子进程）
   const [diag, setDiag] = useState<Record<string, any>>({});
+  const [runtime, setRuntime] = useState<Record<string, any>>({});
+  const loadRuntimeStatus = async () => {
+    try {
+      const r = await fetch("/api/agent/runtime-status");
+      setRuntime(await r.json());
+    } catch { /* 状态不可用 */ }
+  };
   const loadDiagnostics = async () => {
     // 审计修复: 各接口独立容错（任一失败不影响其他, 不再一败全零）
     const [d, p, m, s, c] = await Promise.all([
@@ -1181,7 +1188,7 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
     } catch { /* 重置失败忽略 */ }
   };
   // 批次4: 挂载时加载 OAuth/插件模板/插件文件（ToolsTab 内, 与函数同作用域）
-  useEffect(() => { void loadOAuthAccounts(); void loadPluginTemplates(); void loadPluginFiles(); void loadDiagnostics(); void loadWorkflows(); void loadCreds(); void loadLiveTools(); }, []);
+  useEffect(() => { void loadOAuthAccounts(); void loadPluginTemplates(); void loadPluginFiles(); void loadDiagnostics(); void loadRuntimeStatus(); void loadWorkflows(); void loadCreds(); void loadLiveTools(); }, []);
   // 审计修复: 实时工具清单（含 pdf_parse/插件工具, 与后端实际工具集对齐）
   const [liveTools, setLiveTools] = useState<Array<{ name: string; label: string; risk: string; description: string }>>([]);
   const loadLiveTools = async () => {
@@ -1465,6 +1472,45 @@ function ToolsTab({ demoOn }: { demoOn: boolean }) {
           </div>
         )}
       </div>
+      {/* V400: 运行时状态 — 预算/Elicitation/审批/熔断 */}
+      <div className="rounded-lg border border-violet-500/20 p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-xs font-medium text-violet-400">运行时状态</span>
+          <span className="text-[10px] text-muted-foreground">预算提醒 / 澄清追问 / 审批链 / 熔断</span>
+          <button type="button" aria-label="刷新状态" onClick={() => void loadRuntimeStatus()}
+            className="ml-auto rounded bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-400 hover:bg-violet-500/20">刷新</button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-[10px]">
+          <div className="rounded bg-slate-900/50 p-2">
+            <div className="text-muted-foreground">上下文预算</div>
+            <div className="mt-0.5 font-medium text-slate-300">{runtime.reminders?.contextWindowLimit ? `${runtime.reminders.contextWindowLimit.toLocaleString()} tokens` : "—"}</div>
+            {(runtime.reminders?.log || []).length > 0 && (
+              <div className="mt-1 max-h-16 space-y-0.5 overflow-y-auto">
+                {(runtime.reminders.log as any[]).slice(0, 3).map((r: any, i: number) => (
+                  <div key={i} className="truncate text-[9px] text-slate-500" title={r.message}>{r.message}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="rounded bg-slate-900/50 p-2">
+            <div className="text-muted-foreground">澄清追问</div>
+            <div className={runtime.elicitation?.paused ? "mt-0.5 font-medium text-amber-400" : "mt-0.5 font-medium text-emerald-400"}>
+              {runtime.elicitation?.paused ? `等待用户回答（${(runtime.elicitation.pending || []).length} 个）` : "无待答追问"}
+            </div>
+          </div>
+          <div className="rounded bg-slate-900/50 p-2">
+            <div className="text-muted-foreground">Guardian 熔断</div>
+            <div className={runtime.guardian?.open ? "mt-0.5 font-medium text-red-400" : "mt-0.5 font-medium text-emerald-400"}>
+              {runtime.guardian?.open ? `已触发（${runtime.guardian.count}/${runtime.guardian.max}）` : `正常（${runtime.guardian?.count ?? 0}/${runtime.guardian?.max ?? 3}）`}
+            </div>
+          </div>
+          <div className="rounded bg-slate-900/50 p-2">
+            <div className="text-muted-foreground">审批链</div>
+            <div className="mt-0.5 font-medium text-slate-300">Hook → Guardian → User</div>
+          </div>
+        </div>
+      </div>
+
       {/* 前端缺口⑥⑦: Provider 状态 + 运行时诊断 */}
       <div className="rounded-lg border border-slate-500/20 p-3">
         <div className="mb-2 flex items-center gap-2">

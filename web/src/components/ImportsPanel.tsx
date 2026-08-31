@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu, NotebookPen, Share2 } from "lucide-react";
 import { NotesPanel } from "./NotesPanel";
+import { ToolRunner } from "./ToolRunner";
 
 interface PaperHit {
   title: string; abstract?: string; authors: string[]; year?: number;
@@ -256,6 +257,17 @@ export function ImportsPanel() {
         <NotesPanel />
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
+        {/* 文档转换(扫描PDF/图片→Markdown, MinerU) */}
+        <ToolRunner
+          tool="pdf_convert"
+          title="文档转换"
+          fields={[
+            { key: "filePath", label: "文档路径", placeholder: "D:/xxx.pdf (pdf/png/jpg/docx/pptx/xlsx)" },
+            { key: "mode", label: "模式", type: "select", options: ["auto", "agent", "precision"] },
+            { key: "ocr", label: "启用 OCR", type: "select", options: ["false", "true"] },
+          ]}
+          hint="转换结果 Markdown（扫描件可 OCR）"
+        />
         {/* Zotero */}
         <div className="flex flex-col rounded-xl border bg-card/60 p-4 backdrop-blur-sm">
           <div className="mb-3 flex items-center gap-2">

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import { Loader2, BookOpenCheck, Grid3X3, AlertTriangle, BadgeCheck, Library, Target, Sparkles, Wand2, GitMerge, ShieldAlert, MessagesSquare, BookMarked, ArrowRight, TrendingUp, FlaskConical, PenLine, CheckCircle2, XCircle, Layers, Link2, Route, Tags, Scale, Info, RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
+import { ToolRunner } from "./ToolRunner";
 
 const TABS = [
   // V395-31: 刘衍峰式选题方法系统（置顶）
@@ -257,6 +258,22 @@ export const CJournalPanel: FC = () => {
               <span className="mx-2 text-border">|</span>
               <span className="font-medium text-primary">方法</span>：四步法 / 选题矩阵 / 悖论 / 命名 / 跨学科 / 编辑校验
             </div>
+            <details className="mt-2 rounded-xl border border-white/10 bg-background/40 px-3 py-2">
+              <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                📄 公文起草 — 按 GB/T 9704 规范起草通知/请示/报告/调研报告等 23 种文种
+              </summary>
+              <div className="mt-2">
+                <ToolRunner
+                  tool="gongwen_draft"
+                  title="公文起草"
+                  fields={[
+                    { key: "task", label: "任务", placeholder: "起草一份关于资本下乡规范引导的通知", type: "textarea" },
+                    { key: "docType", label: "文种", type: "select", options: ["", "通知", "请示", "报告", "函", "纪要", "通报", "批复", "意见", "决定", "调研报告", "工作总结", "工作方案"] },
+                  ]}
+                  hint="先查先核再写 — 政策依据真实可查, 不确定处标【待核实】"
+                />
+              </div>
+            </details>
             <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {stats.map((s) => (
                 <div key={s.label} className="group relative overflow-hidden rounded-xl border border-border/50 bg-background/50 p-3 backdrop-blur transition-all hover:border-primary/40 hover:shadow-lg">
