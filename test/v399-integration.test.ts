@@ -24,6 +24,14 @@ function resolvePy(): string {
 const PY = resolvePy();
 const hasNet = process.env.SKIP_NETWORK_TESTS !== "1";
 
+// V400 CI 修复: python 依赖检测 — 无 pandas 的裸环境(CI ubuntu)跳过 python 依赖用例, 不报错
+let pyHasPandas = true;
+try {
+  execFileSync(PY, ["-c", "import pandas"], { encoding: "utf-8", timeout: 15_000, stdio: "pipe" });
+} catch {
+  pyHasPandas = false;
+}
+
 function runPy(script: string, args: string[], timeoutMs = 90_000): string {
   return execFileSync(PY, [script, ...args], { encoding: "utf-8", timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true });
 }
@@ -35,7 +43,7 @@ function tmpDir(): string {
 // ═══ 1. 元分析 (empirical_metaanalysis.py) ═══
 describe("empirical_metaanalysis", () => {
   const SCRIPT = join(ROOT, "scripts", "empirical_metaanalysis.py");
-  it.skipIf(!existsSync(SCRIPT))("合成数据 → 随机效应+森林图+依赖审计", () => {
+  it.skipIf(!existsSync(SCRIPT) || !pyHasPandas)("合成数据 → 随机效应+森林图+依赖审计", () => {
     const dir = tmpDir();
     try {
       const data = {
@@ -71,7 +79,7 @@ describe("empirical_metaanalysis", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it.skipIf(!existsSync(SCRIPT))("数据不足 (k<2) → 错误提示不崩溃", () => {
+  it.skipIf(!existsSync(SCRIPT) || !pyHasPandas)("数据不足 (k<2) → 错误提示不崩溃", () => {
     const dir = tmpDir();
     try {
       const data = { columnOrder: ["yi", "vi"], rows: [[0.5, 0.1]] };
@@ -87,7 +95,7 @@ describe("empirical_metaanalysis", () => {
 // ═══ 2. 引文三维核验 (verify_claim.py) ═══
 describe("verify_claim", () => {
   const SCRIPT = join(ROOT, "vendor", "citation-lab", "verify_claim.py");
-  it.skipIf(!existsSync(SCRIPT) || !hasNet)("真实 DOI → 元数据 green + 支持度评估 [network]", { timeout: 120_000 }, () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("真实 DOI → 元数据 green + 支持度评估 [network]", { timeout: 120_000 }, () => {
     const out = runPy(SCRIPT, [
       "该研究利用野外监测数据揭示了全球飞行昆虫生物量在27年间下降超过75%",
       "--doi", "10.1371/journal.pone.0185809",
@@ -102,14 +110,14 @@ describe("verify_claim", () => {
     expect(typeof r.dimensions.support.score).toBe("number");
   });
 
-  it.skipIf(!existsSync(SCRIPT) || !hasNet)("伪造 DOI → 元数据 red [network]", { timeout: 120_000 }, () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("伪造 DOI → 元数据 red [network]", { timeout: 120_000 }, () => {
     const out = runPy(SCRIPT, ["测试断言", "--doi", "10.9999/definitely-fake-doi-xyz"], 110_000);
     const r = JSON.parse(out);
     expect(r.ok).toBe(true);
     expect(r.dimensions.metadata.status).toBe("red");
   });
 
-  it.skipIf(!existsSync(SCRIPT))("无摘要无 DOI → white 不崩溃", () => {
+  it.skipIf(!existsSync(SCRIPT) || !pyHasPandas)("无摘要无 DOI → white 不崩溃", () => {
     const out = runPy(SCRIPT, ["测试断言"]);
     const r = JSON.parse(out);
     expect(r.ok).toBe(true);
@@ -120,7 +128,7 @@ describe("verify_claim", () => {
 // ═══ 3. OA 回退 (oa_fallback.py) ═══
 describe("oa_fallback", () => {
   const SCRIPT = join(ROOT, "vendor", "instsci-oa", "oa_fallback.py");
-  it.skipIf(!existsSync(SCRIPT) || !hasNet)("OpenAlex 检索 → 返回结果 [network]", () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("OpenAlex 检索 → 返回结果 [network]", () => {
     const out = runPy(SCRIPT, ["openalex", "agrarian political economy", "2"]);
     const r = JSON.parse(out);
     expect(r.ok).toBe(true);
@@ -129,13 +137,13 @@ describe("oa_fallback", () => {
     expect(r.items[0]).toHaveProperty("doi");
   });
 
-  it.skipIf(!existsSync(SCRIPT) || !hasNet)("Unpaywall 查真实 DOI → is_oa 布尔 [network]", () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("Unpaywall 查真实 DOI → is_oa 布尔 [network]", () => {
     const out = runPy(SCRIPT, ["oa", "10.1371/journal.pone.0185809"]);
     const r = JSON.parse(out);
     expect(typeof r.is_oa).toBe("boolean");
   });
 
-  it.skipIf(!existsSync(SCRIPT))("参数错误 → 非零退出不崩溃", () => {
+  it.skipIf(!existsSync(SCRIPT) || !pyHasPandas)("参数错误 → 非零退出不崩溃", () => {
     // oa_fallback CLI 对未知命令 exit 1 (设计如此), execFileSync 会抛 — 验证异常行为而非崩溃级错误
     expect(() => runPy(SCRIPT, ["bad-command"], 30_000)).toThrow();
   });
