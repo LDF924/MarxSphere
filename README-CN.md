@@ -13,7 +13,7 @@
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
-# MarxSphere 马研星环
+# MarxSphere
 
 **AI 驱动的马克思主义理论研究科研中枢** — 从文献检索、知识图谱到 AI Agent 与桌面端的完整科研工作台。
 

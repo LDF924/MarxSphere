@@ -251,7 +251,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 680,
-    title: "MarxSphere 马研星环",
+    title: "MarxSphere",
     backgroundColor: "#0b1120",
     autoHideMenuBar: true,
     // V411: 先隐藏窗口，渲染就绪后再显示（防启动白屏/离屏窗口残留）

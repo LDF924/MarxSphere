@@ -232,7 +232,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
             <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="mb-4 text-center">
                 <div className="text-xl font-bold">MarxSphere</div>
-                <div className="mt-1 text-xs text-muted-foreground">马研星环 · 科研智能中枢</div>
+                <div className="mt-1 text-xs text-muted-foreground">MarxSphere · 科研智能中枢</div>
               </div>
               <div className="mb-4 flex rounded-lg bg-muted/60 p-1">
                 {(["login", "register"] as const).map((m) => (
@@ -282,7 +282,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
       <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
         <div className="mb-6 text-center">
           <div className="text-2xl font-bold text-white">MarxSphere</div>
-          <div className="mt-1 text-xs text-slate-400">马研星环 · 科研智能中枢</div>
+          <div className="mt-1 text-xs text-slate-400">MarxSphere · 科研智能中枢</div>
         </div>
         <div className="mb-4 flex rounded-lg bg-white/5 p-1">
           {(["login", "register"] as const).map((m) => (
