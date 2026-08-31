@@ -44,6 +44,13 @@ jobs:
       - name: Typecheck (backend + frontend)
         run: npm run typecheck
 
+      - name: Setup Python (v399 integration tests deps)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install python deps
+        run: pip install pandas requests
+
       - name: Unit tests (154)
         run: npm test
 
