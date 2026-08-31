@@ -7,7 +7,7 @@
 @tailwind utilities;
 
 :root {
-  /* MarxSphere 马研星环 — 宇宙深邃主题（深空 + 星光金）*/
+  /* MarxSphere — 宇宙深邃主题（深空 + 星光金）*/
   --background: 222 47% 7%;
   --foreground: 210 40% 96%;
   --muted: 217 33% 15%;
