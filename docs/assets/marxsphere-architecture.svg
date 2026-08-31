@@ -1,128 +1,53 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1350" width="1200" height="1350">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0b1120"/>
-      <stop offset="100%" stop-color="#0f172a"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="1350" fill="url(#bg)"/>
-
-  <!-- 标题 -->
-  <text x="600" y="50" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere 马研星环 — 系统架构</text>
-  <text x="600" y="76" text-anchor="middle" font-size="13" fill="#94a3b8">AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）</text>
-
-  <!-- ═══ 第1层: 交互层 ═══ -->
-  <text x="30" y="110" font-size="16" font-weight="bold" fill="#fbbf24">① 交互层</text>
-  <rect x="30" y="122" width="360" height="90" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
-  <text x="210" y="152" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">Web 工作台（33 视图）</text>
-  <text x="210" y="172" text-anchor="middle" font-size="11" fill="#94a3b8">对话/推理/Ask检索/文献/图谱/场景/实证/Agent/评测…</text>
-  <text x="210" y="192" text-anchor="middle" font-size="11" fill="#94a3b8">Mega Menu 导航 · 6 大分类 · 中英双语</text>
-
-  <rect x="420" y="122" width="360" height="90" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
-  <text x="600" y="152" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">桌面端（Electron + NSIS）</text>
-  <text x="600" y="172" text-anchor="middle" font-size="11" fill="#94a3b8">单进程架构 · 内置后端+前端 · 安装包 159MB</text>
-  <text x="600" y="192" text-anchor="middle" font-size="11" fill="#94a3b8">首次启动全量引导 · 端口自动避让</text>
-
-  <rect x="810" y="122" width="360" height="90" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
-  <text x="990" y="152" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">外部 Agent / API</text>
-  <text x="990" y="172" text-anchor="middle" font-size="11" fill="#94a3b8">MCP Server（8 工具）· REST API（sag_xxx 令牌）</text>
-  <text x="990" y="192" text-anchor="middle" font-size="11" fill="#94a3b8">Claude Code / Codex 直连 · 租户隔离（JWT）</text>
-
-  <!-- 箭头 -->
-  <line x1="210" y1="212" x2="210" y2="240" stroke="#fbbf24" stroke-width="2"/>
-  <line x1="600" y1="212" x2="600" y2="240" stroke="#fbbf24" stroke-width="2"/>
-  <line x1="990" y1="212" x2="990" y2="240" stroke="#fbbf24" stroke-width="2"/>
-
-  <!-- ═══ 第2层: 推理与检索层 ═══ -->
-  <text x="30" y="262" font-size="16" font-weight="bold" fill="#fbbf24">② 推理与检索层</text>
-  <rect x="30" y="274" width="560" height="100" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
-  <text x="310" y="300" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">52 步深度推理链路</text>
-  <text x="310" y="320" text-anchor="middle" font-size="11" fill="#94a3b8">问题分类 → 意图识别 → 拆分子问题 → 17 路粗检索</text>
-  <text x="310" y="338" text-anchor="middle" font-size="11" fill="#94a3b8">→ Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈</text>
-  <text x="310" y="358" text-anchor="middle" font-size="11" fill="#64748b">每步可视化 · token 实时 · 检索来源可追溯 · 53 题评测 0.884</text>
-
-  <rect x="610" y="274" width="560" height="100" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
-  <text x="890" y="300" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">Ask 18 步检索流水线</text>
-  <text x="890" y="320" text-anchor="middle" font-size="11" fill="#94a3b8">多臂召回 → 加权 RRF → Cosine 重打分 → Boost 链</text>
-  <text x="890" y="338" text-anchor="middle" font-size="11" fill="#94a3b8">→ 去重 → LLM 重排 → 回取切片</text>
-  <text x="890" y="358" text-anchor="middle" font-size="11" fill="#64748b">答案带编号引用 · 18 步逐步点亮</text>
-
-  <!-- ═══ 第3层: Agent 层 ═══ -->
-  <text x="30" y="402" font-size="16" font-weight="bold" fill="#fbbf24">③ AI Agent 层（50+ 能力项 · 54 工具 = 36 Agent + 18 视图）</text>
-  <rect x="30" y="414" width="1140" height="176" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
-  <text x="600" y="440" text-anchor="middle" font-size="13" font-weight="bold" fill="#e2e8f0">编排核心</text>
-  <text x="120" y="462" font-size="11" fill="#94a3b8">· 决策循环：规划→选工具→执行→reflect→replan（≤3轮）</text>
-  <text x="120" y="480" font-size="11" fill="#94a3b8">· 任务 DAG 依赖编排 · 队列并发（信号量）· SSE 进度</text>
-  <text x="120" y="498" font-size="11" fill="#94a3b8">· 失败回流 · 人工审批门 · checkpoint 快照续跑 · token 预算</text>
-  <text x="120" y="516" font-size="11" fill="#94a3b8">· 权限分级（reader/analyst/manager/admin）· 插件热加载 · OAuth</text>
-  <text x="120" y="534" font-size="11" fill="#94a3b8">· 记忆层（OpenViking 长期 + 会话短期 + 投毒审查）· 技能蒸馏 · 会话图分叉</text>
-  <text x="120" y="552" font-size="11" fill="#22d3ee">· V400 Codex 对齐：预算/时间提醒注入 · Mid-turn 压缩不终止 · Elicitation 澄清暂停 · Stop/工具/权限钩子</text>
-  <text x="120" y="570" font-size="11" fill="#22d3ee">· 世界状态 diff · Steer 转向 · Mailbox 双通道 · 审批三级链+缓存 · Guardian 熔断 · 评审会话隔离 · 暴露矩阵</text>
-  <text x="620" y="462" font-size="11" fill="#e2e8f0" font-weight="bold">工具矩阵（54 = 36 Agent + 18 视图）：</text>
-  <text x="620" y="480" font-size="11" fill="#94a3b8">认知检索：sag_reason/sag_search/sag_retrieve/concept_trace/policy_search…</text>
-  <text x="620" y="498" font-size="11" fill="#94a3b8">执行：run_code（Python 沙箱）/runtime_exec/apply_patch/run_command…</text>
-  <text x="620" y="516" font-size="11" fill="#94a3b8">多模态：image_analyze/audio_transcribe · 实证：empirical_analysis</text>
-  <text x="620" y="534" font-size="11" fill="#94a3b8">网络：web_search/web_fetch/github_repo · 编排：agent_subagent/llm_write</text>
-
-  <!-- ═══ 第4层: 科研场景层 ═══ -->
-  <text x="30" y="582" font-size="16" font-weight="bold" fill="#fbbf24">④ 科研场景层（66 场景 · 8 大阶段）</text>
-  <rect x="30" y="594" width="1140" height="80" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
-  <text x="600" y="618" text-anchor="middle" font-size="13" font-weight="bold" fill="#e2e8f0">选题构思 → 文献调研 → 证据检索 → 数据分析 → 论文写作 → 图表制作 → 评审发表 → 系统自动化</text>
-  <text x="600" y="642" text-anchor="middle" font-size="11" fill="#94a3b8">经典文本研究 · 学术研究 · 论文写作/质量检查 · 理论思辨 · 政经C刊选题方法论 · 实证研究</text>
-  <text x="600" y="660" text-anchor="middle" font-size="11" fill="#94a3b8">标注工作区（框选/下划线/笔记）· 写作语料库（四大子库）· 期刊库（80 本）</text>
-
-  <!-- ═══ 第5层: 数据层 ═══ -->
-  <text x="30" y="702" font-size="16" font-weight="bold" fill="#fbbf24">⑤ 数据层（三库知识图谱）</text>
-  <rect x="30" y="714" width="370" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
-  <text x="215" y="742" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">Graphiti</text>
-  <text x="215" y="762" text-anchor="middle" font-size="11" fill="#94a3b8">Neo4j 11001 · 社区/超边/蒸馏</text>
-  <text x="215" y="780" text-anchor="middle" font-size="11" fill="#94a3b8">21,337 实体 · 1,085 社区 · 11,702 超边</text>
-  <text x="215" y="798" text-anchor="middle" font-size="11" fill="#94a3b8">五层蒸馏 · 166,631 关系</text>
-
-  <rect x="415" y="714" width="370" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
-  <text x="600" y="742" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">Cognee</text>
-  <text x="600" y="762" text-anchor="middle" font-size="11" fill="#94a3b8">Neo4j 11003 + LanceDB · 实体/切片</text>
-  <text x="600" y="780" text-anchor="middle" font-size="11" fill="#94a3b8">31,253 实体 · 248,417 关系 · 11,550 切片</text>
-  <text x="600" y="798" text-anchor="middle" font-size="11" fill="#94a3b8">17 种检索策略 · HYBRID</text>
-
-  <rect x="800" y="714" width="370" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
-  <text x="985" y="742" text-anchor="middle" font-size="14" font-weight="bold" fill="#e2e8f0">PostgreSQL pgvector</text>
-  <text x="985" y="762" text-anchor="middle" font-size="11" fill="#94a3b8">向量 1024 维 · 全文检索 · SQL 多跳</text>
-  <text x="985" y="780" text-anchor="middle" font-size="11" fill="#94a3b8">501 篇文献 · 7,550 切片向量</text>
-  <text x="985" y="798" text-anchor="middle" font-size="11" fill="#94a3b8">100 迁移 · 双轨评测数据</text>
-
-  <!-- ═══ 第6层: 实证工作台 ═══ -->
-  <text x="30" y="852" font-size="16" font-weight="bold" fill="#fbbf24">⑥ 实证研究工作台（17 大功能 · 含元分析）</text>
-  <rect x="30" y="864" width="1140" height="70" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
-  <text x="600" y="888" text-anchor="middle" font-size="12" fill="#e2e8f0">问卷生成 → 问卷识别 → 信效度检验（α/KMO）→ 问卷诊断 → LLM 插补 → 变量敲定</text>
-  <text x="600" y="908" text-anchor="middle" font-size="12" fill="#e2e8f0">→ 分析管道 → 回归分析（M1-M6）→ 元分析（森林图/漏斗图）→ 证据账本 → 质量闸门</text>
-  <text x="600" y="926" text-anchor="middle" font-size="11" fill="#94a3b8">Python 沙箱执行 · 论文复现级 · 结果可复现</text>
-
-  <!-- ═══ 第7层: 学习引擎(新增, V386-V393) ═══ -->
-  <text x="30" y="948" font-size="16" font-weight="bold" fill="#fbbf24">⑦ 学习引擎（V386-V393 · 借鉴 TraitTutor 源码移植）</text>
-  <rect x="30" y="960" width="1140" height="80" rx="10" fill="#1e293b" stroke="#e879f9" stroke-width="2"/>
-  <text x="600" y="984" text-anchor="middle" font-size="12" fill="#e2e8f0">事件账本+BKT掌握 → 确定性选择器 → 计划链（只重规划未开始尾部）→ 全屏学习画布</text>
-  <text x="600" y="1004" text-anchor="middle" font-size="12" fill="#e2e8f0">材料分析+三态机+一材多工件 → 间隔复习 → Compass 治理</text>
-  <text x="600" y="1022" text-anchor="middle" font-size="11" fill="#94a3b8">意图双层路由 · Quota Rotation 网关 · 组件白名单 · 答案服务端持有 · E9 学习引擎面板</text>
-
-  <!-- ═══ 第8层: 基础设施 ═══ -->
-  <text x="30" y="1066" font-size="16" font-weight="bold" fill="#fbbf24">⑧ 基础设施与运维</text>
-  <rect x="30" y="1078" width="370" height="90" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-  <text x="215" y="1104" text-anchor="middle" font-size="13" font-weight="bold" fill="#e2e8f0">评测体系</text>
-  <text x="215" y="1124" text-anchor="middle" font-size="11" fill="#94a3b8">双轨评测（规则+LLM judge）· 32 指标</text>
-  <text x="215" y="1142" text-anchor="middle" font-size="11" fill="#94a3b8">学习引擎 · 回归集 · 自愈闭环 · 296 测试</text>
-
-  <rect x="415" y="1078" width="370" height="90" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-  <text x="600" y="1104" text-anchor="middle" font-size="13" font-weight="bold" fill="#e2e8f0">模型服务</text>
-  <text x="600" y="1124" text-anchor="middle" font-size="11" fill="#94a3b8">LLM（qwen-plus/deepseek）+ Embedding（v4）</text>
-  <text x="600" y="1142" text-anchor="middle" font-size="11" fill="#94a3b8">+ Rerank（qwen3-rerank）· OpenAI 兼容可替换</text>
-
-  <rect x="800" y="1078" width="370" height="90" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-  <text x="985" y="1104" text-anchor="middle" font-size="13" font-weight="bold" fill="#e2e8f0">商业化底座</text>
-  <text x="985" y="1124" text-anchor="middle" font-size="11" fill="#94a3b8">多租户 · JWT 认证 · 计费 · BYOK</text>
-  <text x="985" y="1142" text-anchor="middle" font-size="11" fill="#94a3b8">告警中心 · 自愈巡检 · 运营管理</text>
-
-  <!-- 底部 -->
-  <text x="600" y="1204" text-anchor="middle" font-size="12" fill="#64748b">全栈 TypeScript · Fastify 5 · React 19 · Vite 8 · Electron · AGPL v3 + 商业授权</text>
-  <text x="600" y="1226" text-anchor="middle" font-size="11" fill="#64748b">© 2026 MarxSphere — AI 驱动的哲学社会科学科研中枢</text>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#0f172a"/><stop offset="100%" stop-color="#1e1b4b"/>
+</linearGradient>
+</defs>
+<rect width="1200" height="1500" fill="url(#bg)"/>
+<text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere 马研星环 — 系统架构（V400）</text>
+<text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 三库图谱 · Agent 65 工具 · 技能 201 · 实证 17 方法 · 测试 296 · Codex 对齐</text>
+<text x="30" y="128" font-size="16" font-weight="bold" fill="#fbbf24">① 交互层</text>
+<rect x="30" y="138" width="1140" height="70" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+<text x="50" y="162" font-size="11" fill="#94a3b8">· Web 工作台（40+ 视图）· 桌面端（Electron + NSIS）· 外部 Agent / API（MCP + SSE 流式）</text>
+<text x="50" y="182" font-size="11" fill="#94a3b8">· AI 对话（默认首页）· 52 步推理 · Ask 检索 · 科研场景工作台（66 场景）· 实证工作台 · 引文核验面板</text>
+<text x="30" y="238" font-size="16" font-weight="bold" fill="#f59e0b">② 推理与检索层</text>
+<rect x="30" y="248" width="1140" height="110" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+<text x="50" y="272" font-size="11" fill="#94a3b8">· 52 步深度推理链路：问题分类 → 意图识别 → 术语变体 → 子问题拆分 → 实体抽取 → 四源粗检 → 融合 → 假设 → 自评自愈</text>
+<text x="50" y="292" font-size="11" fill="#94a3b8">· Ask 18 步检索流水线：多臂召回 → RRF 融合 → Cosine 重排 → LLM 重排 → 带引用回切片</text>
+<text x="50" y="312" font-size="11" fill="#94a3b8">· Agent 工具 65 个：认知/行动/多模态/协作 + 视图工具（政策库/知识页/图谱/文献/任务/评测）</text>
+<text x="30" y="388" font-size="16" font-weight="bold" fill="#a855f7">③ Agent 编排核心（V400 Codex 对齐）</text>
+<rect x="30" y="398" width="1140" height="150" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+<text x="50" y="422" font-size="11" fill="#94a3b8">· 决策循环：规划 → 选工具 → 执行 → reflect → replan（≤3 轮）· 失败注入 · 验证门</text>
+<text x="50" y="442" font-size="11" fill="#94a3b8">· 预算/时间提醒注入（Rollout 50K / TokenBudget 6_144 · 窗口去重）· Mid-turn 压缩不终止 · 滚动窗口</text>
+<text x="50" y="462" font-size="11" fill="#94a3b8">· Elicitation 澄清暂停协调 · Stop/PreToolUse/PostToolUse/PermissionRequest/SessionStart 钩子</text>
+<text x="50" y="482" font-size="11" fill="#94a3b8">· 世界状态 diff（增量注入）· Steer 运行中转向 · Mailbox 多代理双通道 · 审批三级链+缓存 · Guardian 熔断</text>
+<text x="50" y="502" font-size="11" fill="#94a3b8">· 主管-工人编排（拆包 2-4 子任务 · 协商修订 ≤2 轮 · 2 视角+对抗评审）· 共享上下文 LRU · 评审会话隔离</text>
+<text x="50" y="522" font-size="11" fill="#94a3b8">· 5 层安全（Guardian 策略/3 级沙箱/网络审批/审批门/凭证隔离）· 5 层记忆 · 全链路插桩审计</text>
+<text x="30" y="578" font-size="16" font-weight="bold" fill="#22c55e">④ 科研场景与工具链（V399 开源融入）</text>
+<rect x="30" y="588" width="1140" height="110" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+<text x="50" y="612" font-size="11" fill="#94a3b8">· 选题构思 → 文献调研 → 证据检索 → 数据分析 → 论文写作 → 图表制作 → 评审发表 → 系统自动化</text>
+<text x="50" y="632" font-size="11" fill="#94a3b8">· V399：扫描 PDF 转换(mineru-go) · 选题打磨(good-question) · 公文起草 23 文种(gongwen-draft) · 视频笔记(bili/dy-note)</text>
+<text x="50" y="652" font-size="11" fill="#94a3b8">· · 科学叙事(good-story) · 图表数字化(thu-digitizer) · 英文文献 OA 回退(OpenAlex/Unpaywall) · 引文三维核验(citation-lab)</text>
+<text x="30" y="728" font-size="16" font-weight="bold" fill="#3b82f6">⑤ 数据层（三库知识图谱）</text>
+<rect x="30" y="738" width="1140" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+<text x="50" y="762" font-size="11" fill="#94a3b8">· Graphiti（Neo4j 11001）：21,337 实体 · 1,085 社区 · 11,702 超边 · 五层蒸馏 · 166,631 关系</text>
+<text x="50" y="782" font-size="11" fill="#94a3b8">· Cognee（Neo4j 11003 + LanceDB）：31,253 实体 · 248,417 关系 · 11,550 切片 · 17 检索策略</text>
+<text x="50" y="802" font-size="11" fill="#94a3b8">· PostgreSQL pgvector：501 篇文献 · 7,550 切片向量（1024 维）· 全文检索 · 101 迁移</text>
+<text x="50" y="822" font-size="11" fill="#94a3b8">· 引用网络算法（文献耦合 + 共被引余弦 → top-K 边）· 政策资料库（317 文件）· 教育知识库</text>
+<text x="30" y="878" font-size="16" font-weight="bold" fill="#10b981">⑥ 实证研究工作台（17 大功能）</text>
+<rect x="30" y="888" width="1140" height="110" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
+<text x="50" y="912" font-size="11" fill="#94a3b8">· 问卷生成 → 问卷识别 → 信效度检验（α/KMO）→ 问卷诊断 → LLM 插补 → 变量敲定</text>
+<text x="50" y="932" font-size="11" fill="#94a3b8">· → 分析管道 → 回归分析（M1-M6）→ 元分析（固定/随机效应 · Q/I²/τ² · 森林图/漏斗图）→ 证据账本 → 质量闸门</text>
+<text x="50" y="952" font-size="11" fill="#94a3b8">· 因果 8 方法（DID/TWFE/事件研究/IV/RDD/PSM/SCM）+ 分类 4 + 数据处理 3 + 元分析 = 17 方法</text>
+<text x="30" y="1028" font-size="16" font-weight="bold" fill="#e879f9">⑦ 学习引擎（V386-V393 · 借鉴 TraitTutor）</text>
+<rect x="30" y="1038" width="1140" height="70" rx="10" fill="#1e293b" stroke="#e879f9" stroke-width="2"/>
+<text x="50" y="1062" font-size="11" fill="#94a3b8">· BKT 概念掌握 · 事件账本 · 自适应四层 · 间隔重复 · 学习计划链 · 组件白名单 · 答案服务端持有</text>
+<text x="50" y="1082" font-size="11" fill="#94a3b8">· 学习意图双层路由（注入扫描 + LLM 分类）· 思政审核 · 教育多模态（拍照/口语/板书）· 全屏学习画布</text>
+<text x="30" y="1138" font-size="16" font-weight="bold" fill="#64748b">⑧ 基础设施与运维</text>
+<rect x="30" y="1148" width="1140" height="90" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+<text x="50" y="1172" font-size="11" fill="#94a3b8">· 评测体系：双轨评测（规则+LLM judge）· 32 指标 · 学习引擎回归 · 自愈闭环 · 296 测试</text>
+<text x="50" y="1192" font-size="11" fill="#94a3b8">· 模型服务：LLM（DeepSeek 原生 / qwen-plus）+ Embedding（MAAS v4）+ Rerank（qwen3-rerank）· OpenAI 兼容可替换</text>
+<text x="50" y="1212" font-size="11" fill="#94a3b8">· 商业化底座：多租户 · JWT · 计费 · BYOK · 告警中心 · 自愈巡检 · 桌面端打包（vendor 随包携带）</text>
 </svg>
