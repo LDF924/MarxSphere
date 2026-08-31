@@ -2514,7 +2514,7 @@ function MainWorkspaceTabs(props: {
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
-        { value: "capability-tools", label: t("能力工具", "Capability Tools") },  // V400: V399工具+运行时状态面板
+        { value: "capability-tools", label: t("工具集", "Tools") },  // 统一工具入口(文档转换/公文/视频笔记/叙事/图表)
         { value: "p2o", label: t("PDF2Obsidian", "PDF2Obsidian") },
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
