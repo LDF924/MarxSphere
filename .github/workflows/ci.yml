@@ -49,7 +49,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install python deps
-        run: pip install pandas requests
+        run: pip install pandas scipy requests
 
       - name: Unit tests (154)
         env:
