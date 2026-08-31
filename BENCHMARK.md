@@ -53,7 +53,7 @@ MarxSphere 的评测体系与基准结果。完整指标定义见 [docs/SCORING_
 
 ## 单元测试
 
-- **263 项** Vitest 测试（`npm test`）
+- **296 项** Vitest 测试（`npm test`）
 - 覆盖：检索服务 / Agent 编排 / 工具路由 / 评测体系 / 记忆 / 日志脱敏
 
 ## 运行评测

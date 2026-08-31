@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-273%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-296%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -53,7 +53,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
 - **54-tool dispatch**: 36 Agent tools (search/reason/empirical/writing/code/web/image/file) + 18 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 33-view coverage)
-- **Command syntax**: `/` opens the skill command palette (190+ skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
+- **Command syntax**: `/` opens the skill command palette (201 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
 - **Light / dark themes**: one-click toggle in the header, persisted in localStorage
@@ -309,11 +309,11 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 | **marx-cognee** | Cognee KG retrieval (17 strategies: HYBRID/semantic/graph traversal…) | ⑤ retrieval |
 | **marx-graphiti** | Graphiti knowledge retrieval (five-layer distillation + community discovery + hyperedge reasoning, 23 MCP tools) | ⑤ retrieval |
 | **marx-sag** | SAG reasoning workbench (52-step chain + token capture + eval, 30-question 0.870 baseline) | ⑥ reasoning |
-| **marx-agent** | Agent master entry (52-step reasoning + Ask + 66 scenarios + 190+ skills) | ⑦ dispatch |
+| **marx-agent** | Agent master entry (52-step reasoning + Ask + 66 scenarios + 201 skills) | ⑦ dispatch |
 
 **Pipeline panorama**: `cnki acquire → pdf2obsidian convert → md-clean clean → marx-*-ingest three-library ingest → marx-cognee/marx-graphiti retrieve → marx-sag reason → marx-agent dispatch`
 
-**Skill system (Web)**: skill registry (~190+ dynamically scanned) + trigger words + Skillify solidification + auto-update detection + GitHub discovery.
+**Skill system (Web)**: skill registry (201 dynamically scanned) + trigger words + Skillify solidification + auto-update detection + GitHub discovery.
 
 ### 📊 Evaluation System (empirical validation of multi-source fusion)
 
