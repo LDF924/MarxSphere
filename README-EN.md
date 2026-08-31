@@ -15,7 +15,7 @@
 
 # MarxSphere (马研星环)
 
-**An AI-driven research hub for Marxist theory** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.
+**An AI-driven research hub for humanities & social sciences** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.
 
 Built on an event-centric retrieval structure (`chunk → event → entities`): literature knowledge is organized around events as semantic units, and multi-hop recall surfaces cross-document concept evolution and viewpoint connections.
 
@@ -144,7 +144,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Relation to the 52-step chain**: both share the same four-source retrieval core (SAG events + Graphiti + Cognee + PG). Ask is **lightweight, fast retrieval** (18 steps ≈ 10s); the 52-step chain is **deep reasoning** (hypothesis generation / self-evaluation / agentic search, ≈ 230s) — ask a question quickly with Ask, then drill down with 52-step
 
 **Three-library knowledge graph** (`Graph` view)
-- Graphiti: 501 papers distilled, 21,337 entities, 1,085 knowledge communities, 11,702 hyperedges
+- Graphiti: self-built corpus distilled, 21,337 entities, 1,085 knowledge communities, 11,702 hyperedges
 - Cognee: 31,253 entities, 248,417 relations, 11,550 chunks (Neo4j 11003)
 - PG pgvector: 7,550 chunk vectors (1024-dim) + full-text search
 - Graph visualization: draggable entity/event nodes, zoom, click-to-expand, double-click details
@@ -204,11 +204,11 @@ Stage 4    Fusion generation (20 steps): Compiled Truth → multi-query variants
 
 **Each scenario** = business description + unique capability badge + actions (jump to reasoning/Ask/skill/knowledge page) + full-screen workbench (input → algorithm execution → output), with step-by-step guides including concrete tool tips (e.g., S01: reasoning workbench → research-ideation skill → idea-evaluator → Ask search → reasoning verification → knowledge-page accumulation).
 
-Political-economy C-journal methodology: four-step topic selection / topic matrix / paradox topics / concept naming / cross-disciplinary / template detection / editorial checks / foreign-review translation / journal matching (80-journal Marxist-theory library).
+Political-economy C-journal methodology: four-step topic selection / topic matrix / paradox topics / concept naming / cross-disciplinary / template detection / editorial checks / foreign-review translation / journal matching (80-journal library).
 
 ### 🎓 Domain Research Engines (Classical Texts / Academic Research / Pol-Econ C-Journal / AI+Education)
 
-**Classical text research** (S36–S40, `classical-text-service.ts`) — 5 capabilities purpose-built for Marxist text study:
+**Classical text research** (S36–S40, `classical-text-service.ts`) — 5 capabilities purpose-built for classical text study:
 - **Concept tracing**: historical evolution of core concepts (semanticDrift detection)
 - **Argument decomposition**: automatic labeling of thesis/evidence/reasoning chains (alignParagraphs)
 - **Intertextual comparison**: passage-level similarity across texts (lcsDiff)
@@ -224,7 +224,7 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Frontier tracking**: hotspot & frontier identification (high-frequency terms)
 - Reuses: retrieval (ILIKE + embedding) + entities graph + LLM synthesis
 
-**Pol-econ C-journal research** (S66, `cjournal-service.ts`) — built on eight Marxist-theory C-journal topic-selection methodologies:
+**Pol-econ C-journal research** (S66, `cjournal-service.ts`) — built on eight C-journal topic-selection methodologies:
 - **Four-step topic selection**: era problem → pol-econ object → classical theory → intermediate mechanism (theory-interface mapping table)
 - **Topic matrix**: core concept × relation object cross-generation
 - **Paradox topics**: paradoxical proposition generation
@@ -292,7 +292,7 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Knowledge pages**: Compiled Truth (best understanding, human-rewritable) + timeline (evidence trail, append-only)
 - **Memory management**: memory stats card (total/archived/conflicts/vectorized) + recent-memory list + sleep-learning report (10s polling)
 - **Writing corpus**: four sub-libraries (text examples / core concepts / argument logic / vocabulary patterns), paste-to-accumulate + LLM-assisted extraction + tag search + pre-writing retrieval
-- **Journal library**: 80 Marxist-theory journals (67 CSSCI / 9 C-extended / 4 PKU), tier filters + hotspot expansion + one-click into the four-step topic selector
+- **Journal library**: 80 journals (67 CSSCI / 9 C-extended / 4 PKU), tier filters + hotspot expansion + one-click into the four-step topic selector
 
 ### 🛠 Custom Skills (10, fully open-sourced)
 
