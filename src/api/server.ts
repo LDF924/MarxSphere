@@ -5677,6 +5677,44 @@ except Exception as e:
     };
   });
 
+  // V400: 工具执行 REST 端点（前端面板调用; 支持 V399 5 个 Agent 工具）
+  app.post("/api/agent/tools/:name/run", async (request, reply) => {
+    const params = request.params as { name: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { buildAgentTools } = await import("../services/agent-tool-router.js");
+    const tools = await buildAgentTools({});
+    const tool = tools.find((t) => t.name === params.name);
+    if (!tool) return reply.code(404).send({ error: `工具 ${params.name} 不存在`, code: "TOOL_NOT_FOUND" });
+    // 高危工具需审批（走既有审批门语义）
+    if (tool.risk === "review") {
+      return reply.code(403).send({ error: `工具 ${tool.label} 为高危操作, 需经 Agent 任务审批门`, code: "TOOL_NEEDS_APPROVAL" });
+    }
+    try {
+      const result = await tool.run(body);
+      return { ok: true, tool: tool.name, result };
+    } catch (e: any) {
+      return reply.code(500).send({ error: String(e?.message || e).slice(0, 300), code: "TOOL_EXEC_FAILED" });
+    }
+  });
+
+  // V400: 运行时状态聚合（预算/Elicitation/审批/熔断 — 前端状态面板）
+  app.get("/api/agent/runtime-status", async () => {
+    const out: Record<string, unknown> = { reminders: {}, elicitation: {}, approvals: {}, guardian: {} };
+    try {
+      const { agentReminderService } = await import("../services/agent-reminder-service.js");
+      out.reminders = { contextWindowLimit: agentReminderService.contextWindowLimit(), threshold: 6144 };
+    } catch { /* 状态不可用 */ }
+    try {
+      const { agentElicitationService } = await import("../services/agent-elicitation-service.js");
+      out.elicitation = { paused: agentElicitationService.isPaused() };
+    } catch { /* 状态不可用 */ }
+    try {
+      const { guardianService } = await import("../services/agent-guardian-service.js");
+      out.guardian = { breakerOpen: guardianService.guardianBreakerOpen() };
+    } catch { /* 状态不可用 */ }
+    return out;
+  });
+
   // wisp借鉴: 计算上下文状态（持久运行时会话 + 远程 WSL/SSH/GPU 配置）
   app.get("/api/agent/compute-status", async () => {
     const { agentPersistentRuntime } = await import("../services/agent-persistent-runtime.js");

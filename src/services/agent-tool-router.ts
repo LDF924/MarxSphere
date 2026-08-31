@@ -2063,7 +2063,12 @@ export async function executeAgentTool(
   } catch { /* 自主级别不可用 → 走原审批逻辑 */ }
   // 借鉴5(Codex Guardian): 策略文件层审查 — 风险等级 × 用户授权度 → 判定
   try {
-    const { guardianReview } = await import("./agent-guardian-service.js");
+    const { guardianReview, guardianBreakerOpen, resetGuardianBreaker } = await import("./agent-guardian-service.js");
+    // V400 F3 补: 熔断检查 — 连续拒绝≥3 时阻断高危尝试(防重复撞墙)
+    if (guardianBreakerOpen() && ["medium", "high"].includes(tool.risk || "medium")) {
+      resetGuardianBreaker();  // 熔断一次后复位(给用户重新授权机会)
+      return { ok: false, result: `Guardian 熔断: 连续拒绝过多, 请先人工确认后再试`, risk: "deny", denied: true };
+    }
     const g = guardianReview(tool.name, args, "high");  // agent 步骤由任务目标授权 → high
     if (g.verdict === "deny") {
       return { ok: false, result: `Guardian 安全策略拒绝: ${g.reason}`, risk: "deny", denied: true };

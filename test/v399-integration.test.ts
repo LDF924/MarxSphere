@@ -330,3 +330,17 @@ describe("agent_task_state_machine", () => {
     expect(isSteerableStatus("cancelled")).toBe(false);
   });
 });
+
+// ═══ 10. Guardian 熔断接线回归 (V400 F3 补: guardianBreakerOpen 需真实调用方) ═══
+describe("guardian_breaker_wiring", () => {
+  it("连续 3 次 deny 后 breakerOpen=true, reset 后恢复", () => {
+    resetGuardianBreaker();
+    expect(guardianBreakerOpen()).toBe(false);
+    for (let i = 0; i < 3; i++) {
+      guardianReview("run_code", { profile: "full-access" }, "low");
+    }
+    expect(guardianBreakerOpen()).toBe(true);
+    resetGuardianBreaker();
+    expect(guardianBreakerOpen()).toBe(false);
+  });
+});

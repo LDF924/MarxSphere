@@ -331,6 +331,11 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
   const TASK_TOKEN_BUDGET = parseInt(process.env.AGENT_TASK_TOKEN_BUDGET || "400000", 10);  // 默认 400K token
   let loop = 0;
   while (loop < MAX_LOOPS) {
+    // V400 F3 补: 每轮开始重置 Guardian 熔断(新轮次给用户重新授权机会, 熔断只在单轮内生效)
+    try {
+      const { resetGuardianBreaker } = await import("./agent-guardian-service.js");
+      resetGuardianBreaker();
+    } catch { /* 熔断重置失败不阻塞 */ }
     // V2: 总时长超限 → 置 failed 并沉淀（复用失败经验机制）
     if (Date.now() - taskStartAt > TASK_TIMEOUT_MS) {
       await pool.query(
