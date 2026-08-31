@@ -54,6 +54,34 @@ export const VIEW_TOOLS: AgentToolDef[] = [
     }),
   },
   {
+    name: "view_truth_narrative", label: "知识页叙事导出", risk: "safe",
+    description: "把知识页/研究素材组织成循证叙事结构（good-story 方法论: 解决张力的故事线, 真相是边界条件; 用于结论沉淀/报告/投稿角度）",
+    params: {
+      title: { type: "string", required: true, desc: "知识页标题或研究主题" },
+      material: { type: "string", desc: "素材/要点(可选, 缺省从知识页读取)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const title = String(a.title || "").trim();
+      const material = String(a.material || "").slice(0, 6000);
+      const { callLlm } = await import("../ai/llm-common.js");
+      const { agentModelRouter } = await import("./agent-model-router.js");
+      // 尝试从知识页补素材
+      let pageTruth = "";
+      try {
+        const { truthService } = await import("./truth-service.js");
+        const p = await truthService.getPageByTitle(title);
+        if (p) pageTruth = String(p.compiledTruth ?? "").slice(0, 3000);
+      } catch { /* 知识页不可用不影响 */ }
+      const r = await callLlm({
+        model: agentModelRouter.routeAgentModel("write", "叙事导出"),
+        agentContext: { action: "agent_tool_truth_narrative", tool: "view_truth_narrative" },
+        messages: [{ role: "user", content: `你是科学叙事专家（good-story 方法论）: 好的科学故事是"解决的张力", 结构为 领域信念/需求 → 重要缺口 → 决定性方法 → 意外/澄清性证据 → 新主张/模型 → 对领域的影响。真相是边界条件: 故事绝不能超出证据; 证据不足处明确标注为候选叙事并指出缺什么证明。\n\n【主题】${title}\n【素材】${material || pageTruth || "（无素材 — 输出叙事框架与所需证据清单）"}\n\n输出:\n1. 故事线（六段式张力结构, 每段一句话）\n2. 证据阶梯（每段叙事需要什么证据支撑, 已有/缺失标注）\n3. 最诚实的单句摘要（可作摘要/结论用）\n4. 若素材不足: 缺失证明清单 + 获取路径` }],
+        temperature: 0.3, maxTokens: 1500,
+      });
+      return r?.text || (r?.error ? `（叙事导出失败: ${r.error}）` : "（叙事导出失败）");
+    }),
+  },
+  {
     name: "view_sciverse_search", label: "外部学术检索", risk: "safe",
     description: "检索外部学术源（Sciverse：知网/万方/期刊联盟），返回论文标题/作者/来源",
     params: {
@@ -65,6 +93,99 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       const res = await sciverseService.dispatch("search_papers", { query: String(a.query || ""), max: Math.min(Math.max(Number(a.limit) || 5, 1), 10) });
       const items = (res?.data ?? []) as Array<{ title?: string; authors?: string; journal?: string; year?: string }>;
       return `【外部学术】${items.length} 条\n` + items.map((p, i) => `${i + 1}. ${p.title || "?"} — ${p.authors || ""}（${p.journal || ""} ${p.year || ""}）`).join("\n");
+    }),
+  },
+  {
+    name: "view_chart_digitize", label: "图表数字化", risk: "safe",
+    description: "从图表图片/PDF 图恢复数值数据为 CSV（thu-digitizer 本地管线, 验证优先不编造数值）。第一阶段: 预检产出 spec 摘要+所需坐标参数; 第二阶段: 提供参数后提取 CSV",
+    params: {
+      imagePath: { type: "string", required: true, desc: "图表图片/PDF 路径(绝对路径或 agent_workspace 内路径)" },
+      chartType: { type: "string", desc: "图表类型: bar/line/scatter/histogram/boxplot/donut/heatmap (可选, 自动路由)" },
+      outputDir: { type: "string", desc: "输出目录(默认 .pipeline/thu-digitize-out)" },
+      plotBounds: { type: "string", desc: "第二阶段: 绘图区边界 [x0,y0,x1,y1] 像素" },
+      valueAxis: { type: "string", desc: "第二阶段: 数值轴范围 [min,max]" },
+      orientation: { type: "string", desc: "第二阶段: 柱向 horizontal/vertical (bar)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { execFileSync } = await import("node:child_process");
+      const { existsSync, readFileSync, readdirSync, statSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const PY = process.env.EMPIRICAL_PYTHON || "python";
+      const skillDir = "/c/Users/HUAWEI/.claude/skills/thu-digitizer";
+      const script = `${skillDir}/scripts/thu_digitizer.py`;
+      if (!existsSync(script)) return "（thu-digitizer 技能未安装）";
+      const img = String(a.imagePath || "");
+      if (!img) return "（需提供图片路径）";
+      const outDir = String(a.outputDir || join(process.env.SAG_ROOT || ".", ".pipeline", "thu-digitize-out"));
+      try { const { mkdirSync } = await import("node:fs"); mkdirSync(outDir, { recursive: true }); } catch { /* ignore */ }
+      const reportPath = join(outDir, "preflight.json");
+      const specPath = join(outDir, "spec.json");
+      // 第一阶段: inspect 预检
+      const inspectArgs = [script, "inspect", "--input", img, "--output-report", reportPath, "--output-spec", specPath];
+      if (a.chartType) inspectArgs.push("--chart-type", String(a.chartType));
+      try {
+        execFileSync(PY, inspectArgs, { encoding: "utf-8", timeout: 180_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+      } catch (e: any) {
+        return `（预检失败: ${String(e?.stderr || e?.message || e).slice(0, 300)}）`;
+      }
+      const spec = JSON.parse(readFileSync(specPath, "utf-8"));
+      const panel = spec?.panels?.[0];
+      const route = panel?.route?.route_id || "unknown";
+      // 第二阶段参数齐备 → 找提取脚本执行
+      const hasParams = a.plotBounds || (a.valueAxis && a.orientation);
+      if (hasParams && panel) {
+        const impl = panel.route?.implementation;
+        const implScript = impl ? join(skillDir, "scripts", impl.split("/").pop() || "") : "";
+        if (implScript && existsSync(implScript)) {
+          const csvPath = join(outDir, "data.csv");
+          const report = join(outDir, "report.json");
+          const args2: string[] = [implScript, "--input", img, "--output-csv", csvPath, "--report", report];
+          if (a.plotBounds) args2.push("--plot-bounds", String(a.plotBounds));
+          if (a.valueAxis) args2.push("--value-axis", String(a.valueAxis));
+          if (a.orientation) args2.push("--orientation", String(a.orientation));
+          if (a.chartType === "bar") { args2.push("--layout", "grouped", "--series", "1", "--category", "0"); }
+          try {
+            const stdout = execFileSync(PY, args2, { encoding: "utf-8", timeout: 300_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+            const rows = readFileSync(csvPath, "utf-8").split(/\r?\n/).slice(0, 10).join("\n");
+            return `【图表数字化完成】route=${route}\n${stdout.slice(-500)}\nCSV 预览:\n${rows}`;
+          } catch (e: any) {
+            return `（提取失败: ${String(e?.stderr || e?.message || e).slice(0, 400)}; 可用 image_analyze 看图确认坐标轴参数后重试）`;
+          }
+        }
+      }
+      // 只做预检: 返回所需参数清单
+      const need = panel?.required_confirmations || ["plot_bounds", "value_axis_anchors", "series"];
+      return `【图表数字化·预检】route=${route} (${panel?.chart_type || "?"})\n坐标模型: ${panel?.coordinate_model || "?"}\n需要确认: ${need.join(", ")}\n请用 image_analyze 看图, 提供:\n- plotBounds: [x0,y0,x1,y1] 像素\n- valueAxis: [min,max] 数值轴范围\n- orientation: horizontal/vertical (bar)\n再调用本工具传入这些参数完成提取。`;
+    }),
+  },
+  {
+    name: "view_openalex_search", label: "英文文献检索(OpenAlex)", risk: "safe",
+    description: "检索英文文献（OpenAlex：全球学术索引, 含 OA 标记/DOI/被引; instsci 提炼源）",
+    params: {
+      query: { type: "string", required: true, desc: "英文检索关键词" },
+      limit: { type: "number", desc: "返回条数(默认5)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { oaFallbackService } = await import("./oa-fallback-service.js");
+      const r = oaFallbackService.openalexSearch(String(a.query || ""), Math.min(Math.max(Number(a.limit) || 5, 1), 10));
+      const items = r.ok && Array.isArray(r.data?.items) ? r.data.items : [];
+      const lines = items.map((p: any, i: number) => `${i + 1}. ${p.title || "?"} (${p.year ?? "?"})${p.is_oa ? " [OA]" : ""} ${p.doi ? `DOI:${p.doi}` : ""}${p.oa_url ? `\n     OA: ${p.oa_url}` : ""}`);
+      return `【OpenAlex】${items.length} 条\n${lines.join("\n") || "（无结果 — 换关键词）"}`;
+    }),
+  },
+  {
+    name: "view_oa_lookup", label: "DOI开放获取查询", risk: "safe",
+    description: "按 DOI 查论文的开放获取版本（Unpaywall：pdf/html 全文链接, 免费可下载; instsci 提炼源）",
+    params: {
+      doi: { type: "string", required: true, desc: "论文 DOI（如 10.1371/journal.pone.0185809）" },
+    },
+    run: async (a) => safeCall(async () => {
+      const { oaFallbackService } = await import("./oa-fallback-service.js");
+      const r = oaFallbackService.checkOa(String(a.doi || ""));
+      if (!r.ok) return `（OA 查询失败: ${r.error}）`;
+      const d = r.data || {};
+      if (!d.is_oa) return `【OA】${d.doi || ""} 无开放获取版本（标题: ${d.title || "未知"}）`;
+      return `【OA 可用】\n标题: ${d.title || ""}\n来源: ${d.source || ""} (${d.journal || ""} ${d.year ?? ""})\nPDF: ${d.pdf_url || "无"}\nHTML: ${d.html_url || "无"}`;
     }),
   },
   {

@@ -3,7 +3,8 @@
 // 事件: task_start/task_end/tool_before/tool_after/step_fail/reflect
 // 钩子类型: 内置(日志/指标) + 用户注册(通过 API 动态添加, 如通知/告警/统计)
 // 用法: agentHooks.emit("task_start", { taskId, goal }) — 所有订阅者按注册序执行, 异常隔离
-export type HookEventName = "task_start" | "task_end" | "tool_before" | "tool_after" | "step_fail" | "reflect" | "approval";
+export type HookEventName = "task_start" | "task_end" | "tool_before" | "tool_after" | "step_fail" | "reflect" | "approval"
+  | "turn_stop" | "pre_tool_use" | "post_tool_use" | "permission_request";
 
 export interface AgentHook {
   id: string;
@@ -66,11 +67,103 @@ class AgentHookRegistry {
 
   /** 事件统计（运维） */
   stats(): Record<HookEventName, number> {
-    const out: Record<HookEventName, number> = { task_start: 0, task_end: 0, tool_before: 0, tool_after: 0, step_fail: 0, reflect: 0, approval: 0 };
+    const out: Record<HookEventName, number> = { task_start: 0, task_end: 0, tool_before: 0, tool_after: 0, step_fail: 0, reflect: 0, approval: 0, turn_stop: 0, pre_tool_use: 0, post_tool_use: 0, permission_request: 0 };
     for (const [event, list] of this.hooks) {
       if (event in out) out[event as HookEventName] = list.length;
     }
     return out;
+  }
+
+  /**
+   * V400: Stop 钩子 (codex run_turn_stop_hooks 对齐)
+   * 回合结束前运行: 返回 should_stop(结束) 或 should_block(注入消息继续)
+   * 实现: 收集所有 turn_stop 订阅者的返回, 任一 {block:true} → block, {stop:true} → stop
+   */
+  async emitStop(turnPayload: Record<string, unknown>): Promise<{ shouldStop: boolean; shouldBlock: boolean; blockMessages: string[] }> {
+    const list = this.hooks.get("turn_stop") || [];
+    let shouldStop = false;
+    let shouldBlock = false;
+    const blockMessages: string[] = [];
+    for (const h of list) {
+      if (!h.enabled) continue;
+      try {
+        const out = await Promise.race([
+          Promise.resolve(h.handler(turnPayload)),
+          new Promise<string | void>((_, reject) => setTimeout(() => reject(new Error("Stop钩子超时(5s)")), 5000)),
+        ]);
+        const text = String(out || "");
+        if (/stop|终止|结束/.test(text)) shouldStop = true;
+        if (/block|继续|注入/.test(text)) { shouldBlock = true; blockMessages.push(text.slice(0, 200)); }
+      } catch { /* 钩子异常隔离 */ }
+    }
+    return { shouldStop, shouldBlock, blockMessages };
+  }
+
+  /**
+   * V400: PreToolUse 钩子 (codex hook_runtime.rs:184 对齐)
+   * 工具执行前运行: 可返回 {block, updatedInput} — block 拒绝, updatedInput 改写参数
+   */
+  async emitPreToolUse(payload: Record<string, unknown>): Promise<{ blocked: boolean; updatedInput?: Record<string, unknown>; reason?: string }> {
+    const list = this.hooks.get("pre_tool_use") || [];
+    for (const h of list) {
+      if (!h.enabled) continue;
+      try {
+        const out = await Promise.race([
+          Promise.resolve(h.handler(payload)),
+          new Promise<string | void>((_, reject) => setTimeout(() => reject(new Error("PreToolUse钩子超时(5s)")), 5000)),
+        ]);
+        const text = String(out || "");
+        if (/block|拒绝|禁止/.test(text)) return { blocked: true, reason: text.slice(0, 200) };
+        // updatedInput: 钩子返回 JSON { updatedInput: {...} }
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed?.updatedInput) return { blocked: false, updatedInput: parsed.updatedInput };
+        } catch { /* 非 JSON 忽略 */ }
+      } catch { /* 钩子异常隔离 */ }
+    }
+    return { blocked: false };
+  }
+
+  /**
+   * V400: PostToolUse 钩子 (codex hook_runtime.rs:285 对齐)
+   * 工具执行后运行: 可返回 failureMessage 替换模型可见输出
+   */
+  async emitPostToolUse(payload: Record<string, unknown>): Promise<{ failureMessage?: string }> {
+    const list = this.hooks.get("post_tool_use") || [];
+    for (const h of list) {
+      if (!h.enabled) continue;
+      try {
+        const out = await Promise.race([
+          Promise.resolve(h.handler(payload)),
+          new Promise<string | void>((_, reject) => setTimeout(() => reject(new Error("PostToolUse钩子超时(5s)")), 5000)),
+        ]);
+        const text = String(out || "");
+        const m = text.match(/failure[:_]?message\s*[:=]\s*(.+)/i);
+        if (m) return { failureMessage: m[1].slice(0, 300) };
+      } catch { /* 钩子异常隔离 */ }
+    }
+    return {};
+  }
+
+  /**
+   * V400: PermissionRequest 钩子 (codex approvals.rs:495 对齐 — 审批三级链第一级)
+   * 审批前运行: 返回 allow/deny 即终局; 无返回则降级 Guardian/用户
+   */
+  async emitPermissionRequest(payload: Record<string, unknown>): Promise<"allow" | "deny" | "none"> {
+    const list = this.hooks.get("permission_request") || [];
+    for (const h of list) {
+      if (!h.enabled) continue;
+      try {
+        const out = await Promise.race([
+          Promise.resolve(h.handler(payload)),
+          new Promise<string | void>((_, reject) => setTimeout(() => reject(new Error("Permission钩子超时(5s)")), 5000)),
+        ]);
+        const text = String(out || "").toLowerCase();
+        if (/allow|允许|通过/.test(text)) return "allow";
+        if (/deny|拒绝|禁止/.test(text)) return "deny";
+      } catch { /* 钩子异常隔离 */ }
+    }
+    return "none";
   }
 }
 

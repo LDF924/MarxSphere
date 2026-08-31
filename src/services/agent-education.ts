@@ -325,13 +325,15 @@ ${hits.slice(0, 5).map((h: any) => `- [${h.title}] ${h.content.substring(0, 100)
   "keyConcepts": ["核心概念界定"],
   "nextSteps": ["下一步行动"]
 }`,
-    stress: `你是严格的审稿人。对以下问题陈述进行压力测试，找出缺陷：${ctx}
+    stress: `你是严格的审稿人（借鉴 good-question 技能的 Reviewer 模式：先给最强拒稿风险，再给修复路径）。对以下问题陈述进行压力测试，找出缺陷：${ctx}
 【问题】${question}（${subject}）
 
 输出 JSON: {
   "weaknesses": [{"issue": "缺陷/漏洞", "severity": "高|中|低", "reason": "为什么是问题"}],
   "challenges": [{"challenge": "可能的质疑", "response": "如何回应"}],
   "boundaryIssues": ["边界/概念界定问题"],
+  "killRules": ["命中哪条淘汰规则(无受益者/只说没人做过/说不出证伪路径/资源远超约束/方法先于问题/复杂度无收益)"],
+  "falsifier": "什么可观察结果会推翻这个假设",
   "improved": "改进后的问题表述"
 }`,
   };

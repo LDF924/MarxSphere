@@ -704,6 +704,39 @@ export const EmpiricalResearchPanel: FC = () => {
                         </label>
                       ))}
                     </>
+                  ) : selectedMethod.id === "meta_analysis" ? (
+                    <>
+                      {[["yiCol", "效应量列 yi"], ["viCol", "方差列 vi"]].map(([k, label]) => (
+                        <label key={k} className="block">
+                          <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">{label}</span>
+                          <select value={params[k] ?? ""} onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.value }))} className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                            <option value="">{parsed ? "(选择列)" : "(先加载数据)"}</option>
+                            {parsed?.columnOrder.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                      ))}
+                      <label className="block">
+                        <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">独立群列 cluster (可选, 群内效应不假设独立)</span>
+                        <select value={params.clusterCol ?? ""} onChange={(e) => setParams((p) => ({ ...p, clusterCol: e.target.value }))} className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                          <option value="">(无)</option>
+                          {parsed?.columnOrder.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">模型</span>
+                        <select value={params.model ?? "random"} onChange={(e) => setParams((p) => ({ ...p, model: e.target.value }))} className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                          <option value="random">随机效应 (默认)</option>
+                          <option value="common">固定效应</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">推断方法</span>
+                        <select value={params.test ?? "knha"} onChange={(e) => setParams((p) => ({ ...p, test: e.target.value }))} className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                          <option value="knha">Hartung-Knapp (t, 保守)</option>
+                          <option value="z">正态近似 (z)</option>
+                        </select>
+                      </label>
+                    </>
                   ) : selectedMethod.id === "event_study" ? (
                     <>
                       {[["y", "结果变量 y"], ["unit", "个体 id"], ["time", "时间列"], ["treat_time", "处理时间列(未处理=0或超范围)"]].map(([k, label]) => (

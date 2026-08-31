@@ -14,6 +14,7 @@ export const SCENARIO_GUIDES: ScenarioGuide[] = [
     steps: [
       { title: "梳理兴趣与领域背景", desc: "明确感兴趣的研究领域和大致方向", tool: "reason", toolLabel: "推理工作台", how: "在推理工作台输入领域相关问题（如「资本下乡领域近年的研究热点有哪些」），让 52 步推理链先给你一个领域全景概览。" },
       { title: "生成候选研究方向", desc: "用研究创意生成技能发散候选方向", tool: "skills", toolLabel: "技能库 · research-ideation", how: "打开技能库，找到「research-ideation 研究创意生成」技能（或直接用技能触发词），让 AI 基于你的兴趣生成 5-10 个候选研究方向。" },
+      { title: "打磨研究问题", desc: "用 good-question 把方向打磨成可辩护的锋利问题", tool: "skills", toolLabel: "技能库 · good-question", how: "调用「good-question 研究选题打磨」技能（V399 接入 Rimagination 开源），把候选方向逐个过好问题卡：重要性/可行性/可证伪性/竞争性解释/两周 pilot，产出可直接答辩的 Good Question Card（含中文好问题卡模板）。" },
       { title: "评估方向价值", desc: "用五维框架评估每个方向的科研价值", tool: "skills", toolLabel: "技能库 · idea-evaluator", how: "在技能库调用「idea-evaluator 想法评估」技能，对每个候选方向做五维评估（新颖性/影响力/可行性/成本/广度），拿到评审式结论。" },
       { title: "查证领域现状", desc: "确认候选方向的文献基础和竞争情况", tool: "ask", toolLabel: "Ask 检索", how: "用 Ask 检索每个候选方向的核心问题（如「方向A 已有研究进展」），看检索到的文献数量和内容判断该方向是空白还是红海。" },
       { title: "交叉验证选题", desc: "用推理链验证选题的研究价值", tool: "reason", toolLabel: "推理工作台", how: "在推理工作台提交「这个选题值得研究吗？已有研究有哪些缺口？」完整推理一次，综合评估结果确定最终选题。" },
@@ -57,6 +58,7 @@ export const SCENARIO_GUIDES: ScenarioGuide[] = [
       { title: "文献查全", desc: "把选题方向近 N 年文献查全", tool: "literature", toolLabel: "文献库 · lit-search", how: "用「lit-search 文献检索」技能对选题关键词做时间窗全量检索（建议近 5-10 年），拿到完整文献清单，记录查全率和金标召回。" },
       { title: "梳理文献脉络", desc: "按主题/方法/时间梳理文献综述", tool: "literature", toolLabel: "文献库", how: "在文献库用主题/年份筛选浏览查到的文献，阅读摘要和问答，梳理该领域的研究脉络、主要流派和争论焦点。" },
       { title: "定位研究缺口", desc: "从文献综述中找到研究空白", tool: "reason", toolLabel: "推理工作台", how: "在推理工作台提交「基于以上文献，该领域还有哪些研究缺口？」，让推理链综合检索证据给出缺口分析。" },
+      { title: "压力测试选题", desc: "用 good-question 评审模式压测开题问题", tool: "skills", toolLabel: "技能库 · good-question", how: "调用「good-question 研究选题打磨」技能的 Reviewer 模式，对开题核心问题做最强评审质疑（最大的拒稿风险是什么/修复路径是什么），先压测再写报告。" },
       { title: "设计研究框架", desc: "确定研究问题/方法/创新点", tool: "skills", toolLabel: "技能库 · outline-agent", how: "用「outline-agent 大纲生成」技能基于文献缺口生成开题报告大纲（研究问题/文献综述/研究方法/创新点/进度）。" },
       { title: "撰写开题报告", desc: "把大纲扩展为完整开题报告", tool: "skills", toolLabel: "技能库 · research-proposal", how: "用「research-proposal 研究计划书」技能把大纲扩写为完整开题报告，含立项依据、研究内容、技术路线、进度安排、预期成果。" },
       { title: "开题预演评审", desc: "模拟专家评审检验开题质量", tool: "skills", toolLabel: "技能库 · academic-paper-reviewer", how: "用「academic-paper-reviewer 学术评审」技能模拟评审专家对开题报告提意见，针对性修改后再正式开题。" }

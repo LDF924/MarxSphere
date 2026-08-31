@@ -46,7 +46,10 @@ function detectEdgePath(): string {
 export async function buildAgentTools(opts?: {
   sourceId?: string;
   stepTitle?: string;
+  /** V400 C8: 工具暴露模式 (codex spec_plan.rs 对齐) — full 全量 / read-only 只读(评审会话) */
+  exposure?: "full" | "read-only";
 }): Promise<AgentToolDef[]> {
+  const exposure = opts?.exposure || "full";
   const sourceId = opts?.sourceId || "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
   // 修复1: API base 集中配置 — AGENT_API_BASE 覆盖（局域网部署设局域网 IP）; 默认本机
   const apiBase = process.env.AGENT_API_BASE || "http://localhost:4173";
@@ -63,9 +66,11 @@ export async function buildAgentTools(opts?: {
   };
   // V395-1: 多模态 PDF 工具（动态 import 避免启动开销）
   let pdfTool: AgentToolDef | null = null;
+  let pdfConvertTool: AgentToolDef | null = null;
   try {
-    const { pdfParseTool } = await import("./agent-pdf-tool.js");
+    const { pdfParseTool, pdfConvertTool: pct } = await import("./agent-pdf-tool.js");
     pdfTool = pdfParseTool as AgentToolDef;
+    pdfConvertTool = pct as AgentToolDef;
   } catch { /* PyMuPDF 不可用则跳过 */ }
   // V396-6: LLM 写作工具（具名 const 以便 usage 自引用回填）
   // G3: 改走 callLlm(统一重试/退避) — 不再直连 fetch, agentContext 采集 usage 入 exec_logs
@@ -1667,9 +1672,75 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     },
     // V399: 33 视图能力工具化 — 政策库/知识页/图谱/外部学术/技能/资料库/C刊/记忆
     ...(await import("./agent-view-tools.js")).VIEW_TOOLS,
+    // V399: gongwen-draft 公文起草（Rimagination 开源; 政策建议→23 种公文格式, 先查先核再写）
+    {
+      name: "gongwen_draft", label: "公文起草", risk: "safe",
+      description: "按国家公文规范起草/改写中文公文与政务材料（23 种文种; 政策依据先行, 不编造事实/政策/权威; 可导出 Word 草稿）",
+      params: {
+        task: { type: "string", required: true, desc: "任务: 起草通知/请示/报告/函/纪要/调研报告/政策建议等" },
+        material: { type: "string", desc: "素材/要点/事实台账" },
+        docType: { type: "string", desc: "文种(通知/请示/报告/函/纪要/通报/批复/意见/决定/公告/工作总结/工作方案/调研报告等; 默认自动判定)" },
+        exportWord: { type: "boolean", desc: "是否导出 .docx 草稿(默认 false)" },
+      },
+      run: async (a: Record<string, unknown>): Promise<string> => {
+        const task = String(a.task || "").slice(0, 2000);
+        const material = String(a.material || "").slice(0, 8000);
+        const docType = String(a.docType || "");
+        const exportWord = !!a.exportWord;
+        const { agentModelRouter } = await import("./agent-model-router.js");
+        const gwd = docType ? `文种: ${docType}\n` : "";
+        const exportNote = exportWord ? "\n\n【导出】正文末尾附 Word 草稿导出指引(GB/T 9704-2012 版式: 仿宋GB2312三号正文/黑体小标宋标题/红头可按授权值)" : "";
+        const r = await callLlm({
+          model: agentModelRouter.routeAgentModel("write", "公文起草"),
+          agentContext: { action: "agent_tool_gongwen_draft", tool: "gongwen_draft" },
+          messages: [{ role: "user", content: `你是公文起草专家（gongwen-draft 方法论: 先查先核再写; 五锚点: 目的/受众/事实/结构/语气; 关键事实缺失时用【】占位）\n\n${gwd}【任务】${task}\n【素材】${material || "（无素材 — 需先提问 1-3 个关键问题或产出可填骨架）"}\n\n要求:\n1. 先判断文种与行文方向\n2. 政策依据必须真实可查（禁止编造政策/数据/领导人讲话）; 不确定处标【待核实】\n3. 结构完整: 标题/主送/正文(缘由-事项-要求)/落款占位\n4. 语言规范克制, 全角标点${exportNote}` }],
+          temperature: 0.3, maxTokens: 3000,
+        });
+        return r?.text || (r?.error ? `（起草失败: ${r.error}）` : "（起草失败）");
+      },
+    },
+    // V399: 视频笔记提取（Rimagination bili-note/dy-note 零依赖脚本; 教育素材: 马克思公开课/B站博主视频→学习笔记）
+    {
+      name: "video_note", label: "视频笔记", risk: "safe",
+      description: "提取 B站/抖音视频为 Markdown 学习笔记（优先字幕, 字幕缺失转写音频; 可存档到学习素材池供 E1 自适应/E6 陪伴使用）",
+      params: {
+        platform: { type: "string", required: true, desc: "平台: bilibili 或 douyin" },
+        url: { type: "string", required: true, desc: "视频链接(如 https://www.bilibili.com/video/BVxxx)" },
+        outDir: { type: "string", desc: "输出目录(默认 %USERPROFILE%\\.cache\\rimagination-notes)" },
+      },
+      run: async (a: Record<string, unknown>): Promise<string> => {
+        const platform = String(a.platform || "").toLowerCase();
+        const url = String(a.url || "");
+        if (!/^https?:/.test(url)) return "（链接格式无效, 需 http(s) 开头）";
+        const skillDir = platform === "douyin"
+          ? "/c/Users/HUAWEI/.claude/skills/dy-note"
+          : "/c/Users/HUAWEI/.claude/skills/bili-note";
+        const runScript = platform === "douyin" ? "extract_douyin_text.py" : "run_bili_note.py";
+        const runPath = `${skillDir}/scripts/${runScript}`;
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        try {
+          const { statSync } = await import("node:fs");
+          statSync(runPath);
+        } catch {
+          return "（技能脚本缺失, 请确认已安装 bili-note/dy-note 技能）";
+        }
+        const { execFileAsync } = { execFileAsync: promisify(execFile) as any };
+        try {
+          const { stdout, stderr } = await execFileAsync("python", [runPath, url], { timeout: 600_000, maxBuffer: 32 * 1024 * 1024, env: { ...process.env } });
+          const tail = String(stdout || "").slice(-2500);
+          const errTail = String(stderr || "").slice(-500);
+          const archived = /(?:已归档|archived|保存到|saved to|archive).*/i.exec(tail)?.[0] || "";
+          return `【视频笔记·${platform}】\n${tail}${errTail ? `\n[stderr] ${errTail}` : ""}${archived ? `\n已归档: ${archived}` : ""}`;
+        } catch (e: any) {
+          return `（视频笔记提取失败: ${String(e?.stderr || e?.message || e).slice(0, 400)}）`;
+        }
+      },
+    },
   ];
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);
+  if (pdfConvertTool) tools.push(pdfConvertTool); // V399: mineru-go 双模式转换
   try {
     const { collectPluginTools } = await import("./agent-plugin-service.js");
     const pluginTools = await collectPluginTools();
@@ -1689,11 +1760,17 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     }
   } catch { /* registry 不可用不影响工具构建 */ }
   // 差距D(DSH preset): 按当前模式裁剪工具集（如数据分析模式只留分析工具）
+  let finalTools = tools;
   try {
     const { filterToolsByPreset } = await import("./agent-presets.js");
-    return filterToolsByPreset(tools) as AgentToolDef[];
+    finalTools = filterToolsByPreset(tools) as AgentToolDef[];
   } catch { /* 预设不可用 → 全量工具 */ }
-  return tools;
+  // V400 C8: 暴露矩阵收敛 (codex finalize_tool_router 对齐) — read-only 模式过滤写/执行类工具(评审会话)
+  if (exposure === "read-only") {
+    const WRITE_TOOLS = new Set(["file_write", "run_code", "sag_ingest", "apply_patch", "computer_use", "gongwen_draft", "video_note", "pdf_convert", "agent_subagent", "todo_update", "run_command", "runtime_exec", "code_search", "github_repo"]);
+    return finalTools.filter((t) => !WRITE_TOOLS.has(t.name));
+  }
+  return finalTools;
 }
 
 /** 危险工具（默认 deny, 需工具级审批开启） */

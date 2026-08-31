@@ -3920,7 +3920,7 @@ export function buildHttpServer() {
       columnOrder: z.array(z.string().min(1)).min(1),
       rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).min(1),
     }),
-    method: z.enum(["descriptive", "ols", "did", "did_twfe", "event_study", "iv", "rdd", "panel_fe", "psm", "scm", "logit", "ologit", "mnl", "crosstab", "genvars", "filter"]),
+    method: z.enum(["descriptive", "ols", "did", "did_twfe", "event_study", "iv", "rdd", "panel_fe", "psm", "scm", "logit", "ologit", "mnl", "crosstab", "genvars", "filter", "meta_analysis"]),
     params: z.record(z.unknown()).default({}),
     // V381 fix: preprocess 被 zod 剥离导致前端勾选静默失效
     preprocess: z.object({
@@ -3970,6 +3970,7 @@ export function buildHttpServer() {
         { id: "panel_fe", label: "面板固定效应", en: "Panel FE", desc: "个体/时间双向固定效应, 聚类 SE", category: "面板数据", engine: "技能流程", skills: ["python-panel-data", "00.1-Full-empirical-analysis-skill_Python"] },
         { id: "psm", label: "倾向得分匹配 PSM", en: "PSM", desc: "匹配 + 平衡检验", category: "匹配", engine: "技能流程", skills: ["10-Jill0099-causal-inference-mixtape"] },
         { id: "scm", label: "合成控制 SCM", en: "SCM", desc: "合成控制法 + 安慰剂检验", category: "匹配", engine: "技能流程", skills: ["10-Jill0099-causal-inference-mixtape"] },
+        { id: "meta_analysis", label: "元分析", en: "Meta-Analysis", desc: "固定/随机效应合并 + 异质性(Q/I²/τ²) + 森林图/漏斗图 (easymeta 方法论)", category: "证据综合", engine: "python", skills: ["easymeta"] },
       ],
     };
   });
@@ -5310,8 +5311,8 @@ except Exception as e:
     if (task.status === "awaiting_approval") {
       return reply.code(400).send({ error: "任务等待审批中，请先 /approve", code: "AGENT_AWAITING_APPROVAL" });
     }
-    // S3: 防并发双跑 — running/planning/completed 任务不可重复入队
-    if (task.status === "running" || task.status === "planning" || task.status === "completed") {
+    // S3: 防并发双跑 — running 不可重复入队; planning 是首次执行(允许); completed 不可重跑
+    if (task.status === "running" || task.status === "completed") {
       return reply.code(400).send({ error: `任务状态为 ${task.status}，不可重复执行`, code: "AGENT_ALREADY_RUNNING" });
     }
     // V394-4: 任务调度队列 — 并发上限+优先级（JWT 用户按 plan 定优先级）
@@ -5443,6 +5444,16 @@ except Exception as e:
     if (!(await assertTaskOwnership(request, reply, params.id))) return;
     const task = await agentTaskService.controlAgentTask(params.id, body.action);
     return { task };
+  });
+
+  // V400 B1: Steer 转向输入 — 任务运行中注入新输入(合并进下轮评估)
+  app.post("/api/agent/tasks/:id/steer", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body as { input: string };
+    if (!(await assertTaskOwnership(request, reply, params.id))) return;
+    const r = await agentTaskService.steerAgentTask(params.id, body.input || "");
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_STEER_FAILED" });
+    return { task: r.task };
   });
 
   // V391(P0-4): 人工审批门 — 高危步骤挂起后由用户批准/拒绝
@@ -7551,6 +7562,20 @@ except Exception as e:
       coverage: scanned > 0 ? Math.round((withCitations / scanned) * 100) : 0,
       totalEntries
     };
+  });
+
+  // 引文三维核验（V399: citation-lab 移植）: 断言+引用上下文 → 元数据真伪/语境相关性/断言支持度
+  const citationVerifySchema = z.object({
+    claim: z.string().min(5).max(3000),
+    referenceTitle: z.string().optional(),
+    referenceDoi: z.string().optional(),
+    referenceText: z.string().optional(),   // 官方摘要/全文(可选, 缺省走 OpenAlex/Crossref 拉取)
+    context: z.string().optional(),        // 引用所在段落上下文(可选)
+  });
+  app.post("/api/citations/verify", async (request) => {
+    const input = citationVerifySchema.parse(request.body);
+    const { citationVerifyService } = await import("../services/citation-verify-service.js");
+    return citationVerifyService.verifyClaim(input);
   });
 
   // PDF 检索：全部 1 万篇 PDF 按主题/关键词检索
