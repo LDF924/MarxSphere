@@ -95,7 +95,7 @@ describe("empirical_metaanalysis", () => {
 // ═══ 2. 引文三维核验 (verify_claim.py) ═══
 describe("verify_claim", () => {
   const SCRIPT = join(ROOT, "vendor", "citation-lab", "verify_claim.py");
-  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("真实 DOI → 元数据 green + 支持度评估 [network]", { timeout: 120_000 }, () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("真实 DOI → 元数据 green + 支持度评估 [network]", { timeout: 120_000, retry: 2 }, () => {
     const out = runPy(SCRIPT, [
       "该研究利用野外监测数据揭示了全球飞行昆虫生物量在27年间下降超过75%",
       "--doi", "10.1371/journal.pone.0185809",
@@ -110,7 +110,7 @@ describe("verify_claim", () => {
     expect(typeof r.dimensions.support.score).toBe("number");
   });
 
-  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("伪造 DOI → 元数据 red [network]", { timeout: 120_000 }, () => {
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("伪造 DOI → 元数据 red [network]", { timeout: 120_000, retry: 2 }, () => {
     const out = runPy(SCRIPT, ["测试断言", "--doi", "10.9999/definitely-fake-doi-xyz"], 110_000);
     const r = JSON.parse(out);
     expect(r.ok).toBe(true);
@@ -128,8 +128,8 @@ describe("verify_claim", () => {
 // ═══ 3. OA 回退 (oa_fallback.py) ═══
 describe("oa_fallback", () => {
   const SCRIPT = join(ROOT, "vendor", "instsci-oa", "oa_fallback.py");
-  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("OpenAlex 检索 → 返回结果 [network]", () => {
-    const out = runPy(SCRIPT, ["openalex", "agrarian political economy", "2"]);
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("OpenAlex 检索 → 返回结果 [network]", { timeout: 120_000, retry: 2 }, () => {
+    const out = runPy(SCRIPT, ["openalex", "agrarian political economy", "2"], 110_000);
     const r = JSON.parse(out);
     expect(r.ok).toBe(true);
     expect(r.items.length).toBeGreaterThan(0);
@@ -137,8 +137,8 @@ describe("oa_fallback", () => {
     expect(r.items[0]).toHaveProperty("doi");
   });
 
-  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("Unpaywall 查真实 DOI → is_oa 布尔 [network]", () => {
-    const out = runPy(SCRIPT, ["oa", "10.1371/journal.pone.0185809"]);
+  it.skipIf(!existsSync(SCRIPT) || !hasNet || !pyHasPandas)("Unpaywall 查真实 DOI → is_oa 布尔 [network]", { timeout: 120_000, retry: 2 }, () => {
+    const out = runPy(SCRIPT, ["oa", "10.1371/journal.pone.0185809"], 110_000);
     const r = JSON.parse(out);
     expect(typeof r.is_oa).toBe("boolean");
   });
@@ -233,16 +233,17 @@ describe("citation_graph", () => {
 });
 
 // ═══ 6. 预算/时间提醒 (agent-reminder-service, codex 对齐) ═══
-import { estimateTokens, currentTimeReminder } from "../src/services/agent-reminder-service.js";
-
+// 惰性 import: 模块顶层依赖 pool.js(需 DB), CI 无 DATABASE_URL 时顶层 import 会崩
 describe("agent_reminder", () => {
-  it("token 估算: 中文≈1字/token, 英文≈4字符/token", () => {
+  it("token 估算: 中文≈1字/token, 英文≈4字符/token", async () => {
+    const { estimateTokens } = await import("../src/services/agent-reminder-service.js");
     expect(estimateTokens("资本下乡与农村集体经济")).toBe(11);  // 11 个汉字
     expect(estimateTokens("abcd")).toBe(1);
     expect(estimateTokens("")).toBe(0);
   });
 
-  it("时间提醒格式 (codex current_time_reminder 对齐)", () => {
+  it("时间提醒格式 (codex current_time_reminder 对齐)", async () => {
+    const { currentTimeReminder } = await import("../src/services/agent-reminder-service.js");
     const r = currentTimeReminder();
     expect(r).toContain("<current_time_reminder>");
     expect(r).toContain("It is ");
@@ -274,11 +275,10 @@ describe("guardian_breaker", () => {
 });
 
 // ═══ 8. Mailbox 双通道 + 审批缓存 (codex input_queue/approvals 对齐) ═══
-import { enqueueMailbox, drainMailbox, hasPendingMail, deferToNextTurn, clearMailbox } from "../src/services/agent-mailbox-service.js";
-import { cacheApproval, getCachedApproval, clearApprovalCache } from "../src/services/approval-cache-service.js";
-
+// 惰性 import: 模块顶层依赖 pool.js(需 DB), CI 无 DATABASE_URL 时顶层 import 会崩
 describe("agent_mailbox", () => {
-  it("入队→取用→标记已投递", () => {
+  it("入队→取用→标记已投递", async () => {
+    const { enqueueMailbox, drainMailbox, hasPendingMail, clearMailbox } = await import("../src/services/agent-mailbox-service.js");
     clearMailbox("t1");
     enqueueMailbox("t1", { fromAgent: "worker-1", toAgent: "orchestrator", kind: "result", payload: { result: "done" } });
     expect(hasPendingMail("t1")).toBe(true);
@@ -288,7 +288,8 @@ describe("agent_mailbox", () => {
     expect(hasPendingMail("t1")).toBe(false);
   });
 
-  it("deferToNextTurn 标记未投递为下一回合", () => {
+  it("deferToNextTurn 标记未投递为下一回合", async () => {
+    const { enqueueMailbox, drainMailbox, deferToNextTurn, clearMailbox } = await import("../src/services/agent-mailbox-service.js");
     clearMailbox("t2");
     enqueueMailbox("t2", { fromAgent: "worker-1", toAgent: "orchestrator", kind: "note", payload: {} });
     deferToNextTurn("t2");
@@ -297,7 +298,8 @@ describe("agent_mailbox", () => {
 });
 
 describe("approval_cache", () => {
-  it("批准写入缓存, 同键命中", () => {
+  it("批准写入缓存, 同键命中", async () => {
+    const { cacheApproval, getCachedApproval, clearApprovalCache } = await import("../src/services/approval-cache-service.js");
     clearApprovalCache("t3");
     cacheApproval("t3", "删除文件", "file_delete", true);
     expect(getCachedApproval("t3", "删除文件", "file_delete")).toBe("allow");
@@ -305,7 +307,8 @@ describe("approval_cache", () => {
     expect(getCachedApproval("t-other", "删除文件", "file_delete")).toBeUndefined();
   });
 
-  it("拒绝写缓存", () => {
+  it("拒绝写缓存", async () => {
+    const { cacheApproval, getCachedApproval, clearApprovalCache } = await import("../src/services/approval-cache-service.js");
     clearApprovalCache("t4");
     cacheApproval("t4", "发布", "external_publish", false);
     expect(getCachedApproval("t4", "发布", "external_publish")).toBe("deny");
@@ -313,11 +316,10 @@ describe("approval_cache", () => {
 });
 
 // ═══ 9. 任务状态机回归 (V400: planning 拒绝回归修复 2dfd2770) ═══
-// 纯函数测试: steer 状态校验不依赖 DB/LLM
-import { isSteerableStatus } from "../src/services/agent-task-service.js";
-
+// 纯函数测试: steer 状态校验不依赖 DB/LLM; 惰性 import(agent-task-service 依赖 pool.js)
 describe("agent_task_state_machine", () => {
-  it("planning 是首次执行前置状态(不可 steer, 但可被 run 接受)", () => {
+  it("planning 是首次执行前置状态(不可 steer, 但可被 run 接受)", async () => {
+    const { isSteerableStatus } = await import("../src/services/agent-task-service.js");
     expect(isSteerableStatus("planning")).toBe(false);
     expect(isSteerableStatus("running")).toBe(true);
     expect(isSteerableStatus("awaiting_approval")).toBe(true);
