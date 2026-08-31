@@ -54,6 +54,9 @@ jobs:
       - name: Unit tests (154)
         env:
           DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
+          # 外部学术 API(OpenAlex/Unpaywall/Crossref)在 CI runner 共享 IP 上不可靠 → 跳过 [network] 用例
+          # 网络用例已在本地真实网络验证(23/23)
+          SKIP_NETWORK_TESTS: "1"
         run: npm test
 
       - name: Frontend build
