@@ -19,15 +19,16 @@ function resolvePy(): string {
       if (m) return m[1].trim().replace(/^["']|["']$/g, "");
     }
   }
-  return process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python";
+  // CI(Linux/ubuntu)只有 python3 无 python; Windows 用 python
+  return process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || (process.platform === "win32" ? "python" : "python3");
 }
 const PY = resolvePy();
 const hasNet = process.env.SKIP_NETWORK_TESTS !== "1";
 
-// V400 CI 修复: python 依赖检测 — 无 pandas 的裸环境(CI ubuntu)跳过 python 依赖用例, 不报错
+// V400 CI 修复: python 依赖检测 — 无 pandas/scipy 的裸环境(CI ubuntu)跳过 python 依赖用例, 不报错
 let pyHasPandas = true;
 try {
-  execFileSync(PY, ["-c", "import pandas"], { encoding: "utf-8", timeout: 15_000, stdio: "pipe" });
+  execFileSync(PY, ["-c", "import pandas, scipy, requests"], { encoding: "utf-8", timeout: 15_000, stdio: "pipe" });
 } catch {
   pyHasPandas = false;
 }
