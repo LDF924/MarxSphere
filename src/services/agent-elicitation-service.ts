@@ -41,6 +41,11 @@ export function isPaused(): boolean {
   return state.paused;
 }
 
+/** V400 可视化: 当前待回答的追问列表(前端展示) */
+export function listPendingElicitations(): Array<{ id: string; question: string; createdAt: number }> {
+  return [...state.pending.entries()].map(([id, p]) => ({ id, question: p.question, createdAt: p.createdAt }));
+}
+
 /** 等待全部追问完成 (Promise 版 wait_until_clear; 轮询实现) */
 export async function waitUntilClear(timeoutMs = 60_000): Promise<void> {
   const start = Date.now();
@@ -101,5 +106,5 @@ export function clearElicitationState(): void {
 
 export const agentElicitationService = {
   registerElicitation, releaseElicitation, isPaused, waitUntilClear,
-  recordElicitationAnswer, getPendingAnswers, clearElicitationState,
+  recordElicitationAnswer, getPendingAnswers, clearElicitationState, listPendingElicitations,
 };

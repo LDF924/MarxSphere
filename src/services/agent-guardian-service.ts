@@ -48,6 +48,11 @@ export function guardianBreakerOpen(): boolean {
   return consecutiveDenies >= MAX_CONSECUTIVE_DENIES;
 }
 
+/** V400 可视化: 当前熔断详情(计数/上限) */
+export function guardianBreakerDetail(): { open: boolean; count: number; max: number } {
+  return { open: consecutiveDenies >= MAX_CONSECUTIVE_DENIES, count: consecutiveDenies, max: MAX_CONSECUTIVE_DENIES };
+}
+
 /** 判定矩阵（guardian-policy.md）: risk × authorization → verdict */
 function verdictMatrix(risk: RiskLevel, auth: AuthorizationLevel): GuardianVerdict {
   if (auth === "high") return risk === "high" ? "review" : "allow";
@@ -129,4 +134,5 @@ export const guardianService = {
   reloadGuardianPolicy,
   resetGuardianBreaker,
   guardianBreakerOpen,
+  guardianBreakerDetail,
 };

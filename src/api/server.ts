@@ -5697,20 +5697,20 @@ except Exception as e:
     }
   });
 
-  // V400: 运行时状态聚合（预算/Elicitation/审批/熔断 — 前端状态面板）
+  // V400: 运行时状态聚合（预算/Elicitation/审批/熔断 — 前端状态面板, 内容级）
   app.get("/api/agent/runtime-status", async () => {
     const out: Record<string, unknown> = { reminders: {}, elicitation: {}, approvals: {}, guardian: {} };
     try {
       const { agentReminderService } = await import("../services/agent-reminder-service.js");
-      out.reminders = { contextWindowLimit: agentReminderService.contextWindowLimit(), threshold: 6144 };
+      out.reminders = { contextWindowLimit: agentReminderService.contextWindowLimit(), threshold: 6144, log: agentReminderService.getReminderLog() };
     } catch { /* 状态不可用 */ }
     try {
       const { agentElicitationService } = await import("../services/agent-elicitation-service.js");
-      out.elicitation = { paused: agentElicitationService.isPaused() };
+      out.elicitation = { paused: agentElicitationService.isPaused(), pending: agentElicitationService.listPendingElicitations() };
     } catch { /* 状态不可用 */ }
     try {
       const { guardianService } = await import("../services/agent-guardian-service.js");
-      out.guardian = { breakerOpen: guardianService.guardianBreakerOpen() };
+      out.guardian = guardianService.guardianBreakerDetail();
     } catch { /* 状态不可用 */ }
     return out;
   });
