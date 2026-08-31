@@ -82,7 +82,6 @@ import { AgentConsole } from "./components/AgentConsole";
 import { P2OView } from "./components/P2OView";
 import { CJournalPanel } from "./components/CJournalPanel";
 import { CitationVerifyPanel } from "./components/CitationVerifyPanel";
-import { CapabilityToolsPanel } from "./components/CapabilityToolsPanel";
 import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
@@ -542,7 +541,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "capability-tools"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -1979,8 +1978,6 @@ function AppShell() {
               <ErrorBoundary><AgentConsole /></ErrorBoundary>
             ) : workspaceView === "p2o" ? (
               <P2OView />
-            ) : workspaceView === "capability-tools" ? (
-              <CapabilityToolsPanel />
             ) : workspaceView === "citation-verify" ? (
               <CitationVerifyPanel />
             ) : workspaceView === "cjournal" ? (
@@ -2514,7 +2511,6 @@ function MainWorkspaceTabs(props: {
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
-        { value: "capability-tools", label: t("工具集", "Tools") },  // 统一工具入口(文档转换/公文/视频笔记/叙事/图表)
         { value: "p2o", label: t("PDF2Obsidian", "PDF2Obsidian") },
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },

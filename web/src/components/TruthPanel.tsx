@@ -6,6 +6,7 @@ import { BookOpenCheck, Plus, FileText, History, GitCommitHorizontal, Loader2, R
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { MarkdownMessage } from "../lib/markdown";
+import { ToolRunner } from "./ToolRunner";
 import { TruthDiff } from "./TruthDiff";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 import { Card } from "../components/ui/card";
@@ -251,6 +252,23 @@ export function TruthPanel() {
             <ButtonSmall onClick={() => setShowCreate((current) => !current)}><Plus className="h-3.5 w-3.5" /> 新建页面</ButtonSmall>
           </div>
         </div>
+
+        {/* 叙事导出: 知识页/研究素材 → 循证叙事结构(good-story) */}
+        <details className="rounded-md border border-border bg-card/40 p-2">
+          <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground hover:text-foreground">
+            📖 叙事导出 — 把知识页组织成"解决的张力"结构（循证叙事）
+          </summary>
+          <div className="mt-2">
+            <ToolRunner
+              tool="view_truth_narrative"
+              title="叙事导出"
+              fields={[
+                { key: "title", label: "知识页标题/主题", placeholder: "资本下乡的规范引导路径" },
+              ]}
+              hint="六段张力叙事 + 证据阶梯 + 最诚实单句摘要"
+            />
+          </div>
+        </details>
 
         {/* V328: 知识 PR 审核状态条（P1-7 前端展示）— Proposer-Reviewer 异源互审 */}
         <div className="rounded-md border border-border bg-background p-2.5">

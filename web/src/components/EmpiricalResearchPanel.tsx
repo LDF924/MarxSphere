@@ -6,6 +6,7 @@ import { useState, useEffect, type FC } from "react";
 import { FlaskConical, Upload, Play, RotateCcw, Table2, AlertTriangle, CheckCircle2, FileUp, ArrowRight, Wand2, History, Download, BookOpen, Trash2, Stethoscope, Database, ListChecks, Workflow, LineChart, BookMarked } from "lucide-react";
 import { apiEmpirical, apiEmpiricalWorkshop, apiEmpiricalDemo } from "../lib/api";
 import { Button } from "./ui/button";
+import { ToolRunner } from "./ToolRunner";
 import { Card } from "./ui/card";
 import { NavRail, type SectionId } from "./empirical/NavRail";
 import { GeneratorPage } from "./empirical/GeneratorPage";
@@ -605,6 +606,23 @@ export const EmpiricalResearchPanel: FC = () => {
           {flowStep === "data" && (
             <div className="mx-auto w-full max-w-[1400px] space-y-3">
               <Card className="p-3">
+                <details className="mb-2">
+                  <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                    📊 图表数字化 — 从文献图表/图片提取数值为 CSV（thu-digitizer, 验证优先）
+                  </summary>
+                  <div className="mt-2">
+                    <ToolRunner
+                      tool="view_chart_digitize"
+                      title="图表数字化"
+                      fields={[
+                        { key: "imagePath", label: "图表图片/PDF 路径", placeholder: "D:/figure.png" },
+                        { key: "chartType", label: "图表类型", type: "select", options: ["", "bar", "line", "scatter", "histogram", "boxplot"] },
+                      ]}
+                      hint="预检 → 坐标确认 → CSV（不编造数值）"
+                      compact
+                    />
+                  </div>
+                </details>
                 <div className="mb-2 flex items-center gap-2">
                   <Upload className="h-4 w-4 text-emerald-600" />
                   <span className="text-xs font-semibold">上传数据</span>
