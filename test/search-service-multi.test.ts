@@ -22,6 +22,13 @@ const repositories = vi.hoisted(() => ({
 
 vi.mock("../src/db/repositories.js", () => repositories);
 
+// V400 CI 修复: mock rerankClient — 避免无有效 RERANK_API_KEY 环境(CI dummy key)下走真实 API 401
+const rerank = vi.hoisted(() => ({
+  rerankEvents: vi.fn(async () => [] as string[]),
+  rerankEventsWithScores: vi.fn(async () => [] as Array<{ id: string; score: number }>)
+}));
+vi.mock("../src/ai/rerank-client.js", () => ({ rerankClient: rerank, QwenRerankClient: class {} }));
+
 import { SearchService } from "../src/services/search-service.js";
 
 describe("SearchService multi search", () => {
