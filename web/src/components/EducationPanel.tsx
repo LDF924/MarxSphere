@@ -1997,22 +1997,18 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
 
       {/* 视频笔记: B站/抖音 → Markdown 学习笔记(素材采集) */}
       {role !== "teacher" && (
-        <details className="border-b px-4 py-1.5">
-          <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
-            🎬 视频笔记 — 把 B站/抖音视频转成学习笔记
-          </summary>
-          <div className="py-2">
-            <ToolRunner
-              tool="video_note"
-              title="视频笔记"
-              fields={[
-                { key: "platform", label: "平台", type: "select", options: ["bilibili", "douyin"] },
-                { key: "url", label: "视频链接", placeholder: "https://www.bilibili.com/video/BVxxx" },
-              ]}
-              hint="Markdown 学习笔记（优先字幕, 缺失转写音频）"
-            />
-          </div>
-        </details>
+        <div className="border-b px-4 py-2">
+          <div className="mb-2 text-[11px] font-medium text-foreground/90">🎬 视频笔记 — 把 B站/抖音视频转成学习笔记</div>
+          <ToolRunner
+            tool="video_note"
+            title="视频笔记"
+            fields={[
+              { key: "platform", label: "平台", type: "select", options: ["bilibili", "douyin"] },
+              { key: "url", label: "视频链接", placeholder: "https://www.bilibili.com/video/BVxxx" },
+            ]}
+            hint="Markdown 学习笔记（优先字幕, 缺失转写音频）"
+          />
+        </div>
       )}
 
       {fbOpen && (
