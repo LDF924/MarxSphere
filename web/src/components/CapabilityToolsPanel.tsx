@@ -62,25 +62,6 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-function StatusCard({ title, icon, items }: { title: string; icon: React.ReactNode; items: Array<{ label: string; value: string; tone?: "ok" | "warn" | "err" }> }) {
-  return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">{icon}{title}</div>
-      <div className="space-y-1">
-        {items.map((it) => (
-          <div key={it.label} className="flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">{it.label}</span>
-            <span className={cn(
-              "font-medium",
-              it.tone === "ok" ? "text-emerald-400" : it.tone === "warn" ? "text-amber-400" : it.tone === "err" ? "text-red-400" : "text-foreground"
-            )}>{it.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export const CapabilityToolsPanel: FC = () => {
   const [activeTool, setActiveTool] = useState(TOOLS[0]);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -136,22 +117,52 @@ export const CapabilityToolsPanel: FC = () => {
         <span className="text-[10px] text-muted-foreground">（V399 工具 + V400 运行时状态）</span>
       </div>
 
-      {/* 运行时状态 */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard title="上下文预算" icon={<Gauge className="h-3.5 w-3.5 text-blue-400" />} items={[
-          { label: "窗口上限", value: reminders?.contextWindowLimit ? `${reminders.contextWindowLimit.toLocaleString()} tokens` : "—" },
-          { label: "提醒阈值", value: reminders?.threshold ? `${reminders.threshold.toLocaleString()}` : "—" },
-        ]} />
-        <StatusCard title="Elicitation" icon={<MessageCircleQuestion className="h-3.5 w-3.5 text-amber-400" />} items={[
-          { label: "追问暂停中", value: elicitation?.paused ? "是" : "否", tone: elicitation?.paused ? "warn" : "ok" },
-        ]} />
-        <StatusCard title="审批链" icon={<ShieldAlert className="h-3.5 w-3.5 text-orange-400" />} items={[
-          { label: "模式", value: "Hook→Guardian→User" },
-          { label: "缓存", value: "命令指纹已启用" },
-        ]} />
-        <StatusCard title="Guardian 熔断" icon={<ShieldAlert className="h-3.5 w-3.5 text-red-400" />} items={[
-          { label: "熔断状态", value: guardian?.breakerOpen ? "已触发(连续拒绝)" : "正常", tone: guardian?.breakerOpen ? "err" : "ok" },
-        ]} />
+      {/* 运行时状态 — 内容级 */}
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+        <div className="rounded-lg border bg-card p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><Gauge className="h-3.5 w-3.5 text-blue-400" />上下文预算提醒</div>
+          <div className="mb-1 text-[10px] text-muted-foreground">窗口上限 {reminders?.contextWindowLimit?.toLocaleString() ?? "—"} · 提醒阈值 {reminders?.threshold?.toLocaleString() ?? "—"}</div>
+          <div className="max-h-32 space-y-1 overflow-auto">
+            {(reminders?.log || []).map((r: any, i: number) => (
+              <div key={i} className="rounded bg-muted/20 px-2 py-1 text-[10px] leading-4">
+                <span className="text-slate-500">[{r.at}] {r.kind}: </span>{r.message}
+              </div>
+            ))}
+            {(reminders?.log || []).length === 0 && <div className="text-[10px] text-muted-foreground">（暂无提醒 — 任务运行时自动注入）</div>}
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><MessageCircleQuestion className="h-3.5 w-3.5 text-amber-400" />Elicitation 澄清追问</div>
+          <div className={cn("mb-1 text-[10px]", elicitation?.paused ? "text-amber-400" : "text-emerald-400")}>
+            状态: {elicitation?.paused ? "工具等待用户追问中" : "正常（无待答追问）"}
+          </div>
+          <div className="max-h-32 space-y-1 overflow-auto">
+            {(elicitation?.pending || []).map((p: any) => (
+              <div key={p.id} className="rounded bg-amber-500/10 px-2 py-1 text-[10px]">{p.question}</div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><ShieldAlert className="h-3.5 w-3.5 text-orange-400" />审批三级链</div>
+          <div className="space-y-1 text-[10px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">链路</span><span>PermissionHook → Guardian → User</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">审批缓存</span><span className="text-emerald-400">命令指纹已启用</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">高危工具</span><span>需经任务审批门</span></div>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><ShieldAlert className="h-3.5 w-3.5 text-red-400" />Guardian 熔断</div>
+          <div className="space-y-1 text-[10px]">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">状态</span>
+              <span className={cn("font-medium", guardian?.open ? "text-red-400" : "text-emerald-400")}>
+                {guardian?.open ? "已触发（高危尝试已阻断）" : "正常"}
+              </span>
+            </div>
+            <div className="flex justify-between"><span className="text-muted-foreground">连续拒绝</span><span>{guardian?.count ?? 0} / {guardian?.max ?? 3}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">复位</span><span>每轮任务开始自动重置</span></div>
+          </div>
+        </div>
       </div>
 
       {/* 工具选择 */}

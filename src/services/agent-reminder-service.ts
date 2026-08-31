@@ -18,6 +18,24 @@ interface ReminderState {
   lastReminderWindow: string;      // 窗口 id 去重键
   lastRolloutReminderTokens: number;
   fallbackClaimed: boolean;
+  /** V400 可视化: 最近提醒日志(内容级展示) */
+  log: Array<{ at: string; kind: string; message: string }>;
+}
+
+/** V400: 记录提醒日志(供前端展示) */
+function logReminder(taskId: string, kind: string, message: string): void {
+  const s = getState(taskId);
+  s.log.unshift({ at: new Date().toLocaleTimeString("zh-CN", { hour12: false }), kind, message: message.slice(0, 150) });
+  s.log = s.log.slice(0, 10);
+}
+
+/** V400: 取最近提醒日志(前端可视化) */
+export function getReminderLog(taskId?: string): Array<{ at: string; kind: string; message: string }> {
+  if (taskId) return (state.get(taskId)?.log || []);
+  // 无 taskId → 聚合全部(最多 20 条)
+  const all: Array<{ at: string; kind: string; message: string }> = [];
+  for (const s of state.values()) all.push(...s.log);
+  return all.slice(0, 20);
 }
 
 const state = new Map<string, ReminderState>();
@@ -25,7 +43,7 @@ const state = new Map<string, ReminderState>();
 function getState(taskId: string): ReminderState {
   let s = state.get(taskId);
   if (!s) {
-    s = { lastReminderWindow: "", lastRolloutReminderTokens: 0, fallbackClaimed: false };
+    s = { lastReminderWindow: "", lastRolloutReminderTokens: 0, fallbackClaimed: false, log: [] };
     state.set(taskId, s);
   }
   return s;
@@ -81,7 +99,9 @@ export async function rolloutReminder(taskId: string, goal: string): Promise<str
   if (bucket <= Math.floor(s.lastRolloutReminderTokens / ROLLOUT_REMINDER_EVERY)) return null;
   s.lastRolloutReminderTokens = used;
   const remaining = Math.max(0, budget - used);
-  return `【预算提醒】本任务已消耗约 ${Math.round(used / 1000)}K token（上限 ${Math.round(budget / 1000)}K），剩余约 ${Math.round(remaining / 1000)}K。请在剩余预算内收敛产出: 优先完成核心维度, 避免冗余检索与重复尝试。`;
+  const msg = `【预算提醒】本任务已消耗约 ${Math.round(used / 1000)}K token（上限 ${Math.round(budget / 1000)}K），剩余约 ${Math.round(remaining / 1000)}K。请在剩余预算内收敛产出: 优先完成核心维度, 避免冗余检索与重复尝试。`;
+  logReminder(taskId, "rollout", msg);
+  return msg;
 }
 
 /**
@@ -95,7 +115,9 @@ export async function tokenBudgetReminder(taskId: string, windowId: string): Pro
   const remaining = contextWindowLimit() - ctxTokens;
   if (remaining > REMINDER_THRESHOLD_TOKENS) return null;
   s.lastReminderWindow = windowId;
-  return `【上下文预算提醒】当前上下文窗口剩余约 ${remaining.toLocaleString()} tokens（阈值 ${REMINDER_THRESHOLD_TOKENS.toLocaleString()}）。请立即收敛: 完成当前步骤后停止展开新分支, 在剩余预算内给出结论。`;
+  const msg = `【上下文预算提醒】当前上下文窗口剩余约 ${remaining.toLocaleString()} tokens（阈值 ${REMINDER_THRESHOLD_TOKENS.toLocaleString()}）。请立即收敛: 完成当前步骤后停止展开新分支, 在剩余预算内给出结论。`;
+  logReminder(taskId, "token_budget", msg);
+  return msg;
 }
 
 /**
@@ -109,7 +131,9 @@ export async function compactFallbackPrompt(taskId: string, windowId: string): P
   const remaining = contextWindowLimit() - ctxTokens;
   if (remaining > FALLBACK_BUFFER_TOKENS) return null;
   s.fallbackClaimed = true;
-  return `【上下文已压缩】历史上下文已超出窗口, 已由系统压缩为摘要。后续轮次: 基于摘要继续, 不再引用被压缩的细节; 优先推进剩余关键步骤并收敛产出。`;
+  const msg = `【上下文已压缩】历史上下文已超出窗口, 已由系统压缩为摘要。后续轮次: 基于摘要继续, 不再引用被压缩的细节; 优先推进剩余关键步骤并收敛产出。`;
+  logReminder(taskId, "compact_fallback", msg);
+  return msg;
 }
 
 /**
@@ -151,4 +175,4 @@ export function advanceContextWindow(taskId: string, windowId: string): void {
   s.lastReminderWindow = windowId;
 }
 
-export const agentReminderService = { estimateTokens, rolloutReminder, tokenBudgetReminder, compactFallbackPrompt, currentTimeReminder, buildReminders, clearReminderState, contextWindowLimit, advanceContextWindow };
+export const agentReminderService = { estimateTokens, rolloutReminder, tokenBudgetReminder, compactFallbackPrompt, currentTimeReminder, buildReminders, clearReminderState, contextWindowLimit, advanceContextWindow, getReminderLog };
