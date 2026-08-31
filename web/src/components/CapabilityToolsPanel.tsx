@@ -9,14 +9,17 @@ import { cn } from "../lib/utils";
 interface ToolDef {
   name: string;
   label: string;
+  category: string;
   icon: React.ReactNode;
   fields: Array<{ key: string; label: string; placeholder: string; type?: "text" | "textarea" | "select"; options?: string[] }>;
   resultHint: string;
 }
 
+const CATEGORIES = ["文档处理", "写作辅助", "内容采集", "知识沉淀", "数据分析"];
+
 const TOOLS: ToolDef[] = [
   {
-    name: "pdf_convert", label: "文档转换(MinerU)",
+    name: "pdf_convert", label: "文档转换", category: "文档处理",
     icon: <FileText className="h-4 w-4" />,
     fields: [
       { key: "filePath", label: "文档路径", placeholder: "D:/xxx.pdf (pdf/png/jpg/docx/pptx/xlsx)", type: "text" },
@@ -26,7 +29,7 @@ const TOOLS: ToolDef[] = [
     resultHint: "转换结果 Markdown",
   },
   {
-    name: "gongwen_draft", label: "公文起草",
+    name: "gongwen_draft", label: "公文起草", category: "写作辅助",
     icon: <FileSignature className="h-4 w-4" />,
     fields: [
       { key: "task", label: "任务", placeholder: "起草一份关于资本下乡规范引导的通知", type: "textarea" },
@@ -35,7 +38,7 @@ const TOOLS: ToolDef[] = [
     resultHint: "按 GB/T 9704 规范的公文草稿",
   },
   {
-    name: "video_note", label: "视频笔记",
+    name: "video_note", label: "视频笔记", category: "内容采集",
     icon: <Video className="h-4 w-4" />,
     fields: [
       { key: "platform", label: "平台", type: "select", options: ["bilibili", "douyin"], placeholder: "" },
@@ -44,7 +47,7 @@ const TOOLS: ToolDef[] = [
     resultHint: "Markdown 学习笔记",
   },
   {
-    name: "view_truth_narrative", label: "知识页叙事导出",
+    name: "view_truth_narrative", label: "叙事导出", category: "知识沉淀",
     icon: <BookOpenText className="h-4 w-4" />,
     fields: [
       { key: "title", label: "知识页标题/主题", placeholder: "资本下乡的规范引导路径", type: "text" },
@@ -52,7 +55,7 @@ const TOOLS: ToolDef[] = [
     resultHint: "六段张力叙事 + 证据阶梯",
   },
   {
-    name: "view_chart_digitize", label: "图表数字化",
+    name: "view_chart_digitize", label: "图表数字化", category: "数据分析",
     icon: <ChartColumn className="h-4 w-4" />,
     fields: [
       { key: "imagePath", label: "图表图片/PDF 路径", placeholder: "D:/figure.png", type: "text" },
@@ -113,8 +116,7 @@ export const CapabilityToolsPanel: FC = () => {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Activity className="h-4 w-4 text-violet-400" />
-        <h2 className="text-sm font-semibold">能力工具面板</h2>
-        <span className="text-[10px] text-muted-foreground">（V399 工具 + V400 运行时状态）</span>
+        <h2 className="text-sm font-semibold">工具集</h2>
       </div>
 
       {/* 运行时状态 — 内容级 */}
@@ -165,20 +167,31 @@ export const CapabilityToolsPanel: FC = () => {
         </div>
       </div>
 
-      {/* 工具选择 */}
-      <div className="flex flex-wrap gap-1.5">
-        {TOOLS.map((t) => (
-          <button
-            key={t.name}
-            onClick={() => { setActiveTool(t); setResult(""); setError(""); }}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] transition-colors",
-              activeTool.name === t.name ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-border bg-card text-muted-foreground hover:border-violet-500/50"
-            )}
-          >
-            {t.icon}{t.label}
-          </button>
-        ))}
+      {/* 工具选择 — 按类别分组 */}
+      <div className="space-y-1.5">
+        {CATEGORIES.map((cat) => {
+          const tools = TOOLS.filter((t) => t.category === cat);
+          if (tools.length === 0) return null;
+          return (
+            <div key={cat} className="flex items-center gap-2">
+              <span className="w-16 shrink-0 text-[10px] font-medium text-muted-foreground">{cat}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {tools.map((t) => (
+                  <button
+                    key={t.name}
+                    onClick={() => { setActiveTool(t); setResult(""); setError(""); }}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] transition-colors",
+                      activeTool.name === t.name ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-border bg-card text-muted-foreground hover:border-violet-500/50"
+                    )}
+                  >
+                    {t.icon}{t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* 表单 */}
