@@ -448,9 +448,11 @@ export function JobsPanel() {
             <div className="space-y-1.5">
               {jobs.map((job) => (
                 <div key={job.id} className="rounded border border-border/60">
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setExpandedId(expandedId === job.id ? null : job.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedId(expandedId === job.id ? null : job.id); } }}
                     className="flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs"
                   >
                     <span className={cn("w-16 shrink-0 rounded px-1.5 py-0.5 text-center", STATUS_STYLE[job.status] ?? "bg-muted")}>
@@ -473,7 +475,7 @@ export function JobsPanel() {
                       </button>
                     )}
                     <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform", expandedId === job.id && "rotate-180")} />
-                  </button>
+                  </div>
                   {expandedId === job.id && (
                     <div className="border-t border-border/50 px-2 py-2 text-[10px]">
                       <div className="text-muted-foreground">参数: <code className="font-mono">{JSON.stringify(job.payload)}</code></div>

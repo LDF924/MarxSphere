@@ -29,7 +29,9 @@ export type MinionJobType =
   | "disambiguate"    // 实体消歧 (GBrain phase 6)
   | "index_refresh"   // 向量+全文索引+统计报告 (GBrain phase 7-9)
   | "sleep_learn"    // V321(P1-8): 睡眠学习（记忆整理+修剪）
-  | "autonomous_research"; // V376: 自主研究（③主动行为——每日记忆巡检+主题研究）
+  | "autonomous_research" // V376: 自主研究（③主动行为——每日记忆巡检+主题研究）
+  | "backup"          // P1: 知识库轻量备份(.sagbak)
+  | "restore";        // P1: 知识库恢复(全量替换)
 
 export type MinionJobStatus = "waiting" | "active" | "completed" | "failed" | "delayed" | "dead" | "cancelled" | "waiting-children" | "paused";
 

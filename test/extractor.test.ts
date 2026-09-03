@@ -6,6 +6,7 @@ describe("extractEventsFromChunk", () => {
   it("keeps one event per chunk even if the LLM client returns multiple events", async () => {
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => []),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractRelations: vi.fn(async () => []),
       rerankEvents: vi.fn(async () => []),
       extractEventsFromChunk: vi.fn(async () => [
@@ -42,5 +43,58 @@ describe("extractEventsFromChunk", () => {
     expect(events).toHaveLength(1);
     expect(events[0].title).toBe("第一个事项");
     expect(events[0].references).toEqual(["00000000-0000-0000-0000-000000000001"]);
+  });
+});
+
+describe("extractEventsFromChunk G7 层级模式", () => {
+  it("默认(非层级)保持单事件强制", async () => {
+    const llm: LlmClient = {
+      extractNamedEntities: vi.fn(async () => []),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
+      extractRelations: vi.fn(async () => []),
+      rerankEvents: vi.fn(async () => []),
+      extractEventsFromChunk: vi.fn(async () => [
+        {
+          title: "父事件", summary: "父摘要", content: "父内容", category: "一般事项",
+          keywords: [], references: [], entities: [],
+          children: [
+            { title: "子事件", summary: "子摘要", content: "子内容", category: "一般事项", keywords: [], references: [], entities: [] }
+          ]
+        }
+      ]),
+      composeAnswer: vi.fn(async () => ({ answer: "", citations: [] }))
+    };
+    const events = await extractEventsFromChunk({
+      llm, documentTitle: "文档", content: "内容", references: []
+    });
+    // 默认模式: 单事件, children 不展平
+    expect(events).toHaveLength(1);
+    expect(events[0].title).toBe("父事件");
+  });
+
+  it("层级模式展平 children 并标注 parentTitle", async () => {
+    const llm: LlmClient = {
+      extractNamedEntities: vi.fn(async () => []),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
+      extractRelations: vi.fn(async () => []),
+      rerankEvents: vi.fn(async () => []),
+      extractEventsFromChunk: vi.fn(async () => [
+        {
+          title: "父事件", summary: "父摘要", content: "父内容", category: "一般事项",
+          keywords: [], references: [], entities: [],
+          children: [
+            { title: "子事件", summary: "子摘要", content: "子内容", category: "一般事项", keywords: [], references: [], entities: [] }
+          ]
+        }
+      ]),
+      composeAnswer: vi.fn(async () => ({ answer: "", citations: [] }))
+    };
+    const events = await extractEventsFromChunk({
+      llm, documentTitle: "文档", content: "内容", references: [], hierarchical: true
+    });
+    expect(events).toHaveLength(2);
+    expect(events[0].title).toBe("父事件");
+    expect(events[1].title).toBe("子事件");
+    expect(events[1].parentTitle).toBe("父事件");
   });
 });

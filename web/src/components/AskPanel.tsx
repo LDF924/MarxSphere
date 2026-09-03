@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import type { SearchProgressEvent, SearchResult } from "../types";
 import { RetrievalSourceSwitches } from "./RetrievalSourceSwitches";
 import { LlmModelSelector } from "./LlmModelSelector";
+import { EventEntityGraphView } from "./EventEntityGraphView";
 import { FeedbackButtons } from "./FeedbackButtons";
 
 interface StepEntry {
@@ -150,6 +151,10 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
   const [citations, setCitations] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ totalMs: number; steps: number; passed: number } | null>(null);
+  const [graph, setGraph] = useState<{ graph: { nodes: unknown[]; clues: unknown[] } | null; pathResult: unknown | null } | null>(null);
+  /** G10: 引用证据分页(前端切片) */
+  const [pageOffset, setPageOffset] = useState(0);
+  const [pageSize] = useState(10);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   // 最近点亮的步骤（完成时绿色脉冲动画）
   const [lastLitKey, setLastLitKey] = useState<string | null>(null);
@@ -235,6 +240,8 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
     setCitations([]);
     setSteps([]);
     setSummary(null);
+    setGraph(null);
+    setPageOffset(0);
     stepMapRef.current.clear();
     startedAtRef.current = Date.now();
 
@@ -245,7 +252,8 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
           sourceIds: [selectedProjectId],
           searchMode: "standard",
           topK: 10,
-          sources
+          sources,
+          returnGraph: true
         },
         (event) => {
           if (event.type === "step") {
@@ -268,7 +276,8 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
               setTimeout(() => setLastLitKey(null), 600);
             }
           } else if (event.type === "done") {
-            const result = (event as { type: "done"; result: SearchResult }).result;
+            const result = (event as { type: "done"; result: SearchResult & { graph?: { graph: { nodes: unknown[]; clues: unknown[] } | null; pathResult: unknown | null } | null } }).result;
+            if (result?.graph) setGraph(result.graph);
             if (result && result.sections && result.sections.length > 0) {
               const newCitations = result.sections.map((section) => ({
                 chunkId: section.chunkId,
@@ -514,28 +523,52 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
             <Card className="flex min-h-[120px] flex-1 flex-col p-4">
               <div className="mb-2 shrink-0 text-sm font-medium">引用证据（{citations.length}）</div>
               {citations.length > 0 ? (
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-                  {citations.map((citation) => (
-                    <div key={citation.chunkId} className="rounded border border-border p-2 text-xs">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <FileText className="h-3 w-3" />
-                        <span className="truncate font-mono text-[10px]">{citation.heading || citation.sourceId.slice(0, 12)}</span>
-                        <span className="ml-auto flex shrink-0 items-center gap-1">
-                          {/* 来源溯源：该证据被哪个检索算子捞到 */}
-                          {citation.sourceStep && (
-                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700" title="来源检索步骤">
-                              ↑ {STEP_LABELS[citation.sourceStep] ?? citation.sourceStep}
+                <>
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+                    {citations.slice(pageOffset, pageOffset + pageSize).map((citation) => (
+                      <div key={citation.chunkId} className="rounded border border-border p-2 text-xs">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <FileText className="h-3 w-3" />
+                          <span className="truncate font-mono text-[10px]">{citation.heading || citation.sourceId.slice(0, 12)}</span>
+                          <span className="ml-auto flex shrink-0 items-center gap-1">
+                            {/* 来源溯源：该证据被哪个检索算子捞到 */}
+                            {citation.sourceStep && (
+                              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700" title="来源检索步骤">
+                                ↑ {STEP_LABELS[citation.sourceStep] ?? citation.sourceStep}
+                              </span>
+                            )}
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              step{String(citation.rank ?? "").slice(0, 2) || "?"} · {Math.round((citation.score ?? 0) * 100)}%
                             </span>
-                          )}
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            step{String(citation.rank ?? "").slice(0, 2) || "?"} · {Math.round((citation.score ?? 0) * 100)}%
                           </span>
-                        </span>
+                        </div>
+                        <p className="mt-1 line-clamp-2">{citation.content}</p>
                       </div>
-                      <p className="mt-1 line-clamp-2">{citation.content}</p>
+                    ))}
+                  </div>
+                  {/* G10: 结果分页(前端切片, 对齐服务端快照语义) */}
+                  {citations.length > pageSize && (
+                    <div className="mt-2 flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+                      <button
+                        onClick={() => setPageOffset(Math.max(0, pageOffset - pageSize))}
+                        disabled={pageOffset === 0}
+                        className="rounded bg-accent px-2 py-0.5 hover:bg-accent/70 disabled:opacity-40"
+                      >
+                        ← 上一页
+                      </button>
+                      <span>
+                        {Math.floor(pageOffset / pageSize) + 1} / {Math.ceil(citations.length / pageSize)}
+                      </span>
+                      <button
+                        onClick={() => setPageOffset(pageOffset + pageSize)}
+                        disabled={pageOffset + pageSize >= citations.length}
+                        className="rounded bg-accent px-2 py-0.5 hover:bg-accent/70 disabled:opacity-40"
+                      >
+                        下一页 →
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               ) : (
                 <div className="text-xs text-muted-foreground">暂无引用证据</div>
               )}
@@ -607,6 +640,36 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
                 )}
             </Card>
           </div>
+          {/* G2: 检索路径图谱(完整移植 Zleap EventEntityGraph: force/radial/tree 三布局) */}
+          {graph && graph.graph && graph.graph.nodes && graph.graph.nodes.length > 0 && (() => {
+            const g = graph.graph as { nodes: Array<{ id: string; type: string; name?: string; title?: string; content?: string; category?: string }>; clues: Array<{ id: string; fromId: string; toId: string; method?: string; confidence?: number }> };
+            // 节点: query 不入图, event/entity 转 GraphNodeInput
+            const graphNodes = g.nodes
+              .filter((n) => n.type === "event" || n.type === "entity")
+              .map((n) => ({
+                id: n.id,
+                kind: n.type as "event" | "entity",
+                label: (n.type === "event" ? n.title : n.name) || n.id.slice(0, 8),
+                subtitle: n.type === "entity" ? n.category || "实体" : n.category || "事件",
+              }));
+            // 边: event→entity 关系(对齐 Zleap relations 结构)
+            const graphEdges = g.clues
+              .filter((c) => c.method === "entity_relation" || c.method === "entity_vector")
+              .map((c) => ({
+                id: c.id,
+                fromId: c.fromId,
+                toId: c.toId,
+                method: c.method === "entity_relation" ? "关联" : "实体向量",
+                confidence: c.confidence,
+              }));
+            if (graphNodes.length === 0) return null;
+            return (
+              <div style={{ padding: "0 4px" }}>
+                <div className="mb-1 text-xs font-medium text-muted-foreground">检索路径图谱</div>
+                <EventEntityGraphView nodes={graphNodes} edges={graphEdges} height={440} />
+              </div>
+            );
+          })()}
         </div>
       </div>
     </section>

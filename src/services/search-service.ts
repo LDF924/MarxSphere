@@ -29,6 +29,9 @@ import { sanitizeInput } from "./sanitize.js";
 import { getRoleModel } from "./llm-model-registry.js";
 import { loadSourceConfig, type RetrievalHit } from "./retrieval-sources.js";
 import { traceService } from "./trace-service.js";
+import { GraphCollector } from "./retrieval-graph.js";
+import { PooledCandidateSource } from "./retrieval-pool.js";
+import { resolveSearchProfile } from "./search-profiles.js";
 import {
   applyBacklinkBoost,
   applyChronicleTypeBoost,
@@ -145,10 +148,19 @@ export class SearchService {
       timings
     };
 
+    // G2: 请求级检索图追踪(对齐 Zleap GraphCollector) — enabled 由 input.returnGraph 控制
+    const graphCollector = input.returnGraph ? new GraphCollector(true, 20) : null;
+    const graphQueryId = graphCollector ? graphCollector.recordQuery(cleanedQuery, JSON.stringify(input.sourceIds)) : "";
+
     const queryVector = await timed(timings, "queryEmbedding", () => this.embeddings.generate(cleanedQuery), emit, {
       title: "查询向量化",
       detail: "把用户问题转成向量，用于召回相关事件和切片。"
     });
+
+    // G3: 内存候选池(对齐 Zleap PooledCandidateSource) — multi 策略建池, 图扩展读内存
+    const candidatePool = searchMode !== "fast" && options.subStrategy === "multi"
+      ? new PooledCandidateSource(queryVector, input.sourceIds, 500, pool)
+      : null;
 
     // V98: 别名消解（GBrain 第11步 alias）——查询词归一，提升实体召回（消融可关）
     const ablation = input.ablation ?? [];
@@ -191,7 +203,20 @@ export class SearchService {
         }))
       });
     } else {
-      queryEntities = await timed(timings, "step1ExtractEntities", () => this.llm.extractNamedEntities(cleanedQuery), emit, {
+      // G5: 查询改写(默认关, QUERY_REWRITE_ENABLED 开启) — 对齐 Zleap rewrite_and_extract_entities
+      let effectiveEntities: string[] | null = null;
+      if (config.QUERY_REWRITE_ENABLED) {
+        const rewrite = await this.llm.rewriteAndExtractEntities(cleanedQuery);
+        if (rewrite.rewrittenQuery && rewrite.rewrittenQuery !== cleanedQuery) {
+          effectiveQuery = rewrite.rewrittenQuery;
+          emitSearchStep(emit, timings, "step1QueryRewrite", {
+            title: "查询改写",
+            detail: `"${cleanedQuery}" → "${rewrite.rewrittenQuery}"`
+          });
+        }
+        if (rewrite.entities.length > 0) effectiveEntities = rewrite.entities;
+      }
+      queryEntities = effectiveEntities ?? await timed(timings, "step1ExtractEntities", () => this.llm.extractNamedEntities(effectiveQuery), emit, {
         title: "抽取查询实体",
         detail: "识别用户问题中的关键实体。"
       });
@@ -238,6 +263,16 @@ export class SearchService {
         detail: `召回 ${trace.recalledEntities.length} 个实体`,
         payload: trace.recalledEntities
       });
+      // G2: 实体节点入检索图(query→entity, method=entity_vector)
+      if (graphCollector) {
+        for (const entity of trace.recalledEntities) {
+          graphCollector.recordEntity(
+            { entity_id: entity.id, name: entity.name, type: entity.type, score: entity.score },
+            graphQueryId,
+            { entity_vector: entity.score ?? 1.0 },
+          );
+        }
+      }
     }
 
     // 修复⑤：aliasHop 接线（GBrain 权威实体注入）— 查询命中别名时提升权威实体
@@ -274,7 +309,12 @@ export class SearchService {
         seedEntityIds: recalledEntities.map((e) => e.id).slice(0, 3),
         sourceIds: input.sourceIds,
         depth: 2,
-        limit: 40
+        limit: 40,
+        queryVector, // P2: 边相似度剪枝(queryVector 在 :148 已就绪)
+        // G1: 逐跳配额(Zleap 对齐) — 每跳最多 15 实体/50 事件, 新事件向量分 ≥ 0.4
+        entitiesPerHop: 15,
+        eventsPerHop: 50,
+        eventThreshold: 0.4,
       });
       return [...new Set(fanout.map((f) => f.eventId))];
     }, emit, {
@@ -430,6 +470,32 @@ export class SearchService {
       detail: `读取 ${seedEvents.size} 个候选事件详情`,
       payload: toTraceEvents([...seedEvents.values()])
     });
+    // G2: 候选事件完整入检索图(对齐 Zleap: query→entity→event 边 + 事件节点)
+    if (graphCollector) {
+      // 先确保实体节点入图(step2 只录了 recalledEntities; 事件关联实体可能不在其中)
+      const entityNameById = new Map(trace.recalledEntities.map((e) => [e.id, e.name]));
+      for (const [eventId, event] of seedEvents) {
+        for (const entityId of event.entityIds ?? []) {
+          const name = entityNameById.get(entityId) ?? entityId;
+          graphCollector.recordEntity({ entity_id: entityId, name, type: "" }, graphQueryId, { entity_relation: 1.0 });
+        }
+      }
+      for (const [eventId, event] of seedEvents) {
+        const relations: Array<Record<string, unknown>> = [];
+        for (const entityId of event.entityIds ?? []) {
+          relations.push({ entity_id: entityId, score: 1.0, description: "" });
+        }
+        graphCollector.recordEventRoutes(
+          { event_id: eventId, title: event.title, summary: event.summary, content: event.content, chunk_id: event.chunkId },
+          eventId,
+          relations,
+        );
+      }
+      // query→event 直连边(标题向量召回路径)
+      for (const eventId of seedEvents.keys()) {
+        graphCollector.recordEvent({ event_id: eventId, title: seedEvents.get(eventId)?.title ?? "" }, graphQueryId, "event_vector", 1.0);
+      }
+    }
     const expanded = await timed(timings, "step5Expand", () => ablation.includes("expansion")
       ? Promise.resolve({ eventsetIds: [], eventset1Ids: [], expandedEventIds: [], expandedEvents: [] })
       : this.expandEvents({
@@ -438,7 +504,8 @@ export class SearchService {
           sourceIds: input.sourceIds,
           query: cleanedQuery,
           queryVector,
-          options
+          options,
+          candidatePool
         }), emit, {
       title: "事件扩展",
       detail: "沿事件实体关系扩展候选事件集合。"
@@ -782,7 +849,9 @@ export class SearchService {
     return {
       traceId,
       sections: sections.slice(0, options.maxSections),
-      trace: input.returnTrace ? trace : undefined
+      trace: input.returnTrace ? trace : undefined,
+      // G2: 请求级检索图(query→entity→event→chunk 路径, 对齐 Zleap GraphCollector)
+      graph: graphCollector ? await graphCollector.build(selectedIds, input.returnGraph ?? false) : { graph: null, pathResult: null }
     };
   }
 
@@ -793,9 +862,10 @@ export class SearchService {
     query: string;
     queryVector: number[];
     options: MultiOptions;
+    candidatePool?: PooledCandidateSource | null;
   }): Promise<{ eventsetIds: string[]; eventset1Ids: string[]; expandedEventIds: string[] }> {
     if (input.options.subStrategy === "multi") {
-      return this.expandFixedHops(input.seedEvents, input.initialEntityIds, input.sourceIds, input.options.maxHops);
+      return this.expandFixedHops(input.seedEvents, input.initialEntityIds, input.sourceIds, input.options.maxHops, input.candidatePool);
     }
     const stageA = await this.expandOneHop(input.seedEvents, input.initialEntityIds, input.sourceIds, new Set(input.seedEvents.keys()));
     const trackedEntityIdsForB = unique([...input.initialEntityIds, ...stageA.expandedEntityIds]);
@@ -822,7 +892,8 @@ export class SearchService {
     seedEvents: Map<string, EventRecord & { entityIds: string[] }>,
     initialEntityIds: string[],
     sourceIds: string[],
-    maxHops: number
+    maxHops: number,
+    candidatePool?: PooledCandidateSource | null
   ): Promise<{ eventsetIds: string[]; eventset1Ids: string[]; expandedEventIds: string[] }> {
     const trackedEvents = new Set(seedEvents.keys());
     const trackedEntities = new Set(initialEntityIds);
@@ -834,11 +905,15 @@ export class SearchService {
       if (newEntityIds.length === 0) {
         break;
       }
-      const newEventIds = await getEventIdsByEntityIds({
-        entityIds: newEntityIds,
-        sourceIds,
-        excludeEventIds: [...trackedEvents]
-      });
+      const newEventIds = candidatePool
+        ? (await candidatePool.eventsForKeys(newEntityIds, 10, { excludeEventIds: [...trackedEvents] }))
+            .map((r) => r.eventId)
+            .filter((id, idx, arr) => arr.indexOf(id) === idx)
+        : await getEventIdsByEntityIds({
+            entityIds: newEntityIds,
+            sourceIds,
+            excludeEventIds: [...trackedEvents]
+          });
       if (newEventIds.length === 0) {
         break;
       }
@@ -984,17 +1059,21 @@ function resolveMultiOptions(input: SearchInput, defaultSearchTopK: number): Mul
   const topK = resolveFinalSearchTopK(input.topK ?? defaultSearchTopK);
   const rerankTopK = resolveFinalSearchTopK(multi.rerankTopK ?? topK);
   const maxSections = resolveFinalSearchTopK(multi.maxSections ?? topK);
+  // G6: profile 化 — 默认值从 profile 取(行为不变), 显式 multi.* 仍可覆盖
+  const profile = resolveSearchProfile(input.searchMode, input.subStrategy);
+  const pRecall = profile.recall;
+  const pExpand = profile.expansion;
   return {
-    subStrategy: input.subStrategy ?? "multi",
-    entityTopK: multi.entityTopK ?? 20,
-    multiTopK: multi.multiTopK ?? 20,
-    keySimilarityThreshold: multi.keySimilarityThreshold ?? 0.9,
-    similarityThreshold: multi.similarityThreshold ?? 0.4,
-    maxHops: multi.maxHops ?? 1,
-    maxEvents: multi.maxEvents ?? 100,
-    maxEventsA: multi.maxEventsA ?? 100,
-    maxEventsB: multi.maxEventsB ?? 0,
-    maxHopRetries: multi.maxHopRetries ?? 3,
+    subStrategy: input.subStrategy ?? pExpand.subStrategy,
+    entityTopK: multi.entityTopK ?? pRecall.entityTopK,
+    multiTopK: multi.multiTopK ?? pRecall.multiTopK,
+    keySimilarityThreshold: multi.keySimilarityThreshold ?? pRecall.keySimilarityThreshold,
+    similarityThreshold: multi.similarityThreshold ?? pRecall.similarityThreshold,
+    maxHops: multi.maxHops ?? pExpand.maxHops,
+    maxEvents: multi.maxEvents ?? pExpand.maxEvents,
+    maxEventsA: multi.maxEventsA ?? pExpand.maxEventsA,
+    maxEventsB: multi.maxEventsB ?? pExpand.maxEventsB,
+    maxHopRetries: multi.maxHopRetries ?? pExpand.maxHopRetries,
     rerankTopK,
     maxSections
   };

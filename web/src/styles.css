@@ -144,3 +144,798 @@ code {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
+
+
+/* ─── 知识宇宙(DOM 标签/星云卡片)原版样式 — 移植自 Zleap globals.css ──
+ * 阶段4b 移植时只带了 ts/tsx, 漏带配套 CSS; 引擎所有标签 transform
+ * 坐标都以 host 为参考系, label-layer 必须 absolute inset-0 覆盖场景。
+ * 源节点 = 48px 信标(呼吸环+glint), hover/focus 展开信息侧卡;
+ * 事件/实体 = 玻璃卡, locked 展开动作按钮。 */
+.sag-knowledge-universe {
+  isolation: isolate;
+  --universe-brand-gold: #d6ae63;
+  --universe-source-accent: var(--universe-brand-gold);
+}
+
+.sag-knowledge-universe [data-universe-home-control] {
+  border-color: color-mix(in srgb, var(--universe-source-accent), transparent 68%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--universe-source-accent), transparent 90%),
+    0 8px 24px rgb(15 23 42 / 0.14);
+}
+
+.sag-knowledge-universe [data-universe-home-control]:hover {
+  border-color: color-mix(in srgb, var(--universe-source-accent), transparent 42%);
+  background: color-mix(in srgb, var(--universe-source-accent), transparent 92%);
+}
+
+.sag-knowledge-universe [data-universe-home-control] svg {
+  color: color-mix(in srgb, var(--universe-source-accent), white 18%);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--universe-source-accent), transparent 34%));
+}
+
+.sag-knowledge-universe [data-universe-timeline-controls] {
+  border-color: color-mix(in srgb, var(--universe-source-accent), transparent 72%);
+}
+
+.sag-knowledge-universe [data-universe-timeline-controls] button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--universe-source-accent), transparent 42%);
+  color: color-mix(in srgb, var(--universe-source-accent), white 18%);
+}
+
+.sag-knowledge-universe [data-universe-summary="true"] {
+  border-color: color-mix(in srgb, var(--universe-source-accent), transparent 78%);
+}
+
+.sag-universe-graph {
+  z-index: 0;
+}
+
+.sag-knowledge-universe[data-universe-mode="explore"][data-universe-view="overview"]
+  .sag-universe-graph {
+  transform-origin: 50% 48%;
+  animation: sag-universe-overview-breathe 9.5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes sag-universe-overview-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.96;
+  }
+
+  48% {
+    transform: scale(1.014);
+    opacity: 1;
+  }
+
+  70% {
+    transform: scale(1.006);
+    opacity: 0.985;
+  }
+}
+
+.sag-universe-graph canvas {
+  outline: none;
+}
+
+.sag-universe-label-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.sag-nebula-label,
+.sag-universe-node-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  letter-spacing: 0;
+  will-change: transform, opacity;
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.sag-nebula-label,
+.sag-universe-node-label {
+  appearance: none;
+  margin: 0;
+  font: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.sag-universe-node-label__primary,
+.sag-universe-node-label__detail-action,
+.sag-universe-node-label__action {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.sag-universe-node-label__primary {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+[data-universe-dragging-id]:not([data-universe-dragging-id=""])
+  :is(.sag-nebula-label, .sag-universe-node-label) {
+  pointer-events: none;
+}
+
+.sag-nebula-label:focus-visible,
+.sag-universe-node-label:has(.sag-universe-node-label__primary:focus-visible),
+.sag-universe-node-label__detail-action:focus-visible,
+.sag-universe-node-label__action:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.72);
+  outline-offset: 3px;
+}
+
+@keyframes sag-nebula-beacon-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scale(0.72);
+  }
+
+  48% {
+    opacity: 0.84;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes sag-nebula-beacon-orbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes sag-nebula-beacon-ring {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: translate(-50%, -50%) scale(0.72);
+  }
+
+  48% {
+    opacity: 0.84;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+@keyframes sag-nebula-beacon-glint {
+  0%,
+  62%,
+  100% {
+    filter: brightness(0.94);
+  }
+
+  70% {
+    filter: brightness(1.32);
+  }
+}
+
+.sag-nebula-label {
+  --nebula-color: rgb(72 157 174);
+  --nebula-phase: -1.4s;
+  display: flex;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--foreground) / 0.88);
+  text-align: left;
+  text-shadow: none;
+  transition:
+    opacity 220ms ease,
+    filter 220ms ease;
+}
+
+.sag-nebula-label::before {
+  position: absolute;
+  inset: 7px;
+  border-radius: inherit;
+  animation: sag-nebula-beacon-breathe 3.4s ease-in-out infinite;
+  animation-delay: var(--nebula-phase);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--nebula-color), transparent 70%) 0%,
+    color-mix(in srgb, var(--nebula-color), transparent 88%) 48%,
+    transparent 72%
+  );
+  content: "";
+  filter: blur(2.5px);
+  pointer-events: none;
+}
+
+.sag-nebula-label__marker {
+  position: relative;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  animation: sag-nebula-beacon-glint 4.8s ease-in-out infinite;
+  animation-delay: var(--nebula-phase);
+  border: 1px solid color-mix(in srgb, var(--nebula-color), white 48%);
+  border-radius: 999px;
+  background: var(--nebula-color);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--nebula-color), transparent 88%),
+    0 0 16px color-mix(in srgb, var(--nebula-color), transparent 38%),
+    inset 0 0 4px rgb(255 255 255 / 0.74);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease;
+}
+
+.sag-nebula-label__marker::before,
+.sag-nebula-label__marker::after {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  content: "";
+  pointer-events: none;
+}
+
+.sag-nebula-label__marker::before {
+  width: 26px;
+  height: 26px;
+  animation: sag-nebula-beacon-ring 3.4s ease-in-out infinite;
+  animation-delay: var(--nebula-phase);
+  border: 1px solid color-mix(in srgb, var(--nebula-color), transparent 56%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--nebula-color), transparent 66%);
+  transform: translate(-50%, -50%);
+}
+
+.sag-nebula-label__marker::after {
+  width: 34px;
+  height: 34px;
+  animation: sag-nebula-beacon-orbit 7.2s linear infinite;
+  animation-delay: var(--nebula-phase);
+  border: 1px solid transparent;
+  border-left-color: color-mix(in srgb, var(--nebula-color), transparent 54%);
+  border-top-color: color-mix(in srgb, var(--nebula-color), transparent 76%);
+  box-shadow: inset 0 0 8px color-mix(in srgb, var(--nebula-color), transparent 88%);
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+}
+
+.sag-nebula-label > span:last-child {
+  position: absolute;
+  left: calc(50% + 30px);
+  top: 50%;
+  z-index: 3;
+  width: 154px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid hsl(var(--border) / 0.62);
+  border-radius: 7px;
+  opacity: 0;
+  background: hsl(var(--background) / 0.86);
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--nebula-color), transparent 28%),
+    0 10px 30px rgb(15 23 42 / 0.1),
+    0 2px 8px rgb(15 23 42 / 0.06);
+  backdrop-filter: blur(14px) saturate(1.08);
+  pointer-events: none;
+  transform: translate3d(-5px, -50%, 0) scale(0.97);
+  transform-origin: left center;
+  transition:
+    opacity 180ms ease,
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sag-nebula-label[data-side="left"] > span:last-child {
+  left: auto;
+  right: calc(50% + 30px);
+  transform: translate3d(5px, -50%, 0) scale(0.97);
+  transform-origin: right center;
+}
+
+.sag-nebula-label[data-side="bottom"] > span:last-child {
+  left: 50%;
+  top: calc(50% + 30px);
+  transform: translate3d(-50%, -5px, 0) scale(0.97);
+  transform-origin: center top;
+}
+
+.sag-nebula-label[data-hovered="true"] > span:last-child,
+.sag-nebula-label:focus-visible > span:last-child {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, -50%, 0) scale(1);
+}
+
+.sag-nebula-label[data-side="bottom"][data-hovered="true"] > span:last-child,
+.sag-nebula-label[data-side="bottom"]:focus-visible > span:last-child {
+  transform: translate3d(-50%, 0, 0) scale(1);
+}
+
+.sag-nebula-label[data-hovered="true"] .sag-nebula-label__marker,
+.sag-nebula-label:focus-visible .sag-nebula-label__marker {
+  transform: scale(1.16);
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--nebula-color), transparent 86%),
+    0 0 24px color-mix(in srgb, var(--nebula-color), transparent 24%),
+    inset 0 0 4px rgb(255 255 255 / 0.82);
+}
+
+.sag-nebula-label strong,
+.sag-nebula-label small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sag-nebula-label strong {
+  max-width: 134px;
+  font-size: 12px;
+  font-weight: 590;
+  line-height: 16px;
+}
+
+.sag-nebula-label small {
+  margin-top: 2px;
+  color: hsl(var(--muted-foreground) / 0.84);
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.sag-nebula-label[data-highlighted="true"] {
+  --nebula-color: rgb(207 151 37);
+}
+
+.sag-nebula-label[data-highlighted="true"] .sag-nebula-label__marker {
+  border-color: rgb(255 237 176 / 0.88);
+  background: rgb(244 201 95 / 0.92);
+  box-shadow:
+    0 0 0 5px rgb(244 201 95 / 0.1),
+    0 0 18px rgb(244 201 95 / 0.58);
+}
+
+[data-universe-reduced-motion="true"] .sag-nebula-label::before,
+[data-universe-reduced-motion="true"] .sag-nebula-label__marker,
+[data-universe-reduced-motion="true"] .sag-nebula-label__marker::before,
+[data-universe-reduced-motion="true"] .sag-nebula-label__marker::after {
+  animation: none;
+}
+
+/* 读事件是目的：面板更实、字号更大、对比更足——星幕上的文字必须一眼可读。 */
+.sag-universe-node-label {
+  --universe-card-edge-blur: 0px;
+  --universe-label-connector-length: 10px;
+  --universe-node-accent: #d6ae63;
+  display: flex;
+  width: 232px;
+  height: 86px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 9px 10px 9px 13px;
+  overflow: visible;
+  border: 1px solid hsl(var(--border) / 0.66);
+  border-radius: 6px;
+  background: hsl(var(--background) / 0.9);
+  box-shadow:
+    inset 2px 0 0 rgb(244 201 95 / 0.72),
+    0 8px 26px rgb(0 0 0 / 0.1),
+    0 0 18px rgb(244 201 95 / 0.045);
+  color: hsl(var(--foreground) / 0.96);
+  filter: blur(var(--universe-card-edge-blur));
+  text-align: left;
+  backdrop-filter: blur(12px) saturate(118%);
+  transition:
+    width 160ms ease,
+    height 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    filter 120ms linear,
+    opacity 160ms ease;
+}
+
+.sag-universe-node-label::before {
+  position: absolute;
+  top: 50%;
+  width: var(--universe-label-connector-length);
+  height: 1px;
+  background: rgb(244 201 95 / 0.42);
+  content: "";
+}
+
+.sag-universe-node-label[data-side="right"]::before {
+  right: 100%;
+}
+
+.sag-universe-node-label[data-side="left"]::before {
+  left: 100%;
+}
+
+.sag-universe-node-label[data-side="top"]::before,
+.sag-universe-node-label[data-side="bottom"]::before {
+  left: 50%;
+  width: 1px;
+  height: var(--universe-label-connector-length);
+}
+
+.sag-universe-node-label[data-side="top"]::before {
+  top: 100%;
+}
+
+.sag-universe-node-label[data-side="bottom"]::before {
+  top: auto;
+  bottom: 100%;
+}
+
+.sag-universe-node-label[data-kind="entity"] {
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--universe-node-accent), white 8%),
+    0 8px 26px rgb(0 0 0 / 0.1),
+    0 0 18px color-mix(in srgb, var(--universe-node-accent), transparent 92%);
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"] {
+  width: 132px;
+  height: 28px;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px 4px 9px;
+  border-color: hsl(var(--border) / 0.38);
+  background: hsl(var(--background) / 0.62);
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--universe-node-accent), transparent 42%),
+    0 4px 12px rgb(0 0 0 / 0.07),
+    0 0 10px color-mix(in srgb, var(--universe-node-accent), transparent 94%);
+  color: hsl(var(--foreground) / 0.86);
+  backdrop-filter: blur(8px) saturate(108%);
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"]
+  .sag-universe-node-label__primary {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"]
+  .sag-universe-node-label__eyebrow {
+  width: 4px;
+  min-height: 4px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"]
+  .sag-universe-node-label__eyebrow > span:last-child,
+.sag-universe-node-label[data-kind="entity"][data-compact="true"] p {
+  display: none;
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"] strong {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sag-universe-node-label[data-kind="entity"]::before {
+  background: color-mix(in srgb, var(--universe-node-accent), transparent 56%);
+}
+
+/* 展开只向外长一点：盒子在指针下方猛长会把 hover 顶掉，读着也晃。 */
+.sag-universe-node-label[data-expanded="true"] {
+  width: 252px;
+  height: 100px;
+  border-color: hsl(var(--foreground) / 0.22);
+  background: hsl(var(--background) / 0.96);
+  box-shadow:
+    inset 2px 0 0 rgb(244 201 95 / 0.9),
+    0 12px 34px rgb(0 0 0 / 0.14),
+    0 0 24px rgb(244 201 95 / 0.07);
+}
+
+.sag-universe-node-label[data-kind="entity"][data-expanded="true"] {
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--universe-node-accent), white 4%),
+    0 12px 34px rgb(0 0 0 / 0.14),
+    0 0 24px color-mix(in srgb, var(--universe-node-accent), transparent 88%);
+}
+
+.sag-universe-node-label[data-locked="true"] {
+  width: 264px;
+  height: 126px;
+  border-color: hsl(var(--foreground) / 0.28);
+  background: hsl(var(--background) / 0.97);
+  cursor: default;
+}
+
+.sag-universe-node-label__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid hsl(var(--border) / 0.56);
+}
+
+.sag-universe-node-label__actions[hidden] {
+  display: none;
+}
+
+.sag-universe-node-label__detail-action {
+  position: absolute;
+  right: 9px;
+  top: 8px;
+  z-index: 1;
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(253 224 133 / 0.98);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 0 2px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.sag-universe-node-label__detail-action:hover:not(:disabled) {
+  background: rgb(244 201 95 / 0.1);
+  color: rgb(255 237 176 / 1);
+}
+
+.sag-universe-node-label:has(
+    .sag-universe-node-label__detail-action:not([hidden])
+  )
+  .sag-universe-node-label__primary {
+  padding-right: 48px;
+}
+
+.sag-universe-node-label[data-kind="entity"]
+  .sag-universe-node-label__detail-action {
+  color: color-mix(in srgb, var(--universe-node-accent), white 24%);
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"]
+  .sag-universe-node-label__detail-action {
+  right: 6px;
+  top: 5px;
+  min-height: 18px;
+  font-size: 9px;
+}
+
+.sag-universe-node-label[data-kind="entity"][data-compact="true"]:has(
+    .sag-universe-node-label__detail-action:not([hidden])
+  )
+  .sag-universe-node-label__primary {
+  padding-right: 42px;
+}
+
+.sag-universe-node-label__detail-action[hidden] {
+  display: none;
+}
+
+.sag-universe-node-label__action {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 26px;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--border) / 0.68);
+  border-radius: 5px;
+  background: hsl(var(--muted) / 0.38);
+  color: hsl(var(--foreground) / 0.88);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.sag-universe-node-label__action:hover:not(:disabled) {
+  border-color: rgb(244 201 95 / 0.58);
+  background: rgb(244 201 95 / 0.1);
+  color: rgb(253 224 133 / 0.98);
+}
+
+.sag-universe-node-label[data-kind="entity"]
+  .sag-universe-node-label__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--universe-node-accent), transparent 42%);
+  background: color-mix(in srgb, var(--universe-node-accent), transparent 90%);
+  color: color-mix(in srgb, var(--universe-node-accent), white 22%);
+}
+
+.sag-universe-node-label__action:disabled {
+  opacity: 0.44;
+  cursor: wait;
+}
+
+.sag-universe-node-label__eyebrow {
+  display: flex;
+  min-height: 13px;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground) / 0.88);
+  font-size: 10px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sag-universe-node-label__eyebrow > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sag-universe-node-label__marker {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(244 201 95 / 0.96);
+  box-shadow: 0 0 8px rgb(244 201 95 / 0.5);
+}
+
+.sag-universe-node-label[data-kind="entity"] .sag-universe-node-label__marker {
+  background: color-mix(in srgb, var(--universe-node-accent), white 4%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--universe-node-accent), transparent 52%);
+}
+
+.sag-universe-node-label strong {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  font-size: 12.5px;
+  font-weight: 620;
+  line-height: 17px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.sag-universe-node-label p {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground) / 0.92);
+  font-size: 10.5px;
+  line-height: 15px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sag-universe-node-label__explore {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 6px);
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  border: 1px solid rgb(244 201 95 / 0.34);
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.88);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 0.13),
+    0 0 14px rgb(244 201 95 / 0.08);
+  color: rgb(253 224 133 / 0.96);
+  font-size: 9px;
+  font-weight: 560;
+  line-height: 1;
+  padding: 0 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sag-universe-node-label[data-kind="entity"]
+  .sag-universe-node-label__explore {
+  border-color: color-mix(in srgb, var(--universe-node-accent), transparent 64%);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 0.13),
+    0 0 14px color-mix(in srgb, var(--universe-node-accent), transparent 91%);
+  color: color-mix(in srgb, var(--universe-node-accent), white 22%);
+}
+
+.sag-universe-node-label__explore[hidden] {
+  display: none;
+}
+
+.sag-universe-node-label[data-expanded="true"] p {
+  -webkit-line-clamp: 3;
+}
+
+[data-universe-reduced-motion="true"]
+  :is(
+    .sag-universe-node-label__eyebrow,
+    .sag-universe-node-label p,
+    .sag-universe-node-label__explore,
+    .sag-universe-node-label__detail-action,
+    .sag-universe-node-label__action
+  ) {
+  transition: none;
+}
+
+@media (max-width: 767px) {
+  .sag-nebula-label {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .sag-nebula-label > span:last-child {
+    width: 138px;
+  }
+
+  .sag-nebula-label small {
+    display: none;
+  }
+
+  .sag-universe-node-label {
+    width: 184px;
+    height: 70px;
+    padding: 8px 9px 8px 11px;
+  }
+
+  .sag-universe-node-label[data-expanded="true"] {
+    width: 204px;
+    height: 82px;
+  }
+
+  .sag-universe-node-label[data-kind="entity"][data-compact="true"] {
+    width: 108px;
+    height: 24px;
+    padding: 3px 6px 3px 8px;
+  }
+
+  .sag-universe-node-label[data-locked="true"] {
+    width: 224px;
+    height: 112px;
+  }
+
+  .sag-universe-node-label__action {
+    min-height: 24px;
+    font-size: 9px;
+  }
+}

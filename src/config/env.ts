@@ -18,6 +18,15 @@ const envSchema = z.object({
   EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-large"),
   EMBEDDING_API_KEY: z.string().default(""),
   EMBEDDING_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
+  // P1备份: .sagbak 产物目录与 Neo4j 导出批大小
+  BACKUP_DIR: z.string().min(1).default("backups"),
+  NEO4J_EXPORT_BATCH_SIZE: z.coerce.number().int().positive().default(10000),
+  // P1备份: 保留最近 N 份备份(0=不清理, 默认 3, 防磁盘堆积)
+  BACKUP_KEEP: z.coerce.number().int().min(0).default(3),
+  // P2检索: 关系边向量剪枝阈值(0-1, 0=禁用剪枝, 默认 0.35)
+  RELATIONAL_EDGE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.35),
+  // G5: 查询改写开关(默认关, 开启后 multiSearch 开头 LLM 改写+实体提取)
+  QUERY_REWRITE_ENABLED: z.coerce.boolean().default(false),
   LLM_MODEL: z.string().min(1).default("qwen3.6-flash"),
   LLM_API_KEY: z.string().default(""),
   LLM_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),

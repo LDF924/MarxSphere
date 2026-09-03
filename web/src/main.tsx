@@ -5,6 +5,7 @@ import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerView } from "./components/viewRegistry";
 import { JupyterPanel } from "./components/JupyterPanel";
+import { BackupPanel } from "./components/BackupPanel";
 import "./styles.css";
 import "./cosmos.css";
 import "./learning.css";
@@ -17,6 +18,16 @@ registerView({
   category: "core",
   component: JupyterPanel,
   desc: "Python 单元执行 · 持久变量 · 图表输出（复用实证沙箱 venv）",
+});
+
+// 2026-09-01: 知识库备份/恢复(.sagbak, Zleap 评审 P1)
+registerView({
+  value: "backup",
+  label: "备份/恢复",
+  labelEn: "Backup",
+  category: "knowledge",
+  component: BackupPanel,
+  desc: "知识库快照 · 校验 · 全量恢复(PG + Graphiti/Cognee 图谱)",
 });
 
 // V398: 主题初始化（render 前，防首屏闪烁）— 默认深色，浅色需用户切换

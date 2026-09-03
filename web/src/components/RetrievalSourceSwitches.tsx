@@ -18,6 +18,8 @@ const STORAGE_KEY = (chain: string) => `sag:retrieval-sources:${chain}`;
 
 export function RetrievalSourceSwitches({ chain, onChange }: { chain: "ask" | "reason"; onChange?: (sources: RetrievalSource[]) => void }) {
   const [sources, setSources] = useState<RetrievalSource[]>(["pg"]);
+  /** 能力探测: 图谱离线时提示降级(对齐 Zleap capabilities) */
+  const [capabilities, setCapabilities] = useState<{ graphiti: boolean; cognee: boolean } | null>(null);
 
   useEffect(() => {
     try {
@@ -31,6 +33,13 @@ export function RetrievalSourceSwitches({ chain, onChange }: { chain: "ask" | "r
       setSources(["pg"]);
       onChange?.(["pg"]);
     }
+    // 能力探测(运行时真实状态, 非静态开关)
+    void fetch("/api/capabilities")
+      .then((r) => r.json())
+      .then((data: { graphiti?: { ok: boolean }; cognee?: { ok: boolean } }) => {
+        setCapabilities({ graphiti: data.graphiti?.ok ?? false, cognee: data.cognee?.ok ?? false });
+      })
+      .catch(() => setCapabilities(null));
   }, [chain]);
 
   const toggle = (key: RetrievalSource) => {
@@ -78,6 +87,17 @@ export function RetrievalSourceSwitches({ chain, onChange }: { chain: "ask" | "r
       <div className="mt-1.5 text-[10px] text-muted-foreground">
         Graphiti/Cognee 需要完整模式（MCP 池）；预览模式仅 PostgreSQL 可用
       </div>
+      {/* 能力探测降级提示: 源启用但图谱离线时警告 */}
+      {capabilities && (
+        <div className="mt-1.5 space-y-0.5 text-[10px]">
+          {sources.includes("graphiti") && !capabilities.graphiti && (
+            <div className="text-amber-600">⚠ Graphiti 未连接（Neo4j 11001），已选但检索将降级</div>
+          )}
+          {sources.includes("cognee") && !capabilities.cognee && (
+            <div className="text-amber-600">⚠ Cognee 未连接（Neo4j 11003），已选但检索将降级</div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

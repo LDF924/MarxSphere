@@ -10,7 +10,18 @@ import { ingestionService } from "../services/ingestion-service.js";
 import { searchService } from "../services/search-service.js";
 import { graphService } from "../services/graph-service.js";
 import { logger } from "../observability/logger.js";
+import { backupRoutes } from "./routes-backup.js";
+import { SearchSessionStore } from "../services/retrieval-session.js";
+import { probeCapabilities } from "../services/capabilities-service.js";
+import { universeCogneeQuery, universeDataSources, universeExpand, universeGraphitiQuery, universeJob, universeManifest, universeNodeDetail, universeRebuild, universeSearchEntities, universeTimeline } from "../services/universe-service.js";
 import { webuiService } from "../services/webui-service.js";
+import {
+  OpenAiError,
+  formatChatChunk,
+  openaiChatCompletionsSchema,
+  runOpenAiChatCompletion,
+} from "../services/openai-compat.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * S1: 任务所有权校验 — 非管理员操作他人任务 → 403
@@ -119,6 +130,11 @@ const searchSchema = z.object({
   subStrategy: z.enum(["multi", "multi1", "hopllm"]).optional(),
   topK: z.number().int().positive().max(50).optional(),
   returnTrace: z.boolean().optional(),
+  /** G2: 返回请求级检索图(query→entity→event→chunk) */
+  returnGraph: z.boolean().optional(),
+  /** G10: 游标翻页 — 传 cursor 从快照恢复下一页; 传 pageSize 首次请求建快照 */
+  cursor: z.string().optional(),
+  pageSize: z.number().int().positive().max(100).optional(),
   multi: z.object({
     entityTopK: z.number().int().positive().optional(),
     multiTopK: z.number().int().positive().optional(),
@@ -249,6 +265,7 @@ export function buildHttpServer() {
     // 核心(兼容旧权限)
     ["/api/reason", "reason"],
     ["/api/search", "reason"],       // Ask/检索
+    ["/api/openai", "reason"],       // OpenAI 兼容端点(检索+LLM 生成, 与 search 同权限)
     ["/api/classical", "scenarios"],
     ["/api/academic", "scenarios"],
     ["/api/writing", "scenarios"],
@@ -286,6 +303,7 @@ export function buildHttpServer() {
     // V395-11: 导航对齐 — PDF2Obsidian / Agent控制台+任务（本机豁免, 外部令牌需对应权限）
     ["/api/p2o", "p2o"],
     ["/api/agent", "agent"],
+    ["/api/backup", "admin"],        // P1: 备份/恢复(破坏性全量替换, 仅 admin)
   ];
 
   /** 请求是否来自本机 (只认 socket 真实地址, 绝不信任可伪造的 XFF 头; V381: 精确匹配防 localhost.evil.com 伪造) */
@@ -353,6 +371,7 @@ export function buildHttpServer() {
     if (url.startsWith("/api/search") || url === "/search") kind = "search";
     else if (url.startsWith("/api/documents/upload") || url.startsWith("/ingest")) kind = "ingest";
     else if (url.startsWith("/api/reason") || url.startsWith("/api/ai/execute")) kind = "reason";
+    else if (url.startsWith("/api/openai")) kind = "reason"; // OpenAI 兼容端点走 reason 成本配额
     // V395-11: P2O 走独立次数配额（PDF 解析烧 MinerU/LLM, 不与 other 混桶）
     else if (url.startsWith("/api/p2o/tasks") && request.method === "POST") kind = "p2o";
 
@@ -398,7 +417,7 @@ export function buildHttpServer() {
     const ctx = (request as any).tokenCtx as { tokenId: string; permissions: string[] } | undefined;
     if (!ctx) return;
     const url = request.url.split("?")[0];
-    if (url.startsWith("/api/search") || url.startsWith("/api/reason") || url.startsWith("/api/documents/upload") || url.startsWith("/ingest")) return;
+    if (url.startsWith("/api/search") || url.startsWith("/api/reason") || url.startsWith("/api/documents/upload") || url.startsWith("/ingest") || url.startsWith("/api/openai")) return;
     // V395-11: P2O 创建已按 p2o kind 记账, 不重复记 other
     if (url.startsWith("/api/p2o/tasks") && request.method === "POST") return;
     if (reply.statusCode >= 400) return;  // 失败请求不记成本
@@ -732,6 +751,59 @@ export function buildHttpServer() {
           : "预览模式"
       }
     };
+  });
+
+  // ─── 能力探测(对齐 Zleap capabilities) ───
+  // 运行时探测: PG/Neo4j 两库/rerank/embedding/LanceDB + 检索源汇总(前端降级提示 + OpenAI 端点能力边界)
+  app.get("/api/capabilities", async () => {
+    return await probeCapabilities();
+  });
+
+  // ─── Explore 图谱数据(阶段4b, 对齐 Zleap universe 快照契约) ───
+  // 契约: manifest / timeline(bundle+ordinal+cursor) / expand(patch) / node_detail / rebuild+job
+  app.get("/api/universe/manifest", async () => {
+    return await universeManifest();
+  });
+  app.post("/api/universe/expand", async (request) => {
+    const body = request.body as { epoch: number; source_id: string; node_kind: "event" | "entity"; node_id: string; limit?: number; cursor?: string | null; snapshot_id?: string | null; after?: string | null; before?: string | null };
+    return await universeExpand(body);
+  });
+  app.post("/api/universe/timeline", async (request) => {
+    const body = request.body as { epoch: number; source_id: string; limit?: number; direction?: "older" | "newer"; cursor?: string | null; snapshot_id?: string | null };
+    return await universeTimeline(body);
+  });
+  app.get("/api/universe/nodes/:kind/:nodeId", async (request) => {
+    const params = request.params as { kind: "event" | "entity"; nodeId: string };
+    const q = request.query as { source_id?: string };
+    return await universeNodeDetail({ kind: params.kind, nodeId: params.nodeId, sourceId: q.source_id });
+  });
+  app.get("/api/universe/neo/query", async (request) => {
+    const q = request.query as { source?: string; q?: string; name?: string; limit?: string };
+    if (q.source === "graphiti") {
+      return await universeGraphitiQuery({ q: q.q, name: q.name, limit: q.limit ? Number(q.limit) : undefined });
+    }
+    if (q.source === "cognee") {
+      return await universeCogneeQuery({ q: q.q, name: q.name, limit: q.limit ? Number(q.limit) : undefined });
+    }
+    return { entities: [] };
+  });
+  app.get("/api/universe/sources", async () => {
+    return await universeDataSources();
+  });
+  app.get("/api/universe/search-entities", async (request) => {
+    const q = request.query as { q?: string; source_id?: string; limit?: string };
+    return await universeSearchEntities({
+      q: q.q ?? "",
+      sourceId: q.source_id,
+      limit: q.limit ? Number(q.limit) : undefined,
+    });
+  });
+  app.post("/api/universe/rebuild", async () => {
+    return await universeRebuild();
+  });
+  app.get("/api/universe/jobs/:id", async (request) => {
+    const params = request.params as { id: string };
+    return await universeJob(params.id);
   });
 
   // ─── 学术研究 API（S41-S45）───
@@ -1608,9 +1680,20 @@ export function buildHttpServer() {
     const params = request.params as { projectId: string };
     z.string().uuid().parse(params.projectId);
     const input = projectUpdateSchema.parse(request.body);
-    return {
-      project: await webuiService.updateProject(params.projectId, input)
-    };
+    // V392+ 修复: 更新与 GET 对齐多租户(公共库 + 用户租户 + default),
+    // 原 DEFAULT_TENANT_ID 单租户导致公共库项目更新报"项目不存在"
+    const authHdr = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const jwtPayload = authHdr && authService.verifyToken(authHdr);
+    let tenantIds: string[] = [];
+    if (jwtPayload) {
+      const u = await pool.query("select tenant_id from users where id = $1", [jwtPayload.uid]);
+      tenantIds = [PUBLIC_TENANT, ...(u.rows[0]?.tenant_id ? [String(u.rows[0].tenant_id)] : []), config.DEFAULT_TENANT_ID];
+    } else {
+      tenantIds = [PUBLIC_TENANT, config.DEFAULT_TENANT_ID];
+    }
+    const project = await webuiService.updateProjectByTenants(params.projectId, input, tenantIds);
+    if (!project) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "项目不存在" } });
+    return { project };
   });
 
   app.post("/api/projects/:projectId/archive", async (request) => {
@@ -1971,12 +2054,34 @@ export function buildHttpServer() {
   });
 
   app.post("/api/search", async (request) => {
-    const input = searchSchema.parse(request.body);
+    const body = searchSchema.parse(request.body);
     const ctx = (request as any).tokenCtx as { tokenId: string } | undefined;
+    // G10: cursor 翻页 — 有 cursor 则从快照恢复, 否则执行检索并建快照
+    if (body.cursor) {
+      const store = new SearchSessionStore();
+      const page = await store.resume(body.cursor, body);
+      // 快照 items → sections(前端契约)
+      const pageResult = page.result as { items: unknown[] };
+      return { sections: pageResult.items, cursor: page.nextCursor, pageTotal: page.total };
+    }
+    const input = { ...body, cursor: undefined } as any;
     const result = await searchService.search(input);
     if (ctx) {
       // 外部 token: 按 traceId 聚合真实 LLM token 用量 (trace_spans 已落库) → 记账
       void recordSearchUsage(ctx.tokenId, result.traceId);
+    }
+    // 快照建页(首次请求): 服务端存结果, 返回第一页 + nextCursor
+    if (body.pageSize && body.pageSize > 0) {
+      const store = new SearchSessionStore();
+      const page = await store.create({
+        request: body,
+        result: { items: result.sections },
+        pageSize: body.pageSize,
+        ttlSeconds: 300,
+      });
+      // 快照 items → sections(前端契约)
+      const pageResult = page.result as { items: unknown[] };
+      return { ...result, sections: pageResult.items, cursor: page.nextCursor, pageTotal: page.total };
     }
     return result;
   });
@@ -2017,6 +2122,80 @@ export function buildHttpServer() {
       reply.raw.end();
     }
   });
+
+  // ─── OpenAI 兼容端点(Zleap-AI/SAG 评审回溯吸收 P0)───
+  // POST /api/openai/chat/completions (+ /api/openai/v1/chat/completions 别名, 兼容 OpenAI SDK base_url)
+  // 把本地知识库当"模型"调用: 取最后 user 消息 → SAG 检索 → 基于证据带引用生成
+  // 响应: 标准 chat.completion + 顶层 sag.citations; 流式走 OpenAI SSE 格式(data: 块 + data: [DONE])
+  // 鉴权: PERMISSION_PREFIX_MAP 已注册 /api/openai → reason; 配额 kind=reason
+  const openaiCompletionsHandler = async (request: any, reply: any) => {
+    let body: any;
+    try {
+      body = openaiChatCompletionsSchema.parse(request.body);
+    } catch (e) {
+      // zod 失败显式转 OpenAI 格式 400(z.parse 抛错无 statusCode, 单独处理)
+      const detail = e instanceof Error ? e.message : String(e);
+      return reply.code(400).send({
+        error: { message: detail || "请求参数无效", type: "invalid_request_error", code: "BAD_REQUEST" }
+      });
+    }
+    const ctx = (request as any).tokenCtx as { tokenId: string } | undefined;
+    const mapBody = (b: any) => ({
+      model: b.model,
+      messages: b.messages,
+      temperature: b.temperature,
+      maxTokens: b.max_tokens ?? b.maxTokens,
+    });
+
+    // ── 非流式 ──
+    if (!body.stream) {
+      try {
+        const result = await runOpenAiChatCompletion({ ...mapBody(body), stream: false, tokenCtx: ctx });
+        return reply.send(result);
+      } catch (e) {
+        if (e instanceof OpenAiError) {
+          return reply.code(e.statusCode).send({ error: { message: e.message, type: e.type, code: e.code } });
+        }
+        logger.error({ error: getErrorMessage(e) }, "openai chat failed");
+        return reply.code(500).send({ error: { message: "内部错误", type: "server_error", code: "INTERNAL_ERROR" } });
+      }
+    }
+
+    // ── 流式: 先写 SSE 头再编排(检索阶段错误也只能走 SSE 通道)──
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Connection": "keep-alive"
+    });
+    const streamId = "chatcmpl-" + randomUUID().slice(0, 16);
+    const created = Math.floor(Date.now() / 1000);
+    const streamModel = body.model ?? getRoleModel("reason");
+    const sendChunk = (delta: { role?: string; content?: string }, finishReason: string | null = null, extra?: Record<string, unknown>) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return; // 客户端断开
+      reply.raw.write(formatChatChunk({ id: streamId, created, model: streamModel, delta, finishReason, extra }));
+      const flush = (reply.raw as typeof reply.raw & { flush?: () => void }).flush;
+      if (typeof flush === "function") flush.call(reply.raw);
+    };
+    try {
+      sendChunk({ role: "assistant", content: "" }); // 首块带 role
+      await runOpenAiChatCompletion({
+        ...mapBody(body), stream: true, tokenCtx: ctx,
+        onDelta: (delta) => { if (delta) sendChunk({ content: delta }); },
+        onFinal: (extra) => sendChunk({}, "stop", extra), // 末块 finish_reason + sag.citations + usage
+      });
+      reply.raw.write("data: [DONE]\n\n");
+    } catch (e) {
+      const err = e instanceof OpenAiError
+        ? { message: e.message, type: e.type, code: e.code }
+        : { message: "内部错误", type: "server_error", code: "INTERNAL_ERROR" };
+      sendChunk({}, null, { error: err }); // OpenAI 标准: error chunk
+      reply.raw.write("data: [DONE]\n\n");
+    } finally {
+      reply.raw.end();
+    }
+  };
+  app.post("/api/openai/chat/completions", openaiCompletionsHandler);
+  app.post("/api/openai/v1/chat/completions", openaiCompletionsHandler); // OpenAI SDK base_url=/api/openai/v1 兼容
 
   app.get("/api/settings/ai", async () => ({
     settings: await aiSettingsService.getPublicSettings()
@@ -7811,6 +7990,9 @@ except Exception as e:
     }
     return reply.code(201).send(result);
   });
+
+  // P1: 知识库备份/恢复路由(admin 权限, 异步任务)
+  app.register(backupRoutes);
 
   if (fs.existsSync(webIndexFile)) {
     app.register(fastifyStatic, {
