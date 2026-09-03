@@ -185,6 +185,8 @@ describe("universe expand 快照契约", () => {
       { match: /count\(\*\)::int as total/, rows: [{ total: 5, latest: "" }] },
       { match: /select ent\.id, ent\.name/, rows: [{ id: "ent-1", name: "实体一", type: "person", description: "", related_count: 2 }] },
       { match: /join events e on e\.id = ee\.event_id/, rows: [] },
+      // 超边叠加先按 uuid 查实体名(Graphiti 按名匹配), 2026-09-03 补 handler
+      { match: /select name from entities where id/, rows: [{ name: "实体一" }] },
     ]);
     vi.mocked(neo4jQuery).mockResolvedValue([
       { name: "外部实体X", labels: ["concept"], rel: "MENTIONS" },
