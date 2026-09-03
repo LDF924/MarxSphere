@@ -22,7 +22,8 @@ export interface FormatIssue {
     | "引文标注"
     | "参考文献"
     | "图表编号"
-    | "文本规范";
+    | "文本规范"
+    | "Word样式";
   severity: IssueSeverity;
   message: string;
   paragraph: number; // 行号(1 起)

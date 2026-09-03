@@ -1,0 +1,281 @@
+# 华北水利水电大学本科毕业设计（论文）格式规则
+# 来源: 学校官方《华北水利水电大学本科毕业设计（论文）格式和要求》
+# 维护者: emptyinkpot
+
+name: 华北水利水电大学本科毕业设计论文
+preset_id: ncwu
+version: "2026.06"
+
+page:
+  size: A4
+  margin_cm:
+    top: 2.5
+    bottom: 2.5
+    left: 3.0
+    right: 2.5
+  header_text: "华北水利水电大学毕业设计"
+  header_font:
+    east_asia: 宋体
+    size_pt: 9
+    align: center
+  header_underline: true
+  header_frontmatter_excluded: true
+  page_number:
+    body_format: arabic
+    body_position: center_bottom
+    frontmatter_roman: true
+    cover_excluded: true
+
+styles:
+  body:
+    east_asia: 宋体
+    latin: Times New Roman
+    size_pt: 12
+    line_spacing: 1.5
+    first_line_indent_chars: 2
+  heading1:
+    east_asia: 黑体
+    size_pt: 16
+    bold: true
+    align: center
+    page_break_before: true
+  heading2:
+    east_asia: 黑体
+    size_pt: 14
+    bold: true
+    align: left
+  heading3:
+    east_asia: 黑体
+    size_pt: 12
+    bold: true
+    align: left
+  caption:
+    east_asia: 宋体
+    size_pt: 10.5
+    align: center
+    italic: false
+
+content:
+  abstract_zh:
+    min_chars: 500
+    must_contain: ["关键词"]
+    title_above: true
+    title_spacing: true
+    keywords_bold: true
+    classification_number: true
+  abstract_en:
+    min_words: 300
+    must_contain: ["Key Words", "ABSTRACT"]
+  foreign_translation:
+    min_chars: 2000
+  toc:
+    required: true
+    max_depth: 3
+    title_spacing: true
+    dotline: true
+  cover_fields:
+    required: ["学院", "专业", "姓名", "学号", "指导教师", "完成时间"]
+
+structure:
+  chapter_page_break: true
+  chapter_numbering_arabic: true
+  reference_superscript: true
+  reference_gbt7714: true
+  reference_all_cited: true
+  table_three_line: true
+  figure_caption_below: true
+  table_caption_above: true
+  figure_table_centered: true
+  figure_table_numbering: chapter_dot
+  max_consecutive_empty: 3
+  max_code_block_lines: 30
+
+readability:
+  max_body_paragraph_chars: 360
+  require_figure_lead_text: true
+  figure_lead_lookback_paragraphs: 12
+  figure_followup_lookahead_paragraphs: 8
+  min_figure_followup_chars: 40
+  max_consecutive_figures_without_text: 3
+  module_block:
+    enabled: true
+    required_lead_terms: ["左侧实物", "右侧说明"]
+    required_chain_terms: ["实物", "原理图", "接口", "PCB", "源码", "测试"]
+    target_captions:
+      - "图3.1 主要硬件模块实物图"
+  engineering_evidence_chain:
+    enabled: true
+    chapter_prefix: "第3章"
+    required_captions:
+      - "图3.1 主要硬件模块实物图"
+      - "图3.2 系统原理图"
+      - "图3.3 STM32主控接口原理图"
+      - "图3.4 PCB顶层布线检查图"
+      - "图3.5（a） 电源输入与3.3V稳压实物-原理对应图"
+      - "图3.5（b） I2C传感器与OLED接口实物-原理对应图"
+      - "图3.5（c） STM32主控最小系统实物-原理对应图"
+      - "图3.5（d） ESP8266无线通信接口实物-原理对应图"
+      - "图3.5（e） LED与蜂鸣器报警输出实物-原理对应图"
+      - "图3.5（f） 调试、复位、时钟与ADC实物-原理对应图"
+    required_term_groups:
+      - name: "module-photo"
+        any_of: ["左侧实物", "主要硬件模块", "实物模块"]
+      - name: "schematic"
+        any_of: ["系统原理图", "原理图", "模块关系"]
+      - name: "interface-pcb"
+        any_of: ["接口原理图", "PCB", "DRC", "ERC", "布线"]
+      - name: "firmware-source"
+        any_of: ["固件源码", "main.c", "scd41.c", "bsp_pins.h", "OneNet_Publish"]
+      - name: "test-validation"
+        any_of: ["测试验证", "调试记录", "验收指标", "第6章测试"]
+
+# 规则开关：可单独 enable/disable + 调严重度
+# severity: error | warning | info
+rules:
+  - id: page-margins
+    severity: error
+    enabled: true
+  - id: header-text-match
+    severity: warning
+    enabled: true
+  - id: header-on-all-sections
+    severity: warning
+    enabled: true
+  - id: header-underline
+    severity: warning
+    enabled: true
+  - id: header-frontmatter-excluded
+    severity: warning
+    enabled: true
+  - id: body-font-size
+    severity: error
+    enabled: true
+  - id: body-east-asia-font
+    severity: error
+    enabled: true
+  - id: text-color-consistency
+    severity: warning
+    enabled: true
+  - id: body-line-spacing
+    severity: warning
+    enabled: true
+  - id: body-first-line-indent
+    severity: warning
+    enabled: true
+  - id: heading1-style
+    severity: error
+    enabled: true
+  - id: heading2-style
+    severity: error
+    enabled: true
+  - id: heading3-style
+    severity: warning
+    enabled: true
+  - id: heading-style-applied
+    severity: error
+    enabled: true
+  - id: chapter-page-break
+    severity: warning
+    enabled: true
+  - id: chapter-numbering-arabic
+    severity: info
+    enabled: true
+  - id: abstract-zh-length
+    severity: error
+    enabled: true
+  - id: abstract-en-length
+    severity: warning
+    enabled: true
+  - id: abstract-page-title
+    severity: warning
+    enabled: true
+  - id: abstract-title-spacing
+    severity: info
+    enabled: true
+  - id: keywords-bold
+    severity: info
+    enabled: true
+  - id: classification-number
+    severity: info
+    enabled: true
+  - id: foreign-translation-length
+    severity: error
+    enabled: true
+  - id: toc-present
+    severity: error
+    enabled: true
+  - id: toc-title-spacing
+    severity: info
+    enabled: true
+  - id: toc-dotline
+    severity: info
+    enabled: true
+  - id: cover-fields
+    severity: error
+    enabled: true
+  - id: cover-no-page-number
+    severity: info
+    enabled: true
+  - id: page-number-format
+    severity: warning
+    enabled: true
+  - id: page-number-roman-frontmatter
+    severity: warning
+    enabled: true
+  - id: figure-caption-position
+    severity: warning
+    enabled: true
+  - id: figure-lead-text
+    severity: warning
+    enabled: true
+  - id: figure-followup-text
+    severity: warning
+    enabled: true
+  - id: figure-text-balance
+    severity: warning
+    enabled: true
+  - id: readability-paragraph-length
+    severity: warning
+    enabled: true
+  - id: module-visual-block
+    severity: warning
+    enabled: true
+  - id: caption-not-italic
+    severity: warning
+    enabled: true
+  - id: engineering-evidence-chain
+    severity: warning
+    enabled: true
+  - id: table-caption-position
+    severity: warning
+    enabled: true
+  - id: figure-table-numbering
+    severity: warning
+    enabled: true
+  - id: reference-superscript
+    severity: warning
+    enabled: true
+  - id: reference-format
+    severity: info
+    enabled: true
+  - id: keywords-separator
+    severity: warning
+    enabled: true
+  - id: figure-table-centered
+    severity: warning
+    enabled: true
+  - id: excessive-whitespace
+    severity: warning
+    enabled: true
+  - id: reference-all-cited
+    severity: warning
+    enabled: true
+  - id: table-no-page-break
+    severity: info
+    enabled: true
+  - id: code-block-length
+    severity: info
+    enabled: true
+  - id: cover-advisor-consistency
+    severity: warning
+    enabled: true

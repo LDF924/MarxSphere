@@ -181,4 +181,28 @@ SOFTWARE.
 - 衍生作品在相同条款下分发
 - NOTICE 文件(若上游提供)不得修改
 
+---
+
+## 8. 论文格式检查(2026-09-03 移植, MIT)
+
+本地 MarxSphere 的 .docx 论文格式检查器移植自以下 MIT 项目(完整 LICENSE 保留于 vendor/format-check/):
+
+### 8.1 thesis-format-checker(emptyinkpot, MIT)
+- **仓库**: https://github.com/emptyinkpot/thesis-format-checker
+- **移植内容**: `vendor/format-check/thesis_format_checker/`(docx_inspector 样式提取 + standard/rules.py 49 条 Word 级规则 + yaml preset 体系)
+- **用途**: .docx 样式级格式检查(页边距/字号/行距/缩进/页眉页码/封面字段/表格/图表题注/参考文献上标等)
+
+### 8.2 thesis-format-fixer(kankanliuyi-lgtm, MIT)
+- **仓库**: https://github.com/kankanliuyi-lgtm/thesis-format-fixer
+- **移植内容**: `vendor/format-check/thesis-format-fixer/scripts/`(extract_template_rules.py 学校模板规则提取)
+- **用途**: 从学校官方 .docx 模板提取可复用格式规则
+
+### 8.3 china-thesis-docx-formatter(keyingshuzhi, MIT)
+- **仓库**: https://github.com/keyingshuzhi/china-thesis-docx-formatter
+- **移植内容**: `vendor/format-check/china-thesis/scripts/`(docx_rules.py / analyze_docx.py 模板规则 JSON 提取)
+- **用途**: 从学校模板提取可审计规则 JSON
+
+统一入口: `vendor/format-check/format-check-cli.py`(inspect / extract-text / extract-template 三子命令, 由 TS 后端 format-docx-service.ts 子进程调用)
+
 > 本文件由 MarxSphere 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
+
