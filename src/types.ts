@@ -12,6 +12,8 @@ export interface SearchInput {
   subStrategy?: MultiSubStrategy;
   topK?: number;
   returnTrace?: boolean;
+  /** G2: 返回请求级检索图(query→entity→event→chunk, 对齐 Zleap GraphCollector) */
+  returnGraph?: boolean;
   /** 消融实验：关掉哪些算子（compiled_truth/backlink/title/time_decay/rrf）对比检索效果 */
   ablation?: string[];
   /** 禁用 trace 落库（消融等并发场景——并发共享 globalThis 会导致 span 串 trace） */
@@ -101,6 +103,11 @@ export interface SearchResult {
   sections: SearchSection[];
   traceId: string;
   trace?: SearchTrace;
+  /** G2: 请求级检索图(节点+边+路径分析; returnGraph=true 时有值) */
+  graph?: {
+    graph: unknown;
+    pathResult: unknown;
+  } | null;
 }
 
 export interface ProjectStatsRecord {
@@ -194,6 +201,10 @@ export interface ExtractedEvent {
   status?: string;
   references: string[];
   entities: ExtractedEntity[];
+  /** G7: 层级模式子事件(对齐 Zleap children 契约, 默认无) */
+  children?: ExtractedEvent[];
+  /** G7: 父事件标题(子事件展平时标注, 供入库 parent_id 关联) */
+  parentTitle?: string;
 }
 
 export interface ExtractedEntity {

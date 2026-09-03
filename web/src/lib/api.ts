@@ -37,6 +37,35 @@ import type {
   VaultTreeNode
 } from "../types";
 
+
+/** API 错误(对齐 Zleap ApiError): 携带 status 与业务 code。 */
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  requestId?: string;
+  layer?: string;
+  stage?: string;
+  retryable?: boolean;
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    requestId?: string,
+    layer?: string,
+    stage?: string,
+    retryable?: boolean,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+    this.layer = layer;
+    this.stage = stage;
+    this.retryable = retryable;
+  }
+}
+
 function safeParseJson(text: string): any {
   if (!text) return null;
   try {
@@ -90,7 +119,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const data = safeParseJson(text);
   if (!response.ok) {
     const message = data?.error?.message ?? `请求失败：${response.status}`;
-    throw new Error(message);
+    throw new ApiError(
+      response.status,
+      data?.error?.code ?? "http_error",
+      message,
+    );
   }
   // 防御: 200 但空 body/非 JSON（服务重启瞬间/代理故障/SPA fallback 接住请求）
   // → safeParseJson 返回 null → 调用方 .projects 等访问崩溃弹错误条
@@ -299,6 +332,8 @@ export const api = {
     searchMode?: SearchMode;
     topK?: number;
     sources?: Array<"pg" | "graphiti" | "cognee">;
+    /** G2: 返回请求级检索图(query→entity→event→chunk) */
+    returnGraph?: boolean;
   }, onEvent: (event: SearchStreamEvent) => void) {
     const response = await fetch("/api/search/stream", {
       method: "POST",
@@ -310,6 +345,7 @@ export const api = {
         searchMode: input.searchMode ?? "fast",
         returnTrace: true,
         topK: input.topK,
+        ...(input.returnGraph ? { returnGraph: true } : {}),
         ...(input.sources ? { sources: input.sources } : {})
       })
     });
@@ -1375,6 +1411,88 @@ export const apiDocs = {
     return request<{ index: DocEntry[]; current: { id: string; title: string; content: string } }>(
       `/api/docs${id ? `?id=${id}` : ""}`
     );
+  },
+};
+
+// ─── Explore 知识宇宙(阶段4b 快照契约, 对齐 Zleap /api/v1/universe/*)───
+import type {
+  UniverseGraphPatch,
+  UniverseManifest,
+  UniverseNodeDetail,
+  UniverseTimelineSlice,
+} from "./universe-types";
+
+export interface UniverseBackgroundJob {
+  id: string;
+  type: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "paused";
+  source_id: string | null;
+  document_id: string | null;
+  progress: number;
+  attempts: number;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export const apiUniverse = {
+  async manifest(): Promise<UniverseManifest> {
+    return request<UniverseManifest>("/api/universe/manifest");
+  },
+  async timeline(
+    body: {
+      epoch: number;
+      source_id: string;
+      limit?: number;
+      direction?: "older" | "newer";
+      cursor?: string | null;
+      snapshot_id?: string | null;
+    },
+    signal?: AbortSignal,
+  ): Promise<UniverseTimelineSlice> {
+    return request<UniverseTimelineSlice>("/api/universe/timeline", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    });
+  },
+  async expand(
+    body: {
+      epoch: number;
+      source_id: string;
+      node_kind: "event" | "entity";
+      node_id: string;
+      limit?: number;
+      cursor?: string | null;
+      snapshot_id?: string | null;
+      after?: string | null;
+      before?: string | null;
+    },
+    signal?: AbortSignal,
+  ): Promise<UniverseGraphPatch> {
+    return request<UniverseGraphPatch>("/api/universe/expand", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    });
+  },
+  async nodeDetail(
+    kind: "event" | "entity",
+    id: string,
+    sourceId?: string | null,
+  ): Promise<UniverseNodeDetail> {
+    const query = sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : "";
+    return request<UniverseNodeDetail>(`/api/universe/nodes/${kind}/${id}${query}`);
+  },
+  async rebuild(signal?: AbortSignal): Promise<UniverseBackgroundJob> {
+    return request<UniverseBackgroundJob>("/api/universe/rebuild", {
+      method: "POST",
+      signal,
+    });
+  },
+  async job(id: string, signal?: AbortSignal): Promise<UniverseBackgroundJob> {
+    return request<UniverseBackgroundJob>(`/api/universe/jobs/${id}`, { signal });
   },
 };
 

@@ -6,6 +6,8 @@ import { z } from "zod";
 import { ingestionService } from "../services/ingestion-service.js";
 import { searchService } from "../services/search-service.js";
 import { graphService } from "../services/graph-service.js";
+import { getChunkById, listChunksByDocument, listDocumentsBySource, searchChunksByText } from "../db/repositories.js";
+import { config } from "../config/env.js";
 import { logger } from "../observability/logger.js";
 import { subscribeModelCallLogs, type ModelCallLogRecord } from "../observability/model-call-log.js";
 import type { SearchProgressEvent } from "../types.js";
@@ -203,6 +205,84 @@ export function buildMcpServer(): McpServer {
     async (input) => {
       const result = await graphService.getEvent(input.eventId);
       return jsonContent(result ?? { error: { code: "EVENT_NOT_FOUND", message: "Event not found" } });
+    }
+  );
+
+  // ═══ P2: 只读工具(Zleap 评审对齐 — grep/outline/list_documents/get_chunk) ═══
+
+  server.tool(
+    "sag_list_documents",
+    {
+      limit: z.number().int().min(1).max(100).optional()
+    },
+    async (input) => {
+      const sourceId = readConfiguredSourceId();
+      const documents = await listDocumentsBySource({
+        sourceId,
+        tenantId: config.DEFAULT_TENANT_ID,
+        limit: input.limit ?? 20
+      });
+      return jsonContent(documents.map((d) => ({
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        createdAt: d.createdAt
+      })));
+    }
+  );
+
+  server.tool(
+    "sag_grep",
+    {
+      query: z.string().min(1),
+      limit: z.number().int().min(1).max(50).optional()
+    },
+    async (input) => {
+      const sourceId = readConfiguredSourceId();
+      const chunks = await searchChunksByText({
+        sourceId,
+        query: input.query,
+        limit: input.limit ?? 10
+      });
+      return jsonContent(chunks.map((c) => ({
+        chunkId: c.chunkId,
+        documentId: c.documentId,
+        heading: c.heading,
+        snippet: (c.content || "").slice(0, 300),
+        rank: c.rank,
+        score: Number(c.score.toFixed(4))
+      })));
+    }
+  );
+
+  server.tool(
+    "sag_outline",
+    {
+      documentId: z.string().uuid()
+    },
+    async (input) => {
+      const sourceId = readConfiguredSourceId();
+      const chunks = await listChunksByDocument({
+        documentId: input.documentId,
+        tenantId: config.DEFAULT_TENANT_ID
+      });
+      return jsonContent(chunks.map((c) => ({
+        rank: c.rank,
+        heading: c.heading || `(片段 ${c.rank + 1})`,
+        chunkId: c.id
+      })));
+    }
+  );
+
+  server.tool(
+    "sag_get_chunk",
+    {
+      chunkId: z.string().uuid()
+    },
+    async (input) => {
+      const sourceId = readConfiguredSourceId();
+      const chunk = await getChunkById({ chunkId: input.chunkId, sourceId });
+      return jsonContent(chunk ?? { error: { code: "CHUNK_NOT_FOUND", message: "Chunk not found" } });
     }
   );
 

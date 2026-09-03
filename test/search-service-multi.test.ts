@@ -56,6 +56,7 @@ describe("SearchService multi search", () => {
     };
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => ["SAG"]),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractRelations: vi.fn(async () => []),
       extractEventsFromChunk: vi.fn(),
       rerankEvents: vi.fn(),
@@ -87,6 +88,7 @@ describe("SearchService multi search", () => {
     };
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => []),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractRelations: vi.fn(async () => []),
       extractEventsFromChunk: vi.fn(async () => []),
       rerankEvents: vi.fn(async () => []),
@@ -124,6 +126,7 @@ describe("SearchService multi search", () => {
     };
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => ["初始实体"]),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractRelations: vi.fn(async () => []),
       extractEventsFromChunk: vi.fn(),
       rerankEvents: vi.fn(async () => []),
@@ -183,6 +186,7 @@ describe("SearchService multi search", () => {
     };
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => []),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractRelations: vi.fn(async () => []),
       extractEventsFromChunk: vi.fn(),
       rerankEvents: vi.fn(async (input: { candidates: Array<{ id: string }>; topK: number }) => (
@@ -229,6 +233,7 @@ describe("SearchService multi search", () => {
     };
     const llm: LlmClient = {
       extractNamedEntities: vi.fn(async () => ["不应调用"]),
+      rewriteAndExtractEntities: vi.fn(async () => ({ rewrittenQuery: "", entities: [] })),
       extractEventsFromChunk: vi.fn(),
       rerankEvents: vi.fn(async () => ["不应调用"]),
       extractRelations: vi.fn(async () => []),

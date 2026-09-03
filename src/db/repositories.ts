@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { pool } from "./pool.js";
 import { toVectorLiteral } from "./vector.js";
+import { config } from "../config/env.js";
 import type {
   ChunkRecord,
   DocumentRecord,
@@ -1849,6 +1850,9 @@ async function touchMcpSession(sessionId: string): Promise<void> {
 /**
  * Relational fanout（GBrain relational-recall 适配）— 沿事件-实体边展开
  * 用 event_entities.description 作为关系标签（role text），支持 linkTypes 过滤 + direction + depth
+ * P2(Zleap 评审): 支持 queryVector + threshold 边相似度剪枝(参照 Zleap relation_threshold) —
+ *   传 queryVector 时, 边(ee.embedding 与 query 余弦相似度)低于 threshold 的关联被过滤,
+ *   减少多跳噪音; 不传则行为与旧版完全一致。
  * 返回: { entityId, name, eventId, eventTitle, linkType, hop }[]
  */
 export async function relationalFanout(input: {
@@ -1858,10 +1862,33 @@ export async function relationalFanout(input: {
   direction?: "out" | "in" | "both";
   depth?: number;
   limit?: number;
+  queryVector?: number[];
+  threshold?: number;
+  /** G1(Zleap 对齐): 每跳最多扩展的实体数(默认 null=不限制, 保持旧行为) */
+  entitiesPerHop?: number;
+  /** G1: 每跳最多新增的事件数(默认 null=不限制) */
+  eventsPerHop?: number;
+  /** G1: 新事件向量相似度阈值(低于则不入下一跳, 默认 null=不限制) */
+  eventThreshold?: number;
 }): Promise<Array<{ entityId: string; name: string; eventId: string; eventTitle: string; linkType: string; hop: number }>> {
   if (input.seedEntityIds.length === 0) return [];
   const maxDepth = Math.min(Math.max(input.depth ?? 1, 1), 3);
   const limit = input.limit ?? 50;
+  const threshold = input.queryVector ? (input.threshold ?? config.RELATIONAL_EDGE_THRESHOLD) : 0;
+  const queryVectorLiteral = input.queryVector ? toVectorLiteral(input.queryVector) : null;
+  const { entitiesPerHop, eventsPerHop, eventThreshold } = input;
+
+  // 双路径: 传了任何配额 → 逐跳受限扩展(JS 循环, 参照 Zleap _expand_graph hook 设计);
+  // 否则 → 原递归 CTE(完全向后兼容)
+  if (entitiesPerHop !== undefined || eventsPerHop !== undefined || eventThreshold !== undefined) {
+    try {
+      return await fanoutHopByHop(input, maxDepth, limit, threshold, queryVectorLiteral, entitiesPerHop, eventsPerHop, eventThreshold);
+    } catch (error) {
+      console.error("[relationalFanout] hop-by-hop failed:", error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  }
+
   try {
     const result = await pool.query(
       `
@@ -1873,6 +1900,7 @@ export async function relationalFanout(input: {
         where ee.entity_id = any($1::uuid[])
           and e.source_id = any($2::uuid[])
           and e.deleted_at is null
+          and ($5::vector is null or (ee.embedding is not null and 1 - (ee.embedding <=> $5::vector) >= $6))
         union
         -- 事件 → 其它实体（hop+1）
         select ee2.entity_id, ee2.event_id, f.hop + 1 as hop
@@ -1881,6 +1909,7 @@ export async function relationalFanout(input: {
         join event_entities ee2 on ee2.event_id = ee1.event_id
         where f.hop < $3
           and not (ee2.entity_id = any($1::uuid[]))
+          and ($5::vector is null or (ee2.embedding is not null and 1 - (ee2.embedding <=> $5::vector) >= $6))
       )
       select distinct
         ee3.entity_id, ent.name, ee3.event_id, e.title as event_title,
@@ -1895,7 +1924,7 @@ export async function relationalFanout(input: {
       order by f2.hop, ent.name
       limit $4
       `,
-      [input.seedEntityIds, input.sourceIds, maxDepth, limit]
+      [input.seedEntityIds, input.sourceIds, maxDepth, limit, queryVectorLiteral, threshold]
     );
     return result.rows.map((row) => ({
       entityId: String(row.entity_id),
@@ -1908,6 +1937,115 @@ export async function relationalFanout(input: {
   } catch {
     return [];
   }
+}
+
+/** G1 逐跳受限扩展: 每跳按边相似度排序截断 entitiesPerHop/eventsPerHop, 新事件按 eventThreshold 过滤 */
+async function fanoutHopByHop(
+  input: {
+    seedEntityIds: string[];
+    sourceIds: string[];
+    queryVector?: number[];
+    threshold?: number;
+  },
+  maxDepth: number,
+  limit: number,
+  threshold: number,
+  queryVectorLiteral: string | null,
+  entitiesPerHop?: number,
+  eventsPerHop?: number,
+  eventThreshold?: number,
+): Promise<Array<{ entityId: string; name: string; eventId: string; eventTitle: string; linkType: string; hop: number }>> {
+  const rows: Array<{ entityId: string; name: string; eventId: string; eventTitle: string; linkType: string; hop: number }> = [];
+  const seenEntities = new Set<string>(input.seedEntityIds);
+  const seenEvents = new Set<string>();
+
+  // 当前 frontier = seed 实体 → 关联事件(hop1, 按边相似度排序截断 eventsPerHop)
+  let frontier: Array<{ entityId: string; name: string; eventId: string; eventTitle: string; linkType: string; hop: number; score: number }> =
+    await queryEventRowsFromEntities(input.seedEntityIds, input.sourceIds, threshold, queryVectorLiteral, eventsPerHop, 1);
+  frontier = frontier.filter((e) => !seenEvents.has(e.eventId));
+  for (const e of frontier) seenEvents.add(e.eventId);
+
+  for (let hop = 1; hop <= maxDepth; hop++) {
+    // 记录本跳结果(去重)
+    const fresh = frontier.filter((e) => !rows.some((r) => r.eventId === e.eventId && r.hop === e.hop));
+    rows.push(...fresh);
+    if (hop === maxDepth || fresh.length === 0) break;
+
+    // 事件 → 新实体(按边相似度排序截断 entitiesPerHop)
+    const newEntities = await queryEntityRowsFromEvents(frontier.map((e) => e.eventId), input.sourceIds, threshold, queryVectorLiteral, entitiesPerHop);
+    const freshEntities = newEntities.filter((en) => !seenEntities.has(en.entityId));
+    for (const en of freshEntities) seenEntities.add(en.entityId);
+    if (freshEntities.length === 0) break;
+
+    // 新实体 → 新事件(eventsPerHop 截断 + eventThreshold 过滤)
+    const nextHop = await queryEventRowsFromEntities(freshEntities.map((en) => en.entityId), input.sourceIds, threshold, queryVectorLiteral, eventsPerHop, hop + 1);
+    frontier = nextHop.filter((e) => !seenEvents.has(e.eventId) && (eventThreshold == null || e.score >= eventThreshold));
+    for (const e of frontier) seenEvents.add(e.eventId);
+    if (frontier.length === 0) break;
+  }
+
+  return rows.slice(0, limit);
+}
+
+/** 实体 → 关联事件行(含实体名/关系标签, 按边相似度排序) */
+async function queryEventRowsFromEntities(
+  entityIds: string[],
+  sourceIds: string[],
+  threshold: number,
+  queryVectorLiteral: string | null,
+  limitPerHop: number | undefined,
+  hop: number,
+): Promise<Array<{ entityId: string; name: string; eventId: string; eventTitle: string; linkType: string; hop: number; score: number }>> {
+  if (entityIds.length === 0) return [];
+  const r = await pool.query(
+    `
+      select ee.entity_id, ent.name, ee.event_id, e.title as event_title,
+             coalesce(ee.description, '') as link_type,
+             case when $4::vector is null then 0 else 1 - (ee.embedding <=> $4::vector) end as score
+      from event_entities ee
+      join events e on e.id = ee.event_id
+      join entities ent on ent.id = ee.entity_id
+      where ee.entity_id = any($1::uuid[])
+        and e.source_id = any($2::uuid[])
+        and e.deleted_at is null
+        and ($4::vector is null or (ee.embedding is not null and 1 - (ee.embedding <=> $4::vector) >= $3::float8))
+      order by score desc, ee.event_id
+      limit $5
+    `,
+    [entityIds, sourceIds, threshold, queryVectorLiteral, limitPerHop ?? 1000]
+  );
+  return r.rows.map((row) => ({
+    entityId: String(row.entity_id),
+    name: String(row.name),
+    eventId: String(row.event_id),
+    eventTitle: String(row.event_title),
+    linkType: String(row.link_type ?? ""),
+    hop,
+    score: Number(row.score ?? 0),
+  }));
+}
+
+/** 事件 → 关联实体(按边相似度排序) */
+async function queryEntityRowsFromEvents(
+  eventIds: string[],
+  sourceIds: string[],
+  threshold: number,
+  queryVectorLiteral: string | null,
+  limitPerHop: number | undefined,
+): Promise<Array<{ entityId: string }>> {
+  if (eventIds.length === 0) return [];
+  const r = await pool.query(
+    `
+      select distinct ee.entity_id
+      from event_entities ee
+      where ee.event_id = any($1::uuid[])
+        and ($3::vector is null or (ee.embedding is not null and 1 - (ee.embedding <=> $3::vector) >= $2::float8))
+      order by ee.entity_id
+      limit $4
+    `,
+    [eventIds, threshold, queryVectorLiteral, limitPerHop ?? 1000]
+  );
+  return r.rows.map((row) => ({ entityId: String(row.entity_id) }));
 }
 
 // ─── Upload jobs 持久化（037_upload_jobs）───
@@ -2018,4 +2156,84 @@ export async function markInterruptedUploadJobsFailed(): Promise<void> {
        message = '服务重启，任务中断', error = 'service restarted',
        updated_at = now() where status in ('QUEUED','RUNNING')`
   );
+}
+
+// ═══ P2: MCP 只读工具查询(Zleap 评审) ═══
+
+/** 词法搜索 chunk(tsvector GIN 索引, 零新索引成本) — MCP sag_grep 用 */
+export async function searchChunksByText(input: {
+  sourceId: string;
+  query: string;
+  limit: number;
+}): Promise<Array<{
+  chunkId: string;
+  documentId?: string;
+  heading?: string;
+  content: string;
+  rank: number;
+  score: number;
+}>> {
+  if (!input.query.trim()) return [];
+  const result = await pool.query(
+    `
+      with q as (
+        select websearch_to_tsquery('simple', $1) as tsq
+      )
+      select c.id, c.document_id, c.heading, c.content, c.rank,
+             ts_rank_cd(c.search_text, q.tsq) as score
+      from source_chunks c
+      cross join q
+      join documents d on d.id = c.document_id
+      join sources s on s.id = c.source_id
+      where c.source_id = $2::uuid
+        and d.archived_at is null
+        and s.archived_at is null
+        and c.search_text @@ q.tsq
+      order by ts_rank_cd(c.search_text, q.tsq) desc
+      limit $3
+    `,
+    [input.query, input.sourceId, input.limit]
+  );
+  return result.rows.map((row) => ({
+    chunkId: String(row.id),
+    documentId: row.document_id == null ? undefined : String(row.document_id),
+    heading: row.heading == null ? undefined : String(row.heading),
+    content: String(row.content),
+    rank: Number(row.rank),
+    score: Number(row.score)
+  }));
+}
+
+/** 按 chunkId 取单个 chunk(限定 source) — MCP sag_get_chunk 用 */
+export async function getChunkById(input: {
+  chunkId: string;
+  sourceId: string;
+}): Promise<{
+  chunkId: string;
+  sourceId: string;
+  documentId?: string;
+  heading?: string;
+  content: string;
+  rank: number;
+} | null> {
+  const result = await pool.query(
+    `
+      select c.id, c.source_id, c.document_id, c.heading, c.content, c.rank
+      from source_chunks c
+      join sources s on s.id = c.source_id
+      where c.id = $1::uuid
+        and c.source_id = $2::uuid
+    `,
+    [input.chunkId, input.sourceId]
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    chunkId: String(row.id),
+    sourceId: String(row.source_id),
+    documentId: row.document_id == null ? undefined : String(row.document_id),
+    heading: row.heading == null ? undefined : String(row.heading),
+    content: String(row.content),
+    rank: Number(row.rank)
+  };
 }

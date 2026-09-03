@@ -1744,7 +1744,13 @@ export class InferenceService {
           );
           const seedIds = seedRes.rows.map((r: any) => String(r.id));
           if (seedIds.length > 0) {
-            const fanout = await relationalFanout({ seedEntityIds: seedIds, sourceIds: [sourceId], depth: 2, limit: 30 });
+            // P2: 边相似度剪枝 — 块内重新生成 query 向量(queryVec 在 pgPromise 闭包内, 此处不可见)
+            const queryVector = await embeddingClient.generate(query).catch(() => undefined);
+            const fanout = await relationalFanout({
+              seedEntityIds: seedIds, sourceIds: [sourceId], depth: 2, limit: 30, queryVector,
+              // G1: 逐跳配额(Zleap 对齐)
+              entitiesPerHop: 15, eventsPerHop: 50, eventThreshold: 0.4,
+            });
             if (fanout.length > 0) {
               result.relationalEvents = [...new Set(fanout.map((f) => f.eventId))];
               console.log('[sag] stage2 relational: ' + result.relationalEvents.length + ' 个关系事件');

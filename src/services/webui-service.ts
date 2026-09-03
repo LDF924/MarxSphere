@@ -131,6 +131,39 @@ export class WebuiService {
     return project;
   }
 
+  /** V392+ 多租户更新(对齐 GET 列表): 任一租户命中即可更新。 */
+  async updateProjectByTenants(projectId: string, input: {
+    name?: string;
+    description?: string | null;
+  }, tenantIds: string[]) {
+    const result = await pool.query(
+      `
+        update sources
+        set
+          name = coalesce($3, name),
+          description = case when $4::boolean then $5 else description end,
+          updated_at = now()
+        where id = $1 and tenant_id = any($2::text[])
+        returning *
+      `,
+      [
+        projectId,
+        tenantIds,
+        input.name?.trim() || null,
+        Object.prototype.hasOwnProperty.call(input, "description"),
+        input.description ?? null
+      ]
+    );
+    return result.rows[0] ? {
+      id: result.rows[0].id,
+      name: result.rows[0].name,
+      description: result.rows[0].description,
+      archivedAt: result.rows[0].archived_at,
+      updatedAt: result.rows[0].updated_at,
+      createdAt: result.rows[0].created_at,
+    } : null;
+  }
+
   async archiveProject(projectId: string, tenantId = config.DEFAULT_TENANT_ID) {
     const project = await archiveSource({ sourceId: projectId, tenantId });
     if (!project) {

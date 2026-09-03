@@ -86,6 +86,8 @@ import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type Nod
 import "@xyflow/react/dist/style.css";
 import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
 import { ForceGraphPanel } from "./components/ForceGraphPanel";
+import { ExploreUniversePanel } from "./components/ExploreUniversePanel";
+import { KnowledgeUniverse } from "./components/KnowledgeUniverse";
 import { QuickLinkPanel } from "./components/QuickLinkPanel";
 import { TraversalPanel } from "./components/TraversalPanel";
 import { JobsPanel } from "./components/JobsPanel";
@@ -1583,8 +1585,8 @@ function AppShell() {
           const entry = getRegisteredView(workspaceView)!;
           const P = entry.component;
           return (
-            <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
-              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <div className="grid h-dvh min-h-0 grid-cols-1 overflow-y-auto text-foreground isolate">
+              <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
                 <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start gap-3 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
                   <button
                     type="button"
@@ -1605,10 +1607,10 @@ function AppShell() {
           );
         })()
       ) : (
-      <div className="grid h-dvh min-h-0 grid-cols-1 overflow-hidden text-foreground isolate">
+      <div className="grid h-dvh min-h-0 grid-cols-1 overflow-y-auto text-foreground isolate">
       {/* V399: 项目列移入顶栏「项目」弹出面板 — 主区域全宽 */}
 
-      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-y-auto">
         <header className="relative z-50 flex min-h-16 shrink-0 items-center justify-start gap-3 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-md md:px-6">
           {/* V399: 品牌区（移出项目面板，顶栏最左；点击回首页） */}
           <button
@@ -1863,7 +1865,7 @@ function AppShell() {
             ? "grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]"
             : "grid-cols-1"
         )}>
-          <main key={workspaceView} className="view-fade-in flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-background">
+          <main key={workspaceView} className="view-fade-in flex min-h-0 min-w-0 flex-col overflow-y-auto border-r border-border bg-background">
             {workspaceView === "settings" ? (
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
                 <SettingsPanel
@@ -3167,7 +3169,7 @@ function ProjectGraphWorkspace(props: {
 }) {
   const { t, language } = useI18n();
   const graph = props.graph;
-  const [view, setView] = useState<"graph" | "force" | "quicklink" | "traversal">("graph");
+  const [view, setView] = useState<"graph" | "force" | "quicklink" | "traversal" | "explore" | "knowledge">("graph");
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<Set<string>>(new Set());
   // shared canvas：快速建联/遍历的 mini 图数据（实体/事件节点 + 边）
   const [sharedNodes, setSharedNodes] = useState<Array<{ id: string; label: string; kind: "entity" | "event" }>>([]);
@@ -3185,7 +3187,9 @@ function ProjectGraphWorkspace(props: {
     { value: "graph", label: t("图谱", "Graph") },
     { value: "force", label: t("力导向", "Force") },
     { value: "traversal", label: t("关系查询", "Traversal") },
-    { value: "quicklink", label: t("快速建联", "Quick links") }
+    { value: "quicklink", label: t("快速建联", "Quick links") },
+    { value: "explore", label: t("探索图谱", "Explore") },
+    { value: "knowledge", label: t("知识宇宙", "Universe") }
   ];
 
   const showSharedGraph = (nodes: Array<{ id: string; label: string; kind: "entity" | "event" }>, edges: Array<{ source: string; target: string; label?: string }>) => {
@@ -3198,7 +3202,7 @@ function ProjectGraphWorkspace(props: {
 
   if (!hasGraph) {
     return (
-      <section className="flex min-h-0 flex-1 flex-col p-2 md:p-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2 md:p-4">
         <div className="mb-2 grid grid-cols-4 gap-0 rounded-md border border-border p-1 text-sm">
           {viewTabs.map((tab) => (
             <button
@@ -3300,6 +3304,14 @@ function ProjectGraphWorkspace(props: {
               setView("graph");
             }}
           />
+        )}
+        {view === "explore" && (
+          <ExploreUniversePanel sourceId={props.project.id} />
+        )}
+        {view === "knowledge" && (
+          <div className="relative min-h-0 flex-1">
+            <KnowledgeUniverse />
+          </div>
         )}
         {/* 共享 mini 画布：快速建联结果 → 力导向展示 */}
         {sharedNodes.length > 0 && (

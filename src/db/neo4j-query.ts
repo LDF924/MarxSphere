@@ -35,7 +35,13 @@ export async function neo4jQuery<T = Record<string, unknown>>(
   const driver = getDriver(port);
   const session: Session = driver.session();
   try {
-    const result = await session.run(cypher, params, { timeout: timeoutMs });
+    // 参数规范化: JS number 会被 driver 序列化成 5.0, Neo4j LIMIT/offset 拒绝
+    // → 整数参数自动转 neo4j.int
+    const normalizedParams: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(params)) {
+      normalizedParams[key] = Number.isInteger(value) ? neo4j.int(value as number) : value;
+    }
+    const result = await session.run(cypher, normalizedParams, { timeout: timeoutMs });
     return result.records.map((record) => {
       // toObject() 的 key 可能是 "e.name"（带别名前缀），规范化：取点号后最后一段
       const obj = record.toObject() as Record<string, unknown>;
