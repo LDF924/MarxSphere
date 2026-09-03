@@ -308,7 +308,7 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 | **marx-graphiti-ingest** | Graphiti batch ingestion (6 phases: entity extraction/distillation/vectorization/disambiguation/hyperedges, atomic checkpoints + 34-pitfall audit) | ④ ingestion |
 | **marx-cognee** | Cognee KG retrieval (17 strategies: HYBRID/semantic/graph traversal…) | ⑤ retrieval |
 | **marx-graphiti** | Graphiti knowledge retrieval (five-layer distillation + community discovery + hyperedge reasoning, 23 MCP tools) | ⑤ retrieval |
-| **marx-sag** | SAG reasoning workbench (52-step chain + token capture + eval, 30-question 0.870 baseline) | ⑥ reasoning |
+| **marx-sag** | SAG reasoning workbench (52-step chain + token capture + eval, 53-question 0.884 baseline) | ⑥ reasoning |
 | **marx-agent** | Agent master entry (52-step reasoning + Ask + 66 scenarios + 201 skills) | ⑦ dispatch |
 
 **Pipeline panorama**: `cnki acquire → pdf2obsidian convert → md-clean clean → marx-*-ingest three-library ingest → marx-cognee/marx-graphiti retrieve → marx-sag reason → marx-agent dispatch`
@@ -515,7 +515,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 
 📋 [Open-Source Compliance Disclosure](docs/OPEN-SOURCE-DISCLOSURE.md) — full disclosure: runtime dependencies / risk warnings (model hallucination, missing data, API errors) / commercial API usage & costs / closed-source models & alternatives / Agent frameworks / multimodal capabilities / run verification / **data governance (data provenance & authorization, knowledge-base construction & error handling, user-data desensitization & deletion, Agent context & memory management)**.
 
-> 📦 **Third-party source usage**: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) (SAG base MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp references / Cognee·Graphiti·OpenViking integration).
+> 📦 **Third-party source usage**: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (SAG base MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp references / Cognee·Graphiti·OpenViking integration).
 
 > ⚠️ **Important**: this system depends on commercial LLM/Embedding APIs (metered by token). All AI-generated content **may hallucinate** — verify research conclusions against primary sources. See sections 2, 4, 5 of the [disclosure doc](docs/OPEN-SOURCE-DISCLOSURE.md).
 

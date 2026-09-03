@@ -344,7 +344,7 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 | **marx-graphiti-ingest** | Graphiti 批量入库（6 阶段：实体抽取/蒸馏/向量化/消歧/超边，原子 checkpoint + 34 坑审计）| ④ 入库 |
 | **marx-cognee** | Cognee 知识图谱检索（17 种策略：HYBRID/语义/图遍历…）| ⑤ 检索 |
 | **marx-graphiti** | Graphiti 知识检索（五层蒸馏 + 社区发现 + 超边推理，23 个 MCP 工具）| ⑤ 检索 |
-| **marx-sag** | SAG 推理工作台（52 步链路 + token 采集 + 评测，30 题均值 0.870 基线）| ⑥ 推理 |
+| **marx-sag** | SAG 推理工作台（52 步链路 + token 采集 + 评测，53 题均值 0.884 基线）| ⑥ 推理 |
 | **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 66 场景 + 201 技能统一调度）| ⑦ 科研调度 |
 
 **流水线全景**：`cnki 获取 → pdf2obsidian 转换 → md-clean 清洗 → marx-*-ingest 三库入库 → marx-cognee/marx-graphiti 检索 → marx-sag 推理 → marx-agent 调度`
@@ -552,7 +552,7 @@ npm run typecheck       # 前后端类型检查
 
 📋 [开源合规披露](docs/OPEN-SOURCE-DISCLOSURE.md) — 完整披露：运行依赖 / 风险提示（模型幻觉、数据缺失、接口异常）/ 商业 API 使用与费用 / 闭源模型与替代方案 / Agent 框架 / 多模态能力 / 运行验证 / **数据治理（数据来源与授权、知识库构建与错误处理、用户数据脱敏与删除、Agent 上下文与记忆管理）**。
 
-> 📦 **第三方源码使用声明**：见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)（SAG 底座 MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp 借鉴 / Cognee·Graphiti·OpenViking 集成）。
+> 📦 **第三方源码使用声明**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（SAG 底座 MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp 借鉴 / Cognee·Graphiti·OpenViking 集成）。
 
 > ⚠️ **重要提示**：本系统依赖商业 LLM/Embedding API（按 token 计费），所有 AI 生成内容**可能产生幻觉**，研究结论须核验原始文献。详见 [披露文档](docs/OPEN-SOURCE-DISCLOSURE.md) 第 2、4、5 节。
 

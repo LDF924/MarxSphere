@@ -4,7 +4,7 @@
 > **赛道**：赛道二｜无界应用 Boundless Agents — **AI+教育**
 > **版本**：V1.0 ｜ **日期**：2026-08-20
 > **文档用途**：复赛（8.25–9.3 提交）更新版项目方案，含目标场景、产品流程、Agent 架构、数据来源与合规、评测指标、Demo 演示脚本与落地计划。
-> **关联材料**：代码仓库 [LDF924/MarxSphere](https://github.com/LDF924/MarxSphere) ｜ 数据与合规 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)、[OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md) ｜ 评测标准 [SCORING_STANDARD.md](SCORING_STANDARD.md)
+> **关联材料**：代码仓库 [LDF924/MarxSphere](https://github.com/LDF924/MarxSphere) ｜ 数据与合规 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)、[OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md) ｜ 评测标准 [SCORING_STANDARD.md](SCORING_STANDARD.md)
 
 ---
 
@@ -288,14 +288,14 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 
 ## 4. 数据来源与合规
 
-> 完整披露见 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)（第三方源码披露）与 [OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md)（开源/依赖/模型披露）。本节为复赛「数据来源与合规说明」摘要。
+> 完整披露见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)（第三方源码披露）与 [OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md)（开源/依赖/模型披露）。本节为复赛「数据来源与合规说明」摘要。
 
 ### 4.1 数据类型与来源
 
 | 数据类型 | 来源 | 授权/合规状态 |
 |---|---|---|
 | 学习计划 / 学情 / 作答记录 | **模拟数据**（学生可自录练习答案，默认本地存储） | 模拟数据，无真实个人信息；边界见 4.3 |
-| 知识库切片（`source_chunks`） | 公开学术文献与公开教材类文本 | 公开数据；第三方披露见 THIRD-PARTY-NOTICES |
+| 知识库切片（`source_chunks`） | 公开学术文献与公开教材类文本 | 公开数据；第三方披露见 THIRD_PARTY_NOTICES |
 | 教学语料（教师备课输入） | 用户（教师）自行提供 | 用户自备数据，系统仅本地处理 |
 | 知识图谱（Graphiti/Cognee） | 由公开文档自动抽取构建 | 公开数据派生，实体/关系为机器抽取 |
 | 学生语音（口语测评，规划中） | 学生自愿录音 | **仅本地处理 + 会话后即删，不落库不训练**，明示后采集 |
@@ -332,7 +332,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 - 基础架构源自 **SAG**（Zleap-AI, MIT）：search-service / inference-service / MCP server；
 - **GBrain**（MIT）：boosts / rrf / alias / sanitize 移植；**PDF2Obsidian**（MIT, vendor/）；
 - 设计参考 OpenAI Codex / DeepSeek Harness / wisp-science / HyperGraphRAG；
-- 开源依赖与许可证详见 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)；依赖清单、模型调用环节与费用假设见 [OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md)。
+- 开源依赖与许可证详见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)；依赖清单、模型调用环节与费用假设见 [OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md)。
 
 ### 4.5 思政内容合规机制（马理论/思政教育专属，复赛补充）
 
@@ -470,7 +470,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 3. **权限隔离演示**：用无 `education` 权限的凭证调用 `/api/education/*`，展示被拒；切换有权限凭证调用成功；
 4. **数据清理演示**：一键清理会话作答/错题数据，展示清理前后学情归零；语音数据会话后即删；
 5. **思政内容审核演示**：输入含马理论概念的辅导请求，展示输出前四维核验（意识形态/表述准确性/引用真实性/边界提示），并对照 Compiled Truth 权威源校准；
-6. **合规自证交付**：复赛提交的「数据来源与合规说明」文档即本方案 §4 章节 + THIRD-PARTY-NOTICES + OPEN-SOURCE-DISCLOSURE。
+6. **合规自证交付**：复赛提交的「数据来源与合规说明」文档即本方案 §4 章节 + THIRD_PARTY_NOTICES + OPEN-SOURCE-DISCLOSURE。
 
 ### 场景十一：顶部「AI+教育」Tab · 学生端/教师端子 Tab（教育产品常规形态，冲刺期新增）
 
@@ -532,7 +532,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 | 更新版项目方案（PPT/PDF） | 本文档（可转 PDF/PPT） |
 | 可运行 Demo / Demo 视频 | 第 6 节脚本 + 演示视频（录制中） |
 | 代码仓库/等价工程材料 | [LDF924/MarxSphere](https://github.com/LDF924/MarxSphere)，含运行入口、依赖、配置、示例数据、部署与测试方法 |
-| 数据来源与合规说明 | 第 4 节 + THIRD-PARTY-NOTICES.md + OPEN-SOURCE-DISCLOSURE.md |
+| 数据来源与合规说明 | 第 4 节 + THIRD_PARTY_NOTICES.md + OPEN-SOURCE-DISCLOSURE.md |
 
 ### 8.2 关键文件索引
 
@@ -555,5 +555,5 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 | [data/education-cases.json](../data/education-cases.json) | **教学案例库（§7.4，复赛冲刺期规划）** |
 | [web/src/components/EducationPanel.tsx](../web/src/components/EducationPanel.tsx) | 前端教育视图 |
 | [scripts/eval-32-metrics.ts](../scripts/eval-32-metrics.ts) | 评测脚本（53 题基线 0.884） |
-| [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) | 第三方源码披露 |
+| [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | 第三方源码披露 |
 | [docs/OPEN-SOURCE-DISCLOSURE.md](OPEN-SOURCE-DISCLOSURE.md) | 开源/依赖/模型/合规披露 |
