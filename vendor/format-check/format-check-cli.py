@@ -44,6 +44,10 @@ def cmd_inspect(argv: list[str]) -> int:
         # 摘要/目录类规则因 0/False 值自然跳过); 内容级语义检测由 TS 引擎承担
         empty_content = ContentResult()
         findings = evaluate_all(docx_result, empty_content, preset)
+        # 参考改写规则(无许可项目功能自写实现, 见 docx_extra_rules.py)
+        _sys.path.insert(0, str(HERE))
+        from docx_extra_rules import run_extra_rules
+        findings += run_extra_rules(Path(docx), preset)
         out = {
             "ok": True,
             "preset": preset.get("name", preset_name),
