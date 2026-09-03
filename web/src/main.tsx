@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerView } from "./components/viewRegistry";
 import { JupyterPanel } from "./components/JupyterPanel";
 import { BackupPanel } from "./components/BackupPanel";
+import { FormatEvalPanel } from "./components/FormatEvalPanel";
 import "./styles.css";
 import "./cosmos.css";
 import "./learning.css";
@@ -28,6 +29,17 @@ registerView({
   category: "knowledge",
   component: BackupPanel,
   desc: "知识库快照 · 校验 · 全量恢复(PG + Graphiti/Cognee 图谱)",
+});
+
+// 2026-09-03: 论文格式智能评测(规则引擎 + LLM 双层)
+registerView({
+  value: "format-eval",
+  label: "格式智能评测",
+  labelEn: "Format Eval",
+  category: "literature",
+  component: FormatEvalPanel,
+  dot: "hsl(160 60% 50%)",
+  desc: "学位论文/期刊/职称格式评测 · 细粒度规则引擎 + LLM 审校 · 自定义学校模板",
 });
 
 // V398: 主题初始化（render 前，防首屏闪烁）— 默认深色，浅色需用户切换

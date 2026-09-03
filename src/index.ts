@@ -56,9 +56,17 @@ startHttpServer().catch((error: unknown) => {
 // V395-38: 期刊实时同步管道（启动即同步一次 + 每6小时自动）
 startJournalSyncScheduler();
 
-// V6: Agent 评测集自动回归（启动即跑一次 + 每24小时, 通过率<50%告警）
-import { startEvalSuiteScheduler } from "./services/agent-eval-service.js";
-setTimeout(() => { startEvalSuiteScheduler(); }, 5000);
+// V6: Agent 评测集自动回归(启动即跑一次 + 每24小时, 通过率<50%告警)
+// 2026-09-03: 加 AGENT_EVAL_AUTO_ENABLED 开关(默认关) — 自动评测消耗真实
+// LLM token 且后端每次重启都会触发, 需用时在 .env 设 AGENT_EVAL_AUTO_ENABLED=true
+import { config } from "./config/env.js";
+if (config.AGENT_EVAL_AUTO_ENABLED) {
+  import("./services/agent-eval-service.js").then(({ startEvalSuiteScheduler }) => {
+    setTimeout(() => { startEvalSuiteScheduler(); }, 5000);
+  });
+} else {
+  console.log("[agent-eval] V6 自动回归已关闭 (AGENT_EVAL_AUTO_ENABLED=false, 可在 Agent 面板手动跑)");
+}
 
 // V396-5: Agent 队列恢复 — 启动后把 running 卡死任务置 failed(可重试), 清空遗留队列条目
 // G9: 同时处理 planning 卡死(>24h) + awaiting_approval 超时(60分钟)

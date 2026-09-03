@@ -82,6 +82,7 @@ import { AgentConsole } from "./components/AgentConsole";
 import { P2OView } from "./components/P2OView";
 import { CJournalPanel } from "./components/CJournalPanel";
 import { CitationVerifyPanel } from "./components/CitationVerifyPanel";
+import { FormatEvalPanel } from "./components/FormatEvalPanel";
 import { Background, BackgroundVariant, Controls, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
@@ -120,7 +121,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "capability-tools";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "p2o" | "cjournal" | "corpus" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -543,7 +544,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "p2o", "cjournal", "corpus", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -1578,7 +1579,7 @@ function AppShell() {
         <div className="relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden">
           <HomePanel onChangeView={(view) => navigateView(view)} />
         </div>
-      ) : workspaceView !== "jupyter" && getRegisteredView(workspaceView) ? (
+      ) : workspaceView !== "jupyter" && workspaceView !== "format-eval" && getRegisteredView(workspaceView) ? (
         // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
         // 2026-08-27: 插件面板包 ErrorBoundary + 完整布局容器（h-dvh 防空白页）
         (() => {
@@ -2030,6 +2031,12 @@ function AppShell() {
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
                 <ErrorBoundary><JupyterPanel /></ErrorBoundary>
               </section>
+            ) : workspaceView === "format-eval" ? (
+              // 2026-09-03: 格式智能评测 — 硬编码视图(带完整顶部导航, 与 jupyter 一致;
+              // registerView 插件面板是简化 header 无导航栏, 故弃用注册表)
+              <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+                <ErrorBoundary><FormatEvalPanel /></ErrorBoundary>
+              </section>
             ) : workspaceView === "imports" ? (
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
                 <ErrorBoundary><ImportsPanel /></ErrorBoundary>
@@ -2474,7 +2481,7 @@ function MainWorkspaceTabs(props: {
   /** 导航分组色点（finesse：分组视觉标识，色相按职能区分；后台/系统组不显示色点更干净） */
   const GROUP_DOTS: Record<string, string> = {
     assistant: "hsl(43 96% 60%)", chat: "hsl(43 96% 60%)", reason: "hsl(43 96% 60%)", ask: "hsl(43 96% 60%)",
-    literature: "hsl(150 45% 50%)", sciverse: "hsl(150 45% 50%)", scenarios: "hsl(150 45% 50%)", education: "hsl(160 60% 45%)", "empirical-research": "hsl(160 60% 45%)",
+    literature: "hsl(150 45% 50%)", sciverse: "hsl(150 45% 50%)", scenarios: "hsl(150 45% 50%)", education: "hsl(160 60% 45%)", "empirical-research": "hsl(160 60% 45%)", "format-eval": "hsl(160 60% 50%)",
     truth: "hsl(214 60% 55%)", memory: "hsl(214 60% 55%)", documents: "hsl(214 60% 55%)", "graphiti-ingest": "hsl(214 60% 55%)", "cognee-ingest": "hsl(214 60% 55%)", graph: "hsl(214 60% 55%)", sources: "hsl(214 60% 55%)",
     policy: "hsl(28 70% 55%)", vault: "hsl(28 70% 55%)",
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
@@ -2513,6 +2520,7 @@ function MainWorkspaceTabs(props: {
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
+        { value: "format-eval", label: t("格式智能评测", "Format Eval") },      // 2026-09-03: 论文格式评测 (规则引擎+LLM)
         { value: "p2o", label: t("PDF2Obsidian", "PDF2Obsidian") },
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
