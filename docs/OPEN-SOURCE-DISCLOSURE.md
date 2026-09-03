@@ -13,8 +13,10 @@
 | 开发 | `npm run dev` | 前端 Vite (5173) + 后端 Fastify (4173) |
 | 生产 | `npm run build && npm start` | 编译后单进程服务 (4173) |
 | 桌面端 | `npm run build:desktop` | Electron + NSIS 安装包 |
-| MCP 服务 | `npm run mcp` | 标准 I/O MCP Server |
-| 测试 | `npm test` | 154 项单元测试 |
+| MCP 服务 | `npm run mcp` | 标准 I/O MCP Server（10 个工具：检索/入库/执行/grep/大纲/文档/chunk 等） |
+| OpenAI 兼容 | `POST /api/openai/chat/completions` | 外部 OpenAI 客户端把本地知识库当"模型"调用（含 citations） |
+| 备份 | `npx tsx scripts/backup-now.ts` | 知识库轻量备份 .sagbak（PG + Graphiti/Cognee 图谱 + 清单校验） |
+| 测试 | `npm test` | 332 项单元测试 |
 | 数据库 | `npm run db:setup` | 迁移 + 种子数据 |
 
 ### 依赖说明
@@ -163,9 +165,13 @@
 ### 11.2 知识库构建、检索与错误处理
 
 - **构建方式**：文档上传 → 分块（chunking）→ 事件抽取 → 实体抽取 → 向量化（pgvector）→ 三库同步（PG 向量 / Graphiti 社区 / Cognee 切片）
-- **检索策略**：17 路粗检索（Cognee HYBRID / Graphiti 社区+超边 / PG 向量 / 词法 BM25）→ 加权 RRF 融合 → Cosine 重打分 → LLM 重排 → 去重
+- **检索策略**：17 路粗检索（Cognee HYBRID / Graphiti 社区+超边 / PG 向量 / 词法 BM25）→ 加权 RRF 融合 → Cosine 重打分 → LLM 重排 → 去重；多跳关系扩展带边向量相似度剪枝（阈值可配 `RELATIONAL_EDGE_THRESHOLD`，默认 0.35）
 - **引用来源**：答案编号引用 → 点击回看原始切片；18 步检索 trace 全程可视化（召回来源与分数）
 - **更新机制**：入库管道自动同步三库；期刊同步每 6 小时；知识页（Compiled Truth）可人工重写
+- **数据导出与外部访问**：
+ - OpenAI 兼容端点（`POST /api/openai/chat/completions`）把知识库检索能力暴露给外部 OpenAI 客户端——**默认仅本机（127.0.0.1）可访问**；远程访问需 `sag_` API 令牌且权限映射为 admin/reason，外部请求强制 Bearer 校验
+ - 知识库备份（.sagbak）导出 PG 数据 + Graphiti/Cognee 图谱到 `BACKUP_DIR`（默认 `backups/`）——备份含全部已入库文献内容，**请妥善保管备份目录**（含敏感文献）；默认滚动保留 3 份
+ - 备份不含仓库外数据（Cognee LanceDB 位于 `COGNEE_DIR`，需另行备份）
 - **错误处理**：
  - 图谱（Graphiti/Cognee）不可用 → 自动降级 PG 向量检索（召回质量下降，界面提示）
  - Embedding/LLM API 失败 → 本地确定性 fallback（提示降级，不静默）
@@ -252,7 +258,8 @@
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义
 - `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
-- 154 项单元测试（`npm test`）
+- 332 项单元测试（`npm test`）
+- 53 题双轨评测（规则评分 + LLM judge）overall 0.884（`scripts/eval-32-metrics.ts`）
 
 ---
 
@@ -260,4 +267,4 @@
 
 本项目按 AGPL v3 + 商业授权双许可开源（保留 Logo、衍生开源、商用需授权，见 LICENSE）。
 
-第三方源码使用完整披露见 [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)（SAG/GBrain/PDF2Obsidian 等来源与许可证）。**本项目输出的所有研究结论、问卷设计、分析结果仅供科研参考，使用者须对最终成果负责。**
+第三方源码使用完整披露见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)（SAG/GBrain/PDF2Obsidian 等来源与许可证）。**本项目输出的所有研究结论、问卷设计、分析结果仅供科研参考，使用者须对最终成果负责。**

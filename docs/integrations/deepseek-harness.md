@@ -37,7 +37,7 @@ SAG MCP Server 暴露的核心能力（与 52 步推理/四源检索对应）：
 
 ## 4. DSH 设计模式吸收（本仓库）
 
-MarxSphere 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD-PARTY-NOTICES](../THIRD-PARTY-NOTICES.md)）：
+MarxSphere 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)）：
 
 | DSH 模式 | MarxSphere 对应实现 | 作用 |
 |---|---|---|
