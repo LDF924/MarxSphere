@@ -202,6 +202,14 @@ SOFTWARE.
 - **移植内容**: `vendor/format-check/china-thesis/scripts/`(docx_rules.py / analyze_docx.py 模板规则 JSON 提取)
 - **用途**: 从学校模板提取可审计规则 JSON
 
+### 8.4 paper_format_agent(zxyasfas, MIT)
+- **仓库**: https://github.com/zxyasfas/paper_format_agent
+- **移植内容**: `vendor/format-check/paper_format_agent/`(格式化 pipeline + 内容指纹保护 + 评分报告)
+- **用途**: 按规则自动格式化 .docx, 内容指纹保护证明正文未被改动
+- **仓库**: https://github.com/keyingshuzhi/china-thesis-docx-formatter
+- **移植内容**: `vendor/format-check/china-thesis/scripts/`(docx_rules.py / analyze_docx.py 模板规则 JSON 提取)
+- **用途**: 从学校模板提取可审计规则 JSON
+
 统一入口: `vendor/format-check/format-check-cli.py`(inspect / extract-text / extract-template 三子命令, 由 TS 后端 format-docx-service.ts 子进程调用)
 
 > 本文件由 MarxSphere 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
