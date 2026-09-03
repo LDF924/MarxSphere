@@ -15,6 +15,7 @@ export interface WorkerTask {
   status: "pending" | "running" | "done" | "failed";
   result?: string;
   detail?: string;
+  sharedContext?: string; // V394-6: 其他工人已产出共享上下文(避免重复检索)
 }
 
 export interface AgentMessage {
@@ -179,10 +180,98 @@ export async function listWorkerTasks(parentTaskId?: string): Promise<WorkerTask
   }));
 }
 
+export async function reviewWorkerOutputs(goal: string, workers: Array<{ workerName: string; goal: string; result?: string }>, summary: string): Promise<{
+  reviews: Array<{ reviewer: string; verdict: string; strengths: string; weaknesses: string; score: number }>;
+  challenge: string;
+  finalScore: number;
+  verdict: "approved" | "needs_revision" | "rejected";
+  report: string;
+}> {
+  const model = resolveModelAlias(getRoleModel("plan"));
+  const workerParts = workers.map((w) => `[${w.workerName}] ${w.goal}\n${(w.result || "").slice(0, 400)}`).join("\n\n");
+  const reviews: Array<{ reviewer: string; verdict: string; strengths: string; weaknesses: string; score: number }> = [];
+  // 2 视角独立评审
+  const reviewers = [
+    { role: "C刊审稿人", focus: "学术严谨性/理论深度/证据充分性/创新性" },
+    { role: "方法论专家", focus: "方法合理性/论证链条完整性/结论可验证性" },
+  ];
+  for (const rv of reviewers) {
+    try {
+      const r = await callLlm({
+        model,
+        messages: [{
+          role: "user",
+          content: `你是${rv.role}。独立评审以下多 Agent 研究报告（关注: ${rv.focus}）:
+研究目标: ${goal}
+工人产出:
+${workerParts.slice(0, 2500)}
+汇总报告:
+${summary.slice(0, 1200)}
+
+输出 JSON: {"verdict":"approved/needs_revision/rejected","strengths":"优点(40字内)","weaknesses":"不足(60字内)","score":0-1}`,
+        }],
+        temperature: 0.2, maxTokens: 400,
+      });
+      const text = (r?.text || "").replace(/```json|```/g, "");
+      const start = text.indexOf("{");
+      const end = text.lastIndexOf("}");
+      if (start !== -1 && end > start) {
+        const v = JSON.parse(text.slice(start, end + 1));
+        reviews.push({
+          reviewer: rv.role,
+          verdict: String(v.verdict || "needs_revision"),
+          strengths: String(v.strengths || "").slice(0, 80),
+          weaknesses: String(v.weaknesses || "").slice(0, 120),
+          score: Math.max(0, Math.min(1, Number(v.score) || 0.5)),
+        });
+      }
+    } catch { /* 单评审失败跳过 */ }
+  }
+  // 对抗辩论: 挑战者攻击报告弱点
+  let challenge = "";
+  try {
+    const r = await callLlm({
+      model,
+      messages: [{
+        role: "user",
+        content: `你是对抗性挑战者(Devil's Advocate)。攻击以下研究报告的薄弱环节——找出结论可能站不住脚的地方:
+研究目标: ${goal}
+汇总报告:
+${summary.slice(0, 1200)}
+
+输出: 3 条最尖锐的质疑(每条30字内):`,
+      }],
+      temperature: 0.4, maxTokens: 300,
+    });
+    challenge = (r?.text || "").trim().slice(0, 300);
+  } catch { /* 挑战失败跳过 */ }
+  // 汇总: 平均分 + 有 rejected 则整体 needs_revision
+  const avgScore = reviews.length > 0 ? reviews.reduce((a, r) => a + r.score, 0) / reviews.length : 0.5;
+  const hasReject = reviews.some((r) => r.verdict === "rejected");
+  const hasRevise = reviews.some((r) => r.verdict === "needs_revision");
+  const verdict: "approved" | "needs_revision" | "rejected" = hasReject ? "rejected" : hasRevise ? "needs_revision" : avgScore >= 0.7 ? "approved" : "needs_revision";
+  const report = [
+    `## 评审报告（${goal.slice(0, 40)}）`,
+    `**综合评分**: ${avgScore.toFixed(2)}/1.0 · **结论**: ${verdict === "approved" ? "✅ 通过" : verdict === "needs_revision" ? "⚠️ 需修改" : "❌ 否决"}`,
+    ...reviews.map((r) => `- **${r.reviewer}**: ${r.verdict} (${r.score.toFixed(2)}) — 优点: ${r.strengths}; 不足: ${r.weaknesses}`),
+    challenge ? `\n**对抗质疑**:\n${challenge}` : "",
+  ].join("\n");
+  return { reviews, challenge, finalScore: avgScore, verdict, report };
+}
+
+export async function cleanupAgentTables(days = 30): Promise<{ messagesDeleted: number; workersDeleted: number }> {
+  const cutoff = `now() - (${Math.min(days, 365)} || ' days')::interval`;
+  const m = await pool.query(`delete from agent_messages where created_at < ${cutoff}`);
+  const w = await pool.query(`delete from worker_tasks where created_at < ${cutoff}`);
+  return { messagesDeleted: m.rowCount || 0, workersDeleted: w.rowCount || 0 };
+}
+
 export const agentOrchestrator = {
   decomposeGoal,
   dispatchWorkers,
   sendAgentMessage,
   listAgentMessages,
   listWorkerTasks,
+  reviewWorkerOutputs,  // V396-10: 多 Agent 评审质量门
+  cleanupAgentTables,   // W4: 消息表 TTL 清理
 };
