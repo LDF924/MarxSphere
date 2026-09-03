@@ -175,7 +175,7 @@ preserved = prev[:last_started+1]     # 已开始前缀不可变(审计)
 | 认知维度/推荐/复习提醒 | student-learning-service |
 | 编程/语言教育 | coding-education-service(拆解/辅导/面试/职业)、language-learning-service(阅读/词汇/写作/记录) |
 | 教育合规/多模态/资源/评估/反馈 | education-compliance / multimodal / resource-sources / eval / feedback |
-| 前端 | EducationPanel / EducationWorkspacePanel / EducationAssetsPanel(33 视图体系) |
+| 前端 | EducationPanel / EducationWorkspacePanel / EducationAssetsPanel(41 视图体系) |
 
 ### 差距(按价值排序)
 
