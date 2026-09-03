@@ -55,15 +55,21 @@ for (const f of ROOT_FILES) {
 }
 
 // ─── 对比差异 ───
+// 行尾不敏感比较(CRLF/LF): git 仓库用 autocrlf=true 时同一内容在
+// 两仓的物理字节不同, 全字节比较会让自动同步反复制造假差异提交。
+function sameContent(src, dst) {
+  try {
+    return readFileSync(src, "utf8").replace(/\r\n/g, "\n")
+      === readFileSync(dst, "utf8").replace(/\r\n/g, "\n");
+  } catch { return false; }
+}
 const changed = [];
 const added = [];
 for (const rel of files) {
   const src = path.join(MAIN, rel);
   const dst = path.join(OPEN, rel);
   if (!existsSync(dst)) { added.push(rel); continue; }
-  try {
-    if (readFileSync(src, "utf8") !== readFileSync(dst, "utf8")) changed.push(rel);
-  } catch { changed.push(rel); }
+  if (!sameContent(src, dst)) changed.push(rel);
 }
 console.log(`[sync-open] 差异: ${changed.length} 修改 + ${added.length} 新增 = ${changed.length + added.length} 文件`);
 for (const f of changed.slice(0, 15)) console.log(`  M ${f}`);
@@ -78,7 +84,7 @@ for (const rel of files) {
   const src = path.join(MAIN, rel);
   const dst = path.join(OPEN, rel);
   if (!changed.includes(rel) && !added.includes(rel)) continue;
-  if (!existsSync(dst) || readFileSync(src, "utf8") !== readFileSync(dst, "utf8")) {
+  if (!existsSync(dst) || !sameContent(src, dst)) {
     try { cpSync(src, dst, { force: true }); } catch { /* 二进制/权限跳过 */ }
   }
 }
