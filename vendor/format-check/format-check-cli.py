@@ -119,6 +119,36 @@ def cmd_extract(argv: list[str]) -> int:
         return 1
 
 
+
+
+def cmd_format(argv: list[str]) -> int:
+    """自动格式化 docx: 复用 paper_format_agent(zxyasfas, MIT, 内容指纹保护)。
+    用法: format <paper.docx> --format-file <规则.md/docx> --out-dir <dir>"""
+    sys.path.insert(0, str(HERE))
+    from paper_format_agent.service import format_paper
+
+    paper = argv[0] if argv else ""
+    fmt_file = argv[argv.index("--format-file") + 1] if "--format-file" in argv else None
+    out_dir = argv[argv.index("--out-dir") + 1] if "--out-dir" in argv else "formatted-out"
+    if not paper or not Path(paper).exists():
+        print(json.dumps({"ok": False, "error": f"paper not found: {paper}"}, ensure_ascii=False))
+        return 1
+    try:
+        out_path = Path(out_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        result = format_paper(
+            Path(paper),
+            out_path,
+            format_file=Path(fmt_file) if fmt_file else None,
+            allow_content_change=False,  # 内容指纹保护: 改动正文即失败
+        )
+        print(json.dumps({"ok": True, "result": str(result)[:300]}, ensure_ascii=False, default=str))
+        return 0
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"ok": False, "error": str(e)[:500]}, ensure_ascii=False))
+        return 1
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__)
@@ -131,8 +161,11 @@ def main() -> int:
         return cmd_extract_text(argv)
     if cmd == "extract-template":
         return cmd_extract(argv)
+    if cmd == "format":
+        return cmd_format(argv)
     print(json.dumps({"ok": False, "error": f"Unknown command: {cmd}"}, ensure_ascii=False))
     return 1
+
 
 
 if __name__ == "__main__":
