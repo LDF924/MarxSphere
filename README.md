@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-296%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-621%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -54,7 +54,7 @@
 
 - **开源生态融入(Rimagination 9+4 项)**: 扫描版 PDF 转换(mineru-go) / 研究选题打磨(good-question) / 23 种公文起草(gongwen-draft) / B站·抖音视频笔记(bili-note+dy-note) / 元分析第 17 方法(easymeta) / 英文文献 OA 回退(OpenAlex+Unpaywall) / 科学叙事(good-story) / 图表数字化(thu-digitizer) / 引文三维核验(citation-lab) / 引用网络算法(paper-atlas)
 - **Codex Harness 对齐(V400 差距清零)**: 预算/时间提醒注入(Rollout 50K / TokenBudget 6_144, 窗口去重) / Mid-turn 上下文压缩不终止 / Elicitation 澄清暂停协调 / Stop·PreToolUse·PostToolUse·PermissionRequest 钩子 / Guardian 拒绝熔断 / 世界状态 diff(增量注入) / Steer 运行中转向 / Mailbox 多代理双通道 / 审批缓存 / 评审会话隔离 / 共享上下文 LRU
-- **Agent 工具 65 个 / 技能注册 201 / 实证方法 17(含元分析+森林图) / 测试 296 全绿**
+- **Agent 工具 65 个 / 技能注册 201 / 实证方法 17(含元分析+森林图) / 测试 621 全绿(CI 持续)**
 
 ## 功能总览
 
@@ -85,7 +85,7 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **65 工具自主调度**：47 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**）+ 18 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，33 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
+- **65 工具自主调度**：65 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
 - **命令语法**：`/` 弹出技能命令面板（201 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
@@ -109,7 +109,7 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（47 个 Agent 工具；另有 18 个视图工具，合计 65）**
+**② 工具矩阵（65 个 Agent 工具；另有 22 个视图工具，合计 87）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
@@ -389,7 +389,7 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 **Agent 轨迹评测**：计划遵循度 / 工具准确率 / 推理质量（judge 打分）+ 学习曲线
 **学习引擎**：显著性 / 归因 / 轨迹前缀 / 校准（kappa=1.0）/ 模型替换基建
 **消融体系**：21 个可消融算子（检索栈 12 + 推理链路 9），`scripts/ablation-eval.ts` 可逐项验证组件贡献
-**单元测试**：296 项全绿
+**单元测试**：621 项全绿(CI 持续)
 
 ---
 
@@ -519,7 +519,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 
 ```text
 src/                 后端源码（AI/API/服务/数据库）
-web/                 前端源码（33 视图 · Mega Menu 导航）
+web/                 前端源码（41 视图 · Mega Menu 导航）
 electron/            桌面端主进程 / 引导页
 scripts/             Python runner / 评测脚本 / 工具脚本 / 启动脚本
 evaluation/          评测资产（评测结果 / 金标集 / 历史归档）
@@ -570,7 +570,7 @@ npm run typecheck       # 前后端类型检查
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
 | 📊 运行截图 | [docs/assets/](docs/assets/)（首页/对话/推理/Ask/文献/图谱/场景/实证/Agent/评测 10 张） |
 | 📈 评测报告样例 | `reports/`（7 份报告）· `evaluation/`（评测结果+金标+历史归档） |
-| ✅ 单元测试 | `npm test`（296 项） |
+| ✅ 单元测试 | `npm test`（621 项, CI 全绿） |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `examples/`（同批示例）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 检索：`examples/seed-corpus/`（50 篇种子语料）· 评测：`evaluation/gold_dataset.json`（53 题金标）· 图谱：`knowledge-graph/` |
 | 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |
