@@ -45,6 +45,10 @@ interface FormatEvalResult {
   llmFindings: FormatIssue[];
   llmStatus: "ok" | "skipped" | "failed";
   humanCheckNotes: string[];
+  // .docx 路径附加(样式级 findings 来自 python docx 检查器)
+  styleFindings?: FormatIssue[];
+  textFindings?: FormatIssue[];
+  isDocx?: boolean;
 }
 
 const SEVERITY_META: Record<IssueSeverity, { label: string; cls: string; chip: string }> = {
@@ -68,6 +72,8 @@ export function FormatEvalPanel() {
   const [customJson, setCustomJson] = useState("");
   const [customName, setCustomName] = useState("");
   const [text, setText] = useState("");
+  const [docxFileName, setDocxFileName] = useState("");
+  const [docxBase64, setDocxBase64] = useState("");
   const [useLlm, setUseLlm] = useState(true);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<FormatEvalResult | null>(null);
@@ -137,6 +143,57 @@ export function FormatEvalPanel() {
   };
 
   const runCheck = async () => {
+    // .docx 路径: 样式级(python) + 文本级(TS 引擎)
+    if (docxBase64) {
+      setLoading(true);
+      setError("");
+      setResult(null);
+      try {
+        const isCustom = customTemplates.some((t) => t.id === templateId);
+        const res = await fetch("/api/format-eval/check-docx", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            docxBase64,
+            fileName: docxFileName || undefined,
+            templateId: isCustom ? undefined : templateId,
+            template: isCustom ? activeTemplate : undefined,
+            preset: "ncwu",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data?.error?.message ?? `docx 评测失败: HTTP ${res.status}`);
+          return;
+        }
+        const styleF = (data.styleFindings ?? []) as FormatIssue[];
+        const textF = (data.textFindings ?? []) as FormatIssue[];
+        setResult({
+          ok: true,
+          isDocx: true,
+          templateUsed: activeTemplate ?? { id: "undergrad-thesis", name: "本科毕业论文", scope: "本科", builtin: true, headingPattern: "chapter-x.x", abstract: { required: true, min: 200, max: 400 }, keywords: { required: true, min: 3, max: 5, separator: "；" }, requiredSections: [], citationStyle: "numeric", referencesRequired: true, figureCaptionBelow: true, humanCheckNotes: [] },
+          stats: {
+            score: 0,
+            totalRules: styleF.length + textF.length,
+            errors: styleF.filter((f) => f.severity === "error").length + textF.filter((f) => f.severity === "error").length,
+            warnings: styleF.filter((f) => f.severity === "warning").length + textF.filter((f) => f.severity === "warning").length,
+            infos: styleF.filter((f) => f.severity === "info").length + textF.filter((f) => f.severity === "info").length,
+            byCategory: {},
+          },
+          ruleFindings: [],
+          llmFindings: [],
+          llmStatus: "skipped",
+          humanCheckNotes: activeTemplate?.humanCheckNotes ?? [],
+          styleFindings: styleF,
+          textFindings: textF,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     if (!text.trim()) { setError("请先粘贴论文文本或上传文件"); return; }
     if (text.trim().length < 50) { setError("文本过短, 至少 50 字才能评测"); return; }
     setLoading(true);
@@ -168,13 +225,32 @@ export function FormatEvalPanel() {
   };
 
   const onFile = (file: File) => {
+    const isDocx = /\.docx$/i.test(file.name);
+    if (isDocx) {
+      if (file.size > 40 * 1024 * 1024) { setError("docx 超过 40MB, 请精简后重试"); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = String(reader.result ?? "").split(",")[1] ?? "";
+        setDocxBase64(b64);
+        setDocxFileName(file.name);
+        setText("");
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
     if (file.size > 2 * 1024 * 1024) { setError("文件超过 2MB, 请分段粘贴文本"); return; }
+    setDocxBase64("");
+    setDocxFileName("");
     const reader = new FileReader();
     reader.onload = () => setText(String(reader.result ?? ""));
     reader.readAsText(file);
   };
 
-  const findings = useMemo(() => result ? [...result.ruleFindings, ...result.llmFindings] : [], [result]);
+  const findings = useMemo(() => {
+    if (!result) return [];
+    if (result.isDocx) return [...(result.styleFindings ?? []), ...(result.textFindings ?? [])];
+    return [...result.ruleFindings, ...result.llmFindings];
+  }, [result]);
   const errorFindings = findings.filter((f) => f.severity === "error");
   const warnFindings = findings.filter((f) => f.severity === "warning");
   const infoFindings = findings.filter((f) => f.severity === "info");
@@ -234,9 +310,9 @@ export function FormatEvalPanel() {
             </label>
             <button type="button" onClick={() => fileRef.current?.click()}
               className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/80 px-3 py-1.5 text-xs hover:bg-accent/40">
-              <Upload className="h-3.5 w-3.5" /> 上传 .md/.txt
+              <Upload className="h-3.5 w-3.5" /> 上传 .md/.txt/.docx
             </button>
-            <input ref={fileRef} type="file" accept=".md,.txt,.markdown,text/plain" className="hidden"
+            <input ref={fileRef} type="file" accept=".md,.txt,.markdown,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
           </div>
 
@@ -275,11 +351,22 @@ export function FormatEvalPanel() {
             </div>
           )}
 
+          {/* docx 已载入提示 */}
+          {docxFileName && (
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-violet-400/30 bg-violet-400/10 px-3 py-2 text-xs text-violet-200">
+              <FileText className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{docxFileName}</span>
+              <span className="rounded bg-violet-400/20 px-1.5 py-0.5 text-[10px]">Word 样式级 + 文本级双层检查</span>
+              <button type="button" onClick={() => { setDocxFileName(""); setDocxBase64(""); }}
+                className="shrink-0 text-violet-300/70 hover:text-white" title="移除文件">✕</button>
+            </div>
+          )}
+
           {/* 文本输入 */}
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="粘贴论文全文(标题层级/摘要/关键词/正文/参考文献需完整), 或上传 .md/.txt 文件。支持 Word 复制纯文本。"
+            placeholder="粘贴论文全文(标题层级/摘要/关键词/正文/参考文献需完整), 或上传 .md/.txt 文件; 上传 .docx 将额外做 Word 样式级检查(页边距/字体/行距等)。"
             className="mt-3 h-52 w-full resize-y rounded-md border border-border/70 bg-background/80 p-3 text-xs leading-5 outline-none focus:border-emerald-400/40"
           />
           <div className="mt-2 flex items-center justify-between">
@@ -287,7 +374,7 @@ export function FormatEvalPanel() {
               {text.length.toLocaleString()} 字 {activeTemplate ? `· 模板: ${activeTemplate.name}` : ""}
               {text.length > 0 && text.length < 50 ? " · 文本过短(<50 字无法评测)" : ""}
             </span>
-            <button type="button" onClick={runCheck} disabled={loading || text.trim().length < 50}
+            <button type="button" onClick={runCheck} disabled={loading || (text.trim().length < 50 && !docxBase64)}
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40">
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
               {loading ? "评测中…" : "开始格式评测"}
