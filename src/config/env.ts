@@ -32,6 +32,9 @@ const envSchema = z.object({
   LLM_BASE_URL: z.string().url().default(DEFAULT_302AI_BASE_URL),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
   LLM_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
+  // V6+2026-09-03: Agent 评测集自动回归开关(默认关) — 每 24h 真实 LLM 评测
+  // 消耗 token 与内存; 多次重启会反复触发, 需要时显式 AGENT_EVAL_AUTO_ENABLED=true
+  AGENT_EVAL_AUTO_ENABLED: z.coerce.boolean().default(false),
   GITHUB_TOKEN: z.string().default(""),
   RERANK_BASE_URL: z.string().url().optional(),
   RERANK_MODEL: z.string().min(1).default("qwen3-rerank"),

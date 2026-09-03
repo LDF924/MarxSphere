@@ -1014,6 +1014,26 @@ export function buildHttpServer() {
     if (!body.text) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "缺少 text" } });
     return paperQualityService.formatAdaptation(body.text, body.target ?? "期刊论文", { model: body.model });
   });
+  // ─── 格式智能评测 API(2026-09-03: 规则引擎+LLM 双层) ───
+  // 模板清单: GET → { templates: FormatTemplate[] }
+  app.get("/api/format-eval/templates", async () => {
+    const { BUILTIN_TEMPLATES } = await import("../services/format-eval-templates.js");
+    return { templates: BUILTIN_TEMPLATES };
+  });
+  // 评测: POST { text, templateId?, template?, llm?, model? }
+  const formatEvalCheckSchema = z.object({
+    text: z.string().min(50, "文本过短, 至少 50 字").max(200_000, "文本过长, 上限 20 万字"),
+    templateId: z.string().max(64).optional(),
+    template: z.record(z.unknown()).optional(),
+    llm: z.boolean().optional(),
+    model: z.string().max(128).optional(),
+  });
+  app.post("/api/format-eval/check", async (request) => {
+    const body = formatEvalCheckSchema.parse(request.body);
+    const { runFormatEval } = await import("../services/format-eval-service.js");
+    return runFormatEval(body);
+  });
+
   // 多场景语体适配: POST { text, scene, model? }
   app.post("/api/writing-out/style", async (request, reply) => {
     const body = (request.body ?? {}) as { text?: string; scene?: string; model?: string };
