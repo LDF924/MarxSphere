@@ -1033,6 +1033,65 @@ export function buildHttpServer() {
     const { runFormatEval } = await import("../services/format-eval-service.js");
     return runFormatEval(body);
   });
+  // .docx 检查: POST { docxBase64, fileName?, templateId?, preset? } — base64 JSON 传输(免 multipart)
+  const formatDocxSchema = z.object({
+    docxBase64: z.string().min(100, "docx 内容过短").max(50_000_000, "docx 过大(>50MB base64)"),
+    fileName: z.string().max(256).optional(),
+    templateId: z.string().max(64).optional(),
+    template: z.record(z.unknown()).optional(),
+    preset: z.string().max(64).optional(),
+  });
+  app.post("/api/format-eval/check-docx", async (request, reply) => {
+    const body = formatDocxSchema.parse(request.body);
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { resolveTemplate } = await import("../services/format-eval-templates.js");
+    const { checkDocxFull, extractDocxTemplate } = await import("../services/format-docx-service.js");
+    const tmpFile = path.join(os.tmpdir(), `fmt-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
+    try {
+      fs.writeFileSync(tmpFile, Buffer.from(body.docxBase64, "base64"));
+      const tpl = resolveTemplate(body.templateId, body.template);
+      const result = await checkDocxFull(tmpFile, tpl, body.preset ?? "ncwu");
+      if (!result.ok) {
+        return reply.code(502).send({ error: { code: "DOCX_CHECK_FAILED", message: result.error ?? "docx 检查失败" } });
+      }
+      return { ok: true, styleFindings: result.styleFindings, textFindings: result.textFindings };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "DOCX_CHECK_ERROR", message } });
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* 忽略清理失败 */ }
+    }
+  });
+  // 学校模板规则提取: POST { docxBase64(学校模板) }
+  const templateExtractSchema = z.object({
+    docxBase64: z.string().min(100).max(50_000_000),
+  });
+  app.post("/api/format-eval/extract-template", async (request, reply) => {
+    const body = templateExtractSchema.parse(request.body);
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { extractDocxTemplate } = await import("../services/format-docx-service.js");
+    const tmpFile = path.join(os.tmpdir(), `tpl-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
+    try {
+      fs.writeFileSync(tmpFile, Buffer.from(body.docxBase64, "base64"));
+      const result = await extractDocxTemplate(tmpFile);
+      if (!result.ok || !result.output) {
+        return reply.code(502).send({ error: { code: "TEMPLATE_EXTRACT_FAILED", message: result.error ?? "模板提取失败" } });
+      }
+      const rules = fs.readFileSync(result.output, "utf8");
+      try { fs.unlinkSync(result.output); } catch { /* 忽略 */ }
+      const parsed = JSON.parse(rules);
+      return { ok: true, rules: parsed, warnings: result.warnings ?? [] };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "TEMPLATE_EXTRACT_ERROR", message } });
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* 忽略 */ }
+    }
+  });
 
   // 多场景语体适配: POST { text, scene, model? }
   app.post("/api/writing-out/style", async (request, reply) => {
