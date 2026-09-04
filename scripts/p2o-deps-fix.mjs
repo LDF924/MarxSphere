@@ -6,8 +6,11 @@
 //   1. fflate(0.8.3 的 exports 不含 ./index.js, 但 vendor dist 用旧式 import) → 需桥接文件
 //   2. @pdf2obsidian/{core,pipeline,providers,tasks}(workspace 包) → 需 junction 链接
 //   ⚠ npm install 会清除这两个修复, 重装依赖后必须重跑本脚本。
-// 用法: node scripts/p2o-deps-fix.mjs
+//   3. yaml(vendor dist import "yaml", 独立 pnpm workspace 未装) → 需根 node_modules 安装
+// 用法: node scripts/p2o-deps-fix.mjs [--install-deps]
+//   --install-deps: 额外用 npm 安装缺失的共享依赖(yaml/zod), 装后重跑本脚本重建桥接。
 import { existsSync, mkdirSync, symlinkSync, copyFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +40,25 @@ if (!existsSync(fflateDir)) {
     }
   } else {
     fail(`fflate esm/index.mjs 不存在 (${esm})`);
+  }
+}
+
+// ── 1.5 共享运行时依赖: yaml(vendor dist import) — 缺失时提示安装 ──
+const RUNTIME_DEPS = { yaml: "^2.8.1", zod: "^4.0.0" };
+if (process.argv.includes("--install-deps")) {
+  for (const [dep, ver] of Object.entries(RUNTIME_DEPS)) {
+    if (!existsSync(path.join(rootDir, "node_modules", dep))) {
+      console.log(`[p2o-deps-fix] 安装 ${dep}@${ver} ...`);
+      execSync(`npm install ${dep}@${ver} --legacy-peer-deps --no-audit --no-fund`, { cwd: rootDir, stdio: "inherit" });
+    }
+  }
+}
+for (const dep of Object.keys(RUNTIME_DEPS)) {
+  const d = path.join(rootDir, "node_modules", dep);
+  if (!existsSync(d)) {
+    fail(`${dep} 未安装, 重跑: node scripts/p2o-deps-fix.mjs --install-deps (npm install 后仍需重跑本脚本恢复桥接)`);
+  } else {
+    ok(`${dep} 已安装`);
   }
 }
 
