@@ -183,7 +183,7 @@ export const AgentConsole: FC = () => {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       {/* V400: 运行时状态 — 预算/Elicitation/审批/熔断 */}
-      <div className="rounded-lg border border-violet-500/20 p-3">
+      <div className="mb-4 rounded-lg border border-violet-500/20 p-3">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-xs font-medium text-violet-400">运行时状态</span>
           <span className="text-[10px] text-muted-foreground">预算提醒 / 澄清追问 / 审批链 / 熔断</span>
