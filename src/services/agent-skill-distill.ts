@@ -20,7 +20,7 @@ export interface DistilledSkill {
 }
 
 /** 任务轨迹 → 技能提案（蒸馏者角色, LLM 提炼: 方法步骤+适用条件+反模式） */
-export async function proposeSkill(taskId: string, goal: string, result: string, toolsUsed: string[]): Promise<DistilledSkill | null> {
+export async function proposeSkill(taskId: string, goal: string, result: string, toolsUsed: string[], opts?: { minResultChars?: number }): Promise<DistilledSkill | null> {
   // W9: 技能库容量控制 — 超 100 条自动淘汰最旧+最低共识的 rejected/pending（保留 approved）
   try {
     const cnt = await pool.query("select count(*) as n from agent_skills");
@@ -32,7 +32,9 @@ export async function proposeSkill(taskId: string, goal: string, result: string,
     }
   } catch { /* 容量清理失败不阻塞 */ }
   try {
-    if (!result || result.length < 200) return null;
+    // V404-8: minResultChars 可配(auto-propose 用 60 — 高频任务上下文紧凑; 默认 200 保轨迹完整)
+    const minChars = opts?.minResultChars ?? 200;
+    if (!result || result.length < minChars) return null;
     const model = resolveModelAlias(getRoleModel("plan"));
     const prompt = `你是技能蒸馏师。从一次 Agent 研究任务的成功轨迹中蒸馏出可复用的"技能"（SKILL.md 式工件）：
 任务目标: ${goal.slice(0, 200)}

@@ -7745,6 +7745,17 @@ except Exception as e:
     const { agentSkillDistillService } = await import("../services/agent-skill-distill.js");
     return { skills: await agentSkillDistillService.recallSkills(q.q || "") };
   });
+  // V404-8: 技能自我进化(auto_propose) + 技能体检 — 高频任务反查→覆盖判定→自动蒸馏→EDV
+  app.post("/api/agent/skills/auto-propose", async (request) => {
+    const body = (request.body ?? {}) as { days?: number; minCount?: number; maxProposals?: number };
+    const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
+    const r = await skillAutoProposeService.runAutoPropose({ days: body.days, minCount: body.minCount, maxProposals: body.maxProposals });
+    return { ok: true, ...r };
+  });
+  app.get("/api/agent/skills/health", async () => {
+    const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
+    return skillAutoProposeService.skillHealthCheck();
+  });
   // V396-16: 删除技能（可选 removeSkillify=true 连带删除已固化的 SKILL.md）
   app.delete("/api/agent/skills/:id", async (request, reply) => {
     const params = request.params as { id: string };
