@@ -15,7 +15,9 @@ interface OutlineNode {
   children?: OutlineNode[];
 }
 
-const STORAGE_KEY = "paper-outline:v1";
+const STORAGE_KEY = "paper-outline:v1";        // 自动草稿(当前文档)
+const SNAPSHOT_KEY = "paper-outline:snapshots:v1"; // 命名版本列表
+const AUTO_INTERVAL = 8000;                         // 自动保存间隔
 type ViewMode = "cards" | "full";
 type EditMode = "edit" | "preview";
 
@@ -116,7 +118,7 @@ export function PaperOutlinePanel() {
   const [topic, setTopic] = useState("");
   const [thesis, setThesis] = useState("");
   const [nodes, setNodes] = useState<OutlineNode[]>(() => {
-    try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? (JSON.parse(raw) as OutlineNode[]) : []; } catch { return []; }
+    try { const raw = localStorage.getItem(STORAGE_KEY); const d = raw ? JSON.parse(raw) : null; return d?.nodes ?? []; } catch { return []; }
   });
   const [newTitle, setNewTitle] = useState("");
   const [view, setView] = useState<ViewMode>("cards");
@@ -131,9 +133,54 @@ export function PaperOutlinePanel() {
   const [pptxBusy, setPptxBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [snapshots, setSnapshots] = useState<Array<{ id: string; name: string; savedAt: number; paperTitle: string; nodes: OutlineNode[] }>>(() => {
+    try { const raw = localStorage.getItem(SNAPSHOT_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  });
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const [saveName, setSaveName] = useState("");
   const fullRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes)); } catch { /* 忽略 */ } }, [nodes]);
+  // 自动保存: 编辑即写(auto 槽) + 每 8s 兜底(防极频繁编辑丢中间态)
+  const persistAuto = useMemo(() => ({ paperTitle, topic, thesis, nodes }), [nodes, paperTitle, topic, thesis]);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...persistAuto, savedAt: Date.now() })); } catch { /* 忽略 */ }
+  }, [persistAuto]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...persistAuto, savedAt: Date.now() })); } catch { /* 忽略 */ }
+    }, AUTO_INTERVAL);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistAuto]);
+
+  const persistSnapshots = (list: typeof snapshots) => {
+    setSnapshots(list);
+    try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(list)); } catch { /* 忽略 */ }
+  };
+  // 手动保存为命名版本
+  const manualSave = () => {
+    const name = saveName.trim() || `${paperTitle || "论文"}-${new Date().toLocaleString("zh-CN", { hour12: false })}`;
+    const entry = { id: genId(), name, savedAt: Date.now(), paperTitle, nodes };
+    persistSnapshots([entry, ...snapshots].slice(0, 30)); // 保留 30 份
+    setSaveName("");
+    setMsg(`✅ 已保存版本「${name}」(${nodes.length} 章)`);
+  };
+  // 打开一个版本(读取载入当前编辑)
+  const openSnapshot = (id: string) => {
+    const hit = snapshots.find((x) => x.id === id);
+    if (!hit) return;
+    setPaperTitle(hit.paperTitle ?? "");
+    setNodes(hit.nodes ?? []);
+    setMsg(`📂 已打开版本「${hit.name}」`);
+    setShowSnapshots(false);
+  };
+  // 删除版本
+  const deleteSnapshot = (id: string) => persistSnapshots(snapshots.filter((x) => x.id !== id));
+  // 新文档(清空当前)
+  const newDoc = () => {
+    if (nodes.length > 0 && !window.confirm("新建会清空当前草稿(自动草稿保留在 8 秒前), 确定?")) return;
+    setPaperTitle(""); setTopic(""); setThesis(""); setNodes([]); setMsg("已新建空白文档");
+  };
 
   const topNodes = nodes.filter((n) => n.level === 0);
 
@@ -365,11 +412,49 @@ export function PaperOutlinePanel() {
           <BookOpen className="h-5 w-5 text-[#6ee7b7]" />
           <h2 className="text-lg font-semibold">论文写作工作台</h2>
           <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-300">卡片 · 整篇 · 大纲</span>
-          <div className="ml-auto flex items-center gap-1 rounded-lg border border-border/60 bg-card/40 p-0.5 text-xs">
+          <div className="ml-auto flex items-center gap-1.5">
+            <button type="button" onClick={newDoc} title="新建空白文档"
+              className="rounded-md border border-border/60 px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent/40">＋ 新建</button>
+            <button type="button" onClick={() => setShowSnapshots((v) => !v)}
+              className="rounded-md border border-border/60 px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent/40">📂 打开({snapshots.length})</button>
+            <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="版本名(可选)"
+              className="h-7 w-32 rounded-md border border-border/60 bg-background px-2 text-[11px] outline-none focus:border-emerald-400/50" />
+            <button type="button" onClick={manualSave}
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-400">💾 保存版本</button>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-card/40 p-0.5 text-xs">
             <button type="button" onClick={() => setView("cards")} className={cn("rounded-md px-2.5 py-1", view === "cards" ? "bg-emerald-500/15 text-emerald-300" : "text-muted-foreground hover:text-foreground")}>📇 章节卡片</button>
             <button type="button" onClick={enterFull} className={cn("rounded-md px-2.5 py-1", view === "full" ? "bg-emerald-500/15 text-emerald-300" : "text-muted-foreground hover:text-foreground")}>📄 整篇连续</button>
           </div>
         </div>
+
+        {/* 版本列表 */}
+        {showSnapshots && (
+          <div className="rounded-lg border border-border/70 bg-card/60 p-2">
+            <div className="flex items-center justify-between px-1 pb-1.5 text-xs font-medium text-muted-foreground">
+              已保存版本({snapshots.length}/30) · 点击打开
+              <span className="text-[10px] text-muted-foreground/50">自动草稿每 8 秒后台保存(无需手动)</span>
+            </div>
+            {snapshots.length === 0 ? (
+              <div className="py-3 text-center text-[11px] text-muted-foreground/50">暂无命名版本 — 填版本名点「保存版本」; 当前内容已在自动草稿中</div>
+            ) : (
+              <div className="max-h-52 space-y-1 overflow-y-auto">
+                {snapshots.map((sn) => (
+                  <div key={sn.id} className="group flex items-center gap-2 rounded-md border border-border/50 bg-background/40 px-2.5 py-1.5 hover:bg-accent/30">
+                    <button type="button" onClick={() => openSnapshot(sn.id)} className="min-w-0 flex-1 truncate text-left text-xs">
+                      <span className="font-medium">{sn.name}</span>
+                      <span className="ml-2 text-[10px] text-muted-foreground/60">
+                        {sn.nodes.length} 章 · {new Date(sn.savedAt).toLocaleString("zh-CN", { hour12: false })}
+                      </span>
+                    </button>
+                    <button type="button" onClick={() => deleteSnapshot(sn.id)} title="删除版本"
+                      className="text-muted-foreground/40 hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 论文信息 */}
         <div className="grid grid-cols-1 gap-2 rounded-lg border border-border/70 bg-card/60 p-3 md:grid-cols-3">
