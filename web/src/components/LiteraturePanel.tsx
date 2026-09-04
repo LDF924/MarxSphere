@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, type FC, type ReactNode } from "react";
 import { Library, Loader2, Search, FileText, RefreshCw, BookOpen, X, ChevronDown, ChevronUp, BookOpenCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { LiteratureMatrixPanel } from "./LiteratureMatrixPanel";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
@@ -522,6 +523,20 @@ export function LiteraturePanel() {
           </div>
         </div>
         </div>
+
+      {/* 文献提取矩阵(折叠): 勾选论文 → 定义列 → 提取成表 */}
+      <details className="mx-4 mb-4 rounded-lg border border-sky-400/15 bg-background/20">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-sky-200/80 hover:bg-sky-400/5">
+          文献提取矩阵(md 模式下勾选上方列表论文, 提取跨论文字段成表)
+        </summary>
+        <div className="p-3 pt-0">
+          {mode === "md" ? (
+            <LiteratureMatrixPanel papers={items.map((r) => ({ id: String(r.id), title: String(r.title ?? r.paperTitle ?? "") }))} />
+          ) : (
+            <div className="py-4 text-center text-xs text-muted-foreground/50">切换到「文献库(md)」模式可用提取矩阵</div>
+          )}
+        </div>
+      </details>
     </section>
   );
 }
