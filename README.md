@@ -85,7 +85,7 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **65 工具自主调度**：65 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
+- **66 工具自主调度**：66 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
 - **命令语法**：`/` 弹出技能命令面板（201 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
@@ -109,12 +109,12 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（65 个 Agent 工具；另有 22 个视图工具，合计 87）**
+**② 工具矩阵（66 个 Agent 工具；另有 22 个视图工具，合计 88）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
 | 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / llm_write | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
-| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest / github_repo / runtime_exec | 超时熔断、降级链 |
+| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / browser_control（Chrome-driven, approval）/ sag_ingest / github_repo / runtime_exec | 超时熔断、降级链 |
 | 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） | 附件预处理压缩 |
 | 协作 | agent_subagent（外部 Agent 派发）/ attachment_read / code_search / todo_update | 子进程治理（防孤儿） |
 
