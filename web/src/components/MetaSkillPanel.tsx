@@ -36,13 +36,55 @@ export function MetaSkillPanel() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [finalOutput, setFinalOutput] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // V404-10: DAG 提案(技能组 → LLM 编排 → 隔离区人工审 → 注册动态可跑)
+  const [proposeTopic, setProposeTopic] = useState("");
+  const [proposeMsg, setProposeMsg] = useState("");
+  const [proposeBusy, setProposeBusy] = useState(false);
+  const [proposals, setProposals] = useState<Array<{ id: string; dag: { id: string; name: string; description: string; steps: Array<{ kind: string; label?: string }> }; status: string; createdAt: string }>>([]);
+  const [showProposals, setShowProposals] = useState(false);
+
+  const loadProposals = useCallback(async () => {
+    const j = await fetch("/api/meta-skill/proposals").then((r) => r.json()).catch(() => ({ proposals: [] }));
+    setProposals(j.proposals || []);
+  }, []);
+
+  const doProposeDag = async () => {
+    if (!proposeTopic.trim()) return;
+    setProposeBusy(true); setProposeMsg("LLM 编排技能组为 DAG…");
+    try {
+      const r = await fetch("/api/meta-skill/propose-dag", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: proposeTopic, seenCount: 1 }),
+      }).then((res) => res.json());
+      if (!r.ok) { setProposeMsg(`❌ ${r?.error || "提案失败"}`); return; }
+      setProposeMsg(`✅ 提案生成: ${r.proposal.dag.name}(${r.proposal.dag.steps.length} 步) — 在下方审阅区处理`);
+      setProposeTopic("");
+      await loadProposals();
+    } catch (e: any) { setProposeMsg(`❌ ${e?.message || "提案失败"}`); }
+    finally { setProposeBusy(false); }
+  };
+
+  const actProposal = async (id: string, path: string) => {
+    setProposeBusy(true);
+    try {
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((res) => res.json());
+      if (!r.ok) { setProposeMsg(`❌ ${r?.error || "操作失败"}`); return; }
+      setProposeMsg(`✅ 已处理提案(注册为动态 DAG: ${r.dagId || "reject"})`);
+      await loadProposals();
+      // 刷新可用技能列表(accept 后新 DAG 立即可跑)
+      const j = await fetch("/api/meta-skill/list").then((res) => res.json()).catch(() => ({ skills: [] }));
+      setSkills(j.skills || []);
+    } catch (e: any) { setProposeMsg(`❌ ${e?.message || "操作失败"}`); }
+    finally { setProposeBusy(false); }
+  };
 
   useEffect(() => {
     fetch("/api/meta-skill/list").then((r) => r.json()).then((j) => {
       setSkills(j.skills || []);
       if (j.skills?.length) setSkillId(j.skills[0].id);
     }).catch(() => {});
-  }, []);
+    void loadProposals();
+  }, [loadProposals]);
 
   const stopPoll = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -171,6 +213,56 @@ export function MetaSkillPanel() {
           <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-foreground">{finalOutput}</pre>
         </div>
       )}
+
+      {/* V404-10: DAG 提案区(技能组 → LLM 编排 → 人工审 → 注册可跑) */}
+      <div className="rounded-lg border border-fuchsia-400/20 bg-fuchsia-400/[0.04] p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-fuchsia-300">MetaSkill 提案(auto_propose→DAG)</span>
+          <span className="text-[9px] text-muted-foreground/60">approved 技能组 → LLM 编排声明式 DAG → 人工审 → 注册为动态工作流(可在上方运行)</span>
+          <button type="button" onClick={() => { setShowProposals((v) => !v); if (!showProposals) void loadProposals(); }}
+            className="ml-auto rounded border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/40">
+            审阅区({proposals.filter((p) => p.status === "proposed").length})
+          </button>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <input
+            value={proposeTopic} onChange={(e) => setProposeTopic(e.target.value)}
+            placeholder="高频任务主题(如: 马理论选题与接口分析)"
+            className="h-8 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-2 text-[11px]"
+          />
+          <button type="button" onClick={() => void doProposeDag()} disabled={proposeBusy || !proposeTopic.trim()}
+            className="rounded-md bg-fuchsia-600 px-3 text-[11px] font-medium text-white hover:bg-fuchsia-500 disabled:opacity-40">
+            {proposeBusy ? "编排中…" : "✦ 生成 DAG 提案"}
+          </button>
+        </div>
+        {proposeMsg && <div className="mt-1 text-[10px] text-fuchsia-200/80">{proposeMsg}</div>}
+        {showProposals && (
+          <div className="mt-2 space-y-1.5">
+            {proposals.length === 0 && <p className="text-[10px] text-muted-foreground">暂无提案 — 输入主题生成第一条</p>}
+            {proposals.map((p) => (
+              <div key={p.id} className={`rounded-md border px-2 py-1.5 text-[11px] ${p.status === "proposed" ? "border-amber-400/30 bg-amber-400/5" : "border-border/40 opacity-70"}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] ${p.status === "proposed" ? "bg-amber-400/15 text-amber-200" : p.status === "accepted" ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"}`}>
+                    {p.status === "proposed" ? "待审" : p.status}
+                  </span>
+                  <span className="font-medium text-foreground">{p.dag.name}</span>
+                  <span className="text-[9px] text-muted-foreground/60">{p.dag.description?.slice(0, 50)}</span>
+                  <span className="text-[9px] text-muted-foreground/50">{p.dag.steps.length} 步 · {p.createdAt?.slice(0, 10)}</span>
+                  {p.status === "proposed" && (
+                    <span className="ml-auto flex gap-1">
+                      <button type="button" onClick={() => void actProposal(p.id, "/api/meta-skill/proposals/accept")} disabled={proposeBusy}
+                        className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-500 disabled:opacity-40">✓ 注册并启用</button>
+                      <button type="button" onClick={() => void actProposal(p.id, "/api/meta-skill/proposals/reject")} disabled={proposeBusy}
+                        className="rounded border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-red-300 disabled:opacity-40">✗ 驳回</button>
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-[9px] text-muted-foreground/60">步骤: {p.dag.steps.map((s, i) => `${i + 1}.${s.kind}${s.label ? `(${s.label})` : ""}`).join(" → ")}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
