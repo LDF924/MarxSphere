@@ -711,6 +711,11 @@ export async function buildAgentTools(opts?: {
               ];
             }
             fs.writeFileSync(filePath, result.join("\n"), "utf8");
+            // P-溯源: 补丁写入留痕
+            void import("./provenance-service.js").then((m) => m.recordProvenance({
+              path: fileRel, tool: "apply_patch", op: "patch", content: result.join("\n"),
+              sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
+            })).catch(() => {});
             applied.push(`${fileRel} (${hunks.length} 个 hunk)`);
           }
           return `✅ 补丁已应用: ${applied.join(", ")}`;
@@ -755,6 +760,11 @@ export async function buildAgentTools(opts?: {
             sections["待办"].push(item);
             const rebuilt = ["# Agent 待办清单", "", "## 待办", ...(sections["待办"] || []).map((s) => `- ${s}`), "", "## 进行中", ...(sections["进行中"] || []).map((s) => `- ${s}`), "", "## 已完成", ...(sections["已完成"] || []).map((s) => `- ${s}`), ""].join("\n");
             fs.writeFileSync(todoPath, rebuilt, "utf8");
+            // P-溯源: 待办写入留痕
+            void import("./provenance-service.js").then((m) => m.recordProvenance({
+              path: "todo.md", tool: "todo_update", op: "write", content: rebuilt,
+              sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
+            })).catch(() => {});
             return `✅ 已添加待办: ${item}（共 ${(sections["待办"] || []).length + 1} 个待办）`;
           }
           if (action === "done") {
@@ -774,6 +784,11 @@ export async function buildAgentTools(opts?: {
             if (!found) return `（未找到待办: ${item}）`;
             const rebuilt = ["# Agent 待办清单", "", "## 待办", ...(sections["待办"] || []).map((s) => `- ${s}`), "", "## 进行中", ...(sections["进行中"] || []).map((s) => `- ${s}`), "", "## 已完成", ...(sections["已完成"] || []).map((s) => `- ${s}`), ""].join("\n");
             fs.writeFileSync(todoPath, rebuilt, "utf8");
+            // P-溯源: 待办写入留痕
+            void import("./provenance-service.js").then((m) => m.recordProvenance({
+              path: "todo.md", tool: "todo_update", op: "write", content: rebuilt,
+              sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
+            })).catch(() => {});
             return `✅ 已完成: ${item}`;
           }
           // list
@@ -1523,10 +1538,19 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
           const op = String(a.op || "write");
           if (op === "write") {
             fs.writeFileSync(target, String(a.content || ""), "utf8");
+            // P-溯源: 文件级留痕(不阻塞工具返回)
+            void import("./provenance-service.js").then((m) => m.recordProvenance({
+              path: rel, tool: "file_write", op: "write", content: String(a.content || ""),
+              sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
+            })).catch(() => {});
             return `✅ 已写入 ${rel} (${String(a.content || "").length} 字符)`;
           }
           if (op === "delete") {
             if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+            void import("./provenance-service.js").then((m) => m.recordProvenance({
+              path: rel, tool: "file_write", op: "delete",
+              sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
+            })).catch(() => {});
             return `✅ 已删除 ${rel}`;
           }
           return "（op 需为 write/delete）";

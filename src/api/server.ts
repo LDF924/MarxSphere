@@ -1014,6 +1014,27 @@ export function buildHttpServer() {
     if (!body.text) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "缺少 text" } });
     return paperQualityService.formatAdaptation(body.text, body.target ?? "期刊论文", { model: body.model });
   });
+  // ─── 溯源 API(2026-09-04: 文件级 provenance, 移植 open-science) ───
+  // 留痕查询: GET /api/provenance?path=&sessionId=&limit=&cursor=
+  app.get("/api/provenance", async (request) => {
+    const { queryProvenance } = await import("../services/provenance-service.js");
+    const q = request.query as { path?: string; sessionId?: string; limit?: string; cursor?: string };
+    const result = await queryProvenance({
+      path: q.path || undefined,
+      sessionId: q.sessionId || undefined,
+      limit: q.limit ? Math.min(Number(q.limit) || 50, 500) : 50,
+      cursor: q.cursor || undefined,
+    });
+    return { ok: true, ...result };
+  });
+  // 单文件版本历史: GET /api/provenance/file?path=
+  app.get("/api/provenance/file", async (request) => {
+    const { fileHistory } = await import("../services/provenance-service.js");
+    const q = request.query as { path?: string };
+    if (!q.path) return { ok: true, records: [] };
+    const records = await fileHistory(q.path);
+    return { ok: true, path: q.path, records };
+  });
   // ─── 格式智能评测 API(2026-09-03: 规则引擎+LLM 双层) ───
   // 模板清单: GET → { templates: FormatTemplate[] }
   app.get("/api/format-eval/templates", async () => {
