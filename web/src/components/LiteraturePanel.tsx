@@ -7,6 +7,7 @@ import { Library, Loader2, Search, FileText, RefreshCw, BookOpen, X, ChevronDown
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { LiteratureMatrixPanel } from "./LiteratureMatrixPanel";
+import { PrismaPanel } from "./PrismaPanel";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
@@ -523,6 +524,14 @@ export function LiteraturePanel() {
           </div>
         </div>
         </div>
+
+      {/* PRISMA 综述工作台(折叠): 主题检索 → AI 筛选 → 纳入集 */}
+      <details className="mx-4 mb-2 rounded-lg border border-emerald-400/15 bg-background/20">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-emerald-200/80 hover:bg-emerald-400/5">
+          PRISMA 系统综述工作台(检索→筛选→纳入集)
+        </summary>
+        <div className="p-3 pt-0"><PrismaPanel /></div>
+      </details>
 
       {/* 文献提取矩阵(折叠): 勾选论文 → 定义列 → 提取成表 */}
       <details className="mx-4 mb-4 rounded-lg border border-sky-400/15 bg-background/20">

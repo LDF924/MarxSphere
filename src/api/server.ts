@@ -1068,6 +1068,30 @@ export function buildHttpServer() {
     ].filter(Boolean).join("\n");
     return { ok: true, prompt: parts };
   });
+  // ─── PRISMA 综述工作流 API(2026-09-04: 参考 Elicit sysreview) ───
+  // ①检索: POST /api/prisma/search {topic, limit?}
+  app.post("/api/prisma/search", async (request, reply) => {
+    const body = (request.body ?? {}) as { topic?: string; limit?: number };
+    if (!body.topic || String(body.topic).trim().length < 2) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "topic 至少 2 字" } });
+    }
+    const { prismaSearch } = await import("../services/prisma-service.js");
+    return { ok: true, ...(await prismaSearch({ topic: String(body.topic), limit: body.limit ?? 30 })) };
+  });
+  // ②筛选: POST /api/prisma/screen {topic, papers, override?}
+  const prismaScreenSchema = z.object({
+    topic: z.string().min(2),
+    papers: z.array(z.object({ id: z.string(), title: z.string() })).max(50),
+    override: z.object({ paperId: z.string(), verdict: z.enum(["included", "excluded"]), reason: z.string().max(60).optional() }).optional(),
+  });
+  app.post("/api/prisma/screen", async (request) => {
+    const body = prismaScreenSchema.parse(request.body);
+    const { prismaScreen } = await import("../services/prisma-service.js");
+    const decisions = await prismaScreen(body);
+    const { prismaSummary } = await import("../services/prisma-service.js");
+    return { ok: true, decisions, summary: prismaSummary({ searchTotal: body.papers.length, decisions }) };
+  });
+
   // ─── 文献提取矩阵 API(2026-09-04: 参考 Elicit 数据提取成表) ───
   // POST /api/literature/matrix { paperIds, columns: [{key,label}] }
   const matrixSchema = z.object({
