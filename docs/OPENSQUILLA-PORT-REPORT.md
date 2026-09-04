@@ -14,8 +14,13 @@
 | 3(2c) | MetaSkill 声明式 DAG 试点 | ✅ | src/services/meta-skill-runtime.ts + meta-skill-defs.ts + server.ts + web/src/components/MetaSkillPanel.tsx + App.tsx | b36671c |
 | 4(2d) | 拖拽上传暂存→提交两步语义 | ✅ | web/src/components/BatchUploadPanel.tsx(重写为状态机) | 895b927 |
 | 5 | 移植报告 | ✅ | docs/OPENSQUILLA-PORT-REPORT.md(本文件) | — |
+| 6 | KV-cache 感知档位保持 | ✅ | src/services/agent-model-router.ts(routeAgentModel 加 sticky tier) | abc0691 |
+| 7 | 记忆 Dream 巩固闭环 | ✅ | src/services/dream-consolidation-service.ts + server.ts + web/src/components/DreamPanel.tsx | 7b48932 |
+| 8 | auto_propose 技能进化 + 技能体检 | ✅ | src/services/skill-auto-propose.ts + agent-skill-distill.ts(minResultChars) + server.ts | a1b08ed |
+| 9 | B5 难档多模型互证融合(试点) | ✅ | src/services/b5-ensemble-service.ts + b5_ensemble 工具 + docs/OPENSQUILLA-B5-COST.md | 302a940 |
 
 工具性: sync-open.mjs 支持 `--msg` 自定义功能名提交(4131629)。
+第二批(KV-cache/Dream/auto_propose/B5)为差距文档六大机制第 3/5/4(后半)/6 项, 全量单测 681 项通过。
 
 ---
 
@@ -89,6 +94,31 @@
 | 低估对齐 | submitAgentFeedback(负评) + exec_logs.model(回填) |
 | MetaSkill | 场景 S51 声明式化; 运行时独立服务; 前端独立工作台视图(33→34 视图) |
 | 暂存提交 | BatchUploadPanel(文献库内嵌) — 前端纯状态机无后端改动 |
+| KV-cache 档位保持 | agent-model-router.routeAgentModel(routeAgentModel 内部登记 sticky); plan/reflect 调用登记 taskId 档位 |
+| Dream 巩固 | task_experience 扫描(query 列归一聚合); strategic_memory 落库(source=agent); 前端 DreamPanel 视图 |
+| auto_propose | task_experience 高频聚合 + agent_skills 覆盖判定 + agent-skill-distill.proposeSkill(EDV 异步) |
+| B5 融合 | b5_ensemble 显式工具(proposer 零工具); 默认 B5_ENABLED=0 不触全局路由 |
+
+## 第二批实现 + 冒烟证据(差距文档六大机制第 3/4/5/6 项)
+
+### 6. KV-cache 感知档位保持(sticky tier / anti-downgrade, abc0691)
+**实现**: `agent-model-router.ts` `routeAgentModel` 落档前查 sticky——上下文(key=taskId 或 _global 近似)在 `AGENT_TIER_HOLD_MS`(默认 600s)内见过更高档 → 不降档(保 prompt cache: 同前缀换模型 = 全量重算); sticky 只升不降(强模型调用登记, cheap 调用不覆盖); plan/reflect(agent-task-service)实际模型登记; env 可关(KEYED_ONLY=1 仅显式 key; HOLD_MS=0 关闭)
+**证据**: 单测 5 项(档位推断/只升不降/strong 上下文 retrieve 不降档/过期清理/TTL 边界/userModel 覆盖); 冒烟: 同任务先 strong 后 cheap 步骤 → 日志明确打出"V404-6 sticky 保持: cheap → strong", retrieve 路由到 pro 而非 flash; 对照新任务正常 cheap
+
+### 7. 记忆 Dream 巩固(回合捕获→证据门控→评分→打磨→人工审提升, 7b48932)
+**实现**: `dream-consolidation-service.ts`(新): 扫描 task_experience 30 天(query 列, 归一聚合 ≥2 次) → 证据门控(负评模式直接拦, 扫描层+评分层双保险) → 确定性评分(频率 log1p + 跨天跨度 + 正评信号, 标定: 2次/1天=0.37 拦, 6次/5天/正评=1.0) → 打磨(确定性断言式 或 LLM 可选) → proposals 隔离区(data/dream/proposals.jsonl); **人工可审**: accept → 写 strategic_memory(回执 receipt)→ reject → quarantine 隔离区 → rollback 可回滚删除+流水
+**证据**: 单测 7 项(归一化/评分标定/负评硬拦 0/确定性打磨/空库降级/不存在 id/无回执回滚报错); **真实链路**(283 条 task_experience 数据): run 产出 10 候选(最高 22次/21天) → accept 落库 strategic_memory#6(回执) → rollback 删除归零; 前端 DreamPanel 独立视图(待审/隔离/回执/回滚按钮)
+**注**: DB schema 适配(query 列非 goal; task_experience 无 task_id; strategy 为 jsonb → ::text)
+
+### 8. 技能自我进化 auto_propose + 技能体检(a1b08ed)
+**实现**: `skill-auto-propose.ts`(新): 扫描高频任务(≥3次/7天, query 聚合) → **二元字符组重叠覆盖判定**(免中文分词, ≤4 字走包含)对照 approved 技能 → 未覆盖 → proposeSkill 自动蒸馏(带高频上下文)→ EDV 异步验证 → 技能库人工审(既有 UI); `skillHealthCheck` 体检(空名/缺 when/skill_md<20/非 manual 无来源); proposeSkill 支持 minResultChars 可配(默认 200 保轨迹, auto-propose 60)
+**证据**: 单测覆盖判定(覆盖/未覆盖/短词包含/空目标); **真实链路**: 14 天 3 条高频任务(5× 论文直接原因/5× 小农户间接效应) → 自动蒸馏 2 提案("多跳归因推理"/"论文因果机制提取", pending)→ EDV 验证; 体检 total 8 broken 0; 冒烟产物已清理
+**坑**: task_experience.strategy 是 jsonb(SQL 需 ::text); max(id) 与 id 类型不匹配(uuid)改用 array_agg
+
+### 9. B5 难档多模型互证融合(试点, 302a940)
+**实现**: `b5-ensemble-service.ts`(新): 默认 **B5_ENABLED=0 关闭**(不自动改全局路由红线); 显式 `b5_ensemble` 工具: N 模型(squad 默认 pro+max+flash cheap 锚点)并行成稿(纯文本, **proposer 零工具边界**)→ aggregator 单次调用融合(共识为主+分歧说明, 不引入新事实); 降级链: 单模型成功直接返回不融合, 全败抛错; 成本估算暴露(字符/2 估 tok, 输入 0.5 输出 2 元/1M); 成本账文档 [OPENSQUILLA-B5-COST.md](OPENSQUILLA-B5-COST.md)(放大 4-6×、ROI 判定表、实施红线)
+**证据**: 单测 3 项(默认关闭红线/阵容含 cheap 锚点/服务面); 实测 B5_ENABLED=1: 真实 3 模型调用 → qwen3.7-max 失败但 **pro+flash 两稿融合成功**(含分歧说明, 输出正确劳动二重性阐述), 成本 ≈0.005-0.01 元量级
+**红线落实**: 成稿模型不碰 executeAgentTool/检索(服务内只 callLlmWithRotation); 默认关闭; 每次暴露 costCentsEst
 
 ## 决策留档(执行纪律: 不阻塞, 已按合理默认)
 
@@ -97,9 +127,15 @@
 3. MetaSkill 试点选 S51(文献综述)为 spec 指定场景; 步骤并行执行未做(串行拓扑, 注释留待后续)
 4. user_input 挂起为进程内注册表(服务重启丢失)——试点够用, 持久化留后续
 5. 批量上传暂存为内存态(刷新页面即失), 未做后端 file_uuid 暂存区——贴合本项目"解析预览确认"语义
+6. KV-cache sticky 默认 key=_global 近似(单用户场景 ≈ per-task), KEYED_ONLY=1 可切显式 key; 未接真实 cache 命中率(需数据积累)
+7. Dream LLM 打磨默认关(确定性断言式已可用, 控成本); 高频问答类 query 是否值得沉淀交由人工 accept 把关(rollback 兜底可纠正)
+8. auto_propose 产出 agent_skills(既有技能库)而非 MetaSkill DAG——衔接改造留后续
+9. B5 默认关闭 + 显式工具 opt-in; aggregator 也纯文本(比原版更保守, proposer 零工具红线落实); 成本口径为估算, 真实账单需 provider 用量
 
 ## 遗留与后续建议
 
-- 路由: KV-cache 感知档位保持(差距文档 3)、B5 融合(6)、记忆 Dream 巩固(5)未做——需数据积累
-- MetaSkill: 技能自我进化(auto_propose)未做; 更多场景 DAG 化(论文写作全流程 46 步示例可参考)
+- 路由: KV-cache 档位保持已做(6), 但 cache 命中率观测未接(提供商 usage.prompt_cache_hit_tokens 已有采集——可加面板)
+- Dream: 自动定时触发未接(可接 cron/任务巡检); LLM 打磨为可选默认关(确定性足够, 控成本)
+- MetaSkill: auto_propose 生成的是 agent_skills 技能而非 MetaSkill DAG 定义——衔接点: 把 approved 高频技能由 LLM 组合成 DAG(参考 46 步写作 DAG)
+- B5: 任务级评测验证质量增量(评测集 B5 vs 单模型)后再决定是否放宽默认; aggregator 接工具检索为下一步(proposer 仍零工具)
 - 暂存语义后端化: 若要跨刷新保留, 参考 spec 的 file_uuid + TTL 模式
