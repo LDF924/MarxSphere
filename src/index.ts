@@ -86,6 +86,11 @@ setTimeout(() => { startProactiveResearchScheduler(); }, 15000);
 import { restoreAgentSettings } from "./services/agent-settings.js";
 setTimeout(() => { void restoreAgentSettings(); }, 20000);
 
+// V404-7: 记忆 Dream 巩固 — 每日确定性扫描一次(零 LLM 成本, 候选隔离区人工审)
+// 开关: SAG_DREAM_DAILY=0 关闭(默认开); 与 Agent 定时器同款模式
+import { startDreamDailyScheduler } from "./services/dream-consolidation-service.js";
+setTimeout(() => { startDreamDailyScheduler(); }, 120000); // 启动 2 分钟后首跑, 之后每 24h
+
 // 差距T④(Codex session_startup_prewarm): Agent 组件预热 — 注册内置钩子/工具注册表预热
 setTimeout(() => {
   void (async () => {
