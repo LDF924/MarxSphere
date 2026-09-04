@@ -1068,6 +1068,25 @@ export function buildHttpServer() {
     ].filter(Boolean).join("\n");
     return { ok: true, prompt: parts };
   });
+  // ─── 文献提取矩阵 API(2026-09-04: 参考 Elicit 数据提取成表) ───
+  // POST /api/literature/matrix { paperIds, columns: [{key,label}] }
+  const matrixSchema = z.object({
+    paperIds: z.array(z.string()).min(1).max(30),
+    columns: z.array(z.object({ key: z.string().max(40), label: z.string().max(40) })).min(1).max(12),
+    model: z.string().max(128).optional(),
+  });
+  app.post("/api/literature/matrix", async (request, reply) => {
+    const body = matrixSchema.parse(request.body);
+    const { buildLiteratureMatrix } = await import("../services/literature-matrix-service.js");
+    try {
+      const result = await buildLiteratureMatrix(body);
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "MATRIX_FAILED", message: msg } });
+    }
+  });
+
   // ─── 论文写作工作台 API(2026-09-04: 大纲编辑器+分章生成+docx 导出) ───
   // 分章生成: POST /api/paper-outline/chapter
   const outlineChapterSchema = z.object({
