@@ -1068,6 +1068,24 @@ export function buildHttpServer() {
     ].filter(Boolean).join("\n");
     return { ok: true, prompt: parts };
   });
+  // ─── 批量文件解析 API(2026-09-04: 多 PDF/Word/Excel/PPT 上传解析) ───
+  // POST /api/files/batch-parse { files: [{name, base64}] } → 逐份文本
+  const batchParseSchema = z.object({
+    files: z.array(z.object({ name: z.string().max(256), base64: z.string().max(60_000_000) })).min(1).max(50),
+    maxChars: z.number().int().min(500).max(50_000).optional(),
+  });
+  app.post("/api/files/batch-parse", async (request, reply) => {
+    const body = batchParseSchema.parse(request.body);
+    const { parseBatch } = await import("../services/batch-file-service.js");
+    try {
+      const result = await parseBatch(body.files, { maxChars: body.maxChars ?? 8000 });
+      return { ok: true, ...result };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "BATCH_PARSE_FAILED", message: msg } });
+    }
+  });
+
   // ─── PRISMA 综述工作流 API(2026-09-04: 参考 Elicit sysreview) ───
   // ①检索: POST /api/prisma/search {topic, limit?}
   app.post("/api/prisma/search", async (request, reply) => {
