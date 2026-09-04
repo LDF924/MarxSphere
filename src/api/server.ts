@@ -6177,6 +6177,46 @@ except Exception as e:
     return { ok: true };
   });
 
+  // ═══ V404-7: 记忆 Dream 巩固 — 扫描/候选/人工审提升(借鉴 OpenSquilla memory/dream) ═══
+  // 回合捕获(task_experience)→ 证据门控(≥2次+跨天, 负评拦)→ 确定性评分 → 打磨(LLM 可选)
+  // → proposals 隔离区 → 人工 accept 写 strategic_memory / reject 进 quarantine / rollback 回滚
+  app.post("/api/memory/dream/run", async (request, reply) => {
+    const { runDream } = await import("../services/dream-consolidation-service.js");
+    const body = (request.body ?? {}) as { useLlm?: boolean; days?: number; limit?: number };
+    try {
+      const proposals = await runDream({ useLlm: !!body.useLlm, days: body.days ?? 30, limit: body.limit });
+      return { ok: true, count: proposals.length, proposals };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "DREAM_FAILED", message: msg } });
+    }
+  });
+  app.get("/api/memory/dream/state", async () => {
+    const { listDreamState } = await import("../services/dream-consolidation-service.js");
+    return listDreamState();
+  });
+  app.post("/api/memory/dream/accept", async (request, reply) => {
+    const { acceptProposal } = await import("../services/dream-consolidation-service.js");
+    const body = request.body as { id?: string; projectId?: string };
+    const r = await acceptProposal(String(body.id || ""), { projectId: body.projectId });
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true, receipt: r.receipt };
+  });
+  app.post("/api/memory/dream/reject", async (request, reply) => {
+    const { rejectProposal } = await import("../services/dream-consolidation-service.js");
+    const body = request.body as { id?: string; reason?: string };
+    const r = rejectProposal(String(body.id || ""), body.reason);
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true };
+  });
+  app.post("/api/memory/dream/rollback", async (request, reply) => {
+    const { rollbackAccepted } = await import("../services/dream-consolidation-service.js");
+    const body = request.body as { id?: string };
+    const r = await rollbackAccepted(String(body.id || ""));
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true };
+  });
+
   // 差距O②(Codex plan): 计划确认 — 任务执行前展示计划, 确认后才执行
   app.post("/api/agent/tasks/:id/confirm-plan", async (request, reply) => {
     const params = request.params as { id: string };

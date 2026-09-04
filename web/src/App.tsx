@@ -82,6 +82,7 @@ import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
 import { StructurePanel } from "./components/StructurePanel";
 import { AgentConsole } from "./components/AgentConsole";
 import { MetaSkillPanel } from "./components/MetaSkillPanel";  // V404-4: MetaSkill DAG 试点
+import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream 巩固
 import { P2OView } from "./components/P2OView";
 import { CJournalPanel } from "./components/CJournalPanel";
 import { CitationVerifyPanel } from "./components/CitationVerifyPanel";
@@ -124,7 +125,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -547,7 +548,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -1984,6 +1985,8 @@ function AppShell() {
               <ErrorBoundary><AgentConsole /></ErrorBoundary>
             ) : workspaceView === "meta-skill" ? (
               <ErrorBoundary><MetaSkillPanel /></ErrorBoundary>
+            ) : workspaceView === "dream" ? (
+              <ErrorBoundary><DreamPanel /></ErrorBoundary>
             ) : workspaceView === "p2o" ? (
               <P2OView />
             ) : workspaceView === "citation-verify" ? (
@@ -2507,7 +2510,7 @@ function MainWorkspaceTabs(props: {
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
     alerts: "hsl(25 90% 55%)",
     // 后台/系统组（灰）: Jobs/任务/Trace/评测/Inbox/账户计费/运营管理/文档中心
-    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", "meta-skill": "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)",
+    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", "meta-skill": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)",
     // 科研工具（绿，归文献研究组）: PDF2Obsidian/政经C刊科研/写作语料库
     p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)",
   };
@@ -2592,6 +2595,7 @@ function MainWorkspaceTabs(props: {
         { value: "tasks", label: t("任务", "Tasks") },
         { value: "agent-console", label: t("Agent控制台", "Agent") },
         { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },
+        { value: "dream", label: t("记忆巩固", "Dream") },
         { value: "trace", label: t("Trace", "Trace") },
         { value: "eval", label: t("评测", "Eval") },
         { value: "alerts", label: t("告警", "Alerts") },
