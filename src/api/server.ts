@@ -1035,6 +1035,64 @@ export function buildHttpServer() {
     const records = await fileHistory(q.path);
     return { ok: true, path: q.path, records };
   });
+  // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───
+  // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
+  const forensicsImageSchema = z.object({
+    images: z.array(z.object({ name: z.string().max(256), base64: z.string() })).min(2, "至少 2 张图片").max(12),
+  });
+  app.post("/api/forensics/image-dup", async (request, reply) => {
+    const body = forensicsImageSchema.parse(request.body);
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { imageDuplicateCheck, cleanupTemp } = await import("../services/forensics-service.js");
+    const tmpFiles: string[] = [];
+    try {
+      for (const img of body.images) {
+        const ext = path.extname(img.name) || ".png";
+        const tmp = path.join(os.tmpdir(), `fimg-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+        fs.writeFileSync(tmp, Buffer.from(img.base64, "base64"));
+        tmpFiles.push(tmp);
+      }
+      const result = await imageDuplicateCheck(tmpFiles);
+      if (!result.ok) return reply.code(502).send({ error: { code: "FORENSICS_FAILED", message: result.error ?? "图片查重失败" } });
+      return { ok: true, raw: result.raw };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "FORENSICS_ERROR", message } });
+    } finally {
+      cleanupTemp(...tmpFiles);
+    }
+  });
+  // 数值取证: POST { files: [{name, base64}], mode: "decimal"|"magnitude"|"aggregate" }
+  const forensicsNumSchema = z.object({
+    files: z.array(z.object({ name: z.string().max(256), base64: z.string() })).min(1).max(6),
+    mode: z.enum(["decimal", "magnitude", "aggregate"]).default("decimal"),
+  });
+  app.post("/api/forensics/numeric", async (request, reply) => {
+    const body = forensicsNumSchema.parse(request.body);
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { numericForensics, cleanupTemp } = await import("../services/forensics-service.js");
+    const tmpFiles: string[] = [];
+    try {
+      for (const f of body.files) {
+        const ext = path.extname(f.name) || ".xlsx";
+        const tmp = path.join(os.tmpdir(), `fnum-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+        fs.writeFileSync(tmp, Buffer.from(f.base64, "base64"));
+        tmpFiles.push(tmp);
+      }
+      const result = await numericForensics(tmpFiles, body.mode);
+      if (!result.ok) return reply.code(502).send({ error: { code: "FORENSICS_FAILED", message: result.error ?? "数值取证失败" } });
+      return { ok: true, raw: result.raw };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "FORENSICS_ERROR", message } });
+    } finally {
+      cleanupTemp(...tmpFiles);
+    }
+  });
   // ─── 格式智能评测 API(2026-09-03: 规则引擎+LLM 双层) ───
   // 模板清单: GET → { templates: FormatTemplate[] }
   app.get("/api/format-eval/templates", async () => {
