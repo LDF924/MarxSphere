@@ -32,17 +32,19 @@ export async function logAgentExec(input: {
   status?: string;
   durationMs?: number;
   spanType?: string; // 迁移067: 执行类型(LLM/TOOL/APPROVAL…), 默认 TOOL
+  model?: string;    // V404-3: 实际使用的模型(迁移076 已有 model 列) — 路由反馈对齐查询用
 }): Promise<void> {
   try {
     await pool.query(
-      `insert into agent_exec_logs (task_id, step_id, action, tool, input_summary, output_summary, cost_cents, tokens_in, tokens_out, status, duration_ms, span_type)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `insert into agent_exec_logs (task_id, step_id, action, tool, input_summary, output_summary, cost_cents, tokens_in, tokens_out, status, duration_ms, span_type, model)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         input.taskId ?? null, input.stepId ?? null, input.action, input.tool ?? null,
         (input.inputSummary || "").substring(0, 500), (input.outputSummary || "").substring(0, 500),
         input.costCents ?? 0, input.tokensIn ?? 0, input.tokensOut ?? 0,
         input.status ?? "ok", input.durationMs ?? 0,
         input.spanType ?? "TOOL",
+        input.model ?? null,
       ]
     );
   } catch { /* 日志失败不阻塞 */ }

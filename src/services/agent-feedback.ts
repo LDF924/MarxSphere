@@ -59,6 +59,14 @@ export async function submitAgentFeedback(input: {
       importance: input.feedback === 1 ? 0.5 : 0.8,
     });
   } catch { /* 记忆回流失败不阻塞 */ }
+  // V404-3(OpenSquilla 路由数据飞轮): 负评 → "低估"样本 — 若该任务用了便宜档模型, 记一条 underestimate
+  //   (用户抱怨 ≈ 上次路由选错档位), 供离线统计低估率/超阈降权
+  if (input.feedback === -1) {
+    try {
+      const { logUnderestimateSample } = await import("./routing-log.js");
+      void logUnderestimateSample(input.taskId, input.note).catch(() => {});
+    } catch { /* 低估样本记录失败不阻塞 */ }
+  }
   return { ok: true, ruleCreated, ruleId, note: input.feedback === -1 ? (ruleCreated ? "负评已转防错规则" : "负评已记录") : "已记录" };
 }
 
