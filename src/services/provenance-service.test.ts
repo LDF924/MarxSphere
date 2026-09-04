@@ -9,7 +9,6 @@ const tmpRoot = path.join(os.tmpdir(), `sag-prov-test-${Date.now()}`);
 process.env.SAG_ROOT = tmpRoot;
 
 import { fileHistory, queryProvenance, recordProvenance } from "./provenance-service.js";
-
 beforeAll(async () => {
   await fs.mkdir(path.join(tmpRoot, "data", "provenance"), { recursive: true });
 });
@@ -52,5 +51,17 @@ describe("recordProvenance", () => {
     expect(page1.records).toHaveLength(1);
     const page2 = await queryProvenance({ limit: 1, cursor: page1.nextCursor });
     expect(page2.records.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("带 runId 的记录采集环境快照(envHash + 内容寻址文件)", async () => {
+    await recordProvenance({ path: "run-file.md", tool: "file_write", op: "write", content: "run v1", runId: "run-abc" });
+    const hist = await fileHistory("run-file.md");
+    expect(hist[0].runId).toBe("run-abc");
+    expect(hist[0].envHash).toBeTruthy();
+    // env 快照文件应存在且含 pip freeze 输出
+    const { readEnvSnapshot } = await import("./provenance-service.js");
+    const envText = await readEnvSnapshot(hist[0].envHash);
+    expect(envText).toBeTruthy();
+    expect(envText.length).toBeGreaterThan(10);
   });
 });

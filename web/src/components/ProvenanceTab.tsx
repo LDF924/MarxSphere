@@ -15,6 +15,7 @@ interface ProvenanceRecord {
   size: number;
   op: "write" | "delete" | "patch";
   runId?: string;
+  envHash?: string;
 }
 
 const TOOL_LABEL: Record<string, string> = {
@@ -27,6 +28,8 @@ function fmtTime(ts: string): string {
 
 function FileHistory({ filePath, onBack }: { filePath: string; onBack: () => void }) {
   const [rows, setRows] = useState<ProvenanceRecord[] | null>(null);
+  const [reproPrompt, setReproPrompt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     setRows(null);
     void (async () => {
@@ -37,32 +40,63 @@ function FileHistory({ filePath, onBack }: { filePath: string; onBack: () => voi
       } catch { setRows([]); }
     })();
   }, [filePath]);
+  const loadRepro = async () => {
+    try {
+      const res = await fetch(`/api/provenance/reproduce?path=${encodeURIComponent(filePath)}`);
+      const d = await res.json();
+      setReproPrompt(d.prompt ?? "");
+    } catch { setReproPrompt("复现提示生成失败"); }
+  };
+  const copyPrompt = async () => {
+    if (!reproPrompt) return;
+    try { await navigator.clipboard.writeText(reproPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* 忽略 */ }
+  };
   return (
     <div className="space-y-2">
-      <button type="button" onClick={onBack} className="text-[11px] text-muted-foreground hover:text-foreground">← 返回列表</button>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} className="text-[11px] text-muted-foreground hover:text-foreground">← 返回列表</button>
+        <button type="button" onClick={loadRepro}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-300 hover:bg-emerald-400/20">
+          ▶ 生成复现提示
+        </button>
+      </div>
       <div className="rounded-md border border-border/60 bg-background/40 p-2 text-[11px] font-medium">{filePath} · 版本历史</div>
       {!rows ? (
         <div className="flex items-center gap-2 py-4 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> 加载中…</div>
       ) : rows.length === 0 ? (
         <div className="py-4 text-center text-xs text-muted-foreground/60">无留痕记录</div>
       ) : (
-        rows.map((r) => (
-          <div key={`${r.version}-${r.ts}`} className="rounded-md border border-border/50 bg-background/30 px-3 py-2 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">v{r.version}</span>
-              <span className="text-muted-foreground">{TOOL_LABEL[r.tool] ?? r.tool}</span>
-              <span className={`rounded px-1.5 py-0.5 text-[9px] ${r.op === "delete" ? "bg-red-500/10 text-red-300" : r.op === "patch" ? "bg-amber-400/10 text-amber-300" : "bg-emerald-400/10 text-emerald-300"}`}>{r.op}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground">{fmtTime(r.ts)}</span>
+        <>
+          {rows.map((r) => (
+            <div key={`${r.version}-${r.ts}`} className="rounded-md border border-border/50 bg-background/30 px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">v{r.version}</span>
+                <span className="text-muted-foreground">{TOOL_LABEL[r.tool] ?? r.tool}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[9px] ${r.op === "delete" ? "bg-red-500/10 text-red-300" : r.op === "patch" ? "bg-amber-400/10 text-amber-300" : "bg-emerald-400/10 text-emerald-300"}`}>{r.op}</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">{fmtTime(r.ts)}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-muted-foreground/70">
+                <span>sha256: <code className="font-mono">{r.contentHash}</code></span>
+                <span>{r.size} B</span>
+                {r.sessionId && <span>会话: {r.sessionId.slice(0, 12)}</span>}
+                {r.model && <span>模型: {r.model}</span>}
+                {r.runId && <span>任务: {r.runId.slice(0, 12)}</span>}
+                {r.envHash && <span title="点击查看环境快照哈希">环境: <code className="font-mono">{r.envHash}</code></span>}
+              </div>
             </div>
-            <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-muted-foreground/70">
-              <span>sha256: <code className="font-mono">{r.contentHash}</code></span>
-              <span>{r.size} B</span>
-              {r.sessionId && <span>会话: {r.sessionId.slice(0, 12)}</span>}
-              {r.model && <span>模型: {r.model}</span>}
-              {r.runId && <span>任务: {r.runId.slice(0, 12)}</span>}
+          ))}
+          {reproPrompt && (
+            <div className="rounded-md border border-emerald-400/25 bg-emerald-400/5 p-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-emerald-300">复现提示(人机环: 复制后到对话执行)</span>
+                <button type="button" onClick={copyPrompt} className="ml-auto rounded border border-emerald-400/30 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-400/10">
+                  {copied ? "✓ 已复制" : "复制"}
+                </button>
+              </div>
+              <pre className="mt-1.5 max-h-40 overflow-auto rounded bg-black/20 p-2 font-mono text-[10px] leading-4 text-muted-foreground">{reproPrompt}</pre>
             </div>
-          </div>
-        ))
+          )}
+        </>
       )}
     </div>
   );
