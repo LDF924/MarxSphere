@@ -18,7 +18,8 @@ const COMMON_COLS: ColDef[] = [
 ];
 
 export function LiteratureMatrixPanel({ papers }: { papers: MatrixPaper[] }) {
-  const [paperIds, setPaperIds] = useState<string[]>([]);
+  const [selectedPapers, setSelectedPapers] = useState<Array<{ id: string; title: string }>>([]);
+  const paperIds = selectedPapers.map((p) => p.id);
   const [cols, setCols] = useState<ColDef[]>(COMMON_COLS.slice(0, 3));
   const [customLabel, setCustomLabel] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,11 @@ export function LiteratureMatrixPanel({ papers }: { papers: MatrixPaper[] }) {
   const [quotePaper, setQuotePaper] = useState<string | null>(null);
 
   const togglePaper = (id: string) => {
-    setPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedPapers((prev) => {
+      if (prev.some((x) => x.id === id)) return prev.filter((x) => x.id !== id);
+      const p = papers.find((x) => x.id === id);
+      return [...prev, { id, title: p?.title ?? id }]; // title 存住, 翻页后仍可显示
+    });
   };
   const toggleCol = (c: ColDef) => {
     setCols((prev) => (prev.some((x) => x.key === c.key) ? prev.filter((x) => x.key !== c.key) : [...prev, c]));
@@ -92,8 +97,25 @@ export function LiteratureMatrixPanel({ papers }: { papers: MatrixPaper[] }) {
       <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-sky-200/90">
         <Table2 className="h-4 w-4" /> 文献提取矩阵
         <span className="text-[9px] font-normal text-muted-foreground/60">勾选论文 → 定义提取列 → LLM 逐篇提取成表(参考 Elicit)</span>
-        <span className="ml-auto text-[10px] text-muted-foreground/60">已选 {paperIds.length} 篇</span>
+        <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-bold ${paperIds.length > 0 ? "bg-sky-400/25 text-sky-200 ring-1 ring-sky-400/40" : "bg-background/40 text-muted-foreground/60"}`}>
+          已勾选 {paperIds.length} 篇论文
+        </span>
       </div>
+
+      {/* 已勾选论文(跨页累计保留, 可点取消) */}
+      {paperIds.length > 0 && (
+        <div className="mt-1.5 rounded-md border border-sky-400/20 bg-sky-400/[0.04] p-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[9px] text-sky-300/80">已勾选(翻页保留):</span>
+            {selectedPapers.map((sp) => (
+              <span key={sp.id} className="inline-flex items-center gap-1 rounded-full bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-200">
+                {sp.title.length > 20 ? sp.title.slice(0, 20) + "…" : sp.title}
+                <button type="button" onClick={() => togglePaper(sp.id)} className="text-sky-300/60 hover:text-red-400"><X className="h-3 w-3" /></button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 引导步骤 */}
       <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
