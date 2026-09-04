@@ -99,14 +99,30 @@ export async function runAutoPropose(opts: { days?: number; minCount?: number; m
       if (!skill) { out.failed++; continue; }
       out.proposed++;
       out.proposals.push({ skillId: skill.id, name: skill.name, status: skill.status, whenToApply: skill.whenToApply });
-      // 异步 EDV 验证
+      // 异步 EDV 验证(await 保证不留 pending; 失败不阻塞整体)
       const { validateSkill } = await import("./agent-skill-distill.js");
-      void validateSkill(skill.id).catch(() => {});
+      try { await validateSkill(skill.id); } catch { /* 单条验证失败 → 滞留 pending, 由 reconcilePendingSkills 兜底 */ }
     }
   } catch (e: any) {
     console.warn(`[auto-propose] 失败: ${String(e?.message || e).slice(0, 150)}`);
   }
   return out;
+}
+
+/** V404-20: 滞留 pending 技能补验证 — 所有 consensus=0 的 pending 重跑 EDV(清理中断/超时遗留), 返回处理结果 */
+export async function reconcilePendingSkills(): Promise<{ total: number; approved: number; stillPending: number; rejected: number }> {
+  const { listSkills, validateSkill } = await import("./agent-skill-distill.js");
+  const pending = (await listSkills("pending")).filter((s) => s.consensus === 0);
+  let approved = 0, stillPending = 0, rejected = 0;
+  for (const s of pending) {
+    try {
+      const v = await validateSkill(s.id);
+      if (v.status === "approved") approved++;
+      else if (v.status === "rejected") rejected++;
+      else stillPending++;
+    } catch { stillPending++; }
+  }
+  return { total: pending.length, approved, stillPending, rejected };
 }
 
 /** 技能体检: agent_skills 记录完整性 + 引用一致性(来源任务存在性等), 返回体检报告 */
@@ -135,4 +151,4 @@ export async function skillHealthCheck(): Promise<{
   return { total, broken };
 }
 
-export const skillAutoProposeService = { runAutoPropose, isCoveredBySkills, skillHealthCheck };
+export const skillAutoProposeService = { runAutoPropose, isCoveredBySkills, skillHealthCheck, reconcilePendingSkills };
