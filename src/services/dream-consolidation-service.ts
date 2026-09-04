@@ -133,6 +133,34 @@ export function scoreCandidate(c: DreamCandidate): number {
   return clamp01(0.35 * freq + 0.35 * span + 0.3 * signal);
 }
 
+// ═══ 定时触发(每日确定性扫描; 零 LLM 成本; 候选进隔离区人工审) ═══
+let dreamSchedulerStarted = false;
+
+/**
+ * V404-7: 每日 Dream 巩固调度 — 启动后延时首跑, 之后每 24h 一次。
+ * 开关: SAG_DREAM_DAILY=0 关闭(默认开); 幂等防重复启动。
+ * 只做确定性扫描+评分(useLlm=false, 零 token 成本), 不自动 accept(人工审红线)。
+ */
+export function startDreamDailyScheduler(): void {
+  if (dreamSchedulerStarted) return;
+  if (process.env.SAG_DREAM_DAILY === "0") {
+    console.log("[dream] V404-7 每日巩固已关闭 (SAG_DREAM_DAILY=0)");
+    return;
+  }
+  dreamSchedulerStarted = true;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const once = async () => {
+    try {
+      const proposals = await runDream({ days: 14, useLlm: false });
+      console.log(`[dream] V404-7 每日巩固: ${proposals.length} 条新候选进隔离区(人工审: 记忆巩固面板)`);
+    } catch (e: any) {
+      console.warn(`[dream] 每日巩固失败: ${String(e?.message || e).slice(0, 120)}`);
+    }
+  };
+  setTimeout(() => { void once(); }, 5000);
+  setInterval(() => { void once(); }, DAY_MS);
+}
+
 // ═══ 隔离区落盘 ═══
 function appendRecord(file: string, rec: object): void {
   try {
