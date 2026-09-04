@@ -1989,6 +1989,62 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
       }
     },
   });
+  // V404-15(OpenSquilla meta_invoke): 模型运行时触发 MetaSkill DAG — 技能列表可由 list 工具查询
+  tools.push({
+    name: "meta_invoke", label: "MetaSkill 工作流", risk: "safe",
+    description: "触发声明式 MetaSkill DAG 工作流(运行时强制编排: 澄清/检索/生成/质量门); 与普通单轮生成不同, 它走多步可审计管道。复杂任务优先考虑",
+    params: {
+      skillId: { type: "string", required: true, desc: "工作流 id(先调 meta_list 查可用)" },
+      input: { type: "string", required: true, desc: "任务输入(主题/问题)" },
+    },
+    run: async (a) => {
+      const skillId = String(a.skillId || "").trim();
+      const input = String(a.input || "").trim();
+      if (!skillId || !input) return "（skillId 与 input 必填）";
+      try {
+        const { getMetaSkillAsync } = await import("./meta-skill-defs.js");
+        const def = await getMetaSkillAsync(skillId);
+        if (!def) return `（MetaSkill 不存在: ${skillId} — 先调 meta_list 查可用 id）`;
+        const { runMetaSkill } = await import("./meta-skill-runtime.js");
+        // 前台完整执行; user_input 澄清步骤用工具入参兜底预填(topic 等取 input), 避免工具场景挂起等人工
+        const { callLlm } = await import("../ai/llm-common.js");
+        const userValues: Record<string, string> = { topic: input };
+        // 有必填澄清字段时让 LLM 从 input 抽取兜底(成本低, 避免挂起)
+        const clarifyFields = (def.steps || []).filter((s: any) => s.kind === "user_input").flatMap((s: any) => (s.clarify?.fields || []).filter((f: any) => f.required));
+        if (clarifyFields.length > 1) {
+          try {
+            const rr = await callLlm({
+              messages: [{ role: "user", content: `从任务输入抽取以下字段的 JSON 值(缺失留空): ${clarifyFields.map((f: any) => f.name).join(",")}\n输入: ${input.slice(0, 300)}` }],
+              jsonMode: true, maxTokens: 150, temperature: 0,
+            });
+            const txt = (rr?.text || "").replace(/```json|```/g, "").trim();
+            const j = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1) || "{}");
+            for (const f of clarifyFields) if (j[f.name]) userValues[f.name] = String(j[f.name]);
+          } catch { /* 抽取失败仅 topic 兜底 */ }
+        }
+        const r = await runMetaSkill(def, input, { userValues, userInputTimeoutMs: 60_000 });
+        if (r.status === "failed") return `（MetaSkill 执行失败: ${r.output.slice(0, 300)}）`;
+        return `【MetaSkill ${def.name} 完成】(${r.stepLog.filter((s) => s.status === "done").length}/${r.stepLog.length} 步)\n${r.output.slice(0, 3000)}`;
+      } catch (e: any) {
+        return `（meta_invoke 失败: ${String(e?.message || e).slice(0, 200)}）`;
+      }
+    },
+  });
+  tools.push({
+    name: "meta_list", label: "MetaSkill 列表", risk: "safe",
+    description: "列出可用 MetaSkill 工作流(id/名称/步骤概览)",
+    params: {},
+    run: async () => {
+      try {
+        const { loadAllMetaSkills } = await import("./meta-skill-defs.js");
+        const all = await loadAllMetaSkills();
+        if (all.length === 0) return "（暂无 MetaSkill）";
+        return all.map((s) => `- ${s.id}: ${s.name} — ${s.description.slice(0, 60)} [${s.steps.length} 步: ${s.steps.map((x) => x.kind).join("→")}]`).join("\n");
+      } catch (e: any) {
+        return `（meta_list 失败: ${String(e?.message || e).slice(0, 150)}）`;
+      }
+    },
+  });
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);
   if (pdfConvertTool) tools.push(pdfConvertTool); // V399: mineru-go 双模式转换
