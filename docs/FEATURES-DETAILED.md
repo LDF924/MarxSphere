@@ -1,6 +1,6 @@
 # MarxSphere 功能规格详解
 
-> 本文档是 MarxSphere 的完整功能规格说明。所有功能均已在 Web 界面（41 视图）或桌面端实现并验证。
+> 本文档是 MarxSphere 的完整功能规格说明。所有功能均已在 Web 界面（40 视图）或桌面端实现并验证。
 
 ---
 
@@ -120,7 +120,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 
 ---
 
-## 四、AI Agent 子系统（60+ 能力项 · 70 通用工具 + 112 教育路由 + 32 学习引擎顶层）
+## 四、AI Agent 子系统（60+ 能力项 · 65 通用工具 + 112 教育路由 + 32 学习引擎顶层）
 
 ### 4.1 编排核心
 
@@ -134,14 +134,14 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | token 预算 | 任务级 400K token 上限，超预算终止 |
 | 恢复 | 队列持久化 → 重启 recoverAfterRestart |
 
-### 4.2 工具矩阵（92 通用工具 = 70 Agent 工具 + 22 视图；教育工具经 /api/education/* 112 路由 + 学习引擎顶层 32 路由接入）
+### 4.2 工具矩阵（87 通用工具 = 65 Agent 工具 + 22 视图；教育工具经 /api/education/* 112 路由 + 学习引擎顶层 32 路由接入）
 
 | 类别 | 工具 | 说明 |
 |---|---|---|
 | **认知检索** | `sag_search` / `sag_retrieve` / `sag_get_event` / `sag_ingest` / `sag_reason` / `concept_trace` / `policy_search` | 领域检索/概念溯源/政策检索/深度推理 |
 | **文档** | `pdf_parse` / `attachment_read` / `summarize` / `review_output` / `file_read` / `file_write` | PDF 解析/附件阅读/摘要/评审/文件读写 |
 | **执行** | `run_code`（Python 沙箱 3 级）/ `runtime_exec`（持久运行时）/ `run_command` / `apply_patch` / `todo_update` | 代码执行/命令/补丁/待办 |
-| **网络** | `web_search` / `web_fetch` / `browser_control` / `github_repo` / `code_search` | 网页搜索/抓取/Chrome 浏览器控制(审批)/GitHub/代码搜索 |
+| **网络** | `web_search` / `web_fetch` / `github_repo` / `code_search` | 网页搜索/抓取/GitHub/代码搜索 |
 | **多模态** | `image_analyze` / `audio_transcribe` | 图片理解/音频转写 |
 | **实证** | `empirical_analysis` | 问卷→回归全管道真跑 |
 | **编排** | `agent_subagent` / `llm_write` | 子 Agent 派发/LLM 写作 |
@@ -221,44 +221,8 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 规则引擎(纯代码) | 8 类 20+ 条确定性规则: 标题层级跳变/编号体系不符、摘要字数、关键词个数与分隔符、章节缺失/重复、引文标注风格与混用、参考文献序号跳号与引用越界、图表编号跳号、乱码/超长/标点混用 — 行级定位 |
 | LLM 审校层 | 摘要四要素/术语一致性/标题措辞/内容归属错位 — 失败自动降级不阻塞规则结果 |
 | 评分 | 100 − 5×error − 2×warning − 0.5×info, 违规清单按严重度色阶+行号+修改建议 |
-| 输入 | .md/.txt 上传或全文粘贴(Word 复制); .docx 上传触发 Word 样式级+文本级双层检查 |
+| 输入 | .md/.txt 上传或全文粘贴(Word 复制) |
 | API | GET /api/format-eval/templates · POST /api/format-eval/check(规则引擎必跑 + LLM 可选) |
-| 三视图 | 格式检查 / 自动格式化 / 学校模板提取(2026-09-04 增强) |
-| 自动格式化 | 上传论文 docx(+可选学校指南) → paper_format_agent 套格式, 内容指纹保护(正文改动即中止), 输出格式化 docx + 前后评分报告 |
-| 学校模板提取 | 上传学校模板 → 提取页边距/字号/标题层级规则 JSON → 一键转自定义检测模板 |
-| 规则清单常驻 | 23 项规则全量展示(通过✓/违规✗/存疑/提示), 评测前待检测态; 每卡点开展开「检测内容/判定逻辑」 |
-| 检测发现/LLM 审校 | 常驻板块, 每条可点开展开(规则逻辑/本稿证据/原文定位/建议; LLM 审校方式/5 要点) |
-| 结果持久化 | 评测结果 localStorage 自动保存, 刷新/切视图恢复; docx 评分由后端服务端算(真实非 0) |
-
-## 八·六、论文取证(2026-09-04 新增 · 引文核验页底部 · integrity-auditor MIT)
-
-| 能力 | 细节 |
-|---|---|
-| 图像查重 | 上传 ≥2 张论文图片 → dHash/aHash 感知哈希两两比较 → strong duplicate 标记(vendor/integrity-auditor, ai4s MIT) |
-| 数值取证 | xlsx/csv 上传, 三模式: 尾数匹配(decimal_match)/量级一致性(magnitude_consistency, SI 前缀感知)/跨表聚合(xlsx_aggregate_consistency) |
-| 后端 | POST /api/forensics/image-dup · POST /api/forensics/numeric(调 python 子进程, venv 隔离) |
-| 7 取证脚本 | image_dup/image_dup_orb(ORB 旋转检测)/decimal_match/channel_check/panel_split/magnitude_consistency/xlsx_aggregate_consistency |
-
-## 八·七、文件级溯源 + git 无痕快照(2026-09-04 新增 · 移植 open-science MIT)
-
-| 能力 | 细节 |
-|---|---|
-| provenance.jsonl | agent 每次写文件(file_write/apply_patch/todo_update)留痕: 路径/版本递增/时间/工具/会话/模型/sha256/大小 — append-only |
-| 环境锁 | 带 runId 的记录自动采 python 版本+pip freeze → 内容寻址 data/provenance/env/<hash>.txt |
-| 复现提示 | GET /api/provenance/reproduce?path= → 生成预填 prompt(人机环, 不自动执行) |
-| 前端 | Agent控制台 → 文件溯源 tab: 留痕列表/版本历史/生成复现提示/📸 拍快照 |
-| git 无痕快照 | 专用 index + refs/openscience/snapshots/<branch> 提交工作区, 不碰用户分支/HEAD/暂存区, >10MB 排除 |
-| API | GET /api/provenance · GET /api/provenance/file · GET /api/provenance/reproduce · POST /api/snapshot · GET /api/snapshot/history |
-| 单测 | provenance 4 + git-snapshot 3(分支不动/无变更不产快照) |
-
-## 八·八、审查协议 + 命令面板 + 浏览器控制 + ai4s 技能链(2026-09-04 移植 open-science / ai4s MIT)
-
-| 能力 | 细节 |
-|---|---|
-| fenced-JSON 审查协议 | 任意消息含 ```review JSON → 自动渲染「🔍 智能审查」可折叠卡片(违规/存疑/通过分级, 可逐条 dismiss), 协议见 src/services/review-fence.ts |
-| 命令面板 | Ctrl+Shift+K 全局 → 40+ 视图一键跳转(输入过滤/↑↓/Enter) |
-| browser_control | agent 新工具(审批): 驱动真实 Chrome 导航/读 JS 渲染页/截图(agent-browser, 无需本机 Chrome) |
-| ai4s 技能链 | 7 技能入技能库: ai4s-agent/research-explorer/literature-survey/experiment-suite/paper-writer/integrity-auditor/mindmap-render |
 
 ## 八、运维与扩展
 

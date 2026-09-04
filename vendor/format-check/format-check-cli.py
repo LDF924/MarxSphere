@@ -127,8 +127,10 @@ def cmd_extract(argv: list[str]) -> int:
 
 def cmd_format(argv: list[str]) -> int:
     """自动格式化 docx: 复用 paper_format_agent(zxyasfas, MIT, 内容指纹保护)。
-    用法: format <paper.docx> --format-file <规则.md/docx> --out-dir <dir>"""
+    用法: format <paper.docx> [--format-file <规则.md/docx>] [--out-dir <dir>]
+    无 --format-file 时使用算法内置默认规则(本科论文格式 V3)。"""
     sys.path.insert(0, str(HERE))
+    from paper_format_agent.rules import extract_rules_from_text
     from paper_format_agent.service import format_paper
 
     paper = argv[0] if argv else ""
@@ -140,12 +142,22 @@ def cmd_format(argv: list[str]) -> int:
     try:
         out_path = Path(out_dir)
         out_path.mkdir(parents=True, exist_ok=True)
-        result = format_paper(
-            Path(paper),
-            out_path,
-            format_file=Path(fmt_file) if fmt_file else None,
-            allow_content_change=False,  # 内容指纹保护: 改动正文即失败
-        )
+        # 无格式指南时用内置默认规则(避免 format_paper 因 rules/format_file 全空报错)
+        rules = None
+        if fmt_file:
+            result = format_paper(
+                Path(paper),
+                out_path,
+                format_file=Path(fmt_file),
+                allow_content_change=False,  # 内容指纹保护: 改动正文即失败
+            )
+        else:
+            result = format_paper(
+                Path(paper),
+                out_path,
+                rules=extract_rules_from_text(),
+                allow_content_change=False,  # 内容指纹保护: 改动正文即失败
+            )
         print(json.dumps({"ok": True, "result": str(result)[:300]}, ensure_ascii=False, default=str))
         return 0
     except Exception as e:  # noqa: BLE001

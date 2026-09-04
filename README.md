@@ -35,45 +35,30 @@
 |---|---|
 | **文献溯源** | 回答凭记忆，不引原文，无法验证是否忠于经典文本与一手资料 |
 | **二手资料幻觉** | 分不清"原文说了什么"与"别人说原文说了什么"，论证链条断裂 |
-| **引用可靠性** | 引用张冠李戴、年代错误、甚至凭空捏造文献；图片复用/数值"巧合"难以察觉，无法核验 |
+| **引用可靠性** | 引用张冠李戴、年代错误、甚至凭空捏造文献，无法核验 |
 | **学术规范** | 不掌握 GB/T 7714 引文格式、C刊审稿标准、公文写作规范 |
-| **实证方法** | 无法做 DID/事件研究/元分析等规范计量，结论"看着像"但不可复现、不可追溯、无法审计 |
+| **实证方法** | 无法做 DID/事件研究/元分析等规范计量，结论"看着像"但不可复现 |
 
 ### MarxSphere 的答案：为文科·哲社科构建的通用科研中枢
 
-1. **文献可溯源**：自建文献库经三库图谱管理（Graphiti 超边/社区 + Cognee 切片 + PG 向量），52 步推理每一步绑定 `chunk → event → entities` 证据链，回答可点击回看原文切片——**不编造，不靠记忆**。2026-09 再进一步：Agent 每次写文件留痕（文件级 provenance + 环境锁 + git 无痕快照 + 复现提示），产物可回放可复现
-2. **证据优先**：引文三维核验（元数据真伪/语境相关性/断言支持度）+ 论文取证（图像查重/数值尾数/量级/跨表聚合，integrity 7 工具）、知识页 Compiled Truth 只写有证据支撑的结论、审查结果以 ```review 协议卡片化——**反幻觉是架构纪律，不是提示词**
+1. **文献可溯源**：自建文献库经三库图谱管理（Graphiti 超边/社区 + Cognee 切片 + PG 向量），52 步推理每一步绑定 `chunk → event → entities` 证据链，回答可点击回看原文切片——**不编造，不靠记忆**
+2. **证据优先**：引文三维核验（元数据真伪/语境相关性/断言支持度）、知识页 Compiled Truth 只写有证据支撑的结论——**反幻觉是架构纪律，不是提示词**
 3. **学科全流程**：选题打磨（good-question）→ 文献调研 → 政策检索 → 实证分析（17 方法含元分析）→ 论文写作（GB/T 规范）→ 评审——**覆盖人文社科科研的完整生命周期**
 4. **教育与科研一体**：同一知识底座支撑个性化教学（BKT 掌握度/自适应路径），科研成果直接转化为教学素材
 5. **全链路可审计**：32 项评测指标、真实 token 消耗、步骤级执行日志、成本回填——**每一分钱花在哪、每一步怎么走的都透明**
 6. **对齐最强实践**：融入 Rimagination 开源生态 13 项能力 + 对齐 OpenAI Codex Harness 六层 30 项设计（差距清零）——**站在开源巨人肩上，而非从零发明**
 
-> **一句话**：MarxSphere 不是"又一个 AI 助手"，而是把人文社科研究的**证据链、方法论、学术规范**做成可运行、可审计、可复用的系统——它不追求"通用智能"，追求"在这个领域里每一步都可验证"
+> **一句话**：MarxSphere 不是"又一个 AI 助手"，而是把人文社科研究的**证据链、方法论、学术规范**做成可运行、可审计、可复用的系统。
 
+### ✨ V399+V400 新能力(2026-08/09)
+
+- **开源生态融入(Rimagination 9+4 项)**: 扫描版 PDF 转换(mineru-go) / 研究选题打磨(good-question) / 23 种公文起草(gongwen-draft) / B站·抖音视频笔记(bili-note+dy-note) / 元分析第 17 方法(easymeta) / 英文文献 OA 回退(OpenAlex+Unpaywall) / 科学叙事(good-story) / 图表数字化(thu-digitizer) / 引文三维核验(citation-lab) / 引用网络算法(paper-atlas)
+- **Codex Harness 对齐(V400 差距清零)**: 预算/时间提醒注入(Rollout 50K / TokenBudget 6_144, 窗口去重) / Mid-turn 上下文压缩不终止 / Elicitation 澄清暂停协调 / Stop·PreToolUse·PostToolUse·PermissionRequest 钩子 / Guardian 拒绝熔断 / 世界状态 diff(增量注入) / Steer 运行中转向 / Mailbox 多代理双通道 / 审批缓存 / 评审会话隔离 / 共享上下文 LRU
+- **Agent 工具 65 个 / 技能注册 201 / 实证方法 17(含元分析+森林图) / 测试 621 全绿(CI 持续)**
 
 ## 功能总览
 
-> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 70 工具矩阵(70 Agent + 22 视图) / 17 实证功能(含元分析) / 桌面端细节 / 评测指标）
-
-### ✨ 核心能力一览
-
-| 能力 | 说明 |
-|---|---|
-| 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
-| 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
-| 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
-| 🤖 **AI Agent** | 70 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
-| 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
-| 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
-| 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
-| 📡 **IM 接入** | 飞书 / 钉钉 / Telegram 机器人远程对话（状态/项目/评测/审批/告警） |
-| 🖥 **Computer Use** | 桌面控制：截屏 / 鼠标 / 键盘 / 窗口列表（Agent 可看屏幕操作） |
-| 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
-| 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
-| 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 637 单测(77 文件) / 消融 21 算子 / CI+E2E |
-
----
+> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 65 工具矩阵 / 17 实证功能(含元分析) / 桌面端细节 / 评测指标）
 
 ### 🏗 系统架构
 
@@ -100,14 +85,14 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **70 工具自主调度**：70 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
+- **65 工具自主调度**：65 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
 - **命令语法**：`/` 弹出技能命令面板（201 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
 - **浅色 / 深色双主题**：header 一键切换，localStorage 持久化
 - **空会话首屏**：欢迎语 + 热词建议（点击即问）+ 核心功能入口（Ask 检索 / 52 步推理 / 实证工作台）
 
-### 🤖 AI Agent（50+ 能力项 · 70 工具 · 5 层安全 · 5 层记忆）
+### 🤖 AI Agent（50+ 能力项 · 65 工具 · 5 层安全 · 5 层记忆）
 
 > 50 项 Agent 特性全部吸收。完整能力档案见 [docs/AGENT-CAPABILITIES.md](docs/AGENT-CAPABILITIES.md)。
 
@@ -124,12 +109,12 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（70 个 Agent 工具；另有 22 个视图工具，合计 92）**
+**② 工具矩阵（65 个 Agent 工具；另有 22 个视图工具，合计 87）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
 | 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / llm_write | 并行执行、LRU 缓存（50 条/5min）、参数 schema 校验、分派追踪、fallback 链 |
-| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / browser_control（Chrome-driven, approval）/ sag_ingest / github_repo / runtime_exec | 超时熔断、降级链 |
+| 行动 | empirical_analysis（实证真跑）/ run_code（3 级沙箱）/ run_command / apply_patch / file_read / file_write / web_search / web_fetch / sag_ingest / github_repo / runtime_exec | 超时熔断、降级链 |
 | 多模态 | image_analyze（图片理解）/ audio_transcribe（音频转写） | 附件预处理压缩 |
 | 协作 | agent_subagent（外部 Agent 派发）/ attachment_read / code_search / todo_update | 子进程治理（防孤儿） |
 
@@ -499,6 +484,24 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 > - 完整路径变量见 `.env.example` 底部说明
 
 ---
+
+## 核心能力一览
+
+| 能力 | 说明 |
+|---|---|
+| 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
+| 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
+| 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
+| 🤖 **AI Agent** | 65 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
+| 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
+| 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
+| 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
+| 📡 **IM 接入** | 飞书 / 钉钉 / Telegram 机器人远程对话（状态/项目/评测/审批/告警） |
+| 🖥 **Computer Use** | 桌面控制：截屏 / 鼠标 / 键盘 / 窗口列表（Agent 可看屏幕操作） |
+| 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
+| 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
+| 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 177 单测 / 消融 21 算子 / CI+E2E |
 
 ## 技术栈
 
