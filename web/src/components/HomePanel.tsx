@@ -153,7 +153,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
       icon: <FileUp className="h-4.5 w-4.5" />,
       title: "Jobs 自动化",
       stage: "系统自动化",
-      desc: "17 类任务 · Dream Cycle 自整理 · 队列可视化",
+      desc: "多类任务 · Dream Cycle 自整理 · 队列可视化",
       hint: "入库/向量化/清洗/自整理后台执行"
     },
     {
