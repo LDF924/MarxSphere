@@ -74,6 +74,7 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent, CardHeader } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
+import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { TaskPanel } from "./components/TaskPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板级错误边界
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
@@ -2476,7 +2477,20 @@ function MainWorkspaceTabs(props: {
 }) {
   const { t } = useI18n();
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Ctrl+Shift+K: 命令面板(仿 open-science CommandPalette; Ctrl+K 已被 ChatPanel 占用)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /** 导航分组色点（finesse：分组视觉标识，色相按职能区分；后台/系统组不显示色点更干净） */
   const GROUP_DOTS: Record<string, string> = {
@@ -2583,6 +2597,21 @@ function MainWorkspaceTabs(props: {
 
   const currentCategory = categories.find((c) => c.items.some((item) => item.value === props.view));
 
+  /** 命令面板动作: 全视图跳转(categories 单一真源) */
+  const paletteActions = useMemo<PaletteAction[]>(() => {
+    const out: PaletteAction[] = [];
+    for (const cat of categories) {
+      for (const item of cat.items) {
+        out.push({
+          id: item.value, label: item.label, group: cat.label,
+          keywords: item.label, run: () => props.onChange(item.value as Exclude<WorkspaceView, "settings">),
+        });
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 点击外部关闭面板
   useEffect(() => {
     if (!openKey) return;
@@ -2596,6 +2625,7 @@ function MainWorkspaceTabs(props: {
   }, [openKey]);
 
   return (
+    <>
     <div
       ref={containerRef}
       className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1"
@@ -2674,10 +2704,15 @@ function MainWorkspaceTabs(props: {
         );
       })}
     </div>
+    <CommandPalette
+      open={paletteOpen}
+      onClose={() => setPaletteOpen(false)}
+      actions={paletteActions}
+      footer="Ctrl+Shift+K 打开/关闭 · ↑↓ 选择 · Enter 跳转 · Esc 关闭"
+    />
+    </>
   );
-}
-
-function ConversationWorkspace(props: {
+}function ConversationWorkspace(props: {
   project: SourceRecord | null;
   detail: McpSessionDetail | null;
   input: string;
