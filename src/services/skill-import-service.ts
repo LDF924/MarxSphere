@@ -168,4 +168,88 @@ export function healthCheckAllSkills(): SkillsHealthReport {
   };
 }
 
-export const skillImportService = { importSkillPackage, listInstalledSkills, removeSkillPackage, healthCheckAllSkills, SKILLS_HOME };
+// ═══ V404-14 见文件尾部: auditAllSkillSemantics + 最终导出 ═══
+export interface SkillSemanticCheck {
+  skill: string;
+  /** practice=做法(可执行步骤) / memory=记忆/事实(陈述性) / mixed=混合 / unclear */
+  classification: "practice" | "memory" | "mixed" | "unclear";
+  /** 分类信号摘要(供人工核对) */
+  signals: string;
+  /** 建议: 记忆类技能 → 移入 strategic_memory / 保留提示类(如偏好)等 */
+  suggestion: string;
+}
+
+/** 做法信号(动作词/步骤结构/代码块/工具引用) */
+const PRACTICE_SIGNS = [
+  /(^|\n)\s*[#>*\-0-9]\s*(步骤|流程|方法|做法|如何|when|use|run|执行|调用|pip install|npm install|click|输入|输出)/mi,
+  /\b(run|execute|call|invoke|use|install|implement|write|generate|analyze|search|parse|convert)\b/i,
+  /```(?:bash|sh|python|py|js|ts|sql|r|stata|zsh)/,
+  /\b(entrypoint|tool|command|CLI|API|endpoint|参数|param)\b/i,
+];
+/** 记忆/事实信号(陈述性断言/偏好/事实/无执行面) */
+const MEMORY_SIGNS = [
+  /(^|\n)\s*(记住|记忆|偏好|喜欢|通常|事实|背景|资料|来源|定义|含义|是[^。？?]{6,})/m,
+  /\b(prefer|remember|usually|facts?|note that|important to know)\b/i,
+  /引用|出处|原文|PDF|文献|论文|书籍/,
+];
+
+/**
+ * 语义分类: 单技能按内容信号打分 → practice/memory/mixed/unclear。
+ * 目标不是自动改(红线: 只输出建议), 供人工把"实为记忆"的技能移入战略记忆或降级为提示。
+ */
+export function classifySkillSemantics(raw: string, name: string): SkillSemanticCheck {
+  const body = raw.slice(0, 8000);
+  const pSigns = PRACTICE_SIGNS.filter((re) => re.test(body)).length;
+  const mSigns = MEMORY_SIGNS.filter((re) => re.test(body)).length;
+  // 结构信号: 有明确步骤列表(做法核心特征)
+  const hasSteps = /(^|\n)\s*(#{1,3}\s*(步骤|流程)|[*-]\s*(步骤|第一步|首先)|1\.\s)/m.test(body);
+  const hasCode = /```/.test(body);
+  const hasTriggers = /^triggers:|^when_to_use:|^when:/m.test(body);
+  let classification: SkillSemanticCheck["classification"];
+  if (pSigns >= 2 || hasSteps || hasCode) {
+    classification = mSigns >= 3 && !hasSteps ? "mixed" : "practice";
+  } else if (mSigns >= 2) {
+    classification = "memory";
+  } else {
+    classification = pSigns === 1 && hasTriggers ? "mixed" : "unclear";
+  }
+  const signals = [
+    pSigns ? `做法信号×${pSigns}` : "", mSigns ? `记忆信号×${mSigns}` : "",
+    hasSteps ? "有步骤" : "", hasCode ? "有代码" : "", hasTriggers ? "有触发" : "",
+  ].filter(Boolean).join(" ");
+  const suggestion = classification === "memory"
+    ? "疑似记忆/偏好而非做法 — 建议移入战略记忆或改提示型, 不占技能执行面"
+    : classification === "mixed"
+      ? "混合型 — 检查主体是流程还是事实, 事实段移出"
+      : classification === "unclear"
+        ? "语义不明 — 建议人工审读决定保留/归类"
+        : "做法型(保留)";
+  return { skill: name, classification, signals, suggestion };
+}
+
+/** 全量语义审计: 返回分类统计 + 非做法类明细(供人工处理) */
+export function auditAllSkillSemantics(): {
+  total: number;
+  byClass: Record<string, number>;
+  nonPractice: SkillSemanticCheck[];
+} {
+  const out: SkillSemanticCheck[] = [];
+  let total = 0;
+  if (existsSync(SKILLS_HOME)) {
+    for (const entry of readdirSync(SKILLS_HOME, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const skillMd = path.join(SKILLS_HOME, entry.name, "SKILL.md");
+      if (!existsSync(skillMd)) continue;
+      try {
+        const raw = readFileSync(skillMd, "utf8");
+        out.push(classifySkillSemantics(raw, entry.name));
+        total++;
+      } catch { /* 跳过坏技能 */ }
+    }
+  }
+  const byClass: Record<string, number> = { practice: 0, memory: 0, mixed: 0, unclear: 0 };
+  for (const c of out) byClass[c.classification]++;
+  return { total, byClass, nonPractice: out.filter((x) => x.classification !== "practice") };
+}
+
+export const skillImportService = { importSkillPackage, listInstalledSkills, removeSkillPackage, healthCheckAllSkills, auditAllSkillSemantics, SKILLS_HOME };

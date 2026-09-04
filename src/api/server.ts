@@ -7794,6 +7794,11 @@ except Exception as e:
     const { skillImportService } = await import("../services/skill-import-service.js");
     return skillImportService.healthCheckAllSkills();
   });
+  // V404-14: 技能语义分类审计(做法 vs 记忆/事实 — 只输出建议不自动改)
+  app.get("/api/agent/skills/semantic-audit", async () => {
+    const { skillImportService } = await import("../services/skill-import-service.js");
+    return skillImportService.auditAllSkillSemantics();
+  });
 
   // POST /api/agent/skills/import — 从本地路径导入 {sourcePath}
   app.post("/api/agent/skills/import", async (request, reply) => {
