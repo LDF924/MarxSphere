@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FC } from "react";
 import { ShieldAlert, Brain, ScrollText, Plus, Trash2, Power, RefreshCw, Sparkles, FileSearch, BarChart3, Wrench, ShieldCheck } from "lucide-react";
 import { cn } from "../lib/utils";
 import { PracticeLab } from "./PracticeLab";
+import { ProvenanceTab } from "./ProvenanceTab";
 
 // ─── 防错规则 ───
 interface Rule { id: number; category: string; pattern: string; rule: string; source: string; hitCount: number; enabled: boolean; createdAt: string; }
@@ -79,7 +80,7 @@ const DEMO_EVAL_HISTORY: any[] = [
 ];
 
 export const AgentConsole: FC = () => {
-  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent" | "lab">("rules");
+  const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent" | "lab" | "provenance">("rules");
   // V395: 运行时设置(沙箱/预设/自主级别) — 提升到顶部, 底部设置条可见
   const [settings, setSettings] = useState<Record<string, string>>({});
   // V400: 运行时状态(预算/Elicitation/熔断) — 主组件级, 所有 tab 可见
@@ -157,7 +158,7 @@ export const AgentConsole: FC = () => {
     <section className="flex min-h-0 flex-1 flex-col">
       {/* tab 头 */}
       <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-4 py-2">
-        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"], ["agent", "Agent 管理"], ["lab", "练习实验室"]] as const).map(([id, label]) => (
+        {([["rules", "防错规则"], ["memory", "战略记忆"], ["logs", "执行日志"], ["eval", "评测报告"], ["audit", "审计报表"], ["tools", "工具策略"], ["episodic", "情景记忆"], ["skills", "技能库"], ["agent", "Agent 管理"], ["lab", "练习实验室"], ["provenance", "文件溯源"]] as const).map(([id, label]) => (
           <button key={id} type="button" aria-label={`切换到${label}标签页`} aria-selected={tab === id} onClick={() => setTab(id)}
             className={cn("shrink-0 rounded-md px-3 py-1.5 text-xs transition-colors", tab === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground")}>
             {label}
@@ -232,6 +233,7 @@ export const AgentConsole: FC = () => {
           {tab === "skills" && <SkillsTab demoOn={demoOn} />}
           {tab === "agent" && <AgentManageTab />}
           {tab === "lab" && <PracticeLab />}
+          {tab === "provenance" && <ProvenanceTab />}
         </div>
 
         {/* V395: 运行时设置(沙箱级别/预设/自主级别) — 移到 tab 区下方, 打开即见 */}
