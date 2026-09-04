@@ -493,15 +493,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
 | 📡 **IM 接入** | 飞书 / 钉钉 / Telegram 机器人远程对话（状态/项目/评测/审批/告警） |
 | 🖥 **Computer Use** | 桌面控制：截屏 / 鼠标 / 键盘 / 窗口列表（Agent 可看屏幕操作） |
-| 🔀 **模型中立** | De---
-
-### 📌 版本亮点记录(V399+V400, 2026-08/09)
-
-- **开源生态融入(Rimagination 9+4 项)**: 扫描版 PDF 转换(mineru-go) / 研究选题打磨(good-question) / 23 种公文起草(gongwen-draft) / B站·抖音视频笔记(bili-note+dy-note) / 元分析第 17 方法(easymeta) / 英文文献 OA 回退(OpenAlex+Unpaywall) / 科学叙事(good-story) / 图表数字化(thu-digitizer) / 引文三维核验(citation-lab) / 引用网络算法(paper-atlas)
-- **Codex Harness 对齐(V400 差距清零)**: 预算/时间提醒注入(Rollout 50K / TokenBudget 6_144, 窗口去重) / Mid-turn 上下文压缩不终止 / Elicitation 澄清暂停协调 / Stop·PreToolUse·PostToolUse·PermissionRequest 钩子 / Guardian 拒绝熔断 / 世界状态 diff(增量注入) / Steer 运行中转向 / Mailbox 多代理双通道 / 审批缓存 / 评审会话隔离 / 共享上下文 LRU
-- **Agent 工具 65 个 / 技能注册 201 / 实证方法 17(含元分析+森林图) / 测试 621 全绿(CI 持续)**
-
-epSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
+| 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
 | 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
 | 📈 **评测体系** | 53 题双轨评测 0.884 / 177 单测 / 消融 21 算子 / CI+E2E |
