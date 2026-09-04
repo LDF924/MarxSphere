@@ -402,7 +402,7 @@ export const SCENARIOS: Scenario[] = [
     group: "系统自动化",
     key: "jobs",
     title: "知识库自动化",
-    desc: "17 类后台任务 · Dream Cycle 自整理",
+    desc: "多类后台任务 · Dream Cycle 自整理",
     hint: "Jobs 队列 · 入库/向量化/清洗/自整理",
     icon: <Database className="h-4.5 w-4.5" />,
     tag: "自动化",
