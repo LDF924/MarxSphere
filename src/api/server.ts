@@ -7845,6 +7845,11 @@ except Exception as e:
     const r = await skillAutoProposeService.reconcilePendingSkills();
     return { ok: true, ...r };
   });
+  // V404-21: 技能库近重复检测(bigram 分组, 供人工去重 — 不自动删)
+  app.get("/api/agent/skills/duplicates", async () => {
+    const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
+    return { ok: true, groups: await skillAutoProposeService.detectDuplicateSkills() };
+  });
   app.get("/api/agent/skills/health", async () => {
     const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
     return skillAutoProposeService.skillHealthCheck();

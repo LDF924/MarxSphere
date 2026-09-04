@@ -151,4 +151,37 @@ export async function skillHealthCheck(): Promise<{
   return { total, broken };
 }
 
-export const skillAutoProposeService = { runAutoPropose, isCoveredBySkills, skillHealthCheck, reconcilePendingSkills };
+export const skillAutoProposeService = { runAutoPropose, isCoveredBySkills, skillHealthCheck, reconcilePendingSkills, detectDuplicateSkills };
+
+/** V404-21: 技能库近重复检测 — bigram 相似度分组(供人工去重; 不自动删) */
+export async function detectDuplicateSkills(threshold = 0.5): Promise<Array<{ group: Array<{ id: number; name: string; status: string; consensus: number }>; sim: number }>> {
+  const { listSkills } = await import("./agent-skill-distill.js");
+  const all = await listSkills();
+  const bg = (t: string): Set<string> => {
+    const c = String(t || "").replace(/[\s\p{P}\p{S}]+/gu, "");
+    const s = new Set<string>();
+    for (let i = 0; i < c.length - 1; i++) s.add(c.slice(i, i + 2));
+    return s;
+  };
+  const groups: Array<{ group: Array<{ id: number; name: string; status: string; consensus: number }>; sim: number }> = [];
+  const used = new Set<number>();
+  for (let i = 0; i < all.length; i++) {
+    if (used.has(all[i].id)) continue;
+    const g = [{ id: all[i].id, name: all[i].name, status: all[i].status, consensus: all[i].consensus }];
+    used.add(all[i].id);
+    const bi = bg(all[i].name + all[i].whenToApply);
+    for (let j = i + 1; j < all.length; j++) {
+      if (used.has(all[j].id)) continue;
+      const bj = bg(all[j].name + all[j].whenToApply);
+      let hit = 0;
+      for (const b of bi) if (bj.has(b)) hit++;
+      const sim = hit / Math.max(1, Math.min(bi.size, bj.size));
+      if (sim > threshold) {
+        g.push({ id: all[j].id, name: all[j].name, status: all[j].status, consensus: all[j].consensus });
+        used.add(all[j].id);
+        if (g.length === 2) groups.push({ group: g, sim });
+      }
+    }
+  }
+  return groups;
+}
