@@ -468,7 +468,7 @@ export const EmpiricalResearchPanel: FC = () => {
                     ["regression", "回归生成", "基准/FE/聚类SE/稳健性/安慰剂/IV/事件研究"],
                     ["interpretation", "结果解释", "回归结果 → LLM 草稿 → 人工确认(解锁账本)"],
                     ["ledger", "证据账本", "系数→代码/数据表/原始数据/文献 四维绑定"],
-                    ["methods", "方法执行", "16 个计量方法沙箱执行"],
+                    ["methods", "方法执行", "计量方法沙箱执行(OLS/DiD/IV/RDD/PSM/SCM 等)"],
                   ] as const).map(([id, label, desc]) => (
                     <button key={id} onClick={() => { setActiveSection(id as SectionId); setFlowStep("data"); }} className="rounded-lg border p-2 text-left transition-colors hover:bg-accent">
                       <div className="text-[11px] font-semibold">{label}</div>
