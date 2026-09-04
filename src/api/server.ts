@@ -1068,6 +1068,52 @@ export function buildHttpServer() {
     ].filter(Boolean).join("\n");
     return { ok: true, prompt: parts };
   });
+  // ─── 论文写作工作台 API(2026-09-04: 大纲编辑器+分章生成+docx 导出) ───
+  // 分章生成: POST /api/paper-outline/chapter
+  const outlineChapterSchema = z.object({
+    nodeId: z.string().max(64),
+    title: z.string().min(1).max(200),
+    level: z.number().min(0).max(3),
+    topic: z.string().min(1).max(500),
+    thesis: z.string().max(1000).optional(),
+    prevContext: z.string().max(20_000).optional(),
+    outlineTree: z.string().max(10_000).optional(),
+    style: z.string().max(200).optional(),
+    model: z.string().max(128).optional(),
+  });
+  app.post("/api/paper-outline/chapter", async (request) => {
+    const body = outlineChapterSchema.parse(request.body);
+    const { generateChapter } = await import("../services/paper-outline-service.js");
+    return generateChapter(body);
+  });
+  // 论文要件(摘要/关键词/结论): POST /api/paper-outline/component
+  const outlineComponentSchema = z.object({
+    kind: z.enum(["abstract", "keywords", "conclusion"]),
+    topic: z.string().min(1).max(500),
+    thesis: z.string().max(1000).optional(),
+    sections: z.array(z.string()).max(30),
+    chapterContents: z.array(z.string()).max(30).optional(),
+    model: z.string().max(128).optional(),
+  });
+  app.post("/api/paper-outline/component", async (request) => {
+    const body = outlineComponentSchema.parse(request.body);
+    const { generateComponent } = await import("../services/paper-outline-service.js");
+    return generateComponent(body);
+  });
+  // docx 导出: POST /api/paper-outline/export { paperTitle, nodes }
+  const outlineExportSchema = z.object({
+    paperTitle: z.string().min(1).max(200),
+    nodes: z.array(z.unknown()).max(200),
+  });
+  app.post("/api/paper-outline/export", async (request, reply) => {
+    const body = outlineExportSchema.parse(request.body);
+    const { exportOutlineDocx } = await import("../services/paper-outline-service.js");
+    const result = await exportOutlineDocx({ paperTitle: body.paperTitle, nodes: body.nodes as never[] });
+    if (!result.ok || !result.base64) {
+      return reply.code(502).send({ error: { code: "OUTLINE_EXPORT_FAILED", message: result.error ?? "docx 导出失败" } });
+    }
+    return { ok: true, base64: result.base64 };
+  });
   // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───
   // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
   const forensicsImageSchema = z.object({
