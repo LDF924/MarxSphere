@@ -24,6 +24,7 @@
 | 13 | 路由诊断面(差距最小切口⑤) | ✅ | routing-log.routingDiagnostics + API + web/src/components/RoutingDiagPanel.tsx | ad098c3 |
 | 14 | SKILL.md 全量技能体检(机制5) | ✅ | skill-import-service.healthCheckAllSkills + API + AgentConsole 体检卡片 | 3579281 |
 | 15 | WriterLease/ChangeSet/锚点批注(最小) | ✅ | 迁移101 + src/services/doc-session-service.ts + API(acquire/apply/anchors) | (第四批末) |
+| 16 | 技能语义分类审计(做法vs记忆) | ✅ | skill-import-service.classifySkillSemantics + API semantic-audit | (第五批) |
 
 工具性: sync-open.mjs 支持 `--msg` 自定义功能名提交(4131629)。
 第二批(KV-cache/Dream/auto_propose/B5)为差距文档六大机制第 3/5/4(后半)/6 项, 全量单测 681 项通过; 第三批后 684 项; 第四批(WriterLease 等)后全量 688 项通过。
