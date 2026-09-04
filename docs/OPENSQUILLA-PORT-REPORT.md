@@ -26,6 +26,8 @@
 | 15 | WriterLease/ChangeSet/锚点批注(最小) | ✅ | 迁移101 + src/services/doc-session-service.ts + API(acquire/apply/anchors) | (第四批末) |
 | 16 | 技能语义分类审计(做法vs记忆) | ✅ | skill-import-service.classifySkillSemantics + API semantic-audit | (第五批) |
 | 17 | meta_invoke/meta_list 运行时触发 | ✅ | agent-tool-router(2 工具) + user_input 字段 LLM 抽取兜底 | (第六批) |
+| 18 | KV-cache 命中观测+sticky 实证 | ✅ | routing-decisions 落盘 cacheHitTokens + 诊断聚合 cacheRate; 实证 93.8% 命中/换模型归零 | (第七批) |
+| 19 | 体检引用解析三态化 | ✅ | resolveScriptRef found/env/missing(跨包+仓库根+占位符豁免) | (第七批) |
 
 工具性: sync-open.mjs 支持 `--msg` 自定义功能名提交(4131629)。
 第二批(KV-cache/Dream/auto_propose/B5)为差距文档六大机制第 3/5/4(后半)/6 项, 全量单测 681 项通过; 第三批后 684 项; 第四批(WriterLease 等)后全量 688 项通过。
