@@ -1525,6 +1525,134 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         }
       },
     },
+    // 2026-09-04 新功能页能力入对话: 格式评测(规则引擎+docx)
+    {
+      name: "format_eval", label: "格式评测", risk: "safe",
+      description: "论文格式智能评测: 文本→规则引擎 23 项清单(标题/摘要/关键词/章节/引文/参考文献/图表/文本规范) + LLM 审校。功能页: 科研中心→格式智能评测",
+      params: {
+        text: { type: "string", required: true, desc: "论文全文文本" },
+        templateId: { type: "string", desc: "模板(默认 undergrad-thesis; master-thesis/phd-thesis/title-paper/tech-report)" },
+        llm: { type: "boolean", desc: "是否 LLM 审校(默认 true, 慢)" },
+      },
+      run: async (a) => {
+        try {
+          const base = `http://127.0.0.1:${process.env.HTTP_PORT || 4173}`;
+          const res = await fetch(`${base}/api/format-eval/check`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: String(a.text || ""), templateId: String(a.templateId || "undergrad-thesis"), llm: a.llm !== false }),
+          });
+          if (!res.ok) return `（格式评测失败: HTTP ${res.status}）`;
+          const d: any = await res.json();
+          const s = d.stats ?? {};
+          const flagged = (d.ruleStatuses ?? []).filter((r: any) => r.status !== "pass");
+          const lines = [`【格式评测】${s.score} 分 · 通过 ${s.passed}/${s.totalRules} · 违规 ${s.errors} 存疑 ${s.warnings} 提示 ${s.infos}`];
+          for (const r of flagged.slice(0, 8)) {
+            lines.push(`- [${r.status}] ${r.name}: ${r.message ?? ""}${r.suggestion ? ` → ${r.suggestion}` : ""}`);
+          }
+          if ((d.llmFindings ?? []).length > 0) {
+            lines.push(`LLM 审校 ${d.llmFindings.length} 条: ${(d.llmFindings as any[]).slice(0, 3).map((f) => `[${f.category}] ${f.message}`).join("; ")}`);
+          }
+          return lines.join("\n");
+        } catch (e: any) {
+          return `（格式评测异常: ${String(e?.message || e).slice(0, 200)}）`;
+        }
+      },
+    },
+    // 论文取证: 图像查重 + 数值取证(integrity-auditor 7 脚本)
+    {
+      name: "forensics_scan", label: "论文取证", risk: "review",
+      description: "论文完整性取证: 图片查重(≥2 张, 检测复用/翻转) / 数值取证(xlsx 尾数/量级/跨表聚合)。需人工审批。功能页: 科研中心→引文核验底部",
+      params: {
+        mode: { type: "string", required: true, desc: "image(图片查重, 需传 base64Images) / decimal|magnitude|aggregate(数值, 需传 base64Files)" },
+        base64Images: { type: "string", desc: "图片数组 JSON: [{name, base64}], 至少 2 张" },
+        base64Files: { type: "string", desc: "数值文件数组 JSON: [{name, base64}]" },
+      },
+      run: async (a) => {
+        try {
+          const base = `http://127.0.0.1:${process.env.HTTP_PORT || 4173}`;
+          const mode = String(a.mode || "");
+          if (mode === "image") {
+            const images = JSON.parse(String(a.base64Images || "[]")) as Array<{ name: string; base64: string }>;
+            if (images.length < 2) return "（图片查重至少 2 张图）";
+            const res = await fetch(`${base}/api/forensics/image-dup`, {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ images }),
+            });
+            const d: any = await res.json();
+            if (!res.ok) return `（取证失败: ${d?.error?.message ?? res.status}）`;
+            const flagged = (d.raw ?? "").split("\n").filter((l: string) => l.includes("★") || /duplicate|similar/i.test(l));
+            return flagged.length > 0 ? `【图像查重】发现 ${flagged.length} 条重复/相似:\n${flagged.slice(0, 5).join("\n")}` : "【图像查重】未发现重复(全部通过)";
+          }
+          const files = JSON.parse(String(a.base64Files || "[]")) as Array<{ name: string; base64: string }>;
+          if (files.length === 0) return "（数值取证需文件）";
+          const res = await fetch(`${base}/api/forensics/numeric`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files, mode: ["decimal", "magnitude", "aggregate"].includes(mode) ? mode : "decimal" }),
+          });
+          const d: any = await res.json();
+          if (!res.ok) return `（取证失败: ${d?.error?.message ?? res.status}）`;
+          const flagged = (d.raw ?? "").split("\n").filter((l: string) => /FLAG|flag|★|可疑|不一致|Warning/i.test(l));
+          return flagged.length > 0 ? `【数值取证 ${mode}】发现 ${flagged.length} 处疑似:\n${flagged.slice(0, 8).join("\n")}` : `【数值取证 ${mode}】未发现异常`;
+        } catch (e: any) {
+          return `（论文取证异常: ${String(e?.message || e).slice(0, 200)}）`;
+        }
+      },
+    },
+    // 溯源查询: 文件留痕/版本历史/复现提示
+    {
+      name: "provenance_query", label: "文件溯源", risk: "safe",
+      description: "查询 agent 写文件留痕(路径/版本/哈希/会话)或单文件版本历史 + 生成复现提示。功能页: 系统管理→Agent控制台→文件溯源",
+      params: {
+        path: { type: "string", desc: "单文件路径(查历史+复现) 或留痕过滤" },
+        limit: { type: "number", desc: "返回条数(默认 10)" },
+        reproduce: { type: "boolean", desc: "true 时生成该文件复现提示" },
+      },
+      run: async (a) => {
+        try {
+          const base = `http://127.0.0.1:${process.env.HTTP_PORT || 4173}`;
+          const q = new URLSearchParams();
+          if (a.path) q.set("path", String(a.path));
+          q.set("limit", String(Math.min(Number(a.limit) || 10, 50)));
+          const endpoint = a.reproduce ? "/api/provenance/reproduce" : "/api/provenance";
+          const res = await fetch(`${base}${endpoint}?${q}`, { headers: { "Content-Type": "application/json" } });
+          if (!res.ok) return `（溯源查询失败: HTTP ${res.status}）`;
+          const d: any = await res.json();
+          if (a.reproduce) return d.prompt ? `【复现提示】\n${d.prompt}` : `（${d.note ?? "无复现信息"}）`;
+          const recs = d.records ?? [];
+          if (recs.length === 0) return "（暂无文件留痕记录）";
+          return `【文件溯源】${recs.length} 条记录:\n` + (recs as any[]).slice(0, 10).map((r: any) => `- v${r.version} ${r.path} [${r.tool}/${r.op}] ${r.contentHash}${r.runId ? ` (任务:${r.runId.slice(0, 8)})` : ""} @${r.ts?.slice(0, 19)}`).join("\n");
+        } catch (e: any) {
+          return `（溯源查询异常: ${String(e?.message || e).slice(0, 200)}）`;
+        }
+      },
+    },
+    // git 无痕快照: 拍快照 + 历史
+    {
+      name: "snapshot_take", label: "快照管理", risk: "review",
+      description: "git 无痕快照: 专用 ref 提交工作区(不碰分支) + 查看历史。功能页: 系统管理→Agent控制台→文件溯源→📸",
+      params: {
+        action: { type: "string", required: true, desc: "take(拍快照) / history(看历史)" },
+        label: { type: "string", desc: "快照标签" },
+      },
+      run: async (a) => {
+        try {
+          const base = `http://127.0.0.1:${process.env.HTTP_PORT || 4173}`;
+          const action = String(a.action || "history");
+          if (action === "take") {
+            const res = await fetch(`${base}/api/snapshot`, {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: String(a.label || "agent 快照") }),
+            });
+            const d: any = await res.json();
+            if (!res.ok) return `（快照失败: ${d?.error?.message ?? res.status}）`;
+            return d.files ? `✅ 快照 ${d.commit}(${d.files} 文件变更, ${d.ref})` : "（无未提交变更, 未产生新快照）";
+          }
+          const res = await fetch(`${base}/api/snapshot/history`);
+          const d: any = await res.json();
+          const hist = d.history ?? [];
+          return hist.length === 0 ? "（暂无快照历史）" : `【快照历史】\n` + hist.slice(0, 8).map((h: any) => `- ${h.commit} ${h.msg}`).join("\n");
+        } catch (e: any) {
+          return `（快照异常: ${String(e?.message || e).slice(0, 200)}）`;
+        }
+      },
+    },
     // P1-2: 沙箱文件工具 — 受限目录内读写（agent_workspace 固定根）
     // 拆两工具: file_read 只读直接执行; file_write 写/删需人工审批（risk=review 由 executeAgentTool 前置拦截）
     {
