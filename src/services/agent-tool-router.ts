@@ -2045,6 +2045,47 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
       }
     },
   });
+  // V404-22: doc_edit — agent 原子编辑知识库文档(WriterLease 协议: 持锁→apply→自动释放)
+  tools.push({
+    name: "doc_edit", label: "文档编辑", risk: "safe",
+    description: "原子编辑知识库文档(文本替换): 自动持 WriterLease→应用变更(乐观锁冲突返回最新版可重试)→释放。需先读文档拿到内容与偏移",
+    params: {
+      documentId: { type: "string", required: true, desc: "文档 id(uuid)" },
+      summary: { type: "string", desc: "变更说明(审计)" },
+      ops: { type: "string", required: true, desc: "操作 JSON 数组, 如 [{\"op\":\"replace\",\"start\":10,\"end\":20,\"text\":\"新文本\"}] (偏移相对原文档)" },
+    },
+    run: async (a) => {
+      const documentId = String(a.documentId || "").trim();
+      const opsRaw = String(a.ops || "").trim();
+      if (!documentId || !opsRaw) return "（documentId 与 ops 必填）";
+      try {
+        const ops = JSON.parse(opsRaw);
+        if (!Array.isArray(ops) || ops.length === 0 || ops.some((o) => !o || o.op !== "replace" || typeof o.start !== "number" || typeof o.end !== "number")) {
+          return "（ops 格式错误: [{op:\"replace\",start,end,text}]）";
+        }
+        const { acquireWriterLease, applyChangeSet, releaseWriterLease } = await import("./doc-session-service.js");
+        const holder = `agent-${Date.now().toString(36)}`;
+        const lease = await acquireWriterLease(documentId, holder);
+        if (!lease.ok) return `（编辑锁失败: ${lease.error} — 稍后重试或等持有者释放）`;
+        try {
+          const r = await applyChangeSet({
+            documentId, holder, token: lease.token!, summary: a.summary !== undefined ? String(a.summary) : "agent doc_edit",
+            ops: ops.map((o) => ({ op: "replace" as const, start: Number(o.start), end: Number(o.end), text: String(o.text ?? "") })),
+            actor: "agent",
+          });
+          if (!r.ok) {
+            if (r.currentVersion !== undefined) return `（版本冲突: 基准已过期(当前 v${r.currentVersion}) — 请先重读文档再基于新版重算偏移重试）`;
+            return `（编辑失败: ${r.error}）`;
+          }
+          return `【文档已更新】v${r.newVersion} (变更集 ${r.changeSetId?.slice(0, 8)}…) — 内容已原子应用并写入版本历史`;
+        } finally {
+          await releaseWriterLease(documentId, holder);
+        }
+      } catch (e: any) {
+        return `（doc_edit 失败: ${String(e?.message || e).slice(0, 200)}）`;
+      }
+    },
+  });
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);
   if (pdfConvertTool) tools.push(pdfConvertTool); // V399: mineru-go 双模式转换
