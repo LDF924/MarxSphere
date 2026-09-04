@@ -48,8 +48,8 @@ describe("routing-log", () => {
     expect(estimateContextTokens(msgs)).toBe(100); // 240/2.4
   });
 
-  it("logRoutingDecision: 记录决策 → 文件含完整字段", () => {
-    logRoutingDecision({ model: "deepseek-v4-flash", role: "plan", contextTokens: 3000, attempts: ["deepseek-v4-flash", "qwen-plus"], retried: true, ok: true, ms: 850, purpose: "plan_steps" });
+  it("logRoutingDecision: 记录决策 → 文件含完整字段(cache 命中也在内)", () => {
+    logRoutingDecision({ model: "deepseek-v4-flash", role: "plan", contextTokens: 3000, attempts: ["deepseek-v4-flash", "qwen-plus"], retried: true, ok: true, ms: 850, purpose: "plan_steps", cacheHitTokens: 1200, promptTokens: 4000 });
     logRoutingDecision({ model: "deepseek-v4-flash", role: "reflect", ok: false, errorType: "timeout", ms: 1200 });
     const lines = readLines();
     expect(lines).toHaveLength(2);
@@ -59,6 +59,8 @@ describe("routing-log", () => {
     expect(lines[0].role).toBe("plan");
     expect(lines[0].contextTokens).toBe(3000);
     expect(lines[0].ok).toBe(true);
+    expect(lines[0].cacheHitTokens).toBe(1200);
+    expect(lines[0].promptTokens).toBe(4000);
     expect(lines[1].ok).toBe(false);
     expect(lines[1].errorType).toBe("timeout");
   });
