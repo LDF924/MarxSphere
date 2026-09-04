@@ -156,6 +156,12 @@ export function startDreamDailyScheduler(): void {
     } catch (e: any) {
       console.warn(`[dream] 每日巩固失败: ${String(e?.message || e).slice(0, 120)}`);
     }
+    // V404-19: 顺带裁剪路由决策日志(>5MB 按 7 天; 零额外定时器)
+    try {
+      const { trimRoutingLog } = await import("./routing-log.js");
+      const removed = trimRoutingLog();
+      if (removed > 0) console.log(`[dream] V404-19 路由日志裁剪: 移除 ${removed} 条过期记录`);
+    } catch { /* 裁剪失败忽略 */ }
   };
   setTimeout(() => { void once(); }, 5000);
   setInterval(() => { void once(); }, DAY_MS);
