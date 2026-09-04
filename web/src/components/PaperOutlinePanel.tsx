@@ -93,6 +93,8 @@ export function PaperOutlinePanel() {
   const [genBusy, setGenBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportB64, setExportB64] = useState("");
+  const [pptxB64, setPptxB64] = useState("");
+  const [pptxBusy, setPptxBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nodes)); } catch { /* 忽略 */ } }, [nodes]);
@@ -219,6 +221,21 @@ export function PaperOutlinePanel() {
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
     finally { setExportBusy(false); }
   };
+  const exportPptx = async () => {
+    if (nodes.length === 0) { setMsg("大纲为空, 无法导出"); return; }
+    setPptxBusy(true); setMsg("");
+    try {
+      const res = await fetch("/api/paper-outline/export-pptx", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperTitle: paperTitle || "未命名论文", nodes }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d?.error?.message ?? `导出失败: HTTP ${res.status}`); return; }
+      setPptxB64(d.base64 ?? "");
+      setMsg("✅ PPT 已生成, 点击下方按钮下载");
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    finally { setPptxBusy(false); }
+  };
 
   return (
     <section className="h-full overflow-y-auto">
@@ -336,11 +353,23 @@ export function PaperOutlinePanel() {
             {exportBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {exportBusy ? "导出中…" : "导出 docx"}
           </button>
+          <button type="button" onClick={exportPptx} disabled={pptxBusy || nodes.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-500 px-4 py-2 text-xs font-medium text-white hover:bg-violet-400 disabled:opacity-40">
+            {pptxBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {pptxBusy ? "导出中…" : "导出 PPT"}
+          </button>
           {exportB64 && (
             <a href={`data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${exportB64}`}
               download={`${paperTitle || "论文"}.docx`}
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30">
               <Download className="h-3.5 w-3.5" /> 下载 {paperTitle || "论文"}.docx
+            </a>
+          )}
+          {pptxB64 && (
+            <a href={`data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,${pptxB64}`}
+              download={`${paperTitle || "论文"}.pptx`}
+              className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/20 px-3 py-2 text-xs font-medium text-violet-300 hover:bg-violet-500/30">
+              <Download className="h-3.5 w-3.5" /> 下载 {paperTitle || "论文"}.pptx
             </a>
           )}
           {msg && <span className="text-[11px] text-muted-foreground">{msg}</span>}

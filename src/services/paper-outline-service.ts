@@ -234,3 +234,77 @@ print(json.dumps({"ok": True, "base64": base64.b64encode(buf.getvalue()).decode(
     try { rmSync(tmpScript, { force: true }); } catch { /* 忽略 */ }
   }
 }
+
+/** 导出 PPTX: 大纲+内容 → 学术演示稿(python-pptx): 封面+每章一页(标题+要点) */
+export async function exportOutlinePptx(input: {
+  paperTitle: string;
+  nodes: OutlineNode[];
+  author?: string;
+}): Promise<{ ok: boolean; base64?: string; error?: string }> {
+  const items = flattenForDocx(input.nodes);
+  const script = `
+import sys, json, base64, io
+from pptx import Presentation
+from pptx.util import Pt, Inches
+
+items = ${JSON.stringify(items)}
+paper_title = ${JSON.stringify(input.paperTitle)}
+author = ${JSON.stringify(input.author ?? "")}
+
+prs = Presentation()
+prs.slide_width = Inches(13.333)
+prs.slide_height = Inches(7.5)
+
+def add_title_slide():
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = paper_title
+    if author:
+        slide.placeholders[1].text = author
+
+def add_content_slide(title, content):
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = title
+    body = slide.placeholders[1].text_frame
+    body.clear()
+    # 抽要点: 每自然段或句号断句为 bullet
+    paras = [p.strip() for p in content.split("\\n") if p.strip()]
+    bullets = []
+    for p in paras:
+        if p.startswith("#"):
+            continue
+        # 按句号拆长段, 保留前 3 句
+        sentences = [s + "。" for s in p.split("。") if len(s.strip()) > 10][:3]
+        bullets.extend(sentences)
+        if len(bullets) >= 6:
+            break
+    first = True
+    for b in bullets[:6]:
+        para = body.paragraphs[0] if first else body.add_paragraph()
+        first = False
+        para.text = b.strip()
+        para.level = 0
+        para.font.size = Pt(18)
+
+add_title_slide()
+for it in items:
+    content = it["content"] or ""
+    if content.strip():
+        add_content_slide(it["title"], content)
+
+buf = io.BytesIO()
+prs.save(buf)
+print(json.dumps({"ok": True, "base64": base64.b64encode(buf.getvalue()).decode()}))
+`;
+  const tmpScript = path.join(os.tmpdir(), `outline-pptx-${Date.now()}.py`);
+  try {
+    writeFileSync(tmpScript, script, "utf8");
+    const { stdout } = await execFileAsync(pythonBin(), [tmpScript], { timeout: 60_000, windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+    const d = JSON.parse(stdout);
+    if (d.ok && d.base64) return { ok: true, base64: d.base64 };
+    return { ok: false, error: "导出失败: 无输出" };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.stderr || e?.message || e).slice(0, 300) };
+  } finally {
+    try { rmSync(tmpScript, { force: true }); } catch { /* 忽略 */ }
+  }
+}
