@@ -81,7 +81,7 @@ export function BatchUploadPanel({ sourceId }: { sourceId?: string }) {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sourceId: sourceId || undefined,
-            fileName: item.file.name,
+            fileName: `${item.file.name.replace(/\.[^.]+$/, "")}.md`,  // upload 限 .md/.txt, 标题保留原名
             title: item.file.name.replace(/\.[^.]+$/, ""),
             content: r!.text.slice(0, 200_000),
             extract: true,
