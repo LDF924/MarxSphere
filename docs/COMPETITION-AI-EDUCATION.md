@@ -29,7 +29,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 - **任务闭环**：从「作业辅导」到「错题变式训练」到「学情更新」再到「学习计划动态调整」，是一条跨服务、多轮、有状态的任务链路；
 - **知识增强**：课程辅导必须检索知识库（PG `source_chunks` 切片 + 四源混合检索）并**带引用溯源**，而不是模型直接生成；
 - **记忆与个性化**：`answer_history` / `knowledge_mastery` 表 + 学生记忆召回（recallStudentMemory）支撑「因材施教」；
-- **工具调用**：52 步推理链路（问题分类→四路分调→多源检索→假设→评估→反思）+ 92 工具 Agent 编排（含 `view_education_profile` 学情画像工具）；
+- **工具调用**：52 步推理链路（问题分类→四路分调→多源检索→假设→评估→反思）+ 87 工具 Agent 编排（含 `view_education_profile` 学情画像工具）；
 - **多轮交互**：学习陪伴、错题本、学习计划跟踪均为多轮有状态对话。
 
 ---
@@ -171,7 +171,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
         → PG 词法 → 超边增强 → 融合 → 假设 → 评估 → 反思(自愈)
      → 四源混合检索 (search-service.ts RRF)
         SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法
-     → AI Agent 编排 (92 工具 · 5 层安全 · 5 层记忆)
+     → AI Agent 编排 (87 工具 · 5 层安全 · 5 层记忆)
      → 教育服务 (六大能力 + 自适应四层 + 作业辅导/诊断/备课/陪伴)
 数据: PostgreSQL 16 + pgvector(1024d) · Neo4j(Graphiti/Cognee) · LanceDB
 ```
@@ -197,9 +197,9 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 | Cognee 切片 | 段落级 HYBRID 检索 | `cognee_search`，Neo4j 11003 + LanceDB 1024d |
 | PG 向量/词法 | 教育知识库切片（`source_chunks` ILIKE + pgvector） | `retrieveChunks`（教育服务专用，topK 15） |
 
-### 3.4 Agent 编排（92 工具 · 5 层安全 · 5 层记忆）
+### 3.4 Agent 编排（87 工具 · 5 层安全 · 5 层记忆）
 
-- **92 工具**：70 个基础 Agent 工具（`sag_search / sag_reason / web_search / run_code / image_analyze / audio_transcribe / empirical_analysis / …`，注册于 [agent-tool-router.ts](../src/services/agent-tool-router.ts) `buildAgentTools`）+ 18 个视图工具（含 **`view_education_profile` 学情画像工具** → `getStudentProfile`）+ 插件工具；风险分级 safe / review / deny（`DENY_TOOLS`）；
+- **87 工具**：65 个基础 Agent 工具（`sag_search / sag_reason / web_search / run_code / image_analyze / audio_transcribe / empirical_analysis / …`，注册于 [agent-tool-router.ts](../src/services/agent-tool-router.ts) `buildAgentTools`）+ 18 个视图工具（含 **`view_education_profile` 学情画像工具** → `getStudentProfile`）+ 插件工具；风险分级 safe / review / deny（`DENY_TOOLS`）；
 - **5 层安全**：① Guardian 策略文件（风险×授权 → allow/deny/review）② 3 级沙箱（只读/工作区写/全量）③ 网络审批（SSRF 白名单拒绝）④ 审批门（四态 + 自主级别 suggest/auto-edit/full-auto）⑤ 凭证隔离（`maskCredentials`）；
 - **5 层记忆**：① 情景记忆（研究轨迹）② 战略记忆（任务目标约束）③ 技能蒸馏（EDV 评审）④ 防错规则（反馈沉淀）⑤ 语料库（文本/概念/逻辑/句式四子库）。
 
@@ -517,7 +517,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 | **示例课程** | 2 门示范课程（如《政治经济学批判导言》《价值规律》）完整切片：`source_chunks` 入库脚本 + 知识页 + 备课教案 | 教师/机构 | `scripts/seed-edu-courses.ts` 一键入库 |
 | **教学案例库** | 作业辅导/学情诊断/备课典型用例 10+ 条（含苏格拉底对话、分层教案、诊断报告样例） | 教研团队 | `data/education-cases.json` + 检索入口 |
 | **模拟学情数据** | 匿名学生作答序列（预设薄弱点/掌握度轨迹） | 评测/演示/教研 | `data/edu-sim-student*.json`（与 5.2 评测复用） |
-| **工具组件** | `view_education_profile` 学情画像工具 + 教育服务 33 路由 API 文档 | 开发者 | 复用现有 92 工具体系，文档化 |
+| **工具组件** | `view_education_profile` 学情画像工具 + 教育服务 33 路由 API 文档 | 开发者 | 复用现有 87 工具体系，文档化 |
 
 **复用协议**：教育模板/示例课程/教学案例库以本项目 **AGPL v3 + 商业授权** 双许可开放；模板与案例数据不涉学生个人信息（均为模拟数据），可直接复用与二次开发。
 
@@ -546,7 +546,7 @@ AI+教育赛题要求围绕**个性化学习与教学辅助**构建教育 Agent�
 | [src/services/study-companion-service.ts](../src/services/study-companion-service.ts) | 学习陪伴（V388） |
 | [src/services/inference-service.ts](../src/services/inference-service.ts) | 52 步推理链路 |
 | [src/services/search-service.ts](../src/services/search-service.ts) | 四源混合检索 RRF 融合 |
-| [src/services/agent-tool-router.ts](../src/services/agent-tool-router.ts) | Agent 工具注册（92 工具） |
+| [src/services/agent-tool-router.ts](../src/services/agent-tool-router.ts) | Agent 工具注册（87 工具） |
 | [src/services/agent-education.ts](../src/services/agent-education.ts) | **教育专属 Agent 编排层（§3.5，复赛冲刺期规划）** |
 | [src/services/cognitive-diagnosis.ts](../src/services/cognitive-diagnosis.ts) | **BKT 认知诊断（§3.8，复赛冲刺期规划）** |
 | [src/services/knowledge-graph-edu.ts](../src/services/knowledge-graph-edu.ts) | **知识点先修图 + 拓扑路径规划（§3.8，复赛冲刺期规划）** |
