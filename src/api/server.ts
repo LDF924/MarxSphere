@@ -1114,6 +1114,21 @@ export function buildHttpServer() {
     }
     return { ok: true, base64: result.base64 };
   });
+  // PPTX 导出: POST /api/paper-outline/export-pptx
+  const outlineExportPptxSchema = z.object({
+    paperTitle: z.string().min(1).max(200),
+    nodes: z.array(z.unknown()).max(200),
+    author: z.string().max(200).optional(),
+  });
+  app.post("/api/paper-outline/export-pptx", async (request, reply) => {
+    const body = outlineExportPptxSchema.parse(request.body);
+    const { exportOutlinePptx } = await import("../services/paper-outline-service.js");
+    const result = await exportOutlinePptx({ paperTitle: body.paperTitle, nodes: body.nodes as never[], author: body.author });
+    if (!result.ok || !result.base64) {
+      return reply.code(502).send({ error: { code: "OUTLINE_PPTX_FAILED", message: result.error ?? "pptx 导出失败" } });
+    }
+    return { ok: true, base64: result.base64 };
+  });
   // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───
   // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
   const forensicsImageSchema = z.object({
