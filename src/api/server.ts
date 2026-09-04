@@ -6146,14 +6146,15 @@ except Exception as e:
 
   // ═══ V404-4: MetaSkill DAG(声明式步骤编排试点) — 列表/定义/执行/进度/输入提交 ═══
   app.get("/api/meta-skill/list", async () => {
-    const { META_SKILLS } = await import("../services/meta-skill-defs.js");
-    return { skills: META_SKILLS.map((s) => ({ id: s.id, name: s.name, description: s.description, steps: s.steps.map((x) => ({ id: x.id, kind: x.kind, label: x.label })) })) };
+    const { loadAllMetaSkills } = await import("../services/meta-skill-defs.js");
+    const skills = await loadAllMetaSkills(); // V404-10: 静态 + DB 动态(人工审 accept)合并
+    return { skills: skills.map((s) => ({ id: s.id, name: s.name, description: s.description, steps: s.steps.map((x) => ({ id: x.id, kind: x.kind, label: x.label })) })) };
   });
   app.post("/api/meta-skill/run", async (request, reply) => {
     const { runMetaSkill } = await import("../services/meta-skill-runtime.js");
-    const { getMetaSkill } = await import("../services/meta-skill-defs.js");
+    const { getMetaSkillAsync } = await import("../services/meta-skill-defs.js");
     const body = request.body as { skillId?: string; input?: string; model?: string };
-    const def = getMetaSkill(String(body.skillId || ""));
+    const def = await getMetaSkillAsync(String(body.skillId || "")); // V404-10: 动态 DAG 可跑
     if (!def) return reply.code(404).send({ error: "MetaSkill 不存在", code: "AGENT_NOT_FOUND" });
     if (!body.input?.trim()) return reply.code(400).send({ error: "input 必填(综述主题等)", code: "AGENT_BAD_REQUEST" });
     // 后台执行; 返回 runId, 进度走 /api/meta-skill/progress 轮询(user_input 阶段前端弹表单)
@@ -6173,6 +6174,34 @@ except Exception as e:
     const { resumeMetaSkillInput } = await import("../services/meta-skill-runtime.js");
     const body = request.body as { runId?: string; values?: Record<string, string> };
     const r = resumeMetaSkillInput(String(body.runId || ""), body.values || {});
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true };
+  });
+
+  // ═══ V404-10: auto_propose→MetaSkill DAG 衔接 — 技能组→DAG 提案(隔离区人工审)→accept 注册可跑 ═══
+  app.post("/api/meta-skill/propose-dag", async (request, reply) => {
+    const { proposeMetaSkillDag } = await import("../services/meta-skill-propose-service.js");
+    const body = request.body as { goal?: string; seenCount?: number; skillIds?: number[] };
+    if (!body.goal?.trim()) return reply.code(400).send({ error: "goal 必填(高频任务主题)", code: "AGENT_BAD_REQUEST" });
+    const p = await proposeMetaSkillDag(String(body.goal).trim(), Number(body.seenCount) || 1, body.skillIds);
+    if (!p) return reply.code(500).send({ error: "DAG 组装失败(技能库空/LLM 解析失败)", code: "AGENT_INTERNAL_ERROR" });
+    return { ok: true, proposal: p };
+  });
+  app.get("/api/meta-skill/proposals", async () => {
+    const { listDagProposals } = await import("../services/meta-skill-propose-service.js");
+    return { proposals: listDagProposals() };
+  });
+  app.post("/api/meta-skill/proposals/accept", async (request, reply) => {
+    const { acceptDagProposal } = await import("../services/meta-skill-propose-service.js");
+    const body = request.body as { id?: string };
+    const r = await acceptDagProposal(String(body.id || ""));
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true, dagId: r.dagId };
+  });
+  app.post("/api/meta-skill/proposals/reject", async (request, reply) => {
+    const { rejectDagProposal } = await import("../services/meta-skill-propose-service.js");
+    const body = request.body as { id?: string };
+    const r = rejectDagProposal(String(body.id || ""));
     if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
     return { ok: true };
   });
