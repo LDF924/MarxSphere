@@ -65,7 +65,7 @@
 
 ## 4. AI Agent 编排
 
-- **87 通用工具**（65 Agent + 22 视图）+ 教育工具集（112 路由）
+- **88 通用工具**（66 Agent + 22 视图）+ 教育工具集（112 路由）
 - **5 层安全**：Guardian 策略(拒绝熔断) / 3 级沙箱 / 网络审批(SSRF) / 审批门(三级链: Hook→Guardian→User + 缓存) / 凭证隔离
 - **5 层记忆**：情景 / 战略 / 技能蒸馏 / 防错规则 / 语料库
 - **插件系统**：A1 工具插件（`agent_plugins` 表）/ A2 服务接口（Llm/Sandbox/Guard Provider）/ A3 前端注册表（`viewRegistry.tsx`）
