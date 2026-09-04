@@ -1089,6 +1089,11 @@ async function reflectOnTask(task: AgentTaskRecord, failures: string[], reminder
   }
   try {
     const model = resolveModelAlias(getRoleModel("plan"));
+    // V404-6: 登记 reflect 实际档位(plan 角色=standard/strong) — 同任务后续步骤不降档保 prompt cache
+    try {
+      const { noteTierUsed, tierOfModel } = await import("./agent-model-router.js");
+      noteTierUsed(task.id, tierOfModel(model));
+    } catch { /* sticky 失败不阻塞 */ }
     const r = await callLlm({
       model,
       // V396-14: reflect 调用采集 usage
@@ -1148,6 +1153,11 @@ async function summarizeResult(goal: string, verifiedSteps: AgentTaskStep[]): Pr
 async function planWithLlm(goal: string, previousIssues: string[], contextHint?: string, taskId?: string): Promise<AgentTaskStep[]> {
   // 2026-08-07 模型注册表：任务规划用 plan 角色（用户选择生效）
   const model = resolveModelAlias(getRoleModel("plan"));
+  // V404-6: 登记规划档位(plan=standard/strong) — 任务起点即锁定档位下限, 后续工具步骤不降档保 cache
+  try {
+    const { noteTierUsed, tierOfModel } = await import("./agent-model-router.js");
+    if (taskId) noteTierUsed(taskId, tierOfModel(model));
+  } catch { /* sticky 失败不阻塞 */ }
   // V391(P1-1): 动态工具链路由 — 按目标自动选链，规划时提示 LLM 使用对应工具类型
   const chain = routeToolChain(goal);
   const chainHint = `\n已路由工具链: ${chain.label}（${chain.tools}）\n请优先安排 ${chain.label} 相关步骤类型。`;
