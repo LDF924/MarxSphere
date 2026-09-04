@@ -2,7 +2,7 @@
 // BatchUploadPanel.tsx — 批量文件上传+解析+入库(PDF/Word/Excel/PPT)
 // 流程: ①拖拽/多选文件 ②批量解析预览(每份文本可看可弃) ③勾选→入库(逐文件 upload, 建索引可检索)
 import { useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, Database, FileUp, Loader2, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Database, FileUp, Loader2, ScanText, Trash2, X } from "lucide-react";
 
 interface ParsedItem {
   fileName: string;
@@ -32,6 +32,7 @@ export function BatchUploadPanel({ sourceId }: { sourceId?: string }) {
   const [storeMsg, setStoreMsg] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [mode, setMode] = useState<"p2o" | "direct">("p2o"); // p2o=深度加工(PDF2Obsidian) direct=直接入库原文PDF
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = async (list: FileList | null) => {
@@ -69,29 +70,45 @@ export function BatchUploadPanel({ sourceId }: { sourceId?: string }) {
 
   const storeSelected = async () => {
     const idxs = results.map((r, i) => (r && r.ok ? i : -1)).filter((i) => i >= 0 && !stored.has(i));
-    if (idxs.length === 0) { setStoreMsg("先解析且勾选要入库的文件"); return; }
-    setStoring(true); setStoreMsg(`入库中(0/${idxs.length})…`);
+    if (idxs.length === 0) { setStoreMsg("先解析且勾选要处理的文件"); return; }
+    setStoring(true); setStoreMsg(`处理中(0/${idxs.length})…`);
     let ok = 0;
     for (let k = 0; k < idxs.length; k++) {
       const i = idxs[k];
       const item = items[i];
       const r = results[i];
       try {
-        const res = await fetch("/api/documents/upload", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sourceId: sourceId || undefined,
-            fileName: `${item.file.name.replace(/\.[^.]+$/, "")}.md`,  // upload 限 .md/.txt, 标题保留原名
-            title: item.file.name.replace(/\.[^.]+$/, ""),
-            content: r!.text.slice(0, 200_000),
-            extract: true,
-          }),
-        });
-        if (res.ok || res.status === 201) { ok++; setStored((prev) => new Set(prev).add(i)); }
-        setStoreMsg(`入库中(${k + 1}/${idxs.length})…`);
+        if (mode === "p2o") {
+          // ① 走 PDF2Obsidian 深度加工管线(仅 PDF; 非 PDF 提示跳过)
+          if (!item.file.name.toLowerCase().endsWith(".pdf")) {
+            setStoreMsg(`跳过 ${item.file.name}(P2O 仅支持 PDF)`);
+            continue;
+          }
+          const res = await fetch("/api/p2o/tasks", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: item.file.name, fileBase64: item.base64 }),
+          });
+          if (res.ok || res.status === 201) { ok++; setStored((prev) => new Set(prev).add(i)); }
+        } else {
+          // ② 直接入库原文(PDF 解析文本 → uploadDocument 建索引; 原 PDF 落盘由 upload 产物留)
+          const res = await fetch("/api/documents/upload", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceId: sourceId || undefined,
+              fileName: `${item.file.name.replace(/\.[^.]+$/, "")}.md`,  // upload 限 .md/.txt, 标题保留原名
+              title: item.file.name.replace(/\.[^.]+$/, ""),
+              content: r!.text.slice(0, 200_000),
+              extract: true,
+            }),
+          });
+          if (res.ok || res.status === 201) { ok++; setStored((prev) => new Set(prev).add(i)); }
+        }
+        setStoreMsg(`处理中(${k + 1}/${idxs.length})…`);
       } catch { /* 单个失败继续 */ }
     }
-    setStoreMsg(`✅ 入库完成: ${ok}/${idxs.length} 篇(可在文献库检索)`);
+    setStoreMsg(mode === "p2o"
+      ? `✅ 已提交 ${ok}/${idxs.length} 篇到 P2O 管线(可在「文献管理→PDF2Obsidian」看进度)`
+      : `✅ 入库完成: ${ok}/${idxs.length} 篇(可在文献库检索)`);
     setStoring(false);
   };
 
@@ -101,6 +118,17 @@ export function BatchUploadPanel({ sourceId }: { sourceId?: string }) {
         <FileUp className="h-4 w-4" /> 批量上传·解析·入库
         <span className="text-[9px] font-normal text-muted-foreground/60">拖拽/多选 PDF·Word·Excel·PPT → 解析预览 → 勾选入库(建索引可检索)</span>
         <span className="ml-auto text-[10px] text-muted-foreground/60">{items.length} 个文件</span>
+      {/* 处理模式选择 */}
+      <div className="flex gap-1">
+        <button type="button" onClick={() => setMode("p2o")}
+          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] ${mode === "p2o" ? "bg-amber-400/20 text-amber-200" : "text-muted-foreground hover:bg-accent/30"}`}>
+          <ScanText className="h-3 w-3" /> PDF2Obsidian 深度加工(OCR/公式/表格/双语, 慢)
+        </button>
+        <button type="button" onClick={() => setMode("direct")}
+          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] ${mode === "direct" ? "bg-amber-400/20 text-amber-200" : "text-muted-foreground hover:bg-accent/30"}`}>
+          <Database className="h-3 w-3" /> 直接入库(解析文本建索引, 快)
+        </button>
+      </div>
       </div>
 
       {/* 拖放区 */}
