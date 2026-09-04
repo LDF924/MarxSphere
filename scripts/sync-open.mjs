@@ -18,6 +18,10 @@ const MAIN = path.resolve(__dirname, "..");
 const OPEN = "C:/Users/HUAWEI/SAG-open-source";
 const DRY = process.argv.includes("--dry-run");
 const NO_PUSH = process.argv.includes("--push");
+// 自定义提交消息: 默认 "sync: 自动同步 main → open (日期)"; 功能提交用 --msg "feat(xxx): ..."
+const MSG_FLAG = process.argv.indexOf("--msg");
+const CUSTOM_MSG = MSG_FLAG > -1 ? process.argv[MSG_FLAG + 1] : "";
+const COMMIT_MSG = CUSTOM_MSG || `sync: 自动同步 main → open (${new Date().toISOString().slice(0, 10)})`;
 
 if (!existsSync(OPEN)) { console.error(`[sync-open] open-source 不存在: ${OPEN}`); process.exit(1); }
 
@@ -95,8 +99,8 @@ try {
   execSync(`git add -A`, { cwd: OPEN, stdio: "inherit" });
   const status = execSync(`git status --short`, { cwd: OPEN, encoding: "utf8" });
   if (status.trim()) {
-    execSync(`git commit -m "sync: 自动同步 main → open (${new Date().toISOString().slice(0, 10)})"`, { cwd: OPEN, stdio: "inherit" });
-    console.log("[sync-open] 已提交 open-source");
+    execSync(`git commit -m ${JSON.stringify(COMMIT_MSG)}`, { cwd: OPEN, stdio: "inherit" });
+    console.log(`[sync-open] 已提交 open-source: ${COMMIT_MSG}`);
   }
   if (!NO_PUSH) {
     execSync(`git push origin main`, { cwd: OPEN, stdio: "inherit" });
