@@ -5812,6 +5812,12 @@ except Exception as e:
     return { ok: true, circuits: modelCircuitStats() };
   });
 
+  // V404-11: 路由诊断面(差距文档⑤) — 决策日志聚合: tier/模型分布/成功率/低估 flagged/节省提示
+  app.get("/api/llm/routing-diagnostics", async () => {
+    const { routingDiagnostics } = await import("../services/routing-log.js");
+    return { ok: true, diag: routingDiagnostics() };
+  });
+
   app.put("/api/llm/models", async (request) => {
     const body = request.body as { role?: LlmRole; modelId?: string };
     if (!body.role || !body.modelId) return { error: "role 和 modelId 必填" };

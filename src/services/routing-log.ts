@@ -201,3 +201,78 @@ export function trimRoutingLog(retentionDays = 7): number {
     return 0;
   } catch { return 0; }
 }
+
+// ═══ V404-11: 路由诊断聚合(差距文档⑤路由诊断面 — 每轮可见 tier/决策/节省) ═══
+export interface RoutingDiagnostics {
+  total: number;
+  okRate: number;
+  /** 近 500 条各档位分布 */
+  byTier: Array<{ tier: string; decisions: number; okRate: number; avgMs: number }>;
+  /** 按模型聚合(决策数/成功率/平均耗时/低估数) */
+  byModel: Array<{ model: string; tier: string; decisions: number; ok: number; fail: number; avgMs: number; underestimates: number; flagged: boolean }>;
+  /** 最近 20 条决策明细 */
+  recent: Array<{ ts: string; model: string; tier: string; role: string; ok: boolean; errorType: string | null; ms: number; purpose: string | null }>;
+  /** 粗略节省估算: 成功决策中 cheap/standard 占比(相对全用 strong 的保守省比) */
+  savingsHint: string;
+  file: string;
+  sizeBytes: number;
+}
+
+/** 路由诊断面: 读 routing-decisions.jsonl 聚合(不碰 DB) */
+export function routingDiagnostics(limit = 500): RoutingDiagnostics {
+  const empty: RoutingDiagnostics = {
+    total: 0, okRate: 0, byTier: [], byModel: [], recent: [], savingsHint: "", file: ROUTING_LOG_FILE, sizeBytes: 0,
+  };
+  let lines: string[] = [];
+  try {
+    if (existsSync(ROUTING_LOG_FILE)) {
+      const raw = readFileSync(ROUTING_LOG_FILE, "utf8");
+      lines = raw.split("\n").filter(Boolean).slice(-limit);
+      empty.sizeBytes = raw.length;
+    }
+  } catch { return empty; }
+  const byModel = new Map<string, { model: string; tier: string; decisions: number; ok: number; fail: number; msSum: number; underestimates: number; flagged: boolean }>();
+  const byTier = new Map<string, { tier: string; decisions: number; ok: number; msSum: number }>();
+  const recent: RoutingDiagnostics["recent"] = [];
+  for (const l of lines) {
+    try {
+      const rec = JSON.parse(l);
+      if (rec.event !== "decision") continue;
+      const m = byModel.get(rec.model) || { model: rec.model, tier: rec.tier || "other", decisions: 0, ok: 0, fail: 0, msSum: 0, underestimates: 0, flagged: false };
+      m.decisions++;
+      if (rec.ok) m.ok++; else m.fail++;
+      m.msSum += Number(rec.ms) || 0;
+      byModel.set(rec.model, m);
+      const t = byTier.get(m.tier) || { tier: m.tier, decisions: 0, ok: 0, msSum: 0 };
+      t.decisions++; if (rec.ok) t.ok++; t.msSum += Number(rec.ms) || 0;
+      byTier.set(m.tier, t);
+      recent.push({
+        ts: rec.ts, model: rec.model, tier: rec.tier || "other", role: rec.role || "general",
+        ok: !!rec.ok, errorType: rec.errorType || null, ms: Number(rec.ms) || 0, purpose: rec.purpose || null,
+      });
+    } catch { /* 坏行跳过 */ }
+  }
+  // 低估样本数并入 byModel
+  for (const l of lines) {
+    try {
+      const rec = JSON.parse(l);
+      if (rec.event === "underestimate" && rec.model) {
+        const m = byModel.get(rec.model);
+        if (m) m.underestimates++;
+      }
+    } catch { /* 坏行跳过 */ }
+  }
+  const total = [...byModel.values()].reduce((a, m) => a + m.decisions, 0);
+  const okTotal = [...byModel.values()].reduce((a, m) => a + m.ok, 0);
+  const modelList = [...byModel.values()].map((m) => ({ ...m, avgMs: m.decisions ? Math.round(m.msSum / m.decisions) : 0, flagged: m.underestimates > 0 && m.decisions > 0 && m.underestimates / m.decisions >= 0.15 }))
+    .sort((a, b) => b.decisions - a.decisions);
+  const tierList = [...byTier.values()].map((t) => ({ tier: t.tier, decisions: t.decisions, okRate: t.decisions ? Math.round((t.ok / t.decisions) * 100) : 0, avgMs: t.decisions ? Math.round(t.msSum / t.decisions) : 0 }))
+    .sort((a, b) => b.decisions - a.decisions);
+  const cheapish = modelList.filter((m) => m.tier !== "strong").reduce((a, m) => a + m.ok, 0);
+  const savingsHint = total > 0 ? `成功决策 ${okTotal} 次; 其中非 strong 档 ${cheapish} 次(≈${Math.round((cheapish / Math.max(1, okTotal)) * 100)}%) — 相对全 strong 路由的成本节省来源; flagged 模型 ${modelList.filter((m) => m.flagged).length} 个建议降权审查` : "暂无决策数据(模型轮换尚未发生)";
+  return {
+    total, okRate: total ? Math.round((okTotal / total) * 100) : 0,
+    byTier: tierList, byModel: modelList, recent: recent.slice(-20).reverse(),
+    savingsHint, file: ROUTING_LOG_FILE, sizeBytes: empty.sizeBytes,
+  };
+}
