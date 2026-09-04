@@ -142,13 +142,17 @@ export function healthCheckAllSkills(): SkillsHealthReport {
     if (fmName) seenNames.set(fmName, entry.name);
     // frontmatter 字段
     for (const f of checkFrontmatter(raw, entry.name)) issues.push({ skill: entry.name, level: "error", issue: f });
-    // 引用完整性(只查 scripts/ 相对路径 — 社区惯例; 带代码块的技能必查)
-    if (/```(?:sh|bash|python|py|js|ts)?\s*\n[\s\S]*?scripts\/[\w./-]+\.\w+/.test(raw)) {
-      for (const m of raw.matchAll(/scripts\/[\w./-]+\.(?:sh|py|js|mjs|ts|ps1|bat|md)\b/g)) {
-        const rel = m[0];
-        const candidate = path.join(SKILLS_HOME, entry.name, rel);
-        if (!existsSync(candidate)) issues.push({ skill: entry.name, level: "warn", issue: `引用缺失: ${rel}` });
+    // 引用完整性: 只查"代码块内"(真正会执行)的 scripts/ 相对引用 — 散文提及外部架构不算缺失
+    const codeBlockRefs = new Set<string>();
+    for (const fence of raw.matchAll(/```(?:sh|bash|python|py|js|ts|zsh|shell)?\s*\n([\s\S]*?)```/g)) {
+      const block = fence[1];
+      for (const m of block.matchAll(/scripts\/[\w./-]+\.(?:sh|py|js|mjs|ts|ps1|bat|md)\b/g)) {
+        codeBlockRefs.add(m[0]);
       }
+    }
+    for (const rel of codeBlockRefs) {
+      const candidate = path.join(SKILLS_HOME, entry.name, rel);
+      if (!existsSync(candidate)) issues.push({ skill: entry.name, level: "warn", issue: `引用缺失: ${rel}` });
     }
   }
   const duplicateNames = [...seenNames.entries()].filter(([, dir]) => {
