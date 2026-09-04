@@ -74,3 +74,31 @@ export const META_SKILLS: MetaSkillDef[] = [
 export function getMetaSkill(id: string): MetaSkillDef | undefined {
   return META_SKILLS.find((s) => s.id === id);
 }
+
+// ═══ V404-10: 动态 DAG 合并 — 静态代码定义 + DB 动态定义(人工审 accept 后注册) ═══
+/**
+ * 加载全部可用 MetaSkill(静态 META_SKILLS + agent_meta_dags 表 enabled 的动态定义)
+ * 失败(表不存在等)降级为静态列表 — 不阻塞运行时
+ */
+export async function loadAllMetaSkills(): Promise<MetaSkillDef[]> {
+  const all = [...META_SKILLS];
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query("select id, dag_json from agent_meta_dags where enabled = true order by created_at desc limit 20");
+    for (const row of r.rows) {
+      try {
+        const dag = typeof row.dag_json === "string" ? JSON.parse(row.dag_json) : row.dag_json;
+        if (dag && Array.isArray(dag.steps) && dag.steps.length >= 2 && !all.some((x) => x.id === dag.id)) {
+          all.push({ id: String(dag.id), name: String(dag.name || dag.id), description: String(dag.description || ""), trigger: dag.trigger, steps: dag.steps });
+        }
+      } catch { /* 单条坏 DAG 跳过 */ }
+    }
+  } catch { /* 表不存在/DB 不可用 → 静态 */ }
+  return all;
+}
+
+/** 按 id 取(静态优先, 动态兜底) — async 版本供 API/运行时使用 */
+export async function getMetaSkillAsync(id: string): Promise<MetaSkillDef | undefined> {
+  const all = await loadAllMetaSkills();
+  return all.find((s) => s.id === id);
+}
