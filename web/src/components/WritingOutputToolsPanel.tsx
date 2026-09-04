@@ -37,8 +37,18 @@ function SentenceCitationView({ review, error }: { review: any; error?: any }) {
   const refMatch = (sentence: string): number | null => {
     const m = sentence.match(/\[([^\]]{2,40})\]/);
     if (!m) return null;
-    const key = m[1].replace(/\s+/g, "");
-    const idx = refs.findIndex((c) => c.replace(/\s+/g, "").includes(key) || key.includes(c.slice(0, 8)));
+    const key = m[1].replace(/\s+/g, "").replace(/[·．.、]/g, "");
+    const norm = (x: string) => x.replace(/\s+/g, "").replace(/[·．.、[\]]/g, "");
+    const normRefs = refs.map(norm);
+    // ① 作者名(标注前 2-4 字)出现在引用里
+    const author = key.slice(0, 2);
+    // ② 年份提取
+    const year = key.match(/(19|20)\d{2}/)?.[0] ?? "";
+    const idx = normRefs.findIndex((c) => {
+      // 同作者 + 同年份(若标注带年份)或作者+引文关键词
+      if (year) return c.includes(author) && c.includes(year);
+      return c.includes(author) || c.startsWith(key.slice(0, 2));
+    });
     return idx >= 0 ? idx : null;
   };
   const sentences = (text: string): Array<{ t: string; ref: number | null }> =>
