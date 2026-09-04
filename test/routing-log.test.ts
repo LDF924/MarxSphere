@@ -74,13 +74,13 @@ describe("routing-log", () => {
     appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "x", model: "deepseek-v4-flash", tier: "cheap" }) + "\n");
     appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "y", model: "deepseek-v4-flash", tier: "cheap" }) + "\n");
     const stats = routingUnderestimateStats();
-    const flash = stats.byModel.find((m) => m.model === "deepseek-v4-flash");
+    const flash = stats.byModel.find((m: any) => m.model === "deepseek-v4-flash");
     expect(flash).toBeDefined();
     expect(flash!.decisions).toBe(6);
     expect(flash!.underestimates).toBe(2);
     expect(flash!.rate).toBeCloseTo(2 / 6, 5);
     expect(flash!.flagged).toBe(true);
-    const qwen = stats.byModel.find((m) => m.model === "qwen-plus");
+    const qwen = stats.byModel.find((m: any) => m.model === "qwen-plus");
     expect(qwen!.flagged).toBe(false);
     expect(stats.flagged).toContain("deepseek-v4-flash");
   });

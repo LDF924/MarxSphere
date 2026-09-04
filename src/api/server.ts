@@ -6144,6 +6144,39 @@ except Exception as e:
     return { stats: await agentFeedbackService.agentFeedbackStats() };
   });
 
+  // ═══ V404-4: MetaSkill DAG(声明式步骤编排试点) — 列表/定义/执行/进度/输入提交 ═══
+  app.get("/api/meta-skill/list", async () => {
+    const { META_SKILLS } = await import("../services/meta-skill-defs.js");
+    return { skills: META_SKILLS.map((s) => ({ id: s.id, name: s.name, description: s.description, steps: s.steps.map((x) => ({ id: x.id, kind: x.kind, label: x.label })) })) };
+  });
+  app.post("/api/meta-skill/run", async (request, reply) => {
+    const { runMetaSkill } = await import("../services/meta-skill-runtime.js");
+    const { getMetaSkill } = await import("../services/meta-skill-defs.js");
+    const body = request.body as { skillId?: string; input?: string; model?: string };
+    const def = getMetaSkill(String(body.skillId || ""));
+    if (!def) return reply.code(404).send({ error: "MetaSkill 不存在", code: "AGENT_NOT_FOUND" });
+    if (!body.input?.trim()) return reply.code(400).send({ error: "input 必填(综述主题等)", code: "AGENT_BAD_REQUEST" });
+    // 后台执行; 返回 runId, 进度走 /api/meta-skill/progress 轮询(user_input 阶段前端弹表单)
+    const { listLiveRuns } = await import("../services/meta-skill-runtime.js");
+    void runMetaSkill(def, body.input, { model: body.model }).then(() => {}).catch(() => {});
+    const runId = [...listLiveRuns()].pop()?.runId;
+    return runId ? { ok: true, runId } : reply.code(500).send({ error: "任务启动失败", code: "AGENT_INTERNAL_ERROR" });
+  });
+  app.get("/api/meta-skill/progress", async (request, reply) => {
+    const { getLiveRunSnapshot } = await import("../services/meta-skill-runtime.js");
+    const q = request.query as { runId?: string };
+    const snap = getLiveRunSnapshot(String(q.runId || ""));
+    if (!snap) return { ok: false, error: "运行不存在或已结束(结束后请用任务结果)" };
+    return { ok: true, ...snap };
+  });
+  app.post("/api/meta-skill/input", async (request, reply) => {
+    const { resumeMetaSkillInput } = await import("../services/meta-skill-runtime.js");
+    const body = request.body as { runId?: string; values?: Record<string, string> };
+    const r = resumeMetaSkillInput(String(body.runId || ""), body.values || {});
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true };
+  });
+
   // 差距O②(Codex plan): 计划确认 — 任务执行前展示计划, 确认后才执行
   app.post("/api/agent/tasks/:id/confirm-plan", async (request, reply) => {
     const params = request.params as { id: string };
