@@ -95,6 +95,21 @@ export function LiteratureMatrixPanel({ papers }: { papers: MatrixPaper[] }) {
         <span className="ml-auto text-[10px] text-muted-foreground/60">已选 {paperIds.length} 篇</span>
       </div>
 
+      {/* 引导步骤 */}
+      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {[
+          { icon: "①", title: "勾选论文", desc: "下方列表点选" },
+          { icon: "②", title: "定义提取列", desc: "常用/自定义" },
+          { icon: "③", title: "LLM 逐篇提取", desc: "自动提取+引文" },
+          { icon: "④", title: "排序/导出", desc: "点列头+CSV" },
+        ].map((g) => (
+          <div key={g.title} className="rounded-lg border border-sky-400/15 bg-sky-400/[0.03] p-2">
+            <div className="text-xs font-medium text-sky-200/90">{g.icon} {g.title}</div>
+            <p className="text-[9px] text-muted-foreground/60">{g.desc}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="mt-2 space-y-2">
         {/* 论文选择 */}
         <div>
