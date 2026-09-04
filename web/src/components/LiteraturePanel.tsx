@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { LiteratureMatrixPanel } from "./LiteratureMatrixPanel";
 import { PrismaPanel } from "./PrismaPanel";
+import { BatchUploadPanel } from "./BatchUploadPanel";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
@@ -219,6 +220,7 @@ export function LiteraturePanel() {
           <div className="space-y-2">
             <PrismaPanel />
             <LiteratureMatrixPanel papers={items.map((r) => ({ id: String(r.id), title: String(r.title ?? r.paperTitle ?? "") }))} />
+            <BatchUploadPanel />
           </div>
         ) : (
           <div className="rounded border border-border/50 bg-background/20 px-3 py-2 text-[11px] text-muted-foreground/60">
