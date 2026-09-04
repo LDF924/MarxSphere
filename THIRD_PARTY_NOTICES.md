@@ -212,5 +212,28 @@ SOFTWARE.
 
 统一入口: `vendor/format-check/format-check-cli.py`(inspect / extract-text / extract-template 三子命令, 由 TS 后端 format-docx-service.ts 子进程调用)
 
+## 9. 科研溯源与取证(2026-09-04 移植, MIT)
+
+本地 provenance / 审查协议 / 取证 / 技能链移植自以下 MIT 项目(完整 LICENSE 保留于 `vendor/integrity-auditor/` 与 ai4s 技能目录):
+
+### 9.1 open-science(ai4s-research, MIT)
+- **仓库**: https://github.com/ai4s-research/open-science
+- **移植机制**: 文件级 provenance.jsonl(append-only 版本递增/越界拒绝)、runs 索引范式、review fenced-JSON 审查协议(review-fence.ts / ReviewerCard)、git 无痕快照(专用 index + `refs/openscience/snapshots/`)、命令面板概念
+- **对应**: `src/services/provenance-service.ts` · `src/services/review-fence.ts` · `src/services/git-snapshot-service.ts` · `web/src/components/{ReviewerCard,ProvenanceTab,CommandPalette}.tsx`
+
+### 9.2 integrity-auditor 取证工具(ai4s-research/ai4s-skills, MIT)
+- **仓库**: https://github.com/ai4s-research/ai4s-skills
+- **移植内容**: `vendor/integrity-auditor/forensics_tools/`(7 脚本: image_dup / image_dup_orb / decimal_match / magnitude_consistency / channel_check / panel_split / xlsx_aggregate_consistency)
+- **用途**: 论文图像查重 + 数值取证(尾数/量级/跨表聚合), 前端经 `/api/forensics/*`
+
+### 9.3 ai4s 科研技能链(ai4s-research/ai4s-skills, MIT)
+- **仓库**: https://github.com/ai4s-research/ai4s-skills
+- **移植内容**: 7 技能入技能库(`~/.claude/skills/ai4s-*`): ai4s-agent / research-explorer / literature-survey / experiment-suite / paper-writer / integrity-auditor / mindmap-render
+- **许可声明**: LICENSE 保留于 `~/.claude/skills/ai4s-LICENSE-MIT`
+
+### 9.4 agent-browser(vercel-labs, MIT)
+- **仓库**: https://github.com/vercel-labs/agent-browser · npm: agent-browser
+- **用途**: `browser_control` agent 工具(Chrome 驱动导航/读 JS 渲染页/截图, 自管浏览器引擎, 无需本机 Chrome)
+
 > 本文件由 MarxSphere 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
 
