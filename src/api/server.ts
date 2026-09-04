@@ -7839,6 +7839,12 @@ except Exception as e:
     const r = await skillAutoProposeService.runAutoPropose({ days: body.days, minCount: body.minCount, maxProposals: body.maxProposals });
     return { ok: true, ...r };
   });
+  // V404-20: 滞留 pending 技能补 EDV 验证(中断/超时遗留清理)
+  app.post("/api/agent/skills/reconcile-pending", async () => {
+    const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
+    const r = await skillAutoProposeService.reconcilePendingSkills();
+    return { ok: true, ...r };
+  });
   app.get("/api/agent/skills/health", async () => {
     const { skillAutoProposeService } = await import("../services/skill-auto-propose.js");
     return skillAutoProposeService.skillHealthCheck();
