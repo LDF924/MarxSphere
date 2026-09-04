@@ -22,6 +22,71 @@ interface ToolDef {
   render: (result: any) => React.ReactNode;
 }
 
+/**
+ * SentenceCitationView — 句级引用报告(参考 Elicit 句级引用):
+ * 综述每句若含 [作者·年份] 标注 → 可点击, 点击高亮对应引用文献(下方清单滚动定位)
+ */
+function SentenceCitationView({ review, error }: { review: any; error?: any }) {
+  const [active, setActive] = useState<number | null>(null);
+  const refs = (review?.citations ?? []) as string[];
+  if (!review && error) {
+    return <div className="rounded bg-red-500/10 p-2 text-xs text-red-400">{String(error).slice(0, 200)}</div>;
+  }
+  if (!review) return null;
+  // 把 [作者·年份]/[标题] 标注匹配到引用清单
+  const refMatch = (sentence: string): number | null => {
+    const m = sentence.match(/\[([^\]]{2,40})\]/);
+    if (!m) return null;
+    const key = m[1].replace(/\s+/g, "");
+    const idx = refs.findIndex((c) => c.replace(/\s+/g, "").includes(key) || key.includes(c.slice(0, 8)));
+    return idx >= 0 ? idx : null;
+  };
+  const sentences = (text: string): Array<{ t: string; ref: number | null }> =>
+    text.split(/(?<=[。！？])/).filter((x) => x.trim()).map((t) => ({ t: t.trim(), ref: refMatch(t) }));
+  return (
+    <div className="space-y-3">
+      {(review.sections ?? []).map((sec: any, i: number) => (
+        <div key={i} className="rounded border border-border/60 p-2">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-700">{i + 1}</span>
+            {sec.section}
+            <span className="ml-auto text-[9px] text-muted-foreground/50">点击带引用句子 → 高亮下方文献</span>
+          </div>
+          <div className="mt-1 space-y-0.5 text-[11px] leading-5">
+            {sentences(sec.content ?? "").map((s, j) => (
+              <span key={j}>
+                {s.ref !== null ? (
+                  <button type="button" onClick={() => setActive(active === s.ref ? null : s.ref)}
+                    className={`rounded px-0.5 text-left transition-colors ${
+                      active === s.ref ? "bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/40" : "hover:bg-violet-500/10 hover:text-violet-300"
+                    }`} title="查看来源文献">
+                    {s.t}
+                    <sup className="ml-0.5 text-[8px] text-violet-400">[{s.ref !== null ? s.ref + 1 : ""}]</sup>
+                  </button>
+                ) : (
+                  <span className="text-muted-foreground">{s.t}</span>
+                )}
+                {" "}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+      {refs.length > 0 && (
+        <div className="rounded bg-muted/30 p-2">
+          <div className="text-xs font-semibold">引用文献（{refs.length}）{active !== null ? `— 当前定位 [#${active + 1}]` : ""}</div>
+          {refs.map((c: string, i: number) => (
+            <p key={i}
+              className={`mt-0.5 rounded px-1 text-[10px] text-muted-foreground transition-colors ${active === i ? "bg-violet-500/20 py-0.5 text-violet-200" : ""}`}>
+              [{i + 1}] {c}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 async function callApi(path: string, body: Record<string, unknown>) {
   const res = await fetch(API_BASE + path, {
     method: "POST",
@@ -55,24 +120,7 @@ const TOOLS: ToolDef[] = [
       { key: "topic", label: "综述主题", placeholder: "如：资本下乡的乡村治理效应", type: "text" },
     ],
     render: (r) => (
-      <div className="space-y-3">
-        {r.error && <div className="rounded bg-red-500/10 p-2 text-xs text-red-400">{r.error}</div>}
-        {r.review?.sections?.map((s: any, i: number) => (
-          <div key={i} className="rounded border p-2">
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-700">{i + 1}</span>
-              {s.section}
-            </div>
-            <p className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground">{s.content}</p>
-          </div>
-        ))}
-        {r.review?.citations?.length > 0 && (
-          <div className="rounded bg-muted/30 p-2">
-            <div className="text-xs font-semibold">引用文献（{r.review.citations.length}）</div>
-            {r.review.citations.map((c: string, i: number) => <p key={i} className="mt-0.5 text-[10px] text-muted-foreground">• {c}</p>)}
-          </div>
-        )}
-      </div>
+      <SentenceCitationView review={r.review} error={r.error} />
     ),
   },
   {
