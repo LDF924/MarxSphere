@@ -214,6 +214,18 @@ export function LiteraturePanel() {
           </div>
         </div>
 
+        {/* 常开工作面板: PRISMA 综述 + 文献提取矩阵(置顶, 不折叠) */}
+        {mode === "md" ? (
+          <div className="space-y-2">
+            <PrismaPanel />
+            <LiteratureMatrixPanel papers={items.map((r) => ({ id: String(r.id), title: String(r.title ?? r.paperTitle ?? "") }))} />
+          </div>
+        ) : (
+          <div className="rounded border border-border/50 bg-background/20 px-3 py-2 text-[11px] text-muted-foreground/60">
+            切换到「已入库」模式可使用 PRISMA 综述与文献提取矩阵
+          </div>
+        )}
+
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -525,27 +537,7 @@ export function LiteraturePanel() {
         </div>
         </div>
 
-      {/* PRISMA 综述工作台(折叠): 主题检索 → AI 筛选 → 纳入集 */}
-      <details className="mx-4 mb-2 rounded-lg border border-emerald-400/15 bg-background/20">
-        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-emerald-200/80 hover:bg-emerald-400/5">
-          PRISMA 系统综述工作台(检索→筛选→纳入集)
-        </summary>
-        <div className="p-3 pt-0"><PrismaPanel /></div>
-      </details>
 
-      {/* 文献提取矩阵(折叠): 勾选论文 → 定义列 → 提取成表 */}
-      <details className="mx-4 mb-4 rounded-lg border border-sky-400/15 bg-background/20">
-        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-sky-200/80 hover:bg-sky-400/5">
-          文献提取矩阵(md 模式下勾选上方列表论文, 提取跨论文字段成表)
-        </summary>
-        <div className="p-3 pt-0">
-          {mode === "md" ? (
-            <LiteratureMatrixPanel papers={items.map((r) => ({ id: String(r.id), title: String(r.title ?? r.paperTitle ?? "") }))} />
-          ) : (
-            <div className="py-4 text-center text-xs text-muted-foreground/50">切换到「文献库(md)」模式可用提取矩阵</div>
-          )}
-        </div>
-      </details>
     </section>
   );
 }
