@@ -10,6 +10,7 @@ import path from "node:path";  // G26: checkPathAccess 固定项目根（静态 
 import { fileURLToPath } from "node:url";
 import type { Dirent } from "node:fs";  // 差距I: code_search 类型引用
 import { executeToolsParallel as _executeToolsParallel } from "./agent-tool-registry.js";  // 借鉴1: 并行执行
+import { storeLargeResult, retrieveStoredResult, TOOL_RESULT_CHAR_THRESHOLD } from "./tool-result-store.js";  // V404-2: 工具大结果压缩存储+按需取回
 
 /** Agent 可用工具注册表（name/描述/参数schema/危险级别） */
 export interface AgentToolDef {
@@ -1940,6 +1941,32 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
       },
     },
   ];
+  // V404-2(OpenSquilla ToolResultStore): retrieve_tool_result — 取回被压缩存储的大工具结果
+  tools.push({
+    name: "retrieve_tool_result", label: "结果原文取回", risk: "safe",
+    description: "取回被压缩存储的工具完整结果（行号窗口/关键词聚焦; 工具输出过大时的取证工具, 模型不臆测缺失内容）",
+    params: {
+      handle: { type: "string", required: true, desc: "结果句柄(tr-<32hex>), 由压缩存储提示给出" },
+      lines: { type: "string", desc: "行窗口取回, 如 1-200 或 100; 缺省返回全文" },
+      keyword: { type: "string", desc: "关键词聚焦: 返回含该词的行±context 行(配合 context 参数)" },
+      context: { type: "number", desc: "关键词聚焦窗口行数, 默认 3, 上限 10" },
+    },
+    run: async (a) => {
+      const r = retrieveStoredResult(String(a.handle || ""), {
+        lines: a.lines !== undefined ? String(a.lines) : undefined,
+        keyword: a.keyword !== undefined ? String(a.keyword) : undefined,
+        context: a.context !== undefined ? Number(a.context) : undefined,
+      });
+      if (!r.ok) return `（取回失败: ${r.error}）`;
+      if (r.focused) return r.focused;
+      if (r.error) return `（${r.error}）`; // 未命中类软错误(r.ok=true 但带提示) — 透传给模型
+      // 全量取回但内容仍超压缩阈值 → 引导分块(否则会被二次压缩, 同句柄永远取不到全文)
+      if (r.content !== undefined && r.chars !== undefined && r.chars > TOOL_RESULT_CHAR_THRESHOLD) {
+        return `（全文 ${r.chars} 字符超过单次取回上限, 请用行窗口分块取回: retrieve_tool_result(handle="${String(a.handle)}", lines="1-200") 逐段读）`;
+      }
+      return r.content || "（空结果）";
+    },
+  });
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);
   if (pdfConvertTool) tools.push(pdfConvertTool); // V399: mineru-go 双模式转换
@@ -2337,6 +2364,10 @@ export async function executeAgentTool(
     toolCacheSet(tool.name, safeArgs, result);
     // V396-7: 结果中的凭据也打码（防泄漏到日志/上下文）
     const safeResult = maskCredentials(result);
+    // V404-2(OpenSquilla result_budget): 大结果压缩存储 — >6000 字符 gzip 入 data/tool-results,
+    // 模型拿小预览 + tr-<sha256> 句柄; 需要时可调 retrieve_tool_result 精确取回(行窗口/关键词)
+    const storedOutcome = storeLargeResult(tool.name, safeResult);
+    const modelResult = storedOutcome.compressed ? storedOutcome.view : safeResult;
     // 差距D(DSH hooks): 工具完成钩子
     try {
       const { agentHooks } = await import("./agent-hooks.js");
@@ -2344,7 +2375,7 @@ export async function executeAgentTool(
     } catch { /* 钩子失败不阻塞 */ }
     // V396-12: tool_complete 事件
     if (publishAgentProgress && opts?.taskId) {
-      publishAgentProgress({ type: "tool_complete", taskId: opts.taskId, data: { tool: tool.name, durationMs: Date.now() - t0, resultPreview: safeResult.slice(0, 150) } });
+      publishAgentProgress({ type: "tool_complete", taskId: opts.taskId, data: { tool: tool.name, durationMs: Date.now() - t0, resultPreview: modelResult.slice(0, 150) } });
     }
     // V396-6: 真实 token/成本采集（LLM 类工具 usage 回填）
     const usage = tool.lastUsage;
@@ -2364,7 +2395,7 @@ export async function executeAgentTool(
         });
       } catch { /* usage 记录失败不阻塞 */ }
     }
-    return { ok: true, result: safeResult, risk: tool.risk, requiresApproval: false };
+    return { ok: true, result: modelResult, risk: tool.risk, requiresApproval: false };
   } catch (e: any) {
     // V396-12: tool_error 事件
     if (publishAgentProgress && opts?.taskId) {
