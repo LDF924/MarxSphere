@@ -105,6 +105,9 @@ function FileHistory({ filePath, onBack }: { filePath: string; onBack: () => voi
 export function ProvenanceTab() {
   const [records, setRecords] = useState<ProvenanceRecord[] | null>(null);
   const [openFile, setOpenFile] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Array<{ commit: string; msg: string }> | null>(null);
+  const [snapLoading, setSnapLoading] = useState(false);
+  const [snapMsg, setSnapMsg] = useState("");
   useEffect(() => {
     void (async () => {
       try {
@@ -113,7 +116,31 @@ export function ProvenanceTab() {
         setRecords(Array.isArray(d.records) ? d.records : []);
       } catch { setRecords([]); }
     })();
+    void loadSnapshots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadSnapshots = async () => {
+    try {
+      const res = await fetch("/api/snapshot/history");
+      const d = await res.json();
+      setSnapshots(Array.isArray(d.history) ? d.history : []);
+    } catch { setSnapshots([]); }
+  };
+  const takeSnapshot = async () => {
+    setSnapLoading(true); setSnapMsg("");
+    try {
+      const res = await fetch("/api/snapshot", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "手动快照" }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setSnapMsg(`快照失败: ${d?.error?.message ?? res.status}`); return; }
+      setSnapMsg(d.files ? `✅ 快照 ${d.commit ?? ""}(${d.files} 文件变更)` : "✓ 无未提交变更, 未产生新快照");
+      await loadSnapshots();
+    } catch (e) { setSnapMsg(`快照异常: ${e instanceof Error ? e.message : String(e)}`); }
+    finally { setSnapLoading(false); }
+  };
 
   if (openFile) return <FileHistory filePath={openFile} onBack={() => setOpenFile(null)} />;
 
@@ -121,8 +148,24 @@ export function ProvenanceTab() {
     <div className="space-y-3 p-4">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <History className="h-3.5 w-3.5" /> 文件级溯源 · agent 写文件留痕(版本/哈希/工具)
-        <span className="ml-auto text-[10px] text-muted-foreground/60">provenance.jsonl · 只增不改</span>
+        <button type="button" onClick={takeSnapshot} disabled={snapLoading}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] text-emerald-300 hover:bg-emerald-400/20 disabled:opacity-50">
+          {snapLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "📸"} 拍快照(专用 git ref, 不动分支)
+        </button>
       </div>
+      {snapMsg && <div className="rounded-md border border-emerald-400/25 bg-emerald-400/5 px-3 py-1.5 text-[11px] text-emerald-200">{snapMsg}</div>}
+      {snapshots && snapshots.length > 0 && (
+        <div className="rounded-md border border-border/50 bg-background/25 px-3 py-2">
+          <div className="text-[10px] font-medium text-muted-foreground/60">git 无痕快照历史(refs/openscience/snapshots, 不碰分支)</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {snapshots.map((s) => (
+              <span key={s.commit} title={s.msg} className="rounded border border-border/50 bg-background/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                {s.commit} {s.msg.length > 30 ? s.msg.slice(0, 30) + "…" : s.msg}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {!records ? (
         <div className="flex items-center gap-2 py-6 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> 加载中…</div>
       ) : records.length === 0 ? (
