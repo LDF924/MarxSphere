@@ -1020,6 +1020,11 @@ export function buildHttpServer() {
     const { BUILTIN_TEMPLATES } = await import("../services/format-eval-templates.js");
     return { templates: BUILTIN_TEMPLATES };
   });
+  // 规则目录: GET → { rules: RuleCatalogItem[] }(前端评测前常驻清单)
+  app.get("/api/format-eval/rules", async () => {
+    const { RULE_CATALOG } = await import("../services/format-eval-engine.js");
+    return { rules: RULE_CATALOG };
+  });
   // 评测: POST { text, templateId?, template?, llm?, model? }
   const formatEvalCheckSchema = z.object({
     text: z.string().min(50, "文本过短, 至少 50 字").max(200_000, "文本过长, 上限 20 万字"),
@@ -1048,6 +1053,8 @@ export function buildHttpServer() {
     const path = await import("node:path");
     const { resolveTemplate } = await import("../services/format-eval-templates.js");
     const { checkDocxFull, extractDocxTemplate } = await import("../services/format-docx-service.js");
+    // docx 也要服务端算真实统计(score/规则清单), 前端不硬编码
+    const { summarizeForDocx } = await import("../services/format-eval-engine.js");
     const tmpFile = path.join(os.tmpdir(), `fmt-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
     try {
       fs.writeFileSync(tmpFile, Buffer.from(body.docxBase64, "base64"));
@@ -1056,7 +1063,16 @@ export function buildHttpServer() {
       if (!result.ok) {
         return reply.code(502).send({ error: { code: "DOCX_CHECK_FAILED", message: result.error ?? "docx 检查失败" } });
       }
-      return { ok: true, styleFindings: result.styleFindings, textFindings: result.textFindings };
+      // 合并 style+text findings → 完整 stats(score 等) + 规则清单
+      const all = [...result.styleFindings, ...result.textFindings];
+      const { ruleStatuses, score, stats } = summarizeForDocx(all);
+      return {
+        ok: true,
+        styleFindings: result.styleFindings,
+        textFindings: result.textFindings,
+        ruleStatuses,
+        stats: { score, totalRules: ruleStatuses.length, passed: stats.passed, errors: stats.errors, warnings: stats.warnings, infos: stats.infos, byCategory: stats.byCategory },
+      };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return reply.code(500).send({ error: { code: "DOCX_CHECK_ERROR", message } });
@@ -1090,6 +1106,39 @@ export function buildHttpServer() {
       return reply.code(500).send({ error: { code: "TEMPLATE_EXTRACT_ERROR", message } });
     } finally {
       try { fs.unlinkSync(tmpFile); } catch { /* 忽略 */ }
+    }
+  });
+  // 自动格式化: POST { docxBase64, formatGuideBase64? } — 调 paper_format_agent(MIT, 内容指纹保护)
+  // 产物: 格式化 docx(base64 回传) + 指纹报告(前后评分/指纹一致性)
+  const formatRunSchema = z.object({
+    docxBase64: z.string().min(100, "docx 内容过短").max(50_000_000, "docx 过大(>50MB base64)"),
+    formatGuideBase64: z.string().max(50_000_000).optional(),
+  });
+  app.post("/api/format-eval/format", async (request, reply) => {
+    const body = formatRunSchema.parse(request.body);
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { formatDocxPaper } = await import("../services/format-docx-service.js");
+    const tmpPaper = path.join(os.tmpdir(), `fmt-paper-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
+    let tmpGuide: string | null = null;
+    try {
+      fs.writeFileSync(tmpPaper, Buffer.from(body.docxBase64, "base64"));
+      if (body.formatGuideBase64) {
+        tmpGuide = path.join(os.tmpdir(), `fmt-guide-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
+        fs.writeFileSync(tmpGuide, Buffer.from(body.formatGuideBase64, "base64"));
+      }
+      const result = await formatDocxPaper(tmpPaper, tmpGuide);
+      if (!result.ok || !result.formattedBase64) {
+        return reply.code(502).send({ error: { code: "FORMAT_FAILED", message: result.error ?? "格式化失败" } });
+      }
+      return { ok: true, formattedBase64: result.formattedBase64, report: result.report ?? {} };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return reply.code(500).send({ error: { code: "FORMAT_ERROR", message } });
+    } finally {
+      try { fs.unlinkSync(tmpPaper); } catch { /* 忽略 */ }
+      if (tmpGuide) { try { fs.unlinkSync(tmpGuide); } catch { /* 忽略 */ } }
     }
   });
 

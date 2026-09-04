@@ -31,6 +31,147 @@ export interface FormatIssue {
   suggestion: string;
 }
 
+/** 规则状态: pass=通过(未触发任何违规), error/warning/info=触发问题 */
+export type RuleStatus = "pass" | IssueSeverity;
+
+/** 规则清单条目(供前端全量展示, 含未触发的通过项) */
+export interface RuleStatusEntry extends RuleCatalogItem {
+  status: RuleStatus;  // pass | error | warning | info
+  message?: string;    // 违规时的问题描述
+  suggestion?: string;
+}
+
+/** 规则登记表(单一真源): 引擎全部检查项 + 说明(供前端卡片展示) */
+export interface RuleCatalogItem {
+  ruleId: string;
+  category: FormatIssue["category"];
+  name: string;
+  /** 这条规则检测什么(一句话) */
+  desc: string;
+  /** 怎么检测/怎么得出违规结论(可读逻辑步骤) */
+  logic: string;
+}
+
+export const RULE_CATALOG: RuleCatalogItem[] = [
+  { ruleId: "heading-pattern-mismatch", category: "标题层级", name: "标题编号体系一致性",
+    desc: "检测标题编号体系是否与所选模板一致(第X章 vs 一、 式)",
+    logic: "逐行提取标题 → 比对模板 headingPattern(章节号样式) → 若标题用「一、」而模板要求「第X章/x.x」则判违规" },
+  { ruleId: "heading-jump", category: "标题层级", name: "标题层级跳变",
+    desc: "检测标题是否跳过中间层级(如从一级直接到三级)",
+    logic: "解析标题层级序列 → 相邻两级差≥2 且中间层从未出现 → 判跳级" },
+  { ruleId: "heading-no-content", category: "标题层级", name: "相邻标题内容检查",
+    desc: "检测两个同级标题相邻(中间无正文)",
+    logic: "相邻标题行号差=1 → 无正文行夹在中间 → 提示核查" },
+  { ruleId: "abstract-missing", category: "摘要", name: "摘要存在性",
+    desc: "检测是否缺少「摘要」段落",
+    logic: "全文搜「摘要」锚行 → 无 → 判缺少; 有 → 进入字数检查" },
+  { ruleId: "abstract-too-short", category: "摘要", name: "摘要字数下限",
+    desc: "检测摘要字数是否低于模板下限(默认 200 字)",
+    logic: "摘要锚行起累计正文到下一结构锚 → 中文字数计数 → <下限 → 违规" },
+  { ruleId: "abstract-too-long", category: "摘要", name: "摘要字数上限",
+    desc: "检测摘要字数是否超过模板上限(默认 400 字)",
+    logic: "同上累计字数 → >上限 → 提示精简" },
+  { ruleId: "keywords-missing", category: "关键词", name: "关键词存在性",
+    desc: "检测是否缺少「关键词:」行",
+    logic: "搜「关键词[:：]」行 → 无 → 判缺少" },
+  { ruleId: "keywords-count", category: "关键词", name: "关键词数量",
+    desc: "检测关键词个数是否在模板要求范围(默认 3-5 个)",
+    logic: "按分隔符切分关键词行 → 计数 → 少于下限或超上限 → 违规" },
+  { ruleId: "keywords-separator", category: "关键词", name: "关键词分隔符",
+    desc: "检测关键词分隔符是否为模板要求的「；」",
+    logic: "提取分隔符集合 → 与模板 separator 比对 → 混用/不符 → 提示" },
+  { ruleId: "section-missing", category: "章节结构", name: "必备章节齐全",
+    desc: "检测模板必备章节(摘要/目录/引言/结论/参考文献等)是否齐全",
+    logic: "对每个必备章节 → 标题列表或全文匹配章节别名 → 缺失的收集后判违规" },
+  { ruleId: "section-duplicate", category: "章节结构", name: "重复标题检查",
+    desc: "检测是否存在重复章节标题",
+    logic: "标题归一化(去空格小写)后查重 → 同 key 出现两次 → 提示核对" },
+  { ruleId: "citation-none", category: "引文标注", name: "引文标注存在性",
+    desc: "检测正文是否完全无引文标注",
+    logic: "正文(不含参考文献段)提取 [n] 或 (作者, 年份) → 两者皆无 → 提示补充" },
+  { ruleId: "citation-style-mismatch", category: "引文标注", name: "引文体系一致性",
+    desc: "检测引文标注是否与模板指定体系一致(顺序编码 vs 著者-年)",
+    logic: "统计两类标注 → 模板 numeric 但只发现 author-year → 判体系不符" },
+  { ruleId: "citation-style-mixed", category: "引文标注", name: "引文体系混用",
+    desc: "检测正文是否同时混用两种引文体系",
+    logic: "[n] 与 (作者年份) 数量均>0 → 判混用" },
+  { ruleId: "references-missing", category: "参考文献", name: "参考文献章节存在",
+    desc: "检测是否缺少「参考文献」章节",
+    logic: "搜「参考文献/REFERENCES」标题 → 无 → 判缺少" },
+  { ruleId: "references-empty", category: "参考文献", name: "参考文献著录条数",
+    desc: "检测参考文献标题后是否有 [1][2]… 著录条目",
+    logic: "参考文献标题后扫描 [n] 开头的行 → 0 条 → 判空" },
+  { ruleId: "reference-numbering-gap", category: "参考文献", name: "参考文献序号连续",
+    desc: "检测参考文献序号是否从 [1] 连续递增",
+    logic: "逐条取 [n] → 与位置(第 i 条应为 [i])比对 → 不符 → 违规" },
+  { ruleId: "reference-out-of-range", category: "参考文献", name: "正文引用范围",
+    desc: "检测正文引用的编号是否超出参考文献最大编号",
+    logic: "正文 [n] 提取 → n > 文献最大编号 → 违规(引用悬空)" },
+  { ruleId: "figure-numbering-gap", category: "图表编号", name: "图编号连续",
+    desc: "检测图题编号是否连续(图1 图2… 或 图1.1 图1.2…)",
+    logic: "全篇匹配 图\\d+(\\.\\d+)? → 相邻编号跳跃 → 判不连续" },
+  { ruleId: "table-numbering-gap", category: "图表编号", name: "表编号连续",
+    desc: "检测表题编号是否连续",
+    logic: "全篇匹配 表\\d+(\\.\\d+)? → 相邻编号跳跃 → 判不连续" },
+  { ruleId: "text-garbage", category: "文本规范", name: "乱码/控制字符",
+    desc: "检测文本是否含乱码或控制字符(疑似提取损坏)",
+    logic: "统计每行乱码字符(U+FFFD 等) → >3 个 → 判损坏" },
+  { ruleId: "text-overlong-para", category: "文本规范", name: "超长无标点段落",
+    desc: "检测超长且无句末标点的段落(疑似 PDF 换行丢失)",
+    logic: "行 >500 中文字且无。！？ → 提示断句分段" },
+  { ruleId: "text-empty", category: "文本规范", name: "文本非空",
+    desc: "检测评测文本是否为空",
+    logic: "输入 trim 后为空 → 判空无法评测" },
+];
+
+/** docx 路径专用: 合并 style+text findings → 规则清单 + 真实统计(与 runFormatEval 同评分口径) */
+export function summarizeForDocx(findings: FormatIssue[]): {
+  ruleStatuses: RuleStatusEntry[];
+  score: number;
+  stats: { passed: number; errors: number; warnings: number; infos: number; byCategory: Record<string, number> };
+} {
+  const ruleStatuses = summarizeRules(findings);
+  const byCategory: Record<string, number> = {};
+  let errors = 0;
+  let warnings = 0;
+  let infos = 0;
+  let passed = 0;
+  for (const s of ruleStatuses) {
+    if (s.status === "pass") { passed += 1; continue; }
+    byCategory[s.category] = (byCategory[s.category] ?? 0) + 1;
+    if (s.status === "error") errors += 1;
+    else if (s.status === "warning") warnings += 1;
+    else infos += 1;
+  }
+  const score = Math.max(0, Math.min(100, Math.round((100 - errors * 5 - warnings * 2 - infos * 0.5) * 10) / 10));
+  return { ruleStatuses, score, stats: { passed, errors, warnings, infos, byCategory } };
+}
+
+/** 汇总规则状态: 基于 catalog 全部条目 + 引擎触发的 findings 合并出完整清单 */
+export function summarizeRules(findings: FormatIssue[]): RuleStatusEntry[] {
+  const byId = new Map<string, FormatIssue[]>();
+  for (const f of findings) {
+    const list = byId.get(f.ruleId) ?? [];
+    list.push(f);
+    byId.set(f.ruleId, list);
+  }
+  const worst = (list: FormatIssue[]): RuleStatus => {
+    if (list.some((f) => f.severity === "error")) return "error";
+    if (list.some((f) => f.severity === "warning")) return "warning";
+    return "info";
+  };
+  return RULE_CATALOG.map((r) => {
+    const hits = byId.get(r.ruleId);
+    if (!hits) return { ...r, status: "pass" as const };
+    return {
+      ...r,
+      status: worst(hits),
+      message: hits[0]?.message,
+      suggestion: hits[0]?.suggestion,
+    };
+  });
+}
+
 export interface HeadingLine {
   text: string; // 去编号后的标题文本
   level: number; // 章级=0, 节级=1, 小节级=2 …

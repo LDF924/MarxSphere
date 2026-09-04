@@ -93,6 +93,60 @@ export async function extractDocxTemplate(
   }
 }
 
+/** 自动格式化 docx: 调 CLI format(paper_format_agent, MIT, 内容指纹保护)。
+ *  产物: formatted_paper_v3.docx + format_report.json(双指纹+前后评分)等
+ *  返回格式化产物 docx base64 与关键报告字段。 */
+export async function formatDocxPaper(
+  docxPath: string,
+  formatGuidePath: string | null,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  formattedBase64?: string;
+  report?: {
+    scoreBefore?: number;
+    scoreAfter?: number;
+    improvement?: number;
+    fingerprintMatched?: boolean;
+    summary?: string;
+  };
+}> {
+  const fs = await import("node:fs");
+  const outDir = path.join(os.tmpdir(), `fmt-out-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  try {
+    const args = ["format", docxPath];
+    if (formatGuidePath) args.push("--format-file", formatGuidePath);
+    args.push("--out-dir", outDir);
+    const result = await runCli(args, 300_000) as { ok: boolean; error?: string; result?: string };
+    if (!result.ok) return { ok: false, error: result.error ?? "格式化失败" };
+    // 格式化产物
+    const outDocx = path.join(outDir, "formatted_paper_v3.docx");
+    if (!existsSync(outDocx)) return { ok: false, error: "未生成格式化产物" };
+    const formattedBase64 = fs.readFileSync(outDocx).toString("base64");
+    // 报告(双指纹 + 前后评分) — 字段名以 format_report.json 实际为准
+    let report: NonNullable<Awaited<ReturnType<typeof formatDocxPaper>>["report"]> = {};
+    try {
+      const reportPath = path.join(outDir, "format_report.json");
+      if (existsSync(reportPath)) {
+        const r = JSON.parse(fs.readFileSync(reportPath, "utf8")) as Record<string, unknown>;
+        report = {
+          scoreBefore: typeof r.score_before === "number" ? r.score_before : undefined,
+          scoreAfter: typeof r.score_after === "number" ? r.score_after : undefined,
+          improvement: typeof r.score_improvement === "number" ? r.score_improvement : undefined,
+          // 指纹保护: content_changed=false 且前后指纹一致 = 正文未被改动
+          fingerprintMatched: r.content_changed === false,
+          summary: typeof r.summary === "string" ? r.summary : undefined,
+        };
+      }
+    } catch { /* 报告缺失不阻断 */ }
+    return { ok: true, formattedBase64, report };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    try { fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* 忽略清理失败 */ }
+  }
+}
+
 /** docx 全检查: 样式级(python) + 文本级(TS 引擎)合并 */
 export async function checkDocxFull(
   docxPath: string,
