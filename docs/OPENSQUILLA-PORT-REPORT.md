@@ -18,9 +18,14 @@
 | 7 | 记忆 Dream 巩固闭环 | ✅ | src/services/dream-consolidation-service.ts + server.ts + web/src/components/DreamPanel.tsx | 7b48932 |
 | 8 | auto_propose 技能进化 + 技能体检 | ✅ | src/services/skill-auto-propose.ts + agent-skill-distill.ts(minResultChars) + server.ts | a1b08ed |
 | 9 | B5 难档多模型互证融合(试点) | ✅ | src/services/b5-ensemble-service.ts + b5_ensemble 工具 + docs/OPENSQUILLA-B5-COST.md | 302a940 |
+| 10 | auto_propose→MetaSkill DAG 衔接 | ✅ | src/services/meta-skill-propose-service.ts + 迁移100 agent_meta_dags + defs 动态合并 | (第三批) |
+| 11 | Dream 巩固定时触发 | ✅ | src/index.ts 每日调度 + dream-consolidation.startDreamDailyScheduler | (第三批) |
+| 12 | B5 迷你评测(3题子集) | ✅ | 证据入 docs/OPENSQUILLA-B5-COST.md §6(3:0 全胜) | (第三批) |
+| 13 | 路由诊断面(差距最小切口⑤) | ✅ | routing-log.routingDiagnostics + API + web/src/components/RoutingDiagPanel.tsx | ad098c3 |
+| 14 | SKILL.md 全量技能体检(机制5) | ✅ | skill-import-service.healthCheckAllSkills + API + AgentConsole 体检卡片 | 3579281 |
 
 工具性: sync-open.mjs 支持 `--msg` 自定义功能名提交(4131629)。
-第二批(KV-cache/Dream/auto_propose/B5)为差距文档六大机制第 3/5/4(后半)/6 项, 全量单测 681 项通过。
+第二批(KV-cache/Dream/auto_propose/B5)为差距文档六大机制第 3/5/4(后半)/6 项, 全量单测 681 项通过; 第三批(DAG 衔接/定时/B5评测/诊断面/技能体检)后全量 684 项通过。
 
 ---
 
@@ -134,8 +139,10 @@
 
 ## 遗留与后续建议
 
-- 路由: KV-cache 档位保持已做(6), 但 cache 命中率观测未接(提供商 usage.prompt_cache_hit_tokens 已有采集——可加面板)
-- Dream: 自动定时触发未接(可接 cron/任务巡检); LLM 打磨为可选默认关(确定性足够, 控成本)
-- MetaSkill: auto_propose 生成的是 agent_skills 技能而非 MetaSkill DAG 定义——衔接点: 把 approved 高频技能由 LLM 组合成 DAG(参考 46 步写作 DAG)
-- B5: 任务级评测验证质量增量(评测集 B5 vs 单模型)后再决定是否放宽默认; aggregator 接工具检索为下一步(proposer 仍零工具)
+- 路由: KV-cache 档位保持已做(6), cache 命中率观测未接(提供商 usage.prompt_cache_hit_tokens 已有采集——可加面板); 路由诊断面已做(13)
+- Dream: 每日定时已接(11); LLM 打磨为可选默认关(确定性足够, 控成本)
+- MetaSkill: auto_propose→DAG 衔接已做(10: 提案隔离区→accept 注册 agent_meta_dags 动态可跑); 更多场景 DAG 化留后续
+- B5: 迷你评测已做(12: 3题全胜); 扩大评测集验证后决定是否放宽默认; aggregator 接工具检索为下一步(proposer 仍零工具)
+- SKILL.md 体检已做(14): 检出的问题(paper-writer 重复名/academic-paper 引用缺失)待人工清理
 - 暂存语义后端化: 若要跨刷新保留, 参考 spec 的 file_uuid + TTL 模式
+- 架构级(需专门排期): WriterLease/ChangeSet 锚点批注(写作台并发编辑语义); 技能=做法/记忆=事实全量梳理
