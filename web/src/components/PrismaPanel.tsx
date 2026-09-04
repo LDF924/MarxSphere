@@ -79,12 +79,43 @@ export function PrismaPanel() {
   const includedIds = new Set(papers.filter((p) => decisions[p.id]?.verdict === "included").map((p) => p.id));
 
   return (
-    <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.03] p-3">
-      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-emerald-200/90">
-        <Workflow className="h-4 w-4" /> PRISMA 系统综述工作台
-        <span className="text-[9px] font-normal text-muted-foreground/60">检索 → 标题筛选(LLM+人工)→ 纳入集(参考 Elicit sysreview)</span>
+    <section className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-[1300px] space-y-4 p-4">
+      {/* 标题行 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Workflow className="h-5 w-5 text-emerald-300" />
+        <h2 className="text-lg font-semibold">PRISMA 系统综述工作台</h2>
+        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-300">
+          检索 → 标题筛选 → 纳入集
+        </span>
+        <span className="ml-auto text-[10px] text-muted-foreground/50">参考 Elicit 系统综述机制 · 每步判定可审计</span>
       </div>
 
+      {/* 引导卡片(点击跳阶段) */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        {[
+          { s: "input", icon: "①", title: "输入综述主题", desc: "填主题(如资本下乡的治理效应), 从文献库检索" },
+          { s: "search", icon: "②", title: "检索文献", desc: "关键词匹配文献库, 记录检索命中数" },
+          { s: "screen", icon: "③", title: "标题筛选", desc: "AI 逐篇判 纳入/排除+理由, 可人工改" },
+          { s: "done", icon: "④", title: "纳入集 + PRISMA 摘要", desc: "统计 识别/筛选/排除/纳入, 得纳入综述集" },
+        ].map((g) => {
+          const active = g.s === stage;
+          const reachable = ["input", "search", "screen", "done"].indexOf(g.s) <= ["input", "search", "screen", "done"].indexOf(stage === "done" ? "done" : stage);
+          return (
+            <button key={g.s} type="button"
+              onClick={() => { if (g.s === "search" && !loading) setStage("input"); else if (g.s !== "input" && papers.length > 0) { /* 已到过前阶段才可跳 */ setStage(g.s as never); } }}
+              className={`rounded-lg border p-2.5 text-left transition-colors ${active ? "border-emerald-400/60 bg-emerald-400/10" : "border-border/60 bg-card/40 hover:bg-accent/30"}`}>
+              <div className="flex items-center gap-1.5 text-xs font-medium">
+                <span className="text-sm">{g.icon}</span> {g.title}
+                {active && <span className="ml-auto rounded bg-emerald-400/20 px-1 py-0.5 text-[9px] text-emerald-300">当前</span>}
+              </div>
+              <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground/70">{g.desc}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.03] p-3">
       {/* 阶段指示 */}
       <div className="mt-2 flex items-center gap-1 text-[10px]">
         {(["input", "search", "screen", "done"] as const).map((s, i) => (
@@ -197,6 +228,8 @@ export function PrismaPanel() {
       )}
 
       {msg && <div className="mt-2 text-[11px] text-muted-foreground">{msg}</div>}
-    </div>
+      </div>
+      </div>
+    </section>
   );
 }
