@@ -328,6 +328,22 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
   const totalTimeoutMs = input.totalTimeoutMs ?? 180_000;
   const model = input.model ?? getLlmEndpoint().model;
   const fallbacks = [model, ...getModelFallbacks(model).filter((m) => m !== model)];
+  // V404-3: 路由决策日志 — 每候选模型尝试记一条 decision(角色/档位/上下文规模/是否重试/结果)
+  const logDecision = (candidate: string, ok: boolean, errorType?: string) => {
+    import("../services/routing-log.js").then(({ logRoutingDecision, inferTier, estimateContextTokens }) => {
+      logRoutingDecision({
+        model: candidate,
+        tier: inferTier(candidate),
+        contextTokens: estimateContextTokens(input.messages),
+        attempts: fallbacks,
+        retried: fallbacks.length > 1,
+        ok,
+        errorType,
+        ms: Date.now() - startedAt,
+        purpose: input.agentContext?.action || undefined,
+      });
+    }).catch(() => { /* 日志失败不阻塞调用 */ });
+  };
 
   let errors: Array<{ model: string; error: string }> = [];
   for (const candidate of fallbacks) {
@@ -340,13 +356,15 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
     const r = await callLlmInner({ ...input, model: candidate, timeoutMs: Math.min(input.timeoutMs ?? 180_000, remaining) });
     if (r && !r.error) {
       modelCircuitRecordSuccess(candidate);
+      logDecision(candidate, true);
       recordLatency(Date.now() - startedAt);
       return r;
     }
     if (r?.error) {
+      const cls = classifyLlmError(r.error, r.status);
+      logDecision(candidate, false, cls.errorType);
       modelCircuitRecordFailure(candidate);
       errors.push({ model: candidate, error: r.error.slice(0, 120) });
-      const cls = classifyLlmError(r.error, r.status);
       // 配额/认证错误 → 立即轮换(不回退等待)
       if (cls.errorType === "rate_limit" || cls.errorType === "auth") continue;
       // 业务错误(4xx 非重试) → 不再尝试其他路由
@@ -435,6 +453,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
               taskId: input.agentContext.taskId,
               action: input.agentContext.action,
               tool: input.agentContext.tool,
+              model, // V404-3: 迁移076 有 model 列 — 回填, 供路由反馈对齐查询
               inputSummary: `model=${model} tokens_in=${tokens.in} tokens_out=${tokens.out}${cacheHit ? ` cache_hit=${cacheHit}` : ""}`,
               outputSummary: `cost=${costCents}分(真实用量)`,
               tokensIn: tokens.in, tokensOut: tokens.out, costCents,
