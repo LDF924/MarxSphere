@@ -1035,6 +1035,24 @@ export function buildHttpServer() {
     const records = await fileHistory(q.path);
     return { ok: true, path: q.path, records };
   });
+  // 复现提示: GET /api/provenance/reproduce?path= → 生成预填复现 prompt(人机环, 不自动执行)
+  app.get("/api/provenance/reproduce", async (request) => {
+    const { fileHistory, readEnvSnapshot } = await import("../services/provenance-service.js");
+    const q = request.query as { path?: string };
+    if (!q.path) return { ok: false, error: "缺少 path" };
+    const history = await fileHistory(q.path);
+    const latest = history[history.length - 1];
+    if (!latest) return { ok: true, prompt: "", note: "无留痕记录" };
+    const envText = await readEnvSnapshot(latest.envHash);
+    const parts = [
+      `请复现文件「${q.path}」的最新产出(版本 v${latest.version}, ${latest.tool} 写入于 ${latest.ts})。`,
+      latest.runId ? `关联任务: ${latest.runId}` : "",
+      `内容哈希: ${latest.contentHash}(${latest.size} B)`,
+      envText ? `运行环境快照: ${latest.envHash}\n\`\`\`\n${envText.slice(0, 2000)}\n\`\`\`` : "无环境快照(该记录未关联任务)",
+      "请重新运行生成该文件的代码/流程, 对比本次产物是否一致(哈希相同 = 可复现)。",
+    ].filter(Boolean).join("\n");
+    return { ok: true, prompt: parts };
+  });
   // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───
   // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
   const forensicsImageSchema = z.object({

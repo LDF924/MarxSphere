@@ -5,6 +5,11 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+
+const execFileAsync = promisify(execFile);
 
 export interface ProvenanceRecord {
   path: string;          // 相对 agent_workspace 的路径
@@ -17,6 +22,36 @@ export interface ProvenanceRecord {
   size: number;          // 字节数
   op: "write" | "delete" | "patch";
   runId?: string;        // 关联的任务/run(可复现入口)
+  envHash?: string;      // 环境快照哈希(指向 data/provenance/env/<hash>.txt)
+}
+
+/** 采集环境快照: python 版本 + pip freeze(内容寻址存 data/provenance/env/<hash>.txt, 去重) */
+export async function captureEnvSnapshot(): Promise<string | undefined> {
+  try {
+    const pythonBin = process.platform === "win32" ? "python" : "python3";
+    const [ver, freeze] = await Promise.all([
+      execFileAsync(pythonBin, ["--version"], { timeout: 15_000, windowsHide: true }).catch(() => ({ stdout: "" })),
+      execFileAsync(pythonBin, ["-m", "pip", "freeze"], { timeout: 60_000, windowsHide: true }).catch(() => ({ stdout: "" })),
+    ]);
+    const content = `# python ${String(ver.stdout ?? "").trim()}\n${String(freeze.stdout ?? "")}`;
+    if (!content.trim()) return undefined;
+    const hash = createHash("sha256").update(content).digest("hex").slice(0, 12);
+    const envDir = path.join(provenanceDir(), "env");
+    const target = path.join(envDir, `${hash}.txt`);
+    if (!existsSync(target)) {
+      await fs.mkdir(envDir, { recursive: true });
+      await fs.writeFile(target, content, "utf8");
+    }
+    return hash;
+  } catch { return undefined; }
+}
+
+/** 读环境快照内容(按 hash) */
+export async function readEnvSnapshot(envHash?: string): Promise<string | null> {
+  if (!envHash) return null;
+  try {
+    return await fs.readFile(path.join(provenanceDir(), "env", `${envHash}.txt`), "utf8");
+  } catch { return null; }
 }
 
 function provenanceDir(): string {
@@ -64,6 +99,11 @@ export async function recordProvenance(
     size: Buffer.byteLength(rec.content ?? "", "utf8"),
     version: 0,
   };
+  // 有 run 关联时补环境快照(仅 run 级记录; 快照内容寻址去重)
+  if (rec.runId) {
+    const envHash = await captureEnvSnapshot();
+    if (envHash) full.envHash = envHash;
+  }
   chain = chain.then(async () => {
     await ensureDir();
     await scanVersions();
