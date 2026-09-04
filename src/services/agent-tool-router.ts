@@ -1967,6 +1967,28 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
       return r.content || "（空结果）";
     },
   });
+  // V404-9(OpenSquilla B5): 多模型互证融合 — 难任务显式 opt-in 工具(默认关闭见 B5_ENABLED)
+  tools.push({
+    name: "b5_ensemble", label: "B5多模型互证", risk: "safe",
+    description: "难任务多模型互证融合(B5_ENABLED=1 时可用): N 模型并行成稿→aggregator 融合; 成稿模型零工具边界。数值/引文敏感或需反幻觉的任务使用",
+    params: {
+      question: { type: "string", required: true, desc: "问题/任务(各模型独立作答后融合)" },
+      draftPrompt: { type: "string", desc: "给成稿模型的系统提示(可省略)" },
+    },
+    run: async (a) => {
+      const { B5_ENABLED, runB5Ensemble } = await import("./b5-ensemble-service.js");
+      if (!B5_ENABLED) return "（B5 融合默认关闭 — 设 B5_ENABLED=1 后启用; 当前请用普通模型调用）";
+      const question = String(a.question || "").trim();
+      if (!question) return "（question 必填）";
+      try {
+        const r = await runB5Ensemble(question, a.draftPrompt !== undefined ? String(a.draftPrompt) : undefined);
+        const meta = r.drafts.map((d) => `${d.model}:${d.ok ? `✓${d.chars}` : "✗"}`).join(" ");
+        return `【B5 融合结果】(阵容: ${meta}; 估算成本 ${r.costCentsEst} 分)\n${r.merged}`;
+      } catch (e: any) {
+        return `（B5 失败: ${String(e?.message || e).slice(0, 200)}）`;
+      }
+    },
+  });
   // V395-4: 插件体系 — 合并启用插件的额外工具（agent_plugins 表; 失败静默, 不影响主工具）
   if (pdfTool) tools.push(pdfTool);
   if (pdfConvertTool) tools.push(pdfConvertTool); // V399: mineru-go 双模式转换
