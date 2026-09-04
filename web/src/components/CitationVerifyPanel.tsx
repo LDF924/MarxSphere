@@ -5,6 +5,7 @@
 import { useState, type FC } from "react";
 import { Loader2, ShieldCheck, ShieldAlert, ShieldQuestion, SearchCheck, Link2, FileText, CheckCircle2 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { ForensicsPanel } from "./ForensicsPanel";
 
 interface DimensionResult {
   status: "green" | "yellow" | "white" | "red";
@@ -201,6 +202,8 @@ export const CitationVerifyPanel: FC = () => {
           <DimensionCard title="③ 断言支持度" icon={<CheckCircle2 className="h-3.5 w-3.5" />} dim={result.dimensions.support} />
         </div>
       )}
+      {/* 论文取证(integrity-auditor: 图像查重/数值取证, ai4s MIT) */}
+      <ForensicsPanel />
       </div>
     </section>
   );
