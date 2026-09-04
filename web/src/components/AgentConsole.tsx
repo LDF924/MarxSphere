@@ -2005,6 +2005,42 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
   // V404-12: SKILL.md 全量体检(前端展示)
   const [health, setHealth] = useState<{ total: number; errors: number; warns: number; issues: Array<{ skill: string; level: string; issue: string }> } | null>(null);
   const [showHealth, setShowHealth] = useState(false);
+  // V404-8/20/21: 技能进化操作(自动提案/补验证/近重复) + V404-14 语义审计
+  const [evoMsg, setEvoMsg] = useState("");
+  const [evoBusy, setEvoBusy] = useState(false);
+  const [auditRes, setAuditRes] = useState<{ byClass: Record<string, number>; nonPractice: Array<{ skill: string; classification: string; signals: string; suggestion: string }> } | null>(null);
+  const [dupGroups, setDupGroups] = useState<Array<{ group: Array<{ id: number; name: string; status: string }>; sim: number }> | null>(null);
+
+  const evoAction = async (path: string, label: string, body?: object) => {
+    setEvoBusy(true); setEvoMsg(`${label}中…`);
+    try {
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+      const d = await r.json();
+      if (!r.ok) setEvoMsg(`❌ ${d?.error || "失败"}`);
+      else setEvoMsg(`✅ ${label}完成: ${JSON.stringify(d).slice(0, 120)}`);
+    } catch (e: any) { setEvoMsg(`❌ ${e?.message || "失败"}`); }
+    finally { setEvoBusy(false); }
+  };
+
+  const loadAudit = async () => {
+    setEvoBusy(true);
+    try {
+      const d = await fetch("/api/agent/skills/semantic-audit").then((r) => r.json());
+      setAuditRes({ byClass: d.byClass || {}, nonPractice: d.nonPractice || [] });
+      setEvoMsg(`✅ 语义审计: 共 ${d.total} 技能 — ${JSON.stringify(d.byClass)}`);
+    } catch (e: any) { setEvoMsg(`❌ ${e?.message || "审计失败"}`); }
+    finally { setEvoBusy(false); }
+  };
+
+  const loadDups = async () => {
+    setEvoBusy(true);
+    try {
+      const d = await fetch("/api/agent/skills/duplicates").then((r) => r.json());
+      setDupGroups(d.groups || []);
+      setEvoMsg((d.groups || []).length === 0 ? "✅ 无近重复技能(库健康)" : `⚠️ 发现 ${d.groups.length} 组近重复(供人工去重)`);
+    } catch (e: any) { setEvoMsg(`❌ ${e?.message || "检测失败"}`); }
+    finally { setEvoBusy(false); }
+  };
 
   const loadInstalled = async () => {
     try {
@@ -2118,6 +2154,43 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
           </div>
         )}
         {showHealth && health && health.issues.length === 0 && <div className="mt-1 text-[10px] text-teal-300/70">✅ 全部技能健康</div>}
+      </div>
+      {/* V404-8/14/20/21: 技能进化操作区(自动提案/语义审计/补验证/近重复检测) */}
+      <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-fuchsia-300">
+          <Sparkles className="h-3.5 w-3.5" /> 技能进化
+          <span className="text-[9px] font-normal text-muted-foreground">高频任务自动提案 / 语义审计(做法vs记忆) / 滞留补验证 / 近重复检测</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={evoBusy} onClick={() => void evoAction("/api/agent/skills/auto-propose", "技能提案", { days: 14, minCount: 3, maxProposals: 2 })}
+            className="rounded-md bg-fuchsia-600 px-2.5 py-1 text-[10px] text-white hover:bg-fuchsia-500 disabled:opacity-40">🔍 高频任务提案</button>
+          <button type="button" disabled={evoBusy} onClick={() => void loadAudit()}
+            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] text-fuchsia-200 hover:bg-accent disabled:opacity-40">🏷 语义分类审计</button>
+          <button type="button" disabled={evoBusy} onClick={() => void evoAction("/api/agent/skills/reconcile-pending", "补验证")}
+            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] text-fuchsia-200 hover:bg-accent disabled:opacity-40">🔄 滞留技能补EDV</button>
+          <button type="button" disabled={evoBusy} onClick={() => void loadDups()}
+            className="rounded-md border border-white/10 px-2.5 py-1 text-[10px] text-fuchsia-200 hover:bg-accent disabled:opacity-40">🧬 近重复检测</button>
+        </div>
+        {evoMsg && <div className="mt-1.5 text-[10px] text-fuchsia-200/80">{evoMsg}</div>}
+        {auditRes && auditRes.nonPractice.length > 0 && (
+          <div className="mt-1.5 max-h-32 space-y-0.5 overflow-y-auto rounded border border-white/5 p-1.5">
+            <div className="text-[9px] text-muted-foreground">非做法型(建议人工审读):</div>
+            {auditRes.nonPractice.slice(0, 12).map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[10px]">
+                <span className={`rounded px-1 ${s.classification === "memory" ? "bg-amber-400/15 text-amber-200" : "bg-slate-400/15 text-slate-300"}`}>{s.classification}</span>
+                <span className="w-40 truncate font-mono text-foreground">{s.skill}</span>
+                <span className="truncate text-muted-foreground">{s.signals}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {dupGroups && dupGroups.length > 0 && (
+          <div className="mt-1.5 space-y-0.5 rounded border border-amber-400/20 p-1.5">
+            {dupGroups.map((g, i) => (
+              <div key={i} className="text-[10px] text-amber-200/90">近重复组{i + 1}: {g.group.map((s) => `${s.name}(#${s.id},${s.status})`).join(" ~ ")}</div>
+            ))}
+          </div>
+        )}
       </div>
       {/* 2026-08-29 Agentero 对照: Skill 导入（本地路径 → ~/.claude/skills/） */}
       <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
