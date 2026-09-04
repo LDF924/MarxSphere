@@ -42,7 +42,7 @@ function writeProposals(list: DagProposal[]): void {
 
 /** 组装 DAG 提示: 给 LLM 一组已批准技能 + 高频主题, 让它生成步骤 DAG */
 function buildDagPrompt(goal: string, skills: Array<{ name: string; whenToApply: string; skillMd: string }>): string {
-  const skillList = skills.map((s, i) => `${i + 1}. ${String(s.name || "未命名")}: ${String(s.when_to_apply || s.whenToApply || "")} — ${String(s.skill_md || s.skillMd || "").slice(0, 80)}`).join("\n");
+  const skillList = skills.map((s, i) => `${i + 1}. ${String(s.name || "未命名")}: ${String(s.whenToApply || "")} — ${String(s.skillMd || "").slice(0, 80)}`).join("\n");
   return [
     "你是工作流设计师。把下面的一组技能编排成一条声明式 MetaSkill DAG(步骤数组)。",
     `高频任务: ${goal.slice(0, 80)}`,
@@ -75,7 +75,12 @@ export async function proposeMetaSkillDag(goal: string, seenCount: number, skill
     } else {
       r = await pool.query("select id, name, when_to_apply, skill_md from agent_skills where status='approved' order by consensus desc limit 5");
     }
-    const skills = r.rows;
+    // DB 行(snake) → buildDagPrompt 期望 camel
+    const skills: Array<{ name: string; whenToApply: string; skillMd: string }> = (r.rows as Array<Record<string, unknown>>).map((x) => ({
+      name: String(x.name || "未命名"),
+      whenToApply: String(x.when_to_apply || ""),
+      skillMd: String(x.skill_md || ""),
+    }));
     if (skills.length === 0) return null;
     const model = process.env.META_DAG_LLM_MODEL || undefined;
     const llm = await callLlm({
