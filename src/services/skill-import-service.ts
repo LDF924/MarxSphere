@@ -7,6 +7,7 @@
 // 安全: 只允许复制到技能目录; 卸载只删该技能目录
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import os from "node:os";
 
 const SKILLS_HOME = path.join(os.homedir(), ".claude", "skills");
@@ -122,6 +123,41 @@ function checkFrontmatter(raw: string, name: string): string[] {
  *  - 引用的脚本/资源文件存在性(scripts/ 目录内被 body 提及的文件)
  *  - 空 SKILL.md/超长单行
  */
+/** SAG 仓库根(本文件 src/services/ → 上两级) */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+/**
+ * 解析脚本引用 → "found"(已定位) | "env"(环境性引用: 占位符/绝对路径/跨平台, 不报) | "missing"(包内真缺失才报)
+ * 引用形态: 包内 scripts/x / 跨包 <pkg>/scripts/x / 仓库根 scripts/x;
+ * 环境性: 含 $VAR 占位、以 / 或盘符开头的绝对路径、含 /Users/ 或 /.claude/ 的跨机路径。
+ */
+function resolveScriptRef(ref: string, currentSkill: string): "found" | "env" | "missing" {
+  const clean = ref
+    .replace(/^\.\//, "")
+    .replace(/^\/?SAG-main\//, "")
+    .replace(/^skills\//, "");
+  // 环境性引用(非包内文件 — 不构成技能缺陷)
+  if (/\$[\w{}]+/.test(clean) || clean.startsWith("/") || /^[A-Za-z]:[\\/]/.test(clean)
+    || clean.includes("/Users/") || clean.startsWith(".claude/")
+    || /^(SKILL_DIR|SKILL_PATH|SKILLS_DIR|CLAUDE|HOME|DIR)\b/.test(clean)
+    || clean.includes("<") || clean.includes(">")) {
+    return "env";
+  }
+  const candidates: string[] = [];
+  // 形态A: 包内 scripts/xxx(裸 scripts/x 或含技能名前缀)
+  const within = /^[\w.-]*\/?scripts\/(.+)$/.exec(clean) || /^scripts\/(.+)$/.exec(clean);
+  candidates.push(path.join(SKILLS_HOME, currentSkill, clean));
+  // 形态B: 跨包 <pkg>/scripts/xxx
+  const cross = /^([\w.-]+)\/scripts\/(.+)$/.exec(clean);
+  if (cross) candidates.push(path.join(SKILLS_HOME, cross[1], "scripts", cross[2]));
+  // 形态C: 仓库根 scripts/xxx
+  if (/^scripts\//.test(clean)) candidates.push(path.join(REPO_ROOT, clean));
+  for (const c of candidates) {
+    try { if (existsSync(c)) return "found"; } catch { /* 跳过 */ }
+  }
+  return "missing";
+}
+
 export function healthCheckAllSkills(): SkillsHealthReport {
   const t0 = Date.now();
   const issues: SkillHealthIssue[] = [];
@@ -142,17 +178,16 @@ export function healthCheckAllSkills(): SkillsHealthReport {
     if (fmName) seenNames.set(fmName, entry.name);
     // frontmatter 字段
     for (const f of checkFrontmatter(raw, entry.name)) issues.push({ skill: entry.name, level: "error", issue: f });
-    // 引用完整性: 只查"代码块内"(真正会执行)的 scripts/ 相对引用 — 散文提及外部架构不算缺失
+    // 引用完整性: 只查"代码块内"(真正会执行)的脚本引用
+    // 提取任意带 scripts/ 的引用 → resolveScriptRef 归一解析(剥 skills/ 前缀等)
     const codeBlockRefs = new Set<string>();
     for (const fence of raw.matchAll(/```(?:sh|bash|python|py|js|ts|zsh|shell)?\s*\n([\s\S]*?)```/g)) {
-      const block = fence[1];
-      for (const m of block.matchAll(/scripts\/[\w./-]+\.(?:sh|py|js|mjs|ts|ps1|bat|md)\b/g)) {
-        codeBlockRefs.add(m[0]);
+      for (const m of fence[1].matchAll(/([\w./-]*scripts\/[\w./-]+\.(?:sh|py|js|mjs|ts|ps1|bat|md))\b/g)) {
+        codeBlockRefs.add(m[1].replace(/^\.\//, ""));
       }
     }
-    for (const rel of codeBlockRefs) {
-      const candidate = path.join(SKILLS_HOME, entry.name, rel);
-      if (!existsSync(candidate)) issues.push({ skill: entry.name, level: "warn", issue: `引用缺失: ${rel}` });
+    for (const ref of codeBlockRefs) {
+      if (resolveScriptRef(ref, entry.name) === "missing") issues.push({ skill: entry.name, level: "warn", issue: `引用缺失: ${ref}` });
     }
   }
   const duplicateNames = [...seenNames.entries()].filter(([, dir]) => {
