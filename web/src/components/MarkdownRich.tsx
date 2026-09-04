@@ -9,6 +9,30 @@ import rehypeKatex from "rehype-katex";
 import { Check, Copy } from "lucide-react";
 import { renderMarkdownLines, type MarkdownCitation } from "../lib/markdown";
 import { cn } from "../lib/utils";
+import { ReviewerCard, type ReviewerBlock } from "./ReviewerCard";
+
+/** 解析 ```review fenced JSON(协议见 src/services/review-fence.ts); 畸形返回 null */
+function parseReviewJson(raw: string): ReviewerBlock | null {
+  try {
+    const parsed = JSON.parse(raw) as {
+      findings?: Array<{ level?: string; title?: string; evidence?: string; check?: string; tag?: string }>;
+      note?: string;
+    };
+    const findings = (parsed.findings ?? [])
+      .filter((f) => f.title)
+      .map((f) => ({
+        level: (["ok", "warn", "error"] as const).includes(f.level as never) ? (f.level as "ok" | "warn" | "error") : "warn" as const,
+        title: String(f.title),
+        evidence: f.evidence ? String(f.evidence) : undefined,
+        check: f.check ? String(f.check) : undefined,
+        tag: f.tag ? String(f.tag) : undefined,
+      }));
+    if (findings.length === 0 && !parsed.note) return null;
+    return { kind: "reviewer", findings, note: parsed.note };
+  } catch {
+    return null;
+  }
+}
 
 /** 代码块分段（增强版：识别 ```lang 语言标签） */
 function splitRichBlocks(content: string): Array<{ type: "text" | "code"; content: string; lang?: string }> {
@@ -225,9 +249,25 @@ export function MarkdownRich({
   onOpenCitation?: (citation: MarkdownCitation) => void;
 }) {
   const blocks = splitRichBlocks(content);
+  // V-移植: 解析 ```review fenced JSON → ReviewerCard(剥除原文块, 不丢审计语义)
+  const { plainBlocks, reviewBlocks } = useMemo(() => {
+    const out: typeof blocks = [];
+    const found: Array<{ id: number; block: ReviewerBlock }> = [];
+    blocks.forEach((b, i) => {
+      if (b.type === "code" && b.lang === "review") {
+        const parsed = parseReviewJson(b.content);
+        if (parsed) found.push({ id: i, block: parsed });
+        else out.push(b); // 畸形 review 块: 按普通代码块保留
+      } else {
+        out.push(b);
+      }
+    });
+    return { plainBlocks: out, reviewBlocks: found };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
   return (
     <div className="space-y-2 break-words">
-      {blocks.map((block, index) =>
+      {plainBlocks.map((block, index) =>
         block.type === "code" ? (
           block.lang === "mermaid" ? (
             <MermaidBlock key={index} content={block.content} />
@@ -242,6 +282,9 @@ export function MarkdownRich({
           </div>
         )
       )}
+      {reviewBlocks.map(({ id, block }) => (
+        <ReviewerCard key={`review-${id}`} block={block} />
+      ))}
     </div>
   );
 }
