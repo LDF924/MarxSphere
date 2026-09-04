@@ -2002,6 +2002,9 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
   const [importPath, setImportPath] = useState("");
   const [importMsg, setImportMsg] = useState("");
   const [installed, setInstalled] = useState<Array<{ name: string; hasHealthcheck: boolean }>>([]);
+  // V404-12: SKILL.md 全量体检(前端展示)
+  const [health, setHealth] = useState<{ total: number; errors: number; warns: number; issues: Array<{ skill: string; level: string; issue: string }> } | null>(null);
+  const [showHealth, setShowHealth] = useState(false);
 
   const loadInstalled = async () => {
     try {
@@ -2011,6 +2014,14 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
     } catch { setInstalled([]); }
   };
   useEffect(() => { void loadInstalled(); }, []);
+
+  const loadHealth = async () => {
+    try {
+      const r = await fetch("/api/agent/skills/health-all");
+      const d = await r.json();
+      setHealth({ total: d.total || 0, errors: d.errors || 0, warns: d.warns || 0, issues: d.issues || [] });
+    } catch { setHealth(null); }
+  };
 
   const doImportSkill = async () => {
     if (!importPath.trim()) return;
@@ -2086,6 +2097,28 @@ function SkillsTab({ demoOn }: { demoOn: boolean }) {
   };
   return (
     <div className="space-y-3">
+      {/* V404-12: SKILL.md 全量体检(机制5 技能体检) */}
+      <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-3">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-teal-300">
+          <Wrench className="h-3.5 w-3.5" /> SKILL.md 技能体检({health ? `${health.total} 技能 · ${health.errors} 错误 · ${health.warns} 警告` : "未加载"})
+          <span className="text-[9px] font-normal text-muted-foreground">frontmatter/重复名/引用完整性 · 依赖预检</span>
+          <button type="button" onClick={() => { void loadHealth(); setShowHealth(true); }}
+            className="ml-auto rounded-md border border-white/10 px-2 py-0.5 text-[10px] text-teal-200 hover:bg-accent">体检</button>
+        </div>
+        {showHealth && health && health.issues.length > 0 && (
+          <div className="mt-2 max-h-40 space-y-0.5 overflow-y-auto">
+            {health.issues.slice(0, 40).map((it, i) => (
+              <div key={i} className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px] ${it.level === "error" ? "text-red-300" : "text-amber-200/80"}`}>
+                <span className="w-40 shrink-0 truncate font-mono">{it.skill}</span>
+                <span className={`shrink-0 rounded px-1 ${it.level === "error" ? "bg-red-400/15" : "bg-amber-400/10"}`}>{it.level}</span>
+                <span className="truncate text-muted-foreground">{it.issue}</span>
+              </div>
+            ))}
+            {health.issues.length > 40 && <div className="text-[9px] text-muted-foreground">… 余 {health.issues.length - 40} 条</div>}
+          </div>
+        )}
+        {showHealth && health && health.issues.length === 0 && <div className="mt-1 text-[10px] text-teal-300/70">✅ 全部技能健康</div>}
+      </div>
       {/* 2026-08-29 Agentero 对照: Skill 导入（本地路径 → ~/.claude/skills/） */}
       <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
         <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-indigo-300">

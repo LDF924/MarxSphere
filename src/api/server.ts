@@ -7747,6 +7747,11 @@ except Exception as e:
     const { skillImportService } = await import("../services/skill-import-service.js");
     return { skills: skillImportService.listInstalledSkills(), home: skillImportService.SKILLS_HOME };
   });
+  // V404-12: SKILL.md 全量体检(机制5 技能体检) — frontmatter/重复名/引用完整性
+  app.get("/api/agent/skills/health-all", async () => {
+    const { skillImportService } = await import("../services/skill-import-service.js");
+    return skillImportService.healthCheckAllSkills();
+  });
 
   // POST /api/agent/skills/import — 从本地路径导入 {sourcePath}
   app.post("/api/agent/skills/import", async (request, reply) => {

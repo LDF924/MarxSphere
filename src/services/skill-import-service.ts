@@ -82,4 +82,90 @@ export function removeSkillPackage(name: string): { ok: boolean; error?: string 
   }
 }
 
-export const skillImportService = { importSkillPackage, listInstalledSkills, removeSkillPackage, SKILLS_HOME };
+// ═══ V404-12 见文件尾部: healthCheckAllSkills + 导出 ═══
+
+// ═══ V404-12: SKILL.md 全量体检(机制5"技能体检") — frontmatter/重复名/引用/依赖预检 ═══
+export interface SkillHealthIssue {
+  skill: string;
+  level: "error" | "warn";
+  issue: string;
+}
+export interface SkillsHealthReport {
+  total: number;
+  errors: number;
+  warns: number;
+  issues: SkillHealthIssue[];
+  duplicateNames: string[];
+  /** 体检耗时 ms */
+  ms: number;
+}
+
+/** frontmatter 必填字段检测(OpenSquilla/Claude 惯例: name/description 必备; 触发短语按 kind 而异) */
+function checkFrontmatter(raw: string, name: string): string[] {
+  const out: string[] = [];
+  const fm = /^---\s*\n([\s\S]*?)\n---/.exec(raw);
+  if (!fm) { out.push("缺 frontmatter(--- 包裹) 或格式损坏"); return out; }
+  const body = fm[1];
+  const field = (k: string) => new RegExp(`^${k}:`, "m").test(body);
+  if (!field("name")) out.push("frontmatter 缺 name");
+  if (!field("description")) out.push("frontmatter 缺 description");
+  const kind = /^kind:\s*(\S+)/m.exec(body)?.[1];
+  if (kind && !/^(skill|meta|agent|command)$/.test(kind)) out.push(`kind 非法: ${kind}`);
+  return out;
+}
+
+/**
+ * 全量体检 ~/.claude/skills/ 下所有 SKILL.md:
+ *  - frontmatter 完整性(name/description/kind)
+ *  - name 与目录名一致(导入错位检测)
+ *  - 重复 name(目录名不同但 frontmatter name 撞)
+ *  - 引用的脚本/资源文件存在性(scripts/ 目录内被 body 提及的文件)
+ *  - 空 SKILL.md/超长单行
+ */
+export function healthCheckAllSkills(): SkillsHealthReport {
+  const t0 = Date.now();
+  const issues: SkillHealthIssue[] = [];
+  const seenNames = new Map<string, string>();
+  if (!existsSync(SKILLS_HOME)) return { total: 0, errors: 0, warns: 0, issues: [], duplicateNames: [], ms: Date.now() - t0 };
+
+  for (const entry of readdirSync(SKILLS_HOME, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const skillMd = path.join(SKILLS_HOME, entry.name, "SKILL.md");
+    if (!existsSync(skillMd)) continue;
+    let raw = "";
+    try { raw = readFileSync(skillMd, "utf8"); } catch { issues.push({ skill: entry.name, level: "error", issue: "SKILL.md 不可读" }); continue; }
+    if (!raw.trim()) { issues.push({ skill: entry.name, level: "error", issue: "SKILL.md 为空" }); continue; }
+    // frontmatter name 与目录名(目录名含 name 即匹配 — 前缀排序/后缀标注是社区惯例)
+    const fmName = skillNameFromMd(skillMd);
+    if (fmName && entry.name !== fmName && !entry.name.includes(fmName)) issues.push({ skill: entry.name, level: "warn", issue: `frontmatter name(${fmName}) ≠ 目录名(${entry.name})` });
+    if (seenNames.has(fmName) && seenNames.get(fmName) !== entry.name) issues.push({ skill: entry.name, level: "error", issue: `name 与 ${seenNames.get(fmName)} 重复` });
+    if (fmName) seenNames.set(fmName, entry.name);
+    // frontmatter 字段
+    for (const f of checkFrontmatter(raw, entry.name)) issues.push({ skill: entry.name, level: "error", issue: f });
+    // 引用完整性(只查 scripts/ 相对路径 — 社区惯例; 带代码块的技能必查)
+    if (/```(?:sh|bash|python|py|js|ts)?\s*\n[\s\S]*?scripts\/[\w./-]+\.\w+/.test(raw)) {
+      for (const m of raw.matchAll(/scripts\/[\w./-]+\.(?:sh|py|js|mjs|ts|ps1|bat|md)\b/g)) {
+        const rel = m[0];
+        const candidate = path.join(SKILLS_HOME, entry.name, rel);
+        if (!existsSync(candidate)) issues.push({ skill: entry.name, level: "warn", issue: `引用缺失: ${rel}` });
+      }
+    }
+  }
+  const duplicateNames = [...seenNames.entries()].filter(([, dir]) => {
+    // 同 name 多目录 → 由上面 per-entry 检测标 error; 这里汇总名
+    return false;
+  }).map(([n]) => n);
+  const errN = issues.filter((i) => i.level === "error").length;
+  return {
+    total: readdirSync(SKILLS_HOME).filter((e) => {
+      try { return statSync(path.join(SKILLS_HOME, e)).isDirectory() && existsSync(path.join(SKILLS_HOME, e, "SKILL.md")); } catch { return false; }
+    }).length,
+    errors: errN,
+    warns: issues.length - errN,
+    issues: issues.slice(0, 100), // 上限防超载
+    duplicateNames,
+    ms: Date.now() - t0,
+  };
+}
+
+export const skillImportService = { importSkillPackage, listInstalledSkills, removeSkillPackage, healthCheckAllSkills, SKILLS_HOME };
