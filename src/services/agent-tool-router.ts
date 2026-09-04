@@ -1475,6 +1475,56 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         }
       },
     },
+    // 浏览器控制(移植 open-science → agent-browser, MIT/vercel-labs): 驱动真实浏览器读 JS 渲染页
+    {
+      name: "browser_control", label: "浏览器控制", risk: "review",
+      description: "驱动 Chrome 浏览器导航/读取 JS 渲染页/截图(agent-browser, 需人工审批)。适合动态渲染/登录态网页, 普通抓取用 web_fetch",
+      params: {
+        action: { type: "string", required: true, desc: "open(导航)/read(读文本)/screenshot(截图)/close(关闭)" },
+        url: { type: "string", desc: "open/read 时的 URL" },
+        maxChars: { type: "number", desc: "read 最大字符数(默认 3000)" },
+      },
+      run: async (a) => {
+        const action = String(a.action || "read");
+        const url = String(a.url || "");
+        const net = checkNetworkAccess(url);
+        if (!net.allowed) return `（浏览器访问被拦截: ${net.reason}）`;
+        try {
+          const { execFile } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const execFileAsync = promisify(execFile);
+          const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
+          const timeoutMs = 90_000;
+          if (action === "open") {
+            if (!url) return "（open 需要 url）";
+            await execFileAsync(npxBin, ["agent-browser", "open", url], { timeout: timeoutMs, windowsHide: true });
+            return `✅ 已导航至 ${url}(浏览器服务持有该页)`;
+          }
+          if (action === "read") {
+            if (!url) return "（read 需要 url）";
+            const { stdout } = await execFileAsync(npxBin, ["agent-browser", "read", url], { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024 });
+            return `【浏览器页面】${String(stdout).slice(0, Math.min(Number(a.maxChars) || 3000, 8000))}`;
+          }
+          if (action === "screenshot") {
+            const os = await import("node:os");
+            const fs = await import("node:fs");
+            const path = await import("node:path");
+            const outFile = path.join(os.tmpdir(), `browser-shot-${Date.now()}.png`);
+            await execFileAsync(npxBin, ["agent-browser", "screenshot", "--output", outFile, url || ""], { timeout: timeoutMs, windowsHide: true });
+            const b64 = fs.existsSync(outFile) ? fs.readFileSync(outFile).toString("base64") : "";
+            try { fs.rmSync(outFile, { force: true }); } catch { /* 忽略 */ }
+            return b64 ? `（截图 base64, ${b64.length} 字符; 可用 image_analyze 查看）\n${b64.slice(0, 200)}…` : "（截图失败: 无输出文件）";
+          }
+          if (action === "close") {
+            await execFileAsync(npxBin, ["agent-browser", "close"], { timeout: 30_000, windowsHide: true }).catch(() => {});
+            return "✅ 浏览器已关闭";
+          }
+          return "（action 需为 open/read/screenshot/close）";
+        } catch (e: any) {
+          return `（浏览器控制异常: ${String(e?.message || e).slice(0, 300)}）`;
+        }
+      },
+    },
     // P1-2: 沙箱文件工具 — 受限目录内读写（agent_workspace 固定根）
     // 拆两工具: file_read 只读直接执行; file_write 写/删需人工审批（risk=review 由 executeAgentTool 前置拦截）
     {
