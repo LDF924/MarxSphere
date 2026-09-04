@@ -64,6 +64,10 @@ export function CommandPalette({
           <input ref={inputRef} value={query} onChange={(e) => { setQuery(e.target.value); setCursor(0); }}
             placeholder="跳转到视图 / 执行命令…"
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/50" />
+          <button type="button" onClick={onClose} aria-label="关闭命令面板" title="关闭 (Esc)"
+            className="shrink-0 rounded p-1 text-muted-foreground/60 hover:bg-accent hover:text-foreground">
+            <span className="block h-3.5 w-3.5 text-sm leading-none">✕</span>
+          </button>
         </div>
         <div className="max-h-[50vh] overflow-y-auto p-1.5">
           {filtered.length === 0 ? (
