@@ -2493,7 +2493,16 @@ export async function chooseToolByLlm(
   tools: AgentToolDef[],
   extraContext?: string
 ): Promise<{ tool: AgentToolDef; args: Record<string, unknown> } | null> {
-  const toolList = tools.map((t) => {
+  // V404-16(护栏): meta_invoke 只在"复杂目标"(≥40 字或含复杂信号词)时进入候选 —
+  // 防 agent 对琐碎步骤滥用长 DAG(单步检索/写作走普通工具)
+  const text = `${goal} ${stepTitle}`;
+  const COMPLEX_SIGNALS_TC = ["机制", "因果", "比较", "评价", "影响", "多轮", "综合分析", "批判", "深度", "综述", "报告", "研究", "分析"];
+  const isComplexTask = text.length >= 40 || COMPLEX_SIGNALS_TC.some((k) => text.includes(k));
+  const candidateTools = tools.filter((t) => {
+    if (t.name !== "meta_invoke") return true;
+    return isComplexTask;
+  });
+  const toolList = candidateTools.map((t) => {
     const params = Object.entries(t.params)
       .map(([k, v]) => `${k}${v.required ? "(必填)" : ""}:${v.type} — ${v.desc}`)
       .join("; ");
@@ -2519,7 +2528,8 @@ ${toolList}
     const text = (r?.text ?? "").trim().replace(/```json|```/g, "");
     const parsed = JSON.parse(text);
     if (!parsed.tool || parsed.tool === "none") return null;
-    const tool = tools.find((t) => t.name === parsed.tool);
+    // V404-16: 从候选清单里找(meta_invoke 简单任务不在候选 → 选不到, 护栏生效)
+    const tool = candidateTools.find((t) => t.name === parsed.tool);
     if (!tool) return null;
     // 参数校验: 必填参数必须有值
     const args: Record<string, unknown> = {};
