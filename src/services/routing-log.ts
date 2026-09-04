@@ -44,6 +44,9 @@ export interface RoutingDecision {
   ms?: number;
   /** 调用用途描述(agentContext.action 或提示词前 60 字) */
   purpose?: string;
+  /** V404-17: KV-cache 命中观测(prompt_cache_hit_tokens) */
+  cacheHitTokens?: number | null;
+  promptTokens?: number | null;
 }
 
 /** 由模型名推断档位(注册表口径: flash/reason-mini 类=cheap; plus/max=strong; 其余 standard/other) */
@@ -85,6 +88,8 @@ export function logRoutingDecision(d: RoutingDecision): void {
     errorType: d.errorType || null,
     ms: d.ms || 0,
     purpose: d.purpose ? String(d.purpose).slice(0, 80) : null,
+    cacheHitTokens: d.cacheHitTokens ?? null,
+    promptTokens: d.promptTokens ?? null,
   });
 }
 
@@ -209,9 +214,11 @@ export interface RoutingDiagnostics {
   /** 近 500 条各档位分布 */
   byTier: Array<{ tier: string; decisions: number; okRate: number; avgMs: number }>;
   /** 按模型聚合(决策数/成功率/平均耗时/低估数) */
-  byModel: Array<{ model: string; tier: string; decisions: number; ok: number; fail: number; avgMs: number; underestimates: number; flagged: boolean }>;
+  byModel: Array<{ model: string; tier: string; decisions: number; ok: number; fail: number; avgMs: number; underestimates: number; flagged: boolean; cacheHitSum: number; promptSum: number; cacheRate: number | null }>;
   /** 最近 20 条决策明细 */
-  recent: Array<{ ts: string; model: string; tier: string; role: string; ok: boolean; errorType: string | null; ms: number; purpose: string | null }>;
+  recent: Array<{ ts: string; model: string; tier: string; role: string; ok: boolean; errorType: string | null; ms: number; purpose: string | null; cacheHitTokens: number | null }>;
+  /** V404-17: 全局 KV-cache 命中率(prompt_cache_hit/prompt_total, 有采样时) */
+  cacheRate: number | null;
   /** 粗略节省估算: 成功决策中 cheap/standard 占比(相对全用 strong 的保守省比) */
   savingsHint: string;
   file: string;
@@ -221,7 +228,7 @@ export interface RoutingDiagnostics {
 /** 路由诊断面: 读 routing-decisions.jsonl 聚合(不碰 DB) */
 export function routingDiagnostics(limit = 500): RoutingDiagnostics {
   const empty: RoutingDiagnostics = {
-    total: 0, okRate: 0, byTier: [], byModel: [], recent: [], savingsHint: "", file: ROUTING_LOG_FILE, sizeBytes: 0,
+    total: 0, okRate: 0, byTier: [], byModel: [], recent: [], cacheRate: null, savingsHint: "", file: ROUTING_LOG_FILE, sizeBytes: 0,
   };
   let lines: string[] = [];
   try {
@@ -231,17 +238,20 @@ export function routingDiagnostics(limit = 500): RoutingDiagnostics {
       empty.sizeBytes = raw.length;
     }
   } catch { return empty; }
-  const byModel = new Map<string, { model: string; tier: string; decisions: number; ok: number; fail: number; msSum: number; underestimates: number; flagged: boolean }>();
+  const byModel = new Map<string, { model: string; tier: string; decisions: number; ok: number; fail: number; msSum: number; underestimates: number; flagged: boolean; cacheHitSum: number; promptSum: number }>();
   const byTier = new Map<string, { tier: string; decisions: number; ok: number; msSum: number }>();
   const recent: RoutingDiagnostics["recent"] = [];
   for (const l of lines) {
     try {
       const rec = JSON.parse(l);
       if (rec.event !== "decision") continue;
-      const m = byModel.get(rec.model) || { model: rec.model, tier: rec.tier || "other", decisions: 0, ok: 0, fail: 0, msSum: 0, underestimates: 0, flagged: false };
+      const m = byModel.get(rec.model) || { model: rec.model, tier: rec.tier || "other", decisions: 0, ok: 0, fail: 0, msSum: 0, underestimates: 0, flagged: false, cacheHitSum: 0, promptSum: 0 };
       m.decisions++;
       if (rec.ok) m.ok++; else m.fail++;
       m.msSum += Number(rec.ms) || 0;
+      // V404-17: KV-cache 命中聚合
+      m.cacheHitSum += Number(rec.cacheHitTokens) || 0;
+      m.promptSum += Number(rec.promptTokens) || 0;
       byModel.set(rec.model, m);
       const t = byTier.get(m.tier) || { tier: m.tier, decisions: 0, ok: 0, msSum: 0 };
       t.decisions++; if (rec.ok) t.ok++; t.msSum += Number(rec.ms) || 0;
@@ -249,6 +259,7 @@ export function routingDiagnostics(limit = 500): RoutingDiagnostics {
       recent.push({
         ts: rec.ts, model: rec.model, tier: rec.tier || "other", role: rec.role || "general",
         ok: !!rec.ok, errorType: rec.errorType || null, ms: Number(rec.ms) || 0, purpose: rec.purpose || null,
+        cacheHitTokens: rec.cacheHitTokens ?? null,
       });
     } catch { /* 坏行跳过 */ }
   }
@@ -264,15 +275,24 @@ export function routingDiagnostics(limit = 500): RoutingDiagnostics {
   }
   const total = [...byModel.values()].reduce((a, m) => a + m.decisions, 0);
   const okTotal = [...byModel.values()].reduce((a, m) => a + m.ok, 0);
-  const modelList = [...byModel.values()].map((m) => ({ ...m, avgMs: m.decisions ? Math.round(m.msSum / m.decisions) : 0, flagged: m.underestimates > 0 && m.decisions > 0 && m.underestimates / m.decisions >= 0.15 }))
-    .sort((a, b) => b.decisions - a.decisions);
+  const modelList = [...byModel.values()].map((m) => ({
+    ...m, avgMs: m.decisions ? Math.round(m.msSum / m.decisions) : 0,
+    flagged: m.underestimates > 0 && m.decisions > 0 && m.underestimates / m.decisions >= 0.15,
+    cacheRate: m.promptSum > 0 ? Math.round((m.cacheHitSum / m.promptSum) * 1000) / 10 : null,  // V404-17
+  })).sort((a, b) => b.decisions - a.decisions);
   const tierList = [...byTier.values()].map((t) => ({ tier: t.tier, decisions: t.decisions, okRate: t.decisions ? Math.round((t.ok / t.decisions) * 100) : 0, avgMs: t.decisions ? Math.round(t.msSum / t.decisions) : 0 }))
     .sort((a, b) => b.decisions - a.decisions);
   const cheapish = modelList.filter((m) => m.tier !== "strong").reduce((a, m) => a + m.ok, 0);
-  const savingsHint = total > 0 ? `成功决策 ${okTotal} 次; 其中非 strong 档 ${cheapish} 次(≈${Math.round((cheapish / Math.max(1, okTotal)) * 100)}%) — 相对全 strong 路由的成本节省来源; flagged 模型 ${modelList.filter((m) => m.flagged).length} 个建议降权审查` : "暂无决策数据(模型轮换尚未发生)";
+  // V404-17: 全局 cache 命中率(有 prompt 采样时)
+  const cHit = modelList.reduce((a, m) => a + m.cacheHitSum, 0);
+  const cPrompt = modelList.reduce((a, m) => a + m.promptSum, 0);
+  const cacheRate = cPrompt > 0 ? Math.round((cHit / cPrompt) * 1000) / 10 : null;
+  const savingsHint = total > 0
+    ? `成功决策 ${okTotal} 次; 非 strong 档 ${cheapish} 次(≈${Math.round((cheapish / Math.max(1, okTotal)) * 100)}%); KV-cache 命中率 ${cacheRate !== null ? cacheRate + "%" : "未采样"}(sticky 档位保持的有效性指标); flagged 模型 ${modelList.filter((m) => m.flagged).length} 个`
+    : "暂无决策数据(模型轮换尚未发生)";
   return {
     total, okRate: total ? Math.round((okTotal / total) * 100) : 0,
     byTier: tierList, byModel: modelList, recent: recent.slice(-20).reverse(),
-    savingsHint, file: ROUTING_LOG_FILE, sizeBytes: empty.sizeBytes,
+    cacheRate, savingsHint, file: ROUTING_LOG_FILE, sizeBytes: empty.sizeBytes,
   };
 }

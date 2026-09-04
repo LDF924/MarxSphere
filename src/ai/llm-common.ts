@@ -328,8 +328,8 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
   const totalTimeoutMs = input.totalTimeoutMs ?? 180_000;
   const model = input.model ?? getLlmEndpoint().model;
   const fallbacks = [model, ...getModelFallbacks(model).filter((m) => m !== model)];
-  // V404-3: 路由决策日志 — 每候选模型尝试记一条 decision(角色/档位/上下文规模/是否重试/结果)
-  const logDecision = (candidate: string, ok: boolean, errorType?: string) => {
+  // V404-3: 路由决策日志 — 每候选模型尝试记一条 decision(角色/档位/上下文规模/是否重试/结果/cache)
+  const logDecision = (candidate: string, ok: boolean, errorType?: string, cacheHitTokens?: number | null, promptTokens?: number | null) => {
     import("../services/routing-log.js").then(({ logRoutingDecision, inferTier, estimateContextTokens }) => {
       logRoutingDecision({
         model: candidate,
@@ -341,6 +341,8 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
         errorType,
         ms: Date.now() - startedAt,
         purpose: input.agentContext?.action || undefined,
+        cacheHitTokens: cacheHitTokens ?? null,   // V404-17: KV-cache 命中观测(prompt_cache_hit_tokens)
+        promptTokens: promptTokens ?? null,
       });
     }).catch(() => { /* 日志失败不阻塞调用 */ });
   };
@@ -356,7 +358,7 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
     const r = await callLlmInner({ ...input, model: candidate, timeoutMs: Math.min(input.timeoutMs ?? 180_000, remaining) });
     if (r && !r.error) {
       modelCircuitRecordSuccess(candidate);
-      logDecision(candidate, true);
+      logDecision(candidate, true, undefined, r.cacheHit, r.tokens?.in ?? null);
       recordLatency(Date.now() - startedAt);
       return r;
     }
