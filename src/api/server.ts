@@ -1014,6 +1014,21 @@ export function buildHttpServer() {
     if (!body.text) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "缺少 text" } });
     return paperQualityService.formatAdaptation(body.text, body.target ?? "期刊论文", { model: body.model });
   });
+  // ─── git 无痕快照 API(2026-09-04: 移植 open-science git_snapshot.rs) ───
+  // 快照: POST /api/snapshot → 专用 ref 提交工作区(不碰分支); 历史: GET /api/snapshot/history
+  app.post("/api/snapshot", async (request, reply) => {
+    const { snapshotWorkspace } = await import("../services/git-snapshot-service.js");
+    const body = (request.body ?? {}) as { label?: string };
+    const result = await snapshotWorkspace(undefined, body.label ? String(body.label).slice(0, 200) : undefined);
+    if (!result.ok && result.error) {
+      return reply.code(502).send({ error: { code: "SNAPSHOT_FAILED", message: result.error } });
+    }
+    return { ...result };
+  });
+  app.get("/api/snapshot/history", async () => {
+    const { snapshotHistory } = await import("../services/git-snapshot-service.js");
+    return { ok: true, history: await snapshotHistory() };
+  });
   // ─── 溯源 API(2026-09-04: 文件级 provenance, 移植 open-science) ───
   // 留痕查询: GET /api/provenance?path=&sessionId=&limit=&cursor=
   app.get("/api/provenance", async (request) => {

@@ -62,6 +62,6 @@ describe("recordProvenance", () => {
     const { readEnvSnapshot } = await import("./provenance-service.js");
     const envText = await readEnvSnapshot(hist[0].envHash);
     expect(envText).toBeTruthy();
-    expect(envText.length).toBeGreaterThan(10);
+    expect(envText!.length).toBeGreaterThan(10);
   });
 });
