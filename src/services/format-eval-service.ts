@@ -2,7 +2,7 @@
 // format-eval-service.ts — 论文格式评测: 聚合服务 + LLM 审校层(2026-09-03)
 // 双层检测: 规则引擎(纯函数, 确定性) + LLM 审校(软性项, 失败可降级)。
 // 评分: score = 100 − 5×error − 2×warning − 0.5×info, 保留 1 位小数。
-import { runRuleEngine, type FormatIssue } from "./format-eval-engine.js";
+import { runRuleEngine, summarizeRules, type FormatIssue, type RuleStatusEntry } from "./format-eval-engine.js";
 import { resolveTemplate, type FormatTemplate } from "./format-eval-templates.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 import { getRoleModel } from "./llm-model-registry.js";
@@ -12,13 +12,15 @@ export interface FormatEvalResult {
   templateUsed: FormatTemplate;
   stats: {
     score: number;
-    totalRules: number;
+    totalRules: number;   // 规则清单总数(含通过项)
+    passed: number;       // 通过项数
     errors: number;
     warnings: number;
     infos: number;
     byCategory: Record<string, number>;
   };
   ruleFindings: FormatIssue[];
+  ruleStatuses: RuleStatusEntry[];  // 完整规则清单(逐条状态)
   llmFindings: FormatIssue[];
   llmStatus: "ok" | "skipped" | "failed";
   humanCheckNotes: string[];
@@ -96,19 +98,20 @@ ${sample}`;
   }
 }
 
-function computeStats(findings: FormatIssue[]) {
+function computeStats(findings: FormatIssue[], statuses: RuleStatusEntry[]) {
   const byCategory: Record<string, number> = {};
   let errors = 0;
   let warnings = 0;
   let infos = 0;
-  for (const f of findings) {
-    byCategory[f.category] = (byCategory[f.category] ?? 0) + 1;
-    if (f.severity === "error") errors += 1;
-    else if (f.severity === "warning") warnings += 1;
-    else infos += 1;
+  let passed = 0;
+  for (const s of statuses) {
+    if (s.status === "pass") { passed += 1; continue; }
+    if (s.status === "error") { errors += 1; byCategory[s.category] = (byCategory[s.category] ?? 0) + 1; }
+    else if (s.status === "warning") { warnings += 1; byCategory[s.category] = (byCategory[s.category] ?? 0) + 1; }
+    else { infos += 1; byCategory[s.category] = (byCategory[s.category] ?? 0) + 1; }
   }
   const score = Math.max(0, Math.min(100, Math.round((100 - errors * 5 - warnings * 2 - infos * 0.5) * 10) / 10));
-  return { score, errors, warnings, infos, byCategory, totalRules: findings.length };
+  return { score, errors, warnings, infos, passed, byCategory, totalRules: statuses.length };
 }
 
 export async function runFormatEval(input: {
@@ -135,11 +138,13 @@ export async function runFormatEval(input: {
   }
 
   const combined = [...ruleFindings, ...llmFindings];
+  const ruleStatuses = summarizeRules(ruleFindings);
   return {
     ok: true,
     templateUsed,
-    stats: computeStats(combined),
+    stats: computeStats(combined, ruleStatuses),
     ruleFindings,
+    ruleStatuses,
     llmFindings,
     llmStatus,
     humanCheckNotes: templateUsed.humanCheckNotes,
