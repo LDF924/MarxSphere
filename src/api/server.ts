@@ -2161,6 +2161,48 @@ export function buildHttpServer() {
     return reply.code(201).send(result);
   });
 
+  // ═══ V404-13: WriterLease/ChangeSet/锚点(借鉴 OpenSquilla artifact_session, 最小) ═══
+  // 编辑协议: acquire(持锁拿 token) → apply(带 token 原子改, 冲突返回最新版) → release
+  app.post("/api/documents/:id/session/acquire", async (request, reply) => {
+    const { docSessionService } = await import("../services/doc-session-service.js");
+    const body = request.body as { holder?: string; ttlSeconds?: number };
+    const holder = String(body.holder || "agent");
+    const r = await docSessionService.acquireWriterLease(String((request.params as any).id), holder, Number(body.ttlSeconds) || 300);
+    if (!r.ok) return reply.code(409).send({ error: r.error, code: "LEASE_BUSY" });
+    return { ok: true, token: r.token, hint: "编辑后调 apply(带 token) 或 release" };
+  });
+  app.post("/api/documents/:id/session/release", async (request) => {
+    const { docSessionService } = await import("../services/doc-session-service.js");
+    const body = request.body as { holder?: string };
+    await docSessionService.releaseWriterLease(String((request.params as any).id), String(body.holder || "agent"));
+    return { ok: true };
+  });
+  app.post("/api/documents/:id/session/apply", async (request, reply) => {
+    const { docSessionService } = await import("../services/doc-session-service.js");
+    const body = request.body as { holder?: string; token?: number; summary?: string; ops: Array<{ op: string; start: number; end: number; text: string }> };
+    const ops = (body.ops || []).map((o) => ({ op: "replace" as const, start: Number(o.start), end: Number(o.end), text: String(o.text ?? "") }));
+    const r = await docSessionService.applyChangeSet({
+      documentId: String((request.params as any).id), holder: String(body.holder || "agent"),
+      token: Number(body.token ?? -1), summary: body.summary, ops,
+    });
+    if (!r.ok) return reply.code(r.currentVersion !== undefined ? 409 : 400).send({ error: r.error, code: r.currentVersion !== undefined ? "VERSION_CONFLICT" : "APPLY_FAILED", currentVersion: r.currentVersion });
+    return { ok: true, changeSetId: r.changeSetId, newVersion: r.newVersion };
+  });
+  app.post("/api/documents/:id/anchors", async (request, reply) => {
+    const { docSessionService } = await import("../services/doc-session-service.js");
+    const body = request.body as { version?: number; start?: number; end?: number; quote?: string; note?: string };
+    const r = await docSessionService.createAnchor({
+      documentId: String((request.params as any).id), version: Number(body.version ?? 1),
+      start: Number(body.start ?? 0), end: Number(body.end ?? 0), quote: body.quote, note: body.note,
+    });
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "ANCHOR_FAILED" });
+    return { ok: true, anchorId: r.id };
+  });
+  app.get("/api/documents/:id/anchors", async (request) => {
+    const { docSessionService } = await import("../services/doc-session-service.js");
+    return { anchors: await docSessionService.listAnchors(String((request.params as any).id)) };
+  });
+
   app.post("/api/documents/upload/jobs", async (request, reply) => {
     const input = uploadSchema.parse(request.body);
     const ctx = (request as any).tokenCtx as { tokenId: string } | undefined;
