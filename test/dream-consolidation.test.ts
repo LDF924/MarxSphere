@@ -85,7 +85,9 @@ describe("dream-consolidation", () => {
   it("V405 evidence: rejectProposal 把支撑证据写入隔离区记录(审计可追溯)", () => {
     const { rejectProposal, listDreamState } = mod!;
     // 手工往隔离区文件写一条带 evidence 的 proposal(等价 runDream+evidence 产物)
-    const { appendFileSync } = require("node:fs") as typeof import("node:fs");
+    const { appendFileSync, mkdirSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    mkdirSync(TEST_DIR, { recursive: true }); // CI 干净环境无目录 — 先建(本地靠 runDream 副作用蒙混过)
     const p = prop("evi-key", {
       id: "dp-evi-1",
       score: 0.8,
@@ -98,12 +100,12 @@ describe("dream-consolidation", () => {
         { id: "102", query: "剩余价值的来源", qualityScore: 0.85, success: true },
       ],
     }) as any;
-    appendFileSync(require("node:path").join(TEST_DIR, "proposals.jsonl"), JSON.stringify(p) + "\n", "utf8");
+    appendFileSync(join(TEST_DIR, "proposals.jsonl"), JSON.stringify(p) + "\n", "utf8");
     const r = rejectProposal("dp-evi-1", "重复记忆");
     expect(r.ok).toBe(true);
     const st = listDreamState();
     // 隔离区记录(JSON 行)含 evidence id
-    const raw = require("node:fs").readFileSync(require("node:path").join(TEST_DIR, "quarantine.jsonl"), "utf8");
+    const raw = require("node:fs").readFileSync(join(TEST_DIR, "quarantine.jsonl"), "utf8");
     expect(raw).toContain("dp-evi-1");
     expect(raw).toContain("101");
     expect(raw).toContain("102");
