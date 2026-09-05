@@ -351,8 +351,8 @@ export const AdminPanel: FC = () => {
                 </span>
                 <span className="text-xs text-muted-foreground">余额 {(Number(u.balance_cents) / 100).toFixed(2)}元 · 累计 {(Number(u.total_cost_cents) / 100).toFixed(2)}元</span>
                 <select value={u.plan} onChange={(e) => void setPlan(u.id, e.target.value)}
-                  className="rounded border px-2 py-1 text-xs">
-                  <option value="free">free</option><option value="pro">pro</option><option value="enterprise">enterprise</option>
+                  className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-white hover:border-white/20 focus:border-primary/50 focus:outline-none">
+                  <option value="free" className="bg-slate-800 text-white">free</option><option value="pro" className="bg-slate-800 text-white">pro</option><option value="enterprise" className="bg-slate-800 text-white">enterprise</option>
                 </select>
                 <button type="button" onClick={() => { setTarget(u); setModal("balance"); setInputVal(""); }}
                   className="rounded bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20">调余额</button>
@@ -401,7 +401,7 @@ export const AdminPanel: FC = () => {
             </div>
             <input value={inputVal} onChange={(e) => setInputVal(e.target.value)}
               placeholder={modal === "balance" ? "如 50 或 -10" : "新密码（至少6位）"}
-              className="w-full rounded-md border px-3 py-2 text-sm" />
+              className="w-full rounded-md border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-primary/50 focus:outline-none" />
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => { setTarget(null); setModal(null); }}
                 className="rounded-md bg-muted px-4 py-2 text-sm hover:opacity-80">取消</button>
