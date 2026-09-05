@@ -3,7 +3,7 @@
 // 用户列表/用量汇总/审计日志/改用户计划
 // V390增强: 用户启禁用/调余额/重置密码 + 用量趋势 + 邮箱/状态展示
 import { useEffect, useState, type FC } from "react";
-import { Users, BarChart3, ScrollText, ShieldCheck, ShieldOff, Sparkles, Wallet } from "lucide-react";
+import { Users, BarChart3, ScrollText, ShieldCheck, ShieldOff, Sparkles, Wallet, Route } from "lucide-react";
 
 interface AdminUser { id: string; username: string; email: string | null; role: string; plan: string; status: string; balance_cents: string; llm_provider: string; created_at: string; total_cost_cents: string; }
 interface AuditLog { username: string; method: string; path: string; status_code: number; duration_ms: number; tokens_used: number; ip: string; created_at: string; }
@@ -16,12 +16,20 @@ interface LedgerSummary {
   byEndpoint: Array<{ endpoint: string; calls: number; costCny: number }>;
   bySource: Array<{ costSource: string; calls: number; costCny: number }>;
 }
+// V405(P1 三档路由): 路由决策审计数据结构(ROUTER_ENABLED=1 后有数据)
+interface RouterAuditRow { query: string; qtype: string; level: string; reason: string; mode: string; created_at: string; }
+interface RouterAudit {
+  total: number; liteRate: number;
+  byLevel: Record<string, number>;
+  rows: RouterAuditRow[];
+}
 
 export const AdminPanel: FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [usage, setUsage] = useState<UsageDay[]>([]);
   const [ledger, setLedger] = useState<LedgerSummary | null>(null);
+  const [routerAudit, setRouterAudit] = useState<RouterAudit | null>(null);
   const [msg, setMsg] = useState("");
   const [forbidden, setForbidden] = useState(false);
   // 弹窗: 重置密码/调余额
@@ -77,6 +85,9 @@ export const AdminPanel: FC = () => {
       // V405(P0 成本账本): 平台成本审计(真实 LLM 用量明细)
       const led = await (await fetch("/api/admin/cost-ledger?days=7", { headers: h })).json();
       setLedger(led.summary || null);
+      // V405(P1 三档路由): 路由决策审计(ROUTER_ENABLED=1 后有数据; 默认关为空态)
+      const ra = await (await fetch("/api/admin/router-audit?days=7", { headers: h })).json();
+      setRouterAudit(ra.audit || null);
     } catch {}
   };
   useEffect(() => { void load(); }, []);
@@ -272,6 +283,52 @@ export const AdminPanel: FC = () => {
                   <span key={e.endpoint}>
                     {e.endpoint}: ¥{e.costCny.toFixed(2)}
                   </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* V405(P1 三档路由): 路由决策审计 — lite/standard/deep 命中分布(ROUTER_ENABLED=1 后实时) */}
+        <div className="rounded-lg border p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-medium"><Route className="h-4 w-4" /> 三档路由决策审计（近7天）</div>
+            {(!routerAudit || routerAudit.total === 0) && <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">未开启(ROUTER_ENABLED=1 后统计)</span>}
+          </div>
+          {!routerAudit || routerAudit.total === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              路由决策默认关闭(保 0.884 评测基线)。设 <code className="rounded bg-muted px-1 font-mono text-[11px]">ROUTER_ENABLED=1</code> 后,
+              每次推理的档位决策(lite 快答 / standard 全链路 / deep 深链)与来源(规则/ML 升级)将在此审计。
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">总决策</div>
+                  <div className="text-lg font-bold">{routerAudit.total}</div>
+                </div>
+                {(["lite", "standard", "deep"] as const).map((lv) => (
+                  <div key={lv} className="rounded bg-muted/40 p-2">
+                    <div className="text-[10px] text-muted-foreground">{lv === "lite" ? "lite(快答省成本)" : lv === "deep" ? "deep(深链)" : "standard(默认)"}</div>
+                    <div className="text-lg font-bold">{routerAudit.byLevel[lv] ?? 0}</div>
+                  </div>
+                ))}
+              </div>
+              {routerAudit.liteRate > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  lite 命中率 {Math.round(routerAudit.liteRate * 100)}% — 估算成本省幅 ≈ lite 次数 × 80%(相对 standard 全链路)
+                </div>
+              )}
+              <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                {routerAudit.rows.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded px-2 py-1 text-[11px] odd:bg-muted/30">
+                    <span className={`w-14 shrink-0 rounded px-1 py-0.5 text-center text-[9px] ${
+                      r.level === "deep" ? "bg-red-400/15 text-red-400" : r.level === "lite" ? "bg-emerald-400/15 text-emerald-400" : "bg-muted text-muted-foreground"
+                    }`}>{r.level}</span>
+                    <span className="min-w-0 flex-1 truncate">{r.query}</span>
+                    <span className="shrink-0 text-[9px] text-muted-foreground/60">{r.reason}{r.mode !== "auto" ? ` · ${r.mode}` : ""}</span>
+                    <span className="shrink-0 text-[9px] text-muted-foreground/40">{r.created_at?.slice(5, 16)}</span>
+                  </div>
                 ))}
               </div>
             </div>
