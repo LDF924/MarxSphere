@@ -17,15 +17,15 @@ src/                 后端源码（TypeScript ESM, Fastify 5）
   ingestion/         文档分块与事件/实体抽取
   mcp/               MCP Server
   observability/     日志 / 模型调用记录
-web/                 前端源码（React 19 + Vite 8 + Tailwind, 33 视图）
+web/                 前端源码（React 19 + Vite 8 + Tailwind, 41+ 视图）
 electron/            桌面端（主进程 / 引导页 / 打包）
 scripts/             Python runner / 评测脚本 / MCP server / 工具脚本
 evaluation/          评测资产（结果 / 金标 / 历史归档）
 reports/             评测报告
 knowledge-graph/     知识图谱数据
 skills/              自研 Skill（10 个, 覆盖文献获取→科研调度）
-migrations/          PostgreSQL schema（80+ 迁移）
-test/                单元测试（273 项, Vitest）
+migrations/          PostgreSQL schema（108 迁移）
+test/                单元测试（736 项, Vitest）
 docs/                文档
 ```
 
@@ -36,14 +36,14 @@ cp .env.example .env        # 配置 LLM/Embedding API key（必填）
 docker compose up -d        # PostgreSQL 16 + pgvector
 npm install
 npm run db:setup            # 迁移 + 种子数据
-npm run dev                 # 开发: WebUI 5173 / API 4173
+npm run dev                 # 开发: 仅 API 4173(无 5173 dev server)
 ```
 
 ## 常用命令
 
 | 命令 | 说明 |
 |---|---|
-| `npm test` | 273 项单元测试（Vitest） |
+| `npm test` | 736 项单元测试（Vitest） |
 | `npm run typecheck` | 前后端类型检查 |
 | `npm run build` | 后端 tsc + 前端 vite 构建 |
 | `npm start` | 生产模式（4173） |
@@ -60,7 +60,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 - **Agent 编排**：`src/services/agent-*`（task-service/orchestrator/tool-registry/eval-service 等 37 个文件），工具注册在 `agent-tool-router.ts`
 
 ### 前端
-- **视图导航**：`App.tsx` 的 `MainWorkspaceTabs`（33 视图, Mega Menu 6 分类），新增视图需同步 `GROUP_DOTS` 色点与分类数组
+- **视图导航**：`App.tsx` 的 `MainWorkspaceTabs`（41+ 视图, Mega Menu 6 分类），新增视图需同步 `GROUP_DOTS` 色点与分类数组
 - **API 调用**：`web/src/lib/api.ts` 统一封装（相对路径 `/api/...`）
 
 ### 评测
@@ -76,7 +76,7 @@ npm run dev                 # 开发: WebUI 5173 / API 4173
 3. **新增环境变量** → 同步 `.env.example` + `src/config/env.ts`
 4. **新增数据库表** → `migrations/` 幂等 SQL（编号递增）
 5. **评测相关改动** → 跑 `npx tsx scripts/eval-32-metrics.ts` 验证分数不退化
-6. **提交前** → `npm test` 273 项全绿
+6. **提交前** → `npm test` 736 项全绿
 
 ## 外部 Agent 接入（MCP）
 
