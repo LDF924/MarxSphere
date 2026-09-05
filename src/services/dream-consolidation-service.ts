@@ -186,6 +186,8 @@ let dreamSchedulerStarted = false;
  * V404-7: 每日 Dream 巩固调度 — 启动后延时首跑, 之后每 24h 一次。
  * 开关: SAG_DREAM_DAILY=0 关闭(默认开); 幂等防重复启动。
  * 只做确定性扫描+评分(useLlm=false, 零 token 成本), 不自动 accept(人工审红线)。
+ * V405-ML: 空闲凝练扩展 — 同通道并跑技能/DAG 自动提案(高频任务→技能蒸馏候选,
+ *   进技能库待审; 不自动 accept)。零额外定时器。
  */
 export function startDreamDailyScheduler(): void {
   if (dreamSchedulerStarted) return;
@@ -201,6 +203,27 @@ export function startDreamDailyScheduler(): void {
       console.log(`[dream] V404-7 每日巩固: ${proposals.length} 条新候选进隔离区(人工审: 记忆巩固面板)`);
     } catch (e: any) {
       console.warn(`[dream] 每日巩固失败: ${String(e?.message || e).slice(0, 120)}`);
+    }
+    // V405-ML: 空闲凝练 — 技能自动提案(高频任务→蒸馏候选, 待人工审; 消耗少量 LLM, 默认开,
+    //   可 SAG_DREAM_SKILL_PROPOSE=0 关)。失败不阻塞记忆凝练。
+    if (process.env.SAG_DREAM_SKILL_PROPOSE !== "0") {
+      try {
+        const { runAutoPropose } = await import("./skill-auto-propose.js");
+        const r = await runAutoPropose({ days: 14, minCount: 2, maxProposals: 2 });
+        if ((r.proposed ?? 0) > 0 || (r.covered ?? 0) > 0) {
+          console.log(`[dream] V405-ML 技能空闲凝练: 新提案 ${r.proposed ?? 0} 条(技能库待审; 覆盖跳过 ${r.covered ?? 0})`);
+        }
+      } catch (e: any) {
+        console.warn(`[dream] 技能提案失败(不阻塞): ${String(e?.message || e).slice(0, 100)}`);
+      }
+      // V405-ML: DAG 提案(高频目标 → 声明式工作流候选; LLM 组装, 人工审隔离区)
+      try {
+        const { runDreamDagPropose } = await import("./meta-skill-propose-service.js");
+        const d = await runDreamDagPropose();
+        if (d) console.log(`[dream] V405-ML DAG 空闲凝练: ${d} 条新工作流候选(data/dag-proposals 待审)`);
+      } catch (e: any) {
+        console.warn(`[dream] DAG 提案失败(不阻塞): ${String(e?.message || e).slice(0, 100)}`);
+      }
     }
     // V404-19: 顺带裁剪路由决策日志(>5MB 按 7 天; 零额外定时器)
     try {
