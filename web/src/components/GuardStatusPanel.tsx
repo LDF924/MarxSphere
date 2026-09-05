@@ -26,6 +26,17 @@ const GUARD_COLOR: Record<string, string> = {
 export function GuardStatusPanel() {
   const [data, setData] = useState<GuardStatus | null>(null);
   const [err, setErr] = useState("");
+  // V404-30: 持久化审计(跨重启)
+  const [audit, setAudit] = useState<{ events: Array<{ guard: string; action: string; detail: string; createdAt: string }>; counts: Array<{ guard: string; count: number }> } | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
+
+  const loadAudit = async () => {
+    try {
+      const j = await fetch("/api/agent/guards/events?limit=50&days=7").then((r) => r.json());
+      setAudit({ events: j.events || [], counts: j.counts || [] });
+      setShowAudit(true);
+    } catch { /* ignore */ }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -44,7 +55,10 @@ export function GuardStatusPanel() {
           <ShieldCheck className="h-4 w-4 text-sky-300" />
           <span className="text-[13px] font-semibold text-foreground">运行时防护状态</span>
           <span className="rounded bg-sky-400/10 px-1.5 py-0.5 text-[9px] text-sky-300">OpenSquilla 引擎防护 · 观察与拦截实时计数</span>
-          <button type="button" onClick={() => void load()} className="ml-auto rounded border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/40">
+          <button type="button" onClick={() => { void loadAudit(); }} className="ml-auto rounded border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/40">
+            📋 审计(持久化)
+          </button>
+          <button type="button" onClick={() => void load()} className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/40">
             <RefreshCw className="mr-0.5 inline h-2.5 w-2.5" />刷新
           </button>
         </div>
@@ -103,6 +117,30 @@ export function GuardStatusPanel() {
               </div>}
           </div>
         </>
+      )}
+
+      {showAudit && (
+        <div className="rounded-lg border border-border/60 bg-card p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="text-[11px] font-semibold text-muted-foreground">防护审计(7 天持久化 — 跨重启可查)</div>
+            {audit?.counts.map((c) => (
+              <span key={c.guard} className={`rounded px-1.5 py-0.5 text-[9px] ${GUARD_COLOR[c.guard] || "text-muted-foreground bg-muted"}`}>{c.guard} ×{c.count}</span>
+            ))}
+            {(!audit || audit.counts.length === 0) && <span className="text-[9px] text-muted-foreground">暂无持久化事件</span>}
+          </div>
+          {audit && audit.events.length > 0 && (
+            <div className="max-h-64 space-y-0.5 overflow-y-auto">
+              {audit.events.map((e, i) => (
+                <div key={i} className="flex items-start gap-1.5 rounded px-1.5 py-1 text-[10px] hover:bg-accent/20">
+                  <span className={`mt-0.5 shrink-0 rounded px-1 text-[9px] ${GUARD_COLOR[e.guard] || ""}`}>{e.guard}</span>
+                  <span className={`shrink-0 rounded px-1 text-[9px] ${e.action === "block" ? "bg-red-400/15 text-red-300" : e.action === "kill" ? "bg-orange-400/15 text-orange-300" : "bg-amber-400/15 text-amber-200"}`}>{e.action}</span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">{e.detail}</span>
+                  <span className="shrink-0 text-[9px] text-muted-foreground/40">{e.createdAt?.slice(5, 19).replace("T", " ")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

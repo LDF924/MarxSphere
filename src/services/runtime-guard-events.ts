@@ -20,6 +20,49 @@ export function recordGuardEvent(guard: string, action: GuardEvent["action"], de
   events.push({ guard, action, detail: String(detail).slice(0, 160), ts: Date.now() });
   if (events.length > MAX_EVENTS) events.shift();
   counters.set(guard, (counters.get(guard) || 0) + 1);
+  // V404-30: 异步落库(跨重启审计; 失败静默不阻塞防护)
+  void persistGuardEvent(guard, action, detail);
+}
+
+let persistChain: Promise<void> = Promise.resolve();
+function persistGuardEvent(guard: string, action: string, detail: string): Promise<void> {
+  persistChain = persistChain.then(async () => {
+    try {
+      const { pool } = await import("../db/pool.js");
+      const total = (await pool.query("select count(*)::int as n from runtime_guard_events")).rows[0].n;
+      if (total >= 5000) {
+        // 保留 30 天 + 总量上限双清理
+        await pool.query("delete from runtime_guard_events where created_at < now() - interval '30 days'");
+      }
+      await pool.query(
+        "insert into runtime_guard_events (guard, action, detail) values ($1, $2, $3)",
+        [guard, action, String(detail).slice(0, 300)]
+      );
+    } catch { /* 落库失败静默(防护不阻塞) */ }
+  }).catch(() => {});
+  return persistChain;
+}
+
+/** 查询持久化事件(审计; 按时间倒序) */
+export async function listPersistedGuardEvents(guard?: string, limit = 50): Promise<Array<{ guard: string; action: string; detail: string; createdAt: string }>> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = guard
+      ? await pool.query("select guard, action, detail, created_at from runtime_guard_events where guard = $1 order by id desc limit $2", [guard, limit])
+      : await pool.query("select guard, action, detail, created_at from runtime_guard_events order by id desc limit $1", [limit]);
+    return r.rows.map((x: any) => ({ guard: x.guard, action: x.action, detail: x.detail, createdAt: new Date(x.created_at).toISOString() }));
+  } catch { return []; }
+}
+
+/** 持久化统计(审计; 按防护聚合) */
+export async function persistedGuardCounts(days = 7): Promise<Array<{ guard: string; count: number }>> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      `select guard, count(*)::int as count from runtime_guard_events
+       where created_at > now() - ($1::int || ' days')::interval group by guard order by count desc`, [days]);
+    return r.rows.map((x: any) => ({ guard: x.guard, count: Number(x.count) }));
+  } catch { return []; }
 }
 
 export function guardEventCounts(): Record<string, number> {
@@ -66,4 +109,4 @@ export function guardStatusSnapshot(): GuardStatus {
   };
 }
 
-export const runtimeGuardEvents = { recordGuardEvent, guardEventCounts, recentGuardEvents, guardStatusSnapshot };
+export const runtimeGuardEvents = { recordGuardEvent, guardEventCounts, recentGuardEvents, guardStatusSnapshot, listPersistedGuardEvents, persistedGuardCounts };

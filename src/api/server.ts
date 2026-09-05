@@ -6411,6 +6411,17 @@ except Exception as e:
     return out;
   });
 
+  // V404-30: 防护事件审计(跨重启持久化查询)
+  app.get("/api/agent/guards/events", async (request) => {
+    const q = request.query as { guard?: string; limit?: string; days?: string };
+    const { runtimeGuardEvents } = await import("../services/runtime-guard-events.js");
+    const [events, counts] = await Promise.all([
+      runtimeGuardEvents.listPersistedGuardEvents(q.guard, Math.min(Number(q.limit) || 50, 200)),
+      runtimeGuardEvents.persistedGuardCounts(Number(q.days) || 7),
+    ]);
+    return { ok: true, events, counts };
+  });
+
   // wisp借鉴: 计算上下文状态（持久运行时会话 + 远程 WSL/SSH/GPU 配置）
   app.get("/api/agent/compute-status", async () => {
     const { agentPersistentRuntime } = await import("../services/agent-persistent-runtime.js");
