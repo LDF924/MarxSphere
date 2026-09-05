@@ -34,7 +34,7 @@
 └──────────────────────────────────────────┘
 ```
 
-**规模**：200+ 服务文件（36 agent-* + 16 教育服务 + V399 适配 + V405 新增 cost-ledger/tier-router/b5 增强）· 492+ 路由（112 教育 + 32 学习引擎顶层 + 引文核验 + V405 审计端点）· 108 迁移 · 41+ 前端视图 · 736 测试(CI 全绿)
+**规模**：200+ 服务文件（36 agent-* + 16 教育服务 + V399 适配 + V405 新增 cost-ledger/tier-router/b5 增强）· 492+ 路由（112 教育 + 32 学习引擎顶层 + 引文核验 + V405 审计端点）· 111 迁移 · 41+ 前端视图 · 736 测试(CI 全绿)
 
 ## 2. 推理链路（52 步）
 
@@ -96,9 +96,9 @@
 
 | 能力 | 实现 | 落点 | 开关 |
 |---|---|---|---|
-| 成本可审计账本 | 轮级真实用量(模型/端点/cacheHit) + cost_source 三态 + 按模型单价 | `llm_usage_ledger`(105 迁移) + `cost-ledger-service.ts`; 修计费恒 flash + stream 漏计费 | 即时生效 |
-| 三档路由 + 本地 ML 分类器 | lite(单点快答)/standard(默认)/deep(深链); 规则优先 + 人工标签 LightGBM(180 标注, acc 0.938) 只升级 deep | `router_audit`(106 迁移) + `tier-router-service.ts` + `scripts/ml-router/` | `ROUTER_ENABLED=1` |
-| 任务执行租约 | DB 级 lease(holder+fencing token+TTL 心跳), 断线接管 | agent_tasks exec_lease_*(107 迁移) + `agent-task-queue.ts` | 即时生效 |
+| 成本可审计账本 | 轮级真实用量(模型/端点/cacheHit) + cost_source 三态 + 按模型单价 | `llm_usage_ledger`(111 迁移) + `cost-ledger-service.ts`; 修计费恒 flash + stream 漏计费 | 即时生效 |
+| 三档路由 + 本地 ML 分类器 | lite(单点快答)/standard(默认)/deep(深链); 规则优先 + 人工标签 LightGBM(180 标注, acc 0.938) 只升级 deep | `router_audit`(111 迁移) + `tier-router-service.ts` + `scripts/ml-router/` | `ROUTER_ENABLED=1` |
+| 任务执行租约 | DB 级 lease(holder+fencing token+TTL 心跳), 断线接管 | agent_tasks exec_lease_*(111 迁移) + `agent-task-queue.ts` | 即时生效 |
 | 记忆 Dream 凝练×3 | 记忆候选 + 技能蒸馏 + MetaSkill DAG 提案, 均隔离区人工审; 候选带支撑证据 | `dream-consolidation-service.ts` + `meta-skill-propose-service.ts` | 默认开 |
 | B5 集成路由 | 多模型并行成稿 + aggregator 融合(证据校准); 渐进/超时截断/预设 | `b5-ensemble-service.ts` + 盲标评测脚本 | `B5_ENABLED=1` |
 | 沙箱安全 | 删除前备份 `.trash`(3GiB); 网络禁环回回连 | `agent-tool-router.ts` file_write/checkNetworkAccess | 即时生效 |
