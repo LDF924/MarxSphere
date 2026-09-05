@@ -6403,6 +6403,11 @@ except Exception as e:
       const { guardianService } = await import("../services/agent-guardian-service.js");
       out.guardian = guardianService.guardianBreakerDetail();
     } catch { /* 状态不可用 */ }
+    // V404-29: 运行时防护状态(事件计数/最近事件/子进程树) — 供"防护状态页"
+    try {
+      const { guardStatusSnapshot } = await import("../services/runtime-guard-events.js");
+      out.guards = guardStatusSnapshot();
+    } catch { /* 防护状态不可用 */ }
     return out;
   });
 

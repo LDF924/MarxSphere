@@ -179,7 +179,9 @@ export class ProgressWatchdog {
       else this.readOnlyCount++;
       if (this.readOnlyCount >= this.config.sourceContextWithoutWriteThreshold && this.readOnlyCount % this.config.sourceContextWithoutWriteThreshold === 0) {
         this.warnedAt.readOnly = this.readOnlyCount;
-        return { action: this.config.observeOnly ? "warn" : "block", reason: `连续 ${this.readOnlyCount} 轮只读检索无产出(可能空转) — ${o.signature || "未知签名"}` };
+        const reason = `连续 ${this.readOnlyCount} 轮只读检索无产出(可能空转) — ${o.signature || "未知签名"}`;
+        void import("./runtime-guard-events.js").then((m) => m.recordGuardEvent("h1_progress", this.config.observeOnly ? "warn" : "block", reason)).catch(() => {});
+        return { action: this.config.observeOnly ? "warn" : "block", reason };
       }
     }
     // 重复工具错误
@@ -188,7 +190,9 @@ export class ProgressWatchdog {
       else { this.lastToolError = o.toolError; this.toolErrorCount = 1; }
       if (this.toolErrorCount >= this.config.repeatedToolErrorThreshold && this.toolErrorCount % this.config.repeatedToolErrorThreshold === 0) {
         this.warnedAt.toolError = this.toolErrorCount;
-        return { action: this.config.observeOnly ? "warn" : "block", reason: `同工具错误重复 ${this.toolErrorCount} 次: ${o.toolError.slice(0, 80)}` };
+        const reason = `同工具错误重复 ${this.toolErrorCount} 次: ${o.toolError.slice(0, 80)}`;
+        void import("./runtime-guard-events.js").then((m) => m.recordGuardEvent("h1_progress", this.config.observeOnly ? "warn" : "block", reason)).catch(() => {});
+        return { action: this.config.observeOnly ? "warn" : "block", reason };
       }
     }
     void this.warnedAt;
@@ -245,7 +249,10 @@ export function decodeSubprocessOutput(raw: Buffer | Uint8Array | null | undefin
     if (label === "utf-8") return utf8Text;
     const fallback = new TextDecoder(label).decode(bytes);
     const fallbackScore = misreadScore(fallback);
-    if (fallbackScore < utf8Score) return fallback;
+    if (fallbackScore < utf8Score) {
+      void import("./runtime-guard-events.js").then((m) => m.recordGuardEvent("h4_decode", "warn", `子进程输出按 ${label} 解码(UTF-8 误读 ${utf8Score} 处)`)).catch(() => {});
+      return fallback;
+    }
   } catch { /* TextDecoder 不支持该编码 → 保持 utf8 */ }
   return utf8Text;
 }
