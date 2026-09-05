@@ -469,20 +469,6 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
 | 📈 **Evaluation** | 53-question dual-track 0.884 / 736 unit tests / 21-operator ablation / CI+E2E |
 
-## OpenSquilla Engineering Depth
-
-> Ported from [OpenSquilla](https://github.com/TokenRhythm/opensquilla) (Token-Efficient AI Agent, Apache-2.0) — bringing general-agent engineering depth (cost saving / no double-run / auditability / safety) into MarxSphere. Switches default off; enable one by one after the eval gate passes — the 0.884 baseline stays intact.
-
-| Capability | Implementation | Switch |
-|---|---|---|
-| 💰 **Auditable cost ledger** | `llm_usage_ledger` per-turn detail + `cost_source` 3-state + per-model price table; fixed flat-flash billing & stream-route missing charge; platform cost audit panel | always on |
-| 🔀 **3-tier routing + local ML classifier** | `lite/standard/deep` tiers; rule-first + human-labeled LightGBM (180 labels, lite/deep acc 0.938) upgrade-to-deep only; every decision logged to `router_audit` | `ROUTER_ENABLED=1` |
-| 🔁 **B5 multi-model ensemble** | parallel drafters + aggregator fusion (retrieval-evidence calibration); progressive arrival / per-draft timeout / preset squads / smart direct routing | `B5_ENABLED=1` |
-| 🔒 **Task execution lease** | DB-level lease (holder + fencing token + TTL heartbeat), cross-process no-double-run, takeover after disconnect TTL | always on |
-| 🧠 **Dream evidence consolidation** | daily idle consolidation ×3 channels (memory / skill distill / MetaSkill DAG proposals), candidates carry support evidence, human-review quarantine | on by default |
-| 🛡 **Sandbox safety** | delete → auto-backup to `.trash` (3GiB quota); network loopback blocked (SSRF fix — web tools cannot call back localhost:4173) | always on |
-| ✅ **Contract test net** | SQL repository / ledger / lease / routing contract tests (mock-pinned SQL shapes) | — |
-
 ## Tech Stack
 
 | Layer | Tech |

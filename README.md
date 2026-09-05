@@ -46,13 +46,34 @@
 3. **学科全流程**：选题打磨（good-question）→ 文献调研 → 政策检索 → 实证分析（17 方法含元分析）→ 论文写作（GB/T 规范）→ 评审——**覆盖人文社科科研的完整生命周期**
 4. **教育与科研一体**：同一知识底座支撑个性化教学（BKT 掌握度/自适应路径），科研成果直接转化为教学素材
 5. **全链路可审计**：32 项评测指标、真实 token 消耗、步骤级执行日志、成本回填——**每一分钱花在哪、每一步怎么走的都透明**
-6. **对齐最强实践**：融入 Rimagination 开源生态 13 项能力 + 对齐 OpenAI Codex Harness 六层 30 项设计（差距清零）+ 移植 OpenSquilla 工程纵深（成本账本 / 三档路由 / 本地分类器 / 任务租约 / B5 集成路由，见 [OpenSquilla 工程纵深](#opensquilla-工程纵深)）——**站在开源巨人肩上，而非从零发明**
+6. **对齐最强实践**：融入 Rimagination 开源生态 13 项能力 + 对齐 OpenAI Codex Harness 六层 30 项设计（差距清零）——**站在开源巨人肩上，而非从零发明**
 
 > **一句话**：MarxSphere 不是"又一个 AI 助手"，而是把人文社科研究的**证据链、方法论、学术规范**做成可运行、可审计、可复用的系统。
 
 ## 功能总览
 
 > 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 70 工具矩阵 / 17 实证功能(含元分析) / 桌面端细节 / 评测指标）
+
+### ✨ 核心能力一览
+
+| 能力 | 说明 |
+|---|---|
+| 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
+| 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
+| 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
+| 🤖 **AI Agent** | 70 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
+| 💰 **成本可审计账本** | 轮级真实用量(按模型/来源三态) + 平台成本审计面板 |
+| 🔀 **三档成本路由** | 规则 + 本地 ML 分类器(lite/deep) 保守融合, 只升级不降级 |
+| 🔁 **B5 多模型集成** | 难题多模型并行成稿 + aggregator 融合, 渐进呈现/超时截断 |
+| 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
+| 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
+| 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
+| 📡 **IM 接入** | 飞书 / 钉钉 / Telegram 机器人远程对话（状态/项目/评测/审批/告警） |
+| 🖥 **Computer Use** | 桌面控制：截屏 / 鼠标 / 键盘 / 窗口列表（Agent 可看屏幕操作） |
+| 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
+| 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
+| 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 736 单测 / 消融 21 算子 / CI+E2E |
 
 ### 🏗 系统架构
 
@@ -478,41 +499,6 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 > - 完整路径变量见 `.env.example` 底部说明
 
 ---
-
-## 核心能力一览
-
-| 能力 | 说明 |
-|---|---|
-| 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
-| 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
-| 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
-| 🤖 **AI Agent** | 70 工具自主调度（含 Notebook 图表模板/桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
-| 💰 **成本可审计账本** | 轮级真实用量(按模型/来源三态) + 平台成本审计面板(见 [OpenSquilla 工程纵深](#opensquilla-工程纵深)) |
-| 🔀 **三档成本路由** | 规则 + 本地 ML 分类器(lite/deep) 保守融合, 只升级不降级(见 [OpenSquilla 工程纵深](#opensquilla-工程纵深)) |
-| 🔁 **B5 多模型集成** | 难题多模型并行成稿 + aggregator 融合, 渐进呈现/超时截断(见 [OpenSquilla 工程纵深](#opensquilla-工程纵深)) |
-| 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
-| 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
-| 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
-| 📡 **IM 接入** | 飞书 / 钉钉 / Telegram 机器人远程对话（状态/项目/评测/审批/告警） |
-| 🖥 **Computer Use** | 桌面控制：截屏 / 鼠标 / 键盘 / 窗口列表（Agent 可看屏幕操作） |
-| 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
-| 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
-| 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 736 单测 / 消融 21 算子 / CI+E2E |
-
-## OpenSquilla 工程纵深
-
-> 移植自 [OpenSquilla](https://github.com/TokenRhythm/opensquilla)(Token-Efficient AI Agent, Apache-2.0) 的工程纵深 — 把通用 Agent 的"省成本/防双跑/可审计/安全"做进 MarxSphere。所有开关默认关, 评测 PASS 后逐个启用, 不破坏 0.884 评测基线。
-
-| 能力 | 实现 | 开关 |
-|---|---|---|
-| 💰 **成本可审计账本** | `llm_usage_ledger` 轮级明细(模型/端点/输入输出/cacheHit) + `cost_source` 三态(provider_billed/estimate/byok) + 按模型单价表; 修复计费恒 flash 定价与 stream 路由漏计费; 运营管理面板"平台成本审计"按模型/端点/来源可视化 | 即时生效 |
-| 🔀 **三档成本路由 + 本地 ML 分类器** | `lite`(单点快答)/`standard`(52 步全链路, 默认)/`deep`(政策/引证/综述/理论对接深链); 规则优先 + **人工标签 LightGBM 分类器**(180 条标注, 二分类 lite/deep acc 0.938)只做"升级 deep"不做降级; 每轮决策落 `router_audit` 审计表 | `ROUTER_ENABLED=1`(评测门 `scripts/tier-router-eval.sh` PASS 后) |
-| 🔁 **B5 多模型集成路由** | 难题由多个模型并行成稿 + aggregator 融合(检索证据校准分歧); 渐进呈现(先到先得)/每稿独立超时截断/预设+自定义阵容/简单题智能直连; 盲标评测 `scripts/b5-vs-single-eval.sh` | `B5_ENABLED=1` |
-| 🔒 **任务执行租约** | agent_tasks DB 级租约(holder+fencing token+TTL 心跳) — 跨进程防双跑, 断线 TTL 过期后接管; 文档级 WriterLease 同源 | 即时生效 |
-| 🧠 **记忆 Dream evidence** | 每日空闲凝练三通道: 记忆候选 + 技能蒸馏候选 + MetaSkill DAG 工作流提案(均隔离区人工审, 不自动 accept); 候选带支撑证据明细(可审计追溯) | 默认开(`SAG_DREAM_SKILL_PROPOSE=0` 关) |
-| 🛡 **沙箱安全** | 文件删除前自动备份到 `.trash`(3GiB 配额轮转); 网络出口禁环回回连(修 SSRF: web 工具不得回打本机 4173, `allowLoopback` 仅内部自调) | 即时生效 |
-| ✅ **契约测试网** | SQL 仓储/账本/租约/路由契约测试(vi.mock 钉死 SQL 形状防重构漂移) | — |
 
 ## 技术栈
 
