@@ -66,7 +66,7 @@
 ### 3. MetaSkill 声明式 DAG 试点(参考 docs/authoring/meta-skills.md)
 
 **实现**:
-- `src/services/meta-skill-runtime.ts`(新): 步骤 6 型 `agent`(复用 SAG 综述能力)/ `llm_chat` / `llm_classify`(闭集)/ `user_input`(澄清表单)/ `tool_call`(executeAgentTool)/ `llm_gate`(质量门 JSON 判定); `depends_on` → DFS 拓扑排序(带环检测); `route` 条件路由(`==`/`contains`/存在/非 四种表达式); `on_failure` 单步备胎(约束: 备胎无依赖无嵌套); 模板引擎 `{{inputs}}/{{user.x}}/{{outputs.x|slice(n)}}/{{user.x || '默认'}}`; `final_text_mode`: auto/raw/step:<id>; 校验器 `validateMetaSkill`(引用完整性/闭集/备胎约束); liveRuns 注册表支持 user_input 挂起 → `resumeMetaSkillInput` 续跑(10 分钟窗口)
+- `src/services/meta-skill-runtime.ts`(新): 步骤 6 型 `agent`(复用 SAG 综述能力)/ `llm_chat` / `llm_classify`(闭集)/ `user_input`(澄清表单)/ `tool_call`(executeAgentTool)/ `llm_gate`(质量门 JSON 判定); `depends_on` → DFS 拓扑排序(带环检测); `route` 条件路由(`==`/`contains`/存在/非 四种表达式); `on_failure` 单步备胎(约束: 备胎无依赖无嵌套); 模板引擎 `{% raw %}{{inputs}}/{{user.x}}/{{outputs.x|slice(n)}}/{{user.x || '默认'}}{% endraw %}`; `final_text_mode`: auto/raw/step:<id>; 校验器 `validateMetaSkill`(引用完整性/闭集/备胎约束); liveRuns 注册表支持 user_input 挂起 → `resumeMetaSkillInput` 续跑(10 分钟窗口)
 - llm_gate 判定不过 → 走失败语义触发 on_failure 备胎; 备胎输出顶原步骤, 原步骤 stepLog 诚实标 failed
 - `src/services/meta-skill-defs.ts`(新): 试点场景 = S51 文献综述改写 DAG: clarify(user_input 3 字段)→ retrieve(agent 检索)→ draft(llm_chat 结构模板综述)→ citation_gate(llm_gate 引用检查)→ draft_retry(llm_chat 备胎返工补引用)
 - API(server.ts): `GET /api/meta-skill/list` / `POST /run` / `GET /progress` / `POST /input`
