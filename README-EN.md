@@ -119,7 +119,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - Trajectory metrics: plan adherence / tool accuracy / reasoning quality (judge-scored)
 - Learning curve + cost audit (real-time token stats)
 
-**⑦ Learning loop**: reflect → attribute → minimal-diff patch → bad-case recycle → re-evaluate (V294–V297 all wired)
+**⑦ Learning loop**: reflect → attribute → minimal-diff patch → bad-case recycle → re-evaluate
 
 **⑧ Reliability hardening (Agent reliability pack)**
 
@@ -162,7 +162,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | **SAG event retrieval** | event-centric structure (chunk→event→entities), 2-hop graph expansion, recursive SQL multi-hop, three-arm RRF fusion (content vector / title vector / BM25) | `search-service.ts` |
 | **Cognee** | HYBRID_COMPLETION paper-chunk recall (17-way coarse retrieval: vector/lexical/graph traversal/triples/summary/subproblem/temporal/entity direct… ) | `inference-service.ts` stage2 |
 | **Graphiti** | entity refinement / concept search / literature distillation / domain knowledge / entity neighbors / passage backtrack / paper tracing / DeepWalk / relation queries | `inference-service.ts` stage3 |
-| **Hyperedge knowledge layer** (V166+, beyond HyperGraphRAG) | hyperedge vector retrieval / hyperedge entity-directed / hyperedge BM25 / three-way RRF fusion / temporal decay | `inference-service.ts` stage3.5 |
+| **Hyperedge knowledge layer** (hyperedge layer) | hyperedge vector retrieval / hyperedge entity-directed / hyperedge BM25 / three-way RRF fusion / temporal decay | `inference-service.ts` stage3.5 |
 | **PG pgvector** | 1024-dim vectors + CHUNKS lexical + full-text + SQL multi-hop | `inference-service.ts` stage2/4 |
 
 **The full 52-step chain** (template mode; adaptive mode lets the LLM pick operators dynamically):
@@ -174,7 +174,7 @@ Stage 2    Cognee coarse retrieval (14 steps): entity extraction → Cognee HYBR
            → temporal analysis (triggered) → PG entity backfill → PG vectors → CHUNKS lexical → semantic retrieval → entity direct
 Stage 3    Graphiti refinement (9 steps): entity refinement → concept search → literature distillation → domain knowledge → entity neighbors
            → passage backtrack → paper tracing (triggered) → DeepWalk expansion (triggered) → relation queries (triggered)
-Stage 3.5  Hyperedge knowledge layer (5 steps, V166+): hyperedge vector retrieval → hyperedge entity-directed → hyperedge BM25
+Stage 3.5 Hyperedge knowledge layer (5 steps): hyperedge vector retrieval → hyperedge entity-directed → hyperedge BM25
            → three-way RRF fusion → temporal decay
 Stage 4    Fusion generation (20 steps): Compiled Truth → multi-query variants → HyDE expansion (triggered) → intent-based quotas
            → three-arm RRF → Cosine rescoring → boost chain → hyperedge quota (triggered) → LLM rerank → compressed passages
@@ -241,7 +241,7 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Reusable assets**: templates / case library / sample courses / external resource sources (school libraries, public platforms), role-scoped isolation
 - Implementation: 52-step chain + four-source retrieval + citation tracing + memory injection; one-sentence invocation from AI chat (`education_service` tool, 83 actions)
 
-**Adaptive learning system** (V384, `adaptive-learning-service.ts`) — four layers:
+**Adaptive learning system** (`adaptive-learning-service.ts`) — four layers:
 - **Learning modeling**: answer history → concept mastery (mastered/fuzzy/unmastered), smoothed updates
 - **Adaptive content push**: weak points → micro-lessons/examples/extension; advanced learners → harder content
 - **Pacing**: difficulty/duration tuned to mastery (no repetitive or overwhelming tasks)

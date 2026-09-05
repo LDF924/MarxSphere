@@ -119,7 +119,7 @@
 - 轨迹级指标：计划遵循度 / 工具准确率 / 推理质量（judge 打分）
 - 学习曲线 + 成本审计（token 实时统计）
 
-**⑦ 学习闭环**：反思 → 归因 → 最小 diff 补丁 → bad case 回流 → 评测再验证（V294-V297 全打通）
+**⑦ 学习闭环**：反思 → 归因 → 最小 diff 补丁 → bad case 回流 → 评测再验证
 
 **⑧ 工程加固（Agent 可靠性 4 件套）**
 
@@ -162,7 +162,7 @@
 | **SAG 事件检索** | 事件中心结构（chunk→event→entities）、图遍历 2 层展开、SQL 递归多跳、RRF 三臂融合（内容向量/标题向量/BM25） | `search-service.ts` |
 | **Cognee** | HYBRID_COMPLETION 论文切片召回（17 路粗检索：向量/词法/图遍历/三元组/摘要/子问题/时序/实体直查…） | `inference-service.ts` stage2 |
 | **Graphiti** | 实体精炼 / 概念搜索 / 文献蒸馏 / 领域知识 / 实体邻居 / 段落回溯 / 论文溯源 / DeepWalk / 关系查询 | `inference-service.ts` stage3 |
-| **超边知识层**（V166+，超越 HyperGraphRAG） | 超边向量检索 / 超边实体导向 / 超边 BM25 / 三路 RRF 融合 / 时间衰减 | `inference-service.ts` stage3.5 |
+| **超边知识层**（超边知识层） | 超边向量检索 / 超边实体导向 / 超边 BM25 / 三路 RRF 融合 / 时间衰减 | `inference-service.ts` stage3.5 |
 | **PG pgvector** | 向量 1024 维 + CHUNKS 词法 + 全文检索 + SQL 多跳 | `inference-service.ts` stage2/4 |
 
 **52 步完整链路**（template 模式；adaptive 模式由 LLM 动态选算子）：
@@ -174,7 +174,7 @@ Stage 2   Cognee 粗检索（14步）: 实体抽取 → Cognee HYBRID → RAG补
           → 时序分析(触发) → PG实体补漏 → PG向量 → CHUNKS词法 → 语义检索 → 实体直查
 Stage 3   Graphiti 精炼（9步）: 实体精炼 → 概念搜索 → 文献蒸馏 → 领域知识 → 实体邻居
           → 段落回溯 → 论文溯源(触发) → DeepWalk扩展(触发) → 关系查询(触发)
-Stage 3.5 超边知识层（5步, V166+）: 超边向量检索 → 超边实体导向 → 超边BM25
+Stage 3.5 超边知识层（5步）: 超边向量检索 → 超边实体导向 → 超边BM25
           → 三路RRF融合 → 时间衰减
 Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE扩展(触发) → 意图调配额
           → 三臂RRF → Cosine重打分 → Boost链 → 超边配额(触发) → LLM重排 → 压缩段落
@@ -241,7 +241,7 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 - **教育复用资产**：模板 / 案例库 / 示例课程 / 外部资源源接入，按角色空间隔离
 - 实现：52 步推理链路 + 四源检索 + 引用溯源 + 记忆注入；AI 对话一句话调用（`education_service` 工具 83 动作）
 
-**自适应学习系统**（V384，`adaptive-learning-service.ts`）——四层能力：
+**自适应学习系统**（`adaptive-learning-service.ts`）——四层能力：
 - **学情建模**：答题历史 → 知识点掌握度（已掌握/模糊/未掌握），平滑更新
 - **自适应内容推送**：薄弱点 → 微课/例题/拓展；学有余力 → 拔高
 - **节奏适配**：按掌握度调整习题难度/时长（避免简单重复/难度过载）
