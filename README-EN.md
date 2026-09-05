@@ -462,7 +462,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 📚 **Research scenarios** | 66 scenarios × 8 stages, full-screen workbench + dedicated algorithms |
 | 📊 **Empirical workbench** | questionnaire → reliability → imputation → regression (M1–M6) → evidence ledger |
 | 📓 **Notebook workbench** | lightweight Jupyter: code/Markdown cells · 9 chart templates (3-line table/heatmap/box) · file upload · Restart & Run All |
-| 📡 **IM integration** | Feishu / DingTalk / Telegram / WeCom bot remote chat (status/projects/eval/approval/alerts commands; WeCom corp-app bidirectional) |
+| 📡 **IM integration** | Feishu / DingTalk / Telegram / WeCom bot remote chat (status/projects/eval/approval/alerts commands; WeCom corp-app bidirectional, see [IM integration](docs/IM-INTEGRATION.md)) |
 | 🖥 **Computer Use** | desktop control: screenshot / mouse / keyboard / window list (Agent can see & act on screen) |
 | 🔀 **Model-neutral** | DeepSeek / OpenAI / Anthropic Claude / Ollama / custom endpoints auto-detected |
 | 🔐 **Hash versioning** | doc content dedup · eval data fingerprint · stale detection · version history · data profiling |
