@@ -31,7 +31,7 @@ export function shouldSpill(messages: Array<{ role: string; content: string }>):
   return total > threshold;
 }
 
-// ═══ ⑤ subprocess: 集中子进程注册表 ═══
+// ═══ ⑤ subprocess: 集中子进程注册表(整树终止增强 V404-23H3) ═══
 interface ManagedProcess {
   id: string;
   label: string;
@@ -47,11 +47,11 @@ const managedProcesses = new Map<string, ManagedProcess>();
 export function trackSubprocess(label: string, proc: ChildProcess, timeoutMs = 120_000): string {
   const id = `proc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const rec: ManagedProcess = { id, label, proc, startedAt: Date.now(), timeoutMs };
-  // 超时自动清理（防孤儿进程）
+  // 超时自动清理（防孤儿进程; V404-23H3: 整树终止）
   rec.timer = setTimeout(() => {
     if (!proc.killed) {
       console.log(`[agent] 差距P⑤ 子进程超时清理: ${label} (>${Math.round(timeoutMs / 1000)}s)`);
-      try { proc.kill(); } catch { /* 已退出 */ }
+      void killProcessTree(proc);
     }
     managedProcesses.delete(id);
   }, timeoutMs);
@@ -70,15 +70,32 @@ export function subprocessStatus(): Array<{ id: string; label: string; runningMs
   }));
 }
 
-/** 清理全部子进程（服务关闭时） */
+/** 整树终止单进程(借鉴 OpenSquilla process_tree: leader 退出后仍能终止全部子孙 — Windows 用 taskkill /T, POSIX 杀进程组) */
+export async function killProcessTree(proc: ChildProcess): Promise<boolean> {
+  if (!proc.pid) return false;
+  try {
+    if (process.platform === "win32") {
+      // taskkill /PID <pid> /T /F — 递归杀子孙(等价 Job Object 整树终止; Git Bash 下经 execFile 无路径转换问题)
+      const { execFile } = await import("node:child_process");
+      await new Promise<void>((resolve) => {
+        execFile("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { windowsHide: true }, () => resolve());
+      });
+      return true;
+    }
+    // POSIX: 杀进程组(负 pid); 失败回退单杀
+    try { process.kill(-proc.pid, "SIGKILL"); return true; } catch { proc.kill("SIGKILL"); return true; }
+  } catch { return false; }
+}
+
+/** 清理全部子进程(整树; 服务关闭时) */
 export function killAllSubprocesses(): number {
   let killed = 0;
   for (const [, r] of managedProcesses) {
-    if (!r.proc.killed) { try { r.proc.kill(); killed++; } catch { /* ignore */ } }
+    if (!r.proc.killed) { void killProcessTree(r.proc); killed++; }
   }
   managedProcesses.clear();
   return killed;
 }
 
 /** 服务启动/关闭注册（index.ts 调用） */
-export const agentRuntimeUtils = { spillMessagesToFile, shouldSpill, trackSubprocess, subprocessStatus, killAllSubprocesses };
+export const agentRuntimeUtils = { spillMessagesToFile, shouldSpill, trackSubprocess, subprocessStatus, killAllSubprocesses, killProcessTree };
