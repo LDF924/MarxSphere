@@ -2522,7 +2522,15 @@ export async function executeAgentTool(
     // V404-2(OpenSquilla result_budget): 大结果压缩存储 — >6000 字符 gzip 入 data/tool-results,
     // 模型拿小预览 + tr-<sha256> 句柄; 需要时可调 retrieve_tool_result 精确取回(行窗口/关键词)
     const storedOutcome = storeLargeResult(tool.name, safeResult);
-    const modelResult = storedOutcome.compressed ? storedOutcome.view : safeResult;
+    // V404-26(M2, tokenjuice): 长输出若为结构化列表形态 → 规则摘要(计数+head/tail)替代存储视图展示
+    let modelResult = storedOutcome.compressed ? storedOutcome.view : safeResult;
+    if (storedOutcome.compressed) {
+      const { summarizeStructuredOutput } = await import("./tool-result-store.js");
+      const sum = summarizeStructuredOutput(tool.name, safeResult);
+      if (sum.summarized) {
+        modelResult = `${sum.view}\n\n【取回】完整结果已存 handle: ${storedOutcome.handle} — 需要某条细节时调 retrieve_tool_result(handle="${storedOutcome.handle}", lines="n-m")`;
+      }
+    }
     // 差距D(DSH hooks): 工具完成钩子
     try {
       const { agentHooks } = await import("./agent-hooks.js");
