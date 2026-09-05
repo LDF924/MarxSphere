@@ -1,53 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1300" viewBox="0 0 1200 1300">
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" stop-color="#0f172a"/><stop offset="100%" stop-color="#1e1b4b"/>
 </linearGradient>
 </defs>
-<rect width="1200" height="1500" fill="url(#bg)"/>
-<text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere — 系统架构（V400）</text>
-<text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 三库图谱 · Agent 65 工具 · 技能 201 · 实证 17 方法 · 测试 296 · Codex 对齐</text>
+<rect width="1200" height="1300" fill="url(#bg)"/>
+<text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">MarxSphere — 系统架构</text>
+<text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 四源图谱 · Agent 70 工具 · 技能 208 · 实证 17 方法 · 评测 736 · 43 视图</text>
+
 <text x="30" y="128" font-size="16" font-weight="bold" fill="#fbbf24">① 交互层</text>
-<rect x="30" y="138" width="1140" height="70" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
-<text x="50" y="162" font-size="11" fill="#94a3b8">· Web 工作台（40+ 视图）· 桌面端（Electron + NSIS）· 外部 Agent / API（MCP + SSE 流式）</text>
-<text x="50" y="182" font-size="11" fill="#94a3b8">· AI 对话（默认首页）· 52 步推理 · Ask 检索 · 科研场景工作台（66 场景）· 实证工作台 · 引文核验面板</text>
-<text x="30" y="238" font-size="16" font-weight="bold" fill="#f59e0b">② 推理与检索层</text>
-<rect x="30" y="248" width="1140" height="110" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
-<text x="50" y="272" font-size="11" fill="#94a3b8">· 52 步深度推理链路：问题分类 → 意图识别 → 术语变体 → 子问题拆分 → 实体抽取 → 四源粗检 → 融合 → 假设 → 自评自愈</text>
-<text x="50" y="292" font-size="11" fill="#94a3b8">· Ask 18 步检索流水线：多臂召回 → RRF 融合 → Cosine 重排 → LLM 重排 → 带引用回切片</text>
-<text x="50" y="312" font-size="11" fill="#94a3b8">· Agent 工具 65 个：认知/行动/多模态/协作 + 视图工具（政策库/知识页/图谱/文献/任务/评测）</text>
-<text x="30" y="388" font-size="16" font-weight="bold" fill="#a855f7">③ Agent 编排核心（V400 Codex 对齐）</text>
-<rect x="30" y="398" width="1140" height="150" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
-<text x="50" y="422" font-size="11" fill="#94a3b8">· 决策循环：规划 → 选工具 → 执行 → reflect → replan（≤3 轮）· 失败注入 · 验证门</text>
-<text x="50" y="442" font-size="11" fill="#94a3b8">· 预算/时间提醒注入（Rollout 50K / TokenBudget 6_144 · 窗口去重）· Mid-turn 压缩不终止 · 滚动窗口</text>
-<text x="50" y="462" font-size="11" fill="#94a3b8">· Elicitation 澄清暂停协调 · Stop/PreToolUse/PostToolUse/PermissionRequest/SessionStart 钩子</text>
-<text x="50" y="482" font-size="11" fill="#94a3b8">· 世界状态 diff（增量注入）· Steer 运行中转向 · Mailbox 多代理双通道 · 审批三级链+缓存 · Guardian 熔断</text>
-<text x="50" y="502" font-size="11" fill="#94a3b8">· 主管-工人编排（拆包 2-4 子任务 · 协商修订 ≤2 轮 · 2 视角+对抗评审）· 共享上下文 LRU · 评审会话隔离</text>
-<text x="50" y="522" font-size="11" fill="#94a3b8">· 5 层安全（Guardian 策略/3 级沙箱/网络审批/审批门/凭证隔离）· 5 层记忆 · 全链路插桩审计</text>
-<text x="30" y="578" font-size="16" font-weight="bold" fill="#22c55e">④ 科研场景与工具链（V399 开源融入）</text>
-<rect x="30" y="588" width="1140" height="110" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
-<text x="50" y="612" font-size="11" fill="#94a3b8">· 选题构思 → 文献调研 → 证据检索 → 数据分析 → 论文写作 → 图表制作 → 评审发表 → 系统自动化</text>
-<text x="50" y="632" font-size="11" fill="#94a3b8">· V399：扫描 PDF 转换(mineru-go) · 选题打磨(good-question) · 公文起草 23 文种(gongwen-draft) · 视频笔记(bili/dy-note)</text>
-<text x="50" y="652" font-size="11" fill="#94a3b8">· · 科学叙事(good-story) · 图表数字化(thu-digitizer) · 英文文献 OA 回退(OpenAlex/Unpaywall) · 引文三维核验(citation-lab)</text>
-<text x="30" y="728" font-size="16" font-weight="bold" fill="#3b82f6">⑤ 数据层（三库知识图谱）</text>
-<rect x="30" y="738" width="1140" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
-<text x="50" y="762" font-size="11" fill="#94a3b8">· Graphiti（Neo4j 11001）：21,337 实体 · 1,085 社区 · 11,702 超边 · 五层蒸馏 · 166,631 关系</text>
-<text x="50" y="782" font-size="11" fill="#94a3b8">· Cognee（Neo4j 11003 + LanceDB）：31,253 实体 · 248,417 关系 · 11,550 切片 · 17 检索策略</text>
-<text x="50" y="802" font-size="11" fill="#94a3b8">· PostgreSQL pgvector：自建文献库切片向量（1024 维）· 全文检索 · 101 迁移</text>
-<text x="50" y="822" font-size="11" fill="#94a3b8">· 引用网络算法（文献耦合 + 共被引余弦 → top-K 边）· 政策资料库（317 文件）· 教育知识库</text>
-<text x="30" y="878" font-size="16" font-weight="bold" fill="#10b981">⑥ 实证研究工作台（17 大功能）</text>
-<rect x="30" y="888" width="1140" height="110" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
-<text x="50" y="912" font-size="11" fill="#94a3b8">· 问卷生成 → 问卷识别 → 信效度检验（α/KMO）→ 问卷诊断 → LLM 插补 → 变量敲定</text>
-<text x="50" y="932" font-size="11" fill="#94a3b8">· → 分析管道 → 回归分析（M1-M6）→ 元分析（固定/随机效应 · Q/I²/τ² · 森林图/漏斗图）→ 证据账本 → 质量闸门</text>
-<text x="50" y="952" font-size="11" fill="#94a3b8">· 因果 8 方法（DID/TWFE/事件研究/IV/RDD/PSM/SCM）+ 分类 4 + 数据处理 3 + 元分析 = 17 方法</text>
-<text x="30" y="1028" font-size="16" font-weight="bold" fill="#e879f9">⑦ 学习引擎（V386-V393 · 借鉴 TraitTutor）</text>
-<rect x="30" y="1038" width="1140" height="70" rx="10" fill="#1e293b" stroke="#e879f9" stroke-width="2"/>
-<text x="50" y="1062" font-size="11" fill="#94a3b8">· BKT 概念掌握 · 事件账本 · 自适应四层 · 间隔重复 · 学习计划链 · 组件白名单 · 答案服务端持有</text>
-<text x="50" y="1082" font-size="11" fill="#94a3b8">· 学习意图双层路由（注入扫描 + LLM 分类）· 思政审核 · 教育多模态（拍照/口语/板书）· 全屏学习画布</text>
-<text x="30" y="1138" font-size="16" font-weight="bold" fill="#64748b">⑧ 基础设施与运维</text>
-<rect x="30" y="1148" width="1140" height="90" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
-<text x="50" y="1172" font-size="11" fill="#94a3b8">· 评测体系：双轨评测（规则+LLM judge）· 32 指标 · 学习引擎回归 · 自愈闭环 · 296 测试</text>
-<text x="50" y="1192" font-size="11" fill="#94a3b8">· 模型服务：LLM（DeepSeek 原生 / qwen-plus）+ Embedding（MAAS v4）+ Rerank（qwen3-rerank）· OpenAI 兼容可替换</text>
-<text x="50" y="1212" font-size="11" fill="#94a3b8">· 商业化底座：多租户 · JWT · 计费 · BYOK · 告警中心 · 自愈巡检 · 桌面端打包（vendor 随包携带）</text>
+<rect x="30" y="138" width="1140" height="72" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+<text x="50" y="162" font-size="11" fill="#94a3b8">· Web 工作台（43 视图）· 桌面端（Electron + NSIS）· 外部 Agent / API（MCP + SSE 流式）· 中文/English 双语</text>
+<text x="50" y="184" font-size="11" fill="#94a3b8">· AI 对话（默认首页）· 52 步推理 · Ask 检索 · 科研场景（66）· 实证工作台 · 引文核验 · 运营管理审计面板</text>
+
+<text x="30" y="240" font-size="16" font-weight="bold" fill="#f59e0b">② 推理与检索层</text>
+<rect x="30" y="250" width="1140" height="92" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+<text x="50" y="274" font-size="11" fill="#94a3b8">· 52 步深度推理：问题分类 → 意图识别 → 术语变体 → 拆分子问题 → 实体抽取 → 四源粗检 → 融合 → 假设 → 自评自愈</text>
+<text x="50" y="296" font-size="11" fill="#94a3b8">· Ask 18 步检索流水线：多臂召回 → RRF 融合 → Cosine 重排 → LLM 重排 → 带编号引用回切片</text>
+<text x="50" y="318" font-size="11" fill="#94a3b8">· 17 种检索策略 · 三档成本路由(lite/standard/deep) · 本地分类器保守融合 · 每轮决策审计落库</text>
+
+<text x="30" y="372" font-size="16" font-weight="bold" fill="#a855f7">③ Agent 编排核心</text>
+<rect x="30" y="382" width="1140" height="152" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+<text x="50" y="406" font-size="11" fill="#94a3b8">· 决策循环：规划 → 选工具 → 执行 → reflect → replan（≤3 轮）· 主管-工人编排 · 任务 DAG · 审批三级链+缓存</text>
+<text x="50" y="428" font-size="11" fill="#94a3b8">· Agent 70 工具（48 Agent + 22 视图）：检索/推理/实证/写作/代码/联网/图片/文件/教育/格式评测 · 超时熔断 · 降级链</text>
+<text x="50" y="450" font-size="11" fill="#94a3b8">· 预算/时间提醒注入 · Mid-turn 压缩不终止 · Elicitation 澄清暂停 · Stop/PreToolUse/PostToolUse/PermissionRequest 钩子</text>
+<text x="50" y="472" font-size="11" fill="#94a3b8">· 世界状态 diff · Steer 运行中转向 · Mailbox 双通道 · Guardian 熔断 · 评审会话隔离 · 共享上下文 LRU</text>
+<text x="50" y="494" font-size="11" fill="#94a3b8">· 执行租约(DB 级 holder+fencing+TTL, 跨进程防双跑, 断线接管) · checkpoint 续跑 · 队列持久化</text>
+<text x="50" y="516" font-size="11" fill="#94a3b8">· 5 层安全（Guardian 策略/3 级沙箱/网络审批/审批门/凭证隔离）· 沙箱加固：删除前 .trash 备份 · 禁环回回连</text>
+
+<text x="30" y="564" font-size="16" font-weight="bold" fill="#22c55e">④ 科研场景与工具链</text>
+<rect x="30" y="574" width="1140" height="92" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+<text x="50" y="598" font-size="11" fill="#94a3b8">· 8 大阶段 66 场景：选题构思 → 文献调研 → 证据检索 → 数据分析 → 论文写作 → 图表制作 → 评审发表 → 系统自动化</text>
+<text x="50" y="620" font-size="11" fill="#94a3b8">· 场景工具链：扫描 PDF 转换 · 选题打磨 · 公文起草 23 文种 · 视频笔记 · 元分析 · 图表数字化 · 英文 OA 回退</text>
+<text x="50" y="642" font-size="11" fill="#94a3b8">· 引用网络算法（文献耦合+共被引）· 论文格式智能评测 · 写作语料库 · 政经 C 刊科研（四步法选题）</text>
+
+<text x="30" y="696" font-size="16" font-weight="bold" fill="#3b82f6">⑤ 数据层（三库知识图谱 + 账本）</text>
+<rect x="30" y="706" width="1140" height="110" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+<text x="50" y="730" font-size="11" fill="#94a3b8">· Graphiti（Neo4j 11001）：21,337 实体 · 1,085 社区 · 11,702 超边 · 五层蒸馏 · 166,631 关系</text>
+<text x="50" y="752" font-size="11" fill="#94a3b8">· Cognee（Neo4j 11003 + LanceDB）：31,253 实体 · 248,417 关系 · 11,550 切片 · 17 检索策略</text>
+<text x="50" y="774" font-size="11" fill="#94a3b8">· PostgreSQL pgvector：504 篇文献 · 66,002 实体 · 7,551 事件 · 7,556 切片（1024 维向量 + 全文检索）· 111 迁移</text>
+<text x="50" y="796" font-size="11" fill="#94a3b8">· 成本账本：llm_usage_ledger 轮级用量(按模型/来源三态) · llm_model_prices 单价 · router_audit 路由决策审计</text>
+
+<text x="30" y="846" font-size="16" font-weight="bold" fill="#10b981">⑥ 实证研究工作台（17 大功能）</text>
+<rect x="30" y="856" width="1140" height="92" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
+<text x="50" y="880" font-size="11" fill="#94a3b8">· 问卷生成 → 识别 → 信效度（α/KMO）→ 诊断 → LLM 插补 → 变量敲定 → 分析管道 → 回归（M1-M6）</text>
+<text x="50" y="902" font-size="11" fill="#94a3b8">· 元分析（固定/随机效应 · Q/I²/τ² · 森林/漏斗图）· 因果 8 方法（DID/TWFE/事件研究/IV/RDD/PSM/SCM）· 证据账本 · 质量闸门</text>
+<text x="50" y="924" font-size="11" fill="#94a3b8">· 分类 4 + 数据处理 3 + 元分析 = 17 方法 · 独立统计环境 · LaTeX/知识页导出</text>
+
+<text x="30" y="978" font-size="16" font-weight="bold" fill="#e879f9">⑦ 学习引擎（AI+教育）</text>
+<rect x="30" y="988" width="1140" height="72" rx="10" fill="#1e293b" stroke="#e879f9" stroke-width="2"/>
+<text x="50" y="1012" font-size="11" fill="#94a3b8">· BKT 概念掌握 · 事件账本 · 自适应四层 · 间隔重复 · 学习计划链 · 产物审查三态机 · 意图双层路由 · 思政审核</text>
+<text x="50" y="1034" font-size="11" fill="#94a3b8">· 学生/教师双角色 · 全屏学习画布 · 教育多模态（拍照/口语/板书）· 科研与教学共用知识底座</text>
+
+<text x="30" y="1090" font-size="16" font-weight="bold" fill="#64748b">⑧ 工程纵深与基础设施</text>
+<rect x="30" y="1100" width="1140" height="130" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+<text x="50" y="1124" font-size="11" fill="#94a3b8">· 评测体系：53 题双轨评测 0.884 · 32 指标 · 盲标/消融/归因/校准门 · 736 测试 · CI+E2E 全绿</text>
+<text x="50" y="1146" font-size="11" fill="#94a3b8">· B5 多模型集成（难题并行成稿 + 融合, 渐进呈现/超时截断/预设阵容, B5_ENABLED 开关）</text>
+<text x="50" y="1168" font-size="11" fill="#94a3b8">· 记忆 Dream 每日空闲凝练×3（记忆/技能蒸馏/MetaSkill 工作流, 隔离区人工审, 候选带证据）</text>
+<text x="50" y="1190" font-size="11" fill="#94a3b8">· 模型服务：LLM（DeepSeek 原生 / Qwen 系 / Claude 系 · OpenAI 兼容可替换）+ Embedding MAAS v4 + Rerank</text>
+<text x="50" y="1212" font-size="11" fill="#94a3b8">· 商业化底座：多租户 · JWT · 订阅+按量计费 · BYOK · 配额/限流 · 告警中心 · 契约测试网 · 桌面端打包</text>
 </svg>
