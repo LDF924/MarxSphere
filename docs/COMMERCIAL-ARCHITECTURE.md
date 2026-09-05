@@ -75,6 +75,10 @@ CREATE TABLE subscriptions (
 
 ## 阶段 2：计费系统（订阅 + 按量）
 
+> **V405 衔接(2026-09-05)**: 本文档为**用户侧计费**设计(订阅额度→超额扣 balance, 走 `billing_records`/`user_usage_log`)。
+> 平台**成本侧审计**由 V405 成本账本承担(`llm_usage_ledger` 105 迁移, cost_source 三态 provider_billed/estimate/byok,
+> 按模型单价 `llm_model_prices`)——两侧解耦: 计费=含利润售价, 账本=真实平台成本。运营面板两卡并列可视化。
+
 ### 2.1 数据库（迁移 044）
 ```sql
 -- 账单
