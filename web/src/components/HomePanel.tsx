@@ -216,7 +216,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             </span>
           </h1>
           <p className="mx-auto mt-8 max-w-2xl text-xl leading-snug tracking-wide text-accent-foreground md:text-2xl">
-            让 Agent 帮你真正读懂 <span className="font-bold text-foreground">全人文社科经典</span>
+            让 Agent 帮你真正读懂 <span className="font-bold text-foreground">全人文社科理论</span>
           </p>
           <p className="mx-auto mt-4 text-base text-muted-foreground/80 md:text-lg">
             农业农村现代化 · 资本下乡 · 工商资本 · 资本治理
