@@ -8,6 +8,55 @@
 //   IM_TELEGRAM_TOKEN / IM_TELEGRAM_CHAT_ID（可选, 需要轮询或 webhook 回调）
 // 免依赖实现: 全用 fetch（Node 18+ 内置）, 不引入 SDK
 import { config } from "../config/env.js";
+import { pool } from "../db/pool.js";
+
+export interface ImConfig {
+  feishuWebhook: string;
+  dingtalkWebhook: string;
+  telegramToken: string;
+  telegramChatId: string;
+}
+
+/** 读 IM 配置: DB 优先(已存值), env 兜底(未配置时) */
+export async function getImConfig(): Promise<ImConfig> {
+  try {
+    const r = await pool.query("select feishu_webhook, dingtalk_webhook, telegram_token, telegram_chat_id from im_config where id = 1");
+    if (r.rows[0]) {
+      return {
+        feishuWebhook: r.rows[0].feishu_webhook || config.IM_FEISHU_WEBHOOK || "",
+        dingtalkWebhook: r.rows[0].dingtalk_webhook || config.IM_DINGTALK_WEBHOOK || "",
+        telegramToken: r.rows[0].telegram_token || config.IM_TELEGRAM_TOKEN || "",
+        telegramChatId: r.rows[0].telegram_chat_id || config.IM_TELEGRAM_CHAT_ID || "",
+      };
+    }
+  } catch { /* 表不存在(迁移未跑) → env */ }
+  return {
+    feishuWebhook: config.IM_FEISHU_WEBHOOK || "",
+    dingtalkWebhook: config.IM_DINGTALK_WEBHOOK || "",
+    telegramToken: config.IM_TELEGRAM_TOKEN || "",
+    telegramChatId: config.IM_TELEGRAM_CHAT_ID || "",
+  };
+}
+
+/** 保存 IM 配置(前端面板; 空串清空该渠道) */
+export async function saveImConfig(cfg: Partial<ImConfig>): Promise<ImConfig> {
+  const cur = await getImConfig();
+  const next = {
+    feishuWebhook: cfg.feishuWebhook !== undefined ? cfg.feishuWebhook.trim() : cur.feishuWebhook,
+    dingtalkWebhook: cfg.dingtalkWebhook !== undefined ? cfg.dingtalkWebhook.trim() : cur.dingtalkWebhook,
+    telegramToken: cfg.telegramToken !== undefined ? cfg.telegramToken.trim() : cur.telegramToken,
+    telegramChatId: cfg.telegramChatId !== undefined ? cfg.telegramChatId.trim() : cur.telegramChatId,
+  };
+  try {
+    await pool.query(
+      `update im_config set feishu_webhook = $1, dingtalk_webhook = $2, telegram_token = $3, telegram_chat_id = $4, updated_at = now() where id = 1`,
+      [next.feishuWebhook, next.dingtalkWebhook, next.telegramToken, next.telegramChatId]
+    );
+  } catch (e: any) {
+    throw new Error(`IM 配置保存失败(迁移 112 未跑?): ${String(e?.message || e).slice(0, 80)}`);
+  }
+  return next;
+}
 
 export interface ImMessage {
   platform: "feishu" | "dingtalk" | "telegram";
@@ -60,13 +109,14 @@ export async function sendTelegram(token: string, chatId: string, text: string):
   } catch { return false; }
 }
 
-/** 按配置广播到全部已配 IM 平台 */
+/** 按配置广播到全部已配 IM 平台(DB 配置优先) */
 export async function imBroadcast(text: string): Promise<{ feishu: boolean; dingtalk: boolean; telegram: boolean }> {
-  const feishu = config.IM_FEISHU_WEBHOOK ? await sendFeishu(config.IM_FEISHU_WEBHOOK, text) : false;
-  const dingtalk = config.IM_DINGTALK_WEBHOOK ? await sendDingtalk(config.IM_DINGTALK_WEBHOOK, text) : false;
+  const cfg = await getImConfig();
+  const feishu = cfg.feishuWebhook ? await sendFeishu(cfg.feishuWebhook, text) : false;
+  const dingtalk = cfg.dingtalkWebhook ? await sendDingtalk(cfg.dingtalkWebhook, text) : false;
   let telegram = false;
-  if (config.IM_TELEGRAM_TOKEN && config.IM_TELEGRAM_CHAT_ID) {
-    telegram = await sendTelegram(config.IM_TELEGRAM_TOKEN, config.IM_TELEGRAM_CHAT_ID, text);
+  if (cfg.telegramToken && cfg.telegramChatId) {
+    telegram = await sendTelegram(cfg.telegramToken, cfg.telegramChatId, text);
   }
   return { feishu, dingtalk, telegram };
 }
@@ -188,5 +238,5 @@ export async function handleImCommand(msg: ImMessage): Promise<ImReply> {
 export const imService = {
   sendFeishu, sendDingtalk, sendTelegram, imBroadcast,
   parseFeishuCallback, parseDingtalkCallback, parseTelegramCallback,
-  handleImCommand,
+  handleImCommand, getImConfig, saveImConfig,
 };

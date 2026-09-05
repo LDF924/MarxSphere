@@ -5038,7 +5038,8 @@ export function buildHttpServer() {
     const msg = imService.parseFeishuCallback(request.body);
     if (!msg) return { challenge: (request.body as any)?.challenge };  // 飞书 URL 验证
     const r = await imService.handleImCommand(msg);
-    await imService.sendFeishu(config.IM_FEISHU_WEBHOOK, r.text).catch(() => {});
+    const imCfg = await imService.getImConfig().catch(() => null);
+    if (imCfg?.feishuWebhook) await imService.sendFeishu(imCfg.feishuWebhook, r.text).catch(() => {});
     return { ok: true };
   });
 
@@ -5048,7 +5049,8 @@ export function buildHttpServer() {
     const msg = imService.parseDingtalkCallback(request.body);
     if (!msg) return { ok: true };
     const r = await imService.handleImCommand(msg);
-    await imService.sendDingtalk(config.IM_DINGTALK_WEBHOOK, r.text).catch(() => {});
+    const imCfg = await imService.getImConfig().catch(() => null);
+    if (imCfg?.dingtalkWebhook) await imService.sendDingtalk(imCfg.dingtalkWebhook, r.text).catch(() => {});
     return { ok: true };
   });
 
@@ -5058,8 +5060,9 @@ export function buildHttpServer() {
     const msg = imService.parseTelegramCallback(request.body);
     if (!msg) return { ok: true };
     const r = await imService.handleImCommand(msg);
-    if (config.IM_TELEGRAM_TOKEN && msg.from) {
-      await imService.sendTelegram(config.IM_TELEGRAM_TOKEN, msg.from, r.text).catch(() => {});
+    const imCfg = await imService.getImConfig().catch(() => null);
+    if (imCfg?.telegramToken && msg.from) {
+      await imService.sendTelegram(imCfg.telegramToken, msg.from, r.text).catch(() => {});
     }
     return { ok: true };
   });
@@ -5071,13 +5074,49 @@ export function buildHttpServer() {
     return { sent: await imService.imBroadcast(body.text) };
   });
 
-  // GET /api/im/status — IM 配置状态
+  // GET /api/im/status — IM 配置状态(DB 优先 + env 兜底)
   app.get("/api/im/status", async () => {
+    const { getImConfig } = await import("../services/im-service.js");
+    const cfg = await getImConfig();
     return {
-      feishu: !!config.IM_FEISHU_WEBHOOK,
-      dingtalk: !!config.IM_DINGTALK_WEBHOOK,
-      telegram: !!(config.IM_TELEGRAM_TOKEN && config.IM_TELEGRAM_CHAT_ID),
+      feishu: !!cfg.feishuWebhook,
+      dingtalk: !!cfg.dingtalkWebhook,
+      telegram: !!(cfg.telegramToken && cfg.telegramChatId),
+      config: {
+        feishuWebhook: cfg.feishuWebhook ? `…${cfg.feishuWebhook.slice(-24)}` : "",
+        dingtalkWebhook: cfg.dingtalkWebhook ? `…${cfg.dingtalkWebhook.slice(-24)}` : "",
+        telegramConfigured: !!(cfg.telegramToken && cfg.telegramChatId),
+      },
     };
+  });
+  // GET /api/im/config — IM 完整配置(前端编辑用; 令牌类打码展示)
+  app.get("/api/im/config", async () => {
+    const { getImConfig } = await import("../services/im-service.js");
+    const cfg = await getImConfig();
+    return {
+      config: {
+        feishuWebhook: cfg.feishuWebhook,
+        dingtalkWebhook: cfg.dingtalkWebhook,
+        telegramToken: cfg.telegramToken ? `••••${cfg.telegramToken.slice(-4)}` : "",
+        telegramTokenSet: !!cfg.telegramToken,
+        telegramChatId: cfg.telegramChatId,
+      },
+    };
+  });
+  // POST /api/im/config — 保存 IM 配置(DB, 即时生效)
+  app.post("/api/im/config", async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      feishuWebhook?: string; dingtalkWebhook?: string;
+      telegramToken?: string; telegramChatId?: string;
+    };
+    const { saveImConfig } = await import("../services/im-service.js");
+    const cfg = await saveImConfig({
+      feishuWebhook: body.feishuWebhook,
+      dingtalkWebhook: body.dingtalkWebhook,
+      telegramToken: body.telegramToken,
+      telegramChatId: body.telegramChatId,
+    });
+    return { ok: true, config: { feishu: !!cfg.feishuWebhook, dingtalk: !!cfg.dingtalkWebhook, telegram: !!(cfg.telegramToken && cfg.telegramChatId) } };
   });
   // POST /api/jupyter/execute — 执行一个代码单元（复用实证 venv 沙箱）
   // body: { code, sessionId?, restart?, cellIndex? } → { ok, output, variables, figures, sessionId }
