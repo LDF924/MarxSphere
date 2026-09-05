@@ -11,7 +11,9 @@ import { aliasNormalize } from "./alias.js";
 import { memoryService } from "./memory-service.js";
 import { getRoleModel, resolveModelAlias, type LlmRole } from "./llm-model-registry.js";
 import { breakers, MAX_STEP_ITERATIONS, SESSION_TOKEN_BUDGET, MAX_CONSECUTIVE_SAME_FAILURES, assertNoLlmSideEffect } from "./circuit-breaker.js";
+import { recordLedger } from "./cost-ledger-service.js";
 import { recordAlert } from "./alert-service.js";
+import { tierRouterService } from "./tier-router-service.js";
 import { applyBacklinkBoost, applyChronicleTypeBoost, applyTitleBoost, classifyQueryIntent } from "./gbrain-boosts.js";
 import { reciprocalRankFusion } from "./rrf.js";
 import {
@@ -36,6 +38,9 @@ export interface StepTokens {
   cacheHit?: number;
 }
 
+/** V405(P0 成本账本): 最近一次 fetchLlm 的模型 — recordStageStep 落 parameters.model, 供按模型计费 */
+let lastFetchedModel = "deepseek-v4-flash";
+
 /** V249: 统一 LLM fetch — 从响应 usage 采真实 token，返回 { text, tokens }
  * V306(P0-8): 增加 cacheHit 采集 — DeepSeek 原生 API 返回 prompt_cache_hit_tokens（KV Cache 命中）
  */
@@ -47,6 +52,8 @@ async function fetchLlm(input: {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  /** V405(P0 成本账本): 调用意图标注(默认 reason) — 记入 llm_usage_ledger.endpoint */
+  op?: string;
 }): Promise<{ text: string; tokens: StepTokens | null; cacheHit: number | null } | null> {
   try {
     const resp = await fetch(input.url, {
@@ -70,6 +77,19 @@ async function fetchLlm(input: {
     // V306: KV Cache 命中 token（DeepSeek 官方字段; 无则 null）
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
     if (tokens && cacheHit !== null) tokens.cacheHit = cacheHit;
+    // V405(P0 成本账本): 每次推理 LLM 调用 → llm_usage_ledger(按模型/端点, cost_source=estimate)
+    // 一次改动覆盖全部 fetchLlm 调用方(52 步各阶段/verify/HyDE/反思…); 失败不阻塞主流程
+    lastFetchedModel = input.model;
+    if (tokens) {
+      recordLedger({
+        kind: "llm",
+        endpoint: input.op ?? "reason",
+        model: input.model,
+        tokensIn: tokens.in,
+        tokensOut: tokens.out,
+        tokensCacheRead: cacheHit ?? 0,
+      });
+    }
     // V380(P0-8): 前缀稳定监控 — 打点 KV Cache 命中率（仅 debug 级别，不阻塞主流程）
     if (cacheHit !== null && (cacheHit > 0 || (tokens && tokens.in > 0))) {
       console.debug(`[sag] kv-cache model=${input.model} hit=${cacheHit} miss=${(tokens?.in ?? 0) - cacheHit} total=${tokens?.in ?? 0} rate=${tokens && tokens.in > 0 ? ((cacheHit / tokens.in) * 100).toFixed(1) : 0}%`);
@@ -434,7 +454,7 @@ export class InferenceService {
       await pool.query(
         `INSERT INTO retrieve_steps (task_id, outline_id, engine, search_type, query, parameters, result_count, duration_ms, status)
          VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)`,
-        [taskId, engine, stage, query, tokens ? JSON.stringify({ tokens }) : '{}', resultCount, durationMs, status]
+        [taskId, engine, stage, query, tokens ? JSON.stringify({ tokens, model: lastFetchedModel }) : '{}', resultCount, durationMs, status]
       );
     } catch (e: any) {
       console.error('[sag] DB INSERT retrieve_steps(stage) FAIL:', e.message?.substring(0, 80));
@@ -1132,6 +1152,52 @@ export class InferenceService {
     /** V267: template(默认) / adaptive — 2026-08-07 自动切 adaptive */
     mode?: "template" | "adaptive";
   }): Promise<{ taskId: string; trace: Record<string, unknown> }> {
+    // V405(P1+P5-ML 三档路由): ROUTER_ENABLED=1 时按题型/长度/本地分类器决策 lite|standard|deep。
+    //   lite(短概念/事实题) → 直答; deep(政策/长多跳/ML 判比较综述) → 强制全链路+完整自愈;
+    //   默认档保持现状。默认关: 不开时以下全跳过, 行为与 0.884 基线一致。
+    const qtype0 = detectQuestionType(input.query);
+    if (tierRouterService.routerEnabled() && input.mode !== "template") {
+      const decision = await tierRouterService.decideTierHybrid(input.query, qtype0, input.mode);
+      tierRouterService.recordTierDecision({
+        query: input.query, qtype: qtype0, level: decision.level,
+        reason: decision.reason, mode: input.mode,
+      });
+      if (decision.level === "lite") {
+        try {
+          console.log(`[tier-router] lite(${decision.reason}) → 轻量直答`);
+          const fastResult = await this.reasonFast(input.query, input.sourceId, PROFILES[qtype0]);
+          if (fastResult && fastResult.content && !/抱歉.*未找到/.test(fastResult.content.substring(0, 150))) {
+            // 用 query_tasks 落一个最小任务记录, 使响应结构与标准一致(taskId 兼容前端轮询)
+            const task = await pool.query(
+              `INSERT INTO query_tasks (source_id, query, status, started_at, completed_at)
+               VALUES ($1, $2, 'completed', now(), now()) RETURNING id`,
+              [input.sourceId, input.query]
+            );
+            const taskId = task.rows[0].id;
+            await pool.query(
+              `INSERT INTO infer_hypotheses (task_id, content, confidence, status, created_at)
+               VALUES ($1, $2, $3, 'verified', now())`,
+              [taskId, fastResult.content, fastResult.confidence]
+            ).catch(() => {});
+            const trace = {
+              hypothesis: fastResult,
+              retrievalStrategy: "tier_lite",
+              tierLevel: "lite",
+              tierReason: decision.reason,
+              _tierLite: true,
+            };
+            return { taskId, trace };
+          }
+          console.warn('[tier-router] lite 结果不达标, 升级 standard');
+        } catch (e: any) {
+          console.warn('[tier-router] lite FAIL, fallback standard:', e?.message?.substring(0, 80));
+        }
+      }
+      if (decision.level === "deep") {
+        console.log(`[tier-router] deep(${decision.reason}) → 强制全链路(禁 auto-adaptive 捷径)`);
+        // deep: 走下面标准 reason(), 但保证失败后完整自愈链不因简单判定提前返回
+      }
+    }
     // 2026-08-07 动态规划集成：template 模式下，简单问题自动走 adaptive（轻量算子计划）
     // 自适应深度：概念定义/事实检索类短问题 → 4-6 算子（~14s）而非固定 52 步（~230s）
     const qtype = detectQuestionType(input.query);

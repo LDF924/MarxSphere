@@ -502,6 +502,32 @@ export function buildHttpServer() {
     }
   }
 
+  // V405(P0 成本账本): JWT 用户推理计费 — 聚合 retrieve_steps tokens → chargeUser（订阅额度→超额扣余额）
+  // 修复: 原逻辑 model 恒为 deepseek-v4-flash（llmCfg 两分支相同未用）→ 按 retrieve_steps 真实模型取单价;
+  //       无真实模型时按用户 llm_provider 判断（BYOK 自付不扣平台）。/api/reason/query 与 /stream 共用。
+  async function chargeUserForReasonTask(userId: string, taskId: string | undefined): Promise<void> {
+    try {
+      if (!taskId) return;
+      const agg = await pool.query(
+        `select coalesce(sum((parameters->'tokens'->>'in')::int), 0) as tin,
+                coalesce(sum((parameters->'tokens'->>'out')::int), 0) as tout,
+                coalesce(min(parameters->>'model'), '') as model
+         from retrieve_steps where task_id = $1`, [taskId]);
+      const tin = Number(agg.rows[0]?.tin || 0);
+      const tout = Number(agg.rows[0]?.tout || 0);
+      if (tin + tout > 0) {
+        let model = String(agg.rows[0]?.model || "");
+        if (!model || model === "unknown") {
+          const llmCfg = await authService.getUserLlmConfig(userId);
+          model = llmCfg.provider === "byok" ? "byok" : "deepseek-v4-flash";
+        }
+        if (model !== "byok") {
+          await billingService.chargeUser(userId, model, tin, tout, "/api/reason/query");
+        }
+      }
+    } catch { /* 计费失败不阻塞响应 */ }
+  }
+
   // ─── API 令牌管理（生成/列出/撤销/删除）───
   // V381: 权限目录(设置页勾选列表)
   app.get("/api/tokens/permissions", async () => {
@@ -1964,6 +1990,27 @@ export function buildHttpServer() {
     const q = request.query as { limit?: string };
     return { logs: await opsService.adminAuditLogs(parseInt(q.limit || "100", 10)) };
   });
+  // V405(P0 成本账本): 平台成本审计 — 按模型/端点/来源聚合 + 每日曲线(与用户计费解耦)
+  app.get("/api/admin/cost-ledger", async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return;
+    const q = request.query as { days?: string };
+    const { getLedgerSummary } = await import("../services/cost-ledger-service.js");
+    const summary = await getLedgerSummary(parseInt(q.days || "7", 10));
+    return { summary };
+  });
+  app.get("/api/admin/cost-ledger/daily", async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return;
+    const q = request.query as { days?: string };
+    const { getLedgerDaily } = await import("../services/cost-ledger-service.js");
+    return { daily: await getLedgerDaily(parseInt(q.days || "14", 10)) };
+  });
+  // V405(P1 三档路由): 路由决策审计(仅 ROUTER_ENABLED=1 时有数据)
+  app.get("/api/admin/router-audit", async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return;
+    const q = request.query as { days?: string };
+    const { getRouterAudit } = await import("../services/tier-router-service.js");
+    return { audit: await getRouterAudit(parseInt(q.days || "7", 10)) };
+  });
   app.post("/api/admin/user/:id/plan", async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return;
     const params = request.params as { id: string };
@@ -3049,23 +3096,9 @@ export function buildHttpServer() {
         void recordReasonUsage(ctx.tokenId, taskId);
       }
       // V389: JWT 用户计费 — 聚合 retrieve_steps tokens → chargeUser（订阅额度→超额扣余额）
+      // V405(P0 成本账本): 抽 helper 复用 stream 路由; 按 retrieve_steps 真实模型扣费（修恒 flash 定价）
       if (jwtPayload && reasonQuery.userId) {
-        const taskId = result?.taskId ?? (result as any)?.id;
-        void (async () => {
-          try {
-            const agg = await pool.query(
-              `select coalesce(sum((parameters->'tokens'->>'in')::int), 0) as tin,
-                      coalesce(sum((parameters->'tokens'->>'out')::int), 0) as tout
-               from retrieve_steps where task_id = $1`, [taskId]);
-            const tin = Number(agg.rows[0]?.tin || 0);
-            const tout = Number(agg.rows[0]?.tout || 0);
-            if (tin + tout > 0) {
-              const llmCfg = await authService.getUserLlmConfig(reasonQuery.userId);
-              const model = llmCfg.provider === "byok" ? "deepseek-v4-flash" : "deepseek-v4-flash";
-              await billingService.chargeUser(reasonQuery.userId, model, tin, tout, "/api/reason/query");
-            }
-          } catch { /* 计费失败不阻塞响应 */ }
-        })();
+        void chargeUserForReasonTask(reasonQuery.userId, result?.taskId ?? (result as any)?.id);
       }
       return reply.code(201).send(result);
     } catch (e: any) {
@@ -3082,6 +3115,7 @@ export function buildHttpServer() {
   });
 
   // 2026-08-07 流式输出：推理完成后答案分块 SSE 推送（长答案逐步渲染）
+  // V405(P0 成本账本): 补 JWT 解析 + 用户计费(原 stream 路由漏计费; 与 /api/reason/query 同 helper)
   app.post("/api/reason/query/stream", async (request, reply) => {
     const input = reasonSchema.parse(request.body);
     const reasonQuery: any = { sourceId: input.sourceId, query: input.query };
@@ -3090,6 +3124,13 @@ export function buildHttpServer() {
     if (input.ablation && input.ablation.length > 0) reasonQuery.ablation = input.ablation;
     if (input.mode) reasonQuery.mode = input.mode;
     if (input.sessionId) reasonQuery.sessionId = input.sessionId;
+    const streamAuthHdr = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const streamJwt = streamAuthHdr && authService.verifyToken(streamAuthHdr);
+    if (streamJwt) {
+      const llmCfg = await authService.getUserLlmConfig(streamJwt.uid);
+      if (llmCfg.provider === "byok" && llmCfg.apiKey) reasonQuery.userLlmConfig = { provider: "byok", apiKey: llmCfg.apiKey };
+      reasonQuery.userId = streamJwt.uid;
+    }
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -3103,6 +3144,10 @@ export function buildHttpServer() {
     };
     try {
       const result = await startReasonFlow(reasonQuery);
+      // V405(P0 成本账本): 流式路由补用户计费(漏计费修复)
+      if (streamJwt && reasonQuery.userId) {
+        void chargeUserForReasonTask(reasonQuery.userId, result?.taskId ?? (result as any)?.id);
+      }
       const content = (result.trace?.hypothesis as any)?.content || "";
       // 分块推送答案（每 120 字一块，80ms 间隔——模拟打字效果）
       const CHUNK = 120;

@@ -22,12 +22,25 @@ const MIN_SEEN = 2;                       // 同一模式至少出现 2 次才�
 const MIN_SCORE = 0.5;                    // 确定性评分门槛
 const MAX_CANDIDATES_PER_RUN = 10;        // 单次最多生成多少候选(控制 LLM 成本)
 
+/** 单条支撑证据(对应一条 task_experience 记录 — 审计: 提升某记忆时能追溯到底层哪几次任务) */
+export interface DreamEvidence {
+  id: string;
+  query: string;
+  qualityScore: number | null;
+  success: boolean;
+  /** 策略摘要(检索/推理策略, 截断) */
+  strategySummary?: string;
+  createdAt?: string;
+}
+
 export interface DreamCandidate {
   /** 目标归一键(前缀 ≥12 字或含数字年份的截断) */
   key: string;
   goal: string;
   seenCount: number;
   taskIds: string[];
+  /** V405(P2-Dream evidence): 支撑记录明细 — 每次提升可审计(哪几次任务/质量/策略支撑了这条记忆) */
+  evidence?: DreamEvidence[];
   positiveSignals: number;
   negativeSignals: number;
   /** 跨天跨度(天数) */
@@ -110,6 +123,39 @@ export async function scanDreamCandidates(opts: { minSeen?: number; days?: numbe
         positiveSignals: a.pos, negativeSignals: a.neg, spanDays,
         bestResult: "", lastSeenAt: a.lastAt ? new Date(a.lastAt).toISOString() : new Date().toISOString(),
       });
+    }
+    // V405(P2-Dream evidence): 拉取支撑记录明细(同时间窗 + 记录 id 命中) — 供人工审/审计追溯
+    try {
+      const ids = out.flatMap((c) => c.taskIds);
+      if (ids.length > 0) {
+        const er = await pool.query(
+          `select id::text, query, quality_score, success, strategy, created_at
+           from task_experience
+           where id = any($1::bigint[]) order by created_at desc`,
+          [ids]
+        );
+        const byId = new Map<string, DreamEvidence>();
+        for (const row of er.rows) {
+          let strategySummary = "";
+          try {
+            const s = typeof row.strategy === "string" ? JSON.parse(row.strategy) : (row.strategy || {});
+            strategySummary = String(s?.strategyName || s?.strategy || "").slice(0, 60);
+          } catch { /* 策略解析失败忽略 */ }
+          byId.set(String(row.id), {
+            id: String(row.id),
+            query: String(row.query || "").slice(0, 80),
+            qualityScore: row.quality_score != null ? Number(row.quality_score) : null,
+            success: row.success !== false,
+            strategySummary,
+            createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+          });
+        }
+        for (const c of out) {
+          c.evidence = c.taskIds.map((tid) => byId.get(tid)).filter((x): x is DreamEvidence => !!x).slice(0, 8);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[dream] evidence 拉取失败(不影响主流程): ${String(e?.message || e).slice(0, 100)}`);
     }
     out.sort((x, y) => y.seenCount - x.seenCount || y.spanDays - x.spanDays);
     return out;
@@ -288,7 +334,14 @@ export async function acceptProposal(id: string, opts: { projectId?: string } = 
       source: "agent", // dream 为 agent 侧自动整理(source 类型仅 user/agent/system)
     });
     const receipt = `accept ${p.id} → strategic_memory#${(rec as any).id} @ ${new Date().toISOString()}`;
-    appendRecord(RECEIPTS_FILE, { event: "accept", proposalId: p.id, key: p.key, memoryId: (rec as any).id, ts: new Date().toISOString() });
+    // V405(P2-Dream evidence): 回执携带支撑证据明细(哪几次任务/质量分/策略) — 审计可追溯
+    const evidenceNote = (p.evidence ?? []).map((e) =>
+      `${e.id}「${e.query.slice(0, 30)}」q=${e.qualityScore ?? "-"}/${e.success ? "成功" : "失败"}${e.strategySummary ? `[${e.strategySummary}]` : ""}`
+    );
+    appendRecord(RECEIPTS_FILE, {
+      event: "accept", proposalId: p.id, key: p.key, memoryId: (rec as any).id,
+      evidence: evidenceNote.slice(0, 10), ts: new Date().toISOString(),
+    });
     p.receipt = receipt;
     updateProposal(id, { receipt });
     return { ok: true, receipt };
@@ -299,11 +352,15 @@ export async function acceptProposal(id: string, opts: { projectId?: string } = 
   }
 }
 
-/** 驳回 → quarantine 隔离区(可审计) */
+/** 驳回 → quarantine 隔离区(可审计; V405: 同时记录支撑证据, 与 accept 同口径可对照) */
 export function rejectProposal(id: string, reason?: string): { ok: boolean; error?: string } {
   const p = updateProposal(id, { status: "rejected" });
   if (!p) return { ok: false, error: `proposal 不存在: ${id}` };
-  appendRecord(QUARANTINE_FILE, { proposalId: id, key: p.key, reason: reason || "人工驳回", ts: new Date().toISOString() });
+  appendRecord(QUARANTINE_FILE, {
+    proposalId: id, key: p.key, reason: reason || "人工驳回",
+    evidence: (p.evidence ?? []).map((e) => `${e.id}「${e.query.slice(0, 30)}」`).slice(0, 10),
+    ts: new Date().toISOString(),
+  });
   return { ok: true };
 }
 
