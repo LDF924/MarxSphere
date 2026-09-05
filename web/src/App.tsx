@@ -2536,12 +2536,12 @@ function MainWorkspaceTabs(props: {
       dot: "hsl(150 45% 50%)",
       items: [
         { value: "literature", label: t("文献库", "Library") },
+        { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照, 与文献库同族紧邻)
         { value: "sciverse", label: t("外部检索", "Sciverse") },
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
         { value: "empirical-research", label: t("实证研究", "Empirical") },
         { value: "jupyter", label: t("Notebook 工作台", "Notebook") },   // 2026-08-27: 轻量 notebook (ScienceX 通用计算)
-        { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照)
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
         { value: "format-eval", label: t("格式智能评测", "Format Eval") },      // 2026-09-03: 论文格式评测 (规则引擎+LLM)
