@@ -587,6 +587,23 @@ export async function buildAgentTools(opts?: {
         if (!query) return "（query 必填）";
         const source = String(a.source || "academic");
         const maxResults = Math.min(Math.max(Number(a.maxResults) || 5, 1), 10);
+        // V404-24(H5): 通用/学术源走检索 provider 注册表(Bocha 有 key 优先, Edge 抓取兜底, fallback 链)
+        if (source !== "policy") {
+          try {
+            const { searchWithRegistry, rankedProviders } = await import("./search-provider-registry.js");
+            const providers = rankedProviders(["web"]).map((p) => p.providerId);
+            const r = await searchWithRegistry(query + (source === "academic" ? " 论文 研究" : ""), { maxResults, providers, edgePath });
+            if ("ok" in r && !r.ok) {
+              return `（搜索失败: ${r.error}）`;
+            }
+            if ("ok" in r && r.hits) {
+              const lines = r.hits.map((h) => `- ${h.title.slice(0, 80)}\n  ${h.url.slice(0, 120)}\n  ${h.snippet.slice(0, 150)}`);
+              return `【搜索】${query}（provider: ${r.provider}${r.attempted.length > 1 ? `, 链: ${r.attempted.join("→")}` : ""}）\n${lines.join("\n") || "（无结果）"}`;
+            }
+          } catch (e: any) {
+            return `（搜索 provider 异常: ${String(e?.message || e).slice(0, 150)} — 已回退旧路径）`;
+          }
+        }
         // 学术源白名单（AGENT_NET_WHITELIST 已含部分）: 用通用搜索引擎抓取 + 结果链接白名单校验
         const searchUrl = source === "policy"
           ? `https://www.gov.cn/search/zhengce/?q=${encodeURIComponent(query)}`
