@@ -2511,9 +2511,9 @@ function MainWorkspaceTabs(props: {
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
     alerts: "hsl(25 90% 55%)",
     // 后台/系统组（灰）: Jobs/任务/Trace/评测/Inbox/账户计费/运营管理/文档中心
-    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", "meta-skill": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)",
+    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)",
     // 科研工具（绿，归文献研究组）: PDF2Obsidian/政经C刊科研/写作语料库
-    p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)",
+    p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)", "meta-skill": "hsl(150 45% 50%)",
   };
 
   const categories: NavCategory[] = [
@@ -2549,6 +2549,7 @@ function MainWorkspaceTabs(props: {
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
         { value: "paper-outline", label: t("论文写作台", "Paper Outline") },
+        { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },  // V404-33: 科研工具归科研中心
       ],
     },
     {
@@ -2595,7 +2596,6 @@ function MainWorkspaceTabs(props: {
         { value: "jobs", label: t("Jobs", "Jobs") },
         { value: "tasks", label: t("任务", "Tasks") },
         { value: "agent-console", label: t("Agent控制台", "Agent") },
-        { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },
         { value: "dream", label: t("记忆巩固", "Dream") },
         { value: "trace", label: t("Trace", "Trace") },
         { value: "eval", label: t("评测", "Eval") },
