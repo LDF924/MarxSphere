@@ -106,6 +106,7 @@ import { SkillsPanel } from "./components/SkillsPanel";
 import { ApiTokensPanel } from "./components/ApiTokensPanel";
 import { DocsPanel } from "./components/DocsPanel";
 import { AlertsPanel } from "./components/AlertsPanel";
+import { ImPanel } from "./components/ImPanel";
 import { AlertToast } from "./components/AlertToast";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { VaultPanel } from "./components/VaultPanel";
@@ -125,7 +126,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -548,7 +549,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -2004,6 +2005,8 @@ function AppShell() {
               <AdminPanel />
             ) : workspaceView === "alerts" ? (
               <AlertsPanel />
+            ) : workspaceView === "im" ? (
+              <ImPanel />
             ) : workspaceView === "trace" ? (
               <TracePanel />
             ) : workspaceView === "eval" ? (
@@ -2600,6 +2603,7 @@ function MainWorkspaceTabs(props: {
         { value: "trace", label: t("Trace", "Trace") },
         { value: "eval", label: t("评测", "Eval") },
         { value: "alerts", label: t("告警", "Alerts") },
+        { value: "im", label: t("IM接入", "IM") },
         { value: "inbox", label: t("Inbox", "Inbox") },
         { value: "billing", label: t("账户计费", "Billing") },
         { value: "admin", label: t("运营管理", "Admin") },
