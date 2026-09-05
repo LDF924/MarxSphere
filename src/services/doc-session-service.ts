@@ -86,7 +86,20 @@ export async function applyChangeSet(input: {
   summary?: string;
   ops: ReplaceOp[];
   actor?: string;
+  /** V404-25(H6): 客户端幂等键 — 同 document+retryKey 重试返回原结果不重复应用(崩溃恢复) */
+  retryKey?: string;
 }): Promise<ChangeSetApplyResult> {
+  // H6 幂等: 同 retryKey 已成功 → 直接返回既有结果(客户端重试安全)
+  if (input.retryKey) {
+    const prev = await pool.query(
+      `select id, applied_version, status from doc_change_sets
+       where document_id = $1::uuid and client_retry_key = $2 and status = 'applied'
+       limit 1`, [input.documentId, input.retryKey]
+    );
+    if (prev.rows.length > 0) {
+      return { ok: true, changeSetId: prev.rows[0].id, newVersion: Number(prev.rows[0].applied_version) };
+    }
+  }
   const doc = await pool.query(
     `select content, content_version, writer_lease_token, writer_lease_holder from documents where id = $1::uuid`,
     [input.documentId]
@@ -123,9 +136,9 @@ export async function applyChangeSet(input: {
       [input.documentId, newVersion, hashOf(applied.text)]
     );
     await client.query(
-      `insert into doc_change_sets (id, document_id, base_version, summary, status, operations, actor, applied_version, applied_at)
-       values ($1, $2, $3, $4, 'applied', $5::jsonb, $6, $7, now())`,
-      [changeSetId, input.documentId, baseVersion, input.summary || "", JSON.stringify(input.ops), input.actor || "agent", newVersion]
+      `insert into doc_change_sets (id, document_id, base_version, summary, status, operations, actor, applied_version, applied_at, client_retry_key)
+       values ($1, $2, $3, $4, 'applied', $5::jsonb, $6, $7, now(), $8)`,
+      [changeSetId, input.documentId, baseVersion, input.summary || "", JSON.stringify(input.ops), input.actor || "agent", newVersion, input.retryKey || null]
     );
     // 锚点重映射: 该文档已 resolved 锚点按 ops 位移(区间 [start,end) 被改 → orphaned)
     await remapAnchorsTx(client, input.documentId, baseVersion, input.ops, changeSetId);
@@ -212,6 +225,23 @@ async function remapAnchorsTx(client: any, documentId: string, fromVersion: numb
   }
 }
 
+// (最终导出见文件尾: 含 reconcileMutationAttempts V404-25H6)
+// ═══ V404-25(H6): 崩溃恢复 reconcile — 启动时把 reserved/ambiguous 残留置 failed(客户端重试幂等) ═══
+/** 返回清理的残留数; 由服务启动调用(幂等) */
+export async function reconcileMutationAttempts(): Promise<{ reconciled: number }> {
+  try {
+    const r = await pool.query(
+      `update doc_change_sets set status = 'failed', error = coalesce(error, '') || ' 启动 reconcile: 残留尝试视为失败(客户端可幂等重试)'
+       where status in ('reserved', 'ambiguous')
+       returning id`
+    );
+    return { reconciled: r.rows.length };
+  } catch (e: any) {
+    console.warn(`[doc-session] reconcile 失败: ${String(e?.message || e).slice(0, 120)}`);
+    return { reconciled: 0 };
+  }
+}
+
 export const docSessionService = {
-  acquireWriterLease, releaseWriterLease, applyChangeSet, createAnchor, listAnchors, applyOpsToText,
+  acquireWriterLease, releaseWriterLease, applyChangeSet, createAnchor, listAnchors, applyOpsToText, reconcileMutationAttempts,
 };

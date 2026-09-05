@@ -73,6 +73,10 @@ if (config.AGENT_EVAL_AUTO_ENABLED) {
 import { agentTaskQueue } from "./services/agent-task-queue.js";
 setTimeout(() => { void agentTaskQueue.recoverAfterRestart(); }, 3000);
 
+// V404-25(H6): 文档变更集崩溃恢复 — 启动时把 reserved/ambiguous 残留置 failed(客户端幂等重试)
+import { reconcileMutationAttempts } from "./services/doc-session-service.js";
+setTimeout(() => { void reconcileMutationAttempts(); }, 4000);
+
 // G6: 审批超时自动处理 — 每 30 分钟把超时未响应的 awaiting_approval 任务置 failed(按拒绝处理)
 import { agentTaskService } from "./services/agent-task-service.js";
 setTimeout(() => { agentTaskService.startApprovalTimeoutScheduler(); }, 8000);
