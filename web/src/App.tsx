@@ -1627,7 +1627,7 @@ function AppShell() {
             <SymbolLogo size={28} />
             <span className="hidden flex-col items-start leading-tight lg:flex">
               <span className="text-sm font-semibold">MarxSphere</span>
-              <span className="text-[10px] text-muted-foreground">{t("马理论 AI 科研中枢", "Marxist theory AI research hub")}</span>
+              <span className="text-[10px] text-muted-foreground">{t("全人文社科 AI 科研中枢", "Humanities & social sciences AI research hub")}</span>
             </span>
           </button>
           {workspaceView === "settings" ? null : (
