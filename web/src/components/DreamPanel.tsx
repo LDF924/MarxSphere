@@ -4,6 +4,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Brain, CheckCircle2, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCcw, ShieldAlert, Sparkles, XCircle } from "lucide-react";
 
+interface ProposalEvidence {
+  id: string;
+  query: string;
+  qualityScore?: number | null;
+  success?: boolean;
+  strategySummary?: string;
+}
+
 interface Proposal {
   id: string;
   key: string;
@@ -18,6 +26,8 @@ interface Proposal {
   status: "proposed" | "accepted" | "rejected";
   createdAt: string;
   receipt?: string;
+  /** V405-ML(P2-Dream evidence): 支撑记录明细(可审计 — 该记忆由哪几次任务/质量/策略支撑) */
+  evidence?: ProposalEvidence[];
 }
 
 const KIND_COLOR: Record<string, string> = {
@@ -186,6 +196,19 @@ export function DreamPanel() {
                 <div className="mt-1.5 space-y-0.5 border-t border-border/30 pt-1.5 text-[10px] text-muted-foreground">
                   <div>目标: {p.goal}</div>
                   <div>归一键: {p.key} · 评分构成: 频率(×0.35)+跨天(×0.35)+正评信号(×0.3, 负评=0)</div>
+                  {/* V405-ML(P2-Dream evidence): 支撑记录明细 — 审计可追溯 */}
+                  {p.evidence && p.evidence.length > 0 && (
+                    <div className="mt-1">
+                      <div className="text-[9px] uppercase tracking-wide text-muted-foreground/50">支撑证据({p.evidence.length})</div>
+                      <div className="mt-0.5 max-h-32 space-y-0.5 overflow-y-auto">
+                        {p.evidence.map((e) => (
+                          <div key={e.id} className="rounded bg-muted/30 px-1.5 py-0.5 font-mono text-[9px]">
+                            #{e.id.slice(-6)} 「{e.query}」 q={e.qualityScore ?? "-"} {e.success === false ? "失败" : "成功"}{e.strategySummary ? ` [${e.strategySummary}]` : ""}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
