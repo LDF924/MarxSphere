@@ -584,7 +584,7 @@ export const SCENARIOS: Scenario[] = [
     group: "论文写作研究",
     key: "reason",
     title: "研究方法适配建议",
-    desc: "按主题推荐哲社科研究方法（文本/比较/历史/质性/定量），说明边界与误区",
+    desc: "按主题推荐全人文社科研究方法（文本/比较/历史/质性/定量），说明边界与误区",
     hint: "方法适配 · 适用边界 · 操作要点",
     icon: <FlaskConical className="h-4.5 w-4.5" />,
     tag: "方法",

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// SciversePanel.tsx — 外部学术检索面板（哲社科版 Sciverse）
+// SciversePanel.tsx — 外部学术检索面板（全人文社科版 Sciverse）
 // 工具选择 + 结果卡片 + read_content/relations + 无 key mock 降级
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { Search, BookOpen, Link2, FileText, Loader2, AlertTriangle, CheckCircle2, Database, Sparkles } from "lucide-react";

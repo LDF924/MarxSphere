@@ -216,13 +216,13 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             </span>
           </h1>
           <p className="mx-auto mt-8 max-w-2xl text-xl leading-snug tracking-wide text-accent-foreground md:text-2xl">
-            让 Agent 帮你真正读懂 <span className="font-bold text-foreground">马克思主义理论</span>
+            让 Agent 帮你真正读懂 <span className="font-bold text-foreground">全人文社科经典</span>
           </p>
           <p className="mx-auto mt-4 text-base text-muted-foreground/80 md:text-lg">
             农业农村现代化 · 资本下乡 · 工商资本 · 资本治理
           </p>
           <p className="mx-auto mt-3 text-sm text-muted-foreground/70">
-            面向哲学社会科学全域科研赋能
+            面向全人文社科全域科研赋能
           </p>
 
           {/* 按钮：开始研究提问 = 主按钮（跳 AI 对话页），进入文献库 = 次级 */}
