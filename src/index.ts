@@ -42,6 +42,10 @@ migrate().catch((e: unknown) => {
   console.error("[sag] 数据库迁移失败（首次启动可忽略, 重试中）:", String((e as Error)?.message || e).slice(0, 200));
 });
 
+// V405(P0 成本账本): 启动后 seed 平台默认模型单价(仅插缺省, 不覆盖 admin 调价)
+import { seedDefaultPrices } from "./services/cost-ledger-service.js";
+setTimeout(() => { void seedDefaultPrices(); }, 2500);
+
 startHttpServer().catch((error: unknown) => {
   const code = (error as NodeJS.ErrnoException)?.code;
   if (code === "EADDRINUSE") {

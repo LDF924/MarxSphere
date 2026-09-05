@@ -3,6 +3,7 @@ import { aiSettingsService, type AiRuntimeSettings } from "../services/ai-settin
 import type { ExtractedEntity, ExtractedEvent, EventRecord } from "../types.js";
 import { createModelCallLogger } from "../observability/model-call-log.js";
 import { breakers } from "../services/circuit-breaker.js";
+import { recordLedger } from "../services/cost-ledger-service.js";
 import { buildExtractionMessages } from "../ingestion/prompts/build-extraction-messages.js";
 import { validateExtractionResponse } from "../ingestion/prompts/extraction-schema.js";
 import { isLikelyLanguageDrift, isMostlyChinese } from "../ingestion/prompts/extraction-utils.js";
@@ -43,8 +44,9 @@ export class OpenAICompatibleLlmClient implements LlmClient {
   private _lastUsage: { in: number; out: number; cacheHit: number } | null = null;
   get lastUsage(): { in: number; out: number; cacheHit: number } | null { return this._lastUsage; }
 
-  /** V381: 从响应 JSON 采集 usage（prompt_cache_hit_tokens 为 DeepSeek 字段） */
-  private captureUsage(json: any): void {
+  /** V381: 从响应 JSON 采集 usage（prompt_cache_hit_tokens 为 DeepSeek 字段）
+   * V405(P0 成本账本): 同时落 llm_usage_ledger(真实模型名/调用意图/usage) — 搜索链/对话链每轮可审计 */
+  private captureUsage(json: any, model?: string, endpoint = "llm"): void {
     const u = json?.usage;
     if (u && typeof u.prompt_tokens === "number") {
       this._lastUsage = {
@@ -52,6 +54,14 @@ export class OpenAICompatibleLlmClient implements LlmClient {
         out: u.completion_tokens ?? 0,
         cacheHit: typeof u.prompt_cache_hit_tokens === "number" ? u.prompt_cache_hit_tokens : 0,
       };
+      recordLedger({
+        kind: "llm",
+        endpoint,
+        model: model ?? "unknown",
+        tokensIn: this._lastUsage.in,
+        tokensOut: this._lastUsage.out,
+        tokensCacheRead: this._lastUsage.cacheHit,
+      });
     }
   }
 
@@ -362,8 +372,8 @@ export class OpenAICompatibleLlmClient implements LlmClient {
         }
         const json = responseBody as { choices?: Array<{ message?: { content?: string } }>; usage?: any };
         const content = json.choices?.[0]?.message?.content ?? "{}";
-        // V381: 采集真实 usage（prompt/completion/cacheHit）
-        this.captureUsage(json);
+        // V381: 采集真实 usage（prompt/completion/cacheHit）; V405: 记真实模型
+        this.captureUsage(json, (input as any).modelOverride ?? settings.llmModel, input.operation ?? "chatJson");
         // JSON 修复解析：剥离 markdown 围栏/前后噪声，防 LLM 输出不合法导致 token 空耗重试
         const parsed = parseLlmJson(content);
         log.succeed({
@@ -435,8 +445,8 @@ export class OpenAICompatibleLlmClient implements LlmClient {
         }
         const json = JSON.parse(responseText) as { choices?: Array<{ message?: { content?: string } }>; usage?: any };
         const content = json.choices?.[0]?.message?.content ?? "";
-        // V381: 采集真实 usage（prompt/completion/cacheHit）
-        this.captureUsage(json);
+        // V381: 采集真实 usage（prompt/completion/cacheHit）; V405: 记真实模型
+        this.captureUsage(json, settings.llmModel, input.operation ?? "chatText");
         return content.trim();
       } catch (error) {
         lastError = error;

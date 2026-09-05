@@ -3,16 +3,25 @@
 // 用户列表/用量汇总/审计日志/改用户计划
 // V390增强: 用户启禁用/调余额/重置密码 + 用量趋势 + 邮箱/状态展示
 import { useEffect, useState, type FC } from "react";
-import { Users, BarChart3, ScrollText, ShieldCheck, ShieldOff, Sparkles } from "lucide-react";
+import { Users, BarChart3, ScrollText, ShieldCheck, ShieldOff, Sparkles, Wallet } from "lucide-react";
 
 interface AdminUser { id: string; username: string; email: string | null; role: string; plan: string; status: string; balance_cents: string; llm_provider: string; created_at: string; total_cost_cents: string; }
 interface AuditLog { username: string; method: string; path: string; status_code: number; duration_ms: number; tokens_used: number; ip: string; created_at: string; }
 interface UsageDay { day: string; requests: string; tokens: string; cost_cents: string; }
+// V405(P0 成本账本): 平台成本审计数据结构（成本明细按模型/端点/来源）
+interface LedgerModel { model: string; calls: number; tokensIn: number; tokensOut: number; cacheRead: number; costCny: number; }
+interface LedgerSummary {
+  totalCostCny: number; totalTokensIn: number; totalTokensOut: number; totalCacheRead: number; calls: number;
+  byModel: LedgerModel[];
+  byEndpoint: Array<{ endpoint: string; calls: number; costCny: number }>;
+  bySource: Array<{ costSource: string; calls: number; costCny: number }>;
+}
 
 export const AdminPanel: FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [usage, setUsage] = useState<UsageDay[]>([]);
+  const [ledger, setLedger] = useState<LedgerSummary | null>(null);
   const [msg, setMsg] = useState("");
   const [forbidden, setForbidden] = useState(false);
   // 弹窗: 重置密码/调余额
@@ -65,6 +74,9 @@ export const AdminPanel: FC = () => {
       setLogs(l.logs || []);
       const us = await (await fetch("/api/admin/usage?days=14", { headers: h })).json();
       setUsage(us.usage || []);
+      // V405(P0 成本账本): 平台成本审计(真实 LLM 用量明细)
+      const led = await (await fetch("/api/admin/cost-ledger?days=7", { headers: h })).json();
+      setLedger(led.summary || null);
     } catch {}
   };
   useEffect(() => { void load(); }, []);
@@ -197,6 +209,72 @@ export const AdminPanel: FC = () => {
                 <span>总成本: {usage.reduce((a, u) => a + Number(u.cost_cents || 0), 0) / 100} 元</span>
               </div>
             </>
+          )}
+        </div>
+
+        {/* V405(P0 成本账本): 平台成本审计 — 按模型/端点/来源（与用户计费解耦的真实消耗） */}
+        <div className="rounded-lg border p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-medium"><Wallet className="h-4 w-4" /> 平台成本审计（近7天 · 估算成本）</div>
+            {!ledger && <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">接入后自动统计</span>}
+          </div>
+          {!ledger ? (
+            <div className="text-sm text-muted-foreground">
+              暂无成本数据。平台 LLM 调用（推理 52 步/搜索/对话）将按模型记入成本账本（cost_source: provider_billed / estimate / byok）。
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">估算成本</div>
+                  <div className="text-lg font-bold text-primary">¥{ledger.totalCostCny.toFixed(2)}</div>
+                </div>
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">调用次数</div>
+                  <div className="text-lg font-bold">{ledger.calls}</div>
+                </div>
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">输入 tokens</div>
+                  <div className="text-sm font-semibold">{ledger.totalTokensIn.toLocaleString()}</div>
+                </div>
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">输出 tokens</div>
+                  <div className="text-sm font-semibold">{ledger.totalTokensOut.toLocaleString()}</div>
+                </div>
+                <div className="rounded bg-muted/40 p-2">
+                  <div className="text-[10px] text-muted-foreground">KV 缓存命中</div>
+                  <div className="text-sm font-semibold">{ledger.totalCacheRead.toLocaleString()}</div>
+                </div>
+              </div>
+              {ledger.byModel.length > 0 && (
+                <div>
+                  <div className="mb-1 text-xs font-medium text-muted-foreground">按模型</div>
+                  <div className="space-y-1">
+                    {ledger.byModel.map((m) => (
+                      <div key={m.model} className="flex items-center gap-2 rounded px-2 py-1 text-xs odd:bg-muted/30">
+                        <span className="w-36 truncate font-mono">{m.model}</span>
+                        <span className="text-muted-foreground">{m.calls} 次</span>
+                        <span className="text-muted-foreground">in {m.tokensIn.toLocaleString()} / out {m.tokensOut.toLocaleString()}</span>
+                        <span className="flex-1" />
+                        <span className="font-semibold">¥{m.costCny.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+                {ledger.bySource.map((s) => (
+                  <span key={s.costSource}>
+                    来源 {s.costSource}: ¥{s.costCny.toFixed(2)}（{s.calls} 次）
+                  </span>
+                ))}
+                {ledger.byEndpoint.slice(0, 6).map((e) => (
+                  <span key={e.endpoint}>
+                    {e.endpoint}: ¥{e.costCny.toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

@@ -3,10 +3,19 @@
 // 多任务并发控制: 串行/并发上限/优先级
 // 原理: 内存队列 + 信号量（每任务一个执行器槽位）
 // V396-5: 队列持久化(agent_task_queue 表) + 启动恢复(running 卡死→failed 可重试)
+// V405(P2 租约): 跨进程防双跑 — 出队执行前先抢 DB 级执行租约(holder+fencing+until),
+//   心跳续期; 断线/过期 → 他人可抢(原持有者续租被拒自动放弃)。
+//   解决: 多实例/重启竞态下同一任务被两进程同时 runAgentTask(旧 recovery 只覆盖本进程队列)
 import { pool } from "../db/pool.js";
+import { randomUUID } from "node:crypto";
 
 /** 并发上限（AGENT_QUEUE_CONCURRENCY 覆盖, 默认 2） */
 const MAX_CONCURRENT = Math.max(1, parseInt(process.env.AGENT_QUEUE_CONCURRENCY || "2", 10));
+
+/** V405: 本实例唯一执行者标识(重启变化 → 旧租约自动失效) */
+const LEASE_HOLDER = `instance:${randomUUID().slice(0, 8)}:${process.pid}`;
+/** V405: 租约 TTL(默认 120s — 心跳间隔应 < TTL/2) */
+const LEASE_TTL_SECONDS = parseInt(process.env.AGENT_LEASE_TTL || "120", 10);
 
 interface QueuedTask {
   taskId: string;
@@ -17,6 +26,67 @@ interface QueuedTask {
 const queue: QueuedTask[] = [];
 let running = 0;
 let queueTimer: NodeJS.Timeout | null = null;
+
+/** V405: 抢占/续期任务执行租约(原子: 空闲或已过期才能易主; 自己持有则续期保 token)
+ * 返回 token 表示持锁成功; 抢不到(他人持有未过期)返回 null — 调用方必须跳过该任务 */
+export async function acquireTaskLease(taskId: string): Promise<number | null> {
+  try {
+    const r = await pool.query(
+      `update agent_tasks set
+         exec_lease_holder = case
+           when exec_lease_holder = $2 and exec_lease_until > now() then exec_lease_holder
+           when exec_lease_holder is null or exec_lease_until <= now() then $2
+           else exec_lease_holder
+         end,
+         exec_lease_token = case
+           when exec_lease_holder = $2 and exec_lease_until > now() then exec_lease_token
+           when exec_lease_holder is null or exec_lease_until <= now() then coalesce(exec_lease_token, 0) + 1
+           else exec_lease_token
+         end,
+         exec_lease_until = case
+           when exec_lease_holder = $2 and exec_lease_until > now() then now() + ($3::int || ' seconds')::interval
+           when exec_lease_holder is null or exec_lease_until <= now() then now() + ($3::int || ' seconds')::interval
+           else exec_lease_until
+         end
+       where id = $1::uuid
+       returning exec_lease_holder, exec_lease_token`,
+      [taskId, LEASE_HOLDER, LEASE_TTL_SECONDS]
+    );
+    if (r.rows.length === 0) return null;
+    const row = r.rows[0];
+    if (row.exec_lease_holder !== LEASE_HOLDER) return null; // 他人持有且未过期 → 抢不到
+    return Number(row.exec_lease_token);
+  } catch (e: any) {
+    console.error("[agent-lease] acquire failed:", e?.message?.slice(0, 100));
+    return null; // DB 不可用 → 保守跳过(不双跑)
+  }
+}
+
+/** 心跳续期: 仅自己持有(且 token 匹配)时延长 until — 旧持有者(已被他人抢走)续租被拒 */
+export async function heartbeatTaskLease(taskId: string, token: number): Promise<boolean> {
+  try {
+    const r = await pool.query(
+      `update agent_tasks set exec_lease_until = now() + ($3::int || ' seconds')::interval
+       where id = $1::uuid and exec_lease_holder = $2 and exec_lease_token = $3
+       returning id`,
+      [taskId, LEASE_HOLDER, token]
+    );
+    return (r.rowCount ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** 释放租约(仅自己持有且 token 匹配 — fencing: 被抢走后旧 token 释放无效) */
+export async function releaseTaskLease(taskId: string, token: number): Promise<void> {
+  try {
+    await pool.query(
+      `update agent_tasks set exec_lease_holder = null, exec_lease_token = null, exec_lease_until = null
+       where id = $1::uuid and exec_lease_holder = $2 and exec_lease_token = $3`,
+      [taskId, LEASE_HOLDER, token]
+    );
+  } catch { /* 释放失败由 TTL 兜底 */ }
+}
 
 /** 任务优先级映射（按用户 plan: enterprise=3, pro=2, free=1） */
 export function priorityForPlan(plan: string): number {
@@ -64,10 +134,19 @@ async function pump(): Promise<void> {
   } catch { /* 依赖查询失败 → 直接执行（不阻塞） */ }
   // 出队 → 清持久化条目
   try { await pool.query("delete from agent_task_queue where task_id = $1::uuid", [item.taskId]); } catch { /* ignore */ }
+  // V405(P2 租约): 执行前先抢 DB 租约 — 抢不到(其他实例正持有)则本任务让位重新排队,
+  // 防双实例同跑同一任务(原内存队列只能防单进程内并发)
+  const leaseToken = await acquireTaskLease(item.taskId);
+  if (leaseToken === null) {
+    console.log(`[agent] 租约被其他实例持有, 任务 ${item.taskId.slice(0, 8)} 重新排队(等待其 TTL 过期)`);
+    queue.unshift(item);
+    return;
+  }
   running++;
   void (async () => {
     try { await item.run(); } catch { /* 执行错误由调用方处理 */ }
     finally {
+      await releaseTaskLease(item.taskId, leaseToken);
       running--;
       void pump();
     }
@@ -135,4 +214,8 @@ export function shutdownQueue(): void {
   if (queueTimer) clearInterval(queueTimer);
 }
 
-export const agentTaskQueue = { enqueueTask, queueStatus, priorityForPlan, shutdownQueue, recoverAfterRestart };
+export const agentTaskQueue = {
+  enqueueTask, queueStatus, priorityForPlan, shutdownQueue, recoverAfterRestart,
+  // V405(P2 租约): 供 runAgentTask 心跳/释放
+  acquireTaskLease, heartbeatTaskLease, releaseTaskLease, leaseHolder: () => LEASE_HOLDER,
+};

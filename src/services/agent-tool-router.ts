@@ -1742,12 +1742,42 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
             return `✅ 已写入 ${rel} (${String(a.content || "").length} 字符)`;
           }
           if (op === "delete") {
-            if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+            // V405(P3, 对齐 OpenSquilla file_policy): 删除前默认备份到 .trash(递归删除同样适用) —
+            //   误删可手工恢复; 备份目录带时间戳防覆盖; 失败仍执行删除(备份尽力而为)
+            try {
+              if (fs.existsSync(target)) {
+                const trashDir = path.join(workspace, ".trash");
+                fs.mkdirSync(trashDir, { recursive: true });
+                const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+                const backupPath = path.join(trashDir, `${path.basename(target)}.${stamp}.bak`);
+                fs.cpSync(target, backupPath, { recursive: true });
+                // 回收站配额: 单文件/目录 > 512MB 不备份(直接删), 总量超 3GiB 轮转最旧
+                const TRASH_MAX_BYTES = 3 * 1024 * 1024 * 1024;
+                const stat = fs.statSync(backupPath);
+                if (stat.size > 512 * 1024 * 1024) {
+                  fs.rmSync(backupPath, { recursive: true, force: true });
+                } else {
+                  try {
+                    const trashItems = fs.readdirSync(trashDir).map((f) => {
+                      const p = path.join(trashDir, f);
+                      try { return { p, size: fs.statSync(p).size, mtime: fs.statSync(p).mtimeMs }; } catch { return null; }
+                    }).filter((x): x is { p: string; size: number; mtime: number } => !!x);
+                    let total = trashItems.reduce((a, x) => a + x.size, 0);
+                    trashItems.sort((x, y) => x.mtime - y.mtime);
+                    while (total > TRASH_MAX_BYTES && trashItems.length > 0) {
+                      const oldest = trashItems.shift()!;
+                      try { fs.rmSync(oldest.p, { recursive: true, force: true }); total -= oldest.size; } catch {}
+                    }
+                  } catch { /* 配额轮转失败忽略 */ }
+                }
+              }
+            } catch { /* 备份失败不阻塞删除 */ }
+            if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
             void import("./provenance-service.js").then((m) => m.recordProvenance({
               path: rel, tool: "file_write", op: "delete",
               sessionId: typeof a.sessionId === "string" ? a.sessionId : undefined, model: typeof a.model === "string" ? a.model : undefined, runId: typeof a.runId === "string" ? a.runId : undefined,
             })).catch(() => {});
-            return `✅ 已删除 ${rel}`;
+            return `✅ 已删除 ${rel}（原文件已备份至 agent_workspace/.trash, 可手工恢复）`;
           }
           return "（op 需为 write/delete）";
         } catch (e: any) {
@@ -2204,9 +2234,9 @@ export function getToolWhitelist(): Set<string> | null {
 export function getNetworkWhitelist(): Set<string> {
   const raw = process.env.AGENT_NET_WHITELIST;
   if (raw) return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
-  // 默认: 系统内部 API + LLM 提供方 + 常见公开学术源 + 搜索引擎（V399: 对话工具循环 web_search 需要）
+  // 默认: LLM 提供方 + 常见公开学术源 + 搜索引擎（V399: 对话工具循环 web_search 需要）
+  // V405(P3): 移除 localhost/127.0.0.1/0.0.0.0 — 环回由 checkNetworkAccess 前置硬拦(防 SSRF 回打本机 4173)
   return new Set([
-    "localhost", "127.0.0.1", "0.0.0.0",
     "api.deepseek.com", "dashscope.aliyuncs.com", "api.openai.com", "api.anthropic.com",
     "weixin.sogou.com", "navi.cnki.net", "crpe.ruc.edu.cn", "www.ddjjyj.com",
     "www.qstheory.cn", "cssn.cn", "www.erj.cn", "www.jjxdt.org",
@@ -2214,15 +2244,30 @@ export function getNetworkWhitelist(): Set<string> {
   ]);
 }
 
-/** 网络出口校验: 检查 URL 是否在白名单内（防 SSRF: 拦截内网元数据/私有 IP） */
-export function checkNetworkAccess(url: string): { allowed: boolean; reason?: string } {
+/**
+ * 网络出口校验: 白名单 + 私网/环回拦截（防 SSRF）。
+ * V405(P3, 对齐 OpenSquilla network_guard 禁回连 gateway):
+ *   - 环回地址(127.* / localhost / ::1 / 0.0.0.0)默认一律拦截 — 外部 web 工具不得回打本机服务(4173 管理面)。
+ *   - allowLoopback=true 仅供明确的服务端内部自调(如 agent 调本机 reason), 外部工具/LLM 参数永不传 true。
+ */
+export function checkNetworkAccess(url: string, opts: { allowLoopback?: boolean } = {}): { allowed: boolean; reason?: string } {
   try {
     const u = new URL(url);
-    const host = u.hostname.toLowerCase();
-    // 拦截私有/环回/元数据地址（除显式允许的 localhost 系统 API）
+    let host = u.hostname.toLowerCase();
+    // 归一: 去 IPv6 方括号 / 尾点
+    host = host.replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    // V405: 环回全拦(127.0.0.1/127.1/0.0.0.0/localhost/::1) — 除非显式 allowLoopback
+    const isLoopback = host === "localhost" || host === "0.0.0.0" || host === "::1" || /^127\./.test(host);
+    if (isLoopback && !opts.allowLoopback) {
+      return { allowed: false, reason: `网络出口拦截: ${host} 为环回地址(禁回连本机, 防 SSRF)` };
+    }
+    // allowLoopback=true 仅供服务端内部自调 — 环回即内部通道, 直接放行(不再查白名单)
+    if (isLoopback && opts.allowLoopback) {
+      return { allowed: true };
+    }
+    // 拦截私有/元数据地址（云元数据端点 169.254.169.254 SSRF 高危）
     const isPrivate = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
-      || host === "169.254.169.254"  // 云元数据端点(SSRF 高危)
-      || /^127\./.test(host) && host !== "127.0.0.1";
+      || host === "169.254.169.254";
     if (isPrivate) return { allowed: false, reason: `网络出口拦截: ${host} 为私有/元数据地址(防 SSRF)` };
     const whitelist = getNetworkWhitelist();
     // 白名单匹配: 精确 host 或子域(如 api.deepseek.com 允许 *.deepseek.com)

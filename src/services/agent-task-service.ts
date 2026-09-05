@@ -306,6 +306,18 @@ export async function createAgentTask(input: {
 export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskStep) => Promise<string | StepExecutionResult>): Promise<AgentTaskRecord> {
   const task = await getAgentTask(taskId);
   if (!task) throw new Error("任务不存在");
+  // V405(P2 租约): 入口抢执行租约(队列 pump 已持则幂等续期) — 抢不到(他实例持有)拒绝执行防双跑
+  const { acquireTaskLease, releaseTaskLease, heartbeatTaskLease } = await import("./agent-task-queue.js");
+  const leaseToken = await acquireTaskLease(taskId);
+  if (leaseToken === null) {
+    throw new Error(`任务 ${taskId.slice(0, 8)} 执行租约被其他实例持有 — 拒绝双跑`);
+  }
+  let leaseLost = false;
+  const heartbeat = async (): Promise<void> => {
+    const ok = await heartbeatTaskLease(taskId, leaseToken);
+    if (!ok) leaseLost = true; // 租约被抢/过期 — 下一轮循环检查后终止
+  };
+  const releaseLease = async (): Promise<void> => { await releaseTaskLease(taskId, leaseToken); };
   await updateStatus(taskId, "running");
   // V2: 全局任务超时 — 总时长上限(默认10分钟), 超时置failed并沉淀失败经验
   const TASK_TIMEOUT_MS = parseInt(process.env.AGENT_TASK_TIMEOUT_MS || "600000", 10);
@@ -342,6 +354,7 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
     );
     publishAgentProgress({ type: "task", taskId, data: { status: "awaiting_approval", progress: "等待澄清: 目标过于模糊" } });
     console.log(`[agent] 差距C③ 目标歧义, 等待用户澄清: ${task.goal.slice(0, 40)}`);
+    await releaseLease(); // V405: 挂起前释放租约(等待期他人不得抢跑/任务按状态挂起)
     return getAgentTask(taskId) as Promise<AgentTaskRecord>;
   }
 
@@ -350,6 +363,12 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
   const TASK_TOKEN_BUDGET = parseInt(process.env.AGENT_TASK_TOKEN_BUDGET || "400000", 10);  // 默认 400K token
   let loop = 0;
   while (loop < MAX_LOOPS) {
+    // V405(P2 租约): 每轮心跳续期; 心跳失败(租约被抢/过期) → 终止执行防双跑
+    await heartbeat();
+    if (leaseLost) {
+      console.warn(`[agent] 任务 ${taskId.slice(0, 8)} 租约丢失(被其他实例接管) — 终止本实例执行`);
+      break;
+    }
     // V400 F3 补: 每轮开始重置 Guardian 熔断(新轮次给用户重新授权机会, 熔断只在单轮内生效)
     try {
       const { resetGuardianBreaker } = await import("./agent-guardian-service.js");
@@ -442,6 +461,8 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
         // V395-2: SSE — 挂起等待审批事件
         publishAgentProgress({ type: "task", taskId, data: { status: "awaiting_approval", progress: `等待批准: ${step.title}`, approvalRequest: req } });
         }
+        // V405(P2 租约): 审批挂起 → 释放租约(等待期任务暂停; 批准后 resume 重新入队抢租约)
+        await releaseLease();
         // 返回给调用方（任务挂起, 等 approve/reject 后 resume 继续）
         return getAgentTask(taskId) as Promise<AgentTaskRecord>;
       }
@@ -729,7 +750,8 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
   }
 
   const final = await getAgentTask(taskId);
-  if (final && final.status === "running") {
+  // V405(P2 租约): 租约丢失 → 本实例已不是执行者, 绝不动任务状态(接管实例负责), 静默退出
+  if (final && final.status === "running" && !leaseLost) {
     // 循环异常退出（paused/cancelled 已 break）
     await pool.query(
       `update agent_tasks set status = 'completed', progress = '全部完成', updated_at = now() where id = $1`,
@@ -738,7 +760,11 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
     // V395-2: SSE — 兜底完成事件
     publishAgentProgress({ type: "done", taskId, data: { status: "completed" } });
     void clearTaskTerminalState(taskId);  // G10: 终态清理
+  } else if (leaseLost) {
+    console.warn(`[agent] 任务 ${taskId.slice(0, 8)} 租约丢失, 本实例退出不动状态(接管实例负责完成)`);
   }
+  // V405(P2 租约): 出口统一释放(fencing: 被抢后 token 不匹配, 释放无效由 TTL 兜底)
+  await releaseLease();
   return getAgentTask(taskId) as Promise<AgentTaskRecord>;
 }
 

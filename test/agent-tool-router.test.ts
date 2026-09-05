@@ -122,6 +122,18 @@ describe("checkNetworkAccess", () => {
     expect(checkNetworkAccess("http://192.168.1.1/").allowed).toBe(false);
     expect(checkNetworkAccess("http://10.0.0.1/").allowed).toBe(false);
   });
+  // V405(P3): 环回回连拦截(原放行 127.0.0.1 → 现默认全拦, 防 SSRF 回打本机 4173)
+  it("环回地址默认拦截(防回连本机)", () => {
+    const r1 = checkNetworkAccess("http://127.0.0.1:4173/api/admin/users");
+    expect(r1.allowed).toBe(false);
+    expect(r1.reason).toContain("环回");
+    expect(checkNetworkAccess("http://localhost:4173/").allowed).toBe(false);
+    expect(checkNetworkAccess("http://127.1.1.1/x").allowed).toBe(false);
+    expect(checkNetworkAccess("http://0.0.0.0:4173/").allowed).toBe(false);
+  });
+  it("环回地址 allowLoopback=true 时放行(仅限服务端内部自调)", () => {
+    expect(checkNetworkAccess("http://127.0.0.1:4173/api/reason/query", { allowLoopback: true }).allowed).toBe(true);
+  });
   it("未知域名拦截", () => {
     expect(checkNetworkAccess("https://evil.example.com/").allowed).toBe(false);
   });

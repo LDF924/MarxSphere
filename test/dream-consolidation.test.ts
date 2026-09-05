@@ -81,4 +81,37 @@ describe("dream-consolidation", () => {
     const r = await rollbackAccepted("dp-不存在");
     expect(r.ok).toBe(false);
   });
+
+  it("V405 evidence: rejectProposal 把支撑证据写入隔离区记录(审计可追溯)", () => {
+    const { rejectProposal, listDreamState } = mod!;
+    // 手工往隔离区文件写一条带 evidence 的 proposal(等价 runDream+evidence 产物)
+    const { appendFileSync } = require("node:fs") as typeof import("node:fs");
+    const p = prop("evi-key", {
+      id: "dp-evi-1",
+      score: 0.8,
+      polished: "测试记忆",
+      kind: "goal",
+      status: "proposed",
+      createdAt: new Date().toISOString(),
+      evidence: [
+        { id: "101", query: "什么是剩余价值", qualityScore: 0.9, success: true, strategySummary: "standard" },
+        { id: "102", query: "剩余价值的来源", qualityScore: 0.85, success: true },
+      ],
+    }) as any;
+    appendFileSync(require("node:path").join(TEST_DIR, "proposals.jsonl"), JSON.stringify(p) + "\n", "utf8");
+    const r = rejectProposal("dp-evi-1", "重复记忆");
+    expect(r.ok).toBe(true);
+    const st = listDreamState();
+    // 隔离区记录(JSON 行)含 evidence id
+    const raw = require("node:fs").readFileSync(require("node:path").join(TEST_DIR, "quarantine.jsonl"), "utf8");
+    expect(raw).toContain("dp-evi-1");
+    expect(raw).toContain("101");
+    expect(raw).toContain("102");
+    expect(raw).toContain("重复记忆");
+    expect(st.proposals.length).toBeGreaterThan(0); // 含 runDream 真实扫描 + 本条
+    const mine = st.proposals.find((p) => p.id === "dp-evi-1");
+    expect(mine).toBeTruthy();
+    expect(mine!.status).toBe("rejected");
+    expect(mine!.decidedAt).toBeTruthy();
+  });
 });
