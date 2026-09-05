@@ -139,7 +139,7 @@ export function DreamPanel() {
             <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} className="h-3 w-3" />
             LLM 打磨(否则确定性摘要)
           </label>
-          <button type="button" onClick={() => { setDemoOn((v) => !v); void load(); }} className="rounded-md border border-amber-400/40 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-400/10">
+          <button type="button" onClick={() => { setDemoOn((v) => !v); }} className="rounded-md border border-amber-400/40 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-400/10">
             {demoOn ? "退出演示" : "🎬 演示数据"}
           </button>
           <button type="button" onClick={() => void load()} className="rounded-md px-2 py-1 text-[10px] text-muted-foreground/60 hover:text-foreground">
