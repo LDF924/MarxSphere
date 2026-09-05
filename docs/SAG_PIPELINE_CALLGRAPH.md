@@ -1,5 +1,7 @@
 # MarxSphere 全链路调用图谱 — V88K 最终版
 
+> 📌 本文档为推理/检索主链路调用图谱(基线 V88K)。V405 起推理链路新增: fetchLlm 全调用落 `llm_usage_ledger` 成本账本 + 入口三档路由(`ROUTER_ENABLED=1` 时 reasonWithFallback 前置 decideTierHybrid, 规则+ML 分类器)。主链路形状不变。
+
 ## 推理链路
 
 ```
