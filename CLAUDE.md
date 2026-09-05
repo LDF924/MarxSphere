@@ -6,9 +6,8 @@
 
 ```bash
 npm run typecheck   # 前后端类型检查（改代码后必跑）
-npm test            # 263 项单元测试
-npm run dev         # 开发: WebUI 5173 / API 4173
-npx tsx src/index.ts  # 单跑后端
+npm test            # 736 项单元测试
+npx tsx src/index.ts  # 单跑后端(仅 4173; 无 5173/dev server)
 ```
 
 ## 后端修改要点
@@ -32,6 +31,14 @@ npx tsx src/index.ts  # 单跑后端
 - 主评测：`npx tsx scripts/eval-32-metrics.ts`（53 题，基线 0.884）
 - **改动检索/推理后必须跑评测验证分数不退化**
 - 指标定义：`docs/SCORING_STANDARD.md`
+
+## V405 功能开关纪律(OpenSquilla 移植)
+
+- **默认关, 评测 PASS 后开**: `ROUTER_ENABLED`(三档路由+ML 分类器) / `B5_ENABLED`(B5 集成)
+- 评测门: `bash scripts/tier-router-eval.sh`(三档路由) / `B5_SQUAD=... B5_ENABLED=1 bash scripts/b5-vs-single-eval.sh`(B5)
+- 即时生效(无需开关): 成本账本(llm_usage_ledger) / 任务租约 / Dream 凝练×3 / 沙箱安全
+- 本地 ML 资产在 `data/ml-router/`(不入 git, 随备份); 重训: `scripts/ml-router/train_router_human.py`
+- 决策审计: `router_audit` 表 + 运营面板"三档路由决策审计"卡
 
 ## 常见陷阱
 
