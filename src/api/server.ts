@@ -234,6 +234,13 @@ export function buildHttpServer() {
       }
     }
   });
+  // 企业微信回调 content-type 为 text/xml — 需注册解析器(返回原始字符串)
+  app.addContentTypeParser("text/xml", { parseAs: "string" }, (_req, body, done) => {
+    done(null, body);
+  });
+  app.addContentTypeParser("application/xml", { parseAs: "string" }, (_req, body, done) => {
+    done(null, body);
+  });
 
   // ─── 对外 API 鉴权（部署到服务器 + 多用户场景）───
   // 规则: 本机 socket 连接豁免（本机开发便利）; 外部连接强制 Bearer Token
@@ -5067,6 +5074,76 @@ export function buildHttpServer() {
     return { ok: true };
   });
 
+  // 企业微信: 自建应用回调(GET=URL 验证 echostr; POST=加密消息) + 群机器人 webhook 发送
+  // 企业微信: GET=URL 验证(echostr 解密回显); POST=加密消息回调
+  app.get("/api/im/wecom", async (request, reply) => {
+    const { imService } = await import("../services/im-service.js");
+    const { wecomVerifySignature, wecomDecrypt } = await import("../services/wecom-service.js");
+    const q = request.query as Record<string, string>;
+    const cfg = await imService.getImConfig().catch(() => null);
+    const token = cfg?.wecomCallbackToken, aesKey = cfg?.wecomEncodingAesKey, corpId = cfg?.wecomCorpId;
+    if (!token || !aesKey || !corpId) return reply.code(500).send("wecom 未配置(corp_id/token/encoding_aes_key)");
+    if (!q.echostr) return reply.code(400).send("missing echostr");
+    const ok = wecomVerifySignature(token, q.timestamp || "", q.nonce || "", q.echostr, q.msg_signature || "");
+    if (!ok) return reply.code(403).send("signature mismatch");
+    try {
+      const decrypted = wecomDecrypt(aesKey, q.echostr, corpId);
+      reply.type("text/plain").send(decrypted);
+      return;
+    } catch (e: any) { return reply.code(500).send(`decrypt failed: ${String(e?.message || e).slice(0, 80)}`); }
+  });
+  app.post("/api/im/wecom", async (request, reply) => {
+    const { imService } = await import("../services/im-service.js");
+    const { wecomVerifySignature, wecomDecrypt, parseWeComCallback, extractXmlText, extractXmlCdata } = await import("../services/wecom-service.js");
+    const cfg = await imService.getImConfig().catch(() => null);
+    const token = cfg?.wecomCallbackToken, aesKey = cfg?.wecomEncodingAesKey, corpId = cfg?.wecomCorpId;
+    if (!token || !aesKey || !corpId) return reply.code(500).send("wecom 未配置(corp_id/token/encoding_aes_key)");
+    // 消息回调: body 是 XML(Encrypt/MsgSignature/Nonce 为 CDATA, TimeStamp 纯文本)
+    const rawBody = String(request.body || "");
+    const encrypt = extractXmlCdata(rawBody, "Encrypt");
+    const sig = extractXmlCdata(rawBody, "MsgSignature");
+    const ts = extractXmlText(rawBody, "TimeStamp");
+    const nonce = extractXmlCdata(rawBody, "Nonce");
+    if (!encrypt) return reply.code(400).send("no Encrypt");
+    const ok = wecomVerifySignature(token, ts, nonce, encrypt, sig);
+    if (!ok) return reply.code(403).send("signature mismatch");
+    try {
+      const xml = wecomDecrypt(aesKey, encrypt, corpId);
+      const msg = parseWeComCallback(xml);
+      if (msg) {
+        const r = await imService.handleImCommand(msg);
+        // 回复走自建应用 message/send(touser=发送者)
+        if (cfg.wecomCorpSecret && cfg.wecomAgentId && msg.from) {
+          const { wecomSendText } = await import("../services/wecom-service.js");
+          await wecomSendText({ corpId, corpSecret: cfg.wecomCorpSecret, agentId: cfg.wecomAgentId, content: r.text, touser: msg.from }).catch(() => {});
+        }
+      }
+      reply.type("text/plain").send("success");
+      return;
+    } catch (e: any) {
+      return reply.code(500).send(`decrypt failed: ${String(e?.message || e).slice(0, 80)}`);
+    }
+  });
+  // 企业微信测试发送: mode=app(自建应用) / mode=webhook(群机器人)
+  app.post("/api/im/wecom/send", async (request, reply) => {
+    const body = (request.body ?? {}) as { mode?: string; content?: string; touser?: string };
+    const { imService } = await import("../services/im-service.js");
+    const { wecomSendText, wecomWebhookSend } = await import("../services/wecom-service.js");
+    const cfg = await imService.getImConfig().catch(() => null);
+    const content = body.content || "MarxSphere 企业微信测试 ✅";
+    if (body.mode === "webhook") {
+      if (!cfg?.wecomWebhook) return reply.code(400).send({ ok: false, error: "未配置群机器人 webhook" });
+      const ok = await wecomWebhookSend(cfg.wecomWebhook, content);
+      return ok ? { ok: true } : reply.code(502).send({ ok: false, error: "群机器人发送失败(检查 webhook 与关键词)" });
+    }
+    if (!cfg?.wecomCorpId || !cfg?.wecomCorpSecret || !cfg?.wecomAgentId) {
+      return reply.code(400).send({ ok: false, error: "未配置自建应用(corp_id/corp_secret/agent_id)" });
+    }
+    const touser = body.touser || cfg.wecomTouser || "@all";
+    const r = await wecomSendText({ corpId: cfg.wecomCorpId, corpSecret: cfg.wecomCorpSecret, agentId: cfg.wecomAgentId, content, touser });
+    return r.ok ? { ok: true } : reply.code(502).send(r);
+  });
+
   // POST /api/im/send — 手动推送（测试/告警广播）
   app.post("/api/im/send", async (request) => {
     const body = z.object({ text: z.string().min(1).max(2000) }).parse(request.body);
@@ -5100,6 +5177,16 @@ export function buildHttpServer() {
         telegramToken: cfg.telegramToken ? `••••${cfg.telegramToken.slice(-4)}` : "",
         telegramTokenSet: !!cfg.telegramToken,
         telegramChatId: cfg.telegramChatId,
+        wecomCorpId: cfg.wecomCorpId,
+        wecomCorpSecret: cfg.wecomCorpSecret ? `••••${cfg.wecomCorpSecret.slice(-4)}` : "",
+        wecomCorpSecretSet: !!cfg.wecomCorpSecret,
+        wecomAgentId: cfg.wecomAgentId,
+        wecomCallbackToken: cfg.wecomCallbackToken ? `••••${cfg.wecomCallbackToken.slice(-4)}` : "",
+        wecomCallbackTokenSet: !!cfg.wecomCallbackToken,
+        wecomEncodingAesKey: cfg.wecomEncodingAesKey ? `••••${cfg.wecomEncodingAesKey.slice(-4)}` : "",
+        wecomEncodingAesKeySet: !!cfg.wecomEncodingAesKey,
+        wecomWebhook: cfg.wecomWebhook,
+        wecomTouser: cfg.wecomTouser,
       },
     };
   });
@@ -5108,6 +5195,9 @@ export function buildHttpServer() {
     const body = (request.body ?? {}) as {
       feishuWebhook?: string; dingtalkWebhook?: string;
       telegramToken?: string; telegramChatId?: string;
+      wecomCorpId?: string; wecomCorpSecret?: string; wecomAgentId?: string;
+      wecomCallbackToken?: string; wecomEncodingAesKey?: string;
+      wecomWebhook?: string; wecomTouser?: string;
     };
     const { saveImConfig } = await import("../services/im-service.js");
     const cfg = await saveImConfig({
@@ -5115,8 +5205,19 @@ export function buildHttpServer() {
       dingtalkWebhook: body.dingtalkWebhook,
       telegramToken: body.telegramToken,
       telegramChatId: body.telegramChatId,
+      wecomCorpId: body.wecomCorpId,
+      wecomCorpSecret: body.wecomCorpSecret,
+      wecomAgentId: body.wecomAgentId,
+      wecomCallbackToken: body.wecomCallbackToken,
+      wecomEncodingAesKey: body.wecomEncodingAesKey,
+      wecomWebhook: body.wecomWebhook,
+      wecomTouser: body.wecomTouser,
     });
-    return { ok: true, config: { feishu: !!cfg.feishuWebhook, dingtalk: !!cfg.dingtalkWebhook, telegram: !!(cfg.telegramToken && cfg.telegramChatId) } };
+    return { ok: true, config: {
+      feishu: !!cfg.feishuWebhook, dingtalk: !!cfg.dingtalkWebhook,
+      telegram: !!(cfg.telegramToken && cfg.telegramChatId),
+      wecom: !!(cfg.wecomCorpId && cfg.wecomCorpSecret && cfg.wecomAgentId) || !!cfg.wecomWebhook,
+    } };
   });
   // POST /api/jupyter/execute — 执行一个代码单元（复用实证 venv 沙箱）
   // body: { code, sessionId?, restart?, cellIndex? } → { ok, output, variables, figures, sessionId }
