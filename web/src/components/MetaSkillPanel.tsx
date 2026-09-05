@@ -135,8 +135,8 @@ export function MetaSkillPanel() {
     <div className="space-y-3 text-sm">
       <div className="rounded-lg border border-border/60 bg-card p-3">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[13px] font-semibold text-foreground">MetaSkill · 声明式步骤 DAG 试点(文献综述)</div>
-          <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300">OpenSquilla 借鉴 · 运行时强制编排</span>
+          <div className="text-[13px] font-semibold text-foreground">MetaSkill · 声明式步骤 DAG 工作流</div>
+          <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300">运行时强制编排</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <select
