@@ -34,7 +34,7 @@
 └──────────────────────────────────────────┘
 ```
 
-**规模**：200 服务文件（36 agent-* + 16 教育服务：12 核心 + 学习引擎 7 新 + V399 新增 3 适配）· 492+ 路由（112 教育 + 32 学习引擎顶层 + 引文核验）· 101 迁移 · 41 前端视图 · 621 测试(CI 持续)
+**规模**：200+ 服务文件（36 agent-* + 16 教育服务 + V399 适配 + V405 新增 cost-ledger/tier-router/b5 增强）· 492+ 路由（112 教育 + 32 学习引擎顶层 + 引文核验 + V405 审计端点）· 108 迁移 · 41+ 前端视图 · 736 测试(CI 全绿)
 
 ## 2. 推理链路（52 步）
 
@@ -71,6 +71,7 @@
 - **插件系统**：A1 工具插件（`agent_plugins` 表）/ A2 服务接口（Llm/Sandbox/Guard Provider）/ A3 前端注册表（`viewRegistry.tsx`）
 - **外部服务**：OAuth（GitHub 适配器）/ 多 Agent 协作（动态角色 + 协商循环）/ 会话图 + checkpoint 分叉
 - **V400 Codex 对齐**(2026-09-01): 预算/时间提醒注入(窗口去重) · Mid-turn 压缩不终止(滚动窗口) · Elicitation 暂停协调 · Stop/PreToolUse/PostToolUse/PermissionRequest/SessionStart 钩子 · 世界状态 diff(reflectLog 增量) · Steer 转向输入 · Mailbox 双通道 · 挂起检查点 · 评审会话隔离(read-only 暴露矩阵) · 共享上下文 LRU · 全链路插桩审计
+- **V405 OpenSquilla 工程纵深**(2026-09-05): 执行租约(agent_tasks holder+fencing+TTL, 跨进程防双跑) · 成本账本(llm_usage_ledger cost_source 三态) · 沙箱加固(删除前 .trash 备份 + 环回禁连修 SSRF) · 详见 §4.6
 
 ## 4.5 V399 开源能力融入（Rimagination 生态, 2026-08-31）
 
@@ -88,6 +89,19 @@
 | 引文三维核验 | citation-lab | 方法论移植 | `POST /api/citations/verify`（元数据真伪/语境相关性/断言支持度） |
 
 工具增量：+8（pdf_convert / gongwen_draft / video_note / view_openalex_search / view_oa_lookup / view_truth_narrative / view_chart_digitize / 实证 meta_analysis 方法）；技能注册 195→201。
+
+## 4.6 OpenSquilla 工程纵深（V405, 2026-09-05）
+
+> 移植自 OpenSquilla（Token-Efficient AI Agent, Apache-2.0）。开关默认关，评测 PASS 后逐个启用，不破坏 0.884 基线。
+
+| 能力 | 实现 | 落点 | 开关 |
+|---|---|---|---|
+| 成本可审计账本 | 轮级真实用量(模型/端点/cacheHit) + cost_source 三态 + 按模型单价 | `llm_usage_ledger`(105 迁移) + `cost-ledger-service.ts`; 修计费恒 flash + stream 漏计费 | 即时生效 |
+| 三档路由 + 本地 ML 分类器 | lite(单点快答)/standard(默认)/deep(深链); 规则优先 + 人工标签 LightGBM(180 标注, acc 0.938) 只升级 deep | `router_audit`(106 迁移) + `tier-router-service.ts` + `scripts/ml-router/` | `ROUTER_ENABLED=1` |
+| 任务执行租约 | DB 级 lease(holder+fencing token+TTL 心跳), 断线接管 | agent_tasks exec_lease_*(107 迁移) + `agent-task-queue.ts` | 即时生效 |
+| 记忆 Dream 凝练×3 | 记忆候选 + 技能蒸馏 + MetaSkill DAG 提案, 均隔离区人工审; 候选带支撑证据 | `dream-consolidation-service.ts` + `meta-skill-propose-service.ts` | 默认开 |
+| B5 集成路由 | 多模型并行成稿 + aggregator 融合(证据校准); 渐进/超时截断/预设 | `b5-ensemble-service.ts` + 盲标评测脚本 | `B5_ENABLED=1` |
+| 沙箱安全 | 删除前备份 `.trash`(3GiB); 网络禁环回回连 | `agent-tool-router.ts` file_write/checkNetworkAccess | 即时生效 |
 
 ## 5. AI+教育层（84 路由）
 
@@ -108,7 +122,7 @@
 
 - **RAGAS v3 评测**（`scripts/eval-32-metrics.ts`）：31+ 评分项，53 题金标集，基线综合分 **0.884**
 - **教育评测**（`scripts/eval-education.ts`）：BKT AUC / 路径逆序率 / 思政核验 / 批改准确率，综合分 **0.884**
-- Kappa 校准门 ≥0.7（当前 1.000）；621 项单元测试
+- Kappa 校准门 ≥0.7（当前 1.000）；736 项单元测试
 
 ## 7. 基础设施
 

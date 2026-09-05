@@ -212,6 +212,76 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 
 ---
 
+## 八·〇、OpenSquilla 工程纵深（V405, 2026-09-05 新增）
+
+> 移植自 [OpenSquilla](https://github.com/TokenRhythm/opensquilla)（Token-Efficient AI Agent, Apache-2.0）。全部开关默认关，评测 PASS 后逐个启用，不破坏 0.884 基线。服务端审计端点在运营管理面板可视化。
+
+### 8.0.1 成本可审计账本（`#运营管理 → 平台成本审计`）
+
+| 能力 | 细节 |
+|---|---|
+| 轮级用量明细 | `llm_usage_ledger`(105 迁移)：每次 LLM 调用一条(模型/端点/输入输出/cacheHit/成本) |
+| 成本来源三态 | `cost_source`: provider_billed(厂商实扣, 预留) / estimate(默认估算) / byok(用户自付 key, 零平台成本) |
+| 按模型单价 | `llm_model_prices`：in/out 分价(元/1M)，启动 seed 默认，admin 可调 |
+| 埋点覆盖 | 推理 52 步全部 fetchLlm 调用 + 搜索链/对话链 llm-client(真实模型名) |
+| 顺带修复 | 计费恒 flash 定价 bug + stream 路由漏 JWT 计费(chargeUserForReasonTask 共用) |
+
+### 8.0.2 三档成本路由 + 本地 ML 分类器（`#运营管理 → 三档路由决策审计`）
+
+| 能力 | 细节 |
+|---|---|
+| 三档语义 | lite(单点快答≤60字概念/事实) / standard(52 步全链路, 默认) / deep(政策法条/引证核验/比较/综述/理论对接/机制分析) |
+| 本地分类器 | 人工标签 LightGBM(180 条, 二分类 lite/deep acc 0.938)；特征移植 OpenSquilla HC 51 维 + TFIDF-SVD 100 |
+| 保守融合 | 规则强 deep 优先 → ML 自信判 deep 升级(prob≥0.65) → 其余规则默认；**只升级不降级**(方向安全) |
+| 决策审计 | 每轮落 `router_audit`(106 迁移)，运营面板按档位/来源可视化 + lite 省幅估算 |
+| 评测门 | `scripts/tier-router-eval.sh`(独立输出不污染基线, 支持 EVAL_QUESTIONS 子集) |
+| 资产 | `scripts/ml-router/`(训练/推理/标注全套) + `data/ml-router/`(本地, 不入 git) |
+
+### 8.0.3 B5 多模型集成路由（难档 opt-in, `B5_ENABLED=1`）
+
+| 能力 | 细节 |
+|---|---|
+| 并行成稿+聚合 | 多模型(默认 2 strong+1 cheap 锚点)并行作答 → aggregator 融合(检索证据校准分歧点) |
+| 渐进呈现 | `runB5EnsembleProgressive`: 成稿逐份到达即回调(先到先得), 不干等最慢 |
+| 超时截断 | `B5_DRAFT_TIMEOUT_MS`(默认 60s)每稿独立, 慢候选截断记 timedOut 不拖轮 |
+| 预设/自定义 | `B5_PRESET=default\|openrouter\|tokenrhythm` + `B5_SQUAD` 自定义优先 |
+| 智能直连 | `shouldUseB5`: 难题(长/引证/比较/机制)才 B5, 简单题直连省成本 |
+| 盲标评测 | `scripts/b5-vs-single-eval.sh`(judge 锚定 3=基准 + 盲序) |
+
+### 8.0.4 任务执行租约（跨进程防双跑）
+
+| 能力 | 细节 |
+|---|---|
+| DB 级租约 | agent_tasks `exec_lease_holder/token/until`(107 迁移)：原子 SQL 易主(空闲/过期) + fencing token 递增 |
+| 心跳 | 每轮循环续期(默认 TTL 120s)；断线 TTL 过期后新实例接管(重启不自动续) |
+| 接线 | queue pump 出队先抢租约(抢不到重排队) + runAgentTask 入口抢/挂起释放/出口释放; 租约丢失静默退出不动状态 |
+
+### 8.0.5 记忆 Dream 空闲凝练×3（`#记忆巩固` + `#Agent控制台-技能库` + `MetaSkill 提案区`）
+
+| 通道 | 说明 |
+|---|---|
+| 记忆候选 | 反复成功任务 → 隔离区 → accept 写战略记忆(带支撑证据明细) |
+| 技能蒸馏 | 高频任务 → auto-propose → 技能库 pending(EDV 验证后人工 accept/reject) |
+| MetaSkill DAG | 高频目标 → LLM 组装声明式工作流 → data/dag-proposals → 审阅区 accept 注册可跑 |
+| 调度 | 每日 dream 定时器零额外定时器并跑三通道; `SAG_DREAM_SKILL_PROPOSE=0` 关; 均不自动 accept |
+
+### 8.0.6 沙箱安全加固
+
+| 能力 | 细节 |
+|---|---|
+| 删除前备份 | file_write delete → 原文件/目录备份 `agent_workspace/.trash/`(时间戳, >512MB 不备份, 总量 3GiB 轮转最旧) |
+| 禁环回回连 | `checkNetworkAccess`: 127.0.0.1/localhost/0.0.0.0 默认全拦(修 SSRF — 外部 web 工具原可回打 4173)；`allowLoopback` 仅服务端内部自调 |
+
+### 8.0.7 契约测试网
+
+| 范围 | 测试文件 |
+|---|---|
+| SQL 仓储契约 | `test/repository-contract.test.ts`(图遍历 CTE/真相检索/名称召回/租约 SQL 形状) |
+| 成本账本契约 | `test/cost-ledger.test.ts`(INSERT 映射/byok 零成本/聚合降级) |
+| 路由契约 | `test/tier-router.test.ts`(档位规则/ML 开关/混合决策) |
+| B5 契约 | `test/b5-ensemble.test.ts`(预设阵容/智能直连判定) |
+
+---
 
 ## 八·五、论文格式智能评测（2026-09-03 新增 · `#format-eval`）
 

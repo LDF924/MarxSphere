@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-621%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-736%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -456,7 +456,10 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
 | 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
 | 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
-| 🤖 **AI Agent** | 87 工具自主调度（含 Notebook 图表模板/桌面控制/格式评测）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 |
+| 🤖 **AI Agent** | 87 工具自主调度（含 Notebook 图表模板/桌面控制/格式评测）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
+| 💰 **成本可审计账本** | 轮级真实用量(按模型/来源三态) + 平台成本审计面板 |
+| 🔀 **三档成本路由** | 规则 + 本地 ML 分类器(lite/deep) 保守融合, 只升级不降级 |
+| 🔁 **B5 多模型集成** | 难题多模型并行成稿 + aggregator 融合, 渐进呈现/超时截断 |
 | 📚 **科研场景** | 66 场景 × 8 大阶段，全屏工作台 + 专属算法 |
 | 📊 **实证工作台** | 问卷生成 → 信效度 → 插补 → 回归（M1-M6）→ 证据账本 |
 | 📓 **Notebook 工作台** | 轻量 Jupyter：代码/Markdown 单元格 · 9 种图表模板（三线表/热力图等）· 文件上传 · Restart & Run All |
@@ -465,7 +468,21 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🔀 **模型中立** | DeepSeek / OpenAI / Anthropic Claude / Ollama / 自定义端点自动识别 |
 | 🔐 **哈希版本化** | 文献内容判重 · 评测数据指纹 · stale 判定 · 版本历史表 · 数据画像 |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 177 单测 / 消融 21 算子 / CI+E2E |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 736 单测 / 消融 21 算子 / CI+E2E |
+
+## OpenSquilla 工程纵深
+
+> 移植自 [OpenSquilla](https://github.com/TokenRhythm/opensquilla)（Token-Efficient AI Agent, Apache-2.0）的工程纵深 — 把通用 Agent 的"省成本/防双跑/可审计/安全"做进 MarxSphere。开关默认关, 评测 PASS 后逐个启用, 不破坏 0.884 基线。
+
+| 能力 | 实现 | 开关 |
+|---|---|---|
+| 💰 **成本可审计账本** | `llm_usage_ledger` 轮级明细 + `cost_source` 三态 + 按模型单价; 修复计费恒 flash 与 stream 漏计费; 运营面板"平台成本审计" | 即时生效 |
+| 🔀 **三档路由 + 本地 ML 分类器** | `lite/standard/deep` 三档; 规则优先 + 人工标签 LightGBM(180 标注, lite/deep acc 0.938)只升级不降级; 决策落 `router_audit` | `ROUTER_ENABLED=1` |
+| 🔁 **B5 多模型集成** | 多模型并行成稿 + aggregator 融合(检索证据校准); 渐进呈现/超时截断/预设阵容/智能直连 | `B5_ENABLED=1` |
+| 🔒 **任务执行租约** | DB 级租约(holder+fencing+TTL 心跳), 跨进程防双跑, 断线接管 | 即时生效 |
+| 🧠 **记忆 Dream evidence** | 每日空闲凝练三通道(记忆/技能/MetaSkill DAG), 候选带支撑证据, 隔离区人工审 | 默认开 |
+| 🛡 **沙箱安全** | 删除前 `.trash` 备份(3GiB 配额); 网络禁环回回连(修 SSRF) | 即时生效 |
+| ✅ **契约测试网** | SQL 仓储/账本/租约/路由契约测试 | — |
 
 ## 技术栈
 
@@ -500,13 +517,13 @@ data/                运行时数据（金标候选等）
 ## 测试
 
 ```bash
-npm test                # 273 项单元测试
+npm test                # 736 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（273 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（736 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 
