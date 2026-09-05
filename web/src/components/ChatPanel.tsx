@@ -621,7 +621,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                     <MessageSquare className="h-7 w-7" />
                   </div>
                   <h1 className="text-xl font-semibold">你好，我是 MarxSphere AI 助手</h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">马克思主义理论研究科研助手 — 输入问题开始对话</p>
+                  <p className="mt-1.5 text-sm text-muted-foreground">全人文社科研究助手 — 输入问题开始对话</p>
                 </div>
                 <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
                   {SUGGESTIONS.map((s) => (

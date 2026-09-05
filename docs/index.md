@@ -1,6 +1,6 @@
 # MarxSphere — 文档中心
 
-> AI 驱动的马克思主义理论研究科研中枢：四源检索（SAG + Graphiti + Cognee + PG）、52 步推理链路、AI Agent 编排、科研场景工作台、桌面端。
+> AI 驱动的全人文社科科研中枢：四源检索（SAG + Graphiti + Cognee + PG）、52 步推理链路、AI Agent 编排、科研场景工作台、桌面端。
 
 ## 🚀 快速上手
 
