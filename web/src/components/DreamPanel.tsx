@@ -28,6 +28,25 @@ const KIND_COLOR: Record<string, string> = {
   preference: "text-pink-300 bg-pink-400/10",
 };
 
+// V404-32: 演示数据
+function demoProposal(over: Partial<Proposal> & { id: string }): Proposal {
+  return {
+    key: "x", goal: "示例目标", seenCount: 5, positiveSignals: 1, negativeSignals: 0,
+    spanDays: 4, score: 0.72, polished: "示例打磨条目", kind: "goal", status: "proposed",
+    createdAt: new Date().toISOString(), ...over,
+  };
+}
+const DEMO_PROPOSALS: Proposal[] = [
+  demoProposal({ id: "dp-demo-1", key: "综述", goal: "根据论文生成文献综述", seenCount: 22, spanDays: 21, positiveSignals: 2, score: 0.82, polished: "反复成功完成「论文文献综述生成」22 次/跨 21 天(用户正评 2 次); 建议沉淀为可复用综述流程模板。" }),
+  demoProposal({ id: "dp-demo-2", key: "选题", goal: "理论接口选题法", seenCount: 14, spanDays: 12, positiveSignals: 1, score: 0.71, polished: "「理论接口选题」高频任务(14 次/跨 12 天) — 建议沉淀为选题方法模板。" }),
+  demoProposal({ id: "dp-demo-3", key: "问答", goal: "论文深度问答", seenCount: 9, spanDays: 6, score: 0.58, polished: "「论文深度问答」重复任务(9 次/6 天) — 考虑固化为带引用验证的问答流程。" }),
+];
+const DEMO_QUARANTINE: Proposal[] = [demoProposal({ id: "dp-demo-q", key: "低分", goal: "单次成功未重复任务", seenCount: 1, spanDays: 1, score: 0.31, status: "rejected", createdAt: new Date(Date.now() - 86400000 * 2).toISOString() })];
+const DEMO_RECEIPTS = [
+  { event: "accept", proposalId: "dp-demo-old1", ts: new Date(Date.now() - 86400000).toISOString() },
+  { event: "rollback", proposalId: "dp-demo-old2", ts: new Date(Date.now() - 86400000 * 3).toISOString() },
+];
+
 export function DreamPanel() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [quarantine, setQuarantine] = useState<Proposal[]>([]);
@@ -37,13 +56,21 @@ export function DreamPanel() {
   const [msg, setMsg] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showQ, setShowQ] = useState(false);
+  const [demoOn, setDemoOn] = useState(false);
 
   const load = useCallback(async () => {
+    if (demoOn) {
+      setProposals(DEMO_PROPOSALS);
+      setQuarantine(DEMO_QUARANTINE);
+      setReceipts(DEMO_RECEIPTS);
+      setMsg("🎬 演示模式: 显示示例候选(真实模式: 点「扫描并生成候选」从 30 天任务挖掘)");
+      return;
+    }
     const j = await fetch("/api/memory/dream/state").then((r) => r.json());
     setProposals(j.proposals || []);
     setQuarantine(j.quarantine || []);
     setReceipts(j.receipts || []);
-  }, []);
+  }, [demoOn]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -102,6 +129,9 @@ export function DreamPanel() {
             <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} className="h-3 w-3" />
             LLM 打磨(否则确定性摘要)
           </label>
+          <button type="button" onClick={() => { setDemoOn((v) => !v); void load(); }} className="rounded-md border border-amber-400/40 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-400/10">
+            {demoOn ? "退出演示" : "🎬 演示数据"}
+          </button>
           <button type="button" onClick={() => void load()} className="rounded-md px-2 py-1 text-[10px] text-muted-foreground/60 hover:text-foreground">
             <RefreshCw className="h-3 w-3" />
           </button>

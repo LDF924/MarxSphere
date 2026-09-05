@@ -131,12 +131,66 @@ export function MetaSkillPanel() {
   const stepCount = skills.find((s) => s.id === skillId)?.steps.length || 0;
   const doneCount = snap ? snap.stepLog.filter((s) => s.status === "done").length : 0;
 
+  // V404-32: 演示运行 — 假步骤逐段推进(展示进度徽章/澄清表单/产出 UI, 零 LLM 成本)
+  const playDemo = () => {
+    if (!skills.length) return;
+    stopPoll();
+    setBusy(true); setSnap(null); setFinalOutput("");
+    setRunId("demo-run");
+    const def = skills[0];
+    const stepLog: StepRunLite[] = def.steps.map((st, i) => ({ stepId: st.id, kind: st.kind, label: st.label, status: "pending" }));
+    const stepIdx = { i: 0 };
+    setSnap({ status: "running", stepLog });
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const advance = () => {
+      const idx = stepIdx.i;
+      if (idx >= stepLog.length) {
+        setBusy(false);
+        setFinalOutput("【演示产出】这是一段示例文献综述。\n## 一、研究缘起\n关于该主题的学术讨论源于……(演示文本, 实际运行会生成真实综述)\n## 二、发展脉络\n……");
+        setSnap((prev) => (prev ? { ...prev, status: "done" } : prev));
+        return;
+      }
+      const step = stepLog[idx];
+      const isUserInput = step.kind === "user_input";
+      if (isUserInput) {
+        step.status = "waiting_input";
+        step.waitingFields = [{ name: "topic", prompt: "综述主题", required: true }];
+      } else {
+        step.status = "running";
+      }
+      setSnap({ status: "running", stepLog: [...stepLog] });
+      timers.push(setTimeout(() => {
+        if (step.kind === "user_input") {
+          // 模拟用户填表后自动继续
+          step.status = "done";
+          step.output = "topic: 演示主题";
+          step.waitingFields = undefined;
+          stepIdx.i++;
+          setSnap({ status: "running", stepLog: [...stepLog] });
+          timers.push(setTimeout(advance, 900));
+        } else {
+          step.status = "done";
+          step.output = `【${step.kind} 演示输出】示例内容 ${step.kind === "llm_gate" ? "{\"pass\":true,\"reason\":\"引用检查通过\"}" : step.kind === "llm_chat" ? "这是演示生成的综述草稿……(真实运行会调用 LLM)" : "检索到示例文献 8 篇……"}`;
+          stepIdx.i++;
+          timers.push(setTimeout(advance, 900));
+        }
+      }, isUserInput ? 400 : 700));
+    };
+    advance();
+  };
+
   return (
     <div className="space-y-3 text-sm">
       <div className="rounded-lg border border-border/60 bg-card p-3">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-[13px] font-semibold text-foreground">MetaSkill · 声明式步骤 DAG 工作流</div>
-          <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300">运行时强制编排</span>
+          <span className="flex items-center gap-1.5">
+            <button type="button" onClick={() => playDemo()} disabled={busy || skills.length === 0}
+              className="rounded border border-amber-400/40 px-2 py-0.5 text-[10px] text-amber-300 hover:bg-amber-400/10 disabled:opacity-40">
+              🎬 演示运行(零成本)
+            </button>
+            <span className="rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-300">运行时强制编排</span>
+          </span>
         </div>
         <div className="flex flex-wrap gap-2">
           <select
