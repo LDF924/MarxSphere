@@ -6,10 +6,10 @@ import {
   parseWeComCallback, extractXmlCdata, extractXmlText,
 } from "../src/services/wecom-service.js";
 
-// 腾讯规范样例: 43 字符 EncodingAESKey(base64, 解码 32 字节)
-const AES_KEY = "jWmYm7qr5nMoAUwZRjGtBxmz3KA1tkAj3ykkR6q2B2C";
-const TOKEN = "QDG6eK";
-const CORP_ID = "wx5823bf96d3bd56c7";
+// 测试用示例值(非真实凭据): AES_KEY 为 43 字符 base64(解码 32 字节)占位
+const AES_KEY = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const TOKEN = "test-token-placeholder";
+const CORP_ID = "corp-id-placeholder-not-real";
 
 // 构造与腾讯 URL 验证一致的已知报文做往返(用 encrypt 再解密, 验证信封结构正确)
 describe("wecom crypto round-trip", () => {
