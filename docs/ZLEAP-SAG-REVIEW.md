@@ -22,7 +22,7 @@
 
 本地仓库内证据:
 
-- `docs/COMPETITION-AI-EDUCATION.md:332`:「基础架构源自 **SAG**(Zleap-AI, MIT):search-service / inference-service / MCP server」
+- `THIRD_PARTY_NOTICES.md`: 「基础架构源自 **SAG**(Zleap-AI, MIT): search-service / inference-service / MCP server」(第三方源码使用声明, 原参赛文档同款披露已收敛至此)
 - `README.md:555`:「第三方源码使用声明:见 THIRD_PARTY_NOTICES.md(**SAG 底座 MIT** / GBrain MIT / PDF2Obsidian MIT / …)」
 - 注:声明文件在仓库根目录,但**文件名是下划线 `THIRD_PARTY_NOTICES.md`,README 原引用为连字符 `THIRD-PARTY-NOTICES.md`(链接断裂)**;且文件内容缺少 SAG/GBrain/PDF2Obsidian 三条声明——本次评审已一并修复(引用统一为下划线,声明已补全)。
 
