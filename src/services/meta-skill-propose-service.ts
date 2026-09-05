@@ -128,6 +128,39 @@ export async function proposeMetaSkillDag(goal: string, seenCount: number, skill
 /** 列出提案(前端审阅) */
 export function listDagProposals(): DagProposal[] { return readProposals(); }
 
+/**
+ * V405-ML: 空闲凝练 DAG 提案(dream 调度器调用) — 取 top 高频未覆盖任务 → LLM 组装工作流候选。
+ * 零额外定时器; 每天最多 2 条(控 LLM 成本); 返回新增数。
+ */
+export async function runDreamDagPropose(): Promise<number> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    // top 高频目标(近 14 天, 排除已提案过的 triggerGoal)
+    const existing = new Set(readProposals().map((p) => p.triggerGoal));
+    const r = await pool.query(
+      `select query, count(*)::int as n
+       from task_experience
+       where created_at > now() - interval '14 days'
+         and query is not null and query <> '' and length(query) >= 8
+       group by query
+       order by n desc
+       limit 8`
+    );
+    let added = 0;
+    for (const row of r.rows) {
+      if (added >= 2) break;
+      const goal = String(row.query || "");
+      if (existing.has(goal)) continue;
+      const p = await proposeMetaSkillDag(goal, Number(row.n || 1));
+      if (p) { added++; existing.add(goal); }
+    }
+    return added;
+  } catch (e: any) {
+    console.warn(`[dag-propose] 空闲凝练失败: ${String(e?.message || e).slice(0, 100)}`);
+    return 0;
+  }
+}
+
 /** 人工 accept → 写入运行时动态 DAG 表(agent_meta_dags: id/dag_json/enabled) */
 export async function acceptDagProposal(id: string): Promise<{ ok: boolean; error?: string; dagId?: string }> {
   const list = readProposals();
@@ -165,4 +198,4 @@ export function rejectDagProposal(id: string): { ok: boolean; error?: string } {
   return { ok: true };
 }
 
-export const metaSkillProposeService = { proposeMetaSkillDag, listDagProposals, acceptDagProposal, rejectDagProposal };
+export const metaSkillProposeService = { proposeMetaSkillDag, listDagProposals, acceptDagProposal, rejectDagProposal, runDreamDagPropose };
