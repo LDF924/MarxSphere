@@ -69,11 +69,16 @@ function sandboxCwd(profile: SandboxProfile): string {
   return tmp;
 }
 
-/** 网络策略: read-only 彻底禁网(代理指向黑洞); workspace-write/full-access 走白名单代理 */
-function sandboxEnv(profile: SandboxProfile): Record<string, string> {
+/** 网络策略: read-only 彻底禁网(代理指向黑洞); workspace-write/full-access 走白名单代理
+ *  V404-28(M6): env 白名单 + 密钥剥离双层 — 只透传运行必需/无害变量, 任何密钥/凭据/DB 类一律不继承
+ *  (白名单兜底防遗漏, 密钥正则防白名单误加敏感键) */
+export function sandboxEnv(profile: SandboxProfile): Record<string, string> { // V404-28(M6): 导出供单测断言隔离
+  // 运行必需/无害变量(宿主 env 只透传这些)
+  const ENV_ALLOW = ["PATH", "PYTHONPATH", "HOME", "USERPROFILE", "TEMP", "TMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "NODE_PATH", "SAG_ROOT", "SAG_SANDBOX_PYTHON", "VENV_PYTHON", "COGNEE_PYTHON", "EMPIRICAL_PYTHON", "VIRTUAL_ENV", "CONDA_PREFIX", "PYTHONHOME", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "OneDrive", "HOMEDRIVE", "HOMEPATH", "USERNAME", "COMPUTERNAME", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS"];
+  const SENSITIVE_RE = /(?:API_KEY|DASHSCOPE|DEEPSEEK|EMBEDDING|TOKEN|SECRET|PASSWORD|DATABASE_URL|PGHOST|PGPASSWORD|BOCHA|TAVILY|EXA|SENSENOVA|KEY$)/i;
   const base: Record<string, string> = {
     ...Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !/(?:API_KEY|DASHSCOPE|DEEPSEEK|EMBEDDING|TOKEN|SECRET|PASSWORD)/i.test(k))
+      Object.entries(process.env).filter(([k]) => ENV_ALLOW.includes(k) && !SENSITIVE_RE.test(k))
     ),
     PYTHONIOENCODING: "utf-8",
     SAG_SANDBOX: "1",

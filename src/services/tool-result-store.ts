@@ -255,3 +255,53 @@ export function retrieveStoredResult(handle: string, opts: RetrieveOptions = {})
   }
   return { ok: true, toolName: file.meta.toolName, chars: file.content.length, content: file.content };
 }
+
+// ═══ V404-26(M2, 借鉴 OpenSquilla plugins/tokenjuice): 规则化结构化输出摘要 ═══
+// 对长输出的常见结构化形态(文件列表/逐行重复前缀/搜索条目)先做规则摘要:
+// 命中形态时返回紧凑摘要(计数 + head/tail), 避免整段进上下文(与 gzip 存储互补 —
+// 摘要比 handle+取回更适合"模型只需知道有什么"的场景; 需要细节仍走取回)。
+export interface SummarizedOutcome {
+  summarized: boolean;
+  view: string;
+  /** 摘要后剩余字符数(仍超阈值则外部继续走压缩存储) */
+  remainderChars: number;
+  full: string;
+}
+
+/** 规则摘要: 识别计数类输出(行号前缀/重复行/条目列表), 产出紧凑统计视图 */
+export function summarizeStructuredOutput(toolName: string, content: string): SummarizedOutcome {
+  const lines = content.split("\n");
+  // ① 文件/搜索条目列表形态: 大量行以 "- " 或 数字. 或 "路径:..." 开头, 行数多
+  if (lines.length >= 30) {
+    const bulletCount = lines.filter((l) => /^\s*[-*•]\s/.test(l)).length;
+    const numberedCount = lines.filter((l) => /^\s*\d+[.、]\s/.test(l)).length;
+    const listLike = bulletCount >= 20 || numberedCount >= 20;
+    if (listLike) {
+      const total = Math.max(bulletCount, numberedCount);
+      const heads: string[] = [];
+      const tails: string[] = [];
+      let passed = 0;
+      for (const l of lines) {
+        const isItem = /^\s*[-*•]?\s*\d*[.、]?\s*/.test(l) && l.trim().length > 0;
+        if (!isItem) continue;
+        if (passed < 5) heads.push(l.trim().slice(0, 80));
+        passed++;
+      }
+      for (let i = lines.length - 1; i >= 0 && tails.length < 3; i--) {
+        if (lines[i].trim() && /^\s*[-*•]?\s*\d*[.、]?\s*/.test(lines[i])) tails.push(lines[i].trim().slice(0, 80));
+      }
+      const headBlock = heads.join("\n");
+      const tailBlock = tails.reverse().join("\n");
+      const view = [
+        `【${toolName} 输出规则摘要】共 ${lines.length} 行 / ${total} 个条目 — 已按行号/路径统计, 需原文细节时用 retrieve_tool_result 取回`,
+        `--- 前 5 条 ---`,
+        headBlock,
+        tails.length ? `--- 后 3 条 ---\n${tailBlock}` : "",
+        `--- 全文 ${content.length} 字符已省略(规则摘要) ---`,
+      ].filter(Boolean).join("\n");
+      // 仍给出完整文本供外部压缩存储(handle 可取回全文)
+      return { summarized: true, view, remainderChars: 0, full: content };
+    }
+  }
+  return { summarized: false, view: content, remainderChars: content.length, full: content };
+}

@@ -259,7 +259,26 @@ export async function createAgentTask(input: {
   userId?: string;
   /** 差距K②: 依赖的前置任务 id（DAG 调度; 全部 completed 后才可启动） */
   dependsOn?: string[];
+  /** V404-27(M1): 容量准入失败时抛出错误(调用方可捕获提示) 而非静默排队 */
+  failClosedOnFull?: boolean;
 }): Promise<AgentTaskRecord> {
+  // V404-27(M1, 借鉴 OpenSquilla capacity_admission): 事前容量准入 —
+  // 队列过载(>AGENT_QUEUE_MAX_PENDING 默认 20)时拒绝新任务(fail-closed), 防无限排队空转
+  if (input.failClosedOnFull) {
+    try {
+      const { queueStatus } = await import("./agent-task-queue.js");
+      const st = queueStatus();
+      const maxPending = Math.max(5, parseInt(process.env.AGENT_QUEUE_MAX_PENDING || "20", 10));
+      if (st.queued >= maxPending) {
+        const e = new Error(`任务队列过载(已排队 ${st.queued}/${maxPending}, 运行 ${st.running}) — 拒绝新建任务, 请稍后重试`) as Error & { code?: string };
+        e.code = "QUEUE_CAPACITY_FULL";
+        throw e;
+      }
+    } catch (e: any) {
+      if ((e as Error & { code?: string }).code === "QUEUE_CAPACITY_FULL") throw e;
+      // 队列状态不可用 → 不阻塞(fail-open 降级)
+    }
+  }
   // LLM 规划器：目标 → 子任务列表（V395-3: 注入历史会话上下文）
   let steps = await planWithLlm(input.goal, [], input.contextHint, input.userId ? undefined : undefined);
   // V391(P1-2): 预算声明 + 超预算降级（裁剪步骤）
