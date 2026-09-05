@@ -247,7 +247,7 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 - **Pacing**: difficulty/duration tuned to mastery (no repetitive or overwhelming tasks)
 - **Differentiated teaching**: same concept at multiple levels (basic/advanced/challenge)
 
-**Learning engine** (V386-V393, ported from TraitTutor source, [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md)) — evidence-driven adaptive learning loop:
+**Learning engine** ([docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md)) — evidence-driven adaptive learning loop:
 - **Learner event ledger + BKT mastery**: append-only ledger + strong-evidence gate (only server-graded answers update BKT) + honest reads (no numbers until calibrated) + time-decay read projection + offline calibration script
 - **Versioned learning plan chain**: replan only the unstarted tail (started prefix immutable) + supersede audit chain + component state machine
 - **Deterministic component selector**: BKT four-stage branches (goal map → concept → diagnostic → guided practice+calibration → transfer → retrieval)
