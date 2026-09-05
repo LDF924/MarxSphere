@@ -304,8 +304,22 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 计费 | 余额/充值/订阅/账单/用量（JWT） |
 | MCP Server | stdio 8 工具，Claude Code/Codex 直连 |
 | PDF2Obsidian | 三栏工作台：上传 → PDF 预览 → 六产物（original/摘要/术语表/问答/index/信息） |
-| 技能系统 | 技能注册表（201 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 |
+| 技能系统 | 技能注册表（208 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 |
 | 数据源 | 29 个外部源（已接入/可接入/需注册分类） |
+
+## 八·六、IM 接入（远程对话 · 飞书/钉钉/Telegram/企业微信）
+
+> 完整使用说明与消息流转图：见 [docs/IM-INTEGRATION.md](IM-INTEGRATION.md)。配置入口：系统管理 → IM 接入（DB 存储即时生效）。
+
+| 能力 | 细节 |
+|---|---|
+| 平台 | 飞书(自定义机器人 webhook) / 钉钉(群机器人 webhook) / Telegram(Bot API) / **企业微信**(群机器人 + **自建应用双向**: AES-256-CBC 回调) |
+| 远程命令 | 发消息给机器人: 状态/项目/评测/审批/告警/帮助 → `handleImCommand` 关键词路由查库回复 |
+| 主动推送 | `POST /api/im/send` 或 `imService.imBroadcast(text)` → 广播全部已配平台(告警/审批/任务完成触发) |
+| 企业微信自建应用 | corpid+corpsecret→access_token(7000s 缓存/42001 刷新)→message/send; 回调 GET URL 验证 + POST AES 解密+sha1 验签 |
+| 配置面板 | `web/src/components/ImPanel.tsx`: 4 渠道状态卡/表单(敏感字段打码)/测试发送/回调地址展示 |
+| 存储 | `im_config` 表(112/113 迁移); DB 优先 env 兜底 |
+| 实现 | `src/services/im-service.ts`(三渠道+命令) + `wecom-service.ts`(企业微信加密收发) |
 
 ## 九、AI+教育（顶部「AI+教育」Tab · 112 教育路由 + 32 学习引擎顶层）
 
