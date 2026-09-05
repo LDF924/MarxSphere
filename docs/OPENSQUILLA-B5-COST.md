@@ -1,7 +1,8 @@
-# B5 融合成本账(OpenSquilla 差距 6 试点前测算)
+# B5 融合成本账(OpenSquilla 差距 6)
 
-> V404-9 · 2026-09-05 · 依据: 模型注册表默认档位 + llm-common 成本口径(输入 ¥0.5/1M tok, 输出 ¥2/1M tok)
+> V404-9(V405 落地更新)· 2026-09-05 · 依据: 模型注册表默认档位 + llm-common 成本口径(输入 ¥0.5/1M tok, 输出 ¥2/1M tok)
 > 结论先行: **默认关闭(B5_ENABLED=1 才启用); 只对显式难任务 opt-in, 不自动改全局路由。**
+> **V405 落地补充**(2026-09-05): B5 已实现渐进呈现(`runB5EnsembleProgressive` 先到先得)/每稿独立超时(`B5_DRAFT_TIMEOUT_MS`)/预设+自定义阵容(`B5_PRESET`+`B5_SQUAD`)/智能直连(`shouldUseB5`); 盲标评测 `scripts/b5-vs-single-eval.sh`(2 题实测 1 WIN 1 TIE, 待扩大样本)。本文档成本口径仍适用(相对成本)。
 
 ## 1. 阵容与单价(按配置口径)
 
