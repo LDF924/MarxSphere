@@ -117,7 +117,7 @@ export const ImPanel: FC = () => {
       <div className="flex items-center gap-2">
         <MessageSquare className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold">IM 接入</h2>
-        <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">飞书 / 钉钉 / Telegram 机器人远程对话</span>
+        <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary">飞书 / 钉钉 / Telegram / 企业微信 机器人远程对话</span>
       </div>
 
       {/* 渠道状态 */}
