@@ -42,7 +42,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | **Agent Console** | **Empirical Workbench** | **Evaluation** |
 | ![Agent](docs/assets/sag-agent-console.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Eval](docs/assets/sag-eval.png) |
 
-> All 36 view screenshots live in [docs/assets/](docs/assets/) (33 tabs + sub-views).
+> All 43 view screenshots live in [docs/assets/](docs/assets/).
 
 ### 💬 AI Chat (Default Home)
 
@@ -52,8 +52,8 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **70-tool dispatch**: 48 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 41-view coverage)
-- **Command syntax**: `/` opens the skill command palette (201 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
+- **70-tool dispatch**: 48 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 43-view coverage)
+- **Command syntax**: `/` opens the skill command palette (208 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
 - **Light / dark themes**: one-click toggle in the header, persisted in localStorage
@@ -309,7 +309,7 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 | **marx-cognee** | Cognee KG retrieval (17 strategies: HYBRID/semantic/graph traversal…) | ⑤ retrieval |
 | **marx-graphiti** | Graphiti knowledge retrieval (five-layer distillation + community discovery + hyperedge reasoning, 23 MCP tools) | ⑤ retrieval |
 | **marx-sag** | SAG reasoning workbench (52-step chain + token capture + eval, 53-question 0.884 baseline) | ⑥ reasoning |
-| **marx-agent** | Agent master entry (52-step reasoning + Ask + 66 scenarios + 201 skills) | ⑦ dispatch |
+| **marx-agent** | Agent master entry (52-step reasoning + Ask + 66 scenarios + 208 skills) | ⑦ dispatch |
 
 **Pipeline panorama**: `cnki acquire → pdf2obsidian convert → md-clean clean → marx-*-ingest three-library ingest → marx-cognee/marx-graphiti retrieve → marx-sag reason → marx-agent dispatch`
 
@@ -485,7 +485,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 
 ```text
 src/                 backend source (AI/API/services/db)
-web/                 frontend source (41 views · Mega Menu navigation)
+web/                 frontend source (43 views · Mega Menu navigation)
 electron/            desktop main process / bootstrap pages
 scripts/             Python runners / eval scripts / tool scripts / launcher scripts
 evaluation/          eval assets (results / gold sets / archives)

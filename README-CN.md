@@ -52,8 +52,8 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **70 工具自主调度**：48 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/教育能力/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，41 视图能力全覆盖）
-- **命令语法**：`/` 弹出技能命令面板（190+ 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
+- **70 工具自主调度**：48 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/教育能力/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，43 视图能力全覆盖）
+- **命令语法**：`/` 弹出技能命令面板（208 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
 - **浅色 / 深色双主题**：header 一键切换，localStorage 持久化
@@ -310,11 +310,11 @@ MarxSphere 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆
 | **marx-cognee** | Cognee 知识图谱检索（17 种策略：HYBRID/语义/图遍历…）| ⑤ 检索 |
 | **marx-graphiti** | Graphiti 知识检索（五层蒸馏 + 社区发现 + 超边推理，23 个 MCP 工具）| ⑤ 检索 |
 | **marx-sag** | SAG 推理工作台（52 步链路 + token 采集 + 评测，53 题均值 0.884 基线）| ⑥ 推理 |
-| **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 66 场景 + 190+ 技能统一调度）| ⑦ 科研调度 |
+| **marx-agent** | Agent 总入口（52 步推理 + Ask 检索 + 66 场景 + 208 技能统一调度）| ⑦ 科研调度 |
 
 **流水线全景**：`cnki 获取 → pdf2obsidian 转换 → md-clean 清洗 → marx-*-ingest 三库入库 → marx-cognee/marx-graphiti 检索 → marx-sag 推理 → marx-agent 调度`
 
-**技能系统（Web 端）**：技能注册表（约 190+ 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 + GitHub 发现。
+**技能系统（Web 端）**：技能注册表（约 208 项动态扫描）+ 触发词 + Skillify 固化 + 自动更新检测 + GitHub 发现。
 
 ### 📊 评测体系（多源融合的实证验证）
 
@@ -486,7 +486,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 
 ```text
 src/                 后端源码（AI/API/服务/数据库）
-web/                 前端源码（41 视图 · Mega Menu 导航）
+web/                 前端源码（43 视图 · Mega Menu 导航）
 electron/            桌面端主进程 / 引导页
 scripts/             Python runner / 评测脚本 / 工具脚本 / 启动脚本
 evaluation/          评测资产（评测结果 / 金标集 / 历史归档）
