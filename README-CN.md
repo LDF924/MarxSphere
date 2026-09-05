@@ -247,7 +247,7 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 - **节奏适配**：按掌握度调整习题难度/时长（避免简单重复/难度过载）
 - **分层教学**：同一知识点按水平输出不同版本讲解（基础/进阶/挑战）
 
-**学习引擎**（V386-V393，借鉴 TraitTutor 源码移植，[docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md)）——证据驱动的自适应学习闭环：
+**学习引擎**（[docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md)）——证据驱动的自适应学习闭环：
 - **学习者事件账本 + BKT 概念掌握**：append-only 账本 + 强证据闸门（仅服务端判分更新 BKT）+ 诚实读（未校准不显示数字）+ 时间衰减读投影 + 离线校准脚本
 - **版本化学习计划链**：只重规划未开始尾部（已开始前缀不可变）+ supersede 审计链 + 组件状态机
 - **确定性组件选择器**：BKT 四阶段分支（目标地图→概念讲解→起点判断→引导练习+校准→迁移挑战→主动回忆）
@@ -538,7 +538,7 @@ npm run typecheck       # 前后端类型检查
 | 📊 运行截图 | [docs/assets/](docs/assets/)（首页/对话/推理/Ask/文献/图谱/场景/实证/Agent/评测 10 张） |
 | 📈 评测报告样例 | `reports/`（7 份报告）· `evaluation/`（评测结果+金标+历史归档） |
 | ✅ 单元测试 | `npm test`（263 项） |
-| 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习, TraitTutor 借鉴 V386-V393） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
+| 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `examples/`（同批示例）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 检索：`examples/seed-corpus/`（50 篇种子语料）· 评测：`evaluation/gold_dataset.json`（53 题金标）· 图谱：`knowledge-graph/` |
 | 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |

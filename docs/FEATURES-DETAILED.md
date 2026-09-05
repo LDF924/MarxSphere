@@ -212,9 +212,9 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 
 ---
 
-## 八·〇、OpenSquilla 工程纵深（V405, 2026-09-05 新增）
+## 八·〇、工程纵深能力（V405, 2026-09-05 新增）
 
-> 移植自 [OpenSquilla](https://github.com/TokenRhythm/opensquilla)（Token-Efficient AI Agent, Apache-2.0）。全部开关默认关，评测 PASS 后逐个启用，不破坏 0.884 基线。服务端审计端点在运营管理面板可视化。
+> 全部开关默认关，评测 PASS 后逐个启用，不破坏 0.884 基线。服务端审计端点在运营管理面板可视化。
 
 ### 8.0.1 成本可审计账本（`#运营管理 → 平台成本审计`）
 
@@ -231,7 +231,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 能力 | 细节 |
 |---|---|
 | 三档语义 | lite(单点快答≤60字概念/事实) / standard(52 步全链路, 默认) / deep(政策法条/引证核验/比较/综述/理论对接/机制分析) |
-| 本地分类器 | 人工标签 LightGBM(180 条, 二分类 lite/deep acc 0.938)；特征移植 OpenSquilla HC 51 维 + TFIDF-SVD 100 |
+| 本地分类器 | 人工标签 LightGBM(180 条, 二分类 lite/deep acc 0.938)；特征: 手写 51 维 + TFIDF-SVD 100 |
 | 保守融合 | 规则强 deep 优先 → ML 自信判 deep 升级(prob≥0.65) → 其余规则默认；**只升级不降级**(方向安全) |
 | 决策审计 | 每轮落 `router_audit`(106 迁移)，运营面板按档位/来源可视化 + lite 省幅估算 |
 | 评测门 | `scripts/tier-router-eval.sh`(独立输出不污染基线, 支持 EVAL_QUESTIONS 子集) |
@@ -346,7 +346,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 | 教育评测（12 项） | `GET /api/education/eval`（`education-eval-service.ts`） | 技术 6 项（BKT/诊断/路径/批改/思政/闭环）+ 教学效果 6 项（掌握度/辅导对照/备课效率/批改效率/规划覆盖/满意度） |
 | 自动改进建议 | 同上（suggestions 字段） | 低分指标（BKT<0.75 等）+ 负评热点 → 高/中优先级改进建议，评测工作台展示 |
 
-### 9.4 学习引擎（V386-V393, 借鉴 TraitTutor 源码移植）
+### 9.4 学习引擎（自适应学习闭环）
 
 > 完整文档: [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) · 调研: [docs/TRAITTUTOR-REVIEW.md](docs/TRAITTUTOR-REVIEW.md)
 
