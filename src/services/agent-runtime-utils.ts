@@ -51,6 +51,7 @@ export function trackSubprocess(label: string, proc: ChildProcess, timeoutMs = 1
   rec.timer = setTimeout(() => {
     if (!proc.killed) {
       console.log(`[agent] 差距P⑤ 子进程超时清理: ${label} (>${Math.round(timeoutMs / 1000)}s)`);
+      void import("./runtime-guard-events.js").then((m) => m.recordGuardEvent("h3_killtree", "kill", `子进程 ${label} 超时整树终止`)).catch(() => {});
       void killProcessTree(proc);
     }
     managedProcesses.delete(id);
@@ -91,7 +92,10 @@ export async function killProcessTree(proc: ChildProcess): Promise<boolean> {
 export function killAllSubprocesses(): number {
   let killed = 0;
   for (const [, r] of managedProcesses) {
-    if (!r.proc.killed) { void killProcessTree(r.proc); killed++; }
+    if (!r.proc.killed) {
+      void import("./runtime-guard-events.js").then((m) => m.recordGuardEvent("h3_killtree", "kill", `关闭清理: ${r.label} 整树终止`)).catch(() => {});
+      void killProcessTree(r.proc); killed++;
+    }
   }
   managedProcesses.clear();
   return killed;
