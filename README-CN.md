@@ -470,20 +470,6 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导 |
 | 📈 **评测体系** | 53 题双轨评测 0.884 / 736 单测 / 消融 21 算子 / CI+E2E |
 
-## OpenSquilla 工程纵深
-
-> 移植自 [OpenSquilla](https://github.com/TokenRhythm/opensquilla)（Token-Efficient AI Agent, Apache-2.0）的工程纵深 — 把通用 Agent 的"省成本/防双跑/可审计/安全"做进 MarxSphere。开关默认关, 评测 PASS 后逐个启用, 不破坏 0.884 基线。
-
-| 能力 | 实现 | 开关 |
-|---|---|---|
-| 💰 **成本可审计账本** | `llm_usage_ledger` 轮级明细 + `cost_source` 三态 + 按模型单价; 修复计费恒 flash 与 stream 漏计费; 运营面板"平台成本审计" | 即时生效 |
-| 🔀 **三档路由 + 本地 ML 分类器** | `lite/standard/deep` 三档; 规则优先 + 人工标签 LightGBM(180 标注, lite/deep acc 0.938)只升级不降级; 决策落 `router_audit` | `ROUTER_ENABLED=1` |
-| 🔁 **B5 多模型集成** | 多模型并行成稿 + aggregator 融合(检索证据校准); 渐进呈现/超时截断/预设阵容/智能直连 | `B5_ENABLED=1` |
-| 🔒 **任务执行租约** | DB 级租约(holder+fencing+TTL 心跳), 跨进程防双跑, 断线接管 | 即时生效 |
-| 🧠 **记忆 Dream evidence** | 每日空闲凝练三通道(记忆/技能/MetaSkill DAG), 候选带支撑证据, 隔离区人工审 | 默认开 |
-| 🛡 **沙箱安全** | 删除前 `.trash` 备份(3GiB 配额); 网络禁环回回连(修 SSRF) | 即时生效 |
-| ✅ **契约测试网** | SQL 仓储/账本/租约/路由契约测试 | — |
-
 ## 技术栈
 
 | 层 | 技术 |
