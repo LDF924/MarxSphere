@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-621%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-736%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -353,7 +353,7 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 621 green (CI continuous)
+**Unit tests**: 736 green (CI continuous)
 
 ---
 
@@ -455,7 +455,10 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🧠 **52-step reasoning** | classify → 17-way coarse retrieval → Graphiti refine → hyperedge 3-way → fusion generation → self-healing |
 | 🔍 **Ask 18-step search** | multi-arm recall → weighted RRF → LLM rerank → numbered citation tracing |
 | 🗄 **Four-source retrieval** | SAG events + Graphiti hyperedges/communities + Cognee chunks + PG vector/lexical, RRF fusion |
-| 🤖 **AI Agent** | 29 tools (incl. Notebook chart templates / desktop control) / 5-layer security / 5-layer memory / task DAG / approval gates |
+| 🤖 **AI Agent** | 29 tools (incl. Notebook chart templates / desktop control) / 5-layer security / 5-layer memory / task DAG / approval gates / execution lease |
+| 💰 **Auditable cost ledger** | per-turn real usage (by model / 3-state cost source) + platform cost audit panel |
+| 🔀 **3-tier cost routing** | rule-first + local ML classifier (lite/deep) conservative fusion, upgrade-only, never downgrade |
+| 🔁 **B5 multi-model ensemble** | hard tasks → parallel drafters + aggregator fusion, progressive results / per-draft timeout / preset & custom squads |
 | 📚 **Research scenarios** | 66 scenarios × 8 stages, full-screen workbench + dedicated algorithms |
 | 📊 **Empirical workbench** | questionnaire → reliability → imputation → regression (M1–M6) → evidence ledger |
 | 📓 **Notebook workbench** | lightweight Jupyter: code/Markdown cells · 9 chart templates (3-line table/heatmap/box) · file upload · Restart & Run All |
@@ -464,7 +467,21 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔀 **Model-neutral** | DeepSeek / OpenAI / Anthropic Claude / Ollama / custom endpoints auto-detected |
 | 🔐 **Hash versioning** | doc content dedup · eval data fingerprint · stale detection · version history · data profiling |
 | 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
-| 📈 **Evaluation** | 53-question dual-track 0.884 / 177 unit tests / 21-operator ablation / CI+E2E |
+| 📈 **Evaluation** | 53-question dual-track 0.884 / 736 unit tests / 21-operator ablation / CI+E2E |
+
+## OpenSquilla Engineering Depth
+
+> Ported from [OpenSquilla](https://github.com/TokenRhythm/opensquilla) (Token-Efficient AI Agent, Apache-2.0) — bringing general-agent engineering depth (cost saving / no double-run / auditability / safety) into MarxSphere. Switches default off; enable one by one after the eval gate passes — the 0.884 baseline stays intact.
+
+| Capability | Implementation | Switch |
+|---|---|---|
+| 💰 **Auditable cost ledger** | `llm_usage_ledger` per-turn detail + `cost_source` 3-state + per-model price table; fixed flat-flash billing & stream-route missing charge; platform cost audit panel | always on |
+| 🔀 **3-tier routing + local ML classifier** | `lite/standard/deep` tiers; rule-first + human-labeled LightGBM (180 labels, lite/deep acc 0.938) upgrade-to-deep only; every decision logged to `router_audit` | `ROUTER_ENABLED=1` |
+| 🔁 **B5 multi-model ensemble** | parallel drafters + aggregator fusion (retrieval-evidence calibration); progressive arrival / per-draft timeout / preset squads / smart direct routing | `B5_ENABLED=1` |
+| 🔒 **Task execution lease** | DB-level lease (holder + fencing token + TTL heartbeat), cross-process no-double-run, takeover after disconnect TTL | always on |
+| 🧠 **Dream evidence consolidation** | daily idle consolidation ×3 channels (memory / skill distill / MetaSkill DAG proposals), candidates carry support evidence, human-review quarantine | on by default |
+| 🛡 **Sandbox safety** | delete → auto-backup to `.trash` (3GiB quota); network loopback blocked (SSRF fix — web tools cannot call back localhost:4173) | always on |
+| ✅ **Contract test net** | SQL repository / ledger / lease / routing contract tests (mock-pinned SQL shapes) | — |
 
 ## Tech Stack
 
@@ -491,7 +508,7 @@ knowledge-graph/     knowledge-graph data (entities/mappings/normalization dicti
 docs/                documentation (architecture/spec/disclosure/usage)
 migrations/          PostgreSQL schema (80+ migrations)
 plugins/             Agent plugin directory
-test/                unit tests (621)
+test/                unit tests (736)
 vendor/              third-party components (pdf2obsidian)
 data/                runtime data (gold candidates, etc.)
 ```
@@ -499,13 +516,13 @@ data/                runtime data (gold candidates, etc.)
 ## Testing
 
 ```bash
-npm test                # 621 unit tests
+npm test                # 736 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (621 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (736 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -533,7 +550,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Sample eval reports | `reports/` (7 reports) · `evaluation/` (results + gold + archives) |
-| ✅ Unit tests | `npm test` (621, CI green) |
+| ✅ Unit tests | `npm test` (736, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | `examples/seed-corpus/` (50 papers aligned with the eval gold set + one-command ingestion script `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers) · eval: `evaluation/gold_dataset.json` (53 gold Qs) · graph: `knowledge-graph/` |

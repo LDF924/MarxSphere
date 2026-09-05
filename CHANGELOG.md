@@ -1,3 +1,16 @@
+## [1.4.0] - 2026-09-05
+
+### 💰 OpenSquilla 工程纵深移植(V405, 2026-09-05)
+
+- **成本可审计账本**(105 迁移): `llm_usage_ledger` 轮级明细(模型/端点/输入输出/cacheHit) + `cost_source` 三态(provider_billed/estimate/byok) + `llm_model_prices` 按模型单价; 全部推理/搜索/对话调用落账; 修复计费恒 flash 定价 bug + stream 路由漏计费; 运营管理面板"平台成本审计"(按模型/端点/来源)
+- **三档成本路由 + 本地 ML 分类器**(106 迁移): `lite/standard/deep` 三档(规则题型+长度) + 人工标签 LightGBM 分类器(180 条标注, 二分类 lite/deep acc 0.938, 特征移植 OpenSquilla HC51+TFIDF100)保守融合——规则优先, ML 只"升级 deep"不降级; 每轮决策落 `router_audit` 审计表; `ROUTER_ENABLED=0` 默认关保 0.884 基线; `scripts/tier-router-eval.sh` 评测门
+- **任务执行租约**(107 迁移): agent_tasks DB 级租约(holder+fencing token+TTL 心跳)——跨进程防双跑, 断线 TTL 过期后新实例接管; 文档级 WriterLease 同源
+- **记忆 Dream evidence**: Dream 候选带支撑证据明细(task_experience id/query/质量分/策略), accept 回执与 reject 隔离区同口径携带; **每日空闲凝练扩展三通道**: 记忆候选 + 技能蒸馏候选(auto-propose) + MetaSkill DAG 工作流提案(runDreamDagPropose, 高频目标→LLM 编排→隔离区人工审), 零额外定时器
+- **沙箱安全**: file_write 删除前自动备份 `.trash`(3GiB 配额轮转, >512MB 不备份); `checkNetworkAccess` 修 SSRF 缺口——环回地址默认全拦(原放行 127.0.0.1 且白名单含它, 外部 web 工具可回打 4173), `allowLoopback` 仅内部自调
+- **B5 集成路由补齐**: `runB5EnsembleProgressive` 渐进呈现(先到先得回调)/每稿独立超时(`B5_DRAFT_TIMEOUT_MS`)/预设+自定义阵容(`B5_PRESET`+`B5_SQUAD`)/智能直连(`shouldUseB5`); 修复失败信息运算符优先级 bug; 盲标评测 `scripts/b5-vs-single-eval.sh`(2 题实测 1 WIN 1 TIE, 待扩大样本)
+- **契约测试网**: cost-ledger/repository-contract/tier-router 契约测试(vi.mock 钉死 SQL 形状防重构漂移); 修复计费两 bug + dream 测试 CI 干净环境 ENOENT
+- **测试 705→736**; 前端: AdminPanel 成本审计卡+路由审计卡, DreamPanel evidence 展开+演示按钮竞态修复+深色下拉适配; CI 修复: package-lock 同步(修 56 连败 npm ci EUSAGE)
+
 ## [1.3.0] - 2026-09-01
 
 ### 🚀 Rimagination 开源生态融入(V399, 2026-08-31)
