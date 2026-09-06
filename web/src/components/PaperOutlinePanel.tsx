@@ -181,8 +181,68 @@ export function PaperOutlinePanel() {
     if (nodes.length > 0 && !window.confirm("新建会清空当前草稿(自动草稿保留在 8 秒前), 确定?")) return;
     setPaperTitle(""); setTopic(""); setThesis(""); setNodes([]); setMsg("已新建空白文档");
   };
+  // UI审计T11: 清空大纲(保留标题/主题等文档头)
+  const clearOutline = () => {
+    if (nodes.length === 0) return;
+    if (!window.confirm("清空全部章节?")) return;
+    setNodes([]); setMsg("大纲已清空");
+  };
 
   const topNodes = nodes.filter((n) => n.level === 0);
+
+  // ── UI审计T11: 社科论文大纲模板库(对齐闭源16模板一键插入) ──
+  const [showTpl, setShowTpl] = useState(false);
+  const OUTLINE_TEMPLATES: Array<{ name: string; desc: string; chapters: Array<{ title: string; children?: string[] }> }> = [
+    { name: "实证论文·经济管理", desc: "引言→文献→理论→实证→结论", chapters: [
+      { title: "引言", children: ["问题提出与研究缘起", "研究目的与意义", "核心概念界定"] },
+      { title: "文献综述与分析框架", children: ["相关领域研究进展", "现有研究的不足与本研究的切入点", "本文的分析框架"] },
+      { title: "研究设计与数据", children: ["数据来源与样本", "变量选取与测度", "模型设定"] },
+      { title: "实证结果与分析", children: ["基准回归结果", "稳健性检验", "异质性分析"] },
+      { title: "进一步讨论", children: ["机制检验", "调节效应"] },
+      { title: "结论与政策建议", children: ["主要结论", "政策建议", "研究局限与展望"] },
+    ]},
+    { name: "理论思辨·社科", desc: "现象→理论溯源→分析→批判", chapters: [
+      { title: "引言" },
+      { title: "现象与问题域", children: ["现实背景", "问题的学术化"] },
+      { title: "理论谱系与解释框架", children: ["经典理论资源", "当代发展", "本文的框架"] },
+      { title: "机理分析", children: ["逻辑展开", "典型例证"] },
+      { title: "批判性讨论", children: ["张力与限度", "与替代解释的对话"] },
+      { title: "结语", children: ["结论", "启示"] },
+    ]},
+    { name: "案例研究", desc: "引言→文献→案例→分析→结论", chapters: [
+      { title: "引言", children: ["问题提出"] },
+      { title: "文献回顾与分析框架" },
+      { title: "案例选择与研究方法", children: ["案例概况", "资料收集", "分析方法"] },
+      { title: "案例呈现", children: ["阶段一", "阶段二"] },
+      { title: "案例讨论", children: ["理论对话", "发现"] },
+      { title: "结论与启示" },
+    ]},
+    { name: "综述类", desc: "概述→分主题→评估→展望", chapters: [
+      { title: "引言" },
+      { title: "研究概况与总体趋势", children: ["发文量与时序", "核心议题分布"] },
+      { title: "主题一综述", children: ["进展", "分歧"] },
+      { title: "主题二综述" },
+      { title: "研究方法评述", children: ["方法谱系", "数据来源"] },
+      { title: "述评与展望", children: ["现存不足", "未来方向"] },
+    ]},
+    { name: "政论/政策分析", desc: "背景→问题→原因→对策", chapters: [
+      { title: "引言", children: ["背景与问题提出"] },
+      { title: "现状与成效", children: ["总体态势", "主要成效"] },
+      { title: "问题与挑战", children: ["现实困境", "深层原因"] },
+      { title: "对策建议", children: ["总体思路", "具体路径"] },
+      { title: "结语" },
+    ]},
+  ];
+  const applyTemplate = (tpl: { name: string; chapters: Array<{ title: string; children?: string[] }> }) => {
+    if (nodes.length > 0 && !window.confirm("套用模板将替换当前大纲, 确定?")) return;
+    const list: OutlineNode[] = tpl.chapters.map((ch) => ({
+      id: genId(), title: ch.title, level: 0,
+      children: (ch.children ?? []).map((c) => ({ id: genId(), title: c, level: 1 })),
+    }));
+    setNodes(list);
+    setMsg(`已套用「${tpl.name}」模板(${list.length} 章)`);
+    setShowTpl(false);
+  };
 
   // ── 大纲操作 ──
   const addTopNode = () => {
@@ -520,6 +580,28 @@ export function PaperOutlinePanel() {
                     <Plus className="h-3 w-3" />
                   </button>
                 </div>
+                {/* UI审计T11: 大纲模板库 */}
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <button type="button" onClick={() => setShowTpl((v) => !v)}
+                    className="rounded-md border border-emerald-400/30 bg-emerald-400/5 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-400/15">
+                    📋 大纲模板库 {showTpl ? "▲" : "▼"}
+                  </button>
+                  {nodes.length > 0 && (
+                    <button type="button" onClick={clearOutline}
+                      className="rounded-md border border-border/40 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/40">清空大纲</button>
+                  )}
+                </div>
+                {showTpl && (
+                  <div className="mt-1 grid grid-cols-1 gap-1 rounded-lg border border-emerald-400/20 bg-card/50 p-1.5">
+                    {OUTLINE_TEMPLATES.map((t) => (
+                      <button key={t.name} type="button" onClick={() => applyTemplate(t)}
+                        className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-emerald-400/10">
+                        <span className="text-[11px] text-emerald-200">{t.name}</span>
+                        <span className="text-[9px] text-muted-foreground">{t.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

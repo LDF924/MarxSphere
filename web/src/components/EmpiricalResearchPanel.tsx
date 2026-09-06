@@ -408,6 +408,12 @@ export const EmpiricalResearchPanel: FC = () => {
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-[11px] font-semibold">{historyDetail.method} · {historyDetail.title}</span>
                 <span className="text-[10px] text-muted-foreground">{new Date(historyDetail.created_at).toLocaleString()}</span>
+                {/* SocialSci R6: 计费状态 */}
+                {(historyDetail.charge_points > 0 || historyDetail.billing_status) && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                    消耗 {(historyDetail.charge_points ?? 0)} 积分 · {historyDetail.billing_status === "settled" ? "已结算" : historyDetail.billing_status === "frozen" ? "冻结中" : historyDetail.billing_status || "未计费"}
+                  </span>
+                )}
                 <div className="ml-auto flex gap-1">
                   <Button size="sm" variant="outline" onClick={() => void exportResult("latex")}><Download className="mr-1 h-3 w-3" />LaTeX</Button>
                   <Button size="sm" variant="outline" onClick={() => void exportResult("csv")}><Download className="mr-1 h-3 w-3" />CSV</Button>

@@ -78,6 +78,13 @@ import { CommandPalette, type PaletteAction } from "./components/CommandPalette"
 import { TaskPanel } from "./components/TaskPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板级错误边界
 import { PaperOutlinePanel } from "./components/PaperOutlinePanel";
+import { DagWorkbenchPanel } from "./components/DagWorkbenchPanel"; // SocialSci P0-1: 可视化DAG科研工作台
+import { ReviewLabPanel } from "./components/ReviewLabPanel"; // SocialSci P0-3: 审稿实验室(在线科研审查)
+import { VizAgentPanel } from "./components/VizAgentPanel"; // SocialSci P0-4: 对话式科研绘图
+import { EditorView } from "./components/EditorView"; // SocialSci P0-5: 在线学术文本编辑器
+import { FloatingAssistantFAB } from "./components/FloatingAssistantFAB"; // SocialSci P0-7: 全局悬浮助手
+import { SiteContentPanel } from "./components/SiteContentPanel"; // SocialSci P2: 站点内容(公告/帮助/条款/资源导航)
+import { ResearchHistoryPanel } from "./components/ResearchHistoryPanel"; // SocialSci UI审计: 历史记录中心(6模块分区)
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
 import { StructurePanel } from "./components/StructurePanel";
 import { AgentConsole } from "./components/AgentConsole";
@@ -126,7 +133,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -549,7 +556,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -1999,6 +2006,18 @@ function AppShell() {
               <ErrorBoundary><WritingCorpusPanel /></ErrorBoundary>
             ) : workspaceView === "paper-outline" ? (
               <ErrorBoundary><PaperOutlinePanel /></ErrorBoundary>
+            ) : workspaceView === "dag-workbench" ? (
+              <ErrorBoundary><DagWorkbenchPanel /></ErrorBoundary>
+            ) : workspaceView === "review-lab" ? (
+              <ErrorBoundary><ReviewLabPanel /></ErrorBoundary>
+            ) : workspaceView === "plot-agent" ? (
+              <ErrorBoundary><VizAgentPanel /></ErrorBoundary>
+            ) : workspaceView === "editor" ? (
+              <ErrorBoundary><EditorView /></ErrorBoundary>
+            ) : workspaceView === "site-content" ? (
+              <ErrorBoundary><SiteContentPanel /></ErrorBoundary>
+            ) : workspaceView === "research-history" ? (
+              <ErrorBoundary><ResearchHistoryPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
             ) : workspaceView === "billing" ? (
               <BillingPanel />
             ) : workspaceView === "admin" ? (
@@ -2113,6 +2132,9 @@ function AppShell() {
           onOpenEntity={(entityId) => void openEntityDetail(entityId)}
         />
       ) : null}
+
+      {/* SocialSci P0-7: 全局悬浮助手(页面观察/导航引导/任务推荐/签到卡) */}
+      <FloatingAssistantFAB workspaceView={workspaceView} onNavigate={(v) => setWorkspaceView(v as WorkspaceView)} />
       </div>
       )}
     </>
@@ -2514,7 +2536,7 @@ function MainWorkspaceTabs(props: {
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
     alerts: "hsl(25 90% 55%)",
     // 后台/系统组（灰）: Jobs/任务/Trace/评测/Inbox/账户计费/运营管理/文档中心
-    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)",
+    jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)", "site-content": "hsl(220 10% 55%)", "research-history": "hsl(220 10% 55%)",
     // 科研工具（绿，归文献研究组）: PDF2Obsidian/政经C刊科研/写作语料库
     p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)", "meta-skill": "hsl(150 45% 50%)",
   };
@@ -2552,6 +2574,10 @@ function MainWorkspaceTabs(props: {
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
         { value: "paper-outline", label: t("论文写作台", "Paper Outline") },
+        { value: "dag-workbench", label: t("科研工作台 DAG", "DAG Workbench") },  // SocialSci P0-1: 可视化DAG科研编排(主体工作台)
+        { value: "review-lab", label: t("审稿实验室", "Review Lab") },            // SocialSci P0-3: 在线科研审查(期刊/标准库)
+        { value: "plot-agent", label: t("科研绘图", "Plot Agent") },               // SocialSci P0-4: 对话式科研绘图(自审修订闭环)
+        { value: "editor", label: t("学术编辑器", "Editor") },                      // SocialSci P0-5: 在线学术文本编辑器
         { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },  // V404-33: 科研工具归科研中心
       ],
     },
@@ -2608,6 +2634,8 @@ function MainWorkspaceTabs(props: {
         { value: "billing", label: t("账户计费", "Billing") },
         { value: "admin", label: t("运营管理", "Admin") },
         { value: "docs", label: t("文档中心", "Docs Hub") },
+        { value: "site-content", label: t("站点内容", "Site") },   // SocialSci P2: 公告/帮助/条款/资源导航
+        { value: "research-history", label: t("历史记录", "History") },  // SocialSci UI审计: 6模块历史分区
       ],
     },
   ];

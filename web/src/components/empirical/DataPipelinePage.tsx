@@ -35,7 +35,7 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
   const [verifyReport, setVerifyReport] = useState<any>(null);
   const [error, setError] = useState("");
 
-  // 默认步骤(演示): 缺失统计全列 + 缩尾收入 + 构造 has_out + 筛选有地 + 描述
+  // 默认步骤(演示): 缺失统计全列 + 缩尾收入 + 构造 has_out + 筛选有地 + 转换 + 描述
   const buildSteps = () => {
     const cols = (parsed?.columnOrder ?? dataVersion?.columns ?? []);
     return {
@@ -43,6 +43,12 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
       winsorize: { cols: ["nonfarm_income", "own_area"] },
       genvars: [{ name: "has_out", expr: "transfer_out_area > 0" }],
       filter: [{ col: "own_area", op: ">", value: 0 }],
+      // SocialSci P1: 数据转换(中心化/排名/开方; 分类汇总后接)
+      transform: {
+        center: ["own_area"],
+        rank: ["own_area"],
+        sqrt: ["own_area"],
+      },
       describe: { cols: ["own_area", "cult_area", "adj_willing", "has_out"] },
     };
   };
@@ -101,7 +107,7 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
           {parsed && <span className="text-[10px] text-muted-foreground">{parsed.rows.length} 行 × {parsed.columnOrder.length} 列</span>}
           {error && <span className="text-[10px] text-red-600">{error}</span>}
         </div>
-        <div className="mt-1 text-[9px] text-muted-foreground">步骤: 缺失统计(nonfarm_income/adj_willing/politics) → 缩尾(1%/99%) → has_out=转出大于0 → own_area大于0 → Table 1</div>
+        <div className="mt-1 text-[9px] text-muted-foreground">{"步骤: 缺失统计 → 缩尾(1%/99%) → has_out 构造 → own_area>0 筛选 → 数据转换(center/rank/sqrt of own_area) → Table 1"}</div>
       </div>
 
       {verifyReport && (

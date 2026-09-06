@@ -106,6 +106,12 @@ export async function getUserById(userId: string): Promise<AuthUser | null> {
   return { id: row.id, username: row.username, role: row.role, tenantId: row.tenant_id, plan: row.plan, balanceCents: Number(row.balance_cents), llmProvider: row.llm_provider };
 }
 
+/** SocialSci P0-8: 免密签发 JWT(微信扫码新号登录等场景复用登录签发逻辑) */
+export function issueToken(userId: string, role = "user", tenantId = PUBLIC_TENANT_ID): string {
+  const payload: SessionPayload = { uid: userId, username: "", role, tenantId };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+}
+
 export { PUBLIC_TENANT_ID, ADMIN_USER_ID, JWT_SECRET };
 
 // ─── V389: 企业租户（企业注册/邀请成员/成员共享） ───

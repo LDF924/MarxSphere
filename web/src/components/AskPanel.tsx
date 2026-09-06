@@ -37,10 +37,15 @@ interface Citation {
   sourceId: string;
   heading?: string;
   content: string;
+  /** 引用序号(答案中 [N] 对应) */
   rank: number;
   score: number;
   /** 来源溯源：被哪个检索算子捞到 */
   sourceStep?: string;
+  /** 作者(展示用) */
+  authors?: string;
+  /** 发表年份 */
+  year?: number;
 }
 
 /** 来源步骤中文标签（GBrain 溯源呈现） */
@@ -59,6 +64,26 @@ const OP_LABELS: Record<string, string> = {
   title: "标题命中 boost",
   chronicle_type: "事件类型加权"
 };
+
+/** P0-6: 答案文本中的 [N] 引用 → 可点击跳转徽标(点击卡片滚动定位) */
+function renderAnswerWithCiteLinks(answer: string, onJump: (rank: number) => void) {
+  const parts = answer.split(/(\[\d+\])/g);
+  return parts.map((part, i) => {
+    const m = /^\[(\d+)\]$/.exec(part);
+    if (!m) return <span key={i}>{part}</span>;
+    const rank = Number(m[1]);
+    return (
+      <button
+        key={i}
+        onClick={() => onJump(rank)}
+        title={`跳转到引用 [${rank}]`}
+        className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-600/30 px-1 align-middle text-[9px] font-bold text-cyan-500 hover:bg-cyan-600/60"
+      >
+        {rank}
+      </button>
+    );
+  });
+}
 
 /** 可消融算子清单（交互式开关） */
 const ABLATION_OPERATORS: Array<{ key: string; label: string; desc: string }> = [
@@ -508,7 +533,20 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
               <div className="mb-2 text-sm font-medium">答案与证据</div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {answer ? (
-                  <div className="whitespace-pre-wrap text-sm">{answer}</div>
+                  <div className="text-sm leading-relaxed">
+                    {/* P0-6: 答案文本 [N] → 可点击徽标, 跳转引用卡片 */}
+                    {renderAnswerWithCiteLinks(answer, (rank) => {
+                      // 分页可能挡住目标卡 → 先翻到对应页再滚动
+                      const idx = citations.findIndex((c) => c.rank === rank);
+                      if (idx >= 0) {
+                        setPageOffset(Math.floor(idx / pageSize));
+                        // 等待渲染后滚动(双 rAF 确保分页生效)
+                        setTimeout(() => {
+                          document.getElementById(`ask-cite-${rank}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }, 60);
+                      }
+                    })}
+                  </div>
                 ) : (
                   <div className="flex h-full min-h-[80px] items-center justify-center text-xs text-muted-foreground">
                     检索完成后，这里展示答案
@@ -526,8 +564,12 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
                 <>
                   <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
                     {citations.slice(pageOffset, pageOffset + pageSize).map((citation) => (
-                      <div key={citation.chunkId} className="rounded border border-border p-2 text-xs">
+                      <div key={citation.chunkId} id={`ask-cite-${citation.rank}`} className="scroll-mt-24 rounded border border-border p-2 text-xs">
                         <div className="flex items-center gap-1 text-muted-foreground">
+                          {/* P0-6: 引用编号徽标(答案 [N] 可点击跳此) */}
+                          <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-cyan-600/30 px-1 text-[9px] font-bold text-cyan-500">
+                            {citation.rank}
+                          </span>
                           <FileText className="h-3 w-3" />
                           <span className="truncate font-mono text-[10px]">{citation.heading || citation.sourceId.slice(0, 12)}</span>
                           <span className="ml-auto flex shrink-0 items-center gap-1">

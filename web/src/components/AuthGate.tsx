@@ -6,6 +6,8 @@
 // V399: AuthContext 导出 — header 登录按钮 / 用户菜单接入
 import { createContext, useContext, useEffect, useState, type FC, type ReactNode } from "react";
 import { cn } from "../lib/utils";
+// SocialSci P0-8: 微信扫码登录组件
+import { WechatScanButton } from "./WechatScanButton";
 
 /** V399: 安全 localStorage（隐私模式/沙箱禁用时降级内存，不崩页面） */
 const safeStorage = {
@@ -265,9 +267,19 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
                   </button>
                 </div>
                 {mode === "login" ? (
-                  <button type="button" onClick={() => { setResetView("forgot"); setError(""); }} className="w-full text-xs text-muted-foreground hover:text-foreground">
-                    忘记密码？
-                  </button>
+                  <>
+                    {/* SocialSci P0-8: 微信扫码登录(登录模态) */}
+                    <WechatScanButton
+                      dark={false}
+                      onAuthed={(token, user) => {
+                        // 复用统一登录成功处理(V399): 存 token + setAuth + 关模态
+                        handleAuthSuccess({ token, user });
+                      }}
+                    />
+                    <button type="button" onClick={() => { setResetView("forgot"); setError(""); }} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                      忘记密码？
+                    </button>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -345,10 +357,17 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
             </button>
           </div>
           {mode === "login" && (
-            <button type="button" onClick={() => { setResetView("forgot"); setError(""); }}
-              className="w-full text-xs text-slate-400 hover:text-slate-200">
-              忘记密码？
-            </button>
+            <>
+              {/* SocialSci P0-8: 微信扫码登录(整页登录) */}
+              <WechatScanButton
+                dark
+                onAuthed={(token, user) => handleAuthSuccess({ token, user })}
+              />
+              <button type="button" onClick={() => { setResetView("forgot"); setError(""); }}
+                className="w-full text-xs text-slate-400 hover:text-slate-200">
+                忘记密码？
+              </button>
+            </>
           )}
         </div>
         )}

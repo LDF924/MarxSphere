@@ -145,6 +145,42 @@ def main(task_dir):
                                            [[a, ""] for a in applied],
                                            f"筛选后: {len(df)}/{n_before} 行"))
 
+    # ── 4.5) 数据转换 (SocialSci P1: 中心化/排名/开方/分类汇总) ──
+    tf = steps.get("transform") or {}
+    transforms = []
+    for col in tf.get("center") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["c_" + col] = df[col] - df[col].mean()
+            transforms.append(f"c_{col} = center({col})")
+    for col in tf.get("rank") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["rank_" + col] = df[col].rank(method="average")
+            transforms.append(f"rank_{col} = rank({col})")
+    for col in tf.get("sqrt") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["sqrt_" + col] = np.sqrt(df[col].clip(lower=0))
+            transforms.append(f"sqrt_{col} = sqrt({col})")
+    if transforms:
+        result["tables"].append(table_html("数据转换", ["新变量"],
+                                           [[t] for t in transforms],
+                                           f"共 {len(transforms)} 个转换变量"))
+        generated.extend(transforms)
+    gb = tf.get("groupby")
+    if gb and isinstance(gb, dict) and gb.get("col") in df.columns:
+        g_col = gb["col"]
+        g_stat = gb.get("stat", "mean")
+        g_vals = gb.get("values") or []
+        if g_vals:
+            if g_stat == "count":
+                gdf = df.groupby(g_col).size().reset_index(name="count")
+            else:
+                gdf = df.groupby(g_col)[g_vals].agg(g_stat).reset_index()
+            result["tables"].append(table_html(
+                "分类汇总(%s, %s)" % (g_col, g_stat), [str(c) for c in gdf.columns],
+                gdf.round(4).values.tolist(), "分组统计"))
+            df = gdf
+            notes.append(f"分类汇总: {g_col} × {g_stat} → {len(df)} 组")
+
     # ── 5) 描述统计 ──
     desc_cfg = steps.get("describe") or {}
     desc_cols = desc_cfg.get("cols") or list(df.columns)

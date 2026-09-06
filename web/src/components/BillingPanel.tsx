@@ -3,7 +3,8 @@
 // 余额/充值/订阅计划/账单/用量（JWT 认证）
 // V390 UI修复: 输入框深色背景(原白底白字看不清) + 错误提示醒目 + 账单滚动可删 + 用量空态demo
 import { useEffect, useState, type FC } from "react";
-import { Wallet, CreditCard, History, Gauge, KeyRound, Building2, UserPlus, Trash2, Sparkles } from "lucide-react";
+// SocialSci P0-8: 积分卡图标
+import { Coffee, Coins, Gift, Loader2, RefreshCw, Wallet, CreditCard, History, Gauge, KeyRound, Building2, UserPlus, Trash2, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";
 
 interface Balance {
@@ -354,6 +355,121 @@ export const BillingPanel: FC = () => {
           )}
         </div>
       </div>
+
+      {/* SocialSci P0-8: 积分卡(签到/兑换/流水/冻结 — 与余额解耦, 计 feature 级消费) */}
+      <PointsCard />
     </section>
   );
 };
+
+/** 积分卡(签到 +20/兑换码/流水) */
+function PointsCard() {
+  const [data, setData] = useState<{ balance: number; frozen: number; signedToday: boolean; rewardPoints: number; todayCheckin: { streak: number } | null; dailyUsage: Array<{ kind: string; count: number; cost: number }>; ledger: Array<{ type: string; amount: number; freeze_amount: number; settle_amount: number; ref_type: string; note: string; created_at: string }> } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [redeemInput, setRedeemInput] = useState("");
+
+  const load = async () => {
+    try {
+      const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+      const r = await fetch("/api/points/me", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const d = await r.json();
+      if (d.success) setData(d.data);
+    } catch { /* 接口未就绪静默 */ }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const doCheckin = async () => {
+    setBusy(true); setErr("");
+    try {
+      const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+      const r = await fetch("/api/points/checkin", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: "{}" });
+      const d = await r.json();
+      if (d.success) { await load(); }
+      else setErr(d.error || "签到失败");
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+
+  const doRedeem = async () => {
+    if (!redeemInput.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+      const r = await fetch("/api/points/redeem", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ code: redeemInput.trim() }) });
+      const d = await r.json();
+      if (d.success) { setRedeemInput(""); await load(); }
+      else setErr(d.error || "兑换失败");
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+
+  const typeCn: Record<string, string> = {
+    checkin: "text-amber-300", grant: "text-green-300", admin_adjust: "text-green-300",
+    redeem: "text-cyan-300", freeze: "text-slate-400", settle: "text-rose-300",
+    refund: "text-emerald-300", invite_bonus: "text-purple-300",
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-muted/10 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <Coins className="h-4 w-4 text-amber-400" /> 积分
+        </span>
+        <button onClick={load} className="text-xs text-muted-foreground hover:text-foreground"><RefreshCw className="h-3.5 w-3.5" /></button>
+      </div>
+      {err && <p className="mb-1.5 text-xs text-red-400">{err}</p>}
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-md bg-muted/20 p-2">
+          <p className="text-lg font-bold text-amber-300">{data?.balance ?? "—"}</p>
+          <p className="text-[10px] text-muted-foreground">可用积分</p>
+        </div>
+        <div className="rounded-md bg-muted/20 p-2">
+          <p className="text-lg font-bold text-slate-300">{data?.frozen ?? 0}</p>
+          <p className="text-[10px] text-muted-foreground">冻结中</p>
+        </div>
+        <div className="rounded-md bg-muted/20 p-2">
+          <p className="text-lg font-bold text-cyan-300">{data?.todayCheckin?.streak ? `${data.todayCheckin.streak} 天` : "—"}</p>
+          <p className="text-[10px] text-muted-foreground">连签</p>
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-2">
+        {!data?.signedToday ? (
+          <button onClick={doCheckin} disabled={busy}
+            className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/30 disabled:opacity-50">
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Coffee className="h-3 w-3" />} 每日签到 +{data?.rewardPoints ?? 20}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs text-green-300"><Gift className="h-3 w-3" /> 今日已签到</span>
+        )}
+        <div className="ml-auto flex flex-1 items-center gap-1.5">
+          <input value={redeemInput} onChange={(e) => setRedeemInput(e.target.value)} placeholder="兑换码"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-muted/30 px-2 py-1.5 text-xs placeholder:text-muted-foreground" />
+          <button onClick={doRedeem} disabled={busy || !redeemInput.trim()}
+            className="rounded-md bg-cyan-500/20 px-2.5 py-1.5 text-xs text-cyan-300 hover:bg-cyan-500/30 disabled:opacity-50">兑换</button>
+        </div>
+      </div>
+
+      {data?.dailyUsage && data.dailyUsage.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {data.dailyUsage.map((u) => (
+            <span key={u.kind} className="rounded bg-muted/20 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {u.kind}: {u.count}次/{u.cost}分
+            </span>
+          ))}
+        </div>
+      )}
+
+      {data?.ledger && data.ledger.length > 0 && (
+        <div className="mt-2 max-h-36 space-y-0.5 overflow-y-auto pr-1">
+          {data.ledger.slice(0, 20).map((l, i) => (
+            <div key={i} className="flex items-center justify-between rounded px-2 py-0.5 text-[11px] odd:bg-muted/20">
+              <span className={typeCn[l.type] ?? "text-muted-foreground"}>{l.note || l.type}</span>
+              <span className="font-mono">{l.amount > 0 ? `+${l.amount}` : l.amount}分</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

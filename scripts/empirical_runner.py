@@ -90,6 +90,37 @@ if pre:
     for col in stds:
         if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             df["z_" + col] = (df[col] - df[col].mean()) / df[col].std()
+    # SocialSci P1: 中心化(去均值) / 排名(rank) / 开方(sqrt) / 分类汇总(groupby) 前处理扩展
+    centers = pre.get("center") or []
+    for col in centers:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["c_" + col] = df[col] - df[col].mean()
+    ranks = pre.get("rank") or []
+    for col in ranks:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["rank_" + col] = df[col].rank(method="average")
+    sqrts = pre.get("sqrt") or []
+    for col in sqrts:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["sqrt_" + col] = np.sqrt(df[col].clip(lower=0))
+    # 分类汇总: {groupby: {group_col: [统计列], stat: "mean|sum|count"}} → 独立 agg 表
+    agg = pre.get("groupby")
+    if agg and isinstance(agg, dict):
+        g_col = agg.get("col")
+        stat = agg.get("stat", "mean")
+        v_cols = agg.get("values") or []
+        if g_col in df.columns and v_cols:
+            if stat == "count":
+                gdf = df.groupby(g_col).size().reset_index(name="count")
+            else:
+                gdf = df.groupby(g_col)[v_cols].agg(stat).reset_index()
+            # 汇总表追加(内联 html, 规避 table_html 定义时序)
+            _rows = gdf.round(4).values.tolist()
+            _cols = [str(c) for c in gdf.columns]
+            _h = "<table border=1 cellpadding=4 style='border-collapse:collapse'><tr>" + "".join(f"<th>{c}</th>" for c in _cols) + "</tr>" + "".join("<tr>" + "".join(f"<td>{v}</td>" for v in r) + "</tr>" for r in _rows) + "</table>"
+            result["tables"].append({"title": "分类汇总(%s)" % g_col, "html": _h, "notes": "分组统计"})
+            # 汇总表替换 df 后继续(聚合结果可作为下游输入)
+            df = gdf
     # 滞后项 (面板)
     lags = pre.get("lag") or []
     if lags:

@@ -171,19 +171,26 @@ export async function getEmpiricalMeta(): Promise<{ venvReady: boolean; statsMod
   };
 }
 
-/** 保存结果到 DB（历史记录 + 持久化） */
+/** 保存结果到 DB（历史记录 + 持久化; R6: 计费字段 + artifactIds 落库） */
 export async function saveEmpiricalResult(
   taskId: string,
   input: { method: string; data: { columnOrder: string[]; rows: unknown[][] }; params: Record<string, unknown> },
-  result: unknown
+  result: unknown,
+  opts: { userId?: string; sourceTaskId?: string; chargePoints?: number; fileId?: string } = {}
 ): Promise<string | null> {
   try {
     const res = result as any;
     const meta = res?.meta ?? {};
     const title = meta?.method ? `实证分析 ${meta.method} (N=${meta.n ?? "?"})` : "实证分析";
+    // R6: 图表产物 → artifactIds(stats_artifacts 若已生成图)
+    const artifactIds = Array.isArray(res?.artifactIds) ? res.artifactIds : [];
     const r = await pool.query(
-      `insert into empirical_results (method, title, data_summary, params, result, meta)
-       values ($1, $2, $3, $4, $5, $6) returning id`,
+      `insert into empirical_results
+         (method, title, data_summary, params, result, meta,
+          user_id, source_task_id, file_id, charge_points, billing_status, billing_policy,
+          artifact_ids, completed_at, progress_message)
+       values ($1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, $11, $12, $13, now(), 'completed') returning id`,
       [
         input.method,
         title,
@@ -191,6 +198,13 @@ export async function saveEmpiricalResult(
         JSON.stringify(input.params ?? {}),
         JSON.stringify(result),
         JSON.stringify(meta),
+        opts.userId ?? null,
+        opts.sourceTaskId ?? taskId,
+        opts.fileId ?? "",
+        opts.chargePoints ?? 0,
+        opts.chargePoints && opts.chargePoints > 0 ? "settled" : "unbilled",
+        "per_run",
+        JSON.stringify(artifactIds),
       ]
     );
     return String(r.rows[0].id);
@@ -218,7 +232,9 @@ export async function listEmpiricalHistory(limit = 20): Promise<Array<Record<str
 /** 历史详情 */
 export async function getEmpiricalHistory(id: string): Promise<Record<string, unknown> | null> {
   const r = await pool.query(
-    `select id, method, title, data_summary, params, result, meta, created_at from empirical_results where id = $1`,
+    `select id, method, title, data_summary, params, result, meta, created_at,
+            charge_points, billing_status, artifact_ids, source_task_id, completed_at
+       from empirical_results where id = $1`,
     [id]
   );
   const row = r.rows[0];
@@ -232,6 +248,11 @@ export async function getEmpiricalHistory(id: string): Promise<Record<string, un
     result: row.result ?? {},
     meta: row.meta ?? {},
     created_at: new Date(row.created_at).toISOString(),
+    charge_points: Number(row.charge_points ?? 0),
+    billing_status: row.billing_status ?? "unbilled",
+    artifact_ids: row.artifact_ids ?? [],
+    source_task_id: row.source_task_id ?? "",
+    completed_at: row.completed_at ? new Date(row.completed_at).toISOString() : null,
   };
 }
 
