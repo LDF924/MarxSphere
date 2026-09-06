@@ -392,6 +392,9 @@ export const AdminPanel: FC = () => {
         </div>
       </div>
 
+      {/* ═══ SocialSci P1: 运营扩展(积分充扣/兑换批次/微信配置/API-key库/原子配置) ═══ */}
+      <OpsBlocks onMsg={setMsg} onReload={() => void load()} />
+
       {/* 操作弹窗 */}
       {target && modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setTarget(null); setModal(null); }}>
@@ -414,3 +417,162 @@ export const AdminPanel: FC = () => {
     </section>
   );
 };
+
+// ═══ SocialSci P1: 运营扩展块(积分/兑换批次/微信/API-key/原子配置) ═══
+function OpsBlocks({ onMsg, onReload }: { onMsg: (m: string) => void; onReload: () => void }) {
+  const token = () => localStorage.getItem("sag_token") || "";
+  const h = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${token()}` });
+  // 积分充扣
+  const [adjUserId, setAdjUserId] = useState("");
+  const [adjDelta, setAdjDelta] = useState("100");
+  const [adjNote, setAdjNote] = useState("");
+  const [batches, setBatches] = useState<Array<{ id: string; code_prefix: string; total: number; used: number; points_each: number }>>([]);
+  // 兑换批次生成
+  const [bpPrefix, setBpPrefix] = useState("MX");
+  const [bpCount, setBpCount] = useState("10");
+  const [bpPoints, setBpPoints] = useState("100");
+  // 微信配置
+  const [wxConf, setWxConf] = useState<{ appId: string; enabled: boolean } | null>(null);
+  const [wxAppId, setWxAppId] = useState("");
+  const [wxSecret, setWxSecret] = useState("");
+  // API key 库
+  const [keys, setKeys] = useState<Array<{ id: string; name: string; keyMasked: string }>>([]);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyVal, setNewKeyVal] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [b, w, k] = await Promise.all([
+          fetch("/api/admin/points/batches", { headers: h() }).then((r) => r.json()),
+          fetch("/api/admin/wechat/config", { headers: h() }).then((r) => r.json()),
+          fetch("/api/admin/keys", { headers: h() }).then((r) => r.json()),
+        ]);
+        setBatches(b.batches ?? []);
+        setWxConf(w ?? null); setWxAppId(w?.appId ?? "");
+        setKeys(k.keys ?? []);
+      } catch { /* 接口未就绪静默 */ }
+    })();
+  }, []);
+
+  const call = async (url: string, body: unknown) => {
+    const r = await fetch(url, { method: "POST", headers: h(), body: JSON.stringify(body ?? {}) });
+    const d = await r.json().catch(() => ({}));
+    onMsg(d?.success || d?.ok ? "操作成功" : d?.error || `失败 ${r.status}`);
+    return d;
+  };
+
+  return (
+    <div className="mt-3 grid gap-3 rounded-xl border p-4 lg:grid-cols-2">
+      <span className="text-xs font-semibold text-muted-foreground">运营扩展 · SocialSci 对齐</span>
+
+      {/* 积分充扣 */}
+      <div className="rounded-lg border border-white/10 bg-muted/10 p-3">
+        <p className="mb-2 text-xs font-semibold">积分充扣</p>
+        <div className="flex gap-1.5">
+          <input value={adjUserId} onChange={(e) => setAdjUserId(e.target.value)} placeholder="用户 ID"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+          <input value={adjDelta} onChange={(e) => setAdjDelta(e.target.value)} placeholder="±积分" className="w-20 rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+          <button onClick={() => void call("/api/admin/points/adjust", { userId: adjUserId, delta: Number(adjDelta), note: adjNote })}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs text-white">调整</button>
+        </div>
+        <div className="mt-2">
+          <p className="mb-1 text-[10px] text-muted-foreground">兑换批次(生成码):</p>
+          <div className="flex gap-1.5">
+            <input value={bpPrefix} onChange={(e) => setBpPrefix(e.target.value)} className="w-16 rounded-md border border-white/10 bg-slate-800 px-2 py-1 text-[11px]" title="前缀" />
+            <input value={bpCount} onChange={(e) => setBpCount(e.target.value)} className="w-16 rounded-md border border-white/10 bg-slate-800 px-2 py-1 text-[11px]" title="数量" />
+            <input value={bpPoints} onChange={(e) => setBpPoints(e.target.value)} className="w-16 rounded-md border border-white/10 bg-slate-800 px-2 py-1 text-[11px]" title="每码积分" />
+            <button onClick={() => void call("/api/admin/points/batches", { prefix: bpPrefix, count: Number(bpCount), pointsEach: Number(bpPoints) }).then(onReload)}
+              className="rounded-md bg-cyan-600 px-2.5 py-1 text-[11px] text-white">生成批次</button>
+          </div>
+          {batches.length > 0 && (
+            <div className="mt-1.5 max-h-20 space-y-0.5 overflow-y-auto">
+              {batches.map((b) => (
+                <div key={b.id} className="flex justify-between rounded bg-muted/20 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  <span>{b.code_prefix}... ×{b.points_each}分</span>
+                  <span>{b.used}/{b.total} 已用</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 微信配置 */}
+      <div className="rounded-lg border border-white/10 bg-muted/10 p-3">
+        <p className="mb-2 text-xs font-semibold">微信扫码配置 {wxConf?.enabled ? <span className="ml-1 rounded bg-green-500/20 px-1 text-[9px] text-green-400">已启用</span> : <span className="ml-1 rounded bg-amber-500/20 px-1 text-[9px] text-amber-400">mock 演示</span>}</p>
+        <div className="flex gap-1.5">
+          <input value={wxAppId} onChange={(e) => setWxAppId(e.target.value)} placeholder="公众号 AppID"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+        </div>
+        <input value={wxSecret} onChange={(e) => setWxSecret(e.target.value)} placeholder="AppSecret(留空不更新)" type="password"
+          className="mt-1.5 w-full rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+        <button onClick={() => void call("/api/admin/wechat/config", { appId: wxAppId, appSecret: wxSecret || undefined, enabled: !!wxAppId })}
+          className="mt-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white">保存配置(空 AppID=回 mock)</button>
+      </div>
+
+      {/* API Key 库 */}
+      <div className="rounded-lg border border-white/10 bg-muted/10 p-3">
+        <p className="mb-2 text-xs font-semibold">OpenAI-Key 库</p>
+        <div className="flex gap-1.5">
+          <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="用途名(如: 备援RAG)"
+            className="w-32 rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+          <input value={newKeyVal} onChange={(e) => setNewKeyVal(e.target.value)} placeholder="sk-..." type="password"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
+          <button onClick={() => void call("/api/admin/keys", { name: newKeyName, key: newKeyVal }).then(() => { setNewKeyName(""); setNewKeyVal(""); })}
+            className="rounded-md bg-primary px-2.5 py-1.5 text-xs text-white">入库</button>
+        </div>
+        {keys.length > 0 && (
+          <div className="mt-1.5 max-h-16 space-y-0.5 overflow-y-auto">
+            {keys.map((k) => (
+              <div key={k.id} className="flex items-center justify-between rounded bg-muted/20 px-2 py-0.5 text-[10px] text-muted-foreground">
+                <span>{k.name} · <span className="font-mono">{k.keyMasked}</span></span>
+                <button onClick={() => void fetch(`/api/admin/keys/${k.id}`, { method: "DELETE", headers: h() }).then(onReload)}
+                  className="text-red-400 hover:text-red-300">删</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 原子配置 */}
+      <ConfigBlock h={h} onMsg={onMsg} />
+    </div>
+  );
+}
+
+/** 配置原子保存(JSON 编辑器, 整包替换) */
+function ConfigBlock({ h, onMsg }: { h: () => Record<string, string>; onMsg: (m: string) => void }) {
+  const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
+  const [text, setText] = useState("");
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch("/api/admin/config", { headers: h() });
+        const d = await r.json();
+        setCfg(d.config ?? {});
+        setText(JSON.stringify(d.config ?? {}, null, 2));
+      } catch { /* 静默 */ }
+    })();
+  }, []);
+  const save = async () => {
+    try {
+      const parsed = JSON.parse(text);
+      const r = await fetch("/api/admin/config", { method: "PUT", headers: h(), body: JSON.stringify({ config: parsed }) });
+      const d = await r.json();
+      onMsg(d.ok ? "配置已原子保存并立即生效" : d.error || "保存失败");
+      setCfg(parsed);
+    } catch (e) { onMsg(`JSON 语法错误: ${(e as Error).message.slice(0, 60)}`); }
+  };
+  return (
+    <div className="rounded-lg border border-white/10 bg-muted/10 p-3">
+      <p className="mb-2 flex items-center justify-between text-xs font-semibold">
+        系统配置(原子保存)
+        <button onClick={() => { setText(JSON.stringify(cfg ?? {}, null, 2)); }} className="text-[10px] text-muted-foreground hover:text-foreground">还原</button>
+      </p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} spellCheck={false}
+        className="w-full resize-none rounded-md border border-white/10 bg-slate-900 p-2 font-mono text-[10px] text-emerald-300/90" />
+      <button onClick={save} className="mt-1.5 rounded-md bg-primary px-3 py-1.5 text-xs text-white">原子保存</button>
+    </div>
+  );
+}

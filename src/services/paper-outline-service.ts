@@ -78,6 +78,7 @@ export async function generateChapter(input: {
   outlineTree?: string;   // 全文大纲(标题树)
   style?: string;         // 语体(默认哲社科学术语体)
   model?: string;
+  citationPool?: string;  // SocialSci R3: 真实引用池(素材引文编号清单, 供正文[ N ]引用)
 }): Promise<ChapterResult> {
   const isRoot = input.level === 0;
   const prompt = `你是人文社科学术写作专家。请撰写论文章节正文(非标题)。
@@ -89,10 +90,11 @@ ${input.thesis ? `【核心论点】${input.thesis}` : ""}
 ${input.outlineTree ? `【全文大纲】\n${input.outlineTree}` : ""}
 ${input.prevContext ? `【前文已写内容(摘要)】\n${input.prevContext}\n请延续前文的术语、论点与证据风格, 保持前后文连贯, 不重复已述内容。` : ""}
 【语体要求】${input.style ?? "严谨的哲社科学术语体(客观/规范, 禁用口语化、绝对化)"}
+${input.citationPool ? `【可引文献池(引用时用编号 [N], 须从下列真实条目中选择, 不得虚构)】\n${input.citationPool}\n请在本章论述中自然引用 1-5 条, 格式如 李海波[1]… 或 …提出测度框架[2]。` : ""}
 
 要求:
 1. 围绕本章标题展开论证: 提出观点 → 理论依据 → 证据/例证 → 小结
-2. 学术引文用 [1] 式占位(勿编造具体文献, 标注"待补引文"处)
+2. 学术引文用 [1] 式占位(勿编造具体文献, 标注"待补引文"处)${input.citationPool ? " — 但已有引用池时必须用池内条目编号" : ""}
 3. 输出 JSON: {"content":"本章正文(中文, 自然分段, 800-1500字; 若有小节用 Markdown 二级/三级标题)"}`;
 
   const answer = await llmJson(prompt, input.model, 6000);

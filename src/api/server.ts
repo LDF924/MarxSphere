@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import fs from "node:fs";
+import * as os from "node:os";
 import path from "node:path";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
@@ -94,6 +95,26 @@ import { memoryMaintenanceService } from "../services/memory-maintenance-service
 import { preventionRulesService } from "../services/prevention-rules-service.js";
 import { agentOrchestrator } from "../services/agent-orchestrator.js";
 import { agentExecLogService } from "../services/agent-exec-log.js";
+// SocialSci P0-5 chart-code: LLM 调用
+import { getLlmEndpoint, fetchLlm } from "../ai/llm-common.js";
+// SocialSci P0-1: 科研项目/DAG 工作台 + SSE 工具
+import * as researchPipeline from "../services/research-pipeline-service.js";
+import { attachSse } from "./stream-utils.js";
+// SocialSci P0-2: 素材库 + DAG 执行引擎
+import * as researchMaterials from "../services/research-materials-service.js";
+import * as researchExec from "../services/research-exec-engine.js";
+// SocialSci P0-3: 审稿任务流 + 期刊库/标准库
+import * as reviewService from "../services/review-service.js";
+// SocialSci P0-4: 对话式科研绘图 Agent
+import * as vizAgent from "../services/viz-agent-service.js";
+import * as vizExec from "../services/viz-exec-service.js";
+// SocialSci P0-5: 学术文本编辑器
+import * as editorService from "../services/editor-service.js";
+// SocialSci P0-8: 积分商业化 + 微信扫码登录
+import * as pointsService from "../services/points-service.js";
+import * as wechatAuth from "../services/wechat-auth-service.js";
+// SocialSci 补漏R2: 章节技能卡 + 工作台整包快照
+import * as chapterSkill from "../services/chapter-skill-service.js";
 
 // 桌面端封装（V397）: SAG_ROOT 环境变量覆盖资源根目录（安装目录 vs 运行时目录分离）
 const rootDir = process.env.SAG_ROOT || process.cwd();
@@ -8781,6 +8802,1332 @@ except Exception as e:
         message
       }
     });
+  });
+
+  // ═══ SocialSci P0-1: 科研项目/可视化DAG工作台(迁移114/115) ═══
+  // 项目容器 CRUD + 画布乐观锁 + 执行任务 + 节点快照/回滚 + 版本发布 + DAG模板/NL转DAG + 主控分析
+  // 形态对齐闭源产品交互语义, 原创实现(见 docs/SOCIALSCI-GAP-ANALYSIS.md S-01~S-10)
+
+  app.get("/api/research/projects", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { projects: await researchPipeline.listProjects(user.id) };
+  });
+
+  app.post("/api/research/projects", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string; template?: string };
+    if (!body?.title?.trim()) return reply.code(400).send({ error: "请填写研究标题" });
+    const { id } = await researchPipeline.createProject({
+      userId: user.id, title: body.title.trim(),
+      topic: body.topic ?? "", thesis: body.thesis ?? "", style: body.style ?? "",
+    });
+    // 标准五阶段模板: 建项目即铺画布(模板流)
+    if (body.template === "five-stage") {
+      await researchPipeline.putCanvas(user.id, id, researchPipeline.dagTemplateFiveStage(body.title.trim()));
+    }
+    return { id };
+  });
+
+  app.get("/api/research/projects/:projectId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const project = await researchPipeline.getProject(user.id, projectId);
+    if (!project) return reply.code(404).send({ error: "项目不存在" });
+    return { project };
+  });
+
+  app.patch("/api/research/projects/:projectId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string };
+    const updated = await researchPipeline.updateProjectMeta(user.id, projectId, body);
+    if (!updated) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true };
+  });
+
+  app.post("/api/research/projects/:projectId/archive", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchPipeline.archiveProject(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true };
+  });
+
+  // 画布(乐观锁: 提交带 expectedVersion)
+  app.get("/api/research/projects/:projectId/canvas", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const c = await researchPipeline.getCanvas(user.id, projectId);
+    if (!c) return reply.code(404).send({ error: "项目不存在" });
+    return { canvas: c.canvas, canvasVersion: c.canvasVersion };
+  });
+
+  app.put("/api/research/projects/:projectId/canvas", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { canvas?: unknown; expectedVersion?: number };
+    if (!body.canvas) return reply.code(400).send({ error: "缺少 canvas" });
+    const r = await researchPipeline.putCanvas(user.id, projectId, body.canvas as never, body.expectedVersion);
+    if (!r.ok) {
+      if (r.code === "NOT_FOUND") return reply.code(404).send({ error: "项目不存在" });
+      return reply.code(409).send({ error: "画布已被其他窗口修改, 请刷新", currentVersion: (r as { currentVersion?: number }).currentVersion });
+    }
+    return { ok: true, canvasVersion: r.canvasVersion };
+  });
+
+  // NL → DAG(画布任务)
+  app.post("/api/research/projects/:projectId/nl-to-dag", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { description?: string };
+    if (!body?.description?.trim()) return reply.code(400).send({ error: "请描述研究任务" });
+    const r = await researchPipeline.nlToDag(user.id, projectId, body.description.trim());
+    if ("error" in r) return reply.code(422).send({ error: r.error });
+    return { canvas: r.canvas };
+  });
+
+  // DAG 模板
+  app.get("/api/research/templates/five-stage", async (request) => {
+    const title = ((request.query as { title?: string })?.title) ?? "未命名研究";
+    return { canvas: researchPipeline.dagTemplateFiveStage(title) };
+  });
+
+  // 执行任务
+  app.get("/api/research/tasks", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { projectId?: string; status?: string };
+    return { tasks: await researchPipeline.listTasks(user.id, q.projectId, q.status) };
+  });
+
+  app.post("/api/research/tasks", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; dagNodeId?: string; module?: string; jobKind?: string; goal?: string; dependsOn?: string[]; phase?: number; plan?: unknown[]; inputSnapshot?: Record<string, unknown> };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const task = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, dagNodeId: body.dagNodeId,
+      module: body.module, jobKind: body.jobKind, goal: body.goal,
+      dependsOn: body.dependsOn, phase: body.phase, plan: body.plan,
+      inputSnapshot: body.inputSnapshot,
+    });
+    return { task };
+  });
+
+  // ═══ SocialSci 补漏组4: P3/P4/P5 子任务端点(HAR 语义: 章节素材三件套/批量章节/合稿) ═══
+  // P3: 单节文献检索(→ citation 素材)
+  app.post("/api/research/jobs/phase3/literature-search", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { taskId?: string; projectId?: string; sectionId?: string; sectionTitle?: string; keywords?: string[]; count?: number };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, dagNodeId: body.sectionId ?? "",
+      module: "workflow", jobKind: "literature-search",
+      goal: body.sectionTitle ? `文献检索 · ${body.sectionTitle}` : "文献检索",
+      inputSnapshot: { sectionId: body.sectionId, sectionTitle: body.sectionTitle, keywords: body.keywords, count: body.count ?? 5 },
+    });
+    return { job: t };
+  });
+  // P3: 理论框架生成(→ theory 素材)
+  app.post("/api/research/jobs/phase3/theory-generate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { taskId?: string; projectId?: string; sectionId?: string; sectionTitle?: string; title?: string; prompt?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, dagNodeId: body.sectionId ?? "",
+      module: "workflow", jobKind: "theory-generate",
+      goal: body.sectionTitle ? `理论框架 · ${body.sectionTitle}` : "理论框架梳理",
+      inputSnapshot: { sectionId: body.sectionId, sectionTitle: body.sectionTitle, title: body.title, prompt: body.prompt },
+    });
+    return { job: t };
+  });
+  // P3: 表格设计(→ data_result 素材)
+  app.post("/api/research/jobs/phase3/table-generate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { taskId?: string; projectId?: string; sectionId?: string; sectionTitle?: string; title?: string; prompt?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, dagNodeId: body.sectionId ?? "",
+      module: "workflow", jobKind: "table-generate",
+      goal: body.sectionTitle ? `表格设计 · ${body.sectionTitle}` : "表格设计",
+      inputSnapshot: { sectionId: body.sectionId, sectionTitle: body.sectionTitle, title: body.title, prompt: body.prompt },
+    });
+    return { job: t };
+  });
+  // P4: 章节批量生成(携带 sections 清单含 skill_prompt/requirements)
+  app.post("/api/research/jobs/phase4/batch", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; taskId?: string; goal?: string; sections?: Array<Record<string, unknown>> };
+    if (!body?.projectId || !Array.isArray(body.sections) || !body.sections.length) return reply.code(400).send({ error: "缺少 projectId/sections" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, module: "workflow", jobKind: "phase4_batch",
+      goal: body.goal ?? "批量生成论文章节",
+      inputSnapshot: { sections: body.sections, taskId: body.taskId },
+    });
+    return { job: t };
+  });
+  // P5: 合并(摘要/关键词要件)/审查/修订
+  app.post("/api/research/jobs/phase5/merge", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; goal?: string; sections?: Array<{ title?: string }>; chapterContents?: string[]; enableDeAIFyMerge?: boolean };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, module: "workflow", jobKind: "merge",
+      goal: body.goal ?? "合并定稿",
+      inputSnapshot: { sections: body.sections, chapterContents: body.chapterContents, enableDeAIFyMerge: body.enableDeAIFyMerge },
+    });
+    return { job: t };
+  });
+  app.post("/api/research/jobs/phase5/review", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; goal?: string; sections?: Array<{ title?: string }> };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, module: "workflow", jobKind: "review",
+      goal: body.goal ?? "全文审查",
+      inputSnapshot: { sections: body.sections },
+    });
+    return { job: t };
+  });
+  app.post("/api/research/jobs/phase5/revise", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; goal?: string; sections?: Array<{ title?: string }>; chapterContents?: string[] };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, module: "workflow", jobKind: "revise",
+      goal: body.goal ?? "修订",
+      inputSnapshot: { sections: body.sections, chapterContents: body.chapterContents },
+    });
+    return { job: t };
+  });
+  // 执行一轮(手动调度, 处理就绪任务)
+  app.post("/api/research/jobs/run", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string };
+    const r = await researchExec.runSchedulingRound(body?.projectId);
+    return { executed: r.executed, results: r.results };
+  });
+
+  app.get("/api/research/tasks/:taskId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { taskId } = request.params as { taskId: string };
+    const task = await researchPipeline.getTask(user.id, taskId);
+    if (!task) return reply.code(404).send({ error: "任务不存在" });
+    return { task };
+  });
+
+  app.post("/api/research/tasks/:taskId/control", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { taskId } = request.params as { taskId: string };
+    const body = request.body as { action?: string };
+    const action = (["cancel", "pause", "resume", "retry"] as const).find((a) => a === body?.action);
+    if (!action) return reply.code(400).send({ error: "action 需为 cancel/pause/resume/retry" });
+    const task = await researchPipeline.controlTask(user.id, taskId, action);
+    if (!task) return reply.code(404).send({ error: "任务不存在" });
+    return { task };
+  });
+
+  // 节点快照
+  app.get("/api/research/projects/:projectId/nodes", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    return { nodes: await researchPipeline.listNodes(user.id, projectId) };
+  });
+
+  app.get("/api/research/projects/:projectId/nodes/:nodeKey", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
+    const node = await researchPipeline.getNode(user.id, projectId, nodeKey);
+    if (!node) return reply.code(404).send({ error: "节点不存在" });
+    return { node };
+  });
+
+  app.put("/api/research/projects/:projectId/nodes/:nodeKey", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
+    const body = request.body as { payload?: unknown; taskId?: string; sourceRole?: string; note?: string };
+    if (body.payload === undefined) return reply.code(400).send({ error: "缺少 payload" });
+    const r = await researchPipeline.putNode(user.id, projectId, nodeKey, body.payload, {
+      taskId: body.taskId, sourceRole: body.sourceRole, note: body.note,
+    });
+    if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, version: r.version };
+  });
+
+  // UI审计T8: 批量回滚(最近一次 batch:pre 锚点 → 恢复批量前状态)
+  app.post("/api/research/projects/:projectId/nodes/sections/undo-batch", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await pool.query(
+      `select h.id from research_node_history h
+         join research_nodes n on n.id=h.node_id
+         join research_projects p on p.id=n.project_id
+        where n.project_id=$1 and n.node_key='sections' and p.user_id=$2
+          and h.note='batch:pre'
+        order by h.created_at desc limit 1`,
+      [projectId, user.id]);
+    if (!r.rows.length) return reply.code(404).send({ error: "没有可回滚的批量记录" });
+    const res = await researchPipeline.rollbackNode(user.id, projectId, "sections", r.rows[0].id);
+    if (!res.ok) return reply.code(422).send({ error: res.code });
+    return { ok: true, rolledBack: true };
+  });
+
+
+  app.get("/api/research/projects/:projectId/nodes/:nodeKey/history", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
+    return { history: await researchPipeline.listNodeHistory(user.id, projectId, nodeKey) };
+  });
+
+  app.post("/api/research/projects/:projectId/nodes/:nodeKey/rollback", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
+    const body = request.body as { historyId?: string };
+    if (!body?.historyId) return reply.code(400).send({ error: "缺少 historyId" });
+    const r = await researchPipeline.rollbackNode(user.id, projectId, nodeKey, body.historyId);
+    if (!r.ok) return reply.code(404).send({ error: r.code === "HISTORY_NOT_FOUND" ? "历史版本不存在" : "节点不存在" });
+    return { ok: true, version: r.version };
+  });
+
+  // 版本发布(指针快照)
+  app.post("/api/research/projects/:projectId/publish", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { label?: string };
+    const r = await researchPipeline.publishVersion(user.id, projectId, body?.label ?? "");
+    if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, version: r.version };
+  });
+
+  app.get("/api/research/projects/:projectId/versions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    return { versions: await researchPipeline.listVersions(user.id, projectId) };
+  });
+
+  // 主控 Agent P1 分析(→ analysis 节点, SSE 事件流)
+  app.post("/api/research/projects/:projectId/analyze", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { taskId?: string };
+    const sse = attachSse(reply);
+    sse.send("pipe.started", { projectId });
+    try {
+      const r = await researchPipeline.runMainAgentAnalysis(user.id, projectId, { taskId: body?.taskId });
+      if (!r.ok) { sse.error({ code: "NOT_FOUND", userMessage: "项目不存在", canRetry: false }); return sse.end(); }
+      sse.send("pipe.node", { nodeKey: "analysis", payload: r.payload });
+      sse.send("pipe.done", { nodeKey: "analysis" });
+    } catch (e) {
+      sse.error(e instanceof Error ? e : String(e), "ANALYZE_FAILED");
+    } finally {
+      sse.end();
+    }
+  });
+
+  // ═══ SocialSci P0-2: 素材库 + DAG 执行引擎(迁移116) ═══
+  // 素材 CRUD(跨模块导入钩子: 实证/审稿/绘图产物 → research_materials)
+  // 执行引擎: 手动触发调度轮 + 画布依赖同步
+  app.get("/api/research/materials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { projectId?: string; kind?: string };
+    return { materials: await researchMaterials.listMaterials(user.id, q.projectId, q.kind) };
+  });
+
+  app.post("/api/research/materials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as {
+      projectId?: string; kind?: string; title?: string; contentMd?: string;
+      tags?: string[]; sourceRef?: string; producedByDagNode?: string; meta?: Record<string, unknown>;
+    };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const kind = ["note", "citation", "data_result", "figure", "file", "theory"].includes(body.kind ?? "") ? body.kind : "note";
+    const { id } = await researchMaterials.createMaterial({
+      projectId: body.projectId, userId: user.id, kind: kind as never,
+      title: body.title, contentMd: body.contentMd, tags: body.tags,
+      sourceRef: body.sourceRef, producedByDagNode: body.producedByDagNode, meta: body.meta,
+    });
+    return { id };
+  });
+
+  app.get("/api/research/materials/:materialId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const m = await researchMaterials.getMaterial(user.id, materialId);
+    if (!m) return reply.code(404).send({ error: "素材不存在" });
+    return { material: m };
+  });
+
+  app.put("/api/research/materials/:materialId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const body = request.body as { title?: string; contentMd?: string; tags?: string[]; kind?: string };
+    const r = await researchMaterials.updateMaterial(user.id, materialId, body);
+    if (!r) return reply.code(404).send({ error: "素材不存在" });
+    return { ok: true };
+  });
+
+  app.delete("/api/research/materials/:materialId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const r = await researchMaterials.deleteMaterial(user.id, materialId);
+    if (!r) return reply.code(404).send({ error: "素材不存在" });
+    return { ok: true };
+  });
+
+  app.post("/api/research/materials/reorder", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { ids?: string[] };
+    if (!Array.isArray(body?.ids)) return reply.code(400).send({ error: "缺少 ids" });
+    return await researchMaterials.reorderMaterials(user.id, body.ids);
+  });
+
+  // 素材上下文(写作节点注入预览)
+  app.get("/api/research/projects/:projectId/materials-context", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    return { context: await researchMaterials.buildMaterialsContext(user.id, projectId) };
+  });
+
+  // 体验厚度: AI素材审视
+  app.post("/api/research/materials/:materialId/review", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const body = request.body as { topic?: string };
+    const r = await researchMaterials.reviewMaterial(user.id, materialId, body?.topic);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { review: r.review };
+  });
+
+  // P0-6: 素材导入钩子收口(跨模块产物 → research_materials 统一入口)
+  // 支持: 审稿结果(review_job) / 绘图产物(viz_artifact) / 编辑器图表(chart-code 产物路径) 等
+  app.post("/api/research/materials/import", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as {
+      projectId?: string;
+      sourceType?: string;   // review_job / viz_artifact / chart_image / manual
+      sourceId?: string;
+      title?: string;
+      note?: string;
+    };
+    if (!body?.projectId || !body?.sourceType) return reply.code(400).send({ error: "缺少 projectId/sourceType" });
+    const id = randomUUID();
+    const meta = { sourceType: body.sourceType, sourceId: body.sourceId ?? "", importedAt: new Date().toISOString() };
+    // 按来源类型取内容(原创实现, 自研来源: viz_artifact 从 viz_artifacts 表; review_job 取结果摘要)
+    let title = body.title ?? "";
+    let contentMd = body.note ?? "";
+    let kind = "note" as string;
+    if (body.sourceType === "viz_artifact" && body.sourceId) {
+      const r = await pool.query(`select * from viz_artifacts where id=$1 and user_id=$2`, [body.sourceId, user.id]);
+      if (r.rows[0]) {
+        const a = r.rows[0];
+        title = `${a.prompt?.slice(0, 40) || "科研图表"} (v${a.version})`;
+        contentMd = `![图表](/api/viz/files/${a.png_path})\n\nSVG 可编辑: /${a.svg_editable_path}\n\n${a.python_code ? "生成代码:\n```python\n" + a.python_code.slice(0, 800) + "\n```" : ""}`;
+        kind = "figure";
+      }
+    } else if (body.sourceType === "review_job" && body.sourceId) {
+      const r = await pool.query(`select * from review_jobs where id=$1 and user_id=$2`, [body.sourceId, user.id]);
+      if (r.rows[0]?.result) {
+        const res = r.rows[0].result;
+        title = `审稿意见 · ${res.paperTitle ?? "未命名"}`;
+        contentMd = `**总体评语**: ${res.overall ?? ""}\n\n**维度评分**:\n${(res.dimensions ?? []).map((d: { name: string; score: number; comment?: string }) => `- ${d.name}: ${d.score}分 ${d.comment ?? ""}`).join("\n")}`;
+        kind = "data_result";
+      }
+    }
+    if (!title) title = body.title ?? `素材 · ${body.sourceType}`;
+    if (!contentMd) contentMd = body.note ?? title;
+    await pool.query(
+      `insert into research_materials (id, project_id, user_id, kind, title, content_md, source_ref, meta)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, body.projectId, user.id, kind, title, contentMd, body.sourceId ?? "", JSON.stringify(meta)]
+    );
+    return { id };
+  });
+
+  // 执行引擎: 手动调度轮(前端"开始执行"或测试触发; 常驻定时后续批)
+  app.post("/api/research/engine/run", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string };
+    const r = await researchExec.runSchedulingRound(body?.projectId);
+    return { executed: r.executed, results: r.results };
+  });
+
+  // 画布依赖同步(画布改完调用, 使 depends_on 与画布边一致)
+  app.post("/api/research/projects/:projectId/sync-deps", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const owned = await researchPipeline.getProject(user.id, projectId);
+    if (!owned) return reply.code(404).send({ error: "项目不存在" });
+    return await researchExec.syncTaskDependenciesFromCanvas(projectId);
+  });
+
+  // ═══ SocialSci P0-3: 审稿任务流 + 期刊库/标准库(迁移117) ═══
+  app.post("/api/review/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string; title?: string; kind?: string; journalId?: string; standardId?: string;
+      settings?: { strictness?: string; standardIds?: string[]; customRequirements?: string };
+      sidebarTaskId?: string; sourceFileId?: string; sourceFileName?: string; sourceFileType?: string };
+    if (!body?.text?.trim()) return reply.code(400).send({ error: "请提供稿件文本(或稍后支持文件上传)" });
+    const r = await reviewService.createReviewJob({
+      userId: user.id, title: body.title, text: body.text, kind: body.kind,
+      journalId: body.journalId, standardId: body.standardId,
+      settings: body.settings, sidebarTaskId: body.sidebarTaskId,
+      sourceFileId: body.sourceFileId, sourceFileName: body.sourceFileName, sourceFileType: body.sourceFileType,
+    });
+    return { jobId: r.id, segmentCount: r.segmentCount, dimensions: r.dimensions };
+  });
+
+  app.get("/api/review/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    return { jobs: await reviewService.listReviewJobs(user.id, Number(q.limit) || 50) };
+  });
+
+  app.get("/api/review/jobs/:jobId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const job = await reviewService.getReviewJob(user.id, jobId);
+    if (!job) return reply.code(404).send({ error: "审稿任务不存在" });
+    return { job };
+  });
+
+  // SSE 流式审稿(review.started/status/delta/completed)
+  app.get("/api/review/jobs/:jobId/stream", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const sse = attachSse(reply);
+    await reviewService.runReviewJob(user.id, jobId, sse);
+    sse.end();
+  });
+
+  app.post("/api/review/jobs/:jobId/control", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const body = request.body as { action?: string };
+    const action = (["cancel", "retry"] as const).find((a) => a === body?.action);
+    if (!action) return reply.code(400).send({ error: "action 需为 cancel/retry" });
+    const job = await reviewService.controlReviewJob(user.id, jobId, action);
+    if (!job) return reply.code(404).send({ error: "审稿任务不存在" });
+    return { job };
+  });
+
+  // 审稿报告 Word 批注导出(SocialSci P0-3 补漏: export-report)
+  app.post("/api/review/jobs/:jobId/export-word", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const r = await reviewService.exportReportWord(user.id, jobId);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { ok: true, base64: r.base64, fileName: r.fileName };
+  });
+
+  // 期刊库
+  app.get("/api/review/journals", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { journals: await reviewService.listJournals(user.id) };
+  });
+
+  app.post("/api/review/journals", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { name?: string; level?: string; scope?: string; submissionGuideText?: string };
+    if (!body?.name?.trim()) return reply.code(400).send({ error: "请填写期刊名" });
+    return await reviewService.createJournal({ ...body, name: body.name.trim(), userId: user.id });
+  });
+
+  app.put("/api/review/journals/:journalId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { journalId } = request.params as { journalId: string };
+    const body = request.body as { name?: string; level?: string; scope?: string; submissionGuideText?: string; parsedRules?: unknown };
+    const r = await reviewService.updateJournal(user.id, journalId, body);
+    if (!r) return reply.code(404).send({ error: "期刊不存在或无权限" });
+    return { ok: true };
+  });
+
+  app.delete("/api/review/journals/:journalId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { journalId } = request.params as { journalId: string };
+    const r = await reviewService.deleteJournal(user.id, journalId);
+    if (!r) return reply.code(404).send({ error: "期刊不存在或无权限" });
+    return { ok: true };
+  });
+
+  app.post("/api/review/journals/parse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { rawText?: string };
+    if (!body?.rawText?.trim()) return reply.code(400).send({ error: "请粘贴投稿须知原文" });
+    const parsed = await reviewService.parseSubmissionGuide(body.rawText);
+    return { parsed };
+  });
+
+  // 审核标准库
+  app.get("/api/review/standards", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { standards: await reviewService.listStandards(user.id) };
+  });
+
+  app.post("/api/review/standards", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { name?: string; sourceText?: string; dimensions?: unknown };
+    if (!body?.name?.trim()) return reply.code(400).send({ error: "请填写标准名" });
+    return await reviewService.createStandard({ ...body, name: body.name.trim(), userId: user.id });
+  });
+
+  app.put("/api/review/standards/:standardId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { standardId } = request.params as { standardId: string };
+    const body = request.body as { name?: string; sourceText?: string; dimensions?: unknown };
+    const r = await reviewService.updateStandard(user.id, standardId, body);
+    if (!r) return reply.code(404).send({ error: "标准不存在或无权限" });
+    return { ok: true };
+  });
+
+  app.delete("/api/review/standards/:standardId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { standardId } = request.params as { standardId: string };
+    const r = await reviewService.deleteStandard(user.id, standardId);
+    if (!r) return reply.code(404).send({ error: "标准不存在或无权限" });
+    return { ok: true };
+  });
+
+  app.post("/api/review/standards/:standardId/default", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { standardId } = request.params as { standardId: string };
+    const body = request.body as { isDefault?: boolean };
+    return await reviewService.setDefaultStandard(user.id, standardId, body?.isDefault ?? true);
+  });
+
+  app.post("/api/review/standards/parse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { rawText?: string };
+    if (!body?.rawText?.trim()) return reply.code(400).send({ error: "请粘贴评分标准原文" });
+    return await reviewService.parseStandardText(body.rawText);
+  });
+
+  // ═══ SocialSci P0-4: 对话式科研绘图 Agent(迁移118) ═══
+  app.post("/api/viz/sessions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { title?: string };
+    return await vizAgent.createSession(user.id, body?.title ?? "未命名绘图会话");
+  });
+
+  app.get("/api/viz/sessions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { sessions: await vizAgent.listSessions(user.id) };
+  });
+
+  // 一轮对话(SSE: plan/model/thinking/tool/chart/critique/critique_fix/done)
+  app.post("/api/viz/sessions/:sessionId/turns", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { sessionId } = request.params as { sessionId: string };
+    const body = request.body as { message?: string; csv?: string; columnOrder?: string[] };
+    if (!body?.message?.trim()) return reply.code(400).send({ error: "请描述要画的图" });
+    const sse = attachSse(reply);
+    sse.send("viz.created", { sessionId });
+    await vizAgent.runTurn(user.id, sessionId, body.message.trim(), sse, {
+      csv: body.csv, columnOrder: body.columnOrder,
+    });
+    sse.end();
+  });
+
+  app.get("/api/viz/sessions/:sessionId/messages", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { sessionId } = request.params as { sessionId: string };
+    const q = request.query as { limit?: string };
+    return { messages: await vizAgent.listMessages(user.id, sessionId, Number(q.limit) || 100) };
+  });
+
+  app.get("/api/viz/sessions/:sessionId/artifacts", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { sessionId } = request.params as { sessionId: string };
+    return { artifacts: await vizAgent.listArtifacts(user.id, sessionId) };
+  });
+
+  // 产物静态文件(路径形如 data/viz-files/{userId}/{hash}.png|svg)
+  app.get("/api/viz/files/*", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const url = request.url; // /api/viz/files/data/viz-files/...
+    const rel = url.replace(/^\/api\/viz\/files\//, "");
+    // 归属校验: 路径须含自己 userId
+    if (!rel.includes(`/${user.id}/`)) return reply.code(403).send({ error: "无权访问该文件" });
+    const buf = vizExec.readVizFile(rel);
+    if (!buf) return reply.code(404).send({ error: "文件不存在" });
+    const isSvg = rel.endsWith(".svg");
+    reply.header("Content-Type", isSvg ? "image/svg+xml" : "image/png");
+    reply.header("Cache-Control", "public, max-age=3600");
+    return reply.send(buf);
+  });
+
+  // 产物 → 素材库(研究素材闭环)
+  app.post("/api/viz/artifacts/:artifactId/to-materials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { artifactId } = request.params as { artifactId: string };
+    const body = request.body as { projectId?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const r = await pool.query(
+      `select * from viz_artifacts where id=$1 and user_id=$2`, [artifactId, user.id]);
+    if (!r.rows.length) return reply.code(404).send({ error: "产物不存在" });
+    const a = r.rows[0];
+    const mid = randomUUID();
+    await pool.query(
+      `insert into research_materials
+         (id, project_id, user_id, kind, title, content_md, source_ref, produced_by_dag_node, meta)
+       values ($1,$2,$3,'figure',$4,$5,$6,'',$7)`,
+      [mid, body.projectId, user.id,
+       `${a.prompt?.slice(0, 40) || "科研图表"} (v${a.version})`,
+       `![图表](/api/viz/files/${a.png_path})\n\nSVG 可编辑: /${a.svg_editable_path}`,
+       artifactId, JSON.stringify({ vizArtifact: artifactId, version: a.version })]);
+    return { id: mid };
+  });
+
+  // ═══ SocialSci P0-5: 学术文本编辑器(迁移119) ═══
+  app.get("/api/editor/v1/documents", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { documents: await editorService.listDocs(user.id) };
+  });
+
+  app.post("/api/editor/v1/documents", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { title?: string; content?: string };
+    return await editorService.createDoc(user.id, body?.title ?? "", body?.content ?? "");
+  });
+
+  app.get("/api/editor/v1/documents/:docId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    const doc = await editorService.getDoc(user.id, docId);
+    if (!doc) return reply.code(404).send({ error: "文档不存在" });
+    return { document: doc };
+  });
+
+  app.put("/api/editor/v1/documents/:docId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    const body = request.body as { title?: string; content?: string; tags?: string[] };
+    const r = await editorService.saveDoc(user.id, docId, body);
+    if (!r) return reply.code(404).send({ error: "文档不存在" });
+    return { ok: true, wordCount: r.word_count };
+  });
+
+  app.delete("/api/editor/v1/documents/:docId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    const r = await editorService.deleteDoc(user.id, docId);
+    if (!r) return reply.code(404).send({ error: "文档不存在" });
+    return { ok: true };
+  });
+
+  // 文档锁(编辑会话; 超5分钟自动释放)
+  app.post("/api/editor/v1/documents/:docId/lock", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    return await editorService.lockDoc(user.id, docId);
+  });
+  app.post("/api/editor/v1/documents/:docId/unlock", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    return await editorService.unlockDoc(user.id, docId);
+  });
+
+  // 选区改写 5 模式 + humanize
+  app.post("/api/editor/v1/rewrite", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { mode?: string; text?: string };
+    const modes = ["condense", "de-template", "polish", "proofread", "journal-style", "humanize"];
+    if (!modes.includes(body?.mode ?? "")) return reply.code(400).send({ error: `mode 需为 ${modes.join("/")}` });
+    if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少选中文本" });
+    return await editorService.rewriteText(body.mode as never, body.text);
+  });
+
+  // UI审计T9: 引文格式规范化(GB/T7714)
+  app.post("/api/editor/v1/format-references", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string };
+    if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少文本" });
+    return await editorService.formatReferences(body.text);
+  });
+
+  // UI审计T5: 标题摘要关键词生成
+  app.post("/api/editor/v1/title-abstract", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string };
+    if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少全文" });
+    return await editorService.generateTitleAbstract(body.text);
+  });
+
+  // 全文检查(诚实性: 不验证文献真实性)
+  app.post("/api/editor/v1/check-fulltext", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string };
+    if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少全文" });
+    return await editorService.checkFulltext(body.text);
+  });
+
+  // 图表代码(LLM 出图代码 → 复用 viz runner 渲染)
+  app.post("/api/editor/v1/chart-code", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { description?: string; csv?: string; columnOrder?: string[] };
+    if (!body?.description?.trim()) return reply.code(400).send({ error: "请描述图表需求" });
+    const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+    const res = await fetchLlm({
+      url: ep.url, key: ep.key, model: ep.model,
+      messages: [{ role: "user", content: `你是科研绘图专家。生成 matplotlib 绘图代码(只写绘图部分, 数据在 DATA_CSV 用 pd.read_csv 读取, 中文标签直接写), 输出 JSON:{"code":"...","title":"图表标题"}
+需求: ${body.description?.slice(0, 800)}` }],
+      temperature: 0.4, maxTokens: 4000, timeoutMs: 240_000,
+    });
+    const text = res?.text ?? "";
+    let code = "";
+    try {
+      const j = JSON.parse(text.replace(/```json|```/g, "").trim());
+      code = String(j?.code ?? "");
+    } catch { /* 解析失败 */ }
+    if (!code) return reply.code(422).send({ error: "AI 未能生成代码" });
+    const rendered = await vizExec.renderChart(user.id, code, body.csv, body.columnOrder ?? []);
+    if (!rendered.ok) return reply.code(422).send({ error: rendered.error ?? "渲染失败" });
+    return { code, ...rendered };
+  });
+
+  // ═══ SocialSci P0-5: 数据自动 profiling(上传即剖析, 复用 viz analyzeData) ═══
+  app.post("/api/empirical/profile", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { csv?: string; columnOrder?: string[]; fileName?: string };
+    if (!body?.csv?.trim() || !body?.columnOrder?.length) return reply.code(400).send({ error: "需提供 CSV 文本与列名" });
+    const ana = await vizExec.analyzeData(user.id, body.csv, body.columnOrder);
+    if (!ana.ok) return reply.code(422).send({ error: ana.error ?? "分析失败" });
+    return {
+      profile: {
+        fileName: body.fileName ?? "data.csv",
+        summary: ana.summary ?? "",
+        rowCount: 0, // 前端按 csv 行数算
+        columns: ana.columns ?? [],
+      },
+    };
+  });
+
+  // ═══ SocialSci P0-8: 积分商业化 + 微信扫码登录(迁移120) ═══
+  // ── 积分(用户侧) ──
+  app.get("/api/points/me", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { success: true, data: await pointsService.getPoints(user.id) };
+  });
+  app.post("/api/points/checkin", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r = await pointsService.checkin(user.id);
+    if (!r.ok) return reply.code(409).send({ error: r.error });
+    return { success: true, data: r };
+  });
+  app.post("/api/points/redeem", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { code?: string };
+    if (!body?.code?.trim()) return reply.code(400).send({ error: "缺少兑换码" });
+    const r = await pointsService.redeemCode(user.id, body.code);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { success: true, data: r };
+  });
+  // 消费冻结/核销(供业务模块接入: 章节生成/审稿/绘图等)
+  app.post("/api/points/freeze", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { cost?: number; refType?: string; refId?: string };
+    if (!body?.cost) return reply.code(400).send({ error: "缺少 cost" });
+    const r = await pointsService.freezeCharge(user.id, body.cost, body.refType ?? "misc", body.refId ?? "");
+    if (!r.ok) return reply.code(402).send({ error: "积分不足", needPoints: (r as { needPoints?: number }).needPoints });
+    return { success: true };
+  });
+  app.post("/api/points/settle", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { cost?: number; refType?: string; refId?: string };
+    if (!body?.cost) return reply.code(400).send({ error: "缺少 cost" });
+    const r = await pointsService.settleCharge(user.id, body.cost, body.refType ?? "misc", body.refId ?? "");
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { success: true };
+  });
+  app.post("/api/points/rollback", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { cost?: number; refType?: string; refId?: string };
+    if (!body?.cost) return reply.code(400).send({ error: "缺少 cost" });
+    return { success: true, ...(await pointsService.rollbackFreeze(user.id, body.cost, body.refType ?? "misc", body.refId ?? "")) };
+  });
+
+  // ── 积分(管理侧) ──
+  app.get("/api/admin/points/transactions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const q = request.query as { limit?: string };
+    return { transactions: await pointsService.listTransactions(Number(q.limit) || 100) };
+  });
+  app.post("/api/admin/points/adjust", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const body = request.body as { userId?: string; delta?: number; note?: string };
+    if (!body?.userId || !body?.delta) return reply.code(400).send({ error: "缺少 userId/delta" });
+    return { success: true, ...(await pointsService.adminAdjust(user.id, body.userId, body.delta, body.note ?? "")) };
+  });
+  app.get("/api/admin/points/batches", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    return { batches: await pointsService.listRedeemBatches() };
+  });
+  app.post("/api/admin/points/batches", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const body = request.body as { prefix?: string; count?: number; pointsEach?: number };
+    if (!body?.prefix || !body?.count || !body?.pointsEach) return reply.code(400).send({ error: "缺少 prefix/count/pointsEach" });
+    return { success: true, ...(await pointsService.createRedeemBatch(user.id, body.prefix, body.count, body.pointsEach)) };
+  });
+  app.get("/api/admin/points/reconcile", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const q = request.query as { userId?: string };
+    return { success: true, ...(await pointsService.reconcile(q.userId)) };
+  });
+
+  // ── 微信扫码登录 ──
+  app.get("/api/admin/wechat/config", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    return await wechatAuth.getMpConfig(true);
+  });
+  app.post("/api/admin/wechat/config", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const body = request.body as { appId?: string; appSecret?: string; baseUrl?: string; enabled?: boolean };
+    return await wechatAuth.setConfig({
+      appId: body.appId ?? "", appSecret: body.appSecret ?? "",
+      baseUrl: body.baseUrl ?? "", enabled: body.enabled ?? false,
+    });
+  });
+  // 登录页/配置态(免登录可用以判断是否展示微信扫码)
+  app.get("/api/auth/wechat/config", async (_request, reply) => {
+    return await wechatAuth.getMpConfig(false);
+  });
+  app.post("/api/auth/wechat/qr", async (request, reply) => {
+    // 生成扫码 ticket(登录场景, 免登录)
+    const cfg = await wechatAuth.getMpConfig(false);
+    return { success: true, data: await wechatAuth.createQrTicket(), config: cfg };
+  });
+  app.get("/api/auth/wechat/status", async (request, reply) => {
+    const q = request.query as { ticket?: string };
+    if (!q?.ticket) return reply.code(400).send({ error: "缺少 ticket" });
+    return { success: true, data: await wechatAuth.pollStatus(q.ticket) };
+  });
+  // mock 扫码(演示模式)
+  app.post("/api/auth/wechat/mock-scan", async (request, reply) => {
+    const body = request.body as { ticket?: string };
+    if (!body?.ticket) return reply.code(400).send({ error: "缺少 ticket" });
+    const r = await wechatAuth.mockScan(body.ticket);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { success: true };
+  });
+  // 扫码后绑定(已有账号=登录态; 免注册=新号)
+  app.post("/api/auth/wechat/bind", async (request, reply) => {
+    const body = request.body as { ticket?: string; mode?: "existing" | "new"; nickname?: string };
+    if (!body?.ticket) return reply.code(400).send({ error: "缺少 ticket" });
+    if (body.mode === "new") {
+      const r = await wechatAuth.bindNewUser(body.ticket, body.nickname);
+      if (!r.ok) return reply.code(422).send({ error: r.error });
+      // 签发 JWT(同登录)
+      const u = r.user as { id: string; role: string; tenant_id: string };
+      const token = authService.issueToken(u.id, u.role ?? "user", u.tenant_id);
+      return { success: true, token, user: { id: u.id, role: u.role ?? "user" } };
+    }
+    // 既有账号绑定: 需登录态
+    const user = await requireUser(request, reply); if (!user) return;
+    const rb = await wechatAuth.bindExisting(body.ticket, user.id, body.nickname);
+    if (!rb.ok) return reply.code(422).send({ error: rb.error });
+    return { success: true };
+  });
+  app.get("/api/auth/wechat/bound", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { success: true, data: await wechatAuth.getBoundWechat(user.id) };
+  });
+
+  // ═══ SocialSci P1: 管理后台补齐(OpenAI-key库/配置原子保存/ai-usage) ═══
+  // 存储: ai_provider_settings.metadata(jsonb) — { openaiKeys:[{id,name,key}], appConfig:{...} }
+  app.get("/api/admin/keys", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const r = await pool.query(`select metadata->'openaiKeys' as keys from ai_provider_settings where id='global'`);
+    const keys = r.rows[0]?.keys ?? [];
+    // 脱敏: 只留尾4位
+    return { keys: (keys as Array<{ id: string; name: string; key: string }>).map((k) => ({
+      id: k.id, name: k.name, keyMasked: `••••${k.key.slice(-4)}`,
+    })) };
+  });
+  app.post("/api/admin/keys", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const body = request.body as { name?: string; key?: string };
+    if (!body?.name?.trim() || !body?.key?.trim()) return reply.code(400).send({ error: "缺少 name/key" });
+    await pool.query(
+      `update ai_provider_settings
+        set metadata = jsonb_set(coalesce(metadata,'{}'), '{openaiKeys}',
+             coalesce(metadata->'openaiKeys','[]') || $1::jsonb)
+       where id='global'`,
+      [JSON.stringify([{ id: randomUUID(), name: body.name.trim(), key: body.key.trim() }])]);
+    return { ok: true };
+  });
+  app.delete("/api/admin/keys/:keyId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const { keyId } = request.params as { keyId: string };
+    await pool.query(
+      `update ai_provider_settings
+        set metadata = jsonb_set(coalesce(metadata,'{}'), '{openaiKeys}',
+             coalesce((select jsonb_agg(k) from jsonb_array_elements(coalesce(metadata->'openaiKeys','[]')) k where k->>'id' <> $1),'[]'))
+       where id='global'`, [keyId]);
+    return { ok: true };
+  });
+  // 配置原子保存(整包替换 appConfig, 单事务天然原子)
+  app.get("/api/admin/config", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const r = await pool.query(`select metadata->'appConfig' as config from ai_provider_settings where id='global'`);
+    return { config: r.rows[0]?.config ?? {} };
+  });
+  app.put("/api/admin/config", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const body = request.body as { config?: Record<string, unknown> };
+    if (!body?.config) return reply.code(400).send({ error: "缺少 config" });
+    await pool.query(
+      `update ai_provider_settings set metadata = jsonb_set(coalesce(metadata,'{}'), '{appConfig}', $1) where id='global'`,
+      [JSON.stringify(body.config)]);
+    return { ok: true, config: body.config };
+  });
+  // ai-usage 看板(全站用量: 调用/积分/token 汇总; 数据跨 user_usage_log/points_usage_daily)
+  app.get("/api/admin/ai-usage", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    const q = request.query as { days?: string };
+    const days = Math.min(30, Math.max(1, Number(q.days) || 7));
+    const r = await pool.query(
+      `select date, count(*) as calls,
+              coalesce(sum(cost),0) as points_cost,
+              count(distinct user_id) as active_users
+         from points_usage_daily
+        where date >= current_date - ($1::int - 1)
+        group by date order by date desc`, [days]);
+    return { usage: r.rows };
+  });
+
+  // 统计图表产物(SocialSci 补漏: PUT statistics-jobs/artifacts/{id}/image → 素材)
+  // 语义: 前端把统计结果图(plotly/py 渲染的 png)上传存为 stats_artifact; 可导入素材库
+  app.post("/api/statistics-jobs/artifacts", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { statsJobId?: string; method?: string; title?: string; pngBase64?: string };
+    if (!body?.pngBase64 || !body?.statsJobId) return reply.code(400).send({ error: "缺少 statsJobId/pngBase64" });
+    const id = randomUUID();
+    // png 落盘到 viz-files 目录(复用静态服务) — 存 base64 → 文件
+    const buf = Buffer.from(String(body.pngBase64).replace(/^data:image\/png;base64,/, ""), "base64");
+    const rel = `data/viz-files/${user.id}/${id}.png`;
+    const abs = path.join(process.env.SAG_ROOT || process.cwd(), rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, buf);
+    await pool.query(
+      `insert into stats_artifacts (id, user_id, stats_job_id, method, title, png_rel)
+       values ($1,$2,$3,$4,$5,$6)
+       on conflict (user_id, stats_job_id, method)
+       do update set png_rel=$6, title=$5, updated_at=now()`,
+      [id, user.id, body.statsJobId, body.method ?? "", body.title ?? "", rel]);
+    return { id, pngRel: rel };
+  });
+  app.get("/api/statistics-jobs/artifacts", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r = await pool.query(
+      `select id, stats_job_id, method, title, png_rel, created_at
+         from stats_artifacts where user_id=$1 order by created_at desc limit 50`, [user.id]);
+    return { artifacts: r.rows };
+  });
+  app.delete("/api/statistics-jobs/artifacts/:artifactId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { artifactId } = request.params as { artifactId: string };
+    await pool.query(`delete from stats_artifacts where id=$1 and user_id=$2`, [artifactId, user.id]);
+    return { ok: true };
+  });
+  // 统计产物 → 素材库(研究素材闭环)
+  app.post("/api/statistics-jobs/artifacts/:artifactId/to-materials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { artifactId } = request.params as { artifactId: string };
+    const body = request.body as { projectId?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const r = await pool.query(`select * from stats_artifacts where id=$1 and user_id=$2`, [artifactId, user.id]);
+    if (!r.rows.length) return reply.code(404).send({ error: "产物不存在" });
+    const a = r.rows[0];
+    const mid = randomUUID();
+    await pool.query(
+      `insert into research_materials
+         (id, project_id, user_id, kind, title, content_md, source_ref, meta)
+       values ($1,$2,$3,'figure',$4,$5,$6,$7)`,
+      [mid, body.projectId, user.id,
+       `${a.title || "统计图表"} (${a.method})`,
+       `![统计图](/api/viz/files/${a.png_rel})`,
+       artifactId, JSON.stringify({ statsArtifact: artifactId, method: a.method })]);
+    return { id: mid };
+  });
+
+  // ═══ UI审计T7: 参考文献批量解析(GB/T7714 正则拆条目→人工核对) ═══
+  app.post("/api/research/references/parse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { rawText?: string };
+    if (!body?.rawText?.trim()) return reply.code(400).send({ error: "缺少 rawText" });
+    const items = researchMaterials.parseReferences(body.rawText);
+    return { ok: true, items, validCount: items.filter((i) => i.valid).length, total: items.length };
+  });
+
+  // ═══ SocialSci 补漏组2: 素材深层操作(AI生成/来源文献/采纳/跨任务工件) ═══
+  // 素材来源文献(引文摘要)
+  app.get("/api/research/materials/:materialId/sources", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const r = await researchMaterials.getMaterialSources(user.id, materialId);
+    if (!r) return reply.code(404).send({ error: "素材不存在" });
+    return { sources: r.sources, sourceRef: r.sourceRef };
+  });
+  app.post("/api/research/materials/:materialId/sources", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const body = request.body as { doc?: unknown };
+    const r = await researchMaterials.addMaterialSource(user.id, materialId, body?.doc as never);
+    if (!r) return reply.code(404).send({ error: "素材不存在" });
+    return { ok: true };
+  });
+
+  // AI 生成素材(HAR: material/generate 语义: 按目标章节+主题生成 count 条)
+  app.post("/api/research/materials/generate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; targetSectionId?: string; sectionTitle?: string; count?: number; topic?: string; prompt?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const r = await researchMaterials.aiGenerateMaterial(user.id, body.projectId, body);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { materials: r.materials };
+  });
+
+  // 素材采纳(挂章节: materialUsages 语义)
+  app.post("/api/research/materials/:materialId/adopt", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { materialId } = request.params as { materialId: string };
+    const body = request.body as { sectionIds?: string[] };
+    const r = await researchMaterials.adoptMaterial(user.id, materialId, body?.sectionIds ?? []);
+    if (!r.ok) return reply.code(404).send({ error: r.error });
+    return { ok: true };
+  });
+
+  // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源; 来源: stats_artifacts/viz_artifacts/material)
+  app.post("/api/research/artifacts/import", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { sourceType?: string; sourceId?: string; sourceTaskId?: string; snapshot?: unknown };
+    if (!body?.sourceType || !body?.sourceId) return reply.code(400).send({ error: "缺少 sourceType/sourceId" });
+    // 取来源内容构造快照 + 哈希
+    let snapshot: Record<string, unknown> = {};
+    if (body.sourceType === "statistics") {
+      const r = await pool.query(`select * from stats_artifacts where id=$1 and user_id=$2`, [body.sourceId, user.id]);
+      if (r.rows[0]) snapshot = { title: r.rows[0].title, method: r.rows[0].method, pngRel: r.rows[0].png_rel };
+    } else if (body.sourceType === "viz") {
+      const r = await pool.query(`select * from viz_artifacts where id=$1 and user_id=$2`, [body.sourceId, user.id]);
+      if (r.rows[0]) snapshot = { title: r.rows[0].prompt, version: r.rows[0].version, pngRel: r.rows[0].png_path };
+    } else if (body.sourceType === "material") {
+      const r = await pool.query(`select * from research_materials where id=$1 and user_id=$2`, [body.sourceId, user.id]);
+      if (r.rows[0]) snapshot = { title: r.rows[0].title, kind: r.rows[0].kind, contentMd: r.rows[0].content_md };
+    }
+    const merged = { ...snapshot, ...(body.snapshot ?? {}) };
+    const hash = researchMaterials.contentHashOf({ sourceType: body.sourceType, sourceId: body.sourceId, ...merged });
+    // 幂等: 同哈希已存在则返回已有工件
+    const dup = await pool.query(
+      `select id from research_artifacts where user_id=$1 and content_hash=$2 limit 1`, [user.id, hash]);
+    if (dup.rows.length) return { artifact: { id: dup.rows[0].id, contentHash: hash, sourceType: body.sourceType, sourceId: body.sourceId, deduped: true } };
+    const id = randomUUID();
+    await pool.query(
+      `insert into research_artifacts (id, user_id, source_type, source_id, source_task_id, content_hash, snapshot)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, user.id, body.sourceType, body.sourceId, body.sourceTaskId ?? "", hash, JSON.stringify(merged)]);
+    return { artifact: { id, contentHash: hash, sourceType: body.sourceType, sourceId: body.sourceId, deduped: false } };
+  });
+
+  // ═══ SocialSci 体验厚度: 文件正文提取(docx→python通道 / txt直接) ═══
+  app.post("/api/files/extract-text", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { filename?: string; base64?: string; mime?: string };
+    if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容" });
+    const filename = body.filename ?? "file";
+    const buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
+    const tmp = path.join(os.tmpdir(), `extract-${Date.now()}-${filename.replace(/[^a-zA-Z0-9.]/g, "_")}`);
+    fs.writeFileSync(tmp, buf);
+    try {
+      let text = "";
+      const lower = filename.toLowerCase();
+      if (lower.endsWith(".docx")) {
+        const { extractDocxText } = await import("../services/format-docx-service.js");
+        text = await extractDocxText(tmp);
+      } else if (lower.endsWith(".txt") || lower.endsWith(".md")) {
+        text = buf.toString("utf-8");
+      } else {
+        text = buf.toString("utf-8");
+      }
+      if (!text.trim()) return reply.code(422).send({ error: "未能提取到正文, 请改用粘贴方式" });
+      return { ok: true, text: text.slice(0, 200000), filename, sourceType: lower.endsWith(".docx") ? "docx" : lower.endsWith(".pdf") ? "pdf" : "text" };
+    } finally {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    }
+  });
+
+  // ═══ SocialSci 补漏组3: 用户文件/默认任务/viz_data节点/知识库会话 ═══
+  // 1) 用户文件仓(HAR: files/upload → profile → content)
+  app.post("/api/files/upload", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { filename?: string; base64?: string; mime?: string };
+    if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容" });
+    const id = randomUUID();
+    const buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
+    const dir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "user-files", user.id);
+    fs.mkdirSync(dir, { recursive: true });
+    const rel = `data/user-files/${user.id}/${id}.bin`;
+    fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), buf);
+    // 文本自动剖析(前 200KB → 行列概览)
+    let profile: Record<string, unknown> = {};
+    const text = buf.length <= 200_000 ? buf.toString("utf-8") : "";
+    if (text.trim()) {
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      profile = { kind: "text", lines: lines.length, chars: text.length };
+      if (lines.length > 1 && lines[0].includes(",")) {
+        const cols = lines[0].split(",").map((c) => c.trim());
+        profile = { kind: "csv", rowCount: lines.length - 1, columnCount: cols.length, columns: cols.slice(0, 20) };
+      }
+    }
+    await pool.query(
+      `insert into user_files (id, user_id, filename, mime, size_bytes, storage_rel, profile)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [id, user.id, body.filename ?? "upload.bin", body.mime ?? "application/octet-stream", buf.length, rel, JSON.stringify(profile)]);
+    return { fileId: `file_${id}`, filename: body.filename ?? "upload.bin", profile };
+  });
+
+  // 文件剖析(读库 profile)
+  app.get("/api/files/:fileId/profile", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const rawId = (request.params as { fileId: string }).fileId.replace(/^file_/, "");
+    const r = await pool.query(`select id, filename, size_bytes, profile, created_at from user_files where id=$1 and user_id=$2`, [rawId, user.id]);
+    if (!r.rows.length) return reply.code(404).send({ error: "文件不存在" });
+    const row = r.rows[0];
+    return { fileId: `file_${row.id}`, filename: row.filename, sizeBytes: row.size_bytes, profile: row.profile, createdAt: row.created_at };
+  });
+
+  // 文件原始字节读取(HAR: files/{id}/content → 下载原文件)
+  app.get("/api/files/:fileId/content", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const rawId = (request.params as { fileId: string }).fileId.replace(/^file_/, "");
+    const r = await pool.query(`select storage_rel, filename, mime from user_files where id=$1 and user_id=$2`, [rawId, user.id]);
+    if (!r.rows.length) return reply.code(404).send({ error: "文件不存在" });
+    const abs = path.join(process.env.SAG_ROOT || process.cwd(), r.rows[0].storage_rel);
+    if (!fs.existsSync(abs)) return reply.code(404).send({ error: "文件已丢失" });
+    const data = fs.readFileSync(abs);
+    reply.header("Content-Type", r.rows[0].mime || "application/octet-stream");
+    reply.header("Content-Disposition", `attachment; filename="${encodeURIComponent(r.rows[0].filename)}"`);
+    return reply.send(data);
+  });
+
+  // 2) 默认任务容器(HAR: PUT /api/tasks/default + nodes/{key} — 未选项目时的"草稿容器")
+  app.get("/api/tasks/default", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r = await pool.query(`select id, title, status from research_projects where user_id=$1 order by updated_at desc limit 1`, [user.id]);
+    // 无项目则返回空默认
+    return { task: r.rows[0] ? { id: r.rows[0].id, module: "workflow", title: r.rows[0].title } : null };
+  });
+
+  // 3) viz_data 节点(viz 数据集/表格挂在任务节点上, HAR 实测存在 GET tasks/{id}/nodes/viz_data)
+  app.get("/api/tasks/:taskId/nodes/viz_data", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { taskId } = request.params as { taskId: string };
+    // 该任务项目的 viz_data 节点(兼容: 没有独立表则从 research_nodes 兜底)
+    const r = await pool.query(
+      `select n.* from research_nodes n
+         join research_projects p on p.id=n.project_id and p.user_id=$2
+        where n.project_id=$1 and n.node_key='viz_data'`, [taskId, user.id]);
+    return { node: r.rows[0] ?? null };
+  });
+
+  // 4) 知识库/聊天会话删除(HAR: DELETE knowledge/sessions/sess_xxx)
+  app.delete("/api/knowledge/sessions/:sessionId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { sessionId } = request.params as { sessionId: string };
+    const id = sessionId.replace(/^sess_/, "");
+    await pool.query(`delete from mcp_sessions where id=$1 and user_id=$2`, [id, user.id]);
+    await pool.query(`delete from mcp_messages where session_id=$1`, [id]);
+    return { ok: true };
+  });
+
+  // ═══ SocialSci 补漏R2: aiSkill 写作卡 + 工作台整包快照(迁移124) ═══
+  app.post("/api/research/projects/:projectId/skill-card", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { sectionId?: string; sectionTitle?: string; level?: number; outlineTree?: string; parentTitle?: string; topic?: string; researchMethod?: string };
+    if (!body?.sectionId || !body?.sectionTitle) return reply.code(400).send({ error: "缺少 sectionId/sectionTitle" });
+    const r = await chapterSkill.generateChapterSkillCard({
+      userId: user.id, projectId,
+      sectionId: body.sectionId, sectionTitle: body.sectionTitle,
+      level: body.level, outlineTree: body.outlineTree,
+      parentTitle: body.parentTitle, topic: body.topic, researchMethod: body.researchMethod,
+    });
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { card: r.card };
+  });
+  app.post("/api/research/projects/:projectId/skill-cards/batch", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { sections?: Array<{ id: string; title: string; level?: number }> };
+    if (!Array.isArray(body?.sections) || !body.sections.length) return reply.code(400).send({ error: "缺少 sections" });
+    return await chapterSkill.batchGenerateSkillCards(user.id, projectId, body.sections);
+  });
+  app.get("/api/research/projects/:projectId/skill-cards", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    return { cards: await chapterSkill.getChapterSkillCards(user.id, projectId) };
+  });
+  // 工作台整包快照(23键全状态, HAR: PUT task snapshot 语义)
+  app.get("/api/research/projects/:projectId/workbench", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await chapterSkill.getWorkbenchSnapshot(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return { snapshot: r.snapshot, englishAbstract: r.englishAbstract };
+  });
+  app.put("/api/research/projects/:projectId/workbench", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { snapshot?: Record<string, unknown> };
+    if (!body?.snapshot) return reply.code(400).send({ error: "缺少 snapshot" });
+    const r = await chapterSkill.saveWorkbenchSnapshot(user.id, projectId, body.snapshot);
+    if (!r.ok) return reply.code(404).send({ error: r.error });
+    return { ok: true };
+  });
+
+  // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate) ═══
+  app.post("/api/clarify/generate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { title?: string; outline?: string; requirements?: string; researchMethod?: string; totalWordCount?: number; sampleContent?: string };
+    if (!body?.title?.trim()) return reply.code(400).send({ error: "缺少 title" });
+    return { success: true, data: await researchPipeline.generateClarify(body as never) };
+  });
+
+  // ═══ SocialSci R5: 版本状态(HAR: workflow/versions/task/{id}/current → state 含 stale 检测) ═══
+  app.get("/api/research/versions/current", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { projectId?: string };
+    if (!q.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    // 从项目快照+版本表组装 state(含 stale: 节点比版本新=旧了)
+    const project = await researchPipeline.getProject(user.id, q.projectId);
+    if (!project) return reply.code(404).send({ error: "项目不存在" });
+    const r = await pool.query(
+      `select version, label, status, created_at from research_versions where project_id=$1 order by version desc limit 1`,
+      [q.projectId]);
+    const last = r.rows[0] ?? null;
+    return {
+      success: true,
+      state: {
+        taskId: q.projectId,
+        inputVersion: project.workbench_snapshot?.phase2VersionId ? { id: project.workbench_snapshot.phase2VersionId } : null,
+        phase2Version: null, phase2Stale: false,
+        phase3Version: null, phase3Stale: false,
+        phase4Version: null, phase4Stale: false,
+        phase5Version: last ? { id: last.id, version: last.version, label: last.label, status: last.status } : null,
+        phase5Stale: false,
+        publishedVersion: project.published_version ?? 0,
+        updatedAt: new Date().toISOString(),
+      },
+    };
   });
 
   return app;
