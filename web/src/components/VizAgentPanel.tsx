@@ -8,6 +8,7 @@ import {
   BarChart3, Bug, CheckCircle2, ChevronDown, Download, ImageIcon, Loader2,
   MessageSquarePlus, Send, Sparkles, Trash2, Upload, Wand2,
 } from "lucide-react";
+import { readResume } from "./ResearchHistoryPanel";
 
 interface Session { id: string; title: string; status: string; created_at: string; updated_at?: string; artifact_count: string; }
 interface Artifact { id: string; session_id: string; version: number; prompt: string; png_path: string; svg_editable_path: string; critique: { improve?: string }; status: string; created_at: string; }
@@ -27,6 +28,43 @@ async function j<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {
 }
 function cn(...xs: Array<string | false | undefined>) { return xs.filter(Boolean).join(" "); }
 function artUrl(p: string): string { return p.startsWith("http") ? p : `/api/viz/files/${p}`; }
+// R9(闭源 VizView 图片加载): blob 获取 cache no-store + 4 次重试(仅 401/404/408/425/429/500/502/503/504), 150ms*attempt 退避
+const RETRYABLE = new Set([401, 404, 408, 425, 429, 500, 502, 503, 504]);
+function useArtBlob(p: string): string {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!p) return;
+    let alive = true;
+    const cacheKey = "art:" + p;
+    const hit = sessionStorage.getItem(cacheKey);
+    if (hit) { setUrl(hit); return; }
+    (async () => {
+      let lastErr: Error | null = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (!alive) return;
+        try {
+          const r = await fetch(artUrl(p), { headers: { Authorization: `Bearer ${tokenOf()}` }, cache: "no-store" });
+          if (r.ok) {
+            const u = URL.createObjectURL(await r.blob());
+            try { sessionStorage.setItem(cacheKey, u); } catch { /* 超限忽略 */ }
+            if (alive) setUrl(u);
+            return;
+          }
+          lastErr = new Error(`图表文件加载失败 (${r.status})`);
+          if (!RETRYABLE.has(r.status)) break;
+        } catch (e) { lastErr = e as Error; }
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+      }
+      if (alive && lastErr) setUrl(artUrl(p)); // 兜底直链(浏览器自带重试)
+    })();
+    return () => { alive = false; };
+  }, [p]);
+  return url || artUrl(p);
+}
+function ArtImg({ path, className, alt }: { path: string; className?: string; alt?: string }) {
+  const src = useArtBlob(path);
+  return <img src={src} alt={alt ?? "chart"} className={className} />;
+}
 function msgText(m: Msg): string {
   const c = m.content;
   if (typeof c === "string") return c;
@@ -71,6 +109,13 @@ export function VizAgentPanel() {
     try { const r = await j<{ sessions: Session[] }>("/api/viz/sessions"); setSessions(r.sessions ?? []); } catch (e) { setErr((e as Error).message); }
   }, []);
   useEffect(() => { void loadSessions(); }, [loadSessions]);
+
+  // 历史中心 deep-resume: 从历史记录 viz 区卡点击跳入 → 自动打开对应绘图会话
+  useEffect(() => {
+    const r = readResume("viz");
+    if (r?.id) void loadSession(String(r.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadSession = async (sid: string) => {
     setCurSession(sid); setMessages([]); setArtifacts([]); setErr("");
@@ -230,7 +275,7 @@ export function VizAgentPanel() {
                 return (
                   <div key={m.id} className="rounded-lg border border-slate-700/50 bg-slate-800/50 p-2">
                     <p className="mb-1 flex items-center gap-1 text-[10px] text-slate-400"><ImageIcon className="h-3 w-3 text-pink-400" /> 产物 v{(c as { version?: unknown }).version as number} {c.title ? `· ${String(c.title).slice(0, 30)}` : ""}</p>
-                    <img src={artUrl(a.pngRel)} alt="chart" className="max-h-64 w-auto rounded border border-slate-700/40 bg-white/5" />
+                    <ArtImg path={a.pngRel} className="max-h-64 w-auto rounded border border-slate-700/40 bg-white/5" alt="chart" />
                   </div>
                 );
               }
@@ -317,7 +362,7 @@ export function VizAgentPanel() {
                 </span>
               </div>
               {latest && a.version === latest.version && (
-                <img src={artUrl(a.png_path)} alt="" className="mt-1 max-h-36 w-full rounded border border-slate-700/50 object-contain" />
+                <ArtImg path={a.png_path} className="mt-1 max-h-36 w-full rounded border border-slate-700/50 object-contain" alt="" />
               )}
               <p className="mt-1 line-clamp-2 text-[9px] text-slate-500">{a.prompt?.slice(0, 80) || "—"}</p>
               {a.critique?.improve && <p className="mt-0.5 line-clamp-1 text-[9px] text-rose-300/60" title={a.critique.improve}>自审: {a.critique.improve.slice(0, 60)}</p>}

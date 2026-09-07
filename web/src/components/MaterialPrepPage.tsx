@@ -57,8 +57,26 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
   const [genDialog, setGenDialog] = useState<null | { kind: "table" | "theory"; tableType: string; sectionId: string }>(null);
   const [litDialog, setLitDialog] = useState(false);
   const [litBulk, setLitBulk] = useState("");
-  const [litEntries, setLitEntries] = useState<Array<{ title: string; authors: string; source: string; year: string; doi: string; gb: string; note: string }>>([]);
-  const litInit = () => ({ title: "", authors: "", source: "", year: "", doi: "", gb: "", note: "" });
+  const [litEntries, setLitEntries] = useState<Array<{ title: string; authors: string; source: string; year: string; doi: string; gb: string; note: string; vol?: string; issue?: string; pages?: string }>>([]);
+  const litInit = () => ({ title: "", authors: "", source: "", year: "", doi: "", gb: "", note: "", vol: "", issue: "", pages: "" });
+  // R2(闭源 GB/T 生成函数): 作者. 标题[J]. 期刊,年卷(期):页码. DOI:xxx.
+  const toGbRef = (e: { authors: string; title: string; source: string; year: string; vol?: string; issue?: string; pages?: string; doi?: string }, n: number) => {
+    const a = e.authors.trim().replace(/[\[\]"'"“”‘’]/g, "");
+    const t = e.title.trim().replace(/[\[\]"'"“”‘’]/g, "");
+    const s = e.source.trim();
+    if (a && t && s && e.year) {
+      const vol = (e.vol ?? "").trim();
+      const iss = (e.issue ?? "").trim();
+      const pg = (e.pages ?? "").trim();
+      let mid = `,${e.year}`;
+      if (vol) mid += `,${vol}${iss ? `(${iss})` : ""}`;
+      else if (iss) mid += `(${iss})`;
+      if (pg) mid += `:${pg}`;
+      const doi = (e.doi ?? "").trim();
+      return `[${n}] ${a}. ${t}[J]. ${s}${mid}.${doi ? ` DOI:${doi}.` : ""}`;
+    }
+    return "";
+  };
 
   const load = useCallback(async () => {
     try {
@@ -113,7 +131,7 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
       let n = 0;
       for (const e of litEntries) {
         if (!e.title.trim()) continue;
-        const gbLine = e.gb || (e.authors && e.year ? `[${n + 1}] ${e.authors}. ${e.title}[J]. ${e.source || "期刊"}, ${e.year}.` : "");
+        const gbLine = e.gb || toGbRef(e, n + 1) || (e.authors && e.year ? `[${n + 1}] ${e.authors}. ${e.title}[J]. ${e.source || "期刊"}, ${e.year}.` : "");
         await j("/api/research/materials", {
           method: "POST",
           body: JSON.stringify({ projectId, kind: "citation", title: e.title, contentMd: gbLine, sourceRef: e.doi || e.source }),
@@ -138,24 +156,42 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
       await load();
     } catch (e) { onMsg((e as Error).message); } finally { setBusy(false); setBusyMsg(""); }
   };
-  // 编排: 调分配接口并确认
+  // 编排(R2 闭源 MaterialAllocationDialog): 先拉建议→弹层确认(章节树+勾选)→采纳
+  const [allocDlg, setAllocDlg] = useState<null | Array<{ materialId: string; materialTitle: string; sectionId: string | null; sectionTitle: string; level: number; selected: boolean }>>(null);
   const allocate = async () => {
     if (busy) return;
     setBusy(true); setBusyMsg("AI 正在编排素材到章节...");
     try {
-      const r = await j<{ suggestions?: Array<{ materialId: string; sectionId: string | null }> }>("/api/research/materials/allocate", {
+      const r = await j<{ suggestions?: Array<{ materialId: string; materialTitle?: string; sectionId: string | null; sectionTitle?: string; level?: number }> }>("/api/research/materials/allocate", {
         method: "POST", body: JSON.stringify({ projectId }),
       });
       const sug = r.suggestions ?? [];
-      let adopted = 0;
-      for (const s of sug) {
-        if (!s.sectionId) continue;
-        await j(`/api/research/materials/${s.materialId}/adopt`, { method: "POST", body: JSON.stringify({ sectionIds: [s.sectionId] }) });
-        adopted++;
-      }
-      onMsg(sug.length ? `编排完成: ${adopted} 条已挂章` : "暂无待编排素材");
+      if (!sug.length) { onMsg("暂无待编排素材"); return; }
+      const secTitle = (sid: string | null) => {
+        if (!sid) return "";
+        for (const s of secs) { if (s.id === sid) return s.title; for (const c of s.children ?? []) if (c.id === sid) return `${s.title} / ${c.title}`; }
+        return "";
+      };
+      const lv = (sid: string | null) => { for (const s of secs) { if (s.id === sid) return 1; for (const c of s.children ?? []) if (c.id === sid) return 2; } return 1; };
+      setAllocDlg(sug.map((s) => ({ materialId: s.materialId, materialTitle: s.materialTitle ?? "", sectionId: s.sectionId, sectionTitle: secTitle(s.sectionId), level: lv(s.sectionId), selected: !!s.sectionId })));
       await load();
     } catch (e) { onMsg((e as Error).message); } finally { setBusy(false); setBusyMsg(""); }
+  };
+  // 确认编排(闭源: 每项素材只关联一个对应章节, 确认后用于该章节正文生成)
+  const confirmAlloc = async () => {
+    if (!allocDlg) return;
+    setBusy(true);
+    try {
+      let n = 0;
+      for (const s of allocDlg) {
+        if (!s.selected || !s.sectionId) continue;
+        await j(`/api/research/materials/${s.materialId}/adopt`, { method: "POST", body: JSON.stringify({ sectionIds: [s.sectionId] }) });
+        n++;
+      }
+      onMsg(`已编排 ${n} 条素材到对应章节`);
+      setAllocDlg(null);
+      await load();
+    } catch (e) { onMsg((e as Error).message); } finally { setBusy(false); }
   };
   // 发布素材版本(门禁: 至少 1 素材且无挂章任务; 对齐闭源"素材版本待发布")
   const publish = async () => {
@@ -353,6 +389,40 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
           </div>
         )}
 
+        {/* R2: 素材编排确认弹层(闭源 MaterialAllocationDialog: 每项素材只关联一个章节) */}
+        {allocDlg && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAllocDlg(null)}>
+            <div className="max-h-[80vh] w-full max-w-xl overflow-hidden rounded-xl border border-slate-600/60 bg-slate-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="border-b border-slate-700/60 px-5 py-3.5">
+                <h3 className="text-base font-semibold text-slate-100">素材编排确认</h3>
+                <p className="mt-0.5 text-[11px] text-slate-500">每项素材只关联一个对应章节，确认后用于该章节正文生成。</p>
+              </div>
+              <div className="max-h-72 space-y-1.5 overflow-y-auto px-5 py-3">
+                {allocDlg.map((s, i) => (
+                  <div key={s.materialId} className="flex items-center gap-2.5 rounded-lg border border-slate-700/50 bg-slate-800/40 p-2.5 hover:bg-slate-800/70">
+                    <input type="checkbox" checked={s.selected}
+                      onChange={(e) => setAllocDlg((p) => p?.map((x, xi) => xi === i ? { ...x, selected: e.target.checked } : x) ?? null)}
+                      className="h-3.5 w-3.5 accent-emerald-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] text-slate-200">{s.materialTitle || `素材 ${s.materialId.slice(0, 8)}`}</p>
+                      {s.sectionTitle && <p className="truncate text-[9px] text-slate-500">{s.level > 1 ? "　└ " : ""}{s.sectionTitle}</p>}
+                    </div>
+                  </div>
+                ))}
+                {allocDlg.length === 0 && <p className="py-4 text-center text-[11px] text-slate-500">暂无建议</p>}
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-700/60 px-5 py-3">
+                <span className="text-[10px] text-slate-500">已选 {allocDlg.filter((s) => s.selected).length} 项</span>
+                <div className="flex gap-2">
+                  <button onClick={() => setAllocDlg(null)} className="rounded-lg bg-slate-800 px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700">取消</button>
+                  <button onClick={() => void confirmAlloc()} disabled={busy}
+                    className="rounded-lg bg-cyan-600 px-4 py-1.5 text-[11px] text-white hover:bg-cyan-500 disabled:opacity-50">确认编排</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* W6: 手动添加文献弹层(批量粘贴解析+条目卡) */}
         {litDialog && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setLitDialog(false)}>
@@ -386,6 +456,13 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
                       <input placeholder="DOI / 链接" value={e.doi} onChange={(ev) => setLitEntries((p) => p.map((x, xi) => xi === i ? { ...x, doi: ev.target.value } : x))}
                         className="rounded border border-slate-600/60 bg-slate-950/60 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
                       <input placeholder="GB/T 引用格式" value={e.gb} onChange={(ev) => setLitEntries((p) => p.map((x, xi) => xi === i ? { ...x, gb: ev.target.value } : x))}
+                        className="col-span-2 rounded border border-slate-600/60 bg-slate-950/60 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
+                      {/* R2: 卷/期/页码(空则自动按 年,卷(期):页码 组装) */}
+                      <input placeholder="卷 (如 45)" value={e.vol ?? ""} onChange={(ev) => setLitEntries((p) => p.map((x, xi) => xi === i ? { ...x, vol: ev.target.value } : x))}
+                        className="rounded border border-slate-600/60 bg-slate-950/60 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
+                      <input placeholder="期 (如 2)" value={e.issue ?? ""} onChange={(ev) => setLitEntries((p) => p.map((x, xi) => xi === i ? { ...x, issue: ev.target.value } : x))}
+                        className="rounded border border-slate-600/60 bg-slate-950/60 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
+                      <input placeholder="页码 (如 100-120)" value={e.pages ?? ""} onChange={(ev) => setLitEntries((p) => p.map((x, xi) => xi === i ? { ...x, pages: ev.target.value } : x))}
                         className="col-span-2 rounded border border-slate-600/60 bg-slate-950/60 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
                     </div>
                   </div>

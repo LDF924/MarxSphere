@@ -5,6 +5,7 @@
 import { useState, useEffect, type FC } from "react";
 import { FlaskConical, Upload, Play, RotateCcw, Table2, AlertTriangle, CheckCircle2, FileUp, ArrowRight, Wand2, History, Download, BookOpen, Trash2, Stethoscope, Database, ListChecks, Workflow, LineChart, BookMarked } from "lucide-react";
 import { apiEmpirical, apiEmpiricalWorkshop, apiEmpiricalDemo } from "../lib/api";
+import { readResume } from "./ResearchHistoryPanel";
 import { Button } from "./ui/button";
 import { ToolRunner } from "./ToolRunner";
 import { Card } from "./ui/card";
@@ -12,6 +13,7 @@ import { NavRail, type SectionId } from "./empirical/NavRail";
 import { GeneratorPage } from "./empirical/GeneratorPage";
 import { RecognizePage } from "./empirical/RecognizePage";
 import { DataVersionBar } from "./empirical/DataVersionBar";
+import { PipelineOverview } from "./empirical/PipelineOverview";
 import { ReliabilityPage } from "./empirical/ReliabilityPage";
 import { DiagnosisPage } from "./empirical/DiagnosisPage";
 import { ImputationPage } from "./empirical/ImputationPage";
@@ -139,6 +141,8 @@ export const EmpiricalResearchPanel: FC = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [historyDetail, setHistoryDetail] = useState<any>(null);
   const [notice, setNotice] = useState("");
+  // V413: 流水线总览刷新(仿真/信效度/识别完成后 +1 触发重拉)
+  const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
   const [datasets, setDatasets] = useState<any[]>([]);
   const [preprocess, setPreprocess] = useState<{ winsorize: string[]; log: string[]; standardize: string[] }>({ winsorize: [], log: [], standardize: [] });
 
@@ -149,6 +153,12 @@ export const EmpiricalResearchPanel: FC = () => {
     void apiEmpirical.skills().then((r) => setSkills(r.skills)).catch(() => {});
     loadHistory();
     void apiEmpirical.datasets().then((r) => setDatasets(r.datasets as any[])).catch(() => {});
+    // 历史中心 deep-resume: 从历史记录 statistics 区卡点击跳入 → 自动打开对应实证记录
+    const r = readResume("statistics");
+    if (r?.id) {
+      setShowHistory(true);
+      void apiEmpirical.historyDetail(String(r.id)).then((d) => setHistoryDetail((d as any).record)).catch(() => {});
+    }
   }, []);
 
   const loadHistory = () => {
@@ -281,14 +291,14 @@ export const EmpiricalResearchPanel: FC = () => {
       if (["logit", "ologit", "mnl", "crosstab"].includes(selectedMethod.id) && runParams.xs) {
         runParams.xs = String(runParams.xs).split(",").map((x) => x.trim()).filter(Boolean);
       }
-      const r = await apiEmpirical.run({ data: parsed, method: selectedMethod.id, params: runParams, preprocess });
+      const r = await apiEmpirical.run({ data: parsed, method: selectedMethod.id, params: runParams, preprocess, projectId });
       if (!r.ok) { setError(r.error ?? "提交失败"); setRunning(false); return; }
       // 轮询结果(V381: 对齐后端 300s 超时, 200 次 × 1.5s; 超时提示可去历史查看)
       let timedOut = true;
       for (let i = 0; i < 200; i++) {
         await new Promise((res) => setTimeout(res, 1500));
         const s = await apiEmpirical.result(r.taskId);
-        if (s.status === "done") { setResult(s.result ?? {}); setFlowStep("result"); timedOut = false; break; }
+        if (s.status === "done") { setResult(s.result ?? {}); setFlowStep("result"); timedOut = false; setPipelineRefreshKey((k) => k + 1); break; }
         if (s.status === "error") { setError(s.error ?? "执行失败"); timedOut = false; break; }
         if (s.status === "not_found") { setError("任务不存在(服务可能重启)"); timedOut = false; break; }
       }
@@ -494,6 +504,8 @@ export const EmpiricalResearchPanel: FC = () => {
                     }
                   }} />
                 </div>
+                {/* V413: 课题流水线总览(问卷→数据→分析全链时间线) */}
+                {projectId && <PipelineOverview projectId={projectId} refreshKey={pipelineRefreshKey} />}
                 {/* 闸门状态总览 */}
                 {projectId && (
                   <div className="mt-2 rounded-lg border bg-muted/20 p-2">
@@ -531,13 +543,23 @@ export const EmpiricalResearchPanel: FC = () => {
 
           {activeSection === "recognize" && (
             <div className="mx-auto w-full max-w-[1400px] space-y-3">
-              <RecognizePage projectId={projectId} />
+              <RecognizePage
+                projectId={projectId}
+                onSimLoaded={(data) => {
+                  setParsed(data);
+                  // 转 CSV 文本(供下游数据版本/管道用)
+                  const esc = (v: unknown) => String(v ?? "").includes(",") ? `"${String(v ?? "")}"` : String(v ?? "");
+                  setCsv([data.columnOrder.join(","), ...data.rows.map((row) => row.map(esc).join(","))].join("\n"));
+                  setNotice(`✅ 仿真数据已载入工作台: ${data.rows.length} 行 × ${data.columnOrder.length} 列 — 可直接做信效度/回归/插补`);
+                  setPipelineRefreshKey((k) => k + 1);  // 刷新流水线总览
+                }}
+              />
             </div>
           )}
 
           {activeSection === "reliability" && (
             <div className="mx-auto w-full max-w-[1400px]">
-              <ReliabilityPage projectId={projectId} />
+              <ReliabilityPage projectId={projectId} onDone={() => setPipelineRefreshKey((k) => k + 1)} />
             </div>
           )}
 

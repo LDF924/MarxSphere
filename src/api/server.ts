@@ -110,6 +110,7 @@ import * as vizAgent from "../services/viz-agent-service.js";
 import * as vizExec from "../services/viz-exec-service.js";
 // SocialSci P0-5: 学术文本编辑器
 import * as editorService from "../services/editor-service.js";
+import * as aiJobService from "../services/editor-ai-job-service.js";
 // SocialSci P0-8: 积分商业化 + 微信扫码登录
 import * as pointsService from "../services/points-service.js";
 import * as wechatAuth from "../services/wechat-auth-service.js";
@@ -1219,11 +1220,12 @@ export function buildHttpServer() {
   const outlineExportSchema = z.object({
     paperTitle: z.string().min(1).max(200),
     nodes: z.array(z.unknown()).max(200),
+    fontName: z.string().max(60).optional(),
   });
   app.post("/api/paper-outline/export", async (request, reply) => {
     const body = outlineExportSchema.parse(request.body);
     const { exportOutlineDocx } = await import("../services/paper-outline-service.js");
-    const result = await exportOutlineDocx({ paperTitle: body.paperTitle, nodes: body.nodes as never[] });
+    const result = await exportOutlineDocx({ paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName });
     if (!result.ok || !result.base64) {
       return reply.code(502).send({ error: { code: "OUTLINE_EXPORT_FAILED", message: result.error ?? "docx 导出失败" } });
     }
@@ -4576,6 +4578,8 @@ export function buildHttpServer() {
       columnOrder: z.array(z.string().min(1)).min(1),
       rows: z.array(z.array(z.union([z.string(), z.number(), z.null()]))).min(1),
     }),
+    // V413: 可选课题归属 — 完成后落 pipeline_runs(流水线总览可见)
+    projectId: z.string().uuid().optional().nullable(),
     method: z.enum(["descriptive", "ols", "did", "did_twfe", "event_study", "iv", "rdd", "panel_fe", "psm", "scm", "logit", "ologit", "mnl", "crosstab", "genvars", "filter", "meta_analysis"]),
     params: z.record(z.unknown()).default({}),
     // V381 fix: preprocess 被 zod 剥离导致前端勾选静默失效
@@ -5528,6 +5532,49 @@ except Exception as e:
     return { questionnaires: await questionnaireService.listQuestionnaires(query.projectId) };
   });
 
+  // V413: 课题流水线总览(问卷+数据版本+全阶段分析 runs 时间线)
+  app.get("/api/empirical/projects/:projectId/pipeline", async (request, reply) => {
+    const { projectId } = request.params as { projectId: string };
+    z.string().uuid().parse(projectId);
+    const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
+    return { overview: await questionnaireService.projectPipelineOverview(projectId) };
+  });
+
+  // V413: 课题全套报告导出(流水线 → LaTeX + Word)
+  app.post("/api/empirical/projects/:projectId/report", async (request, reply) => {
+    const { projectId } = request.params as { projectId: string };
+    z.string().uuid().parse(projectId);
+    const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
+    const { empiricalService } = await import("../services/empirical-service.js");
+    try {
+      const overview = await questionnaireService.projectPipelineOverview(projectId);
+      const r = await empiricalService.exportProjectReport({ overview: overview as Record<string, unknown> });
+      if (!r.ok) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: r.error ?? "导出失败" } });
+      return { ok: true, taskId: r.taskId };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message ?? e).slice(0, 300) } });
+    }
+  });
+
+  // V413: 报告文件下载(data/agent_workspace/reports/)
+  app.get("/api/empirical/reports/:file", async (request, reply) => {
+    const raw = String((request.params as { file?: string }).file ?? "");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    const repDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "reports");
+    const target = nodePath.resolve(repDir, raw);
+    if (!(target === repDir || target.startsWith(repDir + nodePath.sep))) {
+      return reply.code(400).send({ error: "路径越界" });
+    }
+    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在" });
+    const ext = nodePath.extname(target).toLowerCase();
+    const mime = ext === ".docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : ext === ".tex" ? "text/plain" : ext === ".pdf" ? "application/pdf" : "application/octet-stream";
+    reply.header("Content-Type", mime);
+    reply.header("Content-Disposition", `attachment; filename="${nodePath.basename(target)}"`);
+    return reply.send(fs.readFileSync(target));
+  });
+
   const dataVersionSchema = z.object({
     projectId: z.string().uuid().optional(),
     name: z.string().min(1).max(200),
@@ -5552,6 +5599,67 @@ except Exception as e:
     const query = request.query as { projectId?: string };
     const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
     return { versions: await questionnaireService.listDataVersions(query.projectId) };
+  });
+
+  // ═══════════ V413: 问卷仿真数据 + 论文级图表生成（补齐工作台两缺口）═══════════
+  // POST /api/empirical/simulate — 按已识别问卷 structure 生成 N 份带内在结构的模拟作答
+  app.post("/api/empirical/simulate", async (request, reply) => {
+    const schema = z.object({
+      projectId: z.string().uuid().optional().nullable(),      // V413: 落流水线(pipeline_runs)用
+      questionnaireId: z.string().uuid().optional(),          // 从库取结构
+      questionnaire: z.array(z.unknown()).optional(),          // 或直接传结构
+      params: z.record(z.unknown()).default({}),               // { n, seed, design?, skip?, missing? }
+    });
+    const body = schema.parse(request.body);
+    const { empiricalService } = await import("../services/empirical-service.js");
+    try {
+      let qs = body.questionnaire;
+      if (!qs || qs.length === 0) {
+        if (!body.questionnaireId) {
+          return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "需 questionnaireId 或 questionnaire" } });
+        }
+        const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
+        const rec = await questionnaireService.getQuestionnaire(body.questionnaireId);
+        if (!rec) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "问卷不存在" } });
+        qs = Array.isArray(rec.structure) ? rec.structure : [];
+      }
+      const r = await empiricalService.simulateQuestionnaireData({ questionnaire: qs as unknown[], params: body.params, projectId: body.projectId ?? null });
+      if (!r.ok) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: r.error ?? "生成失败" } });
+      return { ok: true, taskId: r.taskId, questionnaireId: body.questionnaireId ?? null };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message ?? e).slice(0, 300) } });
+    }
+  });
+
+  // POST /api/empirical/figures — 实证结果 → 论文级 matplotlib 图(alpha_bar/boxplot/heatmap/forest/compare)
+  app.post("/api/empirical/figures", async (request, reply) => {
+    const body = z.object({ spec: z.record(z.unknown()) }).parse(request.body);
+    const { empiricalService } = await import("../services/empirical-service.js");
+    try {
+      const r = await empiricalService.generateEmpiricalFigures({ spec: body.spec });
+      if (!r.ok) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: r.error ?? "绘图失败" } });
+      return { ok: true, taskId: r.taskId };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message ?? e).slice(0, 300) } });
+    }
+  });
+
+  // GET /api/empirical/figures/:file — 生成的图表静态服务(data/agent_workspace/figures/)
+  app.get("/api/empirical/figures/:file", async (request, reply) => {
+    const raw = String((request.params as { file?: string }).file ?? "");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+    const figDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "figures");
+    const target = nodePath.resolve(figDir, raw);
+    if (!(target === figDir || target.startsWith(figDir + nodePath.sep))) {
+      return reply.code(400).send({ error: "路径越界" });
+    }
+    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在" });
+    const ext = nodePath.extname(target).toLowerCase();
+    const mime = ext === ".pdf" ? "application/pdf" : ext === ".svg" ? "image/svg+xml" : "image/png";
+    reply.header("Content-Type", mime);
+    reply.header("Cache-Control", "public, max-age=3600");
+    return reply.send(fs.readFileSync(target));
   });
 
   // 演示数据: 基于《农村经营形态调查问卷(最终打印版).pdf》模板生成的 50 份全量模拟作答
@@ -8920,13 +9028,153 @@ except Exception as e:
     return { task };
   });
 
-  // 清除该用户全部历史任务(科研任务+审稿+绘图会话; 历史中心"清除全部"按钮)
+  // ═══ SocialSci HistoryView 对齐: 历史中心统一多源端点 ═══
+  // 闭源语义: 6 模块(workflow/review/statistics/viz/editor/knowledge)分区展示,
+  //   每卡=模块归属+标题+状态+相对时间, 点击恢复对应工作台条目。
+  // 数据源: research_tasks(workflow, 含跨模块容器 module 字段真值) / review_jobs(review)
+  //   / empirical_results(statistics, 全局共享分析记录) / viz_sessions(viz)
+  //   / documents_v2(editor 文档资产) / search_query_history(knowledge, 131 迁移)
+  app.get("/api/research/history", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const rt = await pool.query(
+      `select id, project_id, module, job_kind, phase, phase_label, goal, status, error, created_at, updated_at
+         from research_tasks where user_id=$1 order by updated_at desc limit 100`,
+      [user.id]
+    );
+    const rj = await pool.query(
+      `select id, kind, title, status, created_at, updated_at
+         from review_jobs where user_id=$1 order by updated_at desc limit 50`,
+      [user.id]
+    );
+    const vs = await pool.query(
+      `select s.id, s.title, s.status, s.created_at, s.updated_at
+         from viz_sessions s where s.user_id=$1 order by s.updated_at desc limit 50`,
+      [user.id]
+    );
+    // 实证历史为全局共享记录(empirical/run 无鉴权, user_id 恒 NULL), 不去重归属
+    const { empiricalService } = await import("../services/empirical-service.js");
+    const es = await empiricalService.listEmpiricalHistory(30);
+    const dc = await pool.query(
+      `select d.id, d.title, d.word_count, d.status, d.tags, d.updated_at
+         from documents_v2 d where d.user_id=$1 order by d.updated_at desc limit 50`,
+      [user.id]
+    );
+    const kh = await pool.query(
+      `select id, query, source_id, created_at
+         from search_query_history where user_id=$1 order by created_at desc limit 30`,
+      [user.id]
+    );
+    const done = (s: string | null) => s === "done" || s === "failed" || s === "cancelled";
+    return {
+      tasks: rt.rows.map((t) => ({
+        id: t.id, projectId: t.project_id ?? "", module: t.module === "workflow" || !t.module ? "workflow" : t.module,
+        title: t.goal || "未命名任务", phase: t.phase ?? 0, phase_label: t.phase_label ?? "",
+        status: t.status, created_at: t.created_at, updated_at: t.updated_at,
+        error: t.error ?? null, active: !done(t.status), kind: t.job_kind ?? "",
+      })),
+      review: rj.rows.map((r) => ({
+        id: r.id, title: r.title || "审稿任务", phase: 0, phase_label: "审稿",
+        status: r.status, created_at: r.created_at, updated_at: r.updated_at,
+        active: !done(r.status), kind: r.kind ?? "text",
+      })),
+      viz: vs.rows.map((v) => ({
+        id: v.id, title: v.title || "未命名绘图会话", phase: 0, phase_label: "绘图",
+        status: v.status, created_at: v.created_at, updated_at: v.updated_at,
+        active: false, kind: "viz",
+      })),
+      statistics: es.map((e) => ({
+        id: String(e.id), title: e.title || `实证分析 · ${e.method ?? "unknown"}`, phase: 0,
+        phase_label: "统计", status: "done", created_at: e.created_at as string,
+        updated_at: e.created_at as string, active: false,
+        kind: String(e.method ?? "analysis"),
+      })),
+      editor: dc.rows.map((d) => ({
+        id: d.id, title: d.title || "未命名文档", phase: 0, phase_label: "编辑器",
+        status: d.status, created_at: d.updated_at, updated_at: d.updated_at,
+        active: false, kind: "doc", wordCount: Number(d.word_count ?? 0),
+      })),
+      knowledge: kh.rows.map((k) => ({
+        id: k.id, title: k.query, phase: 0, phase_label: "检索",
+        status: "done", created_at: k.created_at, updated_at: k.created_at,
+        active: false, kind: "search",
+      })),
+    };
+  });
+
+  // knowledge 查询历史静默记录(AskPanel 检索 done 后 fire-and-forget)
+  app.post("/api/research/history/knowledge", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { query?: string; sourceId?: string };
+    const q = String(body?.query ?? "").trim();
+    if (!q) return reply.code(400).send({ error: "缺少查询内容" });
+    if (q.length > 500) return reply.code(400).send({ error: "查询过长" });
+    await pool.query(
+      `insert into search_query_history (user_id, query, source_id) values ($1,$2,$3)`,
+      [user.id, q.slice(0, 500), String(body?.sourceId ?? "")]
+    );
+    return { ok: true };
+  });
+
+  // 清除历史记录(闭源 deleteAll 语义): ACTIVE_JOB 保护 + failed 明细 + 资产保护
+  // - research_tasks: 跳过运行中/排队任务(ACTIVE_JOB 保护, 2s 调度泵会续跑), 删终态
+  // - review_jobs: 跳过非终态(审稿 SSE 流运行中)
+  // - viz_sessions / search_query_history: 整删(会话/查询记录)
+  // - 资产不删: documents_v2(用户稿件) / empirical_results(全局共享分析记录)
   app.delete("/api/research/tasks/history", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const r1 = await pool.query(`delete from research_tasks where user_id=$1 returning id`, [user.id]);
-    const r2 = await pool.query(`delete from review_jobs where user_id=$1 returning id`, [user.id]);
-    const r3 = await pool.query(`delete from viz_sessions where user_id=$1 returning id`, [user.id]);
-    return { deleted: { researchTasks: r1.rowCount ?? 0, reviewJobs: r2.rowCount ?? 0, vizSessions: r3.rowCount ?? 0 } };
+
+    const deleted: Array<{ id: string; module: string }> = [];
+    const failed: Array<{ id: string; module: string; reason: string }> = [];
+    const active = ["queued", "running", "paused", "waiting_user", "segmenting", "summarizing", "streaming"];
+    // 1. research_tasks(workflow 全模块): 先分区, 保护 active
+    const rt = await pool.query(
+      `select id, module, status from research_tasks where user_id=$1`, [user.id]
+    );
+    const killT: string[] = [];
+    for (const t of rt.rows) {
+      if (active.includes(t.status)) {
+        failed.push({ id: t.id, module: t.module || "workflow", reason: "ACTIVE_JOB" });
+      } else {
+        killT.push(t.id);
+      }
+    }
+    if (killT.length) {
+      const r = await pool.query(
+        `delete from research_tasks where id = any($1::uuid[]) returning id, module`,
+        [killT]
+      );
+      for (const row of r.rows) deleted.push({ id: row.id, module: row.module || "workflow" });
+    }
+    // 2. review_jobs: 非终态保护
+    const rj = await pool.query(
+      `select id, status from review_jobs where user_id=$1`, [user.id]
+    );
+    const killR: string[] = [];
+    for (const j of rj.rows) {
+      if (active.includes(j.status)) {
+        failed.push({ id: j.id, module: "review", reason: "ACTIVE_JOB" });
+      } else {
+        killR.push(j.id);
+      }
+    }
+    if (killR.length) {
+      const r = await pool.query(
+        `delete from review_jobs where id = any($1::uuid[]) returning id`,
+        [killR]
+      );
+      for (const row of r.rows) deleted.push({ id: row.id, module: "review" });
+    }
+    // 3. viz_sessions + knowledge 查询历史(无运行态会话判定, 整删)
+    const rv = await pool.query(
+      `delete from viz_sessions where user_id=$1 returning id`, [user.id]
+    );
+    for (const row of rv.rows) deleted.push({ id: row.id, module: "viz" });
+    const rk = await pool.query(
+      `delete from search_query_history where user_id=$1 returning id`, [user.id]
+    );
+    for (const row of rk.rows) deleted.push({ id: row.id, module: "knowledge" });
+    return { deleted, failed };
+
   });
 
   // ═══ SocialSci 补漏组4: P3/P4/P5 子任务端点(HAR 语义: 章节素材三件套/批量章节/合稿) ═══
@@ -9590,6 +9838,33 @@ except Exception as e:
     const user = await requireUser(request, reply); if (!user) return;
     const { docId } = request.params as { docId: string };
     return await editorService.unlockDoc(user.id, docId);
+  });
+
+  // R6(闭源 Editor AI job 契约): 统一 AI job + SSE + cancel/retry
+  app.post("/api/editor/v1/ai/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { action?: string; text?: string; mode?: string; context?: string; document_id?: string };
+    const job = aiJobService.createAiJob(user.id, body);
+    if (!job) return reply.code(400).send({ error: "action 需为 rewrite/check/title/format_refs" });
+    return { job_id: job.id };
+  });
+  app.get("/api/editor/v1/ai/jobs/:jobId/stream", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const sse = attachSse(reply);
+    try { await aiJobService.streamAiJob(user.id, jobId, sse); }
+    catch { sse.error({ code: "STREAM_FAILED", userMessage: "流式连接失败", canRetry: true }); sse.end(); }
+  });
+  app.post("/api/editor/v1/ai/jobs/:jobId/cancel", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    return { ok: aiJobService.cancelAiJob(user.id, jobId) };
+  });
+  app.post("/api/editor/v1/ai/jobs/:jobId/retry", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const j = aiJobService.retryAiJob(user.id, jobId);
+    return j ? { job_id: j.id } : reply.code(404).send({ error: "任务不存在或不可重试" });
   });
 
   // 选区改写 5 模式 + humanize

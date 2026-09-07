@@ -1121,6 +1121,7 @@ export interface EmpiricalRunInput {
   method: string;
   params: Record<string, unknown>;
   preprocess?: { winsorize?: string[]; log?: string[]; standardize?: string[] };
+  projectId?: string;  // V413: 落课题流水线(回归类自动出森林图)
 }
 export const apiEmpirical = {
   async methods(): Promise<{ methods: EmpiricalMethod[] }> {
@@ -1338,6 +1339,29 @@ export const apiEmpiricalWorkshop = {
   async questionnaires(projectId?: string): Promise<{ questionnaires: EmpiricalQuestionnaire[] }> {
     const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
     return request(`/api/empirical/questionnaires${qs}`);
+  },
+  // V413: 问卷仿真数据生成(按已识别结构 → N 份带内在结构的模拟作答; 可带 latent 设计/跳答/挖缺)
+  async simulateData(input: { projectId?: string; questionnaireId?: string; questionnaire?: Question[]; params?: Record<string, unknown> }): Promise<{ ok: boolean; taskId?: string; error?: string; questionnaireId?: string | null }> {
+    return request("/api/empirical/simulate", { method: "POST", body: JSON.stringify(input) });
+  },
+  // V413: 论文级图表生成(alpha_bar/boxplot/heatmap/forest/compare → PNG/PDF, 静态可访问)
+  async generateFigures(spec: Record<string, unknown>): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+    return request("/api/empirical/figures", { method: "POST", body: JSON.stringify({ spec }) });
+  },
+  figuresUrl(file: string): string {
+    return `/api/empirical/figures/${encodeURIComponent(file)}`;
+  },
+  /** V413: 查询实证 Python 任务结果(仿真/绘图等共用) */
+  async taskResult(taskId: string): Promise<{ status: string; result?: any; error?: string }> {
+    return request(`/api/empirical/result/${taskId}`);
+  },
+  /** V413: 课题流水线总览(问卷+数据版本+全阶段 runs) */
+  async projectPipeline(projectId: string): Promise<{ overview: any }> {
+    return request(`/api/empirical/projects/${projectId}/pipeline`);
+  },
+  /** V413: 课题全套报告导出(LaTeX + Word) */
+  async exportReport(projectId: string): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+    return request(`/api/empirical/projects/${projectId}/report`, { method: "POST", body: "{}" });
   },
   async dataVersions(projectId?: string): Promise<{ versions: EmpiricalDataVersion[] }> {
     const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";

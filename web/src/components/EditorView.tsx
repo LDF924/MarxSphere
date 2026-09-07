@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { MarkdownRich } from "./MarkdownRich";
+import { readResume } from "./ResearchHistoryPanel";
 import {
   AlignLeft, BarChart3, CheckCircle2, ChevronLeft, ClipboardCheck, Download,
   Eye, FileText, History as HistoryIcon, ImageIcon, Loader2, Lock, Pencil, Plus, Save, Search,
@@ -44,6 +46,44 @@ const CHART_TYPES: Array<{ k: string; label: string; tpl: string }> = [
 ];
 
 function tokenOf() { return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""; }
+// R6: 统一 AI job 调用(建 job → SSE 收 delta/done; localStorage activeJobId 断线恢复语义)
+async function runAiJob<T>(body: Record<string, unknown>, onDelta?: (d: string) => void): Promise<T> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  const t = tokenOf(); if (t) h.Authorization = `Bearer ${t}`;
+  const r = await fetch("/api/editor/v1/ai/jobs", { method: "POST", headers: h, body: JSON.stringify(body) });
+  const jd = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((jd as { error?: string }).error ?? `任务创建失败 ${r.status}`);
+  const jobId = (jd as { job_id?: string }).job_id;
+  if (!jobId) throw new Error("任务创建失败: 无 job_id");
+  try { localStorage.setItem("editor.activeJobId", jobId); } catch { /* 忽略 */ }
+  try {
+    const s = await fetch(`/api/editor/v1/ai/jobs/${jobId}/stream`, { headers: { ...h, Accept: "text/event-stream" } });
+    if (!s.ok || !s.body) throw new Error("后台作业连接失败");
+    const reader = s.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
+      for (const p of parts) {
+        const ev = p.match(/event: (\S+)/)?.[1];
+        const data = p.match(/data: (.*)/s)?.[1];
+        if (!data) continue;
+        const obj = JSON.parse(data);
+        if (ev === "delta" && obj.content) onDelta?.(obj.content);
+        if (ev === "error") throw new Error(obj.message ?? "任务执行失败");
+        if (ev === "done") {
+          try { localStorage.removeItem("editor.activeJobId"); } catch { /* 忽略 */ }
+          return (obj.content ? { ...obj, text: typeof obj.content === "string" ? obj.content : "" } : obj) as T;
+        }
+      }
+    }
+    throw new Error("流意外结束");
+  } catch (e) {
+    // 断线: 保留 activeJobId 供下次挂载 retry
+    throw e;
+  }
+}
 async function j<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...((opts.headers as Record<string, string>) ?? {}) };
   const t = tokenOf(); if (t) headers.Authorization = `Bearer ${t}`;
@@ -64,14 +104,15 @@ export function EditorView() {
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [view, setView] = useState<"edit" | "split" | "preview">("split");
-  // 预览风格(闭源 EditorView 模板预设对齐): 控制预览排版观感
-  const [docStyle, setDocStyle] = useState("cn-general");
-  const DOC_STYLES: Record<string, { label: string; wrap: string; prose?: string }> = {
-    "cn-general": { label: "通用学术", wrap: "font-serif", prose: "prose-p:first-letter:pl-8" },
-    "cn-journal": { label: "中文期刊", wrap: "font-serif text-[15px] leading-8", prose: "prose-p:first-letter:pl-8" },
-    "en-draft": { label: "英文草稿", wrap: "font-sans text-[13px] leading-7", prose: "" },
-    thesis: { label: "学位论文", wrap: "font-serif text-[16px] leading-9", prose: "prose-p:first-letter:pl-8" },
+  // 预览风格(闭源 EditorView formatPresets 对齐): 控制预览排版观感 — 闭源用 CSS 变量驱动 + localStorage
+  const [docStyle, setDocStyle] = useState(() => { const v = localStorage.getItem("ade-format-preset") || "general"; return ["general", "journal_cn", "apa", "degree"].includes(v) ? v : "general"; });
+  const DOC_STYLES: Record<string, { label: string; desc: string; style: React.CSSProperties; docxFont?: string }> = {
+    general: { label: "通用学术论文", desc: "宋体/Times New Roman，适合中文论文草稿与通用投稿前检查。", style: { fontFamily: '"Noto Serif SC", "Songti SC", SimSun, "Times New Roman", serif', fontSize: "15px", lineHeight: 1.85, textIndent: "2em" }, docxFont: "SimSun" },
+    journal_cn: { label: "中文期刊风格", desc: "更紧凑的中文期刊预览，强调段落缩进和标题层级。", style: { fontFamily: 'SimSun, "Noto Serif SC", serif', fontSize: "14.5px", lineHeight: 1.75, textIndent: "2em" }, docxFont: "SimSun" },
+    apa: { label: "APA 草稿", desc: "英文论文草稿预览，使用 Times New Roman 与双倍行距。", style: { fontFamily: '"Times New Roman", Times, serif', fontSize: "16px", lineHeight: 2, textIndent: "0.5in" }, docxFont: "Times New Roman" },
+    degree: { label: "学位论文草稿", desc: "适合较长篇幅论文的宽松预览，便于逐章审阅。", style: { fontFamily: 'SimSun, "Noto Serif SC", serif', fontSize: "15px", lineHeight: 1.9, textIndent: "2em" }, docxFont: "SimSun" },
   };
+  useEffect(() => { localStorage.setItem("ade-format-preset", docStyle); }, [docStyle]);
   const [selText, setSelText] = useState("");
   const [rewriting, setRewriting] = useState("");
   const [rewriteBox, setRewriteBox] = useState<{ original: string; result: string } | null>(null);
@@ -106,6 +147,13 @@ export function EditorView() {
     try { const r = await j<{ data: { items: DocLite[] } }>("/api/editor/v1/documents"); setDocs(r.data?.items ?? []); } catch (e) { setErr((e as Error).message); }
   }, []);
   useEffect(() => { void loadDocs(); }, [loadDocs]);
+
+  // 历史中心 deep-resume: 从历史记录 editor 区卡点击跳入 → 自动打开对应文档
+  useEffect(() => {
+    const r = readResume("editor");
+    if (r?.id) void openDoc(String(r.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openDoc = async (id: string) => {
     setBusy(true); setErr("");
@@ -154,11 +202,44 @@ export function EditorView() {
     } catch (e) { setErr((e as Error).message); } finally { setImpBusy(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 
+  // R7(闭源 导出): 导出 Word — 按当前预览预设的 docxFont 生成 docx(python-docx 通道)
+  const [expBusy, setExpBusy] = useState(false);
+  const exportDocx = async () => {
+    if (!curId) return;
+    setExpBusy(true); setErr("");
+    try {
+      const doc = await j<{ document: { title: string; content: string } }>(`/api/editor/v1/documents/${curId}`);
+      const markdown = doc.document.content || content;
+      // markdown → 节点树(一级标题/二级/正文)
+      const node: Record<string, unknown> = { title: doc.document.title || title, level: 0, content: "", children: [] as Record<string, unknown>[] };
+      let cur: Record<string, unknown> | null = null;
+      for (const line of markdown.split("\n")) {
+        const h1 = line.match(/^##\s+(.+)$/);
+        const h2 = line.match(/^###\s+(.+)$/);
+        if (h1) { cur = { title: h1[1], level: 1, content: "", children: [] as Record<string, unknown>[] }; (node.children as Record<string, unknown>[]).push(cur); }
+        else if (h2 && cur) { (cur.children as Record<string, unknown>[]).push({ title: h2[1], level: 2, content: "", children: [] }); }
+        else if (cur) { cur.content = String(cur.content ?? "") + line + "\n"; }
+        else { node.content = String(node.content ?? "") + line + "\n"; }
+      }
+      const r = await j<{ ok: boolean; base64: string }>("/api/paper-outline/export", {
+        method: "POST", body: JSON.stringify({ paperTitle: doc.document.title || title, nodes: [node], fontName: DOC_STYLES[docStyle]?.docxFont ?? "SimSun" }),
+      });
+      const bin = atob(r.base64); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(doc.document.title || title).replace(/[\\/:*?"<>|]/g, "_")}.docx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      flash("已导出 Word");
+    } catch (e) { setErr((e as Error).message); } finally { setExpBusy(false); }
+  };
+
   const saveNow = async (payload?: { title?: string; content?: string }) => {
     if (!curId) return;
     setSaving(true);
-    try {
-      const body = payload ?? { title, content };
+    try {      const body = payload ?? { title, content };
       const r = await j<{ wordCount: number }>(`/api/editor/v1/documents/${curId}`, {
         method: "PUT", body: JSON.stringify(body),
       });
@@ -197,10 +278,9 @@ export function EditorView() {
     if (!sel) { setErr("请先在正文中选中一段文字, 再选择改写方式"); return; }
     setRewriting(mode); setErr("");
     try {
-      const r = await j<RewriteResult>("/api/editor/v1/rewrite", {
-        method: "POST", body: JSON.stringify({ mode, text: sel }),
-      });
-      setRewriteBox({ original: sel, result: r.text });
+      // R6: 统一 AI job
+      const r = await runAiJob<{ content: string }>({ action: "rewrite", mode, text: sel, document_id: curId });
+      setRewriteBox({ original: sel, result: r.content });
     } catch (e) { setErr((e as Error).message); } finally { setRewriting(""); }
   };
 
@@ -221,8 +301,12 @@ export function EditorView() {
     if (!content.trim()) { setErr("全文为空"); return; }
     setChecking(true); setErr("");
     try {
-      const r = await j<CheckResult>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content, mode: checkMode }) });
-      setCheckResult(r); setShowCheck(true);
+      // R6: 统一 AI job
+      const r = await runAiJob<{ content: string }>({ action: "check", text: content, mode: checkMode, document_id: curId });
+      let parsed: CheckResult | null = null;
+      try { parsed = r.content ? JSON.parse(r.content) : null; } catch { /* 非 JSON 忽略 */ }
+      setCheckResult(parsed ?? { mode: checkMode, modeName: "", checks: [{ name: "检查", ok: false, findings: [r.content || "无结果"] }] });
+      setShowCheck(true);
     } catch (e) { setErr((e as Error).message); } finally { setChecking(false); }
   };
 
@@ -315,6 +399,13 @@ export function EditorView() {
             className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50" title="导入 Word/TXT 即看">
             {impBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}导入 Word
           </button>
+          {/* R7(闭源工具栏 导出): 按当前预览预设字体导出 docx */}
+          {curId && (
+            <button onClick={() => void exportDocx()} disabled={expBusy}
+              className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50" title={`导出 Word(${DOC_STYLES[docStyle]?.docxFont ?? "SimSun"})`}>
+              {expBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}导出 Word
+            </button>
+          )}
           <button data-control="editor_new" onClick={() => void newDoc()} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
             <Plus className="h-3.5 w-3.5" />新建文档
           </button>
@@ -432,19 +523,20 @@ export function EditorView() {
               )}
               {view !== "edit" && (
                 <div className="flex min-h-0 flex-col">
-                  {/* T5-3: 预览风格切换(闭源 EditorView 排版模板对齐) */}
+                  {/* T5-3: 预览风格切换(闭源 EditorView formatPresets: 4 套+desc+CSS 变量驱动) */}
                   <div className="flex items-center gap-1 border-b border-slate-700/40 px-2 py-1">
                     <span className="text-[9px] text-slate-500">预览风格</span>
                     {Object.entries(DOC_STYLES).map(([k, s]) => (
-                      <button key={k} onClick={() => setDocStyle(k)}
+                      <button key={k} onClick={() => setDocStyle(k)} title={s.desc}
                         className={cn("rounded-full border px-2 py-0.5 text-[9px]", docStyle === k ? "border-indigo-500/60 bg-indigo-600/20 text-indigo-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:text-slate-200")}>
                         {s.label}
                       </button>
                     ))}
                   </div>
+                  {/* R5: 预览走 MarkdownRich(KaTeX 公式+代码高亮, 对齐闭源 AI 面板双渲染) */}
                   <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                    <div className={cn("prose prose-sm prose-invert max-w-none prose-headings:text-slate-100 prose-p:text-slate-300 prose-li:text-slate-300", DOC_STYLES[docStyle]?.wrap, DOC_STYLES[docStyle]?.prose)}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || "*（空文档）*"}</ReactMarkdown>
+                    <div className="markdown-rich-body" style={DOC_STYLES[docStyle]?.style}>
+                      <MarkdownRich content={content || "*（空文档）*"} />
                     </div>
                   </div>
                 </div>
@@ -609,8 +701,11 @@ export function AiEditorPanel(props: {
     if (!content.trim()) { onMsg("全文为空"); return; }
     setChecking(true);
     try {
-      const r = await j<{ modeName?: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> }>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content, mode: checkMode }) });
-      setCheckResult(r);
+      // R6: 走统一 AI job(SSE delta/done + 断线可恢复)
+      const r = await runAiJob<{ content: string; text?: string }>({ action: "check", text: content, mode: checkMode, document_id: undefined });
+      let parsed: { modeName?: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> } | null = null;
+      try { parsed = r.content ? JSON.parse(r.content) : null; } catch { /* 非 JSON 忽略 */ }
+      setCheckResult(parsed ?? { checks: [{ name: checkMode, ok: false, findings: [r.content || "无结果"] }] });
     } catch (e) { onMsg((e as Error).message); } finally { setChecking(false); }
   };
   const doTitle = async () => {
@@ -626,8 +721,9 @@ export function AiEditorPanel(props: {
     if (!sel) { onMsg("请先选中文字或粘贴到面板"); return; }
     setRwBusy(true);
     try {
-      const r = await j<{ text: string }>("/api/editor/v1/rewrite", { method: "POST", body: JSON.stringify({ mode: rewriteMode, text: sel }) });
-      setRwResult(r.text);
+      // R6: 统一 AI job
+      const r = await runAiJob<{ content: string }>({ action: "rewrite", mode: rewriteMode, text: sel, document_id: undefined });
+      setRwResult(r.content);
     } catch (e) { onMsg((e as Error).message); } finally { setRwBusy(false); }
   };
   const doFormat = async () => {

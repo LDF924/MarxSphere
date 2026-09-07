@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Loader2, Plus, RotateCcw, Sparkles, Trash2, Upload, X } from "lucide-react";
 import type { Node as FlowNode } from "@xyflow/react";
 
-export interface WizardOutlineItem { id: string; title: string; level: number; children?: WizardOutlineItem[]; }
+export interface WizardOutlineItem { id: string; title: string; level: number; children?: WizardOutlineItem[]; collapsed?: boolean; }
 
 const WIZ_TEMPLATES = [
   // W1(闭源 input 实拍): "插入模板"一键铺 5章12节社科骨架(标题含中文序号"一、二..."结构)
@@ -210,7 +210,12 @@ export function ResearchInputWizard(props: {
           </div>
         )}
         {items.length === 0 ? (
-          <p className="px-3 py-6 text-center text-[11px] text-slate-600">目录为空 — 套用上方模板, 或点"一级章节"添加</p>
+          // R13(闭源 OutlineEditor 空态): 文案+红链插入模板按钮
+          <div className="px-3 py-6 text-center">
+            <p className="text-[11px] text-slate-600">目录为空, 请添加章节或插入模板</p>
+            <button onClick={() => applyTemplate(WIZ_TEMPLATES[0].items)}
+              className="mt-1 text-[11px] text-rose-400 hover:text-rose-300">插入模板</button>
+          </div>
         ) : (
           <div className="max-h-52 space-y-0.5 overflow-y-auto p-2">
             {items.map((it, idx) => (
@@ -229,12 +234,20 @@ export function ResearchInputWizard(props: {
                       {it.title || <span className="text-slate-600">输入一级标题</span>}
                     </button>
                   )}
-                  <button onClick={() => setItems((p) => [...p, { id: genId(), title: "", level: 1, children: [] }])} title="追加章节" className="hidden text-slate-500 opacity-0 hover:text-slate-200 group-hover:inline group-hover:opacity-100"><Plus className="h-3 w-3" /></button>
-                  <button onClick={() => move(idx, -1)} title="上移" className="hidden opacity-0 group-hover:opacity-100 group-hover:inline text-slate-500 hover:text-slate-200"><RotateCcw className="h-3 w-3 -rotate-90" /></button>
-                  <button onClick={() => move(idx, 1)} title="下移" className="hidden opacity-0 group-hover:opacity-100 group-hover:inline text-slate-500 hover:text-slate-200"><RotateCcw className="h-3 w-3 rotate-90" /></button>
+                  <button onClick={() => setItems((p) => p.map((x) => x.id === it.id ? { ...x, collapsed: !x.collapsed } : x))}
+                    title={it.collapsed ? "展开" : "折叠"}
+                    className="hidden text-slate-500 opacity-0 hover:text-slate-200 group-hover:inline group-hover:opacity-100">
+                    {it.collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                  <button onClick={() => setItems((p) => [...p, { id: genId(), title: "", level: 1, children: [] }])} title="添加子节" className="hidden text-slate-500 opacity-0 hover:text-slate-200 group-hover:inline group-hover:opacity-100"><Plus className="h-3 w-3" /></button>
+                  <button onClick={() => move(idx, -1)} disabled={idx === 0} title="上移"
+                    className={cn("hidden opacity-0 group-hover:opacity-100 group-hover:inline text-slate-500 hover:text-slate-200", idx === 0 && "cursor-not-allowed opacity-30 hover:text-slate-500")}><RotateCcw className="h-3 w-3 -rotate-90" /></button>
+                  <button onClick={() => move(idx, 1)} disabled={idx === items.length - 1} title="下移"
+                    className={cn("hidden opacity-0 group-hover:opacity-100 group-hover:inline text-slate-500 hover:text-slate-200", idx === items.length - 1 && "cursor-not-allowed opacity-30 hover:text-slate-500")}><RotateCcw className="h-3 w-3 rotate-90" /></button>
                   <button onClick={() => setItems((p) => p.filter((x) => x.id !== it.id))} title="删除" className="hidden opacity-0 group-hover:opacity-100 group-hover:inline text-rose-400 hover:text-rose-300"><Trash2 className="h-3 w-3" /></button>
                 </div>
-                {(it.children ?? []).map((c, ci) => (
+                {/* R13(闭源): collapsed 折叠子节 */}
+                {!it.collapsed && (it.children ?? []).map((c, ci) => (
                   <div key={c.id} className="flex items-center gap-1 rounded px-7 py-0.5 hover:bg-slate-800/40">
                     <ChevronRight className="h-2.5 w-2.5 text-slate-600" />
                     {editingId === c.id ? (

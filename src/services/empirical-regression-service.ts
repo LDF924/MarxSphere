@@ -118,12 +118,40 @@ export async function runRegressionCode(input: {
         const t = await empiricalService.getEmpiricalResult(r.taskId!);
         if (t.status === "done") {
           if (input.projectId) {
+            // V413: 自动补回归系数森林图(异步, 失败不影响落库)
+            let enriched = t.result as any;
+            try {
+              const resAny = t.result as any;
+              const regTbl = (resAny?.tables ?? []).find((tb: any) => /回归|Logit|OLS/.test(String(tb.title ?? "")));
+              if (regTbl?.rows?.length) {
+                const { empiricalService: es } = await import("./empirical-service.js");
+                const fr = await es.generateEmpiricalFigures({
+                  spec: {
+                    kind: "forest", id: `reg_${method}_${Date.now()}`,
+                    title: `${input.spec.dep} — ${method.toUpperCase()} 系数图`,
+                    tables: [{ rows: regTbl.rows, cols: regTbl.cols ?? [] }],
+                  },
+                });
+                if (fr.ok && fr.taskId) {
+                  for (let fi = 0; fi < 25; fi++) {
+                    await new Promise((res) => setTimeout(res, 1300));
+                    const ft = await es.getEmpiricalResult(fr.taskId);
+                    if (ft.status === "done") {
+                      const charts = ((ft.result as any)?.meta?.charts ?? []) as any[];
+                      enriched = { ...enriched, meta: { ...(enriched?.meta ?? {}), figures: charts.map((c) => ({ id: c.id, file: c.file, title: c.title, sizeKB: c.sizeKB })) } };
+                      break;
+                    }
+                    if (ft.status === "error") break;
+                  }
+                }
+              }
+            } catch { /* 图失败不影响 */ }
             await pool.query(
               `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result, stata_code)
                values ($1::uuid, 'regression', $2, $3, $4)`,
               [input.projectId,
                JSON.stringify({ spec: input.spec, nRows: input.data.rows.length, columns: input.data.columnOrder, runTaskId: r.taskId }),
-               JSON.stringify(t.result), input.code.slice(0, 4000)]
+               JSON.stringify(enriched), input.code.slice(0, 4000)]
             ).catch(() => {});
           }
           return;

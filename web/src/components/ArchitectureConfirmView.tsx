@@ -126,16 +126,27 @@ export function ArchitectureConfirmView({ projectId, title, onConfirm, onBack, o
             {vars.length > 0 && (
               <div className="rounded-xl border border-slate-700/60 bg-slate-900/50 p-4">
                 <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-200">
-                  <Brain className="h-4 w-4 text-amber-400" /> 变量识别
+                  <Brain className="h-4 w-4 text-amber-400" /> {analysis?.variables?.kind === "qualitative" ? "因素识别" : "变量识别"}
                   <span className="text-[10px] font-normal text-slate-500">{analysis?.variables?.kind === "quantitative" ? "定量" : analysis?.variables?.kind === "mixed" ? "混合" : "定性"}设计</span>
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {vars.map((v, i) => (
-                    <span key={i} className="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300">
-                      {v.name || `变量${i + 1}`}
-                      <span className="ml-1 text-[9px] text-slate-500">{v.role === "dependent" ? "因" : v.role === "independent" ? "自" : v.role === "mediator" ? "中介" : v.role === "moderator" ? "调节" : v.role === "control" ? "控制" : ""}</span>
-                    </span>
-                  ))}
+                  {vars.map((v, i) => {
+                    // 闭源 SectionsView 角色色: 定量=自蓝/因红/中介琥珀/调节紫/控制灰; 定性=影响因素蓝/结果红/中间琥珀/情境紫/背景灰
+                    const isQ = analysis?.variables?.kind === "qualitative";
+                    const colorMap: Record<string, string> = isQ
+                      ? { influence: "bg-blue-500", outcome: "bg-red-500", mechanism: "bg-amber-500", context: "bg-purple-500", background: "bg-gray-500" }
+                      : { independent: "bg-blue-500", dependent: "bg-red-500", mediator: "bg-amber-500", moderator: "bg-purple-500", control: "bg-gray-500" };
+                    const labelMap: Record<string, string> = isQ
+                      ? { influence: "影响因素", outcome: "结果表现", mechanism: "中间机制", context: "情境条件", background: "背景因素" }
+                      : { independent: "自变量", dependent: "因变量", mediator: "中介变量", moderator: "调节变量", control: "控制变量" };
+                    return (
+                      <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-slate-700/50 bg-slate-800/70 px-2.5 py-1 text-[11px] text-slate-300">
+                        {v.role && colorMap[v.role] && <span className={cn("h-1.5 w-1.5 rounded-full", colorMap[v.role])} />}
+                        {v.name || `变量${i + 1}`}
+                        {v.role && labelMap[v.role] && <span className="text-[9px] text-slate-500">{labelMap[v.role]}</span>}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}

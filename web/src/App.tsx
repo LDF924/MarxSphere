@@ -1915,7 +1915,7 @@ function AppShell() {
                 onCreateSession={() => void createChatSession()}
                 onRenameSession={(sessionId, title) => void renameChatSession(sessionId, title)}
                 onDeleteSession={(sessionId) => void deleteChatSession(sessionId)}
-                onSend={(content, images, webSearch) => void sendChatMessage(content, images, webSearch)}
+                onSend={(content, images, webSearch, deepMode, docs) => void sendChatMessage(content, images, webSearch, deepMode, docs)}
                 onStop={stopChatMessage}
                 onRecall={(messageId) => void recallChatMessage(messageId)}
                 onApproveTool={(approvalId, approved) => void approveChatTool(approvalId, approved)}
