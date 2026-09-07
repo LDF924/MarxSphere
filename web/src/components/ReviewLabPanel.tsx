@@ -6,7 +6,7 @@
 //   - 期刊库: 投稿须知粘贴 → AI 解析入库; 标准库: 评分标准 → 维度解析/设默认
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  BookOpen, CheckCircle2, ClipboardList, FileDown, Gavel, Loader2,
+  BookOpen, CheckCircle2, ClipboardList, FileDown, FileText, Gavel, Loader2,
   PenLine, Printer, RefreshCw, ScrollText, Sparkles, Trash2,
 } from "lucide-react";
 
@@ -23,7 +23,7 @@ interface ReviewResult {
   annotations?: Array<{ id: string; type: string; dimension: string; highlightText: string; comment: string }>;
   highlights?: string[]; topSuggestions?: string[];
   dimensions: Array<{ key?: string; name: string; score: number; comment?: string;
-    maxScore?: number; weight?: number; status?: string; summary?: string;
+    maxScore?: number; weight?: number; weightLabel?: number; status?: string; summary?: string;
     issues: string[] | Array<{ id: string; severity: string; location: string; originalText: string; suggestion?: string }> }>;
   overall: string; majorIssues: Array<{ title: string; detail: string }>;
   minorIssues: Array<{ title: string; detail: string }>;
@@ -51,7 +51,7 @@ export function ReviewLabPanel() {
   const [text, setText] = useState("");
   const [title, setTitle] = useState("");
   const [journalId, setJournalId] = useState("");
-  const [standardId, setStandardId] = useState("");
+  const [stdIds, setStdIds] = useState<string[]>([]);   // 审核标准多选(HAR: standardIds 数组语义)
   const [strictness, setStrictness] = useState("medium");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -65,9 +65,14 @@ export function ReviewLabPanel() {
   const [exportBusy, setExportBusy] = useState(false);
   const [result, setResult] = useState<ReviewResult | null>(null);
   const [curJob, setCurJob] = useState<string>("");
+  // T3-3 原文对照: 稿件全文快照 + 报告子视图(report | diff)
+  const [textSnap, setTextSnap] = useState<string>("");
+  const [reportView, setReportView] = useState<"report" | "diff">("report");
+  const [resolved, setResolved] = useState<Set<string>>(new Set());
   // 期刊/标准 modal
   const [jpInput, setJpInput] = useState("");   // 投稿须知原文
   const [jpName, setJpName] = useState("");
+  const [jLevelFilter, setJLevelFilter] = useState(""); // W11: 期刊分类过滤 chips
   const [parseBusy, setParseBusy] = useState(false);
   const [stdInput, setStdInput] = useState("");
   const [stdName, setStdName] = useState("");
@@ -112,8 +117,8 @@ export function ReviewLabPanel() {
         method: "POST",
         body: JSON.stringify({
           text, title: title || undefined, journalId: journalId || undefined,
-          standardId: standardId || undefined,
-          settings: { strictness, journalId: journalId || null, standardIds: standardId ? [standardId] : [], customRequirements: "" },
+          standardId: stdIds[0] || undefined,
+          settings: { strictness, journalId: journalId || null, standardIds: stdIds, customRequirements: "" },
         }),
       });
       setCurJob(r.jobId);
@@ -184,8 +189,9 @@ export function ReviewLabPanel() {
   const openJob = async (jobId: string) => {
     setCurJob(jobId); setBusy(true); setErr("");
     try {
-      const r = await j<{ job: { status: string; result: ReviewResult | null } }>(`/api/review/jobs/${jobId}`);
-      if (r.job.result) { setResult(r.job.result); setTab("report"); }
+      const r = await j<{ job: { status: string; result: ReviewResult | null; text_snapshot?: string } }>(`/api/review/jobs/${jobId}`);
+      if (r.job.text_snapshot) setTextSnap(r.job.text_snapshot);
+      if (r.job.result) { setResult(r.job.result); setResolved(new Set()); setReportView("report"); setTab("report"); }
       else if (r.job.status === "queued" || r.job.status === "failed" || r.job.status === "cancelled") {
         // 重跑
         await runStream(jobId);
@@ -213,6 +219,21 @@ export function ReviewLabPanel() {
       a.href = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${r.base64}`;
       a.download = r.fileName ?? "审稿报告.docx";
       a.click();
+    } catch (e) { setErr((e as Error).message); } finally { setExportBusy(false); }
+  };
+
+  // T6: 排版 HTML 报告(新窗口打印/存 PDF; 对齐闭源 export-report)
+  const exportHtml = async () => {
+    if (!curJob) return;
+    setExportBusy(true); setErr("");
+    try {
+      const r = await j<{ ok: boolean; html?: string; error?: string }>(`/api/review/jobs/${curJob}/export-html`, { method: "POST", body: "{}" });
+      if (!r.ok || !r.html) throw new Error(r.error || "生成失败");
+      const win = window.open("", "_blank");
+      if (!win) throw new Error("浏览器拦截了新窗口, 请允许弹窗");
+      win.document.open();
+      win.document.write(atob(r.html));
+      win.document.close();
     } catch (e) { setErr((e as Error).message); } finally { setExportBusy(false); }
   };
 
@@ -284,7 +305,7 @@ export function ReviewLabPanel() {
             {/* 上传或粘贴 */}
             <div className="mb-2 flex items-center justify-between rounded-lg border border-dashed border-slate-600 bg-slate-800/40 px-3 py-2">
               <span className="text-[10px] text-slate-500">{upBusy ? "提取中…" : "上传 Word/TXT → 自动提取正文"}</span>
-              <button onClick={() => fileRef.current?.click()} disabled={upBusy}
+              <button onClick={() => fileRef.current?.click()} disabled={upBusy} data-control="review_upload"
                 className="rounded bg-slate-700 px-2.5 py-1 text-[10px] text-slate-200 hover:bg-slate-600 disabled:opacity-50">
                 {upBusy ? <Loader2 className="mr-1 inline h-2.5 w-2.5 animate-spin" /> : <FileText className="mr-1 inline h-2.5 w-2.5" />}选择文件
               </button>
@@ -298,7 +319,7 @@ export function ReviewLabPanel() {
             <div className="mt-2 flex items-center justify-between">
               <span className="text-[10px] text-slate-500">{text ? `${text.length} 字(将分 ${Math.ceil(text.length / 3000)} 段审阅)` : ""}</span>
               <button onClick={createAndRun} disabled={busy || !text.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-50">
+                className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white hover:bg-rose-500 disabled:opacity-50" data-control="review_start">
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Gavel className="h-3.5 w-3.5" />}
                 开始审稿 (SSE 流式)
               </button>
@@ -316,28 +337,41 @@ export function ReviewLabPanel() {
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">选用后该刊解析规则(格式/审稿关注点)并入本次审稿维度</p>
             </div>
             <div>
-              <p className="mb-1.5 font-semibold text-slate-300">选用审核标准</p>
-              <select value={standardId} onChange={(e) => setStandardId(e.target.value)}
-                className="w-full rounded-lg border border-slate-600/60 bg-slate-800 px-2 py-1.5 text-slate-200">
-                <option value="">— 默认 6 维标准 —</option>
-                {standards.map((s) => <option key={s.id} value={s.id}>{s.name}{s.built_in ? " (内置)" : ""}{s.is_default ? " ★默认" : ""}</option>)}
-              </select>
+              <p className="mb-1.5 font-semibold text-slate-300">选用审核标准 <span className="text-[9px] text-slate-500">(多选合并维度, 可不用)</span></p>
+              {standards.length === 0 && <p className="mb-1 text-[10px] text-slate-600">标准库为空 → 默认 7 维社科审稿</p>}
+              <div className="flex flex-wrap gap-1.5">
+                {standards.map((s) => {
+                  const on = stdIds.includes(s.id);
+                  return (
+                    <button key={s.id} onClick={() => setStdIds((prev) => (on ? prev.filter((x) => x !== s.id) : [...prev, s.id]))}
+                      className={cn("rounded-full border px-2.5 py-1 text-[10px] transition",
+                        on ? "border-rose-500/60 bg-rose-600/20 text-rose-200"
+                          : "border-slate-600/60 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-slate-200")}>
+                      {s.name}{s.is_default ? " ★" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">多选时合并各标准维度去重, 未选=默认 7 维社科(选题与意义/文献综述与分析框架/研究方法与数据/实证分析/对策建议/写作规范与格式/逻辑结构)</p>
             </div>
             <div>
-              <p className="mb-1.5 font-semibold text-slate-300">审查严格度</p>
-              <div className="grid grid-cols-3 gap-1">
-                {(["loose", "medium", "strict"] as const).map((st) => (
-                  <button key={st} onClick={() => setStrictness(st)}
-                    className={cn("rounded-lg py-1.5 text-[11px]", strictness === st ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>
-                    {st === "loose" ? "宽松" : st === "medium" ? "标准" : "严格"}
-                  </button>
-                ))}
+              <p className="mb-1.5 flex items-center justify-between font-semibold text-slate-300">审查严格度
+                <span className={cn("rounded px-1.5 py-0.5 text-[10px]", strictness === "strict" ? "bg-rose-500/20 text-rose-300" : strictness === "medium" ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300")}>
+                  {strictness === "loose" ? "宽松 · 关注硬伤" : strictness === "medium" ? "标准 · 平衡全面" : "严格 · 逐句挑错"}
+                </span>
+              </p>
+              <input type="range" min={0} max={2} step={1} value={["loose", "medium", "strict"].indexOf(strictness)}
+                onChange={(e) => setStrictness(["loose", "medium", "strict"][Number(e.target.value)] as "loose" | "medium" | "strict")}
+                className="w-full accent-rose-500" />
+              <div className="flex justify-between text-[9px] text-slate-600">
+                <span>宽松</span><span>标准</span><span>严格</span>
               </div>
+              <p className="mt-0.5 text-[9px] text-slate-600">严格度影响判分尺度和问题发现密度</p>
             </div>
             <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-2 text-[10px] leading-relaxed text-slate-500">
               <p className="mb-1 font-semibold text-slate-400">审稿输出</p>
               <p>· 分段流式审阅(每段问题实时推送)</p>
-              <p>· 聚合生成维度评分卡(选题/文献/逻辑/方法/表达/创新)</p>
+              <p>· 聚合生成维度评分卡(社科 7 维: 选题/文献/方法/实证/对策/写作/逻辑)</p>
               <p>· 大修/小修问题清单 + 总体评语与录用建议</p>
               <p>· 支持断线续传(每段 checkpoint)</p>
             </div>
@@ -408,37 +442,89 @@ export function ReviewLabPanel() {
           )}
           {result ? (
             <div className="space-y-4">
+              {/* T3-3: 报告 | 原文对照 子页签 */}
+              <div className="flex items-center gap-1">
+                <button onClick={() => setReportView("report")}
+                  className={cn("rounded-lg px-3 py-1 text-[11px]", reportView === "report" ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>审稿报告</button>
+                <button onClick={() => setReportView("diff")}
+                  className={cn("flex items-center gap-1 rounded-lg px-3 py-1 text-[11px]", reportView === "diff" ? "bg-rose-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200")}>
+                  <ScrollText className="h-3 w-3" />原文对照{result.annotations?.length ? <span className="rounded-full bg-rose-500/30 px-1 text-[9px]">{result.annotations.length}</span> : null}
+                </button>
+              </div>
+              {reportView === "diff" && (
+                <ReviewDiffView
+                  text={textSnap || ""}
+                  annotations={result.annotations ?? []}
+                  resolved={resolved}
+                  onToggle={(id) => setResolved((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
+                />
+              )}
+              {reportView === "report" && (<>
               {/* 报告头 */}
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-slate-100">{result.paperTitle}</h3>
-                  <p className="text-[11px] text-slate-500">全文 {result.wordCount} 字 · 发现 {result.segmentIssues ?? 0} 处问题 · {new Date().toLocaleDateString()} 审</p>
+                  <p className="text-[11px] text-slate-500">全文 {result.wordCount} 字 · {result.dimensions?.length ?? 0} 个维度审查 · 发现 {result.segmentIssues ?? 0} 处问题 · {new Date().toLocaleDateString()} 审</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => window.print()} className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700">
                     <Printer className="h-3.5 w-3.5" /> 打印/存PDF
                   </button>
-                  <button onClick={exportWord} disabled={exportBusy}
+                  <button data-control="review_export_word" onClick={exportWord} disabled={exportBusy}
                     className="flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-600 disabled:opacity-50">
                     {exportBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />} 导出Word批注
                   </button>
+                  <button onClick={() => void exportHtml()} disabled={exportBusy || !curJob}
+                    className="flex items-center gap-1 rounded-lg bg-cyan-700 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-600 disabled:opacity-50">
+                    {exportBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScrollText className="h-3.5 w-3.5" />} 排版HTML报告
+                  </button>
                 </div>
               </div>
-              {/* R4: 总分+等级横幅 */}
+              {/* R4: 总分+等级横幅(闭源: 大数字总分 + 徽标等级 如 "C") */}
               {(result.overallScore !== undefined || result.grade) && (
                 <div className={cn("flex items-center justify-between rounded-lg border p-3",
                   (result.grade ?? "") === "A" || (result.overallScore ?? 0) >= 85 ? "border-green-500/40 bg-green-500/10"
                   : (result.grade ?? "") === "B" || (result.overallScore ?? 0) >= 70 ? "border-amber-500/40 bg-amber-500/10"
                   : "border-rose-500/40 bg-rose-500/10")}>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-slate-400">总分 / 等级</p>
-                    <p className="text-2xl font-bold text-slate-100">
-                      {result.overallScore ?? "—"}<span className="ml-2 text-base font-semibold text-slate-300">{result.grade ? `等级 ${result.grade}` : ""}</span>
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400">总分</p>
+                      <p className="text-2xl font-bold text-slate-100">{result.overallScore ?? "—"}</p>
+                    </div>
+                    {/* P-B: 闭源等级徽标(等级字母大卡 + 及格/良好判词) */}
+                    {(result.grade ?? "") !== "" && (
+                      <div className="rounded-lg bg-slate-900/60 px-2.5 py-1 text-center">
+                        <p className="text-lg font-black leading-none text-slate-100">{result.grade}</p>
+                        <p className="mt-0.5 text-[8px] text-slate-400">
+                          {(result.grade ?? "") === "A" ? "优秀" : (result.grade ?? "") === "B" ? "良好" : (result.grade ?? "") === "C" ? "及格" : "不及格"}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <p className="max-w-md text-right text-[11px] leading-relaxed text-slate-300">{result.overallComment || result.overall}</p>
                 </div>
               )}
+
+              {/* P-B: 核心问题分级计数(闭源报告: 严重/中等/建议 + 共 N 个) */}
+              {(() => {
+                type IssueEl = string | { id: string; severity: string; location: string; originalText: string; suggestion?: string };
+                // 守卫: 非字符串即对象(issues 联合由后端保证 shape)
+                const all = (result.dimensions ?? []).flatMap((d) => Array.isArray(d.issues) ? d.issues.filter((i): i is Exclude<IssueEl, string> => typeof i !== "string") : []);
+                const sev = all.filter((i) => i.severity === "major").length;
+                const mid = all.filter((i) => i.severity === "minor").length;
+                const sug = all.filter((i) => i.severity !== "major" && i.severity !== "minor").length;
+                return all.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-700/40 bg-slate-800/30 px-3 py-2">
+                    <p className="text-[10px] font-semibold text-slate-300">核心问题 (共 {all.length} 个)</p>
+                    {sev > 0 && <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[9px] font-semibold text-rose-300">严重 {sev}</span>}
+                    {mid > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-semibold text-amber-300">中等 {mid}</span>}
+                    {sug > 0 && <span className="rounded-full bg-slate-600/30 px-2 py-0.5 text-[9px] font-semibold text-slate-300">建议 {sug}</span>}
+                    <button onClick={() => setReportView("diff")} className="ml-auto flex items-center gap-1 rounded border border-slate-600/50 px-2 py-0.5 text-[9px] text-slate-300 hover:border-rose-500/40 hover:text-rose-300">
+                      <ScrollText className="h-2.5 w-2.5" />进入原文对照
+                    </button>
+                  </div>
+                ) : null;
+              })()}
               {/* 维度评分卡 */}
               <div className="grid grid-cols-3 gap-2">
                 {result.dimensions?.map((d) => (
@@ -447,6 +533,8 @@ export function ReviewLabPanel() {
                       <span className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
                         {d.status && <span className={cn("inline-block h-1.5 w-1.5 rounded-full", d.status === "good" ? "bg-green-400" : d.status === "warning" ? "bg-amber-400" : "bg-rose-400")} />}
                         {d.name}
+                        {/* P-B: 闭源报告维度权重整档(权重 3-5) */}
+                        {d.weightLabel !== undefined && <span className="rounded bg-slate-700/70 px-1 text-[8px] font-normal text-slate-400">权重 {d.weightLabel}</span>}
                       </span>
                       <span className={cn("text-sm font-bold", (d.score ?? 0) >= 80 ? "text-green-400" : (d.score ?? 0) >= 60 ? "text-amber-400" : "text-red-400")}>
                         {d.score ?? "—"}{d.maxScore ? `/${d.maxScore}` : ""}
@@ -493,22 +581,22 @@ export function ReviewLabPanel() {
               </div>
 
               {/* R4: 亮点 + 首要建议 */}
-              {(result.highlights?.length > 0 || result.topSuggestions?.length > 0) && (
+              {(() => { const hl = result.highlights ?? []; const ts = result.topSuggestions ?? []; return (hl.length > 0 || ts.length > 0) && (
                 <div className="grid grid-cols-2 gap-3">
-                  {result.highlights?.length > 0 && (
+                  {hl.length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-semibold text-emerald-300">论文亮点 ({result.highlights.length})</p>
-                      {result.highlights.map((h, i) => (
+                      <p className="mb-1.5 text-xs font-semibold text-emerald-300">论文亮点 ({hl.length})</p>
+                      {hl.map((h, i) => (
                         <div key={i} className="mb-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
                           <p className="text-[11px] leading-relaxed text-slate-300">{h}</p>
                         </div>
                       ))}
                     </div>
                   )}
-                  {result.topSuggestions?.length > 0 && (
+                  {ts.length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-semibold text-cyan-300">首要修改建议 ({result.topSuggestions.length})</p>
-                      {result.topSuggestions.map((s, i) => (
+                      <p className="mb-1.5 text-xs font-semibold text-cyan-300">首要修改建议 ({ts.length})</p>
+                      {ts.map((s, i) => (
                         <div key={i} className="mb-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-2.5">
                           <p className="text-[11px] leading-relaxed text-slate-300"><span className="mr-1 font-semibold text-cyan-300">{i + 1}.</span>{s}</p>
                         </div>
@@ -516,14 +604,14 @@ export function ReviewLabPanel() {
                     </div>
                   )}
                 </div>
-              )}
+              ); })()}
 
               {/* R4: 批注列表(annotations: type/dimension/highlightText/comment) */}
-              {result.annotations?.length > 0 && (
+              {result.annotations!.length > 0 && (
                 <div>
-                  <p className="mb-1.5 text-xs font-semibold text-rose-300">正文批注 ({result.annotations.length})</p>
+                  <p className="mb-1.5 text-xs font-semibold text-rose-300">正文批注 ({result.annotations!.length})</p>
                   <div className="max-h-64 space-y-1.5 overflow-y-auto">
-                    {result.annotations.map((a) => (
+                    {result.annotations!.map((a) => (
                       <div key={a.id} className={cn("rounded-lg border p-2.5",
                         a.type === "error" ? "border-rose-500/30 bg-rose-500/5" : a.type === "warning" ? "border-amber-500/30 bg-amber-500/5" : "border-slate-600/40 bg-slate-800/40")}>
                         <div className="flex items-center gap-1.5">
@@ -537,6 +625,7 @@ export function ReviewLabPanel() {
                   </div>
                 </div>
               )}
+            </>)}
             </div>
           ) : !streamState && (
             <div className="mt-10 text-center">
@@ -551,8 +640,17 @@ export function ReviewLabPanel() {
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_340px] gap-3">
           <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
             <p className="mb-2 text-xs font-semibold text-slate-300">期刊库 ({journals.length})</p>
+            {/* W11(闭源审稿库实拍): 分类 chips 过滤(全部/CSSCI/北大核心/SCI/SSCI/学位论文/普通期刊/其他) */}
+            <div className="mb-2 flex flex-wrap gap-1">
+              {["", "CSSCI", "北大核心", "SCI", "SSCI", "学位论文", "普通期刊", "其他"].map((c) => (
+                <button key={c || "all"} onClick={() => setJLevelFilter(c)}
+                  className={cn("rounded-full border px-2 py-0.5 text-[9px]", jLevelFilter === c ? "border-rose-500/60 bg-rose-500/15 text-rose-300" : "border-slate-600/50 bg-slate-800/60 text-slate-400 hover:text-slate-200")}>
+                  {c || "全部分类"}
+                </button>
+              ))}
+            </div>
             {journals.length === 0 && <p className="mt-6 text-center text-[11px] text-slate-500">还没有期刊, 右侧粘贴投稿须知 AI 解析入库</p>}
-            {journals.map((j) => (
+            {journals.filter((j) => !jLevelFilter || (j.level ?? "") === jLevelFilter).map((j) => (
               <div key={j.id} className="mb-2 flex items-center justify-between rounded-lg border border-slate-700/50 bg-slate-800/50 p-3">
                 <div>
                   <p className="text-sm font-medium text-slate-200">{j.name} {j.user_id === null && <span className="text-[9px] text-slate-500">(公共)</span>}</p>
@@ -611,6 +709,86 @@ export function ReviewLabPanel() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══ T3-3: 审稿原文对照(左=稿件原文+命中高亮标号 / 右=问题抽屉勾销) ═══
+function ReviewDiffView({ text, annotations, resolved, onToggle }: {
+  text: string;
+  annotations: Array<{ id: string; type: string; dimension: string; highlightText: string; comment: string }>;
+  resolved: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const [active, setActive] = useState<string | null>(null);
+  const anns = annotations.filter((a) => a.highlightText);
+  if (!text && !anns.length) return <p className="py-10 text-center text-xs text-slate-600">无原文快照与批注</p>;
+  // 原文按段拆分, 段落内命中 highlightText 则高亮(前缀匹配 12 字以上防误标)
+  const paras = (text || "(无原文快照)").split(/\n{1,}/).filter((p) => p.trim());
+  const markPara = (p: string) => {
+    const hits = anns
+      .map((a, i) => {
+        const t = a.highlightText.trim();
+        const idx = p.indexOf(t.slice(0, 24));
+        return idx >= 0 && t.length >= 6 ? { i, idx, len: t.length, a } : null;
+      })
+      .filter((x): x is { i: number; idx: number; len: number; a: (typeof anns)[0] } => !!x)
+      .sort((x, y) => x.idx - y.idx);
+    if (!hits.length) return <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-300">{p}</p>;
+    const segs: Array<React.ReactNode> = [];
+    let cursor = 0;
+    const used = new Set<number>();
+    for (const h of hits) {
+      if (h.idx < cursor || used.has(h.i)) continue;
+      used.add(h.i);
+      if (h.idx > cursor) segs.push(<span key={`t${cursor}`}>{p.slice(cursor, h.idx)}</span>);
+      const end = Math.min(p.length, h.idx + h.len);
+      const hlText = p.slice(h.idx, end);
+      segs.push(
+        <button key={`h${h.i}`} onClick={() => setActive(active === anns[h.i].id ? null : anns[h.i].id)}
+          title={anns[h.i].comment}
+          className={cn("mx-0.5 rounded border-b-2 px-0.5 text-[11px] leading-relaxed",
+            resolved.has(anns[h.i].id) ? "border-slate-600 text-slate-400 line-through" : "border-rose-400 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20",
+            active === anns[h.i].id && "bg-rose-500/30")}>
+          {hlText}
+          <sup className="ml-0.5 text-[8px] text-rose-300">{h.i + 1}</sup>
+        </button>
+      );
+      cursor = end;
+    }
+    if (cursor < p.length) segs.push(<span key={`t${cursor}`}>{p.slice(cursor)}</span>);
+    return <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-300">{segs}</p>;
+  };
+  return (
+    <div className="grid h-[520px] min-h-0 grid-cols-2 gap-3">
+      {/* 左: 原文 */}
+      <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-700/60 bg-slate-950/60 p-3">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">稿件原文 · 点击高亮查看问题</p>
+        {paras.map((p, i) => <div key={i} className="mb-2">{markPara(p)}</div>)}
+      </div>
+      {/* 右: 问题抽屉 */}
+      <div className="flex min-h-0 flex-col rounded-xl border border-slate-700/60 bg-slate-900/60">
+        <p className="border-b border-slate-700/40 px-3 py-1.5 text-[10px] font-semibold text-slate-400">
+          问题清单 ({anns.length}) · {resolved.size} 已解决
+        </p>
+        <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
+          {anns.map((a, i) => (
+            <div key={a.id} className={cn("rounded-lg border p-2 transition", active === a.id ? "border-rose-500/50 bg-rose-500/5" : resolved.has(a.id) ? "border-slate-700/40 bg-slate-800/30 opacity-60" : "border-slate-700/50 bg-slate-800/50")}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-bold text-slate-500">{i + 1}</span>
+                <span className={cn("rounded px-1 py-0.5 text-[8px] font-bold uppercase", a.type === "error" ? "bg-rose-500/20 text-rose-300" : a.type === "warning" ? "bg-amber-500/20 text-amber-300" : "bg-slate-600/40 text-slate-300")}>{a.type}</span>
+                {a.dimension && <span className="text-[9px] text-slate-500">{a.dimension}</span>}
+                <button onClick={() => onToggle(a.id)}
+                  className={cn("ml-auto flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px]", resolved.has(a.id) ? "bg-emerald-600/20 text-emerald-300" : "bg-slate-700 text-slate-400 hover:text-slate-200")}>
+                  <CheckCircle2 className="h-2.5 w-2.5" />{resolved.has(a.id) ? "已解决" : "标已解决"}
+                </button>
+              </div>
+              <p className="mt-1 border-l-2 border-slate-600 pl-2 text-[10px] italic leading-relaxed text-slate-400">"{a.highlightText}"</p>
+              {a.comment && <p className="mt-1 text-[10px] leading-relaxed text-slate-300">{a.comment}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

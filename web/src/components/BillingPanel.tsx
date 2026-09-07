@@ -10,7 +10,7 @@ import { cn } from "../lib/utils";
 interface Balance {
   balanceCents: number; plan: string; quotaTokens: number; usedTokens: number; remaining: number;
 }
-interface Record { id?: string; type: string; amount_cents: string; tokens_used: string | null; description: string; created_at: string; }
+interface BillRecord { id?: string; type: string; amount_cents: string; tokens_used: string | null; description: string; created_at: string; }
 interface Usage { endpoint: string; tin: string; tout: string; cost: string; day: string; }
 interface LlmConfig { provider: "platform" | "byok"; hasKey: boolean; }
 
@@ -25,7 +25,7 @@ const inputCls = "w-full rounded-md border border-white/10 bg-slate-800 px-3 py-
 
 export const BillingPanel: FC = () => {
   const [balance, setBalance] = useState<Balance | null>(null);
-  const [records, setRecords] = useState<Record[]>([]);
+  const [records, setRecords] = useState<BillRecord[]>([]);
   const [usage, setUsage] = useState<Usage[]>([]);
   const [rechargeAmt, setRechargeAmt] = useState(100);
   const [msg, setMsg] = useState<{ text: string; type: "ok" | "err" } | null>(null);

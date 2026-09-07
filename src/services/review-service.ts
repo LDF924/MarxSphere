@@ -50,12 +50,15 @@ export function segmentText(text: string, minLen = 1800, maxLen = 4000): string[
 }
 
 const DEFAULT_DIMENSIONS = [
-  { key: "topic_value", name: "选题价值", weight: 0.2, criteria: "问题意识/学术价值/现实意义", min: 0, max: 100 },
-  { key: "literature", name: "文献综述", weight: 0.15, criteria: "脉络梳理/文献充分/述评深度", min: 0, max: 100 },
-  { key: "logic", name: "逻辑结构", weight: 0.2, criteria: "论证严密/结构清晰/层次分明", min: 0, max: 100 },
-  { key: "method", name: "研究方法", weight: 0.2, criteria: "方法适配/数据可靠/操作规范", min: 0, max: 100 },
-  { key: "expression", name: "文字表达", weight: 0.15, criteria: "语言规范/学术用语/可读性", min: 0, max: 100 },
-  { key: "innovation", name: "创新贡献", weight: 0.1, criteria: "理论/方法/发现创新点", min: 0, max: 100 },
+  // P-B: 闭源社科期刊 7 维模板(实页 /review 报告维度权重 3-5 整数档, 30 分制)
+  // weight 归一 = weightLabel/30(聚合 schema 用 0-1), weightLabel 供 UI 显示闭源整档
+  { key: "topic_value", name: "选题与意义", weight: 4 / 30, weightLabel: 4, criteria: "选题价值/现实意义/理论意义/概念创新性", min: 0, max: 100 },
+  { key: "literature", name: "文献综述与分析框架", weight: 5 / 30, weightLabel: 5, criteria: "综述深度/学理对话/框架清晰/引文规范", min: 0, max: 100 },
+  { key: "method", name: "研究方法与数据", weight: 5 / 30, weightLabel: 5, criteria: "研究设计/变量测量/数据可信/样本交代", min: 0, max: 100 },
+  { key: "empirical", name: "实证分析", weight: 5 / 30, weightLabel: 5, criteria: "实证章节完整/假设检验/结果呈现/稳健性", min: 0, max: 100 },
+  { key: "countermeasure", name: "对策建议", weight: 4 / 30, weightLabel: 4, criteria: "针对性/与实证对应/可操作性/创新建议", min: 0, max: 100 },
+  { key: "writing", name: "写作规范与格式", weight: 3 / 30, weightLabel: 3, criteria: "文字流畅/格式统一/参考文献规范/无AI痕迹", min: 0, max: 100 },
+  { key: "logic", name: "逻辑结构", weight: 4 / 30, weightLabel: 4, criteria: "论证严密/结构层次/逻辑连贯/实证衔接", min: 0, max: 100 },
 ];
 
 /** 取默认维度(新审稿无标准时) */
@@ -75,10 +78,23 @@ export async function createReviewJob(input: {
   const id = randomUUID();
   const segments = segmentText(input.text);
   let dimensions = defaultDimensions();
-  // 标准库维度
-  if (input.standardId) {
-    const s = await pool.query(`select dimensions from review_standards where id=$1`, [input.standardId]);
-    if (s.rows[0]?.dimensions?.length) dimensions = s.rows[0].dimensions;
+  // 标准库维度(支持多选合并: standardIds 取各标准 dimensions 按 key 去重; primary standardId 兼容单参)
+  const stdIds = input.settings?.standardIds?.length ? input.settings.standardIds
+    : input.standardId ? [input.standardId] : [];
+  if (stdIds.length) {
+    const s = await pool.query(
+      `select dimensions from review_standards where id = any($1::text[])`, [stdIds]);
+    const merged: Array<{ key?: string; name: string; [k: string]: unknown }> = [];
+    const seen = new Set<string>();
+    for (const row of s.rows as Array<{ dimensions: unknown }>) {
+      const dims = Array.isArray(row.dimensions) ? row.dimensions as Array<{ key?: string; name: string; [k: string]: unknown }> : [];
+      for (const d of dims) {
+        const k = d.key ?? d.name;
+        if (seen.has(k)) continue;
+        seen.add(k); merged.push(d);
+      }
+    }
+    if (merged.length) dimensions = merged;
   }
   // 刊物规则并入(优先期刊规则的审稿关注点)
   let journalRules: unknown = null;
@@ -91,10 +107,10 @@ export async function createReviewJob(input: {
   const settings = input.settings ?? {
     strictness: "medium",
     journalId: input.journalId ?? null,
-    standardIds: input.standardId ? [input.standardId] : [],
+    standardIds: stdIds,
     customRequirements: "",
   };
-  const rules = { journal: input.journalId ?? null, standards: input.standardId ? [input.standardId] : [] };
+  const rules = { journal: input.journalId ?? null, standards: stdIds };
   const contentHash = contentHashOf(input.text);
   await pool.query(
     `insert into review_jobs
@@ -227,17 +243,22 @@ ${allIssues.map((x) => JSON.stringify(x)).join("\n").slice(0, 5000)}
 亮点: ${notable.slice(0, 10).join("; ")}`, undefined, 6000, 0.3);
 
     // R4: 全 schema 结果(保留 majorIssues/minorIssues 字段兼容旧前端, 新增 overallScore/grade/annotations 等)
-    const dimsFull = (Array.isArray(agg?.dimensions) ? agg.dimensions : dimensions).map((d: Record<string, unknown>, i: number) => ({
-      name: d.name ?? dimensions[i]?.name ?? `维度${i + 1}`,
-      score: d.score ?? 0,
-      maxScore: d.maxScore ?? 100,
-      weight: d.weight ?? 1,
-      status: d.status ?? (Number(d.score ?? 0) >= 80 ? "good" : Number(d.score ?? 0) >= 60 ? "warning" : "error"),
-      summary: d.summary ?? d.comment ?? "",
-      issues: (Array.isArray(d.issues) ? d.issues : []).slice(0, 10).map((iss: unknown, j: number) =>
-        typeof iss === "string" ? { id: `issue-${String(i + 1).padStart(3, "0")}-${String(j + 1).padStart(3, "0")}`, severity: "minor", location: "", originalText: "", suggestion: iss }
-        : ({ id: `issue-${String(i + 1).padStart(3, "0")}-${String(j + 1).padStart(3, "0")}`, severity: "minor", location: "", originalText: "", suggestion: "", ...(iss as Record<string, unknown>) })),
-    }));
+    // P-B: weightLabel 透传默认维度整档(3-5)供 UI 显示; LLM 输出维度保留其权重
+    const dimsFull = (Array.isArray(agg?.dimensions) ? agg.dimensions : dimensions).map((d: Record<string, unknown>, i: number) => {
+      const base = dimensions[i] as Record<string, unknown> | undefined;
+      return {
+        name: d.name ?? base?.name ?? `维度${i + 1}`,
+        score: d.score ?? 0,
+        maxScore: d.maxScore ?? 100,
+        weight: d.weight ?? base?.weight ?? 1,
+        weightLabel: base?.weightLabel ?? undefined,
+        status: d.status ?? (Number(d.score ?? 0) >= 80 ? "good" : Number(d.score ?? 0) >= 60 ? "warning" : "error"),
+        summary: d.summary ?? d.comment ?? "",
+        issues: (Array.isArray(d.issues) ? d.issues : []).slice(0, 10).map((iss: unknown, j: number) =>
+          typeof iss === "string" ? { id: `issue-${String(i + 1).padStart(3, "0")}-${String(j + 1).padStart(3, "0")}`, severity: "minor", location: "", originalText: "", suggestion: iss }
+          : ({ id: `issue-${String(i + 1).padStart(3, "0")}-${String(j + 1).padStart(3, "0")}`, severity: "minor", location: "", originalText: "", suggestion: "", ...(iss as Record<string, unknown>) })),
+      };
+    });
     const result = {
       paperTitle: agg?.paperTitle ?? job.title ?? "未命名论文",
       wordCount: agg?.wordCount ?? text.replace(/\s/g, "").length,
@@ -311,7 +332,9 @@ export async function deleteJournal(userId: string, journalId: string) {
 
 /** 投稿须知 → AI 解析结构化规则 */
 export async function parseSubmissionGuide(text: string) {
-  const ans = await llmJson(`你是学术期刊编辑。解析期刊投稿须知原文为结构化规则, 输出 JSON:
+  // R9c: LLM JSON 解析失败兜底 — 重试 1 次仍失败返回可读错误(闭源 500"非有效JSON"无兜底, 学其教训)
+  const run = async () => {
+    const ans = await llmJson(`你是学术期刊编辑。解析期刊投稿须知原文为结构化规则, 输出 JSON:
 {"formatRules":["格式要求(如字数/摘要结构/图表规范)"],
  "reviewFocus":["审稿关注点(该刊最看重的质量维度)"],
  "citationRules":["引文与参考文献规范"],
@@ -319,10 +342,20 @@ export async function parseSubmissionGuide(text: string) {
 
 原文:
 ${text.slice(0, 6000)}`, undefined, 3000, 0.2);
-  return {
-    formatRules: ans?.formatRules ?? [], reviewFocus: ans?.reviewFocus ?? [],
-    citationRules: ans?.citationRules ?? [], scope: ans?.scope ?? "",
+    if (!ans) return null;
+    return {
+      formatRules: Array.isArray(ans.formatRules) ? ans.formatRules : [],
+      reviewFocus: Array.isArray(ans.reviewFocus) ? ans.reviewFocus : [],
+      citationRules: Array.isArray(ans.citationRules) ? ans.citationRules : [],
+      scope: typeof ans.scope === "string" ? ans.scope : "",
+    };
   };
+  const first = await run();
+  if (first) return first;
+  const retry = await run();
+  if (retry) return retry;
+  // 结构契约保持(测试/前端依赖字段恒存在), 附加 error 供前端提示
+  return { formatRules: [], reviewFocus: [], citationRules: [], scope: "", error: "AI 解析失败(JSON 格式无效), 请稍后重试或换一段更规范的原文" };
 }
 
 export async function listStandards(userId: string) {
@@ -370,13 +403,21 @@ export async function setDefaultStandard(userId: string, standardId: string, isD
 
 /** 评分标准 → AI 解析维度(带权重/评分标准) */
 export async function parseStandardText(text: string) {
-  const ans = await llmJson(`你是学术期刊编辑。把一份论文评分标准/审稿要点解析为结构化维度, 输出 JSON:
+  // R9c: JSON 解析失败重试 1 次, 仍失败返回可读错误(不裸 500)
+  const run = async () => {
+    const ans = await llmJson(`你是学术期刊编辑。把一份论文评分标准/审稿要点解析为结构化维度, 输出 JSON:
 {"dimensions":[{"key":"snake_case","name":"维度名","weight":0.0-1.0,"criteria":"评分细则","min":0,"max":100}]}
 
 原文:
 ${text.slice(0, 6000)}`, undefined, 3000, 0.2);
-  const dims = Array.isArray(ans?.dimensions) ? ans.dimensions : [];
-  return { dimensions: dims.slice(0, 12) };
+    if (!Array.isArray(ans?.dimensions)) return null;
+    return { dimensions: ans.dimensions.slice(0, 12) };
+  };
+  const first = await run();
+  if (first) return first;
+  const retry = await run();
+  if (retry) return retry;
+  return { dimensions: [], error: "AI 解析失败(JSON 格式无效), 请稍后重试或换一段更规范的原文" };
 }
 
 // ═══ Word 批注导出(SocialSci P0-3 补漏: export-report) ═══
@@ -431,4 +472,69 @@ export async function exportReportWord(userId: string, jobId: string): Promise<{
     fs.rmSync(tmpDir, { recursive: true, force: true });
     return { ok: false, error: `Word 导出失败: ${String(e).slice(0, 150)}(可改用打印/存PDF)` };
   }
+}
+
+// ═══ T6: 审稿排版 HTML 报告导出(对齐闭源 export-report 语义) ═══
+// 闭源 POST /review/export-report → 服务端渲染完整排版 HTML(标题/总分大字/总评/维度卡/批注),
+// 供打印/存 PDF; 我方 Word 批注导出之外的第二种报告形态
+export async function exportReportHtml(userId: string, jobId: string): Promise<{ ok: boolean; html?: string; error?: string }> {
+  const job = await getReviewJob(userId, jobId);
+  if (!job) return { ok: false, error: "审稿任务不存在" };
+  const res = job.result_json ? (typeof job.result_json === "string" ? JSON.parse(job.result_json) : job.result_json) : null;
+  if (!res) return { ok: false, error: "审稿结果为空(任务未完成)" };
+  const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const dims = (res.dimensions ?? []).filter((d: Record<string, unknown>) => d && typeof d === "object");
+  const anns = (res.annotations ?? []).filter((a: Record<string, unknown>) => a && typeof a === "object");
+  const majors = (res.majorIssues ?? []).slice(0, 12);
+  const minors = (res.minorIssues ?? []).slice(0, 12);
+  const highlights = res.highlights ?? [];
+  const dimRows = dims.map((d: Record<string, unknown>) => {
+    const issueLis = (Array.isArray(d.issues) ? d.issues : []).slice(0, 6).map((iss: unknown) => {
+      if (typeof iss === "string") return `<li>${esc(iss)}</li>`;
+      const o = iss as Record<string, unknown>;
+      return `<li><b>[${esc(o.severity ?? "suggestion")}]</b> ${o.location ? `<i>(${esc(o.location)})</i> ` : ""}${esc(o.suggestion || o.originalText || "")}</li>`;
+    }).join("");
+    const gradeCls = (Number(d.score) ?? 0) >= 80 ? "#1e7d34" : Number(d.score) >= 60 ? "#b7791f" : "#c0392b";
+    return `<div class="dim"><h3>${esc(d.name)} <span class="score" style="color:${gradeCls}">${esc(d.score)}/${esc(d.maxScore ?? 100)}</span></h3>
+      ${d.summary ? `<p class="dim-comment">${esc(d.summary)}</p>` : ""}
+      ${issueLis ? `<ul class="issues">${issueLis}</ul>` : ""}</div>`;
+  }).join("");
+  const annRows = anns.map((a: Record<string, unknown>) =>
+    `<div class="ann"><b>${esc(a.type ?? "info").toUpperCase()}</b> ${a.dimension ? `<span class="loc">${esc(a.dimension)}</span>` : ""}
+     ${a.highlightText ? `<div class="hl-text">“${esc(a.highlightText)}”</div>` : ""}
+     ${a.comment ? `<div>${esc(a.comment)}</div>` : ""}</div>`).join("");
+  const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>审稿报告</title><style>
+  body{font-family:'PingFang SC','Microsoft YaHei',sans-serif;max-width:800px;margin:0 auto;padding:40px 30px;color:#333;line-height:1.8;font-size:14px}
+  h1{text-align:center;font-size:22px;margin-bottom:8px;color:#1a365d}
+  .meta{text-align:center;font-size:13px;color:#888;margin-bottom:30px}
+  .score-box{text-align:center;margin:24px 0}
+  .score-num{font-size:48px;font-weight:bold;color:#1a365d}
+  .score-grade{font-size:18px;color:#666;margin-top:4px}
+  .overall-comment{background:#f8f9fa;padding:16px 20px;border-radius:6px;margin:16px 0}
+  .section{margin:30px 0}
+  h2{color:#1a365d;border-bottom:2px solid #eee;padding-bottom:6px;font-size:17px}
+  .dim{border:1px solid #e5e0d8;border-radius:6px;padding:14px 16px;margin:10px 0;break-inside:avoid}
+  .dim h3{margin:0 0 6px;font-size:15px;color:#222}
+  .score{font-weight:normal;font-size:13px}
+  .dim-comment{color:#555;margin:0 0 8px}
+  .issues{margin:6px 0 0;padding-left:20px;color:#444}
+  .ann{border-left:3px solid #1e4d8c;padding:8px 12px;margin:8px 0;background:#fafcff;border-radius:0 4px 4px 0}
+  .hl-text{color:#666;font-style:italic;margin:4px 0}
+  .loc{color:#666;font-style:italic;background:#fefce8;padding:0 4px;border-radius:3px;font-size:12px}
+  .pill{display:inline-block;background:#eef;padding:2px 10px;border-radius:12px;margin:3px;font-size:12px;color:#335}
+  @media print{body{padding:10px}}
+  </style></head><body>
+  <h1>${esc(res.paperTitle ?? "审稿报告")}</h1>
+  <div class="meta">全文 ${esc(res.wordCount ?? 0)} 字 · ${esc(res.grade ?? "")} 档 · ${new Date().toLocaleDateString("zh-CN")} 审</div>
+  <div class="score-box"><div class="score-num">${esc(res.overallScore ?? 0)}</div><div class="score-grade">等级 ${esc(res.grade ?? "—")}</div></div>
+  <div class="overall-comment"><b>总体评语</b><br>${esc(res.overallComment ?? res.overall ?? "")}</div>
+  <div class="section"><h2>维度评分</h2>${dimRows || "<p>无维度数据</p>"}</div>
+  ${annRows ? `<div class="section"><h2>正文批注 (${anns.length})</h2>${annRows}</div>` : ""}
+  ${(majors.length || minors.length) ? `<div class="section"><h2>问题清单</h2>
+    ${majors.length ? `<h3>大修 (${majors.length})</h3><ul class="issues">${majors.map((m: Record<string, unknown>) => `<li><b>${esc(m.title ?? "")}</b> — ${esc(m.detail ?? "")}</li>`).join("")}</ul>` : ""}
+    ${minors.length ? `<h3>小修 (${minors.length})</h3><ul class="issues">${minors.map((m: Record<string, unknown>) => `<li><b>${esc(m.title ?? "")}</b> — ${esc(m.detail ?? "")}</li>`).join("")}</ul>` : ""}
+  </div>` : ""}
+  ${highlights.length ? `<div class="section"><h2>论文亮点</h2>${highlights.map((h: unknown) => `<span class="pill">${esc(h)}</span>`).join("")}</div>` : ""}
+  </body></html>`;
+  return { ok: true, html };
 }

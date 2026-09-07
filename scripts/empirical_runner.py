@@ -665,6 +665,90 @@ elif method == "crosstab":
     except Exception as e:
         fail(f"交叉表失败: {str(e)[:120]}")
 
+elif method == "mediation":
+    # W9(闭源 statistics 中介效应实拍): X→M→Y 三步法 + Bootstrap 间接效应
+    try:
+        import statsmodels.formula.api as smf
+        xc, mc, yc = params.get("x"), params.get("m"), params.get("y")
+        if not xc or not mc or not yc:
+            fail("中介效应需要 X/M/Y 三列")
+        d = df.copy()
+        # 第一步: X→M
+        m1 = smf.ols(f"{mc} ~ {xc}", data=d).fit()
+        a, a_se, a_p = m1.params[xc], m1.bse[xc], m1.pvalues[xc]
+        # 第二步: X+M→Y
+        m2 = smf.ols(f"{yc} ~ {xc} + {mc}", data=d).fit()
+        b, b_se, b_p = m2.params[mc], m2.bse[mc], m2.pvalues[mc]
+        cp = m2.params[xc]  # 直接效应(c')
+        # 第三步: X→Y 总效应
+        m3 = smf.ols(f"{yc} ~ {xc}", data=d).fit()
+        c_total = m3.params[xc]
+        # Bootstrap 间接效应(ab) 95%CI — 1000 次
+        rng = np.random.default_rng(42)
+        ab = []
+        n = len(d)
+        for _ in range(1000):
+            idx = rng.integers(0, n, n)
+            dd = d.iloc[idx]
+            try:
+                b1 = smf.ols(f"{mc} ~ {xc}", data=dd).fit()
+                b2 = smf.ols(f"{yc} ~ {xc} + {mc}", data=dd).fit()
+                ab.append(b1.params[xc] * b2.params[mc])
+            except Exception:
+                continue
+        ab_arr = np.array(ab) if ab else np.array([0.0])
+        ab_mean = float(ab_arr.mean()) if len(ab_arr) else 0.0
+        ci_lo = float(np.percentile(ab_arr, 2.5)) if len(ab_arr) else 0.0
+        ci_hi = float(np.percentile(ab_arr, 97.5)) if len(ab_arr) else 0.0
+        indirect_sig = not (ci_lo <= 0 <= ci_hi)
+        result["tables"].append(table_html("中介效应三步法 + Bootstrap", ["路径", "系数", "SE", "p"], [
+            [f"X→M (a)", round(a, 4), round(a_se, 4), round(a_p, 4)],
+            [f"M→Y (b)", round(b, 4), round(b_se, 4), round(b_p, 4)],
+            [f"X→Y 直接 (c')", round(cp, 4), round(m2.bse[xc], 4), round(m2.pvalues[xc], 4)],
+            [f"X→Y 总 (c)", round(c_total, 4), round(m3.bse[xc], 4), round(m3.pvalues[xc], 4)],
+            [f"间接 ab (Bootstrap)", round(ab_mean, 4), "", f"95%CI [{round(ci_lo,4)}, {round(ci_hi,4)}]"],
+        ], f"N={n}, Bootstrap=1000 次 (seed 42); 间接效应含 0={'否' if indirect_sig else '是'}, 中介成立={'是' if indirect_sig and a_p < 0.05 and b_p < 0.05 else '需结合理论判断'}"))
+        result["diagnostics"].append({"name": "中介 Bootstrap", "stat": f"ab={round(ab_mean,4)}", "p": f"[{round(ci_lo,4)},{round(ci_hi,4)}]", "verdict": "间接效应 95%CI 不含 0 → 中介显著" if indirect_sig else "间接效应 95%CI 含 0 → 中介不显著"})
+        result["figures"].append({"id": "mediation", "title": "中介路径系数", "svg": coef_svg([{"name": f"X→M (a={round(a,3)})", "coef": a, "ci_lo": a - 1.96 * a_se, "ci_hi": a + 1.96 * a_se}, {"name": f"M→Y (b={round(b,3)})", "coef": b, "ci_lo": b - 1.96 * b_se, "ci_hi": b + 1.96 * b_se}, {"name": f"间接 ab={round(ab_mean,3)}", "coef": ab_mean, "ci_lo": ci_lo, "ci_hi": ci_hi}], "中介效应")})
+    except Exception as e:
+        fail(f"中介效应失败: {str(e)[:120]}")
+
+elif method == "moderation":
+    # W9(闭源 statistics 调节效应实拍): 中心化后交互项 X*M + 边际效应
+    try:
+        import statsmodels.formula.api as smf
+        xc, mc, yc = params.get("x"), params.get("m"), params.get("y")
+        if not xc or not mc or not yc:
+            fail("调节效应需要 X/M/Y 三列")
+        d = df.copy()
+        for c in (xc, mc):
+            if c in d.columns and pd.api.types.is_numeric_dtype(d[c]):
+                d[c] = d[c].astype(float)
+        center = params.get("center") == "1"
+        if center:
+            d["_x"] = d[xc] - d[xc].mean()
+            d["_m"] = d[mc] - d[mc].mean()
+        else:
+            d["_x"] = d[xc].astype(float)
+            d["_m"] = d[mc].astype(float)
+        d["_xm"] = d["_x"] * d["_m"]
+        m = smf.ols(f"{yc} ~ _x + _m + _xm", data=d).fit()
+        int_coef, int_se, int_p = m.params["_xm"], m.bse["_xm"], m.pvalues["_xm"]
+        sig = int_p < 0.05
+        # 边际效应: M 在 mean±1sd 时的 X 效应
+        msd = d["_m"].std()
+        for tag, mv in (("低 M (-1SD)", -msd), ("中 M (均值)", 0.0), ("高 M (+1SD)", msd)):
+            eff = m.params["_x"] + int_coef * mv
+            se = float((m.bse["_x"] ** 2 + (mv ** 2) * (int_se ** 2) + 2 * mv * m.cov_params().loc["_x", "_xm"]) ** 0.5)
+            z = eff / se if se > 0 else 0
+            from scipy import stats as scistats
+            pv = 2 * (1 - scistats.norm.cdf(abs(z)))
+            result["tables"].append(table_html(f"调节效应: X 在 {tag} 的边际效应", ["条件", "效应", "SE", "p"], [[tag, round(eff, 4), round(se, 4), round(pv, 4)]], f"交互项 X*M 系数={round(int_coef,4)}, p={round(int_p,4)}"))
+        result["diagnostics"].append({"name": "调节交互项", "stat": f"X*M={round(int_coef,4)}", "p": str(round(int_p, 4)), "verdict": "交互显著 → 调节效应成立" if sig else "交互不显著 → 无显著调节"})
+        result["figures"].append({"id": "moderation", "title": "调节效应交互", "svg": coef_svg([{"name": f"X*M={round(int_coef,3)}", "coef": int_coef, "ci_lo": int_coef - 1.96 * int_se, "ci_hi": int_coef + 1.96 * int_se}], "调节交互项")})
+    except Exception as e:
+        fail(f"调节效应失败: {str(e)[:120]}")
+
 elif method == "genvars":
     # 自定义变量构造: 公式列表 [{name, expr}]
     try:

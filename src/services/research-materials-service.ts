@@ -66,7 +66,7 @@ export async function listMaterials(userId: string, projectId?: string, kind?: s
   if (projectId) { vals.push(projectId); clauses.push(`project_id=$${vals.length}`); }
   if (kind) { vals.push(kind); clauses.push(`kind=$${vals.length}`); }
   const r = await pool.query(
-    `select id, project_id, kind, title, tags, source_ref, produced_by_dag_node, created_at
+    `select id, project_id, kind, title, tags, source_ref, produced_by_dag_node, section_ids, usage_status, created_at
        from research_materials where ${clauses.join(" and ")}
       order by created_at desc limit 200`,
     vals
@@ -264,5 +264,62 @@ ${content}` }],
     return { ok: true as const, review: { quality: p.quality ?? "medium", score: p.score ?? 0, assessment: p.assessment ?? "", relevance: p.relevance ?? "", suggestions: Array.isArray(p.suggestions) ? p.suggestions : [] } };
   } catch {
     return { ok: false as const, error: "AI 审视结果解析失败" };
+  }
+}
+
+// ═══ T4-4: AI 自动编排素材到章节(对齐闭源 MaterialsView allocateMaterials) ═══
+// LLM 读「未挂章素材 + 一级章节清单」→ 每条素材建议目标章节 + 理由; 前端确认后逐条 adopt
+export async function allocateMaterialsToSections(userId: string, projectId: string): Promise<{
+  ok: boolean; suggestions?: Array<{ materialId: string; materialTitle: string; sectionId: string | null; sectionTitle: string; reason: string }>; error?: string;
+}> {
+  // 未挂章素材(无 section_ids 或空数组)
+  const mats = await pool.query(
+    `select id, title, kind, content_md, section_ids
+       from research_materials
+      where project_id=$1 and user_id=$2
+        and (section_ids is null or jsonb_array_length(section_ids::jsonb)=0)
+      order by created_at limit 12`, [projectId, userId]);
+  const sections = await pool.query(
+    `select payload->'sections' as secs from research_nodes where project_id=$1 and node_key='sections'`, [projectId]);
+  const list = (sections.rows[0]?.secs ?? []) as Array<{ id: string; title: string; level: number }>;
+  const top = list.filter((s) => s.level === 1);
+  if (!mats.rows.length) return { ok: true as const, suggestions: [] };
+  if (!top.length) return { ok: false as const, error: "请先完成科研架构(生成章节清单)" };
+  const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+  const res = await fetchLlm({
+    url: ep.url, key: ep.key, model: ep.model,
+    messages: [{ role: "user", content: `你是社科论文素材编排专家。把素材分配到最合适的一级章节, 输出 JSON:
+{"assignments":[{"materialId":"素材id","sectionId":"章节id","reason":"匹配理由(40字内)"}]}
+
+一级章节:
+${top.map((s) => `${s.id} | ${s.title}`).join("\n")}
+
+待编排素材:
+${mats.rows.map((m) => `id=${m.id} | 类型=${m.kind} | 标题=${(m.title ?? "未命名").slice(0, 50)} | 内容=${String(m.content_md ?? "").slice(0, 120).replace(/\n/g, " ")}`).join("\n")}
+
+规则: 每条素材只配一个最相关章节; 若与任何章节都不匹配输出 null 目标。` }],
+    temperature: 0.2, maxTokens: 2500, timeoutMs: 120_000,
+  });
+  const text = res?.text ?? "";
+  try {
+    const p = JSON.parse(text.replace(/```json|```/g, "").trim());
+    const assigns = Array.isArray(p.assignments) ? p.assignments : [];
+    const byId = new Map(mats.rows.map((m) => [String(m.id), m]));
+    const bySec = new Map(top.map((s) => [String(s.id), s]));
+    const suggestions = assigns.slice(0, 12).map((a: { materialId?: string; sectionId?: string | null; reason?: string }) => {
+      const m = byId.get(String(a.materialId ?? ""));
+      const s = a.sectionId ? bySec.get(String(a.sectionId)) : null;
+      if (!m) return null;
+      return {
+        materialId: String(m.id),
+        materialTitle: String(m.title ?? "未命名"),
+        sectionId: s ? String(s.id) : null,
+        sectionTitle: s ? String(s.title) : "(不匹配)",
+        reason: String(a.reason ?? "").slice(0, 80),
+      };
+    }).filter((x: unknown): x is { materialId: string; materialTitle: string; sectionId: string | null; sectionTitle: string; reason: string } => !!x);
+    return { ok: true as const, suggestions };
+  } catch {
+    return { ok: false as const, error: "AI 编排建议解析失败, 请重试" };
   }
 }

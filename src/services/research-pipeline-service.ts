@@ -410,6 +410,47 @@ export async function listVersions(userId: string, projectId: string) {
   return r.rows;
 }
 
+/** P-A 终稿激活(闭源 #651 activate 语义): 把指定版本置 published/终稿, 其余版本 superseded,
+ *  记录 project.revision_of_version 指向激活版本。 */
+export async function activateVersion(userId: string, projectId: string, version: number) {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const owned = await client.query(
+      `select 1 from research_projects where id=$1 and user_id=$2 for update`,
+      [projectId, userId]
+    );
+    if (!owned.rows.length) { await client.query("rollback"); return { ok: false as const, code: "PROJECT_NOT_FOUND" }; }
+    const ver = await client.query(
+      `select 1 from research_versions where project_id=$1 and version=$2`,
+      [projectId, version]
+    );
+    if (!ver.rows.length) { await client.query("rollback"); return { ok: false as const, code: "VERSION_NOT_FOUND" }; }
+    // 旧激活版本 → superseded; 目标版本 → published(终稿)(research_versions 无 updated_at 列, 只改 status)
+    await client.query(
+      `update research_versions set status='superseded'
+        where project_id=$1 and status='published' and version<>$2`,
+      [projectId, version]
+    );
+    await client.query(
+      `update research_versions set status='published'
+        where project_id=$1 and version=$2`,
+      [projectId, version]
+    );
+    await client.query(
+      `update research_projects set revision_of_version=$2, updated_at=now() where id=$1`,
+      [projectId, version]
+    );
+    await client.query("commit");
+    return { ok: true as const, version };
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // ═══ DAG 模板(标准五阶段 → 画布节点+连线) ═══
 export function dagTemplateFiveStage(topic: string): CanvasState {
   const x0 = 60;
@@ -498,16 +539,19 @@ ${input.totalWordCount ? `【目标字数】${input.totalWordCount}` : ""}
 export async function runMainAgentAnalysis(userId: string, projectId: string, opts: { taskId?: string } = {}) {
   const project = await getProject(userId, projectId);
   if (!project) return { ok: false as const, code: "NOT_FOUND" };
-  const ans = await llmJson(`你是科研架构分析专家(主控智能体)。基于研究主题生成科研架构, 输出 JSON:
-{"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"dependent|independent|mediator|moderator|control"}]},
- "chapterPlan":[{"title":"章节标题","level":1,"requirements":"该章写作要求(一句话)"}],
- "logicChain":"研究逻辑主线(一段话)",
+  const ans = await llmJson(`你是科研架构分析专家(主控智能体)。基于研究主题生成科研架构, 输出 JSON(W2 闭源 sections 完成态对齐: 变量带语义+研究假设带理论依据+章节字数分配):
+{"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"dependent|independent|mediator|moderator|control","description":"该变量的操作化语义描述(含为何作此角色)"}]},
+ "hypotheses":[{"id":"H1","type":"main|mediation|moderation","text":"完整假设表述","theory":"基于 XX 理论/假说+机制解释"}],
+ "chapterPlan":[{"title":"章节标题","level":1,"requirements":"该章写作要求(一句话)","skillType":"intro|literature|theory|method|result|conclusion","wordCount":按总字数比例的该章目标字数}],
+ "logicChain":"研究逻辑主线(一段话, 闭源'研究逻辑'风格: 起承转结构说明)",
  "clarifyQuestions":["澄清问题(如无则[])"]}
 
 研究主题: ${project.topic || project.title}
-研究方法: ${project.style || "mixed"}`);
+研究方法: ${project.style || "mixed"}
+【目标字数】10000 字(社会科学论文默认, 按此分配每章 wordCount; 若主题明显偏长/偏短可自行微调)`);
   const nodePayload = {
     variables: ans?.variables ?? { kind: "unknown", list: [] },
+    hypotheses: ans?.hypotheses ?? [],
     chapterPlan: ans?.chapterPlan ?? [],
     logicChain: ans?.logicChain ?? "",
     clarifyQuestions: ans?.clarifyQuestions ?? [],

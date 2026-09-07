@@ -10,6 +10,7 @@ interface OutlineNode {
   id: string;
   title: string;
   level: number;
+  targetWords?: number;
   content?: string;
   generated?: boolean;
   children?: OutlineNode[];
@@ -30,6 +31,25 @@ function collectContent(nodes: OutlineNode[]): string[] {
   walk(nodes);
   return out;
 }
+
+// T3-6: 中文序号工具 — 一级 一、二、三 / 二级 1.1 1.2; arabic: 1. 2.
+const CN_NUM = ["一","二","三","四","五","六","七","八","九","十"];
+function applyNumbering(nodes: OutlineNode[], mode: "cn" | "arabic"): OutlineNode[] {
+  let top = 0;
+  return nodes.map((n) => {
+    if (n.title === "摘要" || n.title === "关键词" || n.title === "结论") return { ...n, children: n.children?.map((c, j) => ({ ...c, title: c.title.replace(/^[一二三四五六七八九十]+、/, "").replace(/^\d+\.\s?/, "") })) };
+    top++;
+    const prefix = mode === "cn" ? `${CN_NUM[top - 1] ?? top}、` : `${top}. `;
+    const clean = (t: string) => t.replace(/^[一二三四五六七八九十]+、/, "").replace(/^\d+\.\s?/, "");
+    const kids = (n.children ?? []).map((c, j) => ({ ...c, title: mode === "cn" ? `${prefix.replace(/[、.]+$/, "")}.${j + 1} ${clean(c.title)}` : `${top}.${j + 1} ${clean(c.title)}` }));
+    return { ...n, title: prefix + clean(n.title), children: kids };
+  });
+}
+function stripNumbering(nodes: OutlineNode[]): OutlineNode[] {
+  const clean = (t: string) => t.replace(/^[一二三四五六七八九十]+[、.．]\s?/, "").replace(/^\d+(\.\d+)?[、.．]\s?/, "").replace(/^\d+\.\s?/, "");
+  return nodes.map((n) => ({ ...n, title: clean(n.title), children: (n.children ?? []).map((c) => ({ ...c, title: clean(c.title) })) }));
+}
+
 function treeText(nodes: OutlineNode[]): string {
   const lines: string[] = [];
   const walk = (list: OutlineNode[], d: number) => { for (const n of list) { lines.push(`${"  ".repeat(d)}${n.title}`); if (n.children?.length) walk(n.children, d + 1); } };
@@ -192,6 +212,9 @@ export function PaperOutlinePanel() {
 
   // ── UI审计T11: 社科论文大纲模板库(对齐闭源16模板一键插入) ──
   const [showTpl, setShowTpl] = useState(false);
+  // T3-6: 中文序号工具(自动编号/去编号) + 字数分配
+  const [numMode, setNumMode] = useState<"none" | "cn" | "arabic">("none");
+  const [assignW, setAssignW] = useState<Record<string, string>>({});
   const OUTLINE_TEMPLATES: Array<{ name: string; desc: string; chapters: Array<{ title: string; children?: string[] }> }> = [
     { name: "实证论文·经济管理", desc: "引言→文献→理论→实证→结论", chapters: [
       { title: "引言", children: ["问题提出与研究缘起", "研究目的与意义", "核心概念界定"] },
@@ -541,6 +564,21 @@ export function PaperOutlinePanel() {
                   ))}
                 </span>
               </div>
+              {/* T3-6: 中文序号工具条 */}
+              <div className="flex flex-wrap items-center gap-1 border-b border-border/40 pb-1.5 text-[9px]">
+                <span className="text-muted-foreground/60">序号</span>
+                {([["none", "无"], ["cn", "一、1.1"], ["arabic", "1. 1.1"]] as Array<["none" | "cn" | "arabic", string]>).map(([k, lbl]) => (
+                  <button key={k} type="button" onClick={() => {
+                    setNumMode(k);
+                    if (k === "none") setNodes((p2) => stripNumbering(p2));
+                    else setNodes((p2) => applyNumbering(p2, k));
+                  }}
+                    className={cn("rounded border px-1.5 py-0.5", numMode === k ? "border-emerald-400/50 bg-emerald-400/15 text-emerald-300" : "border-border/50 text-muted-foreground hover:bg-accent/40")}>
+                    {lbl}
+                  </button>
+                ))}
+                <span className="ml-auto text-muted-foreground/60">字数分配(字/章)</span>
+              </div>
               <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto py-1 text-xs">
                 {nodes.length === 0 && <div className="py-6 text-center text-[11px] text-muted-foreground/50">大纲为空 — 下方添加章节, 或点摘要/关键词/结论</div>}
                 {nodes.map((n, i) => {
@@ -551,12 +589,23 @@ export function PaperOutlinePanel() {
                         {kids.length > 0 ? <ChevronDown className="h-3 w-3 text-muted-foreground/40" /> : <span className="w-3" />}
                         <span className="min-w-0 flex-1 truncate">
                           {n.generated ? <span className="text-emerald-400">✓ </span> : null}{n.title}
+                          {n.targetWords ? <span className="ml-1 rounded bg-accent/50 px-1 text-[8px] text-muted-foreground">{n.targetWords}字</span> : null}
                         </span>
+                        {assignW[n.id] !== undefined ? (
+                          <input autoFocus value={assignW[n.id] ?? ""}
+                            onChange={(e) => setAssignW((m) => ({ ...m, [n.id]: e.target.value }))}
+                            onBlur={() => { const v = Number(assignW[n.id]); if (v > 0) setNodes((p2) => updateNode(p2, n.id, (x) => ({ ...x, targetWords: v }))); setAssignW((m) => { const n2 = { ...m }; delete n2[n.id]; return n2; }); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            placeholder="字数"
+                            className="w-14 rounded border border-border/60 bg-background px-1 py-0.5 text-[9px] text-muted-foreground outline-none" />
+                        ) : null}
                         <span className="hidden gap-0.5 group-hover:flex">
                           <button type="button" title="改名" onClick={() => { setEditingTitleId(n.id); setTitleDraft(n.title); }}
                             className="text-muted-foreground/50 hover:text-foreground"><Pencil className="h-3 w-3" /></button>
                           <button type="button" title="上移" onClick={() => moveTop(i, -1)} className="text-muted-foreground/50 hover:text-foreground">↑</button>
                           <button type="button" title="下移" onClick={() => moveTop(i, 1)} className="text-muted-foreground/50 hover:text-foreground">↓</button>
+                          <button type="button" title="设目标字数" onClick={() => setAssignW((m) => ({ ...m, [n.id]: String(n.targetWords ?? "") }))}
+                            className="text-muted-foreground/50 hover:text-emerald-400">字</button>
                           <button type="button" title="删除" onClick={() => deleteById(n.id)} className="text-muted-foreground/50 hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
                         </span>
                       </div>

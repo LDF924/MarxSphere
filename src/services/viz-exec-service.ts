@@ -110,8 +110,8 @@ export async function analyzeData(userId: string, csv: string, columnOrder: stri
   return { ok: true, summary: res.summary, columns: res.columns };
 }
 
-/** 执行绘图代码 → png+svg 落盘, 返回相对路径 */
-export async function renderChart(userId: string, code: string, csv?: string, columnOrder: string[] = []): Promise<{ ok: boolean; error?: string; pngRel?: string; svgRel?: string }> {
+/** 执行绘图代码 → png+svg 落盘, 返回相对路径; spec=期刊规范(尺寸mm/dpi/字号/线宽, 闭源 VizView 对齐) */
+export async function renderChart(userId: string, code: string, csv?: string, columnOrder: string[] = [], spec: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; pngRel?: string; svgRel?: string }> {
   const codeErr = validateChartCode(code);
   if (codeErr) return { ok: false, error: codeErr };
   const taskId = randomUUID();
@@ -122,7 +122,7 @@ export async function renderChart(userId: string, code: string, csv?: string, co
     const colErr = validateColumns(columnOrder);
     if (colErr) { rmSync(taskDir, { recursive: true, force: true }); return { ok: false, error: colErr }; }
   }
-  writeFileSync(path.join(taskDir, "input.json"), JSON.stringify({ kind: "chart", code }), "utf-8");
+  writeFileSync(path.join(taskDir, "input.json"), JSON.stringify({ kind: "chart", code, spec }), "utf-8");
   const r = await run(taskDir);
   if (!r.ok) {
     const resPath = path.join(taskDir, "result.json");

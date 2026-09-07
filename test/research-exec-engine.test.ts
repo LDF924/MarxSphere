@@ -10,7 +10,7 @@ vi.mock("../src/services/llm-model-registry.js", () => ({
 }));
 vi.mock("../src/ai/llm-common.js", () => ({
   getLlmEndpoint: () => ({ url: "http://mock", key: "k", model: "m" }),
-  fetchLlm: async () => ({ text: '{"result":"素材注入执行完成","structured":{"ok":1}}' }),
+  fetchLlm: vi.fn(async () => ({ text: JSON.stringify({ score: 62, grade: "C", overall: "mock", highlights: ["h1"], checks: { requirements: { pass: true, detail: "x" }, references: { pass: false, detail: "y" }, aiTone: { pass: false, detail: "z" }, logic: { pass: true, detail: "w" }, dataAccuracy: { pass: false, detail: "v" } }, topSuggestions: ["s1"] }) })),
   parseLlmJson: (t: string) => { try { return JSON.parse(t); } catch { return null; } },
 }));
 vi.mock("../src/services/research-materials-service.js", async (importOriginal) => {
@@ -19,6 +19,7 @@ vi.mock("../src/services/research-materials-service.js", async (importOriginal) 
 });
 
 import { pool } from "../src/db/pool.js";
+import * as llmCommon from "../src/ai/llm-common.js";
 import {
   findReadyTasks, executeReadyTask, markFailed, runSchedulingRound,
 } from "../src/services/research-exec-engine.js";
@@ -54,7 +55,10 @@ describe("findReadyTasks 就绪判定", () => {
 });
 
 describe("executeReadyTask 执行器分派", () => {
-  beforeEach(() => { vi.mocked(pool.query).mockReset(); });
+  beforeEach(() => {
+    vi.mocked(pool.query).mockReset();
+    vi.mocked(llmCommon.fetchLlm).mockClear();
+  });
 
   it("非 queued 状态直接返回不执行", async () => {
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [task("done")] } as any);
@@ -62,17 +66,53 @@ describe("executeReadyTask 执行器分派", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("review 任务走通用 LLM 执行器(面板直连, 引擎兜底)→ done", async () => {
-    const t = task("queued", { job_kind: "review" });
+  it("review 任务走六维审查执行器(P-A: 读 project.merged_fulltext → 报告落 review_result)→ done", async () => {
+    const t = task("queued", { job_kind: "review", project_id: "p1" });
     vi.mocked(pool.query)
-      .mockResolvedValueOnce({ rows: [t] } as any) // getTaskById
-      .mockResolvedValueOnce({ rows: [] } as any)   // 二次依赖校验(无依赖跳过)
-      .mockResolvedValueOnce({ rows: [] } as any)   // markRunning update
-      .mockResolvedValueOnce({ rows: [] } as any);  // markDone update
+      .mockResolvedValueOnce({ rows: [t] } as any)     // 1 getTaskById
+      .mockResolvedValueOnce({ rows: [] } as any)      // 2 markRunning(依赖空跳过校验)
+      .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n正文内容若干。", mergedAbstract: "", mergedKeywords: "" } }] } as any) // 3 finalize 节点
+      .mockResolvedValueOnce({ rows: [{ merged_title: "测试论文", merged_fulltext: "## 引言\n正文内容若干。", merged_abstract: "", merged_keywords: "", merged_references: "", review_result: null, published_version: 0, phase_label: "" }] } as any) // 4 project 行
+      .mockResolvedValueOnce({ rows: [] } as any)      // 5 review_result 回写 project
+      .mockResolvedValueOnce({ rows: [] } as any)      // 6 review_result 回写 finalize 节点
+      .mockResolvedValueOnce({ rows: [] } as any);     // 7 markDone(落 result)
     const r = await executeReadyTask("t1");
-    expect(r.ok).toBe(true);
+    expect(r.ok, "SQLs: " + JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => String(c[0]).slice(0, 110)))).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
-    expect(sqls.some((s) => s.includes("status='done'"))).toBe(true);
+    // 六维审查报告(score/grade/checks/highlights/topSuggestions)写回 project.review_result
+    expect(sqls.some((s) => s.includes("review_result") && s.includes("update research_projects")),
+      "ALLSQLS: " + JSON.stringify(sqls.map((s) => s.slice(0, 90)))).toBe(true);
+    // markDone 携带 result → research_tasks.result 列
+    expect(sqls.some((s) => s.includes("result=$2::jsonb") && s.includes("status='done'"))).toBe(true);
+    // 审查 prompt 要求六维 checks(结构契约)
+    const reviewArgs = (llmCommon.fetchLlm as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String((c[0] as { messages?: Array<{ content?: string }> })?.messages?.[0]?.content ?? ""));
+    expect(reviewArgs.some((s: string) => s.includes("checks") && s.includes("aiTone") && s.includes("dataAccuracy"))).toBe(true);
+  });
+
+  it("revise 任务走有向修订执行器(P-A: 读 review_result+merged_fulltext → 修订稿覆盖 merged_* + revisionOf)→ done", async () => {
+    const t = task("queued", { job_kind: "revise", project_id: "p1" });
+    const projectRow = {
+      merged_title: "测试论文", merged_fulltext: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。",
+      merged_abstract: "旧摘要", merged_keywords: "旧;关键词", merged_references: "",
+      review_result: { score: 62, grade: "C", checks: { aiTone: { pass: false, detail: "模板化开头" }, logic: { pass: true, detail: "ok" } }, topSuggestions: ["消除模板化表达"] },
+      published_version: 3, phase_label: "",
+    };
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [t] } as any)     // getTaskById
+      .mockResolvedValueOnce({ rows: [] } as any)      // markRunning
+      .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。", mergedAbstract: "旧摘要", mergedKeywords: "旧;关键词", reviewReport: projectRow.review_result } }] } as any) // finalize 节点(真源)
+      .mockResolvedValueOnce({ rows: [projectRow] } as any) // project 行
+      .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿覆盖 project merged_*
+      .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿覆盖 finalize 节点
+      .mockResolvedValueOnce({ rows: [] } as any);     // markDone
+    const r = await executeReadyTask("t1");
+    expect(r.ok, "SQLs: " + JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => String(c[0]).slice(0, 90)))).toBe(true);
+    const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
+    // 修订结果覆盖 merged_fulltext + revision_of_version
+    expect(sqls.some((s) => s.includes("merged_fulltext=$4") && s.includes("revision_of_version=$5"))).toBe(true);
+    // 修订 LLM 收到审稿意见(有向修订: checks + topSuggestions 进 prompt)
+    const reviseArgs = (llmCommon.fetchLlm as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String((c[0] as { messages?: Array<{ content?: string }> })?.messages?.[0]?.content ?? ""));
+    expect(reviseArgs.some((s: string) => s.includes("论文修订专家") && s.includes("aiTone") && s.includes("消除模板化表达"))).toBe(true);
   });
 
   it("通用 analyze 任务: LLM 执行成功 → done", async () => {

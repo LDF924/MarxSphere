@@ -65,3 +65,12 @@ T1→T2+T3→T4→T5→T7→T6→T8→其余按量
 - T4 执行步骤stage/current/total: 已落地(3a880a8)
 - T6 审稿流式实时评分卡: 已落地(21303b0)
 - 待: T5富文本/T7素材卡解析/T8回滚UI/T11模板库等
+
+## 落地进度(2026-09-06 续)
+- T1/T2/T3/T4/T6/T8/T11/T16/T17 已落地(e70711b/89fd687等):
+  T17 统一确认弹层 ConfirmDialog 组件(替换 DagWorkbench回滚/History清除/Editor删除/素材删除 4 处 window.confirm)
+  素材卡挂章 Bookmark→章节 select→adopt 落库+已挂章节 chips
+  审稿"选用审核标准"单选 select → 多选 chips(后端多标准维度合并去重)
+  analysis 节点快照结构化3步面板(①变量识别②章节框架③逻辑主线, 非结构化退回 JSON 编辑)
+- 任务4(体验厚度): Word导入即看(1b6d916) / 版本历史时间线+回档(89fd687) 已落地
+- 待续: T13 Word导入版式保留(提取纯文本, 版式=markdown 化, 非原版式)、T5 TipTap富文本
