@@ -9,6 +9,7 @@ import {
   BookOpen, CheckCircle2, ClipboardList, FileDown, FileText, Gavel, Loader2,
   PenLine, Printer, RefreshCw, ScrollText, Sparkles, Trash2,
 } from "lucide-react";
+import { readResume } from "./ResearchHistoryPanel";
 
 interface ReviewJobLite {
   id: string; kind: string; title: string; status: string;
@@ -52,7 +53,7 @@ export function ReviewLabPanel() {
   const [title, setTitle] = useState("");
   const [journalId, setJournalId] = useState("");
   const [stdIds, setStdIds] = useState<string[]>([]);   // 审核标准多选(HAR: standardIds 数组语义)
-  const [strictness, setStrictness] = useState("medium");
+  const [strictness, setStrictness] = useState("standard"); // 闭源值: lax/standard/strict
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [streamState, setStreamState] = useState<{ jobId: string; status: string; step: number; total: number } | null>(null);
@@ -69,6 +70,7 @@ export function ReviewLabPanel() {
   const [textSnap, setTextSnap] = useState<string>("");
   const [reportView, setReportView] = useState<"report" | "diff">("report");
   const [resolved, setResolved] = useState<Set<string>>(new Set());
+  const [expandedComment, setExpandedComment] = useState(false); // R1: 总评 >120 字折叠展开
   // 期刊/标准 modal
   const [jpInput, setJpInput] = useState("");   // 投稿须知原文
   const [jpName, setJpName] = useState("");
@@ -90,6 +92,16 @@ export function ReviewLabPanel() {
     } catch (e) { setErr((e as Error).message); }
   }, []);
   useEffect(() => { void loadAll(); }, [loadAll]);
+
+  // 历史中心 deep-resume: 从历史记录 review 区卡点击跳入 → 自动打开对应审稿任务(切 jobs 视图)
+  useEffect(() => {
+    const r = readResume("review");
+    if (r?.id) {
+      setTab("jobs");
+      void openJob(String(r.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [upBusy, setUpBusy] = useState(false);
@@ -356,12 +368,12 @@ export function ReviewLabPanel() {
             </div>
             <div>
               <p className="mb-1.5 flex items-center justify-between font-semibold text-slate-300">审查严格度
-                <span className={cn("rounded px-1.5 py-0.5 text-[10px]", strictness === "strict" ? "bg-rose-500/20 text-rose-300" : strictness === "medium" ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300")}>
-                  {strictness === "loose" ? "宽松 · 关注硬伤" : strictness === "medium" ? "标准 · 平衡全面" : "严格 · 逐句挑错"}
+                <span className={cn("rounded px-1.5 py-0.5 text-[10px]", strictness === "strict" ? "bg-rose-500/20 text-rose-300" : strictness === "standard" ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300")}>
+                  {strictness === "lax" ? "宽松 · 仅重大问题" : strictness === "standard" ? "标准 · 核心问题" : "严格 · 逐项检查"}
                 </span>
               </p>
-              <input type="range" min={0} max={2} step={1} value={["loose", "medium", "strict"].indexOf(strictness)}
-                onChange={(e) => setStrictness(["loose", "medium", "strict"][Number(e.target.value)] as "loose" | "medium" | "strict")}
+              <input type="range" min={0} max={2} step={1} value={["lax", "standard", "strict"].indexOf(strictness)}
+                onChange={(e) => setStrictness(["lax", "standard", "strict"][Number(e.target.value)] as "lax" | "standard" | "strict")}
                 className="w-full accent-rose-500" />
               <div className="flex justify-between text-[9px] text-slate-600">
                 <span>宽松</span><span>标准</span><span>严格</span>
@@ -425,7 +437,7 @@ export function ReviewLabPanel() {
                   {liveDims.map((dd, i) => (
                     <div key={i} className="rounded bg-slate-800/60 px-2 py-1">
                       <div className="flex items-center justify-between">
-                        <span className={cn("text-[10px] font-medium", dd.status === "good" ? "text-green-300" : dd.status === "warning" ? "text-amber-300" : "text-rose-300")}>
+                        <span className={cn("text-[10px] font-medium", dd.status === "good" || dd.status === "pass" ? "text-green-300" : dd.status === "warning" ? "text-amber-300" : "text-rose-300")}>
                           {dd.name}
                         </span>
                         <span className="text-[11px] font-bold text-slate-200">{dd.score}</span>
@@ -496,14 +508,31 @@ export function ReviewLabPanel() {
                       <div className="rounded-lg bg-slate-900/60 px-2.5 py-1 text-center">
                         <p className="text-lg font-black leading-none text-slate-100">{result.grade}</p>
                         <p className="mt-0.5 text-[8px] text-slate-400">
-                          {(result.grade ?? "") === "A" ? "优秀" : (result.grade ?? "") === "B" ? "良好" : (result.grade ?? "") === "C" ? "及格" : "不及格"}
+                          {/* 闭源等级表(ReviewView 源码): A+=优秀/A=优秀/B+=良好/B=良好/C+=及格/C=及格/D=待改进/其他一般 */}
+                          {{ "A+": "优秀", A: "优秀", "B+": "良好", B: "良好", "C+": "及格", C: "及格", D: "待改进" }[result.grade ?? ""] ?? "一般"}
                         </p>
                       </div>
                     )}
                   </div>
-                  <p className="max-w-md text-right text-[11px] leading-relaxed text-slate-300">{result.overallComment || result.overall}</p>
+                  <p className="text-right text-[10px] leading-relaxed text-slate-500">字数: {result.wordCount?.toLocaleString() ?? "—"} · {result.dimensions?.length ?? 0} 个维度审查</p>
                 </div>
               )}
+
+              {/* R1(闭源 ReviewResult): 总评 >120 字折叠 + 展开完整评语/收起评语红链 */}
+              {(() => {
+                const oc = result.overallComment || result.overall || "";
+                const long = oc.length > 120;
+                return oc && (
+                  <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-3">
+                    <p className="text-[11px] leading-relaxed whitespace-pre-wrap text-slate-300">{expandedComment ? oc : long ? oc.slice(0, 120) + "…" : oc}</p>
+                    {long && (
+                      <button onClick={() => setExpandedComment((v) => !v)} className="mt-1 text-[10px] text-rose-400 hover:text-rose-300">
+                        {expandedComment ? "收起评语" : "展开完整评语"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* P-B: 核心问题分级计数(闭源报告: 严重/中等/建议 + 共 N 个) */}
               {(() => {
@@ -525,22 +554,32 @@ export function ReviewLabPanel() {
                   </div>
                 ) : null;
               })()}
-              {/* 维度评分卡 */}
+              {/* 维度评分卡(闭源 ReviewResult 对齐: status 通过/待改进/不通过 + 进度条) */}
               <div className="grid grid-cols-3 gap-2">
-                {result.dimensions?.map((d) => (
+                {result.dimensions?.map((d) => {
+                  const st = d.status === "warning" ? "warning" : d.status === "fail" ? "fail" : d.status === "pass" ? "pass" : (d.score ?? 0) >= 80 ? "pass" : (d.score ?? 0) >= 60 ? "warning" : "fail";
+                  const stText = { pass: "通过", warning: "待改进", fail: "不通过" }[st] ?? "";
+                  return (
                   <div key={d.key ?? d.name} className="rounded-lg border border-slate-700/50 bg-slate-800/50 p-3">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
-                        {d.status && <span className={cn("inline-block h-1.5 w-1.5 rounded-full", d.status === "good" ? "bg-green-400" : d.status === "warning" ? "bg-amber-400" : "bg-rose-400")} />}
                         {d.name}
-                        {/* P-B: 闭源报告维度权重整档(权重 3-5) */}
+                        {/* 闭源权重整档(权重 3-5) */}
                         {d.weightLabel !== undefined && <span className="rounded bg-slate-700/70 px-1 text-[8px] font-normal text-slate-400">权重 {d.weightLabel}</span>}
                       </span>
-                      <span className={cn("text-sm font-bold", (d.score ?? 0) >= 80 ? "text-green-400" : (d.score ?? 0) >= 60 ? "text-amber-400" : "text-red-400")}>
-                        {d.score ?? "—"}{d.maxScore ? `/${d.maxScore}` : ""}
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <span className={cn("text-sm font-bold", (d.score ?? 0) >= 80 ? "text-green-400" : (d.score ?? 0) >= 60 ? "text-amber-400" : "text-red-400")}>
+                          {d.score ?? "—"}{d.maxScore ? `/${d.maxScore}` : ""}
+                        </span>
+                        {stText && <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-medium", st === "pass" ? "bg-green-500/15 text-green-300" : st === "warning" ? "bg-amber-500/15 text-amber-300" : "bg-red-500/15 text-red-300")}>{stText}</span>}
                       </span>
                     </div>
-                    {(d.summary || d.comment) && <p className="mt-1 text-[10px] leading-relaxed text-slate-400">{d.summary || d.comment}</p>}
+                    {/* 闭源进度条: score≥80 绿/≥60 琥珀/红, width=score% */}
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div className={cn("h-full rounded-full transition-all duration-700", (d.score ?? 0) >= 80 ? "bg-green-500" : (d.score ?? 0) >= 60 ? "bg-amber-500" : "bg-red-500")}
+                        style={{ width: `${Math.min(100, Math.max(0, d.score ?? 0))}%` }} />
+                    </div>
+                    {(d.summary || d.comment) && <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">{d.summary || d.comment}</p>}
                     {d.issues?.length > 0 && (
                       <div className="mt-1.5 space-y-0.5">
                         {d.issues.slice(0, 3).map((iss, i) => {
@@ -551,7 +590,7 @@ export function ReviewLabPanel() {
                       </div>
                     )}
                   </div>
-                ))}
+                ); })}
               </div>
               {/* 总评 */}
               <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-3">

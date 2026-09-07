@@ -274,7 +274,7 @@ export function FinalizeView({ projectId, title, onBack, onMsg }: {
               {mode === "deai" && (
                 <div className="ml-2 flex flex-1 flex-wrap items-center gap-1.5">
                   <span className="text-[10px] text-purple-300">强度:</span>
-                  {[["light", 30, "轻度降重"], ["medium", 55, "中度降重"], ["strong", 85, "重度降重"]].map(([k, v, lb]) => (
+                  {[["light", 30, "轻度降重"], ["medium", 55, "中度降重"], ["heavy", 85, "重度降重"]].map(([k, v, lb]) => (
                     <button key={k as string} onClick={() => setStrength(v as number)}
                       className={cn("rounded-full border px-2.5 py-0.5 text-[10px]", strength === v ? "border-purple-500/60 bg-purple-600/20 text-purple-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:text-slate-200")}>
                       {lb as string}

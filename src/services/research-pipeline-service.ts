@@ -539,8 +539,8 @@ ${input.totalWordCount ? `【目标字数】${input.totalWordCount}` : ""}
 export async function runMainAgentAnalysis(userId: string, projectId: string, opts: { taskId?: string } = {}) {
   const project = await getProject(userId, projectId);
   if (!project) return { ok: false as const, code: "NOT_FOUND" };
-  const ans = await llmJson(`你是科研架构分析专家(主控智能体)。基于研究主题生成科研架构, 输出 JSON(W2 闭源 sections 完成态对齐: 变量带语义+研究假设带理论依据+章节字数分配):
-{"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"dependent|independent|mediator|moderator|control","description":"该变量的操作化语义描述(含为何作此角色)"}]},
+  const ans = await llmJson(`你是科研架构分析专家(主控智能体)。基于研究主题生成科研架构, 输出 JSON(R3 闭源 SectionsView 对齐: 定性方法用定性变量角色):
+{"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"quantitative 时: dependent|independent|mediator|moderator|control; qualitative 时: influence|outcome|mechanism|context|background","description":"该变量的操作化语义描述(含为何作此角色)"}]},
  "hypotheses":[{"id":"H1","type":"main|mediation|moderation","text":"完整假设表述","theory":"基于 XX 理论/假说+机制解释"}],
  "chapterPlan":[{"title":"章节标题","level":1,"requirements":"该章写作要求(一句话)","skillType":"intro|literature|theory|method|result|conclusion","wordCount":按总字数比例的该章目标字数}],
  "logicChain":"研究逻辑主线(一段话, 闭源'研究逻辑'风格: 起承转结构说明)",

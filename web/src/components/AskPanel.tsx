@@ -15,6 +15,7 @@ import { RetrievalSourceSwitches } from "./RetrievalSourceSwitches";
 import { LlmModelSelector } from "./LlmModelSelector";
 import { EventEntityGraphView } from "./EventEntityGraphView";
 import { FeedbackButtons } from "./FeedbackButtons";
+import { readResume } from "./ResearchHistoryPanel";
 
 interface StepEntry {
   key: string;
@@ -223,10 +224,12 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
         setStepDocsMap(map);
       })
       .catch(() => {});
-    // Hero「立即体验」：自动填入 demo 查询并自动检索（GBrain 自动播放 demo）
-    if (pendingDemo && !pendingDemoRef.current) {
+    // Hero「立即体验」/历史中心 knowledge 卡: 自动填入查询并自动检索(GBrain 自动播放 demo)
+    const resumeK = readResume("knowledge");
+    const demoQuery = pendingDemo || (resumeK?.query ? String(resumeK.query) : "");
+    if (demoQuery && !pendingDemoRef.current) {
       pendingDemoRef.current = true;
-      setQuery(pendingDemo);
+      setQuery(demoQuery);
       // 等 state 更新后自动检索
       setTimeout(() => {
         const projectId = selectedProjectId;
@@ -326,6 +329,12 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
                 title: c.heading || c.sourceId.slice(0, 12),
                 content: c.content.slice(0, 300)
               }))).catch(() => {});
+              // 历史中心: 静默记一条知识库查询(HistoryView knowledge 分区数据源)
+              void fetch("/api/research/history/knowledge", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+                body: JSON.stringify({ query: query.trim(), sourceId: selectedProjectId }),
+              }).catch(() => {});
               // Skillify 模式记录（GBrain 机制6）
               void api.recordSkillifyPattern(query.trim(), true, newCitations.map((c) => c.heading || "").filter(Boolean)).catch(() => {});
             }

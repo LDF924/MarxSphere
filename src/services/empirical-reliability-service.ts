@@ -68,16 +68,51 @@ ${tableText.slice(0, 6000)}
     });
     const interp = JSON.stringify(r?.json ?? { summary: r?.text?.slice(0, 300) ?? "解读失败" });
     if (input.projectId) {
+      // V413: 自动补 α 论文图(异步, 不阻塞落库)
+      const figMeta = await generateAlphaChart(pythonResult);
+      const enriched = { ...pythonResult, meta: { ...(pythonResult.meta ?? {}), figures: figMeta } };
       await pool.query(
         `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result, llm_interpretation)
          values ($1, 'reliability', $2, $3, $4)`,
         [input.projectId,
          JSON.stringify({ scaleGroups: (pythonResult.meta as any)?.scaleGroups ?? [], n: pythonResult.meta?.n }),
-         JSON.stringify(pythonResult), interp]
+         JSON.stringify(enriched), interp]
       );
     }
   } catch {
     // 解读失败不影响 python 结果(部分成功)
+  }
+}
+
+/** V413: 信效度结果 → α 柱状论文图(后端自动, 写 data/agent_workspace/figures/) */
+async function generateAlphaChart(pythonResult: any): Promise<Array<Record<string, unknown>>> {
+  try {
+    const tables = pythonResult.tables ?? [];
+    const alphaTbl = tables.find((t: any) => String(t.title ?? "").includes("α"));
+    if (!alphaTbl?.rows || alphaTbl.rows.length === 0) return [];
+    const { empiricalService } = await import("./empirical-service.js");
+    const r = await empiricalService.generateEmpiricalFigures({
+      spec: {
+        kind: "alpha_bar", id: `reli_alpha_${Date.now()}`,
+        title: `信效度 α (N=${pythonResult.meta?.n ?? ""})`,
+        single: true,
+        sourceA: { tables: [{ rows: alphaTbl.rows, cols: alphaTbl.cols ?? [] }] },
+      },
+    });
+    if (!r.ok || !r.taskId) return [];
+    // 轮询图表任务(≤40s)
+    for (let i = 0; i < 30; i++) {
+      await new Promise((res) => setTimeout(res, 1300));
+      const t = await empiricalService.getEmpiricalResult(r.taskId);
+      if (t.status === "done") {
+        const charts = ((t.result as any)?.meta?.charts ?? []) as Array<Record<string, unknown>>;
+        return charts.map((c) => ({ id: c.id, file: c.file, title: c.title, sizeKB: c.sizeKB }));
+      }
+      if (t.status === "error") return [];
+    }
+    return [];
+  } catch {
+    return [];
   }
 }
 

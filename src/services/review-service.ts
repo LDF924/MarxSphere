@@ -229,9 +229,9 @@ ${dimNames.length ? `审稿维度: ${dimNames.join("、")}` : ""}`, undefined, 4
 {"paperTitle":"(从正文推断论文标题)",
  "wordCount":(正文中文字数),
  "overallScore":(0-100 总分整数),
- "grade":"A|B|C|D|E(总分档)",
+ "grade":"A|A+|B|B+|C|C+|D(总分档)",
  "overallComment":"总体评语(120字内, 亮点+主要问题+录用倾向)",
- "dimensions":[{"name":"维度名","score":0,"maxScore":100,"weight":1,"status":"good|warning|error","summary":"该维度综合意见(80字内)","issues":[{"id":"issue-001","severity":"major|minor","location":"章节/小节位置","originalText":"原文片段","suggestion":"修改建议"}]}],
+ "dimensions":[{"name":"维度名","score":0,"maxScore":100,"weight":1,"status":"pass|warning|fail","summary":"该维度综合意见(80字内)","issues":[{"id":"issue-001","severity":"major|minor|suggestion","location":"章节/小节位置","originalText":"原文片段","suggestion":"修改建议"}]}],
  "annotations":[{"id":"ann-001","type":"error|warning|info","dimension":"所属维度名","highlightText":"批注对应原文片段(60字内)","comment":"批注说明"}],
  "highlights":["亮点1","亮点2","亮点3"],
  "topSuggestions":["首要修改建议1(具体可执行)","建议2","建议3"]}
@@ -252,7 +252,7 @@ ${allIssues.map((x) => JSON.stringify(x)).join("\n").slice(0, 5000)}
         maxScore: d.maxScore ?? 100,
         weight: d.weight ?? base?.weight ?? 1,
         weightLabel: base?.weightLabel ?? undefined,
-        status: d.status ?? (Number(d.score ?? 0) >= 80 ? "good" : Number(d.score ?? 0) >= 60 ? "warning" : "error"),
+        status: d.status ?? (Number(d.score ?? 0) >= 80 ? "pass" : Number(d.score ?? 0) >= 60 ? "warning" : "fail"),
         summary: d.summary ?? d.comment ?? "",
         issues: (Array.isArray(d.issues) ? d.issues : []).slice(0, 10).map((iss: unknown, j: number) =>
           typeof iss === "string" ? { id: `issue-${String(i + 1).padStart(3, "0")}-${String(j + 1).padStart(3, "0")}`, severity: "minor", location: "", originalText: "", suggestion: iss }

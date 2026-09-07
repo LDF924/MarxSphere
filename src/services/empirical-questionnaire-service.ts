@@ -362,8 +362,53 @@ export async function listDataVersions(projectId?: string): Promise<Record<strin
   }));
 }
 
+/** V413: 课题流水线聚合 — 问卷 + 数据版本 + 全阶段分析 runs, 按时间线给前端总览 */
+export async function projectPipelineOverview(projectId: string): Promise<Record<string, unknown>> {
+  const qR = await pool.query(
+    `select id, title, source, columns, meta, created_at from empirical_questionnaires
+     where project_id = $1 order by created_at desc limit 20`, [projectId]);
+  const questionnaires = qR.rows.map((row: any) => ({
+    id: String(row.id), title: row.title, source: row.source,
+    columns: row.columns ?? [], meta: row.meta ?? {},
+    created_at: new Date(row.created_at).toISOString(),
+  }));
+  const vR = await pool.query(
+    `select id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions
+     where (project_id = $1 or project_id is null) order by created_at desc limit 20`, [projectId]);
+  const versions = vR.rows.map((row: any) => ({
+    id: String(row.id), name: row.name, columns: row.columns ?? [], nRows: row.n_rows,
+    meta: row.meta ?? {}, contentHash: row.content_hash ?? null,
+    created_at: new Date(row.created_at).toISOString(),
+  }));
+  const rR = await pool.query(
+    `select id, stage, input_snapshot, python_result, llm_interpretation, stata_code, warnings, created_at
+     from empirical_pipeline_runs where project_id = $1 order by created_at asc limit 100`, [projectId]);
+  const runs = rR.rows.map((row: any) => ({
+    id: String(row.id), stage: row.stage,
+    inputSnapshot: row.input_snapshot ?? {}, pythonResult: row.python_result ?? {},
+    llmInterpretation: row.llm_interpretation ?? "", warnings: row.warnings ?? [],
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
+  // V413: 插补 runs(独立表)并入流水线 — stage=imputation
+  const iR = await pool.query(
+    `select id, target_col, context_cols, status, n_imputed, stats, baseline_compare, missing_analysis, created_at
+     from empirical_imputation_runs where project_id = $1 order by created_at asc limit 50`, [projectId]);
+  const imputations = iR.rows.map((row: any) => ({
+    id: String(row.id),
+    stage: "imputation",
+    inputSnapshot: { targetCol: row.target_col, contextCols: row.context_cols ?? [], status: row.status, nImputed: row.n_imputed },
+    pythonResult: { meta: { n: row.n_imputed ?? 0, status: row.status, targetCol: row.target_col },
+                    stats: row.stats ?? {}, baselineCompare: row.baseline_compare ?? [], missingAnalysis: row.missing_analysis ?? {} },
+    llmInterpretation: row.status === "confirming" ? `插补建议已生成: ${row.n_imputed ?? 0} 格, 待人工确认(status=${row.status})` : `插补完成(status=${row.status})`,
+    warnings: [], createdAt: new Date(row.created_at).toISOString(),
+  }));
+  // 按时间线合并
+  const allRuns = [...runs, ...imputations].sort((a: any, b: any) => a.createdAt.localeCompare(b.createdAt));
+  return { projectId, questionnaires, versions, runs: allRuns };
+}
+
 export const questionnaireService = {
   generateQuestionnaire, recognizeQuestionnaire, validateQuestions,
   createProject, listProjects, saveQuestionnaire, listQuestionnaires, getQuestionnaire,
-  saveDataVersion, listDataVersions,
+  saveDataVersion, listDataVersions, projectPipelineOverview,
 };

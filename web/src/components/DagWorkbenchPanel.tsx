@@ -18,6 +18,7 @@ import { SectionWorkspaceView } from "./SectionWorkspaceView";
 import { ArchitectureConfirmView } from "./ArchitectureConfirmView";
 import { MaterialPrepPage } from "./MaterialPrepPage";
 import { FinalizeView } from "./FinalizeView";
+import { readResume } from "./ResearchHistoryPanel";
 import {
   BookOpen, Boxes, Brain, CheckCircle2, ChevronDown, Circle, Database, FileText,
   Flag, FlaskConical, GitBranch, HelpCircle, Loader2, Network, PenLine, Plus,
@@ -57,19 +58,30 @@ function tokenOf() {
   return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
 }
 
-// ═══ 画布节点组件 ═══
-function DAGNodeChip({ data }: { data: { label: string; type: string; status?: string } }) {
+// ═══ 画布节点组件(闭源 AgentFlowNode 对齐: index 序号+module 徽标+progress 进度条+state) ═══
+function DAGNodeChip({ data, id }: { data: { label: string; type: string; status?: string; index?: number; progress?: number; state?: string; systemStart?: boolean; locked?: boolean; module?: string }; id?: string }) {
   const meta = NODE_META[data.type] ?? NODE_META.goal;
   const statusColor = data.status === "done" ? "bg-green-500/20 text-green-300 border-green-500/40"
     : data.status === "running" ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
     : data.status === "failed" ? "bg-red-500/20 text-red-300 border-red-500/40"
     : "bg-slate-800/80 text-slate-200 border-slate-600/50";
+  const state = data.state ?? "draft";
   return (
-    <div className={cn("w-48 rounded-lg border px-2.5 py-2 text-left shadow-lg backdrop-blur", statusColor)} style={{ borderLeft: `3px solid ${meta.color}` }}>
+    <div className={cn("w-48 rounded-lg border px-2.5 py-2 text-left shadow-lg backdrop-blur", statusColor, state === "locked" || data.locked ? "opacity-60" : "")}
+      style={{ borderLeft: `3px solid ${meta.color}` }}>
       <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: meta.color }}>
+        {/* R10(闭源 AgentFlowNode): index 序号 + module 徽标 */}
+        {typeof data.index === "number" && <span className="text-[10px] font-bold">{data.index}</span>}
         {meta.icon}<span>{meta.label}</span>
+        {data.systemStart && <span className="ml-auto rounded bg-emerald-500/20 px-1 py-px text-[8px] text-emerald-300">起点</span>}
       </div>
       <div className="mt-1 truncate text-xs font-semibold">{data.label}</div>
+      {/* R10: progress 进度条(闭源 width=progress%) */}
+      {typeof data.progress === "number" && (
+        <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-900/60">
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, data.progress))}%`, background: meta.color }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -151,10 +163,19 @@ export function DagWorkbenchPanel() {
   }, []);
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
-  // 会话恢复
+  // 会话恢复(原死代码: 解析即丢 — 补真消费; 另接历史中心 deep-resume: 从 history 卡跳入自动打开项目)
   useEffect(() => {
+    // 优先: 历史中心 deep-resume 指针(sag:resume:workflow, 10s 窗口)
+    const r = readResume("workflow");
+    if (r?.projectId) { void openProject(String(r.projectId)); return; }
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) { try { const p = JSON.parse(saved) as { projectId: string }; } catch { /* ignore */ } }
+    if (saved) {
+      try {
+        const p = JSON.parse(saved) as { projectId: string };
+        if (p?.projectId) { void openProject(p.projectId); }
+      } catch { /* ignore */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 新建项目(空白 / 五阶段模板) → 录入向导对齐闭源(先建档, 再进向导补录输入/目录/澄清)

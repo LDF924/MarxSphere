@@ -169,8 +169,10 @@ function flattenForDocx(nodes: OutlineNode[]): Array<{ title: string; level: num
 export async function exportOutlineDocx(input: {
   paperTitle: string;
   nodes: OutlineNode[];
+  fontName?: string; // R7(闭源 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
+  const fontName = input.fontName || "SimSun";
   const script = `
 import sys, json, base64, io
 from docx import Document
@@ -179,6 +181,14 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 items = ${JSON.stringify(items)}
 paper_title = ${JSON.stringify(input.paperTitle)}
+font_name = ${JSON.stringify(fontName)}
+
+def set_run(r, size=None):
+    r.font.name = font_name
+    from docx.oxml.ns import qn
+    r._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
+    if size:
+        r.font.size = Pt(size)
 
 doc = Document()
 # 页边距(默认模板)
@@ -193,7 +203,7 @@ h = doc.add_paragraph()
 h.alignment = WD_ALIGN_PARAGRAPH.CENTER
 r = h.add_run(paper_title)
 r.bold = True
-r.font.size = Pt(16)
+set_run(r, 16)
 
 for it in items:
     # 标题
@@ -204,6 +214,8 @@ for it in items:
         ph = doc.add_heading(it["title"], level=2)
     else:
         ph = doc.add_heading(it["title"], level=3)
+    for run in ph.runs:
+        set_run(run)
     # 正文
     content = it["content"] or ""
     for para in content.split("\\n"):
@@ -211,13 +223,21 @@ for it in items:
         if not p:
             continue
         if p.startswith("# "):
-            doc.add_heading(p[2:], level=2)
+            ph2 = doc.add_heading(p[2:], level=2)
+            for run in ph2.runs:
+                set_run(run)
         elif p.startswith("## "):
-            doc.add_heading(p[3:], level=3)
+            ph3 = doc.add_heading(p[3:], level=3)
+            for run in ph3.runs:
+                set_run(run)
         elif p.startswith("### "):
-            doc.add_heading(p[4:], level=4)
+            ph4 = doc.add_heading(p[4:], level=4)
+            for run in ph4.runs:
+                set_run(run)
         else:
-            doc.add_paragraph(p)
+            pp = doc.add_paragraph(p)
+            for run in pp.runs:
+                set_run(run)
 
 buf = io.BytesIO()
 doc.save(buf)

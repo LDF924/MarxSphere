@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // ReliabilityPage.tsx — 信效度报告（V380+）: α/KMO/Bartlett/因子分析
 import { useState } from "react";
-import { FlaskConical, Loader2, Play, Plus, X } from "lucide-react";
+import { FlaskConical, Loader2, Play, Plus, X, LineChart } from "lucide-react";
 import { apiEmpirical, apiEmpiricalWorkshop, type EmpiricalDataVersion } from "../../lib/api";
 import { DataVersionBar } from "./DataVersionBar";
 import { DemoDataButton } from "./DemoDataButton";
@@ -26,7 +26,7 @@ function parseCsv(text: string): { columnOrder: string[]; rows: (string | number
   return { columnOrder, rows };
 }
 
-export function ReliabilityPage({ projectId }: { projectId?: string }) {
+export function ReliabilityPage({ projectId, onDone }: { projectId?: string; onDone?: () => void }) {
   const [csv, setCsv] = useState("");
   const [parsed, setParsed] = useState<{ columnOrder: string[]; rows: (string | number | null)[][] } | null>(null);
   const [dataVersion, setDataVersion] = useState<EmpiricalDataVersion | null>(null);
@@ -35,6 +35,11 @@ export function ReliabilityPage({ projectId }: { projectId?: string }) {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [interp, setInterp] = useState("");
+  // V413: 论文图导出
+  const [figBusy, setFigBusy] = useState(false);
+  const [figUrl, setFigUrl] = useState<string | null>(null);
+  const [figSize, setFigSize] = useState<number | null>(null);
+  const [figError, setFigError] = useState("");
 
   const run = async () => {
     const data = parsed ?? (dataVersion ? { columnOrder: dataVersion.columns, rows: [] } : null);
@@ -56,6 +61,7 @@ export function ReliabilityPage({ projectId }: { projectId?: string }) {
           setResult(res.result);
           // 等 LLM 解读落库(再轮询 pipeline_runs 不可行, 直接展示 python 结果 + 提示)
           setBusy(false);
+          onDone?.();
           return;
         }
         if (res.status === "error") { setError(res.error ?? "执行失败"); setBusy(false); return; }
@@ -63,6 +69,59 @@ export function ReliabilityPage({ projectId }: { projectId?: string }) {
       setError("轮询超时"); setBusy(false);
     } catch (e: any) {
       setError(e?.message ?? "信效度执行失败"); setBusy(false);
+    }
+  };
+
+  // V413: 把本次 α 结果渲染成论文级柱状图(alpha_bar)
+  const exportChart = async () => {
+    if (!result) return;
+    const alphaTables = (result.tables ?? []).filter((t: any) => String(t.title).includes("α"));
+    const tbl = alphaTables[0];
+    if (!tbl?.rows) { setFigError("无 α 表可绘图"); return; }
+    setFigBusy(true); setFigError(""); setFigUrl(null);
+    try {
+      // 组名从 α 表行首列提取; 若只有一个 α 表(反转前), 生成单侧柱状
+      const rows = tbl.rows.map((r: any[]) => ({ name: String(r[0]), alpha: Number(r[1]) }));
+      const spec: Record<string, unknown> = {
+        kind: "alpha_bar",
+        id: `reli_${Date.now()}`,
+        title: `信效度 α (${rows.length} 组 · N=${result.meta?.n ?? ""})`,
+        sourceA: { tables: [{ rows: tbl.rows, cols: tbl.cols }] },
+        sourceB: { tables: [{ rows: tbl.rows, cols: tbl.cols }] },
+        labelA: "本次 α",
+        labelB: "",
+        single: true,
+      };
+      // 只有一个 α 表时隐藏 B 组 → 后端 alpha_bar 支持 sourceB 空则只画单组
+      if (!alphaTables[1]) {
+        delete spec.sourceB;
+        spec.single = true;
+      } else {
+        // 反转前(表0) + 反转后(表1) 两组对比
+        const tblB = alphaTables[1];
+        spec.sourceB = { tables: [{ rows: tblB.rows, cols: tblB.cols }] };
+        spec.labelB = "反转后";
+      }
+      const r = await apiEmpiricalWorkshop.generateFigures(spec);
+      if (!r.ok) { setFigError(r.error ?? "绘图失败"); return; }
+      // 轮询
+      for (let i = 0; i < 40; i++) {
+        await new Promise((res) => setTimeout(res, 1500));
+        const res = await apiEmpiricalWorkshop.taskResult(r.taskId!);
+        if (res.status === "done") {
+          const charts = (res.result?.meta?.charts ?? []) as any[];
+          if (charts.length > 0) {
+            setFigUrl(apiEmpiricalWorkshop.figuresUrl(charts[0].file));
+            setFigSize(charts[0].sizeKB);
+          }
+          setFigBusy(false);
+          return;
+        }
+        if (res.status === "error") { setFigError(res.error ?? "绘图失败"); setFigBusy(false); return; }
+      }
+      setFigError("绘图超时"); setFigBusy(false);
+    } catch (e: any) {
+      setFigError(e?.message ?? "绘图失败"); setFigBusy(false);
     }
   };
 
@@ -138,6 +197,22 @@ export function ReliabilityPage({ projectId }: { projectId?: string }) {
         <div className="space-y-2">
           <div className="rounded-lg border bg-emerald-500/5 p-2 text-[11px]">
             N={result.meta?.n}, 量表组={result.meta?.scaleGroups}; LLM 解读约 5 秒后入库(可在证据账本/概览查看)
+            {/* V413: 一键出论文图(α 柱状) */}
+            <button
+              onClick={() => void exportChart()}
+              disabled={figBusy}
+              title="把本次 α 结果渲染成论文级柱状图(PNG/PDF, 可下载)"
+              className="ml-2 inline-flex items-center gap-1 rounded-md border border-emerald-300 px-2 py-0.5 text-[10px] hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:hover:bg-emerald-950"
+            >
+              {figBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <LineChart className="h-3 w-3 text-emerald-600" />}
+              {figBusy ? "绘图…" : "📊 出论文图"}
+            </button>
+            {figUrl && (
+              <a href={figUrl} target="_blank" rel="noreferrer" className="ml-2 text-emerald-600 underline">
+                ↘ 查看 α 图({figSize}KB)
+              </a>
+            )}
+            {figError && <span className="ml-2 text-red-600">❌ {figError}</span>}
           </div>
           {result.tables?.map((t: any, i: number) => (
             <div key={i} className="overflow-x-auto rounded-lg border">

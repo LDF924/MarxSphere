@@ -34,13 +34,76 @@ setInterval(() => {
 
 /** 提交实证分析任务: 同步 spawn 执行, 结果落内存 */
 export async function runEmpirical(
-  input: { data: { columnOrder: string[]; rows: unknown[][] }; method: string; params: Record<string, unknown> }
+  input: { data: { columnOrder: string[]; rows: unknown[][] }; method: string; params: Record<string, unknown>; projectId?: string | null }
 ): Promise<{ ok: boolean; taskId?: string; error?: string }> {
   // V399: meta_analysis 走独立脚本（easymeta 方法论: 证据综合）
   if (input.method === "meta_analysis") {
     return spawnPythonTask("empirical_metaanalysis.py", { script: "metaanalysis", method: "meta_analysis", data: input.data, params: input.params });
   }
-  return spawnPythonTask("empirical_runner.py", input as any);
+  const task = await spawnPythonTask("empirical_runner.py", { ...input, projectId: undefined });
+  // V413: 带课题归属 → 完成后落 pipeline_runs(回归类自动补森林图)
+  if (task.ok && task.taskId && input.projectId) {
+    void trackRunToPipeline(input.projectId, input.method, input.data, input.params, task.taskId);
+  }
+  return task;
+}
+
+/** V413: 追踪 empirical/run 任务 → 完成后写 pipeline_runs + 回归自动出森林图 */
+async function trackRunToPipeline(
+  projectId: string,
+  method: string,
+  data: { columnOrder: string[]; rows: unknown[][] },
+  params: Record<string, unknown>,
+  taskId: string
+): Promise<void> {
+  try {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((res) => setTimeout(res, 1500));
+      const t = await getEmpiricalResult(taskId);
+      if (t.status !== "done" && t.status !== "error") continue;
+      if (t.status === "done") {
+        let enriched = t.result as any;
+        // 回归类方法(有系数表) → 自动森林图
+        const regMethods = new Set(["ols", "logit", "ologit", "mnl", "did", "did_twfe", "event_study", "panel_fe", "iv", "rdd"]);
+        if (regMethods.has(method)) {
+          try {
+            const resAny = t.result as any;
+            const regTbl = (resAny?.tables ?? []).find((tb: any) => /回归|Logit|OLS|系数/.test(String(tb.title ?? "")));
+            if (regTbl?.rows?.length) {
+              const fr = await generateEmpiricalFigures({
+                spec: {
+                  kind: "forest", id: `run_${method}_${Date.now()}`,
+                  title: `${String(params.y ?? "")} — ${method.toUpperCase()} 系数图`,
+                  tables: [{ rows: regTbl.rows, cols: regTbl.cols ?? [] }],
+                },
+              });
+              if (fr.ok && fr.taskId) {
+                for (let fi = 0; fi < 25; fi++) {
+                  await new Promise((res) => setTimeout(res, 1300));
+                  const ft = await getEmpiricalResult(fr.taskId);
+                  if (ft.status === "done") {
+                    const charts = ((ft.result as any)?.meta?.charts ?? []) as any[];
+                    enriched = { ...enriched, meta: { ...(enriched?.meta ?? {}), figures: charts.map((c: any) => ({ id: c.id, file: c.file, title: c.title, sizeKB: c.sizeKB })) } };
+                    break;
+                  }
+                  if (ft.status === "error") break;
+                }
+              }
+            }
+          } catch { /* 图失败不影响落库 */ }
+        }
+        const { pool: dbPool } = await import("../db/pool.js");
+        await dbPool.query(
+          `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result)
+           values ($1, $2, $3, $4)`,
+          [projectId, method === "descriptive" ? "data_pipeline" : method,
+           JSON.stringify({ method, params, nRows: data.rows.length, columns: data.columnOrder, runTaskId: taskId }),
+           JSON.stringify(enriched)]
+        ).catch(() => {});
+      }
+      return;
+    }
+  } catch { /* 追踪失败忽略 */ }
 }
 
 /** V380: 泛化 python 任务 spawn（reliability/imputation/datapipeline 等脚本共用骨架）
@@ -90,9 +153,9 @@ export async function spawnPythonTask(
   tasks.set(taskId, { status: "running", createdAt: Date.now() });
 
   // 异步 spawn（不阻塞主线程; 结果由轮询读取; stderr 完整保留供诊断）
-  // V399: 元分析等独立脚本按 scriptName 分发（empirical_runner.py 委托模式）
-  const runnerPath = scriptName === "empirical_metaanalysis.py"
-    ? path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "empirical_metaanalysis.py")
+  // V413: 独立脚本按 scriptName 通用分发（empirical_runner.py 委托模式 + metaanalysis/simulate/figures）
+  const runnerPath = ["empirical_metaanalysis.py", "empirical_simulate.py", "empirical_figures.py", "empirical_report_export.py"].includes(scriptName)
+    ? path.join(process.env.SAG_ROOT || process.cwd(), "scripts", scriptName)
     : RUNNER;
   execFile(
     PYTHON,
@@ -399,4 +462,99 @@ export async function fetchEmpiricalDataset(
   }
 }
 
-export const empiricalService = { runEmpirical, spawnPythonTask, getEmpiricalResult, getEmpiricalMeta, saveEmpiricalResult, listEmpiricalHistory, getEmpiricalHistory, deleteEmpiricalHistory, latexTable, csvTable, saveAsKnowledgePage, listEmpiricalDatasets, fetchEmpiricalDataset };
+/** V413: 问卷仿真数据生成 — 按已识别问卷结构(Question[])生成 N 份带内在结构的模拟作答 */
+export async function simulateQuestionnaireData(input: {
+  questionnaire: unknown[];
+  params?: Record<string, unknown>;
+  projectId?: string | null;   // V413: 落 pipeline_runs(课题流水线可见)
+}): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+  if (!Array.isArray(input.questionnaire) || input.questionnaire.length === 0) {
+    return { ok: false, error: "问卷结构为空" };
+  }
+  const n = Number(input.params?.n ?? 100);
+  if (!Number.isFinite(n) || n < 10 || n > 5000) {
+    return { ok: false, error: "样本量 n 需在 10~5000" };
+  }
+  // 校验列名白名单（注入防护，沿用 spawnPythonTask 同规则）
+  const colRe = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  const DANGEROUS = new Set(["__import__", "eval", "exec", "system", "open", "compile", "globals", "locals"]);
+  const seen = new Set<string>();
+  const flatten = (q: any): string[] => {
+    if (q?.type === "multi") {
+      return (q.options ?? []).map((o: any) => `${q.varName}_r${o.code}`);
+    }
+    return q?.varName ? [String(q.varName)] : [];
+  };
+  for (const q of input.questionnaire) {
+    for (const c of flatten(q)) {
+      if (!colRe.test(c) || DANGEROUS.has(c)) return { ok: false, error: `列名不合法: ${c}` };
+      if (seen.has(c)) return { ok: false, error: `变量名重复: ${c}` };
+      seen.add(c);
+    }
+  }
+  const task = await spawnPythonTask("empirical_simulate.py", {
+    script: "simulate", questionnaire: input.questionnaire, params: input.params,
+  });
+  if (!task.ok || !task.taskId) return task;
+  // V413: 生成完成后落 pipeline_runs(课题流水线可见) — 轮询结果后写入
+  if (input.projectId) {
+    void (async () => {
+      try {
+        for (let i = 0; i < 60; i++) {
+          await new Promise((res) => setTimeout(res, 1000));
+          const t = await getEmpiricalResult(task.taskId!);
+          if (t.status === "done") {
+            const meta = ((t.result as any)?.meta ?? {}) as any;
+            const { pool: dbPool } = await import("../db/pool.js");
+            await dbPool.query(
+              `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result, llm_interpretation)
+               values ($1, 'simulate', $2, $3, $4)`,
+              [input.projectId, JSON.stringify({ n: meta.n, cols: meta.cols, seed: meta.seed, skipEntries: meta.skipEntries }),
+               JSON.stringify(t.result),
+               `仿真数据生成: ${meta.n} 行 × ${meta.cols} 列(seed=${meta.seed}, 跳答组=${meta.skipEntries ?? 0}); 结构缺失=-99, 挖缺失=None`]
+            );
+            return;
+          }
+          if (t.status === "error") return;
+        }
+      } catch { /* 落库失败不影响生成 */ }
+    })();
+  }
+  return task;
+}
+
+/** V413: 论文级图表生成 — 实证结果 → matplotlib PNG/PDF(alpha对比/箱线/热力/森林/方法对比) */
+export async function generateEmpiricalFigures(input: {
+  spec: Record<string, unknown>;
+  outDir?: string;
+}): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+  if (!input.spec || typeof input.spec !== "object") {
+    return { ok: false, error: "spec 不能为空" };
+  }
+  const kind = String((input.spec as any).kind ?? "");
+  const ALLOWED_KINDS = ["alpha_bar", "boxplot", "heatmap", "forest", "compare"];
+  if (!ALLOWED_KINDS.includes(kind)) {
+    return { ok: false, error: `图表类型必须为: ${ALLOWED_KINDS.join("/")}` };
+  }
+  return spawnPythonTask("empirical_figures.py", {
+    script: "figures", spec: input.spec,
+    outDir: input.outDir ?? path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "figures"),
+  });
+}
+
+/** V413: 课题全套报告导出(流水线 → LaTeX/Word) — 脚本写文件到 outDir 并返回清单 */
+export async function exportProjectReport(input: {
+  overview: Record<string, unknown>;
+  outDir?: string;
+}): Promise<{ ok: boolean; taskId?: string; error?: string }> {
+  if (!input.overview || typeof input.overview !== "object") {
+    return { ok: false, error: "overview 不能为空" };
+  }
+  const figDir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "figures");
+  const outDir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "reports");
+  return spawnPythonTask("empirical_report_export.py", {
+    script: "report_export", overview: input.overview, figuresDir: figDir, outDir,
+  });
+}
+
+export const empiricalService = { runEmpirical, spawnPythonTask, getEmpiricalResult, getEmpiricalMeta, saveEmpiricalResult, listEmpiricalHistory, getEmpiricalHistory, deleteEmpiricalHistory, latexTable, csvTable, saveAsKnowledgePage, listEmpiricalDatasets, fetchEmpiricalDataset, simulateQuestionnaireData, generateEmpiricalFigures, exportProjectReport };

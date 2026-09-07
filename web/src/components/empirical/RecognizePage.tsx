@@ -1,19 +1,61 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // RecognizePage.tsx — 问卷上传识别（V380+）: 文本 → 主体/指标/变量结构
 import { useState } from "react";
-import { ScanSearch, FileUp, Loader2, FileText } from "lucide-react";
+import { ScanSearch, FileUp, Loader2, FileText, Wand2 } from "lucide-react";
 import { apiEmpiricalWorkshop, apiEmpiricalDemo, type Question } from "../../lib/api";
 import { QuestionForm } from "./QuestionForm";
 import { Button } from "../ui/button";
 import { bufferToBase64 } from "../../lib/utils";
 
-export function RecognizePage({ projectId }: { projectId?: string }) {
+export function RecognizePage({ projectId, onSimLoaded }: {
+  projectId?: string;
+  /** V413: 仿真数据生成后回调(把数据载入下游工作台页面) */
+  onSimLoaded?: (data: { columnOrder: string[]; rows: (string | number | null)[][] }) => void;
+}) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [meta, setMeta] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // V413: 仿真状态
+  const [qidSaved, setQidSaved] = useState<string | null>(null);
+  const [simN, setSimN] = useState(200);
+  const [simMissing, setSimMissing] = useState(true);
+  const [simBusy, setSimBusy] = useState(false);
+  const [simResult, setSimResult] = useState<{ n: number; cols: number } | null>(null);
+  const [simError, setSimError] = useState("");
+  const [simData, setSimData] = useState<{ columnOrder: string[]; rows: (string | number | null)[][] } | null>(null);
+  // 轮询任务结果
+  const pollResult = async (taskId: string, onDone: (r: any) => void): Promise<void> => {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((res) => setTimeout(res, 1500));
+      const r = await apiEmpiricalWorkshop.taskResult(taskId);
+      if (r.status === "done") { onDone(r.result); return; }
+      if (r.status === "error") throw new Error(r.error ?? "任务失败");
+    }
+    throw new Error("任务超时(90s)");
+  };
+  const runSimulate = async () => {
+    if (!questions?.length) return;
+    setSimBusy(true); setSimError(""); setSimResult(null); setSimData(null);
+    try {
+      // 优先用已落库问卷 ID(保留识别后跳转/结构), 否则直接传当前结构
+      const body = qidSaved
+        ? { projectId, questionnaireId: qidSaved, params: { n: simN, seed: 42, missing: simMissing ? { cols: ["moral_behavior_4"], rate: 0.1 } : undefined } }
+        : { projectId, questionnaire: questions, params: { n: simN, seed: 42 } };
+      const r = await apiEmpiricalWorkshop.simulateData(body as any);
+      if (!r.ok) throw new Error(r.error ?? "生成失败");
+      await pollResult(r.taskId!, (res) => {
+        const data = res?.data;
+        if (!data) throw new Error("结果无数据");
+        setSimResult({ n: (res.meta?.n ?? 0) as number, cols: data.columnOrder.length });
+        setSimData(data);
+      });
+    } catch (e: any) {
+      setSimError(e?.message ?? "仿真生成失败");
+    } finally { setSimBusy(false); }
+  };
 
   const recognize = async () => {
     if (!text.trim()) { setError("请粘贴问卷文本"); return; }
@@ -25,6 +67,8 @@ export function RecognizePage({ projectId }: { projectId?: string }) {
       if (r.ok) {
         setQuestions(r.questionnaire.questions);
         setMeta(r.questionnaire.meta);
+        setQidSaved(r.questionnaire.id);
+        setSimResult(null);
       }
     } catch (e: any) {
       setError(e?.message ?? "识别失败");
@@ -121,6 +165,33 @@ export function RecognizePage({ projectId }: { projectId?: string }) {
             <span className="rounded bg-amber-100 px-1 text-[9px] text-amber-700">多选 {typeCount("multi")}</span>
             <span className="rounded bg-gray-100 px-1 text-[9px] text-gray-700">文本 {typeCount("text")}</span>
           </div>
+
+          {/* V413: 仿真数据生成(按当前识别结构) */}
+          {qidSaved && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/50 p-2 dark:border-emerald-800 dark:bg-emerald-950/20">
+              <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">🧪 仿真数据</span>
+              <span className="text-[10px] text-muted-foreground">按 {questions.length} 题结构生成模拟作答(可勾选挖缺, 自动处理跳答 -99):</span>
+              <input type="number" min={10} max={5000} value={simN}
+                onChange={(e) => setSimN(Math.min(5000, Math.max(10, Number(e.target.value) || 100)))}
+                className="w-20 rounded-md border bg-background px-1.5 py-0.5 text-[11px]" title="样本量" />
+              <span className="text-[10px] text-muted-foreground">份</span>
+              <label className="flex items-center gap-1 text-[10px]">
+                <input type="checkbox" checked={simMissing} onChange={(e) => setSimMissing(e.target.checked)} />
+                挖缺10% <span className="text-muted-foreground">(行为维度末题, 供插补演示)</span>
+              </label>
+              <Button size="sm" variant="outline" onClick={() => void runSimulate()} disabled={simBusy} className="h-6 text-[10px]">
+                {simBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 h-3 w-3 text-emerald-600" />}
+                {simBusy ? "生成中…" : "生成仿真数据"}
+              </Button>
+              {simResult && (
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                  ✓ 已生成 {simResult.n} 份 × {simResult.cols} 列
+                  <button className="ml-2 underline" onClick={() => onSimLoaded?.(simData!)}>载入工作台分析</button>
+                </span>
+              )}
+              {simError && <span className="text-[10px] text-red-600">❌ {simError}</span>}
+            </div>
+          )}
           <div className="max-h-[60vh] space-y-1.5 overflow-y-auto pr-1">
             {questions.slice(0, 150).map((q, i) => (
               <QuestionForm key={i} q={q} />
