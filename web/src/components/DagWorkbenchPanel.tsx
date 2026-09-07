@@ -13,6 +13,11 @@ import {
 import "@xyflow/react/dist/style.css";
 import { MaterialsDrawer } from "./MaterialsDrawer";
 import { ResearchInputWizard } from "./ResearchInputWizard";
+import { ConfirmDialog, type ConfirmSpec } from "./ConfirmDialog";
+import { SectionWorkspaceView } from "./SectionWorkspaceView";
+import { ArchitectureConfirmView } from "./ArchitectureConfirmView";
+import { MaterialPrepPage } from "./MaterialPrepPage";
+import { FinalizeView } from "./FinalizeView";
 import {
   BookOpen, Boxes, Brain, CheckCircle2, ChevronDown, Circle, Database, FileText,
   Flag, FlaskConical, GitBranch, HelpCircle, Loader2, Network, PenLine, Plus,
@@ -78,7 +83,7 @@ export function DagWorkbenchPanel() {
   const [canvasVer, setCanvasVer] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [mode, setMode] = useState<"list" | "work">("list");
+  const [mode, setMode] = useState<"list" | "work" | "input">("list");
   const [nlInput, setNlInput] = useState("");
   const [nlBusy, setNlBusy] = useState(false);
   const [selNode, setSelNode] = useState<Node | null>(null);
@@ -88,6 +93,14 @@ export function DagWorkbenchPanel() {
   const [showAnalyze, setShowAnalyze] = useState(false);
   const [analyzeBusy, setAnalyzeBusy] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
+  // T3-2: 章节创作三栏工作区(闭源 WorkspaceView 对齐)
+  const [showSectionWs, setShowSectionWs] = useState(false);
+  // T3-5: 合稿定稿独立页
+  const [showFinalize, setShowFinalize] = useState(false);
+  // T7: 科研架构确认页(闭源 /workflow/sections 对齐)
+  const [showArchConfirm, setShowArchConfirm] = useState(false);
+  // T7-2: 素材准备独立页(闭源 /workflow/materials 对齐)
+  const [showMatPrep, setShowMatPrep] = useState(false);
   // SocialSci R5: 需求澄清
   const [showClarify, setShowClarify] = useState(false);
   const [clarifyBusy, setClarifyBusy] = useState(false);
@@ -144,15 +157,19 @@ export function DagWorkbenchPanel() {
     if (saved) { try { const p = JSON.parse(saved) as { projectId: string }; } catch { /* ignore */ } }
   }, []);
 
-  // 新建项目(空白 / 五阶段模板)
+  // 新建项目(空白 / 五阶段模板) → 录入向导对齐闭源(先建档, 再进向导补录输入/目录/澄清)
   const createProject = async (title: string, template: "blank" | "five-stage") => {
     setBusy(true); setErr("");
     try {
       const r = await j<{ id: string }>("/api/research/projects", {
         method: "POST", body: JSON.stringify({ title, topic: title, template }),
       });
-      await loadProjects();
-      await openProject(r.id);
+      const p = await j<{ project: DagProject }>(`/api/research/projects/${r.id}`);
+      setCur(p.project);
+      setSelNode(null);
+      setMode("input");
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ projectId: r.id }));
+      void loadProjects();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
@@ -317,11 +334,37 @@ export function DagWorkbenchPanel() {
   };
 
   const backToList = () => { setMode("list"); setCur(null); setSelNode(null); localStorage.removeItem(STORAGE_KEY); loadProjects(); };
+
+  // T3-4: 阶段跳转 — input/materials/sections/finalize 等画布节点找到即选中, analysis 触发面板提示
+  const onPhaseJump = (stage: string) => {
+    if (!cur) return;
+    const target = nodes.find((n) => (n.data?.type as string) === stage);
+    if (target) {
+      setSelNode(target);
+      setErr("");
+      return;
+    }
+    // 节点不在画布: 该阶段是隐藏数据节点(向导/生成写入), 引导用对应操作
+    if (stage === "sections") { setShowSectionWs(true); return; }
+    if (stage === "input") { setErr("input 节点由录入向导写入 — 请在列表新建项目或 NL 生成框架后录入"); return; }
+    if (stage === "analysis") { setShowAnalyze(true); return; }
+    if (stage === "materials") { setShowMaterials(true); return; }
+    if (stage === "finalize") { setShowFinalize(true); return; }
+  };
   const selKey = selNode ? (selNode.data.type as string) : "";
   const meta = selNode ? (NODE_META[selNode.data.type as string] ?? NODE_META.goal) : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col p-4">
+      {/* T3-4: 全局阶段进度条(主题chip + 五阶段圆点; 仅画布工作态显示) */}
+      {mode === "work" && cur && (
+        <PhaseProgressBar
+          projectTitle={cur.title}
+          phase={cur.phase}
+          phaseLabel={cur.phase_label || PHASE_STEPS[cur.phase]?.label}
+          onJump={(stage) => onPhaseJump(stage)}
+        />
+      )}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Network className="h-5 w-5 text-cyan-400" />
@@ -405,7 +448,11 @@ export function DagWorkbenchPanel() {
         <ResearchInputWizard
           projectId={cur.id}
           title={cur.title}
-          onDone={() => setMode("work")}
+          onDone={() => {
+            setMode("work");
+            // T7 对齐闭源: 提交 → 进"科研架构确认页"(自动生成, 失败可重试, 确认才进创作)
+            setShowArchConfirm(true);
+          }}
           onCancel={backToList}
           onMsg={(m) => setErr(m)}
         />
@@ -483,6 +530,10 @@ export function DagWorkbenchPanel() {
             {!selNode ? (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-slate-300">项目操作</p>
+                <button onClick={() => setShowSectionWs(true)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 px-2 py-2 text-xs text-white hover:bg-cyan-500">
+                  <PenLine className="h-3.5 w-3.5" /> 章节创作工作区 (三栏)
+                </button>
                 <button data-control="dag_main_analyze" onClick={() => setShowAnalyze((v) => !v)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-2 py-2 text-xs text-white hover:bg-amber-500">
                   <Sparkles className="h-3.5 w-3.5" /> 主控 Agent 科研架构分析
@@ -525,7 +576,7 @@ export function DagWorkbenchPanel() {
                 {/* SocialSci UI审计T2: 进行中任务状态区(分级文案) */}
                 <RunningTasks projectId={cur.id} />
                 {/* SocialSci UI审计T3: 章节完成度进度条 */}
-                <SectionProgress projectId={cur.id} onMsg={(m) => setErr(m)} />
+                <SectionProgress projectId={cur.id} onMsg={(m) => setErr(m)} onFinalize={() => setShowFinalize(true)} />
               </div>
             ) : (
               <div>
@@ -562,27 +613,31 @@ export function DagWorkbenchPanel() {
                   </div>
                 </div>
 
-                {/* 快照编辑 */}
-                <div className="mt-2 rounded-lg bg-slate-800/50 p-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase text-slate-500">节点快照 v{nodeVersion}</p>
-                    <span className="flex items-center gap-1 text-[10px] text-slate-500"><Save className="h-2.5 w-2.5" />自动原子保存</span>
-                  </div>
-                  <textarea
-                    value={nodePayload ? JSON.stringify(nodePayload, null, 1) : ""}
-                    onChange={(e) => { try { setNodePayload(JSON.parse(e.target.value)); } catch { /* 半输入状态忽略 */ } }}
-                    rows={10} spellCheck={false}
-                    className="mt-1.5 w-full resize-none rounded-lg border border-slate-600/50 bg-slate-950/60 px-2 py-1.5 font-mono text-[11px] text-slate-300" />
-                  <div className="mt-1.5 flex gap-1.5">
-                    <button onClick={saveNodePayload} disabled={busy}
-                      className="flex items-center gap-1 rounded-lg bg-green-600 px-2 py-1.5 text-[11px] text-white hover:bg-green-500 disabled:opacity-50">
-                      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} 保存快照
-                    </button>
-                    <button onClick={() => { setSelNode((n) => { if (!n) return null; setNodes((ns) => { const next = ns.map((x) => x.id === n.id ? { ...x, data: { ...x.data, status: "done" } } : x); persistCanvas(next, edges); return next; }); return n; }); }}
-                      className="flex items-center gap-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] text-slate-200 hover:bg-slate-600">
-                      <CheckCircle2 className="h-3 w-3" /> 标记完成
-                    </button>
-                  </div>
+                {/* 快照编辑: analysis 节点含结构化产出时渲染可读卡片(闭源: 结构化3步面板语义) */}
+                {selKey === "analysis" && isStructuredAnalysis(nodePayload) ? (
+                  <AnalysisSnapshotView payload={nodePayload} />
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase text-slate-500">节点快照 v{nodeVersion}</p>
+                      <span className="flex items-center gap-1 text-[10px] text-slate-500"><Save className="h-2.5 w-2.5" />自动原子保存</span>
+                    </div>
+                    <textarea
+                      value={nodePayload ? JSON.stringify(nodePayload, null, 1) : ""}
+                      onChange={(e) => { try { setNodePayload(JSON.parse(e.target.value)); } catch { /* 半输入状态忽略 */ } }}
+                      rows={10} spellCheck={false}
+                      className="mt-1.5 w-full resize-none rounded-lg border border-slate-600/50 bg-slate-950/60 px-2 py-1.5 font-mono text-[11px] text-slate-300" />
+                  </>
+                )}
+                <div className="mt-1.5 flex gap-1.5">
+                  <button onClick={saveNodePayload} disabled={busy}
+                    className="flex items-center gap-1 rounded-lg bg-green-600 px-2 py-1.5 text-[11px] text-white hover:bg-green-500 disabled:opacity-50">
+                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} 保存快照
+                  </button>
+                  <button onClick={() => { setSelNode((n) => { if (!n) return null; setNodes((ns) => { const next = ns.map((x) => x.id === n.id ? { ...x, data: { ...x.data, status: "done" } } : x); persistCanvas(next, edges); return next; }); return n; }); }}
+                    className="flex items-center gap-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] text-slate-200 hover:bg-slate-600">
+                    <CheckCircle2 className="h-3 w-3" /> 标记完成
+                  </button>
                 </div>
 
                 {/* 历史/回滚 */}
@@ -606,6 +661,163 @@ export function DagWorkbenchPanel() {
           </div>
         </div>
       )}
+
+      {/* T3-2: 章节创作三栏工作区(全屏覆盖, 从项目操作进入) */}
+      {mode === "work" && cur && showSectionWs && (
+        <SectionWorkspaceView
+          projectId={cur.id}
+          title={cur.title}
+          onBack={() => setShowSectionWs(false)}
+          onMsg={(m) => setErr(m)}
+        />
+      )}
+      {/* T7-2: 素材准备独立页(全屏覆盖) */}
+      {mode === "work" && cur && showMatPrep && (
+        <MaterialPrepPage
+          projectId={cur.id}
+          title={cur.title}
+          onBack={() => { setShowMatPrep(false); setShowArchConfirm(true); }}
+          onConfirm={() => { setShowMatPrep(false); setShowSectionWs(true); }}
+          onMsg={(m) => setErr(m)}
+          onGotoAnalysis={() => { setErr("实证研究模块在左侧导航「实证研究」打开"); }}
+          onGotoViz={() => { setErr("科研绘图模块在左侧导航「科研绘图」打开"); }}
+        />
+      )}
+      {/* T7: 科研架构确认页(全屏覆盖) */}
+      {mode === "work" && cur && showArchConfirm && (
+        <ArchitectureConfirmView
+          projectId={cur.id}
+          title={cur.title}
+          onConfirm={() => { setShowArchConfirm(false); setShowMatPrep(true); }}
+          onBack={() => { setShowArchConfirm(false); setMode("input"); }}
+          onMsg={(m) => setErr(m)}
+        />
+      )}
+      {/* T3-5: 合稿定稿独立页(全屏覆盖) */}
+      {mode === "work" && cur && showFinalize && (
+        <FinalizeView
+          projectId={cur.id}
+          title={cur.title}
+          onBack={() => setShowFinalize(false)}
+          onMsg={(m) => setErr(m)}
+        />
+      )}
+    </div>
+  );
+}
+
+// SocialSci UI审计T4/闭源结构化分析3步语义: analysis 节点快照的可读面板
+// (变量识别 → 章节框架 → 逻辑主线/指导), 非结构化时退回 JSON 编辑
+interface AnalysisPayload {
+  variables?: { kind?: string; list?: Array<{ name?: string; role?: string; description?: string }> };
+  chapterPlan?: Array<{ title?: string; level?: number; requirements?: string }>;
+  logicChain?: string;
+  clarifyQuestions?: string[];
+  stepAnalysisTexts?: Record<string, string>;
+}
+function isStructuredAnalysis(p: unknown): p is AnalysisPayload {
+  return !!p && typeof p === "object" && ("variables" in p || "chapterPlan" in p || "logicChain" in p);
+}
+const VAR_ROLE_LABEL: Record<string, string> = {
+  dependent: "因变量", independent: "自变量", mediator: "中介变量", moderator: "调节变量", control: "控制变量",
+};
+function AnalysisSnapshotView({ payload }: { payload: AnalysisPayload }) {
+  const vars = payload.variables?.list ?? [];
+  const kind = payload.variables?.kind ?? "unknown";
+  const steps = [
+    { icon: "①", title: "变量识别", items: vars.length ? `${kind === "mixed" ? "混合" : kind === "quantitative" ? "定量" : "定性"}设计, ${vars.length} 个变量` : "无(定性/尚未识别)", inner: vars.length > 0 },
+    { icon: "②", title: "章节框架", items: `${payload.chapterPlan?.length ?? 0} 个一级章节`, inner: (payload.chapterPlan?.length ?? 0) > 0 },
+    { icon: "③", title: "逻辑主线与指导", items: payload.logicChain || "尚未生成", inner: !!payload.logicChain },
+  ];
+  return (
+    <div className="mt-2 space-y-2">
+      <p className="text-[10px] font-semibold uppercase text-slate-500">科研架构 · 结构化分析(主控 Agent 产出)</p>
+      {/* 3步状态 */}
+      <div className="grid grid-cols-3 gap-1">
+        {steps.map((s) => (
+          <div key={s.title} className={s.inner ? "rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2" : "rounded-lg border border-slate-700/50 bg-slate-800/40 p-2"}>
+            <p className={s.inner ? "text-[10px] font-semibold text-emerald-300" : "text-[10px] font-semibold text-slate-500"}>{s.icon} {s.title}</p>
+            <p className="mt-0.5 line-clamp-2 text-[9px] leading-relaxed text-slate-400">{s.items}</p>
+          </div>
+        ))}
+      </div>
+      {/* 变量卡 */}
+      {vars.length > 0 && (
+        <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-2">
+          <p className="mb-1 text-[10px] font-semibold text-slate-300">变量清单 ({vars.length})</p>
+          <div className="grid grid-cols-2 gap-1">
+            {vars.map((v, i) => (
+              <div key={i} className="rounded bg-slate-900/70 px-1.5 py-1">
+                <p className="text-[10px] font-medium text-slate-200">{v.name || `变量${i + 1}`}</p>
+                <p className="text-[9px] text-slate-500">{(v.role && VAR_ROLE_LABEL[v.role]) || v.role || "—"}{v.description ? ` · ${String(v.description).slice(0, 24)}` : ""}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* 章节规划 */}
+      {(payload.chapterPlan?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-2">
+          <p className="mb-1 text-[10px] font-semibold text-slate-300">章节框架 ({payload.chapterPlan!.length})</p>
+          <div className="space-y-0.5">
+            {payload.chapterPlan!.map((c, i) => (
+              <p key={i} className="text-[10px] leading-relaxed text-slate-300">
+                <span className="mr-1 text-slate-500">{i + 1}.</span>{c.title}
+                {c.requirements && <span className="text-slate-500"> — {String(c.requirements).slice(0, 40)}</span>}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {payload.clarifyQuestions?.length ? (
+        <p className="text-[9px] text-slate-500">待澄清 {payload.clarifyQuestions.length} 问(点"需求澄清"逐条回答归档)</p>
+      ) : null}
+    </div>
+  );
+}
+
+// ═══ T3-4: 全局阶段进度条(对齐闭源 PhaseProgressBar: 主题chip+阶段圆点, 点击跳阶段) ═══
+export const PHASE_STEPS: Array<{ key: string; label: string; nodeKey: string }> = [
+  { key: "input", label: "信息录入", nodeKey: "input" },
+  { key: "analysis", label: "科研架构", nodeKey: "analysis" },
+  { key: "materials", label: "素材准备", nodeKey: "materials" },
+  { key: "sections", label: "章节创作", nodeKey: "sections" },
+  { key: "finalize", label: "合并定稿", nodeKey: "finalize" },
+];
+function PhaseProgressBar({ projectTitle, phase, phaseLabel, onJump }: {
+  projectTitle: string; phase: number; phaseLabel?: string; onJump: (stage: string) => void;
+}) {
+  // phase(0..5) 对应游标: 0=未入录(列表), 1=input, 2=analysis, 3=materials, 4=sections, 5=finalize/published
+  const cur = Math.max(1, Math.min(5, phase || 1));
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/70 px-3 py-2">
+      <span className="flex max-w-56 items-center gap-1 truncate rounded-full bg-slate-800 px-3 py-1 text-[11px] font-semibold text-slate-200">
+        <Network className="h-3 w-3 shrink-0 text-cyan-400" />
+        <span className="truncate">{projectTitle}</span>
+      </span>
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-1">
+        {PHASE_STEPS.map((s, i) => {
+          const stepNo = i + 1;
+          const done = stepNo < cur;
+          const active = stepNo === cur;
+          return (
+            <div key={s.key} className="flex min-w-0 flex-1 items-center">
+              <button onClick={() => onJump(s.key)} title={`跳到阶段: ${s.label}`}
+                className="flex min-w-0 items-center gap-1.5">
+                <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
+                  done ? "bg-green-500/25 text-green-300" : active ? "bg-cyan-500 text-white" : "bg-slate-800 text-slate-500")}>
+                  {done ? "✓" : stepNo}
+                </span>
+                <span className={cn("hidden truncate text-[10px] lg:inline", active ? "font-semibold text-cyan-300" : done ? "text-slate-400" : "text-slate-600")}>{s.label}</span>
+              </button>
+              {i < PHASE_STEPS.length - 1 && (
+                <span className={cn("mx-1 h-px flex-1", stepNo < cur ? "bg-green-500/40" : "bg-slate-700")} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {phaseLabel ? <span className="shrink-0 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] text-cyan-300">{phaseLabel}</span> : null}
     </div>
   );
 }
@@ -666,7 +878,7 @@ const JOB_LABELS: Record<string, string> = {
   analyze: "正在进行结构化分析", chapter_gen: "正在生成章节内容",
 };
 function RunningTasks({ projectId }: { projectId: string }) {
-  const [tasks, setTasks] = useState<Array<{ id: string; jobKind: string; status: string; goal: string }>>([]);
+  const [tasks, setTasks] = useState<Array<{ id: string; jobKind: string; status: string; goal: string; progress?: { stage?: string; current?: number; total?: number } }>>([]);
   const [busyMsg, setBusyMsg] = useState("");
   useEffect(() => {
     if (!projectId) return;
@@ -723,7 +935,7 @@ function RunningTasks({ projectId }: { projectId: string }) {
 }
 
 // ═══ SocialSci UI审计 T3: 章节完成度进度条(一级章 X/Y + 未完成门禁) ═══
-function SectionProgress({ projectId, onMsg }: { projectId: string; onMsg: (m: string) => void }) {
+function SectionProgress({ projectId, onMsg, onFinalize }: { projectId: string; onMsg: (m: string) => void; onFinalize?: () => void }) {
   const [stat, setStat] = useState<{ done: number; total: number; topUnfinished: number; subWith: number; subTotal: number } | null>(null);
   const [cached, setCached] = useState<{ done: number; total: number } | null>(null);
   useEffect(() => {
@@ -737,9 +949,10 @@ function SectionProgress({ projectId, onMsg }: { projectId: string; onMsg: (m: s
         if (stop) return;
         const secs = d?.node?.payload?.sections ?? d?.payload?.sections ?? [];
         if (!Array.isArray(secs) || !secs.length) { setStat(null); return; }
-        const top = secs.filter((s: { level?: number }) => s.level === 1);
-        const doneTop = top.filter((s: { status?: string; content?: string }) => s.status === "done" || (s.content ?? "").trim().length > 100).length;
-        const sub = secs.filter((s: { level?: number }) => s.level > 1);
+        const sec = (x: unknown) => x as { level?: number; status?: string; content?: string };
+        const top = secs.filter((s) => sec(s).level === 1);
+        const doneTop = top.filter((s) => sec(s).status === "done" || (sec(s).content ?? "").trim().length > 100).length;
+        const sub = secs.filter((s) => (sec(s).level ?? 2) > 1);
         const subWith = sub.filter((s: { content?: string }) => String(s.content ?? "").trim()).length;
         setStat({ done: doneTop, total: top.length, topUnfinished: top.length - doneTop, subWith, subTotal: sub.length });
       } catch { /* 静默 */ }
@@ -776,7 +989,7 @@ function SectionProgress({ projectId, onMsg }: { projectId: string; onMsg: (m: s
       </p>
       <div className="mt-1.5 flex gap-1.5">
         <button disabled={!allDone || s.total === 0}
-          onClick={() => onMsg(allDone ? "调用合并: 在'章节'节点工作界面创建 phase5 merge 任务" : "先完成全部一级章节")}
+          onClick={() => (allDone && onFinalize ? onFinalize() : onMsg(allDone ? "调用合并: 在'章节'节点工作界面创建 phase5 merge 任务" : "先完成全部一级章节"))}
           className={cn("flex-1 rounded-lg py-1 text-[10px]", allDone ? "bg-emerald-600 text-white hover:bg-emerald-500" : "bg-slate-700/60 text-slate-500 cursor-not-allowed")}>
           进入合并定稿
         </button>
@@ -790,6 +1003,7 @@ function SectionProgress({ projectId, onMsg }: { projectId: string; onMsg: (m: s
 function UndoBatch({ projectId, onMsg }: { projectId: string; onMsg: (m: string) => void }) {
   const [hasBatch, setHasBatch] = useState(false);
   const [undoBusy, setUndoBusy] = useState(false);
+  const [ask, setAsk] = useState<ConfirmSpec | null>(null);
   useEffect(() => {
     if (!projectId) return;
     let stop = false;
@@ -809,8 +1023,7 @@ function UndoBatch({ projectId, onMsg }: { projectId: string; onMsg: (m: string)
   }, [projectId]);
   if (!hasBatch) return null;
   const doUndo = async () => {
-    if (!window.confirm("回滚到最近一次批量生成前的章节状态? 当前批量结果将被覆盖(节点历史仍可找回)。")) return;
-    setUndoBusy(true);
+    setUndoBusy(true); setAsk(null);
     try {
       const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
       const r = await fetch(`/api/research/projects/${projectId}/nodes/sections/undo-batch`, {
@@ -823,9 +1036,13 @@ function UndoBatch({ projectId, onMsg }: { projectId: string; onMsg: (m: string)
     } catch (e) { onMsg((e as Error).message); } finally { setUndoBusy(false); }
   };
   return (
-    <button onClick={doUndo} disabled={undoBusy}
-      className="flex-1 rounded-lg bg-rose-700/80 py-1 text-[10px] text-white hover:bg-rose-600 disabled:opacity-50">
-      {undoBusy ? "回滚中…" : "回滚本批"}
-    </button>
+    <>
+      <button onClick={() => setAsk({ title: "回滚本批?", desc: "回滚到最近一次批量生成前的章节状态。当前批量结果将被覆盖(节点历史仍可找回)。", confirmText: "回滚", danger: true })}
+        disabled={undoBusy}
+        className="flex-1 rounded-lg bg-rose-700/80 py-1 text-[10px] text-white hover:bg-rose-600 disabled:opacity-50">
+        {undoBusy ? "回滚中…" : "回滚本批"}
+      </button>
+      <ConfirmDialog spec={ask} onDone={(ok) => (ok ? void doUndo() : setAsk(null))} />
+    </>
   );
 }

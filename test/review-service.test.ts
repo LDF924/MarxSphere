@@ -46,12 +46,16 @@ describe("segmentText 分段算法", () => {
 });
 
 describe("defaultDimensions", () => {
-  it("含 6 个社科审稿维度且权重和≈1", () => {
-    const dims = defaultDimensions() as Array<{ key: string; weight: number }>;
-    expect(dims).toHaveLength(6);
+  it("含 7 个社科期刊审稿维度(闭源实页 7 维)且权重和≈1", () => {
+    const dims = defaultDimensions() as Array<{ key: string; weight: number; weightLabel?: number }>;
+    expect(dims).toHaveLength(7);
     const sum = dims.reduce((a, d) => a + d.weight, 0);
     expect(sum).toBeCloseTo(1.0);
     expect(dims[0].key).toBe("topic_value");
+    // P-B: 闭源权重整档 3-5 透传
+    expect(dims.map((d) => d.weightLabel)).toEqual([4, 5, 5, 5, 4, 3, 4]);
+    expect(dims.some((d) => d.key === "empirical")).toBe(true);
+    expect(dims.some((d) => d.key === "countermeasure")).toBe(true);
   });
 });
 
@@ -65,7 +69,7 @@ describe("createReviewJob", () => {
       text: "长文".repeat(300) + "\n\n" + "长文".repeat(300), // ~1200字
     });
     expect(r.id).toBeTruthy();
-    expect(r.dimensions).toHaveLength(6);
+    expect(r.dimensions).toHaveLength(7);
     const [sql, vals] = vi.mocked(pool.query).mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain("insert into review_jobs");
     // dimensions 在第8参数(json)

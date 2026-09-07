@@ -4615,6 +4615,8 @@ export function buildHttpServer() {
         { id: "did", label: "双重差分 DiD", en: "DiD", desc: "statspai 自动估计 ATT (含事件研究)", category: "因果识别", engine: "statspai", skills: ["10-Jill0099-causal-inference-mixtape"] },
         { id: "did_twfe", label: "DID 双向固定效应", en: "TWFE DiD", desc: "交互项 OLS + 双向固定效应", category: "因果识别", engine: "statspai", skills: ["10-Jill0099-causal-inference-mixtape"] },
         { id: "event_study", label: "事件研究", en: "Event Study", desc: "TWFE 动态效应 + 平行趋势检验 + 系数图", category: "因果识别", engine: "statsmodels", skills: ["10-Jill0099-causal-inference-mixtape"] },
+        { id: "mediation", label: "中介效应", en: "Mediation", desc: "三步法+Bootstrap 中介检验(X→M→Y)", category: "机制分析", engine: "statsmodels", skills: ["10-Jill0099-causal-inference-mixtape"] },
+        { id: "moderation", label: "调节效应", en: "Moderation", desc: "交互项检验(中心化后 X*M) 边际效应", category: "机制分析", engine: "statsmodels", skills: ["10-Jill0099-causal-inference-mixtape"] },
         { id: "logit", label: "Logit/Probit 回归", en: "Logit", desc: "二值因变量(是否转出/是否撂荒) 系数+边际效应", category: "分类模型", engine: "statsmodels", skills: ["00.1-Full-empirical-analysis-skill_Python"] },
         { id: "ologit", label: "有序 Logit", en: "Ordered Logit", desc: "有序因变量(调地意愿1-5) 系数+阈值", category: "分类模型", engine: "statsmodels", skills: ["00.1-Full-empirical-analysis-skill_Python"] },
         { id: "mnl", label: "多项 Logit", en: "MNL", desc: "多分类因变量(身份6类) 类别×协变量系数", category: "分类模型", engine: "statsmodels", skills: ["00.1-Full-empirical-analysis-skill_Python"] },
@@ -8783,6 +8785,12 @@ except Exception as e:
   }
 
   app.setErrorHandler((error, request, reply) => {
+    // PG 列类型错误(非 uuid 打 :id 路由等)归 404 — 防畸形输入 500(任务1走查: research/review/projects 三域实测 500)
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("invalid input syntax for type uuid") || msg.includes("22P02")) {
+      reply.code(404).send({ error: "资源不存在" });
+      return;
+    }
     const statusCode = error instanceof z.ZodError ? 400 : 500;
     // 完整错误信息（error 对象 pino 可能序列化成空 {}，显式提取 message/stack）
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -8910,6 +8918,15 @@ except Exception as e:
       inputSnapshot: body.inputSnapshot,
     });
     return { task };
+  });
+
+  // 清除该用户全部历史任务(科研任务+审稿+绘图会话; 历史中心"清除全部"按钮)
+  app.delete("/api/research/tasks/history", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r1 = await pool.query(`delete from research_tasks where user_id=$1 returning id`, [user.id]);
+    const r2 = await pool.query(`delete from review_jobs where user_id=$1 returning id`, [user.id]);
+    const r3 = await pool.query(`delete from viz_sessions where user_id=$1 returning id`, [user.id]);
+    return { deleted: { researchTasks: r1.rowCount ?? 0, reviewJobs: r2.rowCount ?? 0, vizSessions: r3.rowCount ?? 0 } };
   });
 
   // ═══ SocialSci 补漏组4: P3/P4/P5 子任务端点(HAR 语义: 章节素材三件套/批量章节/合稿) ═══
@@ -9101,6 +9118,15 @@ except Exception as e:
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId } = request.params as { projectId: string };
     return { versions: await researchPipeline.listVersions(user.id, projectId) };
+  });
+
+  // P-A 终稿激活(闭源 phase5/version/:ver/activate 语义: 版本置 published + project.revision_of_version)
+  app.post("/api/research/projects/:projectId/versions/:version/activate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, version } = request.params as { projectId: string; version: string };
+    const r = await researchPipeline.activateVersion(user.id, projectId, Number(version));
+    if (!r.ok) return reply.code(404).send({ error: r.code === "VERSION_NOT_FOUND" ? "版本不存在" : "项目不存在" });
+    return { ok: true, version: r.version };
   });
 
   // 主控 Agent P1 分析(→ analysis 节点, SSE 事件流)
@@ -9317,6 +9343,15 @@ except Exception as e:
     return { ok: true, base64: r.base64, fileName: r.fileName };
   });
 
+  // T6: 审稿排版 HTML 报告(对齐闭源 export-report; base64 供新窗口打印/存 PDF)
+  app.post("/api/review/jobs/:jobId/export-html", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const r = await reviewService.exportReportHtml(user.id, jobId);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { ok: true, html: Buffer.from(r.html ?? "", "utf-8").toString("base64") };
+  });
+
   // 期刊库
   app.get("/api/review/journals", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -9415,12 +9450,12 @@ except Exception as e:
   app.post("/api/viz/sessions/:sessionId/turns", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { sessionId } = request.params as { sessionId: string };
-    const body = request.body as { message?: string; csv?: string; columnOrder?: string[] };
+    const body = request.body as { message?: string; csv?: string; columnOrder?: string[]; spec?: Record<string, unknown> };
     if (!body?.message?.trim()) return reply.code(400).send({ error: "请描述要画的图" });
     const sse = attachSse(reply);
     sse.send("viz.created", { sessionId });
     await vizAgent.runTurn(user.id, sessionId, body.message.trim(), sse, {
-      csv: body.csv, columnOrder: body.columnOrder,
+      csv: body.csv, columnOrder: body.columnOrder, spec: body.spec,
     });
     sse.end();
   });
@@ -9478,13 +9513,23 @@ except Exception as e:
   // ═══ SocialSci P0-5: 学术文本编辑器(迁移119) ═══
   app.get("/api/editor/v1/documents", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    return { documents: await editorService.listDocs(user.id) };
+    // R8a: 列表分页响应(HAR: GET /documents?page&page_size → items+pagination)
+    const q = request.query as { page?: string; page_size?: string };
+    const res = await editorService.listDocs(user.id, { page: Number(q.page) || 1, pageSize: Number(q.page_size) || 20 });
+    return {
+      data: {
+        items: res.items,
+        pagination: { total: res.total, page: res.page, page_size: res.pageSize },
+      },
+    };
   });
 
   app.post("/api/editor/v1/documents", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { title?: string; content?: string };
-    return await editorService.createDoc(user.id, body?.title ?? "", body?.content ?? "");
+    const r = await editorService.createDoc(user.id, body?.title ?? "", body?.content ?? "");
+    const doc = await editorService.getDoc(user.id, r.id);
+    return reply.code(201).send(doc ?? { id: r.id });
   });
 
   app.get("/api/editor/v1/documents/:docId", async (request, reply) => {
@@ -9501,7 +9546,30 @@ except Exception as e:
     const body = request.body as { title?: string; content?: string; tags?: string[] };
     const r = await editorService.saveDoc(user.id, docId, body);
     if (!r) return reply.code(404).send({ error: "文档不存在" });
-    return { ok: true, wordCount: r.word_count };
+    return { ok: true, wordCount: r.word_count, currentVersion: r.currentVersion ?? null };
+  });
+
+  // R8c: 文档版本链(HAR: PUT 后 current_version_id 递增; 前端版本历史用)
+  app.get("/api/editor/v1/documents/:docId/versions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    const owner = await pool.query(`select id from documents_v2 where id=$1 and user_id=$2`, [docId, user.id]);
+    if (!owner.rows.length) return reply.code(404).send({ error: "文档不存在" });
+    const r = await pool.query(
+      `select version, content_hash, title, content_len, by_editor, created_at from doc2_versions
+        where document_id=$1 order by version desc limit 50`, [docId]);
+    return { versions: r.rows };
+  });
+
+  // 版本回档(取历史 content 写回 + 新版本行; 编辑器"版本历史"面板用)
+  app.post("/api/editor/v1/documents/:docId/restore", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { docId } = request.params as { docId: string };
+    const body = request.body as { version?: number };
+    if (!body?.version) return reply.code(400).send({ error: "缺少 version" });
+    const r = await editorService.restoreDocVersion(user.id, docId, Number(body.version));
+    if (!r) return reply.code(404).send({ error: "文档或版本不存在" });
+    return { ok: true, ...r };
   });
 
   app.delete("/api/editor/v1/documents/:docId", async (request, reply) => {
@@ -9528,7 +9596,7 @@ except Exception as e:
   app.post("/api/editor/v1/rewrite", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { mode?: string; text?: string };
-    const modes = ["condense", "de-template", "polish", "proofread", "journal-style", "humanize"];
+    const modes = ["condense", "de-template", "polish", "proofread", "journal-style", "humanize", "expand"];
     if (!modes.includes(body?.mode ?? "")) return reply.code(400).send({ error: `mode 需为 ${modes.join("/")}` });
     if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少选中文本" });
     return await editorService.rewriteText(body.mode as never, body.text);
@@ -9550,12 +9618,12 @@ except Exception as e:
     return await editorService.generateTitleAbstract(body.text);
   });
 
-  // 全文检查(诚实性: 不验证文献真实性)
+  // 全文检查(诚实性: 不验证文献真实性; P-C 按 mode 分支 4 检查模式)
   app.post("/api/editor/v1/check-fulltext", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { text?: string };
+    const body = request.body as { text?: string; mode?: string };
     if (!body?.text?.trim()) return reply.code(400).send({ error: "缺少全文" });
-    return await editorService.checkFulltext(body.text);
+    return await editorService.checkFulltext(body.text, body.mode);
   });
 
   // 图表代码(LLM 出图代码 → 复用 viz runner 渲染)
@@ -9907,6 +9975,16 @@ except Exception as e:
     return { ok: true };
   });
 
+  // T4-4: AI 自动编排素材到章节(闭源 MaterialsView allocateMaterials; 建议→前端确认→逐条 adopt)
+  app.post("/api/research/materials/allocate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const r = await researchMaterials.allocateMaterialsToSections(user.id, body.projectId);
+    if (!r.ok) return reply.code(422).send({ error: r.error });
+    return { suggestions: r.suggestions };
+  });
+
   // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源; 来源: stats_artifacts/viz_artifacts/material)
   app.post("/api/research/artifacts/import", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -10188,6 +10266,23 @@ export async function startHttpServer(): Promise<void> {
   // Jobs worker：预览模式也启动（任务很轻：lint/backlinks 等毫秒级，保证三栏队列有真实流转）
   jobsService.startWorker();
   console.log("[jobs] worker started");
+
+  // T4-1: research 流水线任务调度泵 — queued→执行(章节批量/merge/review/revise 等)
+  // 此前只在前端手动 POST /run-scheduling-round 触发, 任务建后无人消费卡 queued
+  let execPumping = false;
+  setInterval(async () => {
+    if (execPumping) return; // 防止上一轮未完成时重入
+    execPumping = true;
+    try {
+      const r = await researchExec.runSchedulingRound();
+      if (r.executed > 0) console.log(`[research-exec] 调度一轮: 执行 ${r.executed} 个任务`);
+    } catch (e) {
+      console.log(`[research-exec] 调度异常: ${String(e).slice(0, 160)}`);
+    } finally {
+      execPumping = false;
+    }
+  }, 2000);
+  console.log("[research-exec] 调度泵启动(2s)");
 
   // 任务巡检监控（卡死检测：query_tasks 非终态超阈值 → 标记失败 + 告警；每 2 分钟）
   startTaskPatrol();

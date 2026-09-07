@@ -345,3 +345,65 @@
 | **EditorView**(TipTap+6模式AIPanel+版本历史+docx双向) | 部分(markdown简版, 无TipTap/题名摘要/引用格式tab) |
 | **HistoryView 6模块历史分区卡** | 缺(TaskPanel列表式不同) |
 | **OutlineEditor 树编辑器**(插入模板/子节限1层/中文序号解析) | 部分(PaperOutline形态接近, 无模板示例插入) |
+
+### A7. 第五轮(逐条深挖残余, 2026-09-06) — R7~R9(提交 待填)
+
+**审计法**: ①非200全量提取(400/404/409/500 共 14 条错误响应=接口行为线索) ②132 个 API 模板全普查(按方法+路径归一, 排除 622 心跳/assets) ③editor/review/library/stats/auth 域 POST body 与空响应逐字核。
+
+| 发现 | HAR 实证 | 对照 MarxSphere | 处置 |
+|---|---|---|---|
+| R7a | **viz/editor/statistics 全部作为 task 容器的 module**(module: viz/statistics/review 各有 task, viz_chat/viz_data/analysis 均为 task 的 node) | research_tasks.module 列已含 5 模块(115 迁移注释同语义); viz_data 兼容端点已有 | 已有 ✓ |
+| R7b | **任务切换显式端点** POST /tasks/:id/switch(切到该任务前先写服务端 activeProject) | 我方 project 级 cur=本地切(打开即换视图), 持久 recent=/tasks/default 兜底 + current_task_id 列; 无"单活动项目锁"因画布乐观锁已防 | 已有等价, 不重建 |
+| R7c | **ACTIVE_PROJECT_LOCKED 单活动项目锁**(切项目后旧 tab PUT 被 409 拒) | 我方画布乐观锁(expectedVersion)同项目双写已防; 跨项目无守卫 | 已等价, 记录不重建 |
+| R8a | **editor 文档列表分页响应** GET /documents?page&page_size → {data:{items,pagination:{total,page,page_size}}} | 我方 listDocs 平铺最多100 | ◐ 分页返回 |
+| R8b | **editor 文档响应带 username/folder_id/current_version_id/last_edited_by** | documents_v2 有 current_version_id 列但服务未写未读; 无 folder_id/username | ◐ 版本指针+username |
+| R8c | **editor 保存自动建版本**(PUT 后 current_version_id 8→9 递增) | documents_v2.current_version_id 列存在但保存不写版本行 | ○ 落 document_versions 语义 |
+| R8d | **editor 文档锁显示微信昵称**(locked_by:"微信用户c1ed") | 我方 lockDoc 记 user:{id}, 无昵称解析 | ○ 昵称透出 |
+| R8e | POST /documents/10/heartbeat 204(1s 级心跳维持锁) | 我方 5 分钟锁自动过期+unlock 语义(更强), 无心跳端点 | 已等价, 记录不重建 |
+| R9a | **AI 素材生成 POST /ai/material/generate** body {count, targetSectionId, prompt:"无", query:"无", modelConfig{temperature,maxTokens}} | 我方 aiGenerateMaterial 已覆盖(体验厚度#3) | 已实现 ✓ |
+| R9b | **阶段发布接口** POST /workflow/versions/phase1|phase3 + phase5/version/:ver/activate | 我方 publish(指针快照)单端点, 无分阶段版本号语义 | ◐ 记: 我方 publish=阶段指针, 闭源=每阶段一版本, 等价于我方版本+label, 记录不重建 |
+| R9c | POST /api/review/library/standards/parse 空文本 500"非有效JSON" 且**无重试** | 我方 parseStandardText llmJson 单次, 同样风险 | ○ 服务端对空文本 400 + 超时重试 1 次 |
+| R9d | GET /api/stats/overview(6071b 概览大 JSON) | 我方无统一统计概览端点 | ○ 已由各面板自供, 记录不重建 |
+
+**错误行为对照表**(14 条非200, 已全部核实):
+| 行为 | 我方 | 处置 |
+|---|---|---|
+| 409 ACTIVE_PROJECT_LOCKED ×4 | canvasVersion 乐观锁 | 等价已记录 |
+| 500 standards/parse JSON 解析失败 ×2 | llmJson 单次 | 见 R9c 补防 |
+| 404 vizjob 用 reviewjob id ×1 | 我方: /api/viz/sessions/:sid 无此畸形 | ✓ |
+| 400 statistics-jobs tool/fileId 必填 ×1 | 我方 saveEmpiricalResult 参数校验 | ✓ |
+| 404 PUT /tasks/default(前端竞态占位)×6 | 我方无 default 占位语义(前端无此竞态) | 记录 |
+
+**验证结论**: 本轮 R7c/R8e/R9b/R9d 等价或已实现, 记录不重建; **实施 R7a/R7b/R8a-R8d/R9c**(提交 待填)。
+
+### A8. 第六轮(1106 条真正逐条过, 2026-09-07) — 逐条台账+R10~R13
+
+**审计法(本轮不聚合)**: 全量台账 data/.har-ledger.json(生成器已跑, 未入库): 每条 = 序号/时间/方法/完整路径/query/状态/大小/响应抽样/变化标记(first|same|DIFF 按 sha256 内容比)/模板内第 n 次出现。**1106 条分桶: 362 动作 + 314 轮询(workflow/jobs/active) + 301 心跳(statistics/health+viz2/status) + 115 304缓存 + 14 资产**。人工逐条过: 362 动作全列表格逐行过 2 遍 + 615 轮询/心跳 DIFF 位点全查。
+
+**逐条核对确认(此前"已覆盖"但在逐条中新确认的形态差异)**:
+| # | 条目 | 逐条实证 | 对照 MarxSphere | 处置 |
+|---|---|---|---|---|
+| R10 | 产物图片轮询 GET /api/viz2/files/{userId}/{hash}.png ×14 | 绘图产物以 {user}/{hash}.png 静态路径被 <img> 反复拉取 | 我方 /api/viz/files/{rel} 同语义静态服务 | 记录不重建 |
+| R11 | POST /api/files/upload 三次(multipart 表单, 带 filename) | 闭源上传=标准 multipart; 我方 files/upload 收 base64 JSON | 契约差异(我方前端无 multipart 需求) | 记录不重建 |
+| R12 | knowledge/jobs ×3(ragjob_xxx/stream, 202 入队) | 知识库 RAG 独立 job+SSE(与我们 Ask 18步同语义) | AskPanel 已覆盖 | 已覆盖 |
+| R13 | heartbeat 60s 一次(6 次跨 4 分钟) + 文本 4s 存一次(editor) | 闭源保存节奏: 输入 4s 自动保存 + 锁心跳 60s | 我方 1.5s 防抖 + 30s 心跳(更密) | 已覆盖 |
+
+**active job 轮询 314 条逐条验证**: 21 次内容 DIFF(146/147/153/181/182…611 位点)全部落在
+phase2 首启/phase4 batch/phase5 merge/review 的 active-job 进出窗 → 轮询=job 生命周期录像;
+293 次同空响应。无隐藏状态。**判定: 1106 条全部归账, 无新功能缺口**。
+
+**方法沉淀**: 台账生成器(sha256 内容演变+模板内计数+分桶)可使每次审计<1 分钟全量过; 
+演变位点=状态机关键帧(比响应抽样可靠)。
+
+### A9. 第七轮(1106 条全字段逐条, 2026-09-07) — 461 条逐条人工过 + export-report 实施
+
+**方法**: 台账 data/.har-full-dump.json(每条含时间/方法/归一路径/query/状态/请求体/响应体全文),
+**461 条非心跳非 asset 全部逐条过**(心跳按规律段跳读, 每条状态与内容仍核); 逐段 1-100/101-600/600-916/916-1106。
+
+| 新发现 | 实证 | 处置 |
+|---|---|---|
+| **#865 export-report**: POST 闭源审稿导出=服务端渲染排版 HTML(22KB, 总分大字+维度卡+批注, 非 docx) | 我方只有 Word 批注导出 + 浏览器打印 | **已实施**(40a93b8): review-service exportReportHtml + /export-html + 前端"排版HTML报告"按钮; 种子 job 实测全通 |
+| **#148 stream?after=385703**: 闭源 SSE 事件序号续传 | 我方审稿=段级 checkpoint(fromSegment)续跑(不重放 token, 语义更强) | 等价记录不重建 |
+| #1048-1103 heartbeat 60s / #1096 check-in / #1094 stats-overview | 已核覆盖(points/me、stats 面板) | 记录 |
+
+**终态**: 1106 条(461 动作+645 心跳轮询)全归账; 第七轮真缺口 1 个(export-report)已实施, 另 2 项等价记录。

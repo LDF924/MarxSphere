@@ -9,7 +9,7 @@ import {
   MessageSquarePlus, Send, Sparkles, Trash2, Upload, Wand2,
 } from "lucide-react";
 
-interface Session { id: string; title: string; status: string; created_at: string; artifact_count: string; }
+interface Session { id: string; title: string; status: string; created_at: string; updated_at?: string; artifact_count: string; }
 interface Artifact { id: string; session_id: string; version: number; prompt: string; png_path: string; svg_editable_path: string; critique: { improve?: string }; status: string; created_at: string; }
 interface Msg {
   id: string; role: string; content: string | { text?: string; name?: string; status?: string; error?: string; content?: string; artifact?: { pngRel: string; svgRel: string }; version?: number; title?: string; issues?: unknown[] };
@@ -45,6 +45,27 @@ export function VizAgentPanel() {
   const [csvName, setCsvName] = useState("");
   const csvRef = useRef<{ csv: string; cols: string[] } | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // 期刊规范预设(闭源 VizView journal spec 对齐)
+  const [specPreset, setSpecPreset] = useState("journal-double");
+  // 图表类型九宫格(闭源 VizView chartType 对齐): 点击把意图填入输入框
+  const CHART_TYPE_PROMPTS: Array<{ k: string; label: string; tpl: string }> = [
+    { k: "line", label: "折线图", tpl: "画折线图: 用 x 列做横轴、y 列做纵轴, 趋势清晰、带数据点" },
+    { k: "bar", label: "柱状图", tpl: "画柱状图: 对比各组数值, 柱顶标数值" },
+    { k: "scatter", label: "散点图", tpl: "画散点图: 观察两变量相关关系, 加趋势线" },
+    { k: "box", label: "箱线图", tpl: "画箱线图: 分组展示分布(中位数/四分位/离群点)" },
+    { k: "violin", label: "小提琴图", tpl: "画小提琴图: 分组密度分布对比" },
+    { k: "heatmap", label: "热力图", tpl: "画热力图: 数值矩阵/相关性可视化" },
+    { k: "hist", label: "直方图", tpl: "画直方图: 展示单变量频数分布" },
+    { k: "pie", label: "饼图", tpl: "画饼图: 占比构成" },
+    { k: "custom", label: "自定义", tpl: "" },
+  ];
+  const SPEC_PRESETS: Record<string, { label: string; spec: Record<string, unknown> }> = {
+    "journal-double": { label: "期刊·双栏(183mm)", spec: { widthMm: 183, heightMm: 120, dpi: 300, fontSize: 9, fontFamily: "Arial", lineWidth: 1 } },
+    "journal-single": { label: "期刊·单栏(89mm)", spec: { widthMm: 89, heightMm: 62.3, dpi: 600, fontSize: 7, fontFamily: "Arial", lineWidth: 0.8 } },
+    nature: { label: "Nature 风格", spec: { widthMm: 89, heightMm: 62.3, dpi: 600, fontSize: 7, fontFamily: "Arial", lineWidth: 0.8 } },
+    "slide-wide": { label: "汇报宽图(240mm)", spec: { widthMm: 240, heightMm: 135, dpi: 150, fontSize: 11, fontFamily: "Microsoft YaHei", lineWidth: 1.2 } },
+    loose: { label: "演示通用(183mm@130)", spec: { widthMm: 183, heightMm: 120, dpi: 130, fontSize: 10, fontFamily: "SimHei", lineWidth: 1 } },
+  };
 
   const loadSessions = useCallback(async () => {
     try { const r = await j<{ sessions: Session[] }>("/api/viz/sessions"); setSessions(r.sessions ?? []); } catch (e) { setErr((e as Error).message); }
@@ -101,6 +122,7 @@ export function VizAgentPanel() {
           message: msg,
           csv: csvRef.current?.csv,
           columnOrder: csvRef.current?.cols ?? [],
+          spec: SPEC_PRESETS[specPreset]?.spec ?? SPEC_PRESETS["journal-double"].spec,
         }),
       });
       if (!r.ok || !r.body) throw new Error(`连接失败 ${r.status}`);
@@ -176,8 +198,15 @@ export function VizAgentPanel() {
           {sessions.map((s) => (
             <button key={s.id} onClick={() => loadSession(s.id)}
               className={cn("mb-1 rounded-lg px-2 py-1.5 text-left", curSession === s.id ? "bg-pink-600/20 text-pink-200" : "hover:bg-slate-800 text-slate-300")}>
-              <p className="truncate text-[11px] font-medium">{s.title || "未命名"}</p>
+              <p className="flex items-center gap-1 truncate text-[11px] font-medium">
+                {s.title || "未命名"}
+                {/* W10(闭源 viz 任务视图): 失败徽标 */}
+                {s.status === "failed" && <span className="shrink-0 rounded-full bg-rose-500/20 px-1.5 py-px text-[8px] font-semibold text-rose-300">失败</span>}
+              </p>
               <p className="text-[9px] text-slate-500">{s.artifact_count} 图 · {new Date(s.updated_at ?? s.created_at).toLocaleDateString()}</p>
+              {s.status === "failed" && (
+                <p className="mt-0.5 text-[8px] leading-snug text-rose-300/70">模型未完成出图 — 打开后点"重新生成"从此任务重试</p>
+              )}
             </button>
           ))}
         </div>
@@ -200,7 +229,7 @@ export function VizAgentPanel() {
                 const a = c.artifact as { pngRel: string };
                 return (
                   <div key={m.id} className="rounded-lg border border-slate-700/50 bg-slate-800/50 p-2">
-                    <p className="mb-1 flex items-center gap-1 text-[10px] text-slate-400"><ImageIcon className="h-3 w-3 text-pink-400" /> 产物 v{c.version} {c.title ? `· ${String(c.title).slice(0, 30)}` : ""}</p>
+                    <p className="mb-1 flex items-center gap-1 text-[10px] text-slate-400"><ImageIcon className="h-3 w-3 text-pink-400" /> 产物 v{(c as { version?: unknown }).version as number} {c.title ? `· ${String(c.title).slice(0, 30)}` : ""}</p>
                     <img src={artUrl(a.pngRel)} alt="chart" className="max-h-64 w-auto rounded border border-slate-700/40 bg-white/5" />
                   </div>
                 );
@@ -229,6 +258,26 @@ export function VizAgentPanel() {
           </div>
           {/* 输入区 */}
           <div className="border-t border-slate-700/50 p-2">
+            {/* T4-6: 图表类型九宫格(闭源 VizView chartType 对齐): 点击填提示词 */}
+            <div className="mb-1.5 flex flex-wrap items-center gap-1">
+              <span className="text-[9px] text-slate-500">图表类型</span>
+              {CHART_TYPE_PROMPTS.map((c) => (
+                <button key={c.k} onClick={() => setInput(c.tpl)}
+                  className={cn("rounded-full border px-2 py-0.5 text-[9px] transition", input === c.tpl ? "border-pink-500/60 bg-pink-600/20 text-pink-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-slate-200")}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            {/* T4-5: 期刊规范预设(闭源 VizView journal spec 对齐) */}
+            <div className="mb-1.5 flex flex-wrap items-center gap-1">
+              <span className="text-[9px] text-slate-500">期刊规范</span>
+              {Object.entries(SPEC_PRESETS).map(([k, p]) => (
+                <button key={k} onClick={() => setSpecPreset(k)}
+                  className={cn("rounded-full border px-2 py-0.5 text-[9px]", specPreset === k ? "border-pink-500/60 bg-pink-600/20 text-pink-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:text-slate-200")}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
             {csvName && (
               <div className="mb-1.5 flex items-center justify-between rounded bg-slate-800 px-2 py-1 text-[10px] text-slate-400">
                 <span className="flex items-center gap-1"><Upload className="h-2.5 w-2.5 text-cyan-400" /> {csvName} (真实计算用)</span>

@@ -55,8 +55,8 @@ export async function markRunning(taskId: string) {
 
 export async function markDone(taskId: string, result: unknown) {
   await pool.query(
-    `update research_tasks set status='done', progress=jsonb_set(coalesce(progress,'{}'::jsonb),'{doneAt}',to_jsonb(now()::text)), updated_at=now() where id=$1`,
-    [taskId]
+    `update research_tasks set status='done', result=$2::jsonb, progress=jsonb_set(coalesce(progress,'{}'::jsonb),'{doneAt}',to_jsonb(now()::text)), updated_at=now() where id=$1`,
+    [taskId, JSON.stringify(result ?? {})]
   );
 }
 
@@ -135,6 +135,8 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
       "table-generate": runTableGenerate,
       chapter_batch: runChapterBatch,
       phase4_batch: runChapterBatch,
+      review: runPhase5,
+      phase5_review: runPhase5,
       merge: runPhase5,
       phase5_merge: runPhase5,
       revise: runPhase5,
@@ -292,7 +294,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
     try {
       // UI审计T4: 每章进度写回 progress(前端步骤卡消费)
       await pool.query(
-        `update research_tasks set progress=jsonb_set(jsonb_set(jsonb_set(coalesce(progress,'{}'::jsonb),'{stage}',to_jsonb('章节生成')),'{current}',to_jsonb($2::int)),'{total}',to_jsonb($3::int)) where id=$1`,
+        `update research_tasks set progress=jsonb_set(jsonb_set(jsonb_set(coalesce(progress,'{}'::jsonb),'{stage}',to_jsonb('章节生成'::text)),'{current}',to_jsonb($2::int)),'{total}',to_jsonb($3::int)) where id=$1`,
         [ctx.taskId, results.length + 1, sections.length]);
       const ch = await generateChapter({
         nodeId: sec.id ?? "unknown",
@@ -310,7 +312,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
   }
   // UI审计T4: 完成进度标记
   await pool.query(
-    `update research_tasks set progress=jsonb_set(jsonb_set(coalesce(progress,'{}'::jsonb),'{stage}',to_jsonb('批量完成')),'{current}',to_jsonb($2::int)) where id=$1`,
+    `update research_tasks set progress=jsonb_set(jsonb_set(coalesce(progress,'{}'::jsonb),'{stage}',to_jsonb('批量完成'::text)),'{current}',to_jsonb($2::int)) where id=$1`,
     [ctx.taskId, sections.length]);
   // 修正: 把生成的正文回写 sections 节点(否则结果丢失, 只在 progress.doneAt)
   const node = await pool.query(
@@ -392,7 +394,10 @@ async function buildCitationPool(userId: string, projectId: string): Promise<str
   } catch { return ""; }
 }
 
-/** P5 合并/审查/修订(job_kind: merge|review|revise; 合并走 generateComponent 要件) */
+/** P5 合并/审查/修订(job_kind: merge|review|revise; 合并走 generateComponent 要件)
+ *  P-A 对齐闭源 #589/#601/#612/#651: review 产六维报告存 task.result+project.review_result;
+ *  revise 读报告对 merge 产物做有向修订(输出去AI痕迹+按 checks 改), 产出修订稿覆盖 merged_*,
+ *  产物链 revisionOf 指向被修订版本(发布版本号), activate 端点把版本置终稿。 */
 async function runPhase5(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   const kind = task.job_kind; // merge | review | revise
@@ -418,25 +423,132 @@ async function runPhase5(task: any, ctx: ExecCtx) {
       [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]);
     return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references } };
   }
+
+  // ═══ P-A: review/revise 以 finalize 节点为真源(前端 PUT nodes/finalize 写入 merged_* + reviewReport) ═══
+  const nodeRow = await pool.query(
+    `select payload from research_nodes
+       join research_projects p on p.id=research_nodes.project_id
+      where research_nodes.project_id=$1 and research_nodes.node_key='finalize' and p.user_id=$2
+      limit 1`,
+    [ctx.projectId, ctx.userId]
+  ).catch(() => ({ rows: [] as unknown[] }));
+  const fz = (nodeRow?.rows?.[0]?.payload ?? {}) as {
+    mergedTitle?: string; mergedAbstract?: string; mergedFullText?: string;
+    mergedKeywords?: string; mergedReferences?: string; reviewReport?: unknown;
+  };
+  const proj = await pool.query(
+    `select merged_title, merged_abstract, merged_keywords, merged_fulltext, merged_references,
+            review_result, published_version, phase_label
+       from research_projects where id=$1 and user_id=$2`,
+    [ctx.projectId, ctx.userId]
+  ).catch(() => ({ rows: [] as unknown[] }));
+  const p = (proj?.rows?.[0] ?? {}) as {
+    merged_title?: string; merged_abstract?: string; merged_keywords?: string;
+    merged_fulltext?: string; merged_references?: string; review_result?: unknown;
+    published_version?: number; phase_label?: string;
+  };
+  const nodeReview = (typeof fz.reviewReport === "string" ? JSON.parse(fz.reviewReport) : fz.reviewReport) as Record<string, unknown> | null;
+  // 真源优先节点 payload(前端所见即所得), 缺时回落 project 列(引擎 merge 分支写)
+  const title = fz.mergedTitle ?? p.merged_title ?? "";
+  const fulltext = (fz.mergedFullText ?? p.merged_fulltext ?? "") as string;
+  const abstract = fz.mergedAbstract ?? p.merged_abstract ?? "";
+  const keywords = fz.mergedKeywords ?? p.merged_keywords ?? "";
+  const refs = fz.mergedReferences ?? p.merged_references ?? "";
+  const reportSrc = (nodeReview ?? p.review_result ?? null) as Record<string, unknown> | null;
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
-  const role = kind === "review" ? "论文审查专家(做逻辑/一致性快速检查, 不验证文献真实性)"
-    : "论文修订专家(输出去AI痕迹/压缩冗余的修订要点)";
-  const req = kind === "review"
-    ? `输出 JSON:{"issues":[{"severity":"major|minor","section":"章节","issue":"问题"}]}`
-    : `输出 JSON:{"changes":[{"section":"","what":"改动","why":"理由"}]}`;
-  const res = await fetchLlm({
-    url: ep.url, key: ep.key, model: ep.model,
-    messages: [{ role: "user", content: `你是${role}。${req}\n\n章节: ${sections.map((s) => s.title).join("、") || "全文"}\n主题: ${ctx.goal}` }],
-    temperature: 0.3, maxTokens: 3000, timeoutMs: 240_000,
-  });
-  let parsed: unknown = {};
-  try { parsed = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim()); } catch { /* 忽略 */ }
-  // 修正: review 结果落 project.review_result(否则丢失)
+
   if (kind === "review") {
-    await pool.query(`update research_projects set review_result=$2, updated_at=now() where id=$1`,
-      [ctx.projectId, JSON.stringify(parsed)]);
+    if (!fulltext.trim()) throw new Error("尚无合并正文, 请先运行合稿");
+    // 闭源六维审查: score/overall/highlights/checks{requirements,references,aiTone,logic,dataAccuracy}/topSuggestions
+    const res = await fetchLlm({
+      url: ep.url, key: ep.key, model: ep.model,
+      messages: [{ role: "user", content: `你是期刊主编, 对一篇社科论文做多维质量审查。只依据提供的全文, 不验证文献真实存在与否, 只评价文本呈现。
+
+【论文全文】
+${fulltext.slice(0, 16000)}
+
+输出 JSON(不要代码块):
+{"score":0-100总分整数,"grade":"A|B|C|D","overall":"总体评语(150字内,亮点+主要问题+修订方向)","highlights":["亮点1","亮点2"],"checks":{"requirements":{"pass":true/false,"detail":"结构与体例完整性检查意见(≤120字)"},"references":{"pass":true/false,"detail":"引文数量/格式/位置规范检查意见(≤120字)"},"aiTone":{"pass":true/false,"detail":"AI生成痕迹检查意见(模板化表达/机械列举/套话, ≤150字)"},"logic":{"pass":true/false,"detail":"论证逻辑一致性检查意见(≤120字)"},"dataAccuracy":{"pass":true/false,"detail":"数据/实证表述可信度检查意见(≤120字)"}},"topSuggestions":["首要修改建议1(具体可执行)","建议2","建议3"]}` }],
+      temperature: 0.3, maxTokens: 4000, timeoutMs: 240_000,
+    });
+    if (!res?.text) throw new Error("LLM 无响应");
+    let report: Record<string, unknown> = {};
+    try { report = parseLlmJson(res.text) ?? {}; } catch { report = { raw: String(res.text ?? "").slice(0, 3000) }; }
+    const grade = String(report.grade ?? (Number(report.score ?? 0) >= 85 ? "A" : Number(report.score ?? 0) >= 70 ? "B" : Number(report.score ?? 0) >= 60 ? "C" : "D"));
+    const result = {
+      paperTitle: title || ctx.goal, wordCount: fulltext.replace(/\s/g, "").length,
+      overallScore: Number(report.score ?? 0), grade,
+      overallComment: report.overall ?? "", overall: report.overall ?? "",
+      highlights: Array.isArray(report.highlights) ? report.highlights : [],
+      checks: report.checks ?? {}, topSuggestions: Array.isArray(report.topSuggestions) ? report.topSuggestions : [],
+      reviewedAt: new Date().toISOString(),
+    };
+    // 报告双写: project.review_result(引擎链) + finalize 节点 payload.reviewReport(前端渲染源)
+    await pool.query(
+      `update research_projects set review_result=$2::jsonb, updated_at=now() where id=$1`,
+      [ctx.projectId, JSON.stringify(result)]);
+    const nUpd = await pool.query(
+      `update research_nodes set payload=jsonb_set(coalesce(payload,'{}'::jsonb),'{reviewReport}', $2::jsonb), updated_at=now()
+        where project_id=$1 and node_key='finalize'`, [ctx.projectId, JSON.stringify(result)]).catch(() => ({ rowCount: 0 }));
+    void nUpd;
+    return { text: `审查完成: ${result.overallScore} 分 ${result.grade} 级`, structured: result };
   }
-  return { text: `${kind === "review" ? "审查" : "修订"}完成`, structured: parsed };
+
+  // revise: 读 review_result(节点 reviewReport 优先, 无则 project) → 有向修订全文
+  if (!reportSrc || !fulltext.trim()) throw new Error("缺少审查报告或合并正文, 请先运行 合稿→审查");
+  const reviewReport = reportSrc;
+  const checksBrief = ((): string => {
+    try {
+      const c = (reviewReport.checks ?? {}) as Record<string, { pass?: boolean; detail?: string }>;
+      return Object.entries(c).map(([k, v]) => `- ${k}: ${v.pass ? "通过" : "不通过"} ${v.detail ?? ""}`).join("\n");
+    } catch { return JSON.stringify(reviewReport).slice(0, 1000); }
+  })();
+  const scoreLine = reviewReport.overallScore !== undefined ? `${reviewReport.overallScore} 分 ${reviewReport.grade ?? ""}` : "";
+  // step1: 修订正文 — 直出修订后 markdown 全文(不进 JSON, 防超长转义)
+  const r1 = await fetchLlm({
+    url: ep.url, key: ep.key, model: ep.model,
+    messages: [{ role: "user", content: `你是学术论文修订专家。根据审稿意见对全文做有向修订: 消除 AI 痕迹(模板化开头/机械列举/套话/箭头链式), 修复报告指出的结构与一致性问题, 保持全部章节与实质观点不变, 不要新增实证数据, 保留 markdown 标题结构与 [n] 引文标记。
+
+【审稿报告】${scoreLine}
+${checksBrief}
+【优先建议】${Array.isArray(reviewReport.topSuggestions) ? (reviewReport.topSuggestions as string[]).join("; ") : ""}
+
+【待修订全文】
+${fulltext}
+
+直接输出修订后的完整全文 markdown(不要任何解释、不要代码块围栏)。` }],
+    temperature: 0.4, maxTokens: 16000, timeoutMs: 480_000,
+  });
+  if (!r1?.text) throw new Error("修订 LLM 无响应");
+  const revisedBody = String(r1.text).replace(/^```(markdown|md)?\s*/i, "").replace(/```\s*$/, "").trim();
+  // step2: 摘要/关键词按修订稿重生成
+  const abs = await generateComponent({ kind: "abstract", topic: ctx.goal ?? title, sections: [], chapterContents: [revisedBody] }).catch(() => ({ content: abstract }));
+  const kws = await generateComponent({ kind: "keywords", topic: ctx.goal ?? title, sections: [] }).catch(() => ({ content: keywords }));
+  const curVer = p.published_version ?? 0;
+  const result = {
+    revisionOf: curVer, revisionOfVersion: curVer,
+    data: { abstract: abs.content, body: revisedBody },
+    revisedAt: new Date().toISOString(),
+  };
+  // 修订稿双写: project 列(引擎链) + finalize 节点 payload(前端渲染源)
+  await pool.query(
+    `update research_projects set
+       merged_abstract=$2, merged_keywords=$3, merged_fulltext=$4,
+       revision_of_version=$5, merge_generated=true, updated_at=now()
+     where id=$1`,
+    [ctx.projectId, abs.content, kws.content, revisedBody, curVer || null]);
+  const fzPayload = {
+    mergedTitle: title, mergedAbstract: abs.content, mergedKeywords: kws.content,
+    mergedFullText: revisedBody, mergedReferences: refs, reviewReport: reviewReport,
+  };
+  await pool.query(
+    `update research_nodes set payload=$2::jsonb, version=version+1, updated_at=now()
+      where project_id=$1 and node_key='finalize'`,
+    [ctx.projectId, JSON.stringify(fzPayload)]).catch(() => ({ rowCount: 0 }));
+  return {
+    text: `修订完成: 全文 ${revisedBody.replace(/\s/g, "").length} 字 (revise of v${curVer})`,
+    structured: result,
+  };
 }
 
 /** 合并参考文献(GB/T7714 全文条目, 素材 citation 池去重; HAR mergedReferences 语义) */

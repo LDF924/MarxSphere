@@ -63,7 +63,7 @@ async function addMessage(sessionId: string, role: string, content: unknown) {
 }
 
 /** 一轮对话(用户消息 → Agent 循环 → SSE 事件流 → 最新产物) */
-export async function runTurn(userId: string, sessionId: string, userMsg: string, sse: AttachedSse, opts: { csv?: string; columnOrder?: string[] } = {}): Promise<void> {
+export async function runTurn(userId: string, sessionId: string, userMsg: string, sse: AttachedSse, opts: { csv?: string; columnOrder?: string[]; spec?: Record<string, unknown> } = {}): Promise<void> {
   const sess = await pool.query(`select * from viz_sessions where id=$1 and user_id=$2`, [sessionId, userId]);
   if (!sess.rows.length) { sse.error({ code: "NOT_FOUND", userMessage: "会话不存在", canRetry: false }); return; }
   await addMessage(sessionId, "user", { text: userMsg });
@@ -112,12 +112,13 @@ export async function runTurn(userId: string, sessionId: string, userMsg: string
 
 请求: ${userMsg}
 ${dataSummary ? `数据概要:\n${dataSummary.slice(0, 1500)}` : "(无数据, 画概念/示意图, 用示例数据或纯结构示意)"}
+${opts.spec ? `【期刊规范(必须遵循)】\n${specPrompt(opts.spec)}` : ""}
 ${round > 0 ? "注意: 必须修复上轮 critique 指出的全部问题!" : ""}`, 4000, isFix ? 0.2 : 0.4);
       code = String(gen?.code ?? "").trim();
       if (!code) { sse.error({ code: "NO_CODE", userMessage: "AI 未能生成绘图代码", canRetry: true }); break; }
 
       sse.send("tool", { name: "render_chart", status: "calling", round });
-      const rendered = await vizExec.renderChart(userId, code, csv, columnOrder);
+      const rendered = await vizExec.renderChart(userId, code, csv, columnOrder, opts.spec ?? {});
       if (!rendered.ok) {
         chartErr = rendered.error ?? "渲染失败";
         sse.send("tool", { name: "render_chart", status: "error", error: chartErr.slice(0, 400) });
@@ -183,4 +184,15 @@ ${dataSummary ? `数据概要: ${dataSummary.slice(0, 800)}` : "(示意图)"}
     await addMessage(sessionId, "done", { error: msg });
     sse.error({ code: "VIZ_TURN_FAILED", userMessage: msg, canRetry: true });
   }
+}
+
+/** 期刊规范 → 绘图提示词片段(对齐闭源 VizView journal spec; 尺寸 mm/字号/线宽 描述) */
+function specPrompt(spec: Record<string, unknown>): string {
+  const w = spec.widthMm ? `图宽 ${spec.widthMm}mm` : "";
+  const h = spec.heightMm ? `× 高 ${spec.heightMm}mm` : "";
+  const dpi = spec.dpi ? `, 输出 ${spec.dpi} DPI` : "";
+  const fs = spec.fontSize ? `, 字体 ${spec.fontSize}pt` : "";
+  const ff = spec.fontFamily ? `(${spec.fontFamily})` : "";
+  const lw = spec.lineWidth ? `, 轴线/数据线宽 ${spec.lineWidth}` : "";
+  return `尺寸按 ${w}${h}${dpi}; 文字${fs}${ff}${lw}; 图内字号/线条请按此比例控制, 标题用中文简洁表述。`;
 }

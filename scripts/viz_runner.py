@@ -59,15 +59,26 @@ try:
                 exec_globals = {"pd": pd, "plt": plt, "os": os}
             else:
                 exec_globals = {"pd": None, "plt": plt, "os": os}
-            # 注入数据读取约定 + 图形尺寸
+            # 注入数据读取约定 + 图形尺寸(期刊规范 spec 可覆盖; 对齐闭源 VizView 期刊规格控制)
+            spec = inp.get("spec") or {}
             ns = dict(exec_globals)
             ns["DATA_CSV"] = data_path
+            mm = 1.0 / 25.4
+            fw = float(spec.get("widthMm") or 183) * mm   # 默认双栏 183mm
+            fh = float(spec.get("heightMm") or 120) * mm  # 默认高 120mm
+            fdpi = int(spec.get("dpi") or 300)
+            fsize = float(spec.get("fontSize") or 9)
+            lw = float(spec.get("lineWidth") or 1.0)
             fig_code = (
                 "import matplotlib.pyplot as plt\n"
                 "plt.rcParams['font.sans-serif'] = ['SimHei','Microsoft YaHei','Noto Sans CJK SC','Arial Unicode MS']\n"
                 "plt.rcParams['axes.unicode_minus'] = False\n"
-                "fig, ax = plt.subplots(figsize=(8, 5), dpi=130)\n"
-            )
+                "plt.rcParams['font.size'] = %(fsize)r\n"
+                "plt.rcParams['axes.linewidth'] = %(lw)r\n"
+                "plt.rcParams['xtick.major.width'] = %(lw)r\n"
+                "plt.rcParams['ytick.major.width'] = %(lw)r\n"
+                "fig, ax = plt.subplots(figsize=(%(fw)r, %(fh)r), dpi=%(fdpi)r)\n"
+            ) % {"fsize": fsize, "lw": lw, "fw": fw, "fh": fh, "fdpi": fdpi}
             if os.path.exists(data_path):
                 # 自动把数据载入 df(代码可直接用 df/ax), 再包装 ax.set_* 便捷名
                 fig_code += (

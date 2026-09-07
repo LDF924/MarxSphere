@@ -5,7 +5,9 @@
 //   ②任务推荐: 聚合 research 流水线任务 + agent 任务, 推荐"继续/恢复"
 //   ③签到卡: P0-8 points 接口就绪后接入(点位已留: loadCheckin + 签到按钮)
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bird, CheckCircle2, ChevronRight, Coffee, Compass, Loader2, Sparkles, X } from "lucide-react";
+import { Bird, CheckCircle2, ChevronRight, Coffee, Compass, GitBranch, Loader2, Sparkles, X } from "lucide-react";
+
+function cn(...xs: Array<string | false | undefined>) { return xs.filter(Boolean).join(" "); }
 
 const HISTORY_KEY = "marx:assistant:viewhistory:v1";
 const TIP_KEY = "marx:assistant:tiptime:v1";
@@ -26,6 +28,62 @@ const VIEW_LABELS: Record<string, string> = {
   "plot-agent": "科研绘图", "review-lab": "审稿实验室", editor: "学术编辑器", corpus: "写作语料库",
   "paper-outline": "论文写作台", "empirical-research": "实证研究", "citation-verify": "引文核验",
   structure: "结构解析", sciverse: "外部检索", imports: "文献管理",
+};
+
+// T4-3: 六模块步进引导(逆向闭源 FloatingAssistant 状态机, 原创实现)
+// 每个模块 = 步骤链 {key,label,purpose,next}; 当前视图所在模块 → 展示分步+下一步推荐
+const FLOW_STEPS: Record<string, Array<{ key: string; label: string; purpose: string; next: string }>> = {
+  workflow: [
+    { key: "input", label: "研究信息", purpose: "填写主题/方法/字数/目录", next: "sections" },
+    { key: "sections", label: "科研架构", purpose: "确认结构/变量/章节指导", next: "materials" },
+    { key: "materials", label: "素材准备", purpose: "生成/审视/编排素材", next: "workspace" },
+    { key: "workspace", label: "正文创作", purpose: "逐章生成并核对正文", next: "finalize" },
+    { key: "finalize", label: "合稿审阅", purpose: "合并/审阅/导出终稿", next: "complete" },
+  ],
+  statistics: [
+    { key: "data_input", label: "数据输入", purpose: "选择或上传数据", next: "method_selection" },
+    { key: "method_selection", label: "方法选择", purpose: "选统计方法与变量", next: "analysis_run" },
+    { key: "analysis_run", label: "分析运行", purpose: "提交后台任务", next: "result_review" },
+    { key: "result_review", label: "结果核对", purpose: "核对表格图形结论", next: "complete" },
+  ],
+  viz: [
+    { key: "chart_input", label: "绘图输入", purpose: "描述图表与数据", next: "chart_generation" },
+    { key: "chart_generation", label: "图表生成", purpose: "Agent 计算出图", next: "chart_review" },
+    { key: "chart_review", label: "图表核对", purpose: "核对标注与规范", next: "export" },
+    { key: "export", label: "图表导出", purpose: "导出或入素材库", next: "complete" },
+  ],
+  knowledge: [
+    { key: "query_input", label: "检索输入", purpose: "填主题/变量/文献词", next: "search" },
+    { key: "search", label: "执行检索", purpose: "四库检索跑任务", next: "evidence_review" },
+    { key: "evidence_review", label: "证据核对", purpose: "核对结果相关性", next: "material_import" },
+    { key: "material_import", label: "素材导入", purpose: "证据入素材库", next: "complete" },
+  ],
+  review: [
+    { key: "document_input", label: "文稿输入", purpose: "打开或上传文稿", next: "review_setup" },
+    { key: "review_setup", label: "审阅设置", purpose: "选期刊/标准/严格度", next: "review_run" },
+    { key: "review_run", label: "审阅运行", purpose: "SSE 流式审稿", next: "suggestion_review" },
+    { key: "suggestion_review", label: "建议核对", purpose: "查看并确认建议", next: "complete" },
+  ],
+  editor: [
+    { key: "document_create", label: "文档创建", purpose: "新建或打开文档", next: "editing" },
+    { key: "editing", label: "内容编辑", purpose: "AI 改写/检查/润色", next: "formatting" },
+    { key: "formatting", label: "格式整理", purpose: "引用/标题/排版", next: "versioning" },
+    { key: "versioning", label: "版本管理", purpose: "保存/回档版本", next: "complete" },
+  ],
+};
+// 视图 → 模块 + 已做到第几步(按视图与状态粗判)
+const VIEW_FLOW: Record<string, { mod: string; step: number }> = {
+  "dag-workbench": { mod: "workflow", step: 0 },
+  "paper-outline": { mod: "workflow", step: 3 },
+  "review-lab": { mod: "review", step: 0 },
+  "plot-agent": { mod: "viz", step: 0 },
+  editor: { mod: "editor", step: 0 },
+  ask: { mod: "knowledge", step: 0 },
+  "empirical-research": { mod: "statistics", step: 0 },
+};
+const MODULE_LABEL: Record<string, string> = {
+  workflow: "科研工作流", statistics: "数据分析", viz: "科研绘图",
+  knowledge: "知识检索", review: "论文审阅", editor: "学术编辑",
 };
 
 interface NavOption { view: string; label: string; reason: string; go: (v: string) => void; }
@@ -51,6 +109,38 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
   const [checkin, setCheckin] = useState<{ signedToday: boolean; reward: number } | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const openedRef = useRef(false);
+
+  // T4-3: 推导当前模块步进上下文(视图→模块/步数; jump 映射流程步→实际视图)
+  const flowCtx = useMemo(() => {
+    const vf = VIEW_FLOW[workspaceView];
+    if (!vf) return null;
+    const steps = FLOW_STEPS[vf.mod];
+    if (!steps) return null;
+    // 步骤 key → 落地视图(模块各步大多同视图不同页签; 同视图内步骤跳转用第二步…第 N 步全落同视图 + 提示)
+    const viewOfStep = (s: string): string => {
+      if (vf.mod === "workflow") {
+        if (s === "sections") return "dag-workbench";
+        if (s === "workspace") return "dag-workbench";
+        if (s === "materials") return "dag-workbench";
+        if (s === "finalize") return "dag-workbench";
+        return "dag-workbench";
+      }
+      if (vf.mod === "review") return "review-lab";
+      if (vf.mod === "viz") return "plot-agent";
+      if (vf.mod === "editor") return "editor";
+      if (vf.mod === "knowledge") return "ask";
+      if (vf.mod === "statistics") return "empirical-research";
+      return "dag-workbench";
+    };
+    return {
+      mod: vf.mod, step: vf.step, steps,
+      jump: (key: string) => {
+        const view = viewOfStep(key);
+        if (view !== workspaceView) { onNavigate(view); return true; }
+        return false; // 同视图内步骤 → 保持打开, 用户已在
+      },
+    };
+  }, [workspaceView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 页面观察: 记录访问历史
   useEffect(() => {
@@ -171,6 +261,33 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-cyan-500" />
               </button>
+            )}
+
+            {/* T4-3: 当前模块步进引导(闭源 FloatingAssistant 状态机对齐) */}
+            {flowCtx && (
+              <div className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-2">
+                <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <GitBranch className="h-3 w-3 text-cyan-400" />{MODULE_LABEL[flowCtx.mod]} · 步骤引导
+                </p>
+                <div className="space-y-0.5">
+                  {flowCtx.steps.map((s, i) => {
+                    const done = i < flowCtx.step;
+                    const cur = i === flowCtx.step;
+                    return (
+                      <button key={s.key}
+                        onClick={() => { if (flowCtx.jump?.(s.key)) setOpen(false); }}
+                        className={cn("flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition", cur ? "bg-cyan-500/10" : "hover:bg-slate-700/40")}>
+                        <span className={cn("flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold",
+                          done ? "bg-green-500/25 text-green-300" : cur ? "bg-cyan-500 text-white" : "bg-slate-700 text-slate-500")}>
+                          {done ? "✓" : i + 1}
+                        </span>
+                        <span className={cn("text-[10px]", cur ? "font-semibold text-cyan-200" : done ? "text-slate-400" : "text-slate-500")}>{s.label}</span>
+                        <span className="ml-auto hidden max-w-28 truncate text-[8px] text-slate-600 sm:inline">{s.purpose}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             {/* UI审计T1: 页面可执行动作(直接点击执行) */}

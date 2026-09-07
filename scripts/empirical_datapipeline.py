@@ -145,7 +145,7 @@ def main(task_dir):
                                            [[a, ""] for a in applied],
                                            f"筛选后: {len(df)}/{n_before} 行"))
 
-    # ── 4.5) 数据转换 (SocialSci P1: 中心化/排名/开方/分类汇总) ──
+    # ── 4.5) 数据转换 (SocialSci P1/W8: 中心化/排名/开方/Z-score/Min-Max/对数) ──
     tf = steps.get("transform") or {}
     transforms = []
     for col in tf.get("center") or []:
@@ -160,6 +160,21 @@ def main(task_dir):
         if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             df["sqrt_" + col] = np.sqrt(df[col].clip(lower=0))
             transforms.append(f"sqrt_{col} = sqrt({col})")
+    # W8(闭源 statistics 数据转换): zscore 标准化 / minmax 归一 / log 对数
+    for col in tf.get("zscore") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            std = df[col].std(ddof=0)
+            df["z_" + col] = (df[col] - df[col].mean()) / std if std > 0 else 0.0
+            transforms.append(f"z_{col} = zscore({col})")
+    for col in tf.get("minmax") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            lo, hi = df[col].min(), df[col].max()
+            df["mm_" + col] = (df[col] - lo) / (hi - lo) if hi > lo else 0.0
+            transforms.append(f"mm_{col} = minmax({col})")
+    for col in tf.get("log") or []:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df["ln_" + col] = np.log(df[col].clip(lower=1e-9))
+            transforms.append(f"ln_{col} = log({col})")
     if transforms:
         result["tables"].append(table_html("数据转换", ["新变量"],
                                            [[t] for t in transforms],

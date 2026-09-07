@@ -770,6 +770,31 @@ export const EmpiricalResearchPanel: FC = () => {
                       ))}
                       <div className="rounded bg-blue-50 px-2 py-1 text-[10px] text-blue-700">基期 t=-1, 窗口 -4 到 +4, 自动做平行趋势检验</div>
                     </>
+                  ) : selectedMethod.id === "mediation" || selectedMethod.id === "moderation" ? (
+                    <>
+                      {/* W9(闭源 statistics 中介/调节实拍): 分析类型二选 + X/Y/M 变量 + 中心化 */}
+                      <label className="block">
+                        <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">分析类型</span>
+                        <select value={selectedMethod.id} disabled className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                          <option value="mediation">中介效应</option>
+                          <option value="moderation">调节效应</option>
+                        </select>
+                      </label>
+                      {[["x", "X (自变量)"], ["y", "Y (因变量)"], ["m", "M (中介/调节变量)"]].map(([k, label]) => (
+                        <label key={k} className="block">
+                          <span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">{label}</span>
+                          <select value={params[k] ?? ""} onChange={(e) => setParams((p) => ({ ...p, [k]: e.target.value }))} className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+                            <option value="">{parsed ? "(选择列)" : "(先加载数据)"}</option>
+                            {parsed?.columnOrder.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                      ))}
+                      <label className="flex items-center gap-1.5">
+                        <input type="checkbox" checked={params.center === "1"} onChange={(e) => setParams((p) => ({ ...p, center: e.target.checked ? "1" : "0" }))}
+                          className="h-3 w-3 accent-emerald-600" />
+                        <span className="text-[10px] font-medium text-muted-foreground">中心化处理(交互项用)</span>
+                      </label>
+                    </>
                   ) : selectedMethod.id === "iv" ? (
                     <>
                       {[["y", "结果变量 y"], ["endog", "内生变量"], ["instruments", "工具变量 (逗号分隔多列)"]].map(([k, label]) => (

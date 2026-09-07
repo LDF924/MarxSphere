@@ -4,6 +4,7 @@
 //   卡片=状态点+phase_label+标题+相对时间; 点击恢复该任务(切到对应工作台); 清除全部历史
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, BookOpen, ChevronRight, ClipboardList, Eraser, FlaskConical, GitBranch, Loader2, PenLine, Search } from "lucide-react";
+import { ConfirmDialog, type ConfirmSpec } from "./ConfirmDialog";
 
 function tokenOf() { return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""; }
 async function j<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {
@@ -41,6 +42,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
   const [tasks, setTasks] = useState<HistoryTask[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [askClear, setAskClear] = useState<ConfirmSpec | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -54,8 +56,8 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
       const merged: HistoryTask[] = [...(r.tasks ?? []).map((t) => ({ ...t, module: "workflow" }))];
       const reviewJobs = await j<{ jobs: Array<{ id: string; title: string; status: string; created_at: string; updated_at: string }> }>("/api/review/jobs").catch(() => ({ jobs: [] }));
       merged.push(...reviewJobs.jobs.map((j2) => ({ id: j2.id, module: "review", title: j2.title || "审稿任务", phase: 0, phase_label: "", status: j2.status, created_at: j2.created_at, updated_at: j2.updated_at })));
-      const docs = await j<{ documents: Array<{ id: string; title: string; updated_at: string }> }>("/api/editor/v1/documents").catch(() => ({ documents: [] }));
-      merged.push(...docs.documents.map((d2) => ({ id: d2.id, module: "editor", title: d2.title || "未命名文档", phase: 0, phase_label: "", status: "done", created_at: d2.updated_at, updated_at: d2.updated_at })));
+      const docs = await j<{ data: { items: Array<{ id: string; title: string; updated_at: string }> } }>("/api/editor/v1/documents").catch(() => ({ data: { items: [] } }));
+      merged.push(...docs.data.items.map((d2) => ({ id: d2.id, module: "editor", title: d2.title || "未命名文档", phase: 0, phase_label: "", status: "done", created_at: d2.updated_at, updated_at: d2.updated_at })));
       setTasks(merged.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 60));
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }, []);
@@ -63,10 +65,9 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
   useEffect(() => { void load(); }, [load]);
 
   const clearAll = async () => {
-    if (!window.confirm("清除全部历史?")) return;
     setBusy(true);
     try {
-      await j("/api/research/tasks/history", { method: "DELETE" }).catch(() => {});
+      await j("/api/research/tasks/history", { method: "DELETE" });
       setTasks([]);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -94,7 +95,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
         </div>
         <div className="flex items-center gap-2">
           {tasks.length > 0 && (
-            <button onClick={clearAll} disabled={busy}
+            <button onClick={() => setAskClear({ title: "清除全部历史?", desc: "将删除科研任务/审稿记录/绘图会话等全部历史条目, 不可恢复。", confirmText: "清除", danger: true })} disabled={busy}
               className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-rose-600/30 hover:text-rose-300 disabled:opacity-50">
               <Eraser className="h-3.5 w-3.5" /> 清除全部历史
             </button>
@@ -134,6 +135,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
           );
         })}
       </div>
+      <ConfirmDialog spec={askClear} onDone={(ok) => { setAskClear(null); if (ok) void clearAll(); }} />
     </div>
   );
 }

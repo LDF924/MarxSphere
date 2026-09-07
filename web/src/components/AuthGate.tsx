@@ -132,10 +132,19 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     }).catch(() => {});
   }, []);
 
-  // V399: 登录成功统一处理（认证启用/未启用共用）
-  const handleAuthSuccess = (d: { token?: string; user: AuthState["user"] }) => {
+  // V399: 登录成功统一处理（认证启用/未启用共用）; user 来自 /auth/login 或微信 bind(形状不同), 收 unknown 归一化
+  const handleAuthSuccess = (d: { token?: string; user: unknown }) => {
     if (d.token) safeStorage.set("sag_token", d.token);
-    setAuth({ enabled: true, user: d.user });
+    const u = d.user as AuthState["user"];
+    if (d.token && !u?.username) {
+      // 微信免注册登录: bind 返回的 user 只有 {id,role,tenant_id}, 缺 username/plan 等 → 回填 /auth/me
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${d.token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((m) => setAuth({ enabled: true, user: m?.user ?? u }))
+        .catch(() => setAuth({ enabled: true, user: u }));
+      return;
+    }
+    setAuth({ enabled: true, user: u });
     setLoginOpen(false);
   };
 

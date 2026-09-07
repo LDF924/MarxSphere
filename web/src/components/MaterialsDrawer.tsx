@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // MaterialsDrawer.tsx — SocialSci P0-2: 素材库抽屉(项目素材管理, DAG 节点工作界面联动)
-// 形态对齐(闭源产品交互语义, 原创实现): 素材四类(文献/数据/图表/方法理论/文件/笔记)
+// 形态对齐(闭源产品交互语义, 原创实现): 素材六类(文献/数据/图表/方法理论/文件/笔记)
 //   - 从画布节点工作界面一键打开: 该节点产生的素材自动高亮
-//   - 素材可编辑/删除/新建; 供写作节点上下文注入
+//   - 素材可编辑/删除/新建/导入; 供写作节点上下文注入
+//   - 素材卡: 章节关联标记(section_ids, adoptMaterial 挂章) + AI审视 + 批量解析(GB/T7714) + AI生成
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Database, FileText, FlaskConical, Image as ImageIcon, Loader2, PenLine, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Bookmark, BookOpen, Check, Database, FileText, FlaskConical, Image as ImageIcon, Loader2, PenLine, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ConfirmDialog, type ConfirmSpec } from "./ConfirmDialog";
 
 export interface Material {
   id: string;
@@ -14,6 +16,8 @@ export interface Material {
   tags: string[];
   source_ref: string;
   produced_by_dag_node: string;
+  section_ids: string[] | null;
+  usage_status: string | null;
   created_at: string;
 }
 
@@ -55,18 +59,38 @@ export function MaterialsDrawer(props: {
   const [newContent, setNewContent] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  // 章节关联(挂章: HAR materialUsages/phase3 version 语义): 章节候选来自 sections 节点
+  const [secOptions, setSecOptions] = useState<Array<{ id: string; title: string; level: number }>>([]);
+  const [adoptFor, setAdoptFor] = useState<{ id: string; secId: string } | null>(null);
+  const [adoptBusy, setAdoptBusy] = useState(false);
+  const [delAsk, setDelAsk] = useState<ConfirmSpec & { materialId?: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) return;
     try {
-      const r = await j<{ materials: Material[] }>(`/api/research/materials?projectId=${encodeURIComponent(projectId)}`);
-      setMaterials(r.materials ?? []);
+      const [mr, sec] = await Promise.all([
+        j<{ materials: Material[] }>(`/api/research/materials?projectId=${encodeURIComponent(projectId)}`),
+        j<{ node: { payload?: { sections?: Array<{ id: string; title: string; level: number }> } } }>(`/api/research/projects/${encodeURIComponent(projectId)}/nodes/sections`).catch(() => ({ node: null })),
+      ]);
+      setMaterials(mr.materials ?? []);
+      setSecOptions((sec?.node?.payload?.sections ?? []).filter((s) => s.level === 1));
       setErr("");
     } catch (e) { setErr((e as Error).message); }
   }, [projectId]);
 
   useEffect(() => { if (open) void load(); }, [open, load]);
   if (!open) return null;
+
+  const adoptMaterial = async (materialId: string, sectionId: string) => {
+    if (!sectionId) return;
+    setAdoptBusy(true); setErr("");
+    try {
+      await j(`/api/research/materials/${materialId}/adopt`, { method: "POST", body: JSON.stringify({ sectionIds: [sectionId] }) });
+      setAdoptFor(null);
+      await load();
+      setErr(`已挂到章节: ${secOptions.find((s) => s.id === sectionId)?.title ?? sectionId}`);
+    } catch (e) { setErr((e as Error).message); } finally { setAdoptBusy(false); }
+  };
 
   const visible = kindFilter === "all" ? materials : materials.filter((m) => m.kind === kindFilter);
   const filtered = highlightDagNode ? visible.filter((m) => !highlightDagNode || m.produced_by_dag_node === highlightDagNode || m.produced_by_dag_node === "") : visible;
@@ -175,6 +199,7 @@ export function MaterialsDrawer(props: {
   };
 
   const removeMaterial = async (id: string) => {
+    setDelAsk(null);
     setBusy(true); setErr("");
     try {
       await j(`/api/research/materials/${id}`, { method: "DELETE" });
@@ -301,16 +326,34 @@ export function MaterialsDrawer(props: {
                 </span>
                 <div className="flex gap-0.5">
                   {m.source_ref && <span className="rounded bg-slate-700/60 px-1 py-0.5 text-[9px] text-slate-400" title={`来源 ${m.source_ref}`}>src</span>}
+                  {secOptions.length > 0 && (
+                    <button onClick={() => setAdoptFor({ id: m.id, secId: m.section_ids?.[0] ?? "" })}
+                      className="rounded p-0.5 text-slate-500 hover:text-amber-300" title="挂到章节"><Bookmark className="h-3 w-3" /></button>
+                  )}
                   <button onClick={() => startEdit(m)}
                     className="rounded p-0.5 text-slate-500 hover:text-slate-300" title="编辑"><PenLine className="h-3 w-3" /></button>
                   <button onClick={() => runReview(m)} disabled={!!reviewingId}
                     className="rounded p-0.5 text-slate-500 hover:text-purple-300" title="AI 审视素材">
                     {reviewingId === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                   </button>
-                  <button onClick={() => removeMaterial(m.id)} disabled={busy}
+                  <button onClick={() => setDelAsk({ title: "删除素材?", desc: `「${m.title || "未命名"}」将从素材库移除。`, confirmText: "删除", danger: true, materialId: m.id })}
+                    disabled={busy}
                     className="rounded p-0.5 text-slate-500 hover:text-red-400" title="删除"><Trash2 className="h-3 w-3" /></button>
                 </div>
               </div>
+              {adoptFor?.id === m.id && (
+                <div className="mt-1 flex items-center gap-1">
+                  <select value={adoptFor.secId} onChange={(e) => setAdoptFor({ id: m.id, secId: e.target.value })}
+                    className="min-w-0 flex-1 rounded border border-slate-600/60 bg-slate-900 px-1.5 py-0.5 text-[10px] text-slate-300">
+                    <option value="">— 选择一级章节 —</option>
+                    {secOptions.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  <button onClick={() => adoptMaterial(m.id, adoptFor.secId)} disabled={adoptBusy || !adoptFor.secId}
+                    className="shrink-0 rounded bg-amber-600 px-2 py-0.5 text-[10px] text-white hover:bg-amber-500 disabled:opacity-50">
+                    {adoptBusy ? <Loader2 className="inline h-2.5 w-2.5 animate-spin" /> : <Check className="inline h-2.5 w-2.5" />}挂章
+                  </button>
+                </div>
+              )}
               {editingId === m.id ? (
                 <div className="mt-1">
                   <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={3}
@@ -322,6 +365,19 @@ export function MaterialsDrawer(props: {
                 </div>
               ) : (
                 <div className="mt-1">
+                  {/* 章节挂章标记(HAR materialUsages: 素材已挂到哪些章节) */}
+                  {(m.section_ids?.length ?? 0) > 0 && (
+                    <div className="mb-1 flex flex-wrap gap-1">
+                      {m.section_ids!.map((sid) => {
+                        const t = secOptions.find((s) => s.id === sid);
+                        return (
+                          <span key={sid} className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-300">
+                            <Bookmark className="h-2.5 w-2.5" />{t?.title ?? sid.slice(0, 10)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="truncate text-[10px] text-slate-500">{m.produced_by_dag_node && <span className="text-cyan-500/80">节点{m.produced_by_dag_node} · </span>}{m.tags?.join(" / ") || "—"}</div>
                   {reviews[m.id] && (
                     <div className="mt-1 space-y-1 rounded bg-slate-950/60 p-1.5">
@@ -341,6 +397,7 @@ export function MaterialsDrawer(props: {
           );
         })}
       </div>
+      <ConfirmDialog spec={delAsk} onDone={(ok) => { const id = delAsk?.materialId; setDelAsk(null); if (ok && id) void removeMaterial(id); }} />
     </div>
   );
 }

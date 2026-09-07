@@ -34,21 +34,26 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
   const [stataCode, setStataCode] = useState("");
   const [verifyReport, setVerifyReport] = useState<any>(null);
   const [error, setError] = useState("");
+  // W8(闭源 statistics 数据转换实拍): 5 方法多选 + 目标列
+  const [transformVars, setTransformVars] = useState<string[]>([]);
+  const [transformMethods, setTransformMethods] = useState<string[]>(["center", "rank", "sqrt"]);
 
   // 默认步骤(演示): 缺失统计全列 + 缩尾收入 + 构造 has_out + 筛选有地 + 转换 + 描述
   const buildSteps = () => {
     const cols = (parsed?.columnOrder ?? dataVersion?.columns ?? []);
+    const tCols = transformVars.length ? transformVars : ["own_area"];
+    const t: Record<string, string[]> = {};
+    for (const m of transformMethods) {
+      const key = m === "zscore" ? "zscore" : m === "minmax" ? "minmax" : m === "log" ? "log" : m === "rank" ? "rank" : m === "sqrt" ? "sqrt" : "center";
+      t[key] = tCols;
+    }
     return {
       missing: { cols: ["nonfarm_income", "adj_willing", "politics"] },
       winsorize: { cols: ["nonfarm_income", "own_area"] },
       genvars: [{ name: "has_out", expr: "transfer_out_area > 0" }],
       filter: [{ col: "own_area", op: ">", value: 0 }],
-      // SocialSci P1: 数据转换(中心化/排名/开方; 分类汇总后接)
-      transform: {
-        center: ["own_area"],
-        rank: ["own_area"],
-        sqrt: ["own_area"],
-      },
+      // W8(闭源 statistics 数据转换): zscore 标准化/minmax 归一/log 对数/rank 排名/sqrt 开方 — 用户多选
+      transform: t,
       describe: { cols: ["own_area", "cult_area", "adj_willing", "has_out"] },
     };
   };
@@ -108,6 +113,26 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
           {error && <span className="text-[10px] text-red-600">{error}</span>}
         </div>
         <div className="mt-1 text-[9px] text-muted-foreground">{"步骤: 缺失统计 → 缩尾(1%/99%) → has_out 构造 → own_area>0 筛选 → 数据转换(center/rank/sqrt of own_area) → Table 1"}</div>
+
+        {/* W8(闭源 statistics 数据转换实拍): 转换方法多选 + 目标列 */}
+        <div className="mt-2 rounded-lg border bg-muted/20 p-2">
+          <p className="mb-1 text-[10px] font-medium text-muted-foreground">数据转换(可多选, 作用于所选数值列)</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[["zscore", "Z-score 标准化 (x-mean)/std"], ["minmax", "Min-Max 归一化 [0,1]"], ["log", "对数转换 ln(x)"], ["rank", "排名转换 秩次"], ["sqrt", "开方转换 sqrt(x)"]].map(([k, lb]) => (
+              <button key={k} onClick={() => setTransformMethods((p) => p.includes(k) ? p.filter((x) => x !== k) : [...p, k])}
+                className={`rounded-full border px-2 py-0.5 text-[9px] ${transformMethods.includes(k) ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-700" : "border-border text-muted-foreground hover:border-muted-foreground"}`}>
+                {lb}
+              </button>
+            ))}
+            <select value={transformVars.join(",")} onChange={(e) => setTransformVars(e.target.value ? e.target.value.split(",") : [])}
+              className="ml-1 max-w-40 rounded border bg-background px-1 py-0.5 text-[9px]">
+              <option value="">目标列: own_area(默认)</option>
+              {(parsed?.columnOrder ?? dataVersion?.columns ?? []).filter((c) => c !== "identity").map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {verifyReport && (

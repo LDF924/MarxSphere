@@ -5,15 +5,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ConfirmDialog } from "./ConfirmDialog";
 import {
   AlignLeft, BarChart3, CheckCircle2, ChevronLeft, ClipboardCheck, Download,
-  Eye, FileText, ImageIcon, Loader2, Lock, Pencil, Plus, Save, Search,
-  Sparkles, Trash2, Wand2, X,
+  Eye, FileText, History as HistoryIcon, ImageIcon, Loader2, Lock, Pencil, Plus, Save, Search,
+  Sparkles, Trash2, Upload, Wand2, X,
 } from "lucide-react";
 
 interface DocLite { id: string; title: string; word_count: number; status: string; updated_at: string; }
 interface RewriteResult { text: string; }
-interface CheckResult { checks: Array<{ name: string; ok: boolean; findings: string[] }>; }
+// P-C: 闭源全文检查 4 模式(EditorView 实页: 全文逻辑/章节衔接/变量-方法-结论/投稿前)
+const CHECK_MODES: Array<{ k: string; name: string; desc: string }> = [
+  { k: "logic", name: "全文逻辑检查", desc: "结构、重复、跳跃和论证断裂。" },
+  { k: "cohesion", name: "章节衔接检查", desc: "检查标题层级、前后承接和小标题支撑关系。" },
+  { k: "consistency", name: "变量-方法-结论一致性", desc: "检查研究问题、变量、方法和结论是否前后一致。" },
+  { k: "submission", name: "投稿前检查", desc: "列出需要优先处理的修订事项。" },
+];
+interface CheckResult { mode?: string; modeName?: string; checks: Array<{ name: string; ok: boolean; findings: string[] }>; }
 
 const REWRITE_MODES: Array<{ key: string; label: string; desc: string }> = [
   { key: "polish", label: "学术润色", desc: "优化用词与句式" },
@@ -22,6 +30,17 @@ const REWRITE_MODES: Array<{ key: string; label: string; desc: string }> = [
   { key: "proofread", label: "修正语病", desc: "错别字/语病/标点" },
   { key: "journal-style", label: "期刊风格", desc: "中文核心期刊表达" },
   { key: "humanize", label: "消除AI痕迹", desc: "行文更接近人类学者" },
+  { key: "expand", label: "扩展论证", desc: "补足推理链条和解释" },
+];
+
+// T5-4: 图表类型快捷预设(闭源 EditorView 图表 tab: 流程图/思维导图/柱状/折线/饼图等)
+const CHART_TYPES: Array<{ k: string; label: string; tpl: string }> = [
+  { k: "flow", label: "流程图", tpl: "画流程图: 研究思路/方法步骤的流程示意(mermaid 风格)" },
+  { k: "mind", label: "思维导图", tpl: "画思维导图: 主题分层的结构示意" },
+  { k: "bar", label: "柱状图", tpl: "画柱状图: 对比各分类数值, 中文标签" },
+  { k: "line", label: "折线图", tpl: "画折线图: 时间趋势变化, 中文标签" },
+  { k: "pie", label: "饼图", tpl: "画饼图: 占比构成, 中文标签" },
+  { k: "scatter", label: "散点图", tpl: "画散点图: 相关关系, 中文标签" },
 ];
 
 function tokenOf() { return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""; }
@@ -45,11 +64,20 @@ export function EditorView() {
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [view, setView] = useState<"edit" | "split" | "preview">("split");
+  // 预览风格(闭源 EditorView 模板预设对齐): 控制预览排版观感
+  const [docStyle, setDocStyle] = useState("cn-general");
+  const DOC_STYLES: Record<string, { label: string; wrap: string; prose?: string }> = {
+    "cn-general": { label: "通用学术", wrap: "font-serif", prose: "prose-p:first-letter:pl-8" },
+    "cn-journal": { label: "中文期刊", wrap: "font-serif text-[15px] leading-8", prose: "prose-p:first-letter:pl-8" },
+    "en-draft": { label: "英文草稿", wrap: "font-sans text-[13px] leading-7", prose: "" },
+    thesis: { label: "学位论文", wrap: "font-serif text-[16px] leading-9", prose: "prose-p:first-letter:pl-8" },
+  };
   const [selText, setSelText] = useState("");
   const [rewriting, setRewriting] = useState("");
   const [rewriteBox, setRewriteBox] = useState<{ original: string; result: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
+  const [checkMode, setCheckMode] = useState("logic"); // P-C: 闭源 4 检查模式
   const [showCheck, setShowCheck] = useState(false);
   const [chartDesc, setChartDesc] = useState("");
   const [chartBusy, setChartBusy] = useState(false);
@@ -58,7 +86,12 @@ export function EditorView() {
   // UI审计T5: AI右侧常驻面板
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [lockedBy, setLockedBy] = useState("");
+  const [delAsk, setDelAsk] = useState<{ id: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  // 版本历史(任务4: 对齐闭源编辑器版本历史 — 时间线+回档)
+  const [showHistory, setShowHistory] = useState(false);
+  const [histVers, setHistVers] = useState<Array<{ version: number; content_len: number; by_editor: string; created_at: string }>>([]);
+  const [histBusy, setHistBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -70,7 +103,7 @@ export function EditorView() {
   const flash = (m: string) => { setOkMsg(m); setTimeout(() => setOkMsg(""), 2500); };
 
   const loadDocs = useCallback(async () => {
-    try { const r = await j<{ documents: DocLite[] }>("/api/editor/v1/documents"); setDocs(r.documents ?? []); } catch (e) { setErr((e as Error).message); }
+    try { const r = await j<{ data: { items: DocLite[] } }>("/api/editor/v1/documents"); setDocs(r.data?.items ?? []); } catch (e) { setErr((e as Error).message); }
   }, []);
   useEffect(() => { void loadDocs(); }, [loadDocs]);
 
@@ -101,12 +134,33 @@ export function EditorView() {
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
-  const saveNow = async () => {
+  // 任务4: Word 导入即看 — 提取正文→建档→打开(可继续编辑/检查/改写)
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [impBusy, setImpBusy] = useState(false);
+  const importWord = async (file: File) => {
+    setImpBusy(true); setErr("");
+    try {
+      const buf = await file.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const r = await j<{ ok: boolean; text?: string; error?: string }>("/api/files/extract-text", {
+        method: "POST", body: JSON.stringify({ filename: file.name, base64: b64, mime: file.type }),
+      });
+      if (!r.ok || !r.text) throw new Error(r.error || "未能提取正文");
+      const title = file.name.replace(/\.[^.]+$/, "");
+      const d = await j<{ id: string }>("/api/editor/v1/documents", { method: "POST", body: JSON.stringify({ title, content: r.text }) });
+      await loadDocs();
+      await openDoc(d.id);
+      flash(`已导入 ${file.name} (${r.text.length} 字)`);
+    } catch (e) { setErr((e as Error).message); } finally { setImpBusy(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+
+  const saveNow = async (payload?: { title?: string; content?: string }) => {
     if (!curId) return;
     setSaving(true);
     try {
+      const body = payload ?? { title, content };
       const r = await j<{ wordCount: number }>(`/api/editor/v1/documents/${curId}`, {
-        method: "PUT", body: JSON.stringify({ title, content }),
+        method: "PUT", body: JSON.stringify(body),
       });
       setWordCount(r.wordCount);
     } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
@@ -116,11 +170,13 @@ export function EditorView() {
     setContent(v);
     setWordCount(v.replace(/\s/g, "").length);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => void saveNow(), 1500); // 自动保存防抖
+    // 传最新值快照, 防闭包旧值(Bugfix T1: 此前防抖回调读渲染期 content, 新输入永不落库)
+    const snap = { title, content: v };
+    saveTimer.current = setTimeout(() => void saveNow(snap), 1500); // 自动保存防抖
   };
 
   const removeDoc = async (id: string) => {
-    if (!window.confirm("删除文档?")) return;
+    setDelAsk(null);
     try {
       await j(`/api/editor/v1/documents/${id}`, { method: "DELETE" });
       if (curId === id) { setCurId(null); setContent(""); setTitle(""); }
@@ -165,7 +221,7 @@ export function EditorView() {
     if (!content.trim()) { setErr("全文为空"); return; }
     setChecking(true); setErr("");
     try {
-      const r = await j<CheckResult>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content }) });
+      const r = await j<CheckResult>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content, mode: checkMode }) });
       setCheckResult(r); setShowCheck(true);
     } catch (e) { setErr((e as Error).message); } finally { setChecking(false); }
   };
@@ -188,6 +244,31 @@ export function EditorView() {
     onContentChange(content + md);
     setShowChart(false); setChartArt(null); setChartDesc("");
     flash("图表已插入正文");
+  };
+
+  // 版本历史: 拉取 + 回档(任务4-2)
+  const loadHistory = async () => {
+    if (!curId) return;
+    setHistBusy(true); setErr("");
+    try {
+      const r = await j<{ versions: Array<{ version: number; content_len: number; by_editor: string; created_at: string }> }>(`/api/editor/v1/documents/${curId}/versions`);
+      setHistVers(r.versions ?? []);
+      setShowHistory(true);
+    } catch (e) { setErr((e as Error).message); } finally { setHistBusy(false); }
+  };
+  const restoreVersion = async (version: number) => {
+    if (!curId) return;
+    setHistBusy(true); setErr("");
+    try {
+      const r = await j<{ ok: boolean; restoredFrom: number; currentVersion: number }>(`/api/editor/v1/documents/${curId}/restore`, {
+        method: "POST", body: JSON.stringify({ version }),
+      });
+      const doc = await j<{ document: { content: string; title: string } }>(`/api/editor/v1/documents/${curId}`);
+      setContent(doc.document.content); setTitle(doc.document.title);
+      setWordCount(doc.document.content.replace(/\s/g, "").length);
+      setShowHistory(false);
+      flash(`已回档到 v${r.restoredFrom} (新版本 v${r.currentVersion})`);
+    } catch (e) { setErr((e as Error).message); } finally { setHistBusy(false); }
   };
 
   // 清理锁(卸载)
@@ -218,7 +299,7 @@ export function EditorView() {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowCheck((v) => !v)} disabled={checking}
+          <button data-control="editor_check" onClick={() => setShowCheck((v) => !v)} disabled={checking}
             className="flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs text-white hover:bg-amber-500 disabled:opacity-50">
             {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}全文检查
           </button>
@@ -230,11 +311,49 @@ export function EditorView() {
             className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs", showAiPanel ? "bg-slate-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>
             <Sparkles className="h-3.5 w-3.5" /> AI面板
           </button>
-          <button onClick={() => void newDoc()} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
+          <button data-control="editor_import" onClick={() => fileRef.current?.click()} disabled={impBusy}
+            className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50" title="导入 Word/TXT 即看">
+            {impBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}导入 Word
+          </button>
+          <button data-control="editor_new" onClick={() => void newDoc()} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
             <Plus className="h-3.5 w-3.5" />新建文档
           </button>
+          {curId && (
+            <button onClick={() => (showHistory ? setShowHistory(false) : void loadHistory())} disabled={histBusy}
+              className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs", showHistory ? "bg-slate-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}
+              title="查看历史版本">
+              {histBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HistoryIcon className="h-3.5 w-3.5" />}版本历史
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept=".docx,.txt,.md" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void importWord(f); }} />
         </div>
       </div>
+
+      {/* 版本历史抽屉 */}
+      {showHistory && curId && (
+        <div className="mb-2 rounded-xl border border-slate-600/60 bg-slate-900/90 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-slate-200">版本时间线 ({histVers.length})</p>
+            <button onClick={() => setShowHistory(false)} className="rounded p-0.5 text-slate-500 hover:text-slate-300"><X className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="max-h-44 space-y-1 overflow-y-auto">
+            {histVers.map((v) => (
+              <div key={v.version} className="flex items-center justify-between rounded-lg bg-slate-800/60 px-2 py-1.5 text-[10px]">
+                <div className="flex items-center gap-2">
+                  <span className={cn("rounded px-1.5 py-0.5 font-bold", v.version === 1 ? "bg-slate-700 text-slate-300" : "bg-cyan-600/20 text-cyan-300")}>v{v.version}</span>
+                  <span className="text-slate-400">{new Date(v.created_at).toLocaleString()}</span>
+                  <span className="text-slate-500">{(v.content_len / 1000).toFixed(1)}k 字 · {v.by_editor === "restore" ? "回档" : v.by_editor === "editor" ? "编辑" : "导入"}</span>
+                </div>
+                <button onClick={() => restoreVersion(v.version)} disabled={histBusy}
+                  className="rounded bg-slate-700 px-2 py-0.5 text-[10px] text-slate-200 hover:bg-amber-600/40 hover:text-amber-200 disabled:opacity-50">
+                  {histBusy ? "…" : "回档到此"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(err || okMsg) && (
         <div className={cn("mb-2 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs", err ? "border border-red-500/30 bg-red-500/10 text-red-300" : "border border-green-500/30 bg-green-500/10 text-green-300")}>
@@ -252,7 +371,7 @@ export function EditorView() {
             <div key={d.id} className={cn("group mb-1 cursor-pointer rounded-lg px-2 py-1.5", curId === d.id ? "bg-indigo-600/20 text-indigo-200" : "hover:bg-slate-800 text-slate-300")}>
               <div className="flex items-center justify-between">
                 <p className="truncate text-[11px] font-medium" onClick={() => openDoc(d.id)}>{d.title}</p>
-                <button onClick={() => removeDoc(d.id)} className="hidden text-slate-500 hover:text-red-400 group-hover:block"><Trash2 className="h-3 w-3" /></button>
+                <button onClick={() => setDelAsk({ id: d.id })} className="hidden text-slate-500 hover:text-red-400 group-hover:block"><Trash2 className="h-3 w-3" /></button>
               </div>
               <p className="text-[9px] text-slate-500">{d.word_count} 字 · {new Date(d.updated_at).toLocaleDateString()}</p>
             </div>
@@ -312,9 +431,21 @@ export function EditorView() {
                 </div>
               )}
               {view !== "edit" && (
-                <div className="min-h-0 overflow-y-auto px-4 py-3">
-                  <div className="prose prose-sm prose-invert max-w-none prose-headings:text-slate-100 prose-p:text-slate-300 prose-li:text-slate-300">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || "*（空文档）*"}</ReactMarkdown>
+                <div className="flex min-h-0 flex-col">
+                  {/* T5-3: 预览风格切换(闭源 EditorView 排版模板对齐) */}
+                  <div className="flex items-center gap-1 border-b border-slate-700/40 px-2 py-1">
+                    <span className="text-[9px] text-slate-500">预览风格</span>
+                    {Object.entries(DOC_STYLES).map(([k, s]) => (
+                      <button key={k} onClick={() => setDocStyle(k)}
+                        className={cn("rounded-full border px-2 py-0.5 text-[9px]", docStyle === k ? "border-indigo-500/60 bg-indigo-600/20 text-indigo-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:text-slate-200")}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                    <div className={cn("prose prose-sm prose-invert max-w-none prose-headings:text-slate-100 prose-p:text-slate-300 prose-li:text-slate-300", DOC_STYLES[docStyle]?.wrap, DOC_STYLES[docStyle]?.prose)}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || "*（空文档）*"}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               )}
@@ -354,13 +485,27 @@ export function EditorView() {
             </p>
             <button onClick={() => setShowCheck(false)} className="text-slate-400 hover:text-slate-200"><X className="h-4 w-4" /></button>
           </div>
+          {/* P-C: 闭源 4 检查模式选择(检查项卡片, 单选) */}
+          {!checkResult && (
+            <div className="mb-2 space-y-1">
+              <p className="text-[9px] text-slate-500">检查结构、论证和一致性, 只给修改建议, 不直接改正文。</p>
+              {CHECK_MODES.map((md) => (
+                <button key={md.k} onClick={() => setCheckMode(md.k)}
+                  className={cn("w-full rounded-lg border px-2 py-1.5 text-left", checkMode === md.k ? "border-amber-500/50 bg-amber-500/10" : "border-slate-700/50 bg-slate-800/40 hover:border-slate-500/50")}>
+                  <p className={cn("text-[11px] font-medium", checkMode === md.k ? "text-amber-200" : "text-slate-200")}>{md.name}</p>
+                  <p className="text-[9px] text-slate-500">{md.desc}</p>
+                </button>
+              ))}
+            </div>
+          )}
           {!checkResult ? (
             <button onClick={doCheck} disabled={checking}
               className="w-full rounded-lg bg-amber-600 py-2 text-xs text-white hover:bg-amber-500 disabled:opacity-50">
-              {checking ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Search className="mr-1 inline h-3 w-3" />}运行全文检查
+              {checking ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Search className="mr-1 inline h-3 w-3" />}运行{CHECK_MODES.find((m) => m.k === checkMode)?.name ?? "检查"}
             </button>
           ) : (
             <div className="space-y-2">
+              <p className="text-[10px] text-amber-300/80">模式: {checkResult.modeName ?? checkResult.checks[0]?.name ?? "检查"} {checkResult.checks.every((c) => c.ok) ? "· ✓ 未发现问题" : `· 发现 ${checkResult.checks.reduce((a, c) => a + c.findings.length, 0)} 处问题`}</p>
               {checkResult.checks.map((c) => (
                 <div key={c.name} className={cn("rounded-lg border p-2", c.ok ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5")}>
                   <p className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
@@ -385,6 +530,15 @@ export function EditorView() {
           </div>
           <textarea value={chartDesc} onChange={(e) => setChartDesc(e.target.value)} rows={2} placeholder="描述图表… 如: 按年份的 GDP 折线图(无数据则画示意图)"
             className="w-full resize-none rounded-lg border border-slate-600/60 bg-slate-800 px-2 py-1.5 text-xs text-slate-200 placeholder:text-slate-500" />
+          {/* T5-4: 图表类型快捷预设(闭源 EditorView 图表 tab 对齐) */}
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {CHART_TYPES.map((c) => (
+              <button key={c.k} onClick={() => setChartDesc(c.tpl)}
+                className={cn("rounded-full border px-2 py-0.5 text-[9px]", chartDesc === c.tpl ? "border-indigo-500/60 bg-indigo-600/20 text-indigo-200" : "border-slate-600/60 bg-slate-800 text-slate-400 hover:text-slate-200")}>
+                {c.label}
+              </button>
+            ))}
+          </div>
           <button onClick={doChart} disabled={chartBusy || !chartDesc.trim()}
             className="mt-1.5 w-full rounded-lg bg-indigo-600 py-1.5 text-xs text-white hover:bg-indigo-500 disabled:opacity-50">
             {chartBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 inline h-3 w-3" />}生成图表
@@ -411,6 +565,8 @@ export function EditorView() {
           onMsg={(m) => setErr(m)}
         />
       )}
+      <ConfirmDialog spec={delAsk ? { title: "删除文档?", desc: "将永久删除该文档(含全部保存版本), 不可恢复。", confirmText: "删除", danger: true } : null}
+        onDone={(ok) => { if (ok && delAsk) void removeDoc(delAsk.id); else setDelAsk(null); }} />
     </div>
   );
 }
@@ -419,9 +575,10 @@ export function AiEditorPanel(props: {
   onInsert: (t: string) => void; onApplyTitle: (t: string) => void; onMsg: (m: string) => void;
 }) {
   const { content, title, selText, onInsert, onApplyTitle, onMsg } = props;
-  const [tab, setTab] = useState<"check" | "title" | "rewrite" | "format" | "refs">("check");
-  const [checkResult, setCheckResult] = useState<{ checks: Array<{ name: string; ok: boolean; findings: string[] }> } | null>(null);
+  const [tab, setTab] = useState<"check" | "rewrite" | "title" | "refs" | "format" | "chart">("check");
+  const [checkResult, setCheckResult] = useState<{ modeName?: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [checkMode, setCheckMode] = useState("logic"); // P-C: 闭源 4 检查模式
   const [taResult, setTaResult] = useState<{ title: string; abstract: string; keywords: string[] } | null>(null);
   const [taBusy, setTaBusy] = useState(false);
   const [rewriteSel, setRewriteSel] = useState("");
@@ -431,12 +588,28 @@ export function AiEditorPanel(props: {
   const [fmtText, setFmtText] = useState("");
   const [fmtResult, setFmtResult] = useState("");
   const [fmtBusy, setFmtBusy] = useState(false);
+  // P-C 遗留处理: AiEditorPanel 补图表页签(闭源辅助工具 6 页签之六)
+  const [chartDesc, setChartDesc] = useState("");
+  const [chartType, setChartType] = useState("flow");
+  const [chartBusy, setChartBusy] = useState(false);
+  const [chartArt, setChartArt] = useState<{ pngRel: string; code: string } | null>(null);
+  const doChartPanel = async () => {
+    const desc = chartDesc.trim() || CHART_TYPES.find((c) => c.k === chartType)?.tpl || "画示意图";
+    if (!content.trim()) { onMsg("全文为空, 无法生成图表"); return; }
+    setChartBusy(true);
+    try {
+      const r = await j<{ pngRel: string; code: string }>("/api/editor/v1/chart-code", {
+        method: "POST", body: JSON.stringify({ description: desc }),
+      });
+      setChartArt(r);
+    } catch (e) { onMsg((e as Error).message); } finally { setChartBusy(false); }
+  };
 
   const doCheck = async () => {
     if (!content.trim()) { onMsg("全文为空"); return; }
     setChecking(true);
     try {
-      const r = await j<{ checks: Array<{ name: string; ok: boolean; findings: string[] }> }>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content }) });
+      const r = await j<{ modeName?: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> }>("/api/editor/v1/check-fulltext", { method: "POST", body: JSON.stringify({ text: content, mode: checkMode }) });
       setCheckResult(r);
     } catch (e) { onMsg((e as Error).message); } finally { setChecking(false); }
   };
@@ -478,11 +651,13 @@ export function AiEditorPanel(props: {
     } catch (e) { onMsg((e as Error).message); } finally { setRefBusy(false); }
   };
   const tabs = [
+    // P-C 遗留处理: 页签排序对齐闭源 EditorView 辅助工具浮层(全文检查/选区修改/题名摘要/引用格式/格式模板/图表)
     { k: "check" as const, label: "全文检查", icon: <ClipboardCheck className="h-3 w-3" /> },
-    { k: "title" as const, label: "标题摘要", icon: <FileText className="h-3 w-3" /> },
-    { k: "rewrite" as const, label: "选区改写", icon: <Wand2 className="h-3 w-3" /> },
-    { k: "format" as const, label: "格式模板", icon: <AlignLeft className="h-3 w-3" /> },
+    { k: "rewrite" as const, label: "选区修改", icon: <Wand2 className="h-3 w-3" /> },
+    { k: "title" as const, label: "题名摘要", icon: <FileText className="h-3 w-3" /> },
     { k: "refs" as const, label: "引用格式", icon: <FileText className="h-3 w-3" /> },
+    { k: "format" as const, label: "格式模板", icon: <AlignLeft className="h-3 w-3" /> },
+    { k: "chart" as const, label: "图表", icon: <BarChart3 className="h-3 w-3" /> },
   ];
   return (
     <div className="flex min-h-0 flex-col rounded-xl border border-slate-700/60 bg-slate-900/95">
@@ -500,9 +675,16 @@ export function AiEditorPanel(props: {
       <div className="min-h-0 flex-1 overflow-y-auto p-2 text-[11px]">
         {tab === "check" && (
           <div className="space-y-1.5">
+            {/* P-C: 闭源 4 检查模式 */}            {CHECK_MODES.map((md) => (
+              <button key={md.k} onClick={() => { setCheckMode(md.k); setCheckResult(null); }}
+                className={cn("w-full rounded-lg border px-2 py-1.5 text-left", checkMode === md.k ? "border-amber-500/50 bg-amber-500/10" : "border-slate-700/50 bg-slate-800/40")}>
+                <p className={cn("text-[10px] font-medium", checkMode === md.k ? "text-amber-200" : "text-slate-300")}>{md.name}</p>
+                <p className="text-[8px] text-slate-500">{md.desc}</p>
+              </button>
+            ))}
             <button onClick={doCheck} disabled={checking}
               className="w-full rounded-lg bg-amber-600 py-1.5 text-[11px] text-white hover:bg-amber-500 disabled:opacity-50">
-              {checking ? "检查中…" : "运行全文一致性检查"}
+              {checking ? "检查中…" : `运行${CHECK_MODES.find((m) => m.k === checkMode)?.name ?? "检查"}`}
             </button>
             {checkResult?.checks.map((c, i) => (
               <div key={i} className={cn("rounded border p-1.5", c.ok ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5")}>
@@ -594,6 +776,31 @@ export function AiEditorPanel(props: {
                 )}
                 <p className="rounded bg-slate-800/60 p-1.5 text-[9px] leading-relaxed text-slate-300">{refResult.text}</p>
                 <button onClick={() => onInsert(refResult.text)} className="w-full rounded bg-emerald-600 py-1 text-[9px] text-white">插入到文末</button>
+              </div>
+            )}
+          </div>
+        )}
+        {/* P-C 遗留处理: 图表页签(闭源辅助工具 6 页签之六, 与主图表抽屉同链路) */}
+        {tab === "chart" && (
+          <div className="space-y-1.5">
+            <p className="text-[9px] text-slate-500">描述图表需求 → AI 生成图表代码并渲染</p>
+            <div className="flex flex-wrap gap-1">
+              {CHART_TYPES.map((ct) => (
+                <button key={ct.k} onClick={() => { setChartType(ct.k); setChartDesc(ct.tpl); setChartArt(null); }}
+                  className={cn("rounded px-1.5 py-0.5 text-[9px]", chartType === ct.k ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400")}>{ct.label}</button>
+              ))}
+            </div>
+            <textarea value={chartDesc} onChange={(e) => setChartDesc(e.target.value)} rows={2} placeholder="如: 按年份的 GDP 折线图…"
+              className="w-full resize-none rounded border border-slate-600/60 bg-slate-900 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
+            <button onClick={doChartPanel} disabled={chartBusy}
+              className="w-full rounded-lg bg-indigo-600 py-1.5 text-[11px] text-white hover:bg-indigo-500 disabled:opacity-50">
+              {chartBusy ? "生成中…" : "生成图表"}
+            </button>
+            {chartArt && (
+              <div className="space-y-1">
+                <img src={`/api/viz/files/${chartArt.pngRel}`} alt="AI 图表" className="w-full rounded border border-slate-700/50 bg-slate-950" />
+                <button onClick={() => onInsert(`\n\n![图表](/api/viz/files/${chartArt.pngRel})\n\n`)}
+                  className="w-full rounded bg-emerald-600 py-1 text-[9px] text-white">插入到文末</button>
               </div>
             )}
           </div>
