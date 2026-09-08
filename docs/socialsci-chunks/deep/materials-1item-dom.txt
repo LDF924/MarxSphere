@@ -1,0 +1,234 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .phase-progress-wrapper>
+          <div .phase-progress-bar>
+            <div .ppb-inner>
+              <div .ppb-topic>
+                <div .ppb-topic-heading>
+                  <span .ppb-topic-label>「研究主题」
+                  <span .ppb-topic-status .is-success>
+                    <span .ppb-topic-status-dot>
+                    <span>「已完成」
+                <strong .ppb-topic-title>「数字经济对中小企业融资约束的影响研究」
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>「信息录入」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>
+                  <span .ppb-metric>「9 章节」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .active>
+                <div .ppb-circle .active>
+                  <span .ppb-num>「3」
+                <div .ppb-label .active>
+                  <span .ppb-metric>「1 条」
+              <div .ppb-line-wrap>
+                <div .ppb-line .pending>
+              <div .ppb-node .pending>
+                <div .ppb-circle .pending>
+                  <span .ppb-num>「4」
+                <div .ppb-label .pending>「文本创作」
+              <div .ppb-line-wrap>
+                <div .ppb-line .pending>
+              <div .ppb-node .pending>
+                <div .ppb-circle .pending>
+                  <span .ppb-num>「5」
+                <div .ppb-label .pending>「合稿定稿」
+              <div .ppb-line-wrap>
+              <button .ppb-new-btn>
+                <svg>
+                  <path>
+                <span>「新项目」
+        <div .router-content .has-phase-bar .router-content--fixed>
+          <div .workflow-page .max-w-5xl .mx-auto .px-6 .py-8 .pb-16 .min-w-0 .h-full>
+            <div .mb-8>
+              <div .mb-1>
+                <h1 .text-2xl .font-bold .text-gray-800>「素材准备」
+                <p .text-sm .text-gray-500 .mt-1>
+                  <span .text-gray-700 .font-medium>「数字经济对中小企业融资约束的影响研究」
+              <div .mt-3 .flex .items-center .gap-3 .text-sm .text-gray-500>
+                <span>
+                  <span .font-medium .text-gray-700>「1」
+                <span .w-px .h-3 .bg-gray-300>
+                <span>「按流程完成素材整理后即可进入创作」
+                <span .w-px .h-3 .bg-gray-300>
+                <span .text-gray-500>「素材版本待发布」
+            <div .mb-8 .p-5 .bg-white .border .border-gray-200 .rounded-xl .shadow-sm>
+              <h2 .text-lg .font-semibold .text-gray-800 .mb-4>「补充素材来源」
+              <div .mb-5 .flex .flex-wrap .items-center .gap-3>
+                <button .px-4 .py-2 .rounded-lg .bg-red-500 .text-white .text-sm .font-medium .hover:bg-red-600>「智能生成素材」
+                <button .px-4 .py-2 .rounded-lg .bg-white .border .border-red-500 .text-red-500 .text-sm>「审视素材」
+                <button .px-4 .py-2 .rounded-lg .bg-white .border .border-red-500 .text-red-500 .text-sm>「编排素材」
+              <div .mb-5>
+                <h3 .text-xs .font-medium .text-gray-500 .mb-3 .uppercase .tracking-wide>「手动添加」
+                <div .grid .grid-cols-2 .md:grid-cols-4 .gap-3>
+                  <button .flex .items-center .gap-3 .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                      <svg>
+                        <path>
+                    <span .text-sm .font-medium .text-gray-700>「检索文献」
+                  <button .flex .items-center .gap-3 .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                      <svg>
+                        <path>
+                    <span .text-sm .font-medium .text-gray-700>「添加表格」
+                  <button .flex .items-center .gap-3 .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                      <svg>
+                        <path>
+                    <span .text-sm .font-medium .text-gray-700>「添加理论」
+                  <button .flex .items-center .gap-3 .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                      <svg>
+                        <path>
+                    <span .text-sm .font-medium .text-gray-700>「上传附件」
+              <div>
+                <h3 .text-xs .font-medium .text-gray-500 .mb-3 .uppercase .tracking-wide>「从其他模块导入」
+                <div .grid .grid-cols-1 .md:grid-cols-2 .gap-3>
+                  <button .flex .items-center .justify-between .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                        <svg>
+                          <path>
+                      <span .text-sm .font-medium .text-gray-700 .whitespace-nowrap>「前往数据分析模块进行分析」
+                    <span .text-lg .text-gray-400 .group-hover:text-red-500>「›」
+                  <button .flex .items-center .justify-between .p-3 .bg-white .border .border-gray-200 .rounded-lg>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-md .bg-red-100 .text-red-700 .flex .items-center .justify-center>
+                        <svg>
+                          <path>
+                      <span .text-sm .font-medium .text-gray-700 .whitespace-nowrap>「前往科研绘图模块进行分析」
+                    <span .text-lg .text-gray-400 .group-hover:text-red-500>「›」
+            <div .mb-8>
+              <h2 .text-lg .font-semibold .text-gray-800 .mb-4>「已整理素材」
+              <div .space-y-4>
+                <div .bg-white .border .border-gray-200 .rounded-xl .overflow-hidden>
+                  <div .flex .items-center .justify-between .px-5 .py-3.5 .cursor-pointer .select-none .bg-gray-50>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .bg-red-100 .text-red-700>
+                        <svg>
+                          <path>
+                      <div>
+                        <span .text-base .font-semibold .text-gray-800>「文献检索」
+                        <span .text-xs .ml-2 .px-2 .py-0.5 .rounded-full .bg-gray-50 .text-gray-400>「0 项」
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「检索文献」
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「手动添加文献」
+                      <span .text-[11px] .transition-transform .text-gray-400>「▼」
+                <div .bg-white .border .border-gray-200 .rounded-xl .overflow-hidden>
+                  <div .flex .items-center .justify-between .px-5 .py-3.5 .cursor-pointer .select-none .bg-gray-50>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .bg-red-100 .text-red-700>
+                        <svg>
+                          <path>
+                      <div>
+                        <span .text-base .font-semibold .text-gray-800>「表格素材」
+                        <span .text-xs .ml-2 .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-600>「1 项」
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「生成表格」
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「添加表格」
+                      <span .text-[11px] .transition-transform .text-gray-400>「▼」
+                <div .bg-white .border .border-gray-200 .rounded-xl .overflow-hidden>
+                  <div .flex .items-center .justify-between .px-5 .py-3.5 .cursor-pointer .select-none .bg-gray-50>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .bg-red-100 .text-red-700>
+                        <svg>
+                          <path>
+                      <div>
+                        <span .text-base .font-semibold .text-gray-800>「理论素材」
+                        <span .text-xs .ml-2 .px-2 .py-0.5 .rounded-full .bg-gray-50 .text-gray-400>「0 项」
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「生成理论」
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「添加理论」
+                      <span .text-[11px] .transition-transform .text-gray-400>「▼」
+                <div .bg-white .border .border-gray-200 .rounded-xl .overflow-hidden>
+                  <div .flex .items-center .justify-between .px-5 .py-3.5 .cursor-pointer .select-none .bg-gray-50>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .bg-red-100 .text-red-700>
+                        <svg>
+                          <path>
+                      <div>
+                        <span .text-base .font-semibold .text-gray-800>「数据分析素材」
+                        <span .text-xs .ml-2 .px-2 .py-0.5 .rounded-full .bg-gray-50 .text-gray-400>「0 项」
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「上传图片」
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「前往数据分析」
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「前往科研绘图」
+                      <span .text-[11px] .transition-transform .text-gray-400>「▼」
+                <div .bg-white .border .border-gray-200 .rounded-xl .overflow-hidden>
+                  <div .flex .items-center .justify-between .px-5 .py-3.5 .cursor-pointer .select-none .bg-gray-50>
+                    <div .flex .items-center .gap-3>
+                      <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .bg-red-100 .text-red-700>
+                        <svg>
+                          <path>
+                      <div>
+                        <span .text-base .font-semibold .text-gray-800>「附件素材」
+                        <span .text-xs .ml-2 .px-2 .py-0.5 .rounded-full .bg-gray-50 .text-gray-400>「0 项」
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2 .py-1 .rounded-md .transition-colors .bg-white .text-gray-700 .hover:bg-gray-50>「上传附件」
+                      <span .text-[11px] .transition-transform .text-gray-400>「▼」
+            <div .pt-6 .border-t .border-gray-200 .flex .gap-3>
+              <button .px-4 .py-3 .border .border-gray-200 .text-gray-600 .rounded-lg .text-sm .hover:bg-gray-50>「返回章节清单」
+              <button .flex-1 .px-6 .py-3 .bg-red-600 .text-white .rounded-lg .text-sm .font-medium>「确认并进入创作」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

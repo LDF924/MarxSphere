@@ -1,0 +1,85 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a .router-link-active .router-link-exact-active>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content .router-content--fixed>
+          <div .ade-layout>
+            <header .ade-topbar>
+              <div .ade-topbar__inner>
+                <div .ade-topbar__left>
+                  <div .ade-topbar__title-group>
+                    <p .ade-topbar__subtitle>「学术写作」
+                <div .ade-topbar__right>
+                  <button .ade-topbar__new-btn>「+ 新建文档」
+            <div .ade-layout__body>
+              <aside .ade-document-rail>
+                <div .ade-document-rail__header>
+                  <div>
+                    <h2>「文档」
+                    <span>「0」
+                  <button .ade-document-rail__create>
+                    <span>「+」
+                <div .ade-document-rail__empty>「暂无文档」
+              <main .ade-editor-area>
+                <div .ade-editor-area__empty>
+                  <div .ade-editor-empty-card>
+                    <p .ade-editor-empty-card__title>「开始编辑学术文稿」
+                    <p .ade-editor-empty-card__desc>「新建一份空白文档、上传 Word，或从左侧打开最近文档。」
+                    <div .ade-editor-empty-card__actions>
+                      <button>「新建文档」
+                      <button>「上传 Word」
+            <input [type=file val=]>
+            <footer .ade-statusbar>
+              <span>「就绪」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

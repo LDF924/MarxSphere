@@ -1,0 +1,96 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content>
+          <div .max-w-5xl .mx-auto .px-4 .py-8>
+            <div .flex .items-center .justify-between .mb-6>
+              <div .flex .items-center .gap-3>
+                <a .flex .items-center .gap-1 .text-sm .text-gray-500 .hover:text-red-600 .transition-colors>
+                  <svg>
+                    <path>
+                <span .text-gray-300>「|」
+                <div>
+                  <h1 .text-2xl .font-bold .text-gray-800>「审稿库」
+                  <p .text-sm .text-gray-500 .mt-1>「管理期刊投稿要求与审核标准，AI 智能解析导入」
+            <div .flex .gap-1 .bg-gray-100 .rounded-lg .p-1 .mb-6 .w-fit>
+              <button .px-4 .py-2 .text-sm .font-medium .rounded-md .transition-all .bg-white .text-red-600>「期刊库」
+              <button .px-4 .py-2 .text-sm .font-medium .rounded-md .transition-all .text-gray-500 .hover:text-gray-700>「标准库」
+            <div .space-y-4>
+              <div .flex .flex-wrap .items-center .gap-3>
+                <div .relative .flex-1 .min-w-[200px] .max-w-md>
+                  <svg>
+                    <path>
+                  <input .w-full .pl-10 .pr-4 .py-2 .text-sm .border .border-gray-200 .rounded-lg [type=text val=]>
+                <select .px-3 .py-2 .text-sm .border .border-gray-200 .rounded-lg .focus:border-red-300 .focus:outline-none>
+                  <option>「全部分类」
+                  <option>「CSSCI」
+                  <option>「北大核心」
+                  <option>「SCI」
+                  <option>「SSCI」
+                  <option>「学位论文」
+                  <option>「普通期刊」
+                  <option>「其他」
+                <button .px-4 .py-2 .text-sm .font-medium .text-white .bg-red-600 .hover:bg-red-700 .rounded-lg>
+                  <svg>
+                    <path>
+                <button .px-4 .py-2 .text-sm .font-medium .text-red-600 .border .border-red-200 .hover:bg-red-50>
+                  <svg>
+                    <path>
+              <div .space-y-2>
+                <div .text-center .py-12 .text-gray-400>
+                  <svg>
+                    <path>
+                  <p>「暂无期刊记录，点击「AI 智能解析」或「新增期刊」添加」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

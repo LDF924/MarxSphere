@@ -1,0 +1,283 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .phase-progress-wrapper>
+          <div .phase-progress-bar>
+            <div .ppb-inner>
+              <div .ppb-topic>
+                <div .ppb-topic-heading>
+                  <span .ppb-topic-label>「研究主题」
+                  <span .ppb-topic-status .is-success>
+                    <span .ppb-topic-status-dot>
+                    <span>「已完成」
+                <strong .ppb-topic-title>「数字经济对中小企业融资约束的影响研究」
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>「信息录入」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>
+                  <span .ppb-metric>「9 章节」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .active>
+                <div .ppb-circle .active>
+                  <span .ppb-num>「3」
+                <div .ppb-label .active>「素材准备」
+              <div .ppb-line-wrap>
+                <div .ppb-line .pending>
+              <div .ppb-node .pending>
+                <div .ppb-circle .pending>
+                  <span .ppb-num>「4」
+                <div .ppb-label .pending>「文本创作」
+              <div .ppb-line-wrap>
+                <div .ppb-line .pending>
+              <div .ppb-node .pending>
+                <div .ppb-circle .pending>
+                  <span .ppb-num>「5」
+                <div .ppb-label .pending>「合稿定稿」
+              <div .ppb-line-wrap>
+              <button .ppb-new-btn>
+                <svg>
+                  <path>
+                <span>「新项目」
+        <div .router-content .has-phase-bar .router-content--fixed>
+          <div .workflow-page .max-w-4xl .mx-auto .px-6 .py-8 .pb-16 .min-w-0 .h-full>
+            <div .mb-8>
+              <h1 .text-2xl .font-bold .text-gray-800>「信息录入」
+              <p .text-sm .text-gray-500 .mt-1>「请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划科研架构」
+            <div .space-y-6>
+              <div>
+                <div .flex .items-center .gap-3>
+                  <div .flex-1>
+                    <label .block .text-sm .font-medium .text-gray-700 .mb-2>
+                      <span .text-red-500>「*」
+                    <input .w-full .px-4 .py-3 .border .border-gray-300 .rounded-lg .text-sm .focus:ring-2 [type=text val=数字经济对中小企业融资约束的影响研究]>
+                  <div .w-36 .shrink-0>
+                    <label .block .text-sm .font-medium .text-gray-700 .mb-2>
+                      <span .text-red-500>「*」
+                    <input .w-full .px-3 .py-3 .border .border-gray-300 .rounded-lg .text-sm .focus:ring-2 [type=number val=10000]>
+                <p .mt-1 .text-xs .text-gray-400>「字数估算仅计算正文整体工作量（不含摘要、关键词、参考文献等内容），AI智能体将按」
+              <div>
+                <div .flex .items-center .justify-between .mb-2>
+                  <label .text-sm .font-medium .text-gray-700>
+                    <span .text-red-500>「*」
+                <div .outline-editor .border .border-gray-300 .rounded-lg .bg-white>
+                  <div .flex .items-center .justify-between .px-4 .py-2 .bg-gray-50 .border-b .border-gray-200>
+                    <div .flex .items-center .gap-2>
+                      <button .text-xs .px-2.5 .py-1 .rounded .bg-white .border .border-gray-200 .text-gray-600>「+ 一级章节」
+                      <span .text-xs .text-gray-400>「|」
+                      <button .text-xs .px-2.5 .py-1 .rounded .bg-white .border .border-gray-200 .text-gray-600>「插入模板」
+                      <span .text-xs .text-gray-400>「|」
+                      <button .text-xs .px-2.5 .py-1 .rounded .bg-white .border .border-gray-200 .text-gray-400>「清除目录」
+                    <span .text-xs .text-gray-400>「5 个一级 · 12 个二级」
+                  <div>
+                    <div .group .px-4 .py-2.5 .flex .items-center .gap-2.5 .hover:bg-gray-50/80 .transition-colors>
+                      <span .flex-shrink-0 .text-sm .font-bold .text-red-500 .w-8 .text-center .select-none>「一」
+                      <input .flex-1 .text-sm .font-medium .text-gray-800 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=引言]>
+                      <div .flex-shrink-0 .flex .items-center .gap-0.5>
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-blue-500 .hover:bg-blue-50 .flex .items-center>「+」
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-gray-600 .hover:bg-gray-100 .flex .items-center>「▼」
+                      <button .op-btn>「↑」
+                      <button .op-btn>「↓」
+                      <button .op-btn .op-btn-danger>「✕」
+                    <div .tree-branch>
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「1.1」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=问题提出与研究缘起]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「1.2」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=研究目的与意义]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child .tree-child-last>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「1.3」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=核心概念界定]>
+                          <button .op-btn-sm>「✕」
+                    <div .group .px-4 .py-2.5 .flex .items-center .gap-2.5 .hover:bg-gray-50/80 .transition-colors>
+                      <span .flex-shrink-0 .text-sm .font-bold .text-red-500 .w-8 .text-center .select-none>「二」
+                      <input .flex-1 .text-sm .font-medium .text-gray-800 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=文献综述与分析框架]>
+                      <div .flex-shrink-0 .flex .items-center .gap-0.5>
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-blue-500 .hover:bg-blue-50 .flex .items-center>「+」
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-gray-600 .hover:bg-gray-100 .flex .items-center>「▼」
+                      <button .op-btn>「↑」
+                      <button .op-btn>「↓」
+                      <button .op-btn .op-btn-danger>「✕」
+                    <div .tree-branch>
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「2.1」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=相关领域研究进展]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「2.2」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=现有研究的不足与本研究的切入点]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child .tree-child-last>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「2.3」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=本文的分析框架]>
+                          <button .op-btn-sm>「✕」
+                    <div .group .px-4 .py-2.5 .flex .items-center .gap-2.5 .hover:bg-gray-50/80 .transition-colors>
+                      <span .flex-shrink-0 .text-sm .font-bold .text-red-500 .w-8 .text-center .select-none>「三」
+                      <input .flex-1 .text-sm .font-medium .text-gray-800 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=现状描述或案例呈现]>
+                      <div .flex-shrink-0 .flex .items-center .gap-0.5>
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-blue-500 .hover:bg-blue-50 .flex .items-center>「+」
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-gray-600 .hover:bg-gray-100 .flex .items-center>「▼」
+                      <button .op-btn>「↑」
+                      <button .op-btn>「↓」
+                      <button .op-btn .op-btn-danger>「✕」
+                    <div .tree-branch>
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「3.1」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=数据来源与研究对象]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child .tree-child-last>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「3.2」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=主要特征与发展趋势]>
+                          <button .op-btn-sm>「✕」
+                    <div .group .px-4 .py-2.5 .flex .items-center .gap-2.5 .hover:bg-gray-50/80 .transition-colors>
+                      <span .flex-shrink-0 .text-sm .font-bold .text-red-500 .w-8 .text-center .select-none>「四」
+                      <input .flex-1 .text-sm .font-medium .text-gray-800 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=问题分析与对策建议]>
+                      <div .flex-shrink-0 .flex .items-center .gap-0.5>
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-blue-500 .hover:bg-blue-50 .flex .items-center>「+」
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-gray-600 .hover:bg-gray-100 .flex .items-center>「▼」
+                      <button .op-btn>「↑」
+                      <button .op-btn>「↓」
+                      <button .op-btn .op-btn-danger>「✕」
+                    <div .tree-branch>
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「4.1」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=存在的主要问题及成因]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child .tree-child-last>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「4.2」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=对策建议与路径选择]>
+                          <button .op-btn-sm>「✕」
+                    <div .group .px-4 .py-2.5 .flex .items-center .gap-2.5 .hover:bg-gray-50/80 .transition-colors>
+                      <span .flex-shrink-0 .text-sm .font-bold .text-red-500 .w-8 .text-center .select-none>「五」
+                      <input .flex-1 .text-sm .font-medium .text-gray-800 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=结语]>
+                      <div .flex-shrink-0 .flex .items-center .gap-0.5>
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-blue-500 .hover:bg-blue-50 .flex .items-center>「+」
+                        <button .w-6 .h-6 .rounded .text-gray-400 .hover:text-gray-600 .hover:bg-gray-100 .flex .items-center>「▼」
+                      <button .op-btn>「↑」
+                      <button .op-btn>「↓」
+                      <button .op-btn .op-btn-danger>「✕」
+                    <div .tree-branch>
+                      <div .tree-child .group/child>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「5.1」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=主要结论]>
+                          <button .op-btn-sm>「✕」
+                      <div .tree-child .group/child .tree-child-last>
+                        <div .flex .items-center .gap-2.5 .py-2 .pr-4 .hover:bg-gray-50 .transition-colors>
+                          <span .flex-shrink-0 .text-xs .font-semibold .text-gray-400 .w-10 .text-center .select-none>「5.2」
+                          <input .flex-1 .text-sm .text-gray-600 .bg-transparent .border-none .outline-none .placeholder:text-gray-300 [type=text val=研究局限与展望]>
+                          <button .op-btn-sm>「✕」
+                <textarea .sr-only [val=一、引言 1.1 问题提出与研究缘起 1]>
+              <div>
+                <label .block .text-sm .font-medium .text-gray-700 .mb-2>
+                  <span .text-gray-400>「(可选)」
+                <textarea .w-full .px-4 .py-3 .border .border-gray-300 .rounded-lg .text-sm .focus:ring-2 [val=]>
+              <div>
+                <label .block .text-sm .font-medium .text-gray-700 .mb-2>
+                  <span .text-red-500>「*」
+                <div .grid .grid-cols-3 .gap-3>
+                  <button .px-4 .py-3.5 .rounded-xl .border-2 .text-sm .font-medium .transition-all .text-left>
+                    <div .font-semibold>「定性研究」
+                    <div .text-xs .mt-0.5 .opacity-70 .leading-relaxed>「案例/访谈/文本分析 理论阐释与深度分析」
+                  <button .px-4 .py-3.5 .rounded-xl .border-2 .text-sm .font-medium .transition-all .text-left>
+                    <div .font-semibold>「定量研究」
+                    <div .text-xs .mt-0.5 .opacity-70 .leading-relaxed>「问卷/实证/统计分析 假设检验与数据驱动」
+                  <button .px-4 .py-3.5 .rounded-xl .border-2 .text-sm .font-medium .transition-all .text-left>
+                    <div .font-semibold>「混合方法」
+                    <div .text-xs .mt-0.5 .opacity-70 .leading-relaxed>「定量+定性结合 多维度综合分析」
+                <p .mt-1.5 .text-xs .text-gray-400>「选择后将用于 AI 智能体思考研究方法。如不确定可跳过，系统将根据标题和目录自动」
+              <div>
+                <label .block .text-sm .font-medium .text-gray-700 .mb-2>
+                  <span .text-gray-400>「(可选)」
+                <div .border-2 .border-dashed .border-gray-300 .rounded-lg .p-8 .text-center .hover:border-red-300 .transition-colors>
+                  <input .hidden [type=file val=]>
+                  <svg>
+                    <path>
+                  <p .text-sm .text-gray-500>「点击或拖拽上传参考文件」
+                  <p .text-xs .text-gray-400 .mt-1>「支持 PDF、Word、TXT、Markdown」
+              <div .border .border-gray-200 .rounded-xl .overflow-hidden>
+                <button .w-full .flex .items-center .justify-between .px-5 .py-3.5 .bg-gray-50 .hover:bg-gray-100>
+                  <div .flex .items-center .gap-2>
+                    <svg>
+                      <path>
+                    <span .text-sm .font-medium .text-gray-700>「agent引导提问（推荐）」
+                  <svg>
+                    <path>
+              <div .pt-4 .flex .gap-3>
+                <button .flex-1 .px-6 .py-3 .bg-red-600 .text-white .rounded-lg .text-sm .font-medium>
+                  <span>「开始思考科研架构」
+                <button .px-6 .py-3 .border .border-gray-300 .text-gray-600 .rounded-lg .text-sm .hover:bg-gray-50>「返回」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

@@ -1,0 +1,378 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .router-link-active .router-link-exact-active .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content .router-content--fixed>
+          <div .quick-view>
+            <header .quick-header>
+              <div .brand-lockup>
+                <div .brand-mark>「Q」
+                <div>
+                  <h1>「可视化DAG编排模式」
+                  <p>「面向科研任务的可视化 Agent 工作台」
+              <div .mode-tabs>
+                <span .mode-tab .is-active>「可视化DAG编排模式」
+              <div .header-actions>
+                <span .preview-badge>
+                  <i>
+                <button .header-icon>「...」
+            <main .quick-shell>
+              <aside .task-rail .agent-panel .conversation-rail>
+                <header .agent-panel-header>
+                  <div .agent-identity>
+                    <div .agent-avatar>「Q」
+                    <div>
+                      <div .agent-name-row>
+                        <strong>「科研 Agent」
+                        <span .agent-status>
+                          <i>
+                      <small>「确认研究目标后自动连续执行至出稿」
+                  <div .agent-header-actions>
+                    <button .mobile-canvas-toggle>「画板」
+                    <button .panel-toggle>「＋」
+                <div .conversation-context>
+                  <strong>「工作流 · 通用社会科学」
+                  <span>「草稿」
+                <div .conversation-stream>
+                  <article .message .is-agent .is-text>
+                    <div .message-avatar>「Q」
+                    <div .message-content>
+                      <div .message-meta>
+                        <strong>「科研 Agent」
+                        <span>「刚刚」
+                      <div .message-bubble>
+                        <p>「直接告诉我你想完成的研究任务即可。信息不完整时，我会一次性补齐必要内容，不会逐项」
+                <form .composer>
+                  <textarea [val=]>
+                  <div .composer-toolbar>
+                    <div .composer-tools>
+                      <button>「＋」
+                      <span>「支持自然语言任务描述」
+                    <button .send-button>「↗」
+              <section .workspace-stage>
+                <div .canvas-stage>
+                  <div .agent-flow-canvas>
+                    <div .vue-flow .agent-flow>
+                      <div .vue-flow__viewport .vue-flow__container>
+                        <div .vue-flow__pane .vue-flow__container .draggable>
+                          <div .vue-flow__transformationpane .vue-flow__container>
+                            <svg>
+                              <defs>
+                                <marker #arrowclosed>
+                                  <polyline>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-start-agent-undefined-0>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-result-1>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-start-agent-undefined-2>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-undefined-3>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-undefined-4>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-undefined-5>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-undefined-6>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-undefined-7>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <svg>
+                              <g [role=group]>
+                                <path #agent-edge-agent-undefined-agent-result-8>
+                                <path>
+                                <g>
+                                  <circle>
+                                <g>
+                                  <circle>
+                            <div .vue-flow__edge-labels>
+                            <div .vue-flow__nodes .vue-flow__container>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft .is-system-start [role=button]>
+                                  <div .node-header>
+                                    <span .node-index>「00」
+                                    <span .node-module>「SYSTEM」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>「开始」
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「用户目标」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「自动执行入口」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .node-hint>「确认后自动连续运行至出稿」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「06」
+                                    <span .node-module>「STANDARD WORKFLOW」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「待分配」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待执行」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                                  <div .vue-flow__handle .vue-flow__handle-bottom .vue-flow__handle-null .nodrag .nopan .source .connectable .connectablestart>
+                              <div .vue-flow__node .vue-flow__node-agent .nopan .draggable .selectable [role=group]>
+                                <div .agent-flow-node .is-draft [role=button]>
+                                  <div .vue-flow__handle .vue-flow__handle-top .vue-flow__handle-null .nodrag .nopan .target .connectable .connectablestart>
+                                  <div .node-header>
+                                    <span .node-index>「END」
+                                    <span .node-module>「SYSTEM」
+                                    <span .node-menu>「...」
+                                  <div .node-title-row>
+                                    <strong>「结束」
+                                  <div .node-meta>
+                                    <span>「输入」
+                                    <span .node-value>「最终产物」
+                                  <div .node-meta>
+                                    <span>「输出」
+                                    <span .node-value>「等待完成」
+                                  <div .node-footer>
+                                    <span .node-state>
+                                      <span .node-status-dot>
+                                    <span .node-arrow>「→」
+                      <svg>
+                        <pattern #pattern-quick-agent-flow-3jmlfcq8xxj>
+                          <path>
+                        <rect>
+                      <div .vue-flow__panel .bottom .right .vue-flow__minimap .pannable .zoomable>
+                        <svg [role=img]>
+                          <title #vue-flow__minimap-quick-agent-flow-3jmlfcq8xxj>「Vue Flow mini map」
+                          <rect #agent-start>
+                          <rect #agent-undefined>
+                          <rect #agent-undefined>
+                          <rect #agent-undefined>
+                          <rect #agent-undefined>
+                          <rect #agent-undefined>
+                          <rect #agent-undefined>
+                          <rect #agent-result>
+                          <path>
+                      <div .vue-flow__panel .bottom .left .vue-flow__controls>
+                        <button .vue-flow__controls-button .vue-flow__controls-zoomin>
+                          <svg>
+                            <path>
+                        <button .vue-flow__controls-button .vue-flow__controls-zoomout>
+                          <svg>
+                            <path>
+                        <button .vue-flow__controls-button .vue-flow__controls-fitview>
+                          <svg>
+                            <path>
+                        <button .vue-flow__controls-button .vue-flow__controls-interactive>
+                          <svg>
+                            <path>
+                      <div #vue-flow__node-desc-quick-agent-flow-3jmlfcq8xxj>「Press enter or space to select a node. Y」
+                      <div #vue-flow__edge-desc-quick-agent-flow-3jmlfcq8xxj>「Press enter or space to select an edge. 」
+                      <div #vue-flow__aria-live-quick-agent-flow-3jmlfcq8xxj>
+                    <div .flow-toolbar>
+                      <span .flow-zone-chip .main>「标准工作流 · 主流程」
+                  <div .canvas-start-gate [role=status]>
+                    <div .canvas-start-gate-mark>「00」
+                    <div .canvas-start-gate-copy>
+                      <strong>「工作流已准备」
+                      <span>「点击开始后，Agent 将自动连续执行 Phrase 1–5，直到生成最终稿。」
+                    <button .canvas-start-gate-button>「开始自动执行」
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

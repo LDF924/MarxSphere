@@ -1,0 +1,21 @@
+button|历史
+button|DF
+button|图表视图
+button|任务视图
+button|新建图表
+button|导入至工作流素材库
+button|导出为图片
+button|删除
+button|[+]上传数据文件支持 CSV / Excel 格式
+button|描述图表需求告诉我你想画什么图
+button|双Y轴图
+button|子图网格
+button|柱线叠加
+button|回归散点
+button|基准线
+label|上传数据
+button|+
+button|数据
+button|图注
+button|代码
+button|叮～我可以帮你自动做科研哦！✨

@@ -1,0 +1,31 @@
+a|site-header__brand|社科研修云平台
+button|history-memo-trigger.is-subtle|历史
+button|site-header__user-button|DF
+button|ppb-new-btn|新项目
+button|px-4.py-2.rounded-lg.bg-red-500.text-white|智能生成素材
+button|px-4.py-2.rounded-lg.bg-white.border|审视素材
+button|px-4.py-2.rounded-lg.bg-white.border|编排素材
+button|flex.items-center.gap-3.p-3.bg-white|检索文献
+button|flex.items-center.gap-3.p-3.bg-white|添加表格
+button|flex.items-center.gap-3.p-3.bg-white|添加理论
+button|flex.items-center.gap-3.p-3.bg-white|上传附件
+button|flex.items-center.justify-between.p-3.bg-white|前往数据分析模块进行分析›
+button|flex.items-center.justify-between.p-3.bg-white|前往科研绘图模块进行分析›
+div|flex.items-center.justify-between.px-5.py-3.5|文献检索0 项检索文献手动添加文献▼
+button|text-xs.px-2.py-1.rounded-md.bg-white|检索文献
+button|text-xs.px-2.py-1.rounded-md.bg-white|手动添加文献
+div|flex.items-center.justify-between.px-5.py-3.5|表格素材0 项生成表格添加表格▼
+button|text-xs.px-2.py-1.rounded-md.bg-white|生成表格
+button|text-xs.px-2.py-1.rounded-md.bg-white|添加表格
+div|flex.items-center.justify-between.px-5.py-3.5|理论素材0 项生成理论添加理论▼
+button|text-xs.px-2.py-1.rounded-md.bg-white|生成理论
+button|text-xs.px-2.py-1.rounded-md.bg-white|添加理论
+div|flex.items-center.justify-between.px-5.py-3.5|数据分析素材0 项上传图片前往数据分析前往科研绘图▼
+button|text-xs.px-2.py-1.rounded-md.bg-white|上传图片
+button|text-xs.px-2.py-1.rounded-md.bg-white|前往数据分析
+button|text-xs.px-2.py-1.rounded-md.bg-white|前往科研绘图
+div|flex.items-center.justify-between.px-5.py-3.5|附件素材0 项上传附件▼
+button|text-xs.px-2.py-1.rounded-md.bg-white|上传附件
+button|px-4.py-3.border.border-gray-200.text-gray-600|返回章节清单
+button|flex-1.px-6.py-3.bg-red-600.text-white|确认并进入创作
+button|assistant-trigger|叮～我可以帮你自动做科研哦！✨

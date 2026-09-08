@@ -1,0 +1,19 @@
+a|site-header__brand|社科研修云平台
+button|history-memo-trigger.is-subtle|历史
+button|site-header__user-button|DF
+a|px-3.py-1.5.text-xs.text-purple-600|审稿库
+button||+ 新建审稿
+button|px-3.py-1.5.text-xs.font-medium|粘贴文本
+button|px-3.py-1.5.text-xs.font-medium|上传文件
+label|block.text-xs.text-gray-500.mb-2|审查严格度
+label|flex-1.px-3.py-2.text-xs|宽松 仅重大问题
+label|flex-1.px-3.py-2.text-xs|标准 核心问题
+label|flex-1.px-3.py-2.text-xs|严格 逐项检查
+label|block.text-xs.text-gray-500.mb-2|选用刊物要求管理期刊库
+a|text-[10px].text-purple-500|管理期刊库
+select|w-full.px-3.py-2.text-sm|<select>
+label|block.text-xs.text-gray-500.mb-2|选用审核标准管理标准库
+a|text-[10px].text-purple-500|管理标准库
+label|block.text-xs.text-gray-500.mb-2|本次额外要求（可选）
+button|w-full.py-3.text-base.font-semibold|开始审稿
+button|assistant-trigger|叮～我可以帮你自动做科研哦！✨

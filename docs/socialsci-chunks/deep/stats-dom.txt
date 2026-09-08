@@ -1,0 +1,168 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a .router-link-active .router-link-exact-active>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content>
+          <div .statistics-page .min-h-screen .bg-[#f5f5f5]>
+            <div .bg-white .border-b .border-gray-200/80 .sticky .top-0 .z-30>
+              <div .max-w-[1600px] .mx-auto .px-6 .py-4 .flex .items-center .justify-between>
+                <div .flex .items-center .gap-3>
+                  <div>
+                    <div .flex .items-center .gap-2>
+                      <h1 .text-lg .font-bold .text-gray-800>「统计分析」
+                      <span .px-2 .py-0.5 .text-[10px] .font-medium .bg-gray-100 .text-gray-400 .rounded-full>「未选择任务」
+                <div .flex .items-center .gap-3>
+                  <div .text-xs .px-3 .py-1.5 .rounded-full .font-medium .bg-green-50 .text-green-600>「后端已连接」
+                  <div .text-xs .px-3 .py-1.5 .rounded-full .bg-gray-100 .text-gray-400>「未加载数据」
+                  <a .flex .items-center .gap-1 .text-xs .px-3 .py-1.5 .rounded-md .bg-white>「前往工作流」
+                  <button>「+ 新建分析」
+            <div .max-w-[1600px] .mx-auto .px-6 .py-6>
+              <div .statistics-workspace .flex .gap-5>
+                <aside .w-[260px] .min-w-[260px] .bg-white .rounded-xl .border .border-gray-200/80 .overflow-hidden .flex>
+                  <div .p-4 .border-b .border-gray-100>
+                    <div .text-[11px] .font-semibold .text-indigo-500 .uppercase .tracking-wider .flex .items-center .gap-1.5>
+                      <span>
+                  <div .flex-1 .overflow-y-auto .p-3 .space-y-4>
+                    <div .tool-category>
+                      <div .cat-title>
+                        <span>
+                      <div .method-grid>
+                        <button .method-item .active>「描述统计」
+                        <button .method-item>「频数分析」
+                        <button .method-item>「分类汇总」
+                        <button .method-item>「数据转换」
+                        <button .method-item>「数据筛选」
+                    <div .tool-category>
+                      <div .cat-title>「推断统计」
+                      <div .method-grid>
+                        <button .method-item>「t 检验」
+                        <button .method-item>「ANOVA」
+                        <button .method-item>「多因素 ANOVA」
+                        <button .method-item>「相关分析」
+                        <button .method-item>「交叉表 / 卡方」
+                        <button .method-item>「非参数检验」
+                        <button .method-item>「正态性检验」
+                    <div .tool-category>
+                      <div .cat-title>「回归建模」
+                      <div .method-grid>
+                        <button .method-item>「OLS 回归」
+                        <button .method-item>「Logistic 回归」
+                    <div .tool-category>
+                      <div .cat-title>「信效度 & 高级」
+                      <div .method-grid>
+                        <button .method-item>「信度 α」
+                        <button .method-item>「EFA 因子分析」
+                        <button .method-item>「中介 / 调节」
+                <div .w-[360px] .min-w-[360px] .bg-white .rounded-xl .border .border-gray-200/80 .overflow-hidden .flex>
+                  <div .global-upload-bar .m-3 .mb-0>
+                    <span .upload-label-sm>「点击或拖拽上传数据」
+                    <input [type=file val=]>
+                  <div .panel-scroll .flex-1 .p-3 .overflow-y-auto>
+                    <div .tool-desc-mb .mb-3>
+                      <p .text-xs .text-gray-500 .leading-relaxed>「计算数据的基本统计特征：集中趋势、离散程度、分布形态等。」
+                    <div .panel-section .var-section .mb-3>
+                      <div .section-title-sm>
+                        <span>
+                      <div .var-search-mb .mb-2>
+                        <input .w-full .px-3 .py-2 .bg-gray-50 .border .border-gray-200 .rounded-md .text-sm [type=text val=]>
+                      <div .var-list-mb .space-y-1 .max-h-[180px] .overflow-y-auto>
+                    <div .panel-section-sm .mb-3>
+                      <div .section-title-sm>「统计量选项」
+                      <div .checkbox-group-sm .space-y-1.5 .mt-2>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                    <div .panel-section-sm .mb-3>
+                      <div .section-title-sm>「图表选项」
+                      <div .checkbox-group-sm .space-y-1.5 .mt-2>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                        <label .flex .items-center .gap-2 .text-xs .text-gray-600 .cursor-pointer .hover:text-gray-800>
+                          <input .w-3.5 .h-3.5 .accent-indigo-500 [type=checkbox val=on]>
+                  <div .panel-actions-mb .p-3 .border-t .border-gray-100 .flex .gap-2>
+                    <button .btn-run-mb .flex-1 .py-2.5 .rounded-lg .text-white .text-sm .font-semibold .transition-all>「运行分析」
+                    <button .btn-reset-mb .px-4 .py-2.5 .rounded-lg .text-sm .border .border-gray-200 .transition-all>「重置」
+                <div .flex-1 .bg-white .rounded-xl .border .border-gray-200/80 .overflow-hidden .flex .flex-col>
+                  <div .results-header-mb .px-5 .py-3 .border-b .border-gray-100 .flex .items-center .justify-between>
+                    <span .text-sm .font-semibold .text-gray-700>「分析结果」
+                    <div .flex .items-center .gap-2>
+                      <div .flex .items-center .gap-2>
+                      <button .icon-btn-sm-mb .w-8 .h-8 .rounded-lg .border .border-gray-200 .text-gray-400 .hover:bg-gray-50>「清空」
+                  <div .results-body-mb .flex-1 .overflow-y-auto .p-5>
+                    <div .welcome-screen-mb .h-full .flex .flex-col .items-center .justify-center .text-center>
+                      <div .welcome-icon-sm .mb-4 .text-5xl .opacity-70>
+                      <h2 .text-xl .font-semibold .text-gray-700 .mb-2>「欢迎使用统计分析模块」
+                      <p .text-sm .text-gray-400 .max-w-md .leading-relaxed>
+                        <strong>「17 种」
+                      <div .mt-4 .grid .grid-cols-4 .gap-2 .text-[11px] .text-gray-400>
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「t检验」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「ANOVA」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「回归分析」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「信度α」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「EFA因子」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「中介效应」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「调节效应」
+                        <span .px-2 .py-1 .bg-gray-50 .rounded>「更多...」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

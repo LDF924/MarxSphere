@@ -1,0 +1,241 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .phase-progress-wrapper>
+          <div .phase-progress-bar>
+            <div .ppb-inner>
+              <div .ppb-topic>
+                <div .ppb-topic-heading>
+                  <span .ppb-topic-label>「研究主题」
+                  <span .ppb-topic-status .is-success>
+                    <span .ppb-topic-status-dot>
+                    <span>「已完成」
+                <strong .ppb-topic-title>「数字经济对中小企业融资约束的影响研究」
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>「信息录入」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>
+                  <span .ppb-metric>「9 章节」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .done>
+                <div .ppb-circle .done>
+                  <svg>
+                    <path>
+                <div .ppb-label .done>
+                  <span .ppb-metric>「1 条」
+              <div .ppb-line-wrap>
+                <div .ppb-line .done>
+              <div .ppb-node .active>
+                <div .ppb-circle .active>
+                  <span .ppb-num>「4」
+                <div .ppb-label .active>「文本创作」
+              <div .ppb-line-wrap>
+                <div .ppb-line .pending>
+              <div .ppb-node .pending>
+                <div .ppb-circle .pending>
+                  <span .ppb-num>「5」
+                <div .ppb-label .pending>「合稿定稿」
+              <div .ppb-line-wrap>
+              <button .ppb-new-btn>
+                <svg>
+                  <path>
+                <span>「新项目」
+        <div .router-content .has-phase-bar .router-content--fixed>
+          <div .workflow-page .workspace-container .flex .pb-8>
+            <aside .w-72 .flex-shrink-0 .border-r .border-gray-200 .bg-white .overflow-y-auto>
+              <div .p-4>
+                <div .flex .items-center .justify-between .mb-3>
+                  <h2 .text-sm .font-semibold .text-gray-700>「章节导航」
+                  <span .text-xs .text-gray-400>「0/3」
+                <div .w-full .h-1.5 .bg-gray-100 .rounded-full .mb-4 .overflow-hidden>
+                  <div .h-full .bg-red-500 .rounded-full .transition-all .duration-500>
+                <button .workflow-outline-primary .w-full .mb-4 .px-3 .py-2 .bg-white .text-[#1e4d8c] .border>
+                  <svg>
+                    <path>
+                <div .space-y-1>
+                  <div>
+                    <div .group .flex .items-start .gap-2 .rounded-lg .cursor-pointer .transition-all .text-sm>
+                      <div .flex-shrink-0 .w-4 .flex .items-center .justify-center>
+                        <button .w-4 .h-4 .flex .items-center .justify-center .text-gray-400 .hover:text-gray-600>
+                          <svg>
+                            <path>
+                      <div .flex-1 .min-w-0>
+                        <div .flex .items-center .gap-2>
+                          <span .flex-shrink-0 .w-5 .h-5 .rounded .bg-red-100 .text-red-700 .text-[10px] .font-bold>「1」
+                          <span .truncate .flex-1 .text-xs .text-red-700 .font-medium .font-medium>「引言」
+                    <div .ml-1>
+                      <div>
+                        <div .group .flex .items-start .gap-2 .rounded-lg .cursor-pointer .transition-all .text-sm>
+                          <div .flex-shrink-0 .w-4 .flex .items-center .justify-center>
+                            <span .w-4>
+                          <div .flex-1 .min-w-0>
+                            <div .flex .items-center .gap-2>
+                              <span .flex-shrink-0 .text-[10px] .font-medium .text-gray-400 .min-w-[18px] .text-right>「1.1」
+                              <span .truncate .flex-1 .text-xs .text-gray-700>「问题提出与研究缘起」
+                      <div>
+                        <div .group .flex .items-start .gap-2 .rounded-lg .cursor-pointer .transition-all .text-sm>
+                          <div .flex-shrink-0 .w-4 .flex .items-center .justify-center>
+                            <span .w-4>
+                          <div .flex-1 .min-w-0>
+                            <div .flex .items-center .gap-2>
+                              <span .flex-shrink-0 .text-[10px] .font-medium .text-gray-400 .min-w-[18px] .text-right>「1.2」
+                              <span .truncate .flex-1 .text-xs .text-gray-700>「研究目的与意义」
+                  <div>
+                    <div .group .flex .items-start .gap-2 .rounded-lg .cursor-pointer .transition-all .text-sm>
+                      <div .flex-shrink-0 .w-4 .flex .items-center .justify-center>
+                        <button .w-4 .h-4 .flex .items-center .justify-center .text-gray-400 .hover:text-gray-600>
+                          <svg>
+                            <path>
+                      <div .flex-1 .min-w-0>
+                        <div .flex .items-center .gap-2>
+                          <span .flex-shrink-0 .w-5 .h-5 .rounded .bg-red-100 .text-red-700 .text-[10px] .font-bold>「2」
+                          <span .truncate .flex-1 .text-xs .text-gray-700 .font-medium>「文献综述与分析框架」
+                  <div>
+                    <div .group .flex .items-start .gap-2 .rounded-lg .cursor-pointer .transition-all .text-sm>
+                      <div .flex-shrink-0 .w-4 .flex .items-center .justify-center>
+                        <button .w-4 .h-4 .flex .items-center .justify-center .text-gray-400 .hover:text-gray-600>
+                          <svg>
+                            <path>
+                      <div .flex-1 .min-w-0>
+                        <div .flex .items-center .gap-2>
+                          <span .flex-shrink-0 .w-5 .h-5 .rounded .bg-red-100 .text-red-700 .text-[10px] .font-bold>「3」
+                          <span .truncate .flex-1 .text-xs .text-gray-700 .font-medium>「研究设计」
+                <div .mt-4 .pt-4 .border-t .border-gray-100>
+                  <button .w-full .px-3 .py-2 .bg-gray-800 .text-white .rounded-lg .text-xs .font-medium>「智能全局思考」
+                  <button .w-full .mt-2 .px-3 .py-2 .border .border-gray-300 .text-gray-600 .rounded-lg>「返回素材准备」
+                  <button .w-full .mt-2 .px-3 .py-2 .rounded-lg .text-xs .font-medium .transition-colors>「还有 3 章未完成」
+            <main .flex-1 .overflow-hidden .flex .flex-col .min-w-0>
+              <div .flex-1 .overflow-y-auto>
+                <div .max-w-4xl .mx-auto .px-8 .py-6>
+                  <div .flex .items-center .gap-3 .mb-2>
+                    <div .w-8 .h-8 .rounded-lg .flex .items-center .justify-center .text-xs .font-bold>「1」
+                    <input .text-xl .font-bold .text-gray-800 .bg-transparent .border-none .outline-none .flex-1 [type=text val=引言]>
+                  <div .ml-11 .mb-6 .flex .flex-wrap .gap-1.5>
+                    <span .text-xs .px-2 .py-0.5 .rounded .bg-gray-100 .text-gray-500>「问题提出与研究缘起」
+                    <span .text-xs .px-2 .py-0.5 .rounded .bg-gray-100 .text-gray-500>「研究目的与意义」
+                  <div .mb-4>
+                    <div .flex .items-center .justify-between .mb-1>
+                      <label .block .text-xs .font-medium .flex .items-center .gap-1 .text-indigo-600>
+                        <svg>
+                          <path>
+                      <span .text-xs .text-gray-400>「主控智能体思考而成，可手动补充修改」
+                    <textarea .w-full .px-3 .py-2 .border .border-gray-200 .rounded-lg .text-sm .outline-none [val=本章旨在从现实痛点与时代背景的交汇处提出]>
+                  <div .space-y-3>
+                    <div .flex .items-center .justify-between>
+                      <h4 .text-sm .font-semibold .text-gray-700>「引言」
+                      <span .text-xs .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500>「待生成」
+                    <div .flex .gap-2>
+                      <button .flex-1 .px-4 .py-2 .bg-slate-800 .text-white .rounded-lg .text-sm .font-medium>「执行智能体开始思考」
+                  <div .mt-6>
+                    <div .relative>
+                      <div .flex .border .border-gray-300 .rounded-lg .overflow-hidden>
+                        <button .px-3 .py-1.5 .text-xs .font-medium .transition-colors .bg-slate-800 .text-white>「编辑」
+                        <button .px-3 .py-1.5 .text-xs .font-medium .transition-colors .bg-gray-50 .text-gray-600 .hover:bg-gray-100>「预览」
+                      <div .mt-2 .border .border-gray-200 .rounded-lg .overflow-y-auto>
+                        <div .h-full>
+                          <textarea .w-full .h-full .p-4 .text-sm .text-gray-800 .resize-none .outline-none .font-mono [val=]>
+                      <div .mt-1 .flex .items-center .justify-between .text-xs .text-gray-400>
+                        <span>「0 字」
+            <aside .w-72 .flex-shrink-0 .border-l .border-gray-200 .bg-gray-50/50 .overflow-y-auto>
+              <div .sticky .top-0 .z-10 .bg-white/80 .backdrop-blur .border-b .border-gray-100 .px-4>
+                <div .flex .items-center .justify-between .mb-2>
+                  <div .flex .items-center .gap-2>
+                    <div .w-7 .h-7 .rounded-lg .bg-red-50 .flex .items-center .justify-center>
+                      <svg>
+                        <path>
+                    <h3 .text-sm .font-bold .text-gray-800>「素材库」
+                    <span .text-[10px] .px-1.5 .py-0.5 .bg-gray-100 .text-gray-500 .rounded-full .font-medium>「1」
+                  <button .workflow-material-primary .text-xs .text-[#1e4d8c] .bg-white .border .border-[#9bb8d8] .hover:bg-[#eef4fa] .hover:border-[#1e4d8c]>
+                    <svg>
+                      <path>
+                <div .flex .items-center .gap-2>
+                  <select .flex-1 .px-2.5 .py-1.5 .bg-gray-50 .border .border-gray-200 .rounded-lg .text-xs>
+                    <option>「全部素材」
+                    <option>「理论」
+                    <option>「数据」
+                    <option>「案例」
+                    <option>「方法」
+                    <option>「文献」
+              <div .p-3 .space-y-2.5>
+                <div .group .relative .bg-white .rounded-xl .border .border-gray-100 .shadow-sm .hover:shadow-md>
+                  <div .h-1 .bg-emerald-500>
+                  <div .p-3>
+                    <div .flex .items-start .gap-3>
+                      <div .flex-shrink-0 .w-9 .h-9 .rounded-lg .flex .items-center .justify-center .text-lg>「📊」
+                      <div .flex-1 .min-w-0>
+                        <h4 .text-sm .font-semibold .text-gray-800 .leading-snug .line-clamp-2 .group-hover:text-red-700 .transition-colors>「深采对照表-可删」
+                        <div .flex .items-center .gap-2 .mt-1.5>
+                          <span .text-[10px] .px-1.5 .py-0.5 .rounded-full .font-medium .bg-emerald-50 .text-emerald-600>「数据」
+                          <span .text-[10px] .text-gray-400>「17 字」
+                          <span .text-[10px] .text-amber-500 .flex .items-center .gap-0.5>
+                            <svg>
+                              <path>
+                      <div .flex .flex-col .gap-1 .opacity-0 .group-hover:opacity-100 .transition-opacity>
+                        <button .p-1.5 .text-gray-400 .hover:text-white .hover:bg-red-500 .rounded-lg .transition-all>
+                          <svg>
+                            <path>
+                        <button .p-1.5 .text-gray-400 .hover:text-white .hover:bg-gray-500 .rounded-lg .transition-all>
+                          <svg>
+                            <path>
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

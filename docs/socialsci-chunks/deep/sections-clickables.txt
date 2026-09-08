@@ -1,0 +1,7 @@
+a|site-header__brand|社科研修云平台
+button|history-memo-trigger.is-subtle|历史
+button|site-header__user-button|DF
+button|ppb-new-btn|新项目
+button|flex-1.px-6.py-3.rounded-lg.text-sm|确认科研架构，进入素材准备
+button|px-6.py-3.border.border-gray-300.text-gray-600|返回修改
+button|assistant-trigger|叮～我可以帮你自动做科研哦！✨

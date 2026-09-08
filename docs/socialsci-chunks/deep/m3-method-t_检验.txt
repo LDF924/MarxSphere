@@ -1,0 +1,37 @@
+=== t 检验 ===
+【中栏·配置】
+  span.upload-label-sm: 点击或拖拽上传数据
+  input: [输入]
+  div.tool-desc-mb.mb-3: 单样本t检验 / 独立样本t检验 / 配对样本t检验。
+  p.text-xs.text-gray-500.leading-relaxed: 单样本t检验 / 独立样本t检验 / 配对样本t检验。
+  div.section-title-sm: 分析变量
+  input.w-full.px-3.py-2.bg-gray-50: [输入]
+  div.section-title-sm: 检验类型
+  input.w-3.5.h-3.5.accent-indigo-500.mt-0.5: [输入]
+  div.font-medium: 单样本 t 检验
+  div.text-[11px].text-gray-400.mt-0.5: 检验样本均值是否等于某已知值
+  input.w-3.5.h-3.5.accent-indigo-500.mt-0.5: [输入]
+  div.font-medium: 独立样本 t 检验
+  div.text-[11px].text-gray-400.mt-0.5: 比较两组独立样本的均值差异
+  input.w-3.5.h-3.5.accent-indigo-500.mt-0.5: [输入]
+  div.font-medium: 配对样本 t 检验
+  div.text-[11px].text-gray-400.mt-0.5: 比较配对数据的差异
+  label.block.text-[11px].font-semibold.text-gray-500: 检验值
+  input.w-full.px-3.py-2.bg-gray-50: [输入]
+  button.btn-run-mb.flex-1.py-2.5.rounded-lg: 运行分析
+  button.btn-reset-mb.px-4.py-2.5.rounded-lg: 重置
+【右栏·说明/结果】
+  span.text-sm.font-semibold.text-gray-700: 分析结果
+  button.icon-btn-sm-mb.w-8.h-8.rounded-lg: 清空
+  div.results-body-mb.flex-1.overflow-y-auto.p-5: 欢迎使用统计分析模块从左侧选择分析方法，上传数据文件并配置参数，点击「运行分析」开始。支持 CSV 和 Excel 格式。共集成 17 种统计方法。t检验ANOVA回归分析信度αEFA因子中介效应调节
+  h2.text-xl.font-semibold.text-gray-700.mb-2: 欢迎使用统计分析模块
+  p.text-sm.text-gray-400.max-w-md.leading-relaxed: 从左侧选择分析方法，上传数据文件并配置参数，点击「运行分析」开始。支持 CSV 和 Excel 格式。共集成 17 种统计方法。
+  strong: 17 种
+  span.px-2.py-1.bg-gray-50.rounded: t检验
+  span.px-2.py-1.bg-gray-50.rounded: ANOVA
+  span.px-2.py-1.bg-gray-50.rounded: 回归分析
+  span.px-2.py-1.bg-gray-50.rounded: 信度α
+  span.px-2.py-1.bg-gray-50.rounded: EFA因子
+  span.px-2.py-1.bg-gray-50.rounded: 中介效应
+  span.px-2.py-1.bg-gray-50.rounded: 调节效应
+  span.px-2.py-1.bg-gray-50.rounded: 更多...

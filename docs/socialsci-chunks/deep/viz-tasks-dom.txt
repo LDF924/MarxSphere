@@ -1,0 +1,155 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a .router-link-active .router-link-exact-active>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content .router-content--fixed>
+          <div .viz-page>
+            <div .viz-workbench .flex .flex-col .bg-white .relative>
+              <div .shrink-0 .border-b .border-gray-200 .bg-white>
+                <div .flex .items-center .justify-between .px-6 .py-3>
+                  <div .flex .items-center .gap-4>
+                    <h1 .text-lg .font-bold .text-gray-800>「科研绘图」
+                    <div .flex .items-center .border .border-gray-200 .bg-gray-50 .p-0.5 [role=tablist]>
+                      <button .px-2.5 .py-1 .text-[11px] .transition-colors .text-gray-500 .hover:text-gray-700 [role=tab]>「图表视图」
+                      <button .px-2.5 .py-1 .text-[11px] .transition-colors .bg-white .text-blue-700 .shadow-sm [role=tab]>「任务视图」
+                  <div .flex .items-center .gap-2>
+                    <button>「新建图表」
+                    <div .relative>
+                      <button .flex .items-center .gap-1 .text-xs .px-3 .py-1.5 .rounded-md .bg-white>「导入至工作流素材库」
+                    <a .flex .items-center .gap-1 .text-xs .px-3 .py-1.5 .rounded-md .bg-white>「前往工作流」
+                    <button .px-3 .py-1.5 .text-xs .font-medium .rounded-lg .border .border-gray-300 .text-gray-600>「导出为图片」
+                    <button .px-3 .py-1.5 .text-xs .font-medium .rounded-lg .border .transition-colors .disabled:opacity-40>「删除」
+              <div .flex-1 .flex .overflow-hidden>
+                <div .shrink-0 .bg-white .flex .flex-col .z-10 .relative>
+                  <div .viz-chat-panel-v2 .flex .flex-col .bg-white .overflow-hidden .min-h-0>
+                    <div .flex .items-center .px-2 .py-1 .border-b .border-gray-100 .bg-gray-50/50 .shrink-0>
+                      <span .px-1 .text-[11px] .font-medium .text-gray-600>「对话」
+                      <div .flex-1>
+                      <span .text-[9px] .text-gray-300 .tabular-nums>「0 条消息」
+                    <div .flex-1 .min-h-0 .overflow-y-scroll .px-3 .py-2 .space-y-2 .scroll-smooth .viz-chat-scroll>
+                      <div .py-6 .space-y-4>
+                        <div .text-center .space-y-2>
+                          <p .text-sm .font-semibold .text-gray-600>「科研图表工具」
+                          <p .text-xs .text-gray-400 .leading-relaxed .max-w-[300px] .mx-auto>
+                            <br>
+                          <div .flex .flex-wrap .justify-center .gap-1 .mt-2 .max-w-[300px] .mx-auto>
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「散点图」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「柱状图」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「箱线图」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「热力图」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「回归拟合」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「逻辑回归」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「相关矩阵」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「子图网格」
+                            <span .text-[10px] .px-2 .py-0.5 .bg-gray-100 .rounded-full .text-gray-500>「双轴图」
+                          <p .text-[11px] .text-gray-300 .text-center .mt-1>「生成后可直接用自然语言调整图表样式」
+                        <div .space-y-2>
+                          <button .w-full .flex .items-center .gap-3 .px-4 .py-3 .rounded-xl .border>
+                            <span .text-xl .text-gray-400>「[+]」
+                            <div .text-left>
+                              <p .text-[13px] .font-medium .text-gray-700>「上传数据文件」
+                              <p .text-[11px] .text-gray-400>「支持 CSV / Excel 格式」
+                            <svg>
+                              <path>
+                          <button .w-full .flex .items-center .gap-3 .px-4 .py-3 .rounded-xl .border>
+                            <span .w-1.5 .h-1.5 .rounded-full .bg-blue-500 .shrink-0>
+                            <div .text-left>
+                              <p .text-[13px] .font-medium .text-emerald-700 .group-hover:text-emerald-800>「描述图表需求」
+                              <p .text-[11px] .text-gray-400>「告诉我你想画什么图」
+                            <svg>
+                              <path>
+                        <div>
+                          <p .text-[10px] .text-gray-400 .mb-1.5 .text-center>「快捷模板」
+                          <div .flex .flex-wrap .justify-center .gap-1>
+                            <button .text-[10px] .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500 .hover:bg-gray-200 .hover:text-gray-700>「双Y轴图」
+                            <button .text-[10px] .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500 .hover:bg-gray-200 .hover:text-gray-700>「子图网格」
+                            <button .text-[10px] .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500 .hover:bg-gray-200 .hover:text-gray-700>「柱线叠加」
+                            <button .text-[10px] .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500 .hover:bg-gray-200 .hover:text-gray-700>「回归散点」
+                            <button .text-[10px] .px-2 .py-0.5 .rounded-full .bg-gray-100 .text-gray-500 .hover:bg-gray-200 .hover:text-gray-700>「基准线」
+                      <input .hidden [type=file val=]>
+                    <div .shrink-0 .border-t .border-gray-100 .bg-gray-50/80 .p-2.5>
+                      <div .relative .flex .items-end .gap-1.5>
+                        <textarea .flex-1 .resize-none .px-3 .py-2 .text-[13px] .rounded-xl .border .border-gray-200 [val=]>
+                        <button .h-9 .w-9 .rounded-xl .flex .items-center .justify-center .shrink-0 .transition-all>
+                          <svg>
+                            <path>
+                        <button .h-9 .w-9 .rounded-xl .flex .items-center .justify-center .shrink-0 .transition-all>
+                          <svg>
+                            <path>
+                      <div .flex .items-center .justify-between .mt-1 .px-0.5>
+                        <span .text-[11px] .text-neutral-400>「0 字 · ~0 tokens」
+                        <label .cursor-pointer .text-[11px] .text-neutral-400 .hover:text-gray-600 .transition-colors>
+                          <input .hidden [type=file val=]>
+                  <div .absolute .right-0 .top-0 .bottom-0 .w-1 .cursor-col-resize .z-30 .hover:bg-blue-400/60>
+                <div .flex-1 .flex .flex-col .min-w-0 .bg-white .overflow-hidden>
+                  <section .viz-task-window .h-full .min-h-0 .overflow-auto .bg-gray-50/40 .px-5 .py-4>
+                    <div .flex .items-center .justify-between .border-b .border-gray-200 .pb-3>
+                      <div>
+                        <h2 .text-sm .font-semibold .text-gray-800>「任务窗口」
+                        <p .mt-1 .text-[11px] .text-gray-400>「同一任务的图表横向排列，任务按时间纵向排列」
+                      <button .text-[11px] .text-blue-700 .hover:text-blue-900>「刷新任务」
+                    <div .divide-y .divide-gray-200>
+                      <article .py-4>
+                        <button .block .w-full .text-left>
+                          <div .flex .min-w-0 .items-start .justify-between .gap-4>
+                            <div .min-w-0>
+                              <div .flex .items-center .gap-2>
+                                <h3 .truncate .text-[13px] .font-semibold .text-gray-800>「请用代码驱动模式画柱状图加折线图的叠加图表」
+                                <span .shrink-0 .border .px-1.5 .py-0.5 .text-[10px] .border-red-200 .bg-red-50 .text-red-700>「失败」
+                              <div .mt-1 .flex .flex-wrap .items-center .gap-x-3 .gap-y-1 .text-[11px] .text-gray-400>
+                                <span>「09/07 15:41」
+                                <span>「对话 1 轮」
+                            <span .shrink-0 .text-[11px] .text-blue-700>「查看任务」
+                        <div .mt-3 .border .border-dashed .border-gray-200 .bg-white .px-3 .py-4 .text-[11px]>「模型完成了分析，但没有生成所要求的图表，请从此任务重试」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

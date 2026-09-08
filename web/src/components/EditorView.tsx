@@ -172,11 +172,14 @@ export function EditorView() {
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
+  // 新建文档弹层(闭源 editor: 标题 input + 取消/创建 自绘弹层, 弃 window.prompt)
+  const [showNewDoc, setShowNewDoc] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
   const newDoc = async () => {
     setBusy(true); setErr("");
     try {
-      const t = window.prompt("文档标题:", "未命名论文");
-      const r = await j<{ id: string }>("/api/editor/v1/documents", { method: "POST", body: JSON.stringify({ title: t ?? "未命名文档" }) });
+      const r = await j<{ id: string }>("/api/editor/v1/documents", { method: "POST", body: JSON.stringify({ title: newTitle.trim() || "未命名文档" }) });
+      setShowNewDoc(false); setNewTitle("");
       await loadDocs();
       await openDoc(r.id);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
@@ -406,7 +409,7 @@ export function EditorView() {
               {expBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}导出 Word
             </button>
           )}
-          <button data-control="editor_new" onClick={() => void newDoc()} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
+          <button data-control="editor_new" onClick={() => setShowNewDoc(true)} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
             <Plus className="h-3.5 w-3.5" />新建文档
           </button>
           {curId && (
@@ -474,7 +477,13 @@ export function EditorView() {
           <div className="flex flex-col items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/50">
             <FileText className="h-12 w-12 text-slate-700" />
             <p className="mt-3 text-sm text-slate-500">选择或新建一个文档开始写作</p>
-            <button onClick={() => void newDoc()} className="mt-3 rounded-lg bg-cyan-600 px-4 py-2 text-xs text-white hover:bg-cyan-500">新建文档</button>
+            {/* 空态双按钮(闭源: 新建文档 + 上传 Word) */}
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => setShowNewDoc(true)} data-control="editor_empty_new" className="rounded-lg bg-cyan-600 px-4 py-2 text-xs text-white hover:bg-cyan-500">新建文档</button>
+              <button onClick={() => fileRef.current?.click()} disabled={impBusy} className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50">
+                {impBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Upload className="mr-1 inline h-3 w-3" />}上传 Word
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex min-h-0 flex-col rounded-xl border border-slate-700/60 bg-slate-900/50">
@@ -659,6 +668,21 @@ export function EditorView() {
       )}
       <ConfirmDialog spec={delAsk ? { title: "删除文档?", desc: "将永久删除该文档(含全部保存版本), 不可恢复。", confirmText: "删除", danger: true } : null}
         onDone={(ok) => { if (ok && delAsk) void removeDoc(delAsk.id); else setDelAsk(null); }} />
+
+      {/* 新建文档弹层(闭源: 标题 input + 取消/创建) */}
+      {showNewDoc && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" onClick={() => { setShowNewDoc(false); setNewTitle(""); }}>
+          <div className="w-full max-w-sm rounded-xl border border-slate-600/60 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-3 text-sm font-semibold text-slate-100">新建文档</p>
+            <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void newDoc(); }}
+              autoFocus placeholder="未命名论文" className="w-full rounded-lg border border-slate-600/60 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500" />
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => { setShowNewDoc(false); setNewTitle(""); }} className="flex-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-700">取消</button>
+              <button onClick={() => void newDoc()} disabled={busy} className="flex-1 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50">创建</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

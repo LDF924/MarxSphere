@@ -66,3 +66,17 @@
 - 浏览器实测(4183 临时实例, 不动 4173 用户进程): 6 分区渲染/清除 toast('已删除 1 条,1 条未能
   删除(1 条仍在运行,请先取消或等待完成)')/ACTIVE_JOB 保护/statistics 真源 30 条/跳转实证面板
   自动开历史抽屉 全部通过; vitest 799 零回归
+
+## 2026-09-08 R16 DOM 深采对照补缺(真机 CDP 点击 6 模块, 提交 4a08963~7a9f66c)
+深采: 60+ 份 DOM/弹层/交互态存 docs/socialsci-chunks/deep/ + DeepDive-DOM-DECODED.md(结构汇总)
+对照补缺(已实施, 提交见右):
+1. review 新建审稿确认层"开始新的审稿?当前审稿状态将清除。" — 7e4227b
+2. review 手动新增期刊弹层(名称+7分类下拉+核心审稿要点一行一条) — 7e4227b
+3. editor 空态双按钮(新建文档+上传 Word)+ 自绘新建弹层(弃 window.prompt) — 7e4227b
+4. DAG 模板节点 index(00起)+module(SYSTEM/STANDARD WORKFLOW)+输入/输出 meta+systemStart
+   (修复 index string 类型永不渲染 bug); 前端 chip 渲染 module 徽标+meta 行 — 8333d24
+5. DAG 新建项目自绘弹层(空白画布/五阶段模板, 弃 window.prompt) — 7a9f66c
+   (headless 验证发现原生 prompt 卡死主线程 = 自动化可操作性缺口)
+浏览器验证(4183 临时实例): 模板 API 返回节点全 meta 字段 ✓; vitest 799 零回归 ✓
+未实施(记录, 后续可选): materials 五类手风琴头部行内操作按钮、workspace 章生成卡形态、
+  statistics 17 方法左栏分类树布局(我方用 12 流程导航+方法向导, 语义等价, 布局不同)

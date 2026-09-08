@@ -1,0 +1,22 @@
+button[button]:历史
+button[button]:DF
+button[button]:
+button[submit]:+ 新建审稿
+button[submit]:粘贴文本
+button[submit]:上传文件
+input[text]:
+textarea[textarea]:
+label:审查严格度
+label:宽松 仅重大问题
+input[radio]:lax
+label:标准 核心问题
+input[radio]:standard
+label:严格 逐项检查
+input[radio]:strict
+label:选用刊物要求管理期刊库
+select[select-one]:不选用（跳过刊物规则）
+label:选用审核标准管理标准库
+label:本次额外要求（可选）
+textarea[textarea]:
+button[submit]:开始审稿
+button[submit]:叮～我可以帮你自动做科研哦！✨

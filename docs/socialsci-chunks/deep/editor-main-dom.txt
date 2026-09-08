@@ -1,0 +1,173 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a .router-link-active .router-link-exact-active>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content .router-content--fixed>
+          <div .ade-layout>
+            <header .ade-topbar>
+              <div .ade-topbar__inner>
+                <div .ade-topbar__left>
+                  <div .ade-topbar__title-group>
+                    <p .ade-topbar__subtitle>「在线文本编辑器」
+                    <p .ade-topbar__title>「深采测试文档-DF」
+                <div .ade-topbar__right>
+                  <button .ade-topbar__new-btn>「+ 新建文档」
+                  <button .ade-topbar__action-btn>「保存」
+                  <button .ade-topbar__action-btn>「版本历史」
+                  <span .ade-topbar__status .ade-topbar__status--green>「已保存」
+            <div .ade-layout__body>
+              <aside .ade-document-rail>
+                <div .ade-document-rail__header>
+                  <div>
+                    <h2>「文档」
+                    <span>「1」
+                  <button .ade-document-rail__create>
+                    <span>「+」
+                <div .ade-document-rail__list>
+                  <div .ade-document-entry .is-active>
+                    <button .ade-document-entry__main>
+                      <span .ade-document-entry__title>「深采测试文档-DF」
+                      <span .ade-document-entry__meta>「0 字 · 09/07 20:05」
+                    <button .ade-document-entry__delete>
+                      <svg>
+                        <path>
+              <main .ade-editor-area>
+                <div .ade-editor-area__content>
+                  <div .ade-editor-toolbar>
+                    <div .ade-editor-toolbar__row .ade-editor-toolbar__row--format>
+                      <div .ade-editor-toolbar__group .ade-editor-toolbar__group--wide>
+                        <select .ade-editor-toolbar__select .ade-editor-toolbar__select--font>
+                          <option>「字体」
+                          <option>「宋体」
+                          <option>「黑体」
+                          <option>「楷体」
+                          <option>「微软雅黑」
+                          <option>「Times New Roman」
+                          <option>「Arial」
+                        <select .ade-editor-toolbar__select .ade-editor-toolbar__select--size>
+                          <option>「字号」
+                          <option>「小五 9pt」
+                          <option>「五号 10.5pt」
+                          <option>「小四 12pt」
+                          <option>「四号 14pt」
+                          <option>「小三 15pt」
+                          <option>「三号 16pt」
+                      <div .ade-editor-toolbar__group>
+                        <select .ade-editor-toolbar__select .ade-editor-toolbar__select--compact>
+                          <option>「行距」
+                          <option>「单倍」
+                          <option>「1.25」
+                          <option>「1.5」
+                          <option>「1.75」
+                          <option>「双倍」
+                        <select .ade-editor-toolbar__select .ade-editor-toolbar__select--compact>
+                          <option>「段后」
+                          <option>「0」
+                          <option>「4px」
+                          <option>「8px」
+                          <option>「12px」
+                          <option>「16px」
+                      <div .ade-editor-toolbar__group>
+                        <label .ade-editor-toolbar__color>
+                          <span>「A」
+                          <input [type=color val=#1f2937]>
+                        <label .ade-editor-toolbar__color .ade-editor-toolbar__color--mark>
+                          <span>「荧光」
+                          <input [type=color val=#fff3a3]>
+                        <button .ade-editor-toolbar__text-btn>「清格式」
+                    <div .ade-editor-toolbar__row>
+                      <div .ade-editor-toolbar__group>
+                        <button>
+                          <b>「B」
+                        <button>
+                          <i>「I」
+                        <button>
+                          <u>「U」
+                        <button>
+                          <s>「S」
+                      <div .ade-editor-toolbar__group>
+                        <button>「H1」
+                        <button>「H2」
+                        <button>「H3」
+                        <button .is-active>「P」
+                      <div .ade-editor-toolbar__group>
+                        <button>「UL」
+                        <button>「OL」
+                        <button>「"」
+                        <button>「</>」
+                      <div .ade-editor-toolbar__group>
+                        <button>「←」
+                        <button>「↔」
+                        <button>「→」
+                      <div .ade-editor-toolbar__group>
+                        <button .ade-editor-toolbar__text-btn>「链接」
+                        <button .ade-editor-toolbar__text-btn>「图片」
+                        <input [type=file val=]>
+                      <div .ade-editor-toolbar__group>
+                        <button>「↩」
+                        <button>「↪」
+                      <div .ade-editor-toolbar__group>
+                        <button .ade-editor-toolbar__text-btn>「导入」
+                        <button .ade-editor-toolbar__text-btn>「导出」
+                        <button .ade-editor-toolbar__assist-btn>「辅助工具」
+                  <div .ade-editor-tiptap-wrap>
+                    <div>
+                      <div .tiptap .ProseMirror .ade-editor-prose [val=]>
+                        <p .is-empty .is-editor-empty>
+                          <br .ProseMirror-trailingBreak>
+            <input [type=file val=]>
+            <footer .ade-statusbar>
+              <span>「0 字」
+              <span .ade-statusbar__lock>「已锁定」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

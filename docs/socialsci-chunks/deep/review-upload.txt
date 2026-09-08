@@ -1,0 +1,128 @@
+<body .bg-gray-50 .text-gray-900 .min-h-screen>
+  <div #app>
+    <div .min-h-screen .flex .flex-col .app-root--workspace #app-root>
+      <nav .site-header>
+        <div .site-header__inner>
+          <a .site-header__brand>
+            <img>
+            <strong>「社科研修云平台」
+          <div .site-header__nav>
+            <a .site-header__nav-item>「首页」
+            <div .site-header__services>
+              <button .site-header__nav-item .active>
+                <svg>
+                  <path>
+              <div .site-header__dropdown>
+                <a>「在线科研工作流」
+                <a .router-link-active .router-link-exact-active>「在线科研审查」
+                <a>「在线数据分析」
+                <a>「在线科研绘图」
+                <a>「在线学术文本编辑器」
+            <a .site-header__nav-item>「科研选题」
+            <a .site-header__nav-item>「知识库查询」
+            <a .site-header__nav-item>「可视化DAG编排模式」
+            <a .site-header__nav-item>「团队介绍」
+            <a .site-header__nav-item>「科研协助」
+            <a .site-header__nav-item>「联系我们」
+          <div .site-header__actions>
+            <a .site-header__workbench>「工作台」
+            <div .history-memo-inline>
+              <button .history-memo-trigger .is-subtle>
+                <svg>
+                  <path>
+                <span>「历史」
+            <div .site-header__user>
+              <button .site-header__user-button>
+                <span .site-header__avatar>
+                  <svg>
+                    <path>
+                <span .site-header__user-name>「DF」
+                <svg>
+                  <path>
+            <button .site-header__menu-button>
+              <span>
+              <span>
+              <span>
+      <main .relative .flex-1 .flex .flex-col .min-h-0 .min-w-0 .max-w-full .overflow-hidden>
+        <div .router-content>
+          <div .min-h-full .bg-gray-50/50>
+            <div .bg-white .border-b .border-gray-200>
+              <div .max-w-7xl .mx-auto .px-4 .py-4 .flex .items-center .justify-between>
+                <div>
+                  <h1 .text-xl .font-bold .text-gray-800>「论文审稿」
+                <div .flex .items-center .gap-2>
+                  <a .px-3 .py-1.5 .text-xs .text-purple-600 .hover:bg-purple-50 .border .border-purple-200 .rounded-lg>
+                    <svg>
+                      <path>
+                  <button>「+ 新建审稿」
+            <div .review-workspace .max-w-7xl .mx-auto .px-4 .py-6>
+              <aside .review-history-rail>
+                <header .review-history-rail__header>
+                  <h2>「往期审稿」
+                  <span>「0」
+                <p .review-history-rail__empty>「暂无审稿记录」
+              <div .review-workspace__main>
+                <div .grid .grid-cols-1 .lg:grid-cols-5 .gap-6>
+                  <div .lg:col-span-3 .space-y-4>
+                    <div .bg-white .rounded-xl .border .border-gray-200 .p-5>
+                      <h2 .text-sm .font-semibold .text-gray-700 .mb-3 .flex .items-center .gap-2>
+                        <svg>
+                          <path>
+                      <div .flex .gap-1 .bg-gray-100 .rounded-lg .p-0.5 .mb-4 .w-fit>
+                        <button .px-3 .py-1.5 .text-xs .font-medium .rounded-md .transition-all .text-gray-500 .hover:text-gray-700>「粘贴文本」
+                        <button .px-3 .py-1.5 .text-xs .font-medium .rounded-md .transition-all .bg-white .text-red-600>「上传文件」
+                      <div .space-y-3>
+                        <div .border-2 .border-dashed .border-gray-300 .rounded-xl .p-8 .text-center .hover:border-red-300 .hover:bg-red-50/30>
+                          <input .hidden [type=file val=]>
+                          <svg>
+                            <path>
+                          <p .text-sm .text-gray-500>「点击或拖拽上传 Word / PDF / TXT 文件」
+                  <div .lg:col-span-2 .space-y-4>
+                    <div .bg-white .rounded-xl .border .border-gray-200 .p-5>
+                      <h2 .text-sm .font-semibold .text-gray-700 .mb-4 .flex .items-center .gap-2>
+                        <svg>
+                          <path>
+                          <path>
+                      <div .space-y-4>
+                        <div>
+                          <label .block .text-xs .text-gray-500 .mb-2 .font-medium>「审查严格度」
+                          <div .flex .gap-2>
+                            <label .flex-1 .px-3 .py-2 .text-xs .text-center .border .rounded-lg .cursor-pointer>
+                              <input .sr-only [type=radio val=lax]>
+                              <span .block .text-[10px] .opacity-60 .mt-0.5>「仅重大问题」
+                            <label .flex-1 .px-3 .py-2 .text-xs .text-center .border .rounded-lg .cursor-pointer>
+                              <input .sr-only [type=radio val=standard]>
+                              <span .block .text-[10px] .opacity-60 .mt-0.5>「核心问题」
+                            <label .flex-1 .px-3 .py-2 .text-xs .text-center .border .rounded-lg .cursor-pointer>
+                              <input .sr-only [type=radio val=strict]>
+                              <span .block .text-[10px] .opacity-60 .mt-0.5>「逐项检查」
+                        <div>
+                          <label .block .text-xs .text-gray-500 .mb-2 .font-medium .flex .items-center .justify-between>
+                            <span>「选用刊物要求」
+                            <a .text-[10px] .text-purple-500 .hover:text-purple-700>「管理期刊库」
+                          <select .w-full .px-3 .py-2 .text-sm .border .border-gray-200 .rounded-lg .focus:border-red-300>
+                            <option>「不选用（跳过刊物规则）」
+                        <div>
+                          <label .block .text-xs .text-gray-500 .mb-2 .font-medium .flex .items-center .justify-between>
+                            <span>「选用审核标准」
+                            <a .text-[10px] .text-purple-500 .hover:text-purple-700>「管理标准库」
+                          <div .space-y-1.5 .max-h-36 .overflow-y-auto>
+                            <div .text-xs .text-gray-400 .text-center .py-2>「暂无标准，请先在知识库中创建」
+                        <div>
+                          <label .block .text-xs .text-gray-500 .mb-2 .font-medium>「本次额外要求（可选）」
+                          <textarea .w-full .px-3 .py-2 .text-sm .border .border-gray-200 .rounded-lg .focus:border-red-300 [val=]>
+                    <button .w-full .py-3 .text-base .font-semibold .text-white .bg-gradient-to-r .from-red-600 .to-red-500>
+                      <svg>
+                        <path>
+                        <path>
+                    <p .text-xs .text-gray-400 .text-center>「AI 将对论文进行多维度质量审查；长篇 PDF 将分段审稿后汇总」
+      <div .fixed .z-50>
+        <button .assistant-trigger>
+          <span .assistant-pet-shell .is-idle>
+            <span .assistant-pet-image-shell .is-idle>
+              <span .assistant-pet-image-speech>「叮～我可以帮你自动做科研哦！✨」
+              <span .assistant-pet-image-backdrop>
+              <span .assistant-pet-image-aura>
+              <img .assistant-pet-image-character>
+              <span .assistant-pet-image-shadow>
+  <div .fixed .top-16 .right-4 .z-[100] .flex .flex-col .gap-2 .pointer-events-none>

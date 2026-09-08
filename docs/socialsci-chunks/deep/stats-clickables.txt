@@ -1,0 +1,33 @@
+button|history-memo-trigger.is-subtle|历史
+button|site-header__user-button|DF
+button||+ 新建分析
+button|method-item.active|描述统计
+button|method-item|频数分析
+button|method-item|分类汇总
+button|method-item|数据转换
+button|method-item|数据筛选
+button|method-item|t 检验
+button|method-item|ANOVA
+button|method-item|多因素 ANOVA
+button|method-item|相关分析
+button|method-item|交叉表 / 卡方
+button|method-item|非参数检验
+button|method-item|正态性检验
+button|method-item|OLS 回归
+button|method-item|Logistic 回归
+button|method-item|信度 α
+button|method-item|EFA 因子分析
+button|method-item|中介 / 调节
+label|flex.items-center.gap-2|均值 (Mean)
+label|flex.items-center.gap-2|中位数 (Median)
+label|flex.items-center.gap-2|标准差 (Std)
+label|flex.items-center.gap-2|最小值/最大值
+label|flex.items-center.gap-2|四分位数
+label|flex.items-center.gap-2|偏度 (Skewness)
+label|flex.items-center.gap-2|峰度 (Kurtosis)
+label|flex.items-center.gap-2|箱线图
+label|flex.items-center.gap-2|直方图
+button|btn-run-mb.flex-1.py-2.5|运行分析
+button|btn-reset-mb.px-4.py-2.5|重置
+button|icon-btn-sm-mb.w-8.h-8|清空
+button|assistant-trigger|叮～我可以帮你自动做科研哦！✨
