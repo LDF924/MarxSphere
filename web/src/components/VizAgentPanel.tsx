@@ -123,6 +123,8 @@ export function VizAgentPanel() {
 
   const loadSession = async (sid: string) => {
     setCurSession(sid); setMessages([]); setArtifacts([]); setErr("");
+    // B5(审查): 切会话清 CSV 引用(防上一会话数据带入新会话)
+    csvRef.current = null; setCsvName("");
     try {
       // D6(闭源 viz_save_<uid>_<taskId>): 会话双写 localStorage, 供刷新/重进恢复
       try { localStorage.setItem("viz_save_active", sid); } catch { /* 忽略 */ }
@@ -158,39 +160,57 @@ export function VizAgentPanel() {
     reader.readAsText(f);
   };
 
-  // D4(闭源 viz job): 观察 job SSE — after>0 重连重放, 事件驱动 live 更新
-  const observeJob = async (jobId: string, after = 0): Promise<void> => {
-    const liveBuf: Array<{ kind: string; text: string }> = [];
-    const handle = (ev: string, obj: Record<string, unknown>) => {
-      liveBuf.push({ kind: ev, text: typeof obj?.content === "string" ? String(obj.content).slice(0, 300) : "" });
-      setLive([...liveBuf]);
-      if (ev === "viz.completed" && curSession) {
-        void j<{ artifacts: Artifact[] }>(`/api/viz/sessions/${curSession}/artifacts`).then((a) => setArtifacts(a.artifacts ?? [])).catch(() => {});
+  // D4(闭源 viz job): 观察 job SSE — 事件驱动 live 更新
+  // 审查 S3: stream 无限挂起, EOF 不一定是终态 → 结束后查 job 状态, 未终态则自动重连
+  // 重连语义: 服务端重放全事件(after=0, 事件源幂等), 每次连接重建 liveBuf 防重复堆积
+  const observeJob = async (jobId: string, _after = 0): Promise<void> => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const liveBuf: Array<{ kind: string; text: string }> = [];
+      const handle = (ev: string, obj: Record<string, unknown>) => {
+        liveBuf.push({ kind: ev, text: typeof obj?.content === "string" ? String(obj.content).slice(0, 300) : "" });
+        setLive([...liveBuf]);
+        if (ev === "viz.completed" && curSession) {
+          void j<{ artifacts: Artifact[] }>(`/api/viz/sessions/${curSession}/artifacts`).then((a) => setArtifacts(a.artifacts ?? [])).catch(() => {});
+        }
+        if (ev === "error") setErr((obj as { userMessage?: string }).userMessage || "绘图失败");
+      };
+      setLive([]);
+      const r = await fetch(`/api/viz/jobs/${jobId}/stream?after=0`, {
+        headers: { Authorization: `Bearer ${tokenOf()}`, Accept: "text/event-stream" },
+      });
+      if (!r.ok || !r.body) throw new Error(`观察连接失败 ${r.status}`);
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      let sawTerminal = false;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
+        for (const p of parts) {
+          const ev = p.match(/event: (\S+)/)?.[1];
+          const data = p.match(/data: (.*)/s)?.[1];
+          if (!data || !ev) continue;
+          const obj = JSON.parse(data);
+          if (ev === "viz.completed" || ev === "cancelled" || ev === "viz_failed") sawTerminal = true;
+          if (ev === "error") { handle("error", obj); continue; }
+          handle(ev, obj);
+        }
       }
-      if (ev === "error") setErr((obj as { userMessage?: string }).userMessage || "绘图失败");
-    };
-    const r = await fetch(`/api/viz/jobs/${jobId}/stream?after=${after}`, {
-      headers: { Authorization: `Bearer ${tokenOf()}`, Accept: "text/event-stream" },
-    });
-    if (!r.ok || !r.body) throw new Error(`观察连接失败 ${r.status}`);
-    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
-      for (const p of parts) {
-        const ev = p.match(/event: (\S+)/)?.[1];
-        const data = p.match(/data: (.*)/s)?.[1];
-        if (!data || !ev) continue;
-        const obj = JSON.parse(data);
-        if (ev === "error") { handle("error", obj); continue; }
-        handle(ev, obj);
+      if (sawTerminal) return;
+      // 流结束未达终态 → 查 DB 状态决定重连还是放弃
+      const st = await j<{ job: { status: string } }>(`/api/viz/jobs/${jobId}`).catch(() => null);
+      const status = st?.job?.status;
+      if (status === "done" || status === "failed" || status === "cancelled" || !status) {
+        if (status === "done") { handle("viz.completed", {}); }
+        return;
       }
+      // 仍 running(连接被服务端重置) → 等 1.5s 后重连重放
+      await new Promise((r) => setTimeout(r, 1500));
     }
   };
 
   const send = async () => {
+    if (busy) return; // B6(审查): Enter 双发守卫
     const msg = input.trim();
     if (!msg || !curSession) return;
     setInput(""); setBusy(true); setErr(""); setLive([]);
@@ -316,7 +336,7 @@ export function VizAgentPanel() {
                 return (
                   <div key={m.id} className="rounded-lg border border-slate-700/50 bg-slate-800/50 p-2">
                     <p className="mb-1 flex items-center gap-1 text-[10px] text-slate-400"><ImageIcon className="h-3 w-3 text-pink-400" /> 产物 v{(c as { version?: unknown }).version as number} {c.title ? `· ${String(c.title).slice(0, 30)}` : ""}</p>
-                    <ArtImg path={a.pngRel} className="max-h-64 w-auto rounded border border-slate-700/40 bg-white/5" alt="chart" />
+                    <ArtImg path={a.pngRel} className="max-h-64 max-w-full rounded border border-slate-700/40 bg-white/5" alt="chart" />
                   </div>
                 );
               }
@@ -341,7 +361,7 @@ export function VizAgentPanel() {
                   </div>
                 );
               }
-              if (m.role === "assistant" || (m.role !== "chart" && m.role !== "tool" && m.role !== "plan" && m.role !== "thinking" && m.role !== "critique" && m.role !== "critique_fix")) {
+              if (m.role === "assistant" || m.role === "text" || m.role === "agent") {
                 const txt = msgText(m);
                 if (!txt) return null;
                 return (

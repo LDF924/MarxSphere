@@ -143,6 +143,8 @@ export function ReviewLabPanel() {
   };
 
   const runStream = async (jobId: string) => {
+    // A3 fix: 所有流入口统一更新 curJob(createAndRun/openJob/control 三路径), 导出/停止指正确对象
+    setCurJob(jobId);
     setTab("report");
     setStreamState({ jobId, status: "started", step: 0, total: 0 });
     const ac = new AbortController(); abortRef.current = ac;
@@ -192,12 +194,25 @@ export function ReviewLabPanel() {
               });
             }
           }
-          else if (ev === "review.completed") { setResult(obj.result); setStreamState((s) => ({ ...s!, status: "done" })); setLiveDims([]); }
+          else if (ev === "review.completed") {
+            setResult(obj.result); setStreamState((s) => ({ ...s!, status: "done" })); setLiveDims([]);
+            // A5 fix: 完成态补拉 text_snapshot(原文对照可用)
+            if (!textSnap && jobId) {
+              void j<{ job: { text_snapshot?: string } }>(`/api/review/jobs/${jobId}`)
+                .then((jr) => { if (jr.job?.text_snapshot) setTextSnap(jr.job.text_snapshot); })
+                .catch(() => {});
+            }
+          }
           else if (ev === "error") { setErr(obj.userMessage || "审稿失败"); setStreamState((s) => ({ ...s!, status: "failed" })); }
         }
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") { setErr((e as Error).message); setStreamState((s) => ({ ...s!, status: "failed" })); }
+      else {
+        // A1 fix: 停止=中止观察(非任务取消), 清流态防"进行中"永久悬挂
+        setStreamState(null); setPartialJson(null); setLiveDims([]);
+        setDeltaCount(0);
+      }
     } finally { setBusy(false); }
   };
 
@@ -210,6 +225,9 @@ export function ReviewLabPanel() {
       else if (r.job.status === "queued" || r.job.status === "failed" || r.job.status === "cancelled") {
         // 重跑
         await runStream(jobId);
+      } else if (r.job.status === "running" || r.job.status === "segmenting" || r.job.status === "summarizing" || r.job.status === "streaming") {
+        // A2 fix: 任务进行中(断线/刷新恢复) → 重连 SSE 续流(服务端 segmentsDone 续传)
+        await runStream(jobId);
       }
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -217,8 +235,11 @@ export function ReviewLabPanel() {
   const control = async (jobId: string, action: "cancel" | "retry") => {
     setBusy(true); setErr("");
     try {
-      await j(`/api/review/jobs/${jobId}/control`, { method: "POST", body: JSON.stringify({ action }) });
-      if (action === "retry") await runStream(jobId);
+      const r = await j<{ job?: { id?: string } }>(`/api/review/jobs/${jobId}/control`, { method: "POST", body: JSON.stringify({ action }) });
+      if (action === "retry") {
+        // A3 fix: retry 后端返新 job id → 用返回值(或旧 id)续流, curJob 在 runStream 内已更新
+        await runStream(r.job?.id ?? jobId);
+      }
       await loadAll();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };

@@ -115,7 +115,8 @@ export function EditorView() {
   useEffect(() => { localStorage.setItem("ade-format-preset", docStyle); }, [docStyle]);
   const [selText, setSelText] = useState("");
   const [rewriting, setRewriting] = useState("");
-  const [rewriteBox, setRewriteBox] = useState<{ original: string; result: string } | null>(null);
+  // P1-2(审查): rewriteBox 带发起时选区 [start,end) 与 docId — 防首现替换错位/跨文档污染
+  const [rewriteBox, setRewriteBox] = useState<{ original: string; result: string; start?: number; end?: number; docId?: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checkMode, setCheckMode] = useState("logic"); // P-C: 闭源 4 检查模式
@@ -186,7 +187,21 @@ export function EditorView() {
   const openDoc = async (id: string) => {
     setBusy(true); setErr("");
     try {
-      const r = await j<{ document: { title: string; content: string; word_count: number; locked_by: string } }>(`/api/editor/v1/documents/${id}`);
+      // P2-3(审查): 切文档先释放旧文档锁(协作方不再等 5 分钟锁过期)
+      if (curIdRef.current && curIdRef.current !== id) {
+        void j(`/api/editor/v1/documents/${curIdRef.current}/unlock`, { method: "POST", body: "{}" }).catch(() => {});
+        if (heartbeatTimer.current) { clearInterval(heartbeatTimer.current); heartbeatTimer.current = null; }
+      }
+      const r = await j<{ document: { title: string; content: string; word_count: number; locked_by: string; content_hash?: string } }>(`/api/editor/v1/documents/${id}`);
+      // P0-1A(审查): 乐观锁基准 = 打开时服务端内容的 hash, 存 ref 供保存时比对
+      if (r.document.content_hash) {
+        let h = 0x811c9dc5;
+        const str = r.document.content;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+        lastSyncedHashRef.current = h.toString(16);
+      } else {
+        lastSyncedHashRef.current = "";
+      }
       setCurId(id); setTitle(r.document.title); setContent(r.document.content);
       setWordCount(r.document.word_count); setLockedBy(r.document.locked_by);
       setRewriteBox(null); setCheckResult(null); setChartArt(null);
@@ -198,7 +213,14 @@ export function EditorView() {
       heartbeatTimer.current = setInterval(() => {
         if (curIdRef.current) void j(`/api/editor/v1/documents/${curIdRef.current}/lock`, { method: "POST", body: "{}" }).catch(() => {});
       }, 30_000);
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) {
+      // P3-1(审查): 失效文档 id 清理(防冷启动 404 横幅重复)
+      try {
+        const cur = localStorage.getItem("editor.activeDocumentId");
+        if (cur === id) localStorage.removeItem("editor.activeDocumentId");
+      } catch { /* 忽略 */ }
+      setErr((e as Error).message);
+    } finally { setBusy(false); }
   };
 
   // 新建文档弹层(闭源 editor: 标题 input + 取消/创建 自绘弹层, 弃 window.prompt)
@@ -268,22 +290,28 @@ export function EditorView() {
     } catch (e) { setErr((e as Error).message); } finally { setExpBusy(false); }
   };
 
+  // P0-1A(审查): 乐观锁基准 = 最近一次与服务器同步的内容 hash(非待发内容!)
+  const lastSyncedHashRef = useRef("");
   const saveNow = async (payload?: { title?: string; content?: string }) => {
     if (!curId) return;
     setSaving(true);
     try {
-      const body = payload ?? { title, content };
-      // A1(闭源 content_hash 乐观锁): 带当前内容 FNV hash, 后端与他窗口版本对比,
-      // 冲突 409 → 提示刷新(不覆盖他窗口内容)
+      const body = { ...(payload ?? { title, content }) };
+      // A1(闭源 content_hash 乐观锁): expected = 上次同步内容的 hash
+      // (后端语义: 服务端当前 hash ≠ expected 且内容不同 → 他窗口已改 → 409)
       if (body.content !== undefined) {
-        const h = (body as { content?: string }).content ?? "";
-        let hv = 0x811c9dc5;
-        for (let i = 0; i < h.length; i++) { hv ^= h.charCodeAt(i); hv = (hv * 0x01000193) >>> 0; }
-        (body as { expectedContentHash?: string }).expectedContentHash = hv.toString(16);
+        (body as { expectedContentHash?: string }).expectedContentHash = lastSyncedHashRef.current;
       }
       const r = await j<{ wordCount: number }>(`/api/editor/v1/documents/${curId}`, {
         method: "PUT", body: JSON.stringify(body),
       });
+      // 保存成功 → 基准更新为刚保存的内容(若有 content)
+      if (body.content !== undefined) {
+        const h = body.content;
+        let hv = 0x811c9dc5;
+        for (let i = 0; i < h.length; i++) { hv ^= h.charCodeAt(i); hv = (hv * 0x01000193) >>> 0; }
+        lastSyncedHashRef.current = hv.toString(16);
+      }
       setWordCount(r.wordCount);
     } catch (e) {
       const msg = (e as Error).message;
@@ -298,9 +326,11 @@ export function EditorView() {
     setContent(v);
     setWordCount(v.replace(/\s/g, "").length);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    // 传最新值快照, 防闭包旧值(Bugfix T1: 此前防抖回调读渲染期 content, 新输入永不落库)
+    // P2-1(审查): 防抖快照只带 content(title 走 blur 保存, 防旧标题回退新标题)
     const snap = { title, content: v };
-    saveTimer.current = setTimeout(() => void saveNow(snap), 1200); // A2: 自动保存防抖(闭源 1200ms)
+    saveTimer.current = setTimeout(() => {
+      void saveNow({ content: snap.content }); // title 不入快照 — blur 保存负责
+    }, 1200); // A2: 自动保存防抖(闭源 1200ms)
   };
 
   const removeDoc = async (id: string) => {
@@ -323,11 +353,20 @@ export function EditorView() {
   const doRewrite = async (mode: string) => {
     const sel = selText || grabSelection();
     if (!sel) { setErr("请先在正文中选中一段文字, 再选择改写方式"); return; }
+    const ta0 = taRef.current;
+    const selStart = ta0 ? ta0.selectionStart : -1;
+    const selEnd = ta0 ? ta0.selectionEnd : -1;
+    const reqDoc = curId ?? "";
     setRewriting(mode); setErr("");
     try {
       // R6: 统一 AI job
       const r = await runAiJob<{ content: string }>({ action: "rewrite", mode, text: sel, document_id: curId });
-      setRewriteBox({ original: sel, result: r.content });
+      // P1-1(审查): 用户已切到别的文档 → 丢弃结果不注入(防跨文档污染)
+      if (curIdRef.current !== reqDoc) {
+        setErr("改写完成但你已切换到其他文档 — 结果未注入(回原文档可重试)");
+        return;
+      }
+      setRewriteBox({ original: sel, result: r.content, start: selStart, end: selEnd, docId: reqDoc });
     } catch (e) { setErr((e as Error).message); } finally { setRewriting(""); }
   };
 
@@ -335,11 +374,25 @@ export function EditorView() {
     if (!rewriteBox || !taRef.current) return;
     const ta = taRef.current;
     const s = ta.value;
-    const start = s.indexOf(rewriteBox.original);
+    // P1-2(审查): 优先按原选区位置切片替换(非首现); 校验区间文本仍等于原文才替换
+    let start = -1;
+    if (typeof rewriteBox.start === "number" && typeof rewriteBox.end === "number"
+      && rewriteBox.start >= 0 && rewriteBox.end <= s.length) {
+      const seg = s.slice(rewriteBox.start, rewriteBox.end);
+      if (seg.trim() === rewriteBox.original.trim()) { start = rewriteBox.start; }
+    }
+    if (start < 0) {
+      // 选区已不在(用户改了) → 找唯一匹配兜底; 多处匹配不替换(防错位)
+      const first = s.indexOf(rewriteBox.original);
+      const second = first >= 0 ? s.indexOf(rewriteBox.original, first + 1) : -1;
+      if (first >= 0 && second < 0) start = first;
+    }
     if (start >= 0) {
       const next = s.slice(0, start) + rewriteBox.result + s.slice(start + rewriteBox.original.length);
       onContentChange(next);
       flash("已替换改写结果");
+    } else {
+      setErr("原文已变化/出现多处, 未自动替换 — 请手动粘贴改写结果");
     }
     setRewriteBox(null);
   };

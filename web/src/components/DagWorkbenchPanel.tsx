@@ -103,6 +103,9 @@ export function DagWorkbenchPanel() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [canvasVer, setCanvasVer] = useState(1);
+  // 审查 P1-2: canvasVerRef 同步最新版本(密集编辑时防陈旧闭包 409 丢保存)
+  const canvasVerRef = useRef(1);
+  canvasVerRef.current = canvasVer;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [mode, setMode] = useState<"list" | "work" | "input">("list");
@@ -260,6 +263,26 @@ export function DagWorkbenchPanel() {
   };
 
   // 画布变更(自动保存, 乐观锁 2s 防抖)
+  // 审查 P1-2: 409 时用响应 currentVersion 自动重试一次(密集编辑不再丢保存)
+  // j() 封装丢弃 409 body 的 currentVersion → 用裸 fetch 解析
+  const putCanvasOnce = async (n: Node[], e: Edge[], expected: number): Promise<{ ok: boolean; canvasVersion?: number; conflict?: boolean; currentVersion?: number; error?: string }> => {
+    const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+    try {
+      const resp = await fetch(`/api/research/projects/${cur!.id}/canvas`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ canvas: { nodes: n, edges: e }, expectedVersion: expected }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (resp.ok) return { ok: true, canvasVersion: (body as { canvasVersion?: number }).canvasVersion };
+      if (resp.status === 409) {
+        return { ok: false, conflict: true, currentVersion: (body as { currentVersion?: number }).currentVersion, error: (body as { error?: string }).error };
+      }
+      return { ok: false, error: (body as { error?: string }).error ?? `请求失败 ${resp.status}` };
+    } catch (e2) {
+      return { ok: false, error: (e2 as Error).message };
+    }
+  };
   const persistCanvas = useCallback((n: Node[], e: Edge[]) => {
     if (!cur) return;
     dirtyRef.current = true;
@@ -267,17 +290,17 @@ export function DagWorkbenchPanel() {
     loadTimer.current = setTimeout(async () => {
       if (!cur || !dirtyRef.current) return;
       dirtyRef.current = false;
-      try {
-        const r = await j<{ ok: boolean; canvasVersion?: number }>(`/api/research/projects/${cur.id}/canvas`, {
-          method: "PUT",
-          body: JSON.stringify({ canvas: { nodes: n, edges: e }, expectedVersion: canvasVer }),
-        });
-        setCanvasVer(r.canvasVersion ?? canvasVer);
-      } catch (e) {
-        setErr(`画布保存冲突/失败: ${(e as Error).message} (请刷新重载)`);
+      const expected = canvasVerRef.current;
+      const r = await putCanvasOnce(n, e, expected);
+      if (r.ok) { if (r.canvasVersion !== undefined) { canvasVerRef.current = r.canvasVersion; setCanvasVer(r.canvasVersion); } return; }
+      // 409 → 自动用服务器最新版本重试一次(内容基于最新画布, 无损)
+      if (r.conflict && r.currentVersion !== undefined) {
+        const r2 = await putCanvasOnce(n, e, r.currentVersion);
+        if (r2.ok) { if (r2.canvasVersion !== undefined) { canvasVerRef.current = r2.canvasVersion; setCanvasVer(r2.canvasVersion); } return; }
       }
+      setErr(`画布保存冲突/失败: ${(r as { error?: string }).error ?? "未知错误"} (请刷新重载)`);
     }, 2000);
-  }, [cur, canvasVer]);
+  }, [cur]);
 
   const onConnect = useCallback((conn: Connection) => {
     if (!cur) return;
@@ -585,7 +608,8 @@ export function DagWorkbenchPanel() {
                   }, 1500);
                 }
               }}
-              onEdgesChange={(ch) => { onEdgesChange(ch); if (ch.length) persistCanvas(nodesRef.current, edgesRef.current); }}
+              // 审查 P2-8: 仅 add/remove 边触发持久化(选择/悬浮是 UI 态不落库)
+              onEdgesChange={(ch) => { onEdgesChange(ch); if (ch.some((c) => c.type === "add" || c.type === "remove")) persistCanvas(nodesRef.current, edgesRef.current); }}
               onConnect={onConnect}
               onNodeDoubleClick={(_, n) => openNodePanel(n)}
               onPaneClick={() => { setSelNode(null); setNodePayload(null); }}
@@ -1007,13 +1031,22 @@ function RunningTasks({ projectId }: { projectId: string }) {
           { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         const d = await r.json().catch(() => ({ tasks: [] }));
         if (stop) return;
-        const list = (d.tasks ?? []).filter((t: { status: string }) => t.status !== "done");
-        // UI审计T4: 展开progress中的stage/current/total
-        setTasks(list.map((t: { progress?: { stage?: string; current?: number; total?: number; sections?: unknown } }) => t));
+        // E3 fix: 保留最近 2 条 done(灰显完成摘要) + 全部运行中任务
+        type RawTask = { id: string; jobKind: string; goal: string; status: string; progress?: { stage?: string; current?: number; total?: number }; result?: unknown };
+        const all = (d.tasks ?? []) as RawTask[];
+        const running = all.filter((t) => t.status !== "done");
+        const recentDone = all.filter((t) => t.status === "done").slice(0, 2).map((t) => {
+          // result 可能 {text} 或字符串 — 提取前 80 字摘要
+          const res = t.result as { text?: string } | string | null | undefined;
+          const txt = typeof res === "string" ? res : (res?.text ?? "");
+          return { ...t, resultText: txt.replace(/\s+/g, " ").trim().slice(0, 80) };
+        });
+        const list = [...running, ...recentDone];
+        setTasks(list);
         // 分级busy文案: 优先级 batch > section > material > analysis
         const prio = ["phase4_batch", "chapter_batch", "chapter_gen", "theory-generate", "table-generate", "literature-search", "analyze", "merge", "review", "revise"];
-        const active = list.find((t: { jobKind: string }) => prio.includes(t.jobKind));
-        setBusyMsg(active ? (JOB_LABELS[active.jobKind] ?? "当前操作处理中") : "");
+        const active = running.find((t) => prio.includes(t.jobKind));
+        setBusyMsg(active ? (JOB_LABELS[active.jobKind] ?? "当前操作处理中") : running.length ? "任务处理中" : "");
       } catch { /* 静默 */ }
     };
     void poll();
