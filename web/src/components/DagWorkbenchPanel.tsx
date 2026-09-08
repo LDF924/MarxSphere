@@ -58,8 +58,8 @@ function tokenOf() {
   return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
 }
 
-// ═══ 画布节点组件(闭源 AgentFlowNode 对齐: index 序号+module 徽标+progress 进度条+state) ═══
-function DAGNodeChip({ data, id }: { data: { label: string; type: string; status?: string; index?: number; progress?: number; state?: string; systemStart?: boolean; locked?: boolean; module?: string }; id?: string }) {
+// ═══ 画布节点组件(闭源 AgentFlowNode 对齐: index 序号+module 徽标+输入/输出 meta+progress+state) ═══
+function DAGNodeChip({ data, id }: { data: { label: string; type: string; status?: string; index?: number | string; progress?: number; state?: string; systemStart?: boolean; locked?: boolean; module?: string; input?: string; output?: string }; id?: string }) {
   const meta = NODE_META[data.type] ?? NODE_META.goal;
   const statusColor = data.status === "done" ? "bg-green-500/20 text-green-300 border-green-500/40"
     : data.status === "running" ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
@@ -67,15 +67,25 @@ function DAGNodeChip({ data, id }: { data: { label: string; type: string; status
     : "bg-slate-800/80 text-slate-200 border-slate-600/50";
   const state = data.state ?? "draft";
   return (
-    <div className={cn("w-48 rounded-lg border px-2.5 py-2 text-left shadow-lg backdrop-blur", statusColor, state === "locked" || data.locked ? "opacity-60" : "")}
+    <div className={cn("w-52 rounded-lg border px-2.5 py-2 text-left shadow-lg backdrop-blur", statusColor, state === "locked" || data.locked ? "opacity-60" : "")}
       style={{ borderLeft: `3px solid ${meta.color}` }}>
       <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: meta.color }}>
-        {/* R10(闭源 AgentFlowNode): index 序号 + module 徽标 */}
-        {typeof data.index === "number" && <span className="text-[10px] font-bold">{data.index}</span>}
-        {meta.icon}<span>{meta.label}</span>
+        {/* R10/R16(闭源 AgentFlowNode): index 序号 + module 徽标 */}
+        {(data.index !== undefined && data.index !== null) && <span className="text-[10px] font-bold">{data.index}</span>}
+        {data.module ? (
+          <span className="rounded bg-slate-600/30 px-1 py-px text-[8px] tracking-wide text-slate-400">{data.module}</span>
+        ) : (meta.icon)}
+        <span className="truncate">{meta.label}</span>
         {data.systemStart && <span className="ml-auto rounded bg-emerald-500/20 px-1 py-px text-[8px] text-emerald-300">起点</span>}
       </div>
       <div className="mt-1 truncate text-xs font-semibold">{data.label}</div>
+      {/* R16(闭源 node-meta): 输入/输出 双 meta 行 */}
+      {(data.input || data.output) && (
+        <div className="mt-1 space-y-0.5">
+          {data.input && <div className="flex items-center gap-1 text-[9px] text-slate-400"><span className="text-slate-500">输入</span><span className="truncate">{data.input}</span></div>}
+          {data.output && <div className="flex items-center gap-1 text-[9px] text-slate-400"><span className="text-slate-500">输出</span><span className="truncate">{data.output}</span></div>}
+        </div>
+      )}
       {/* R10: progress 进度条(闭源 width=progress%) */}
       {typeof data.progress === "number" && (
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-900/60">
@@ -96,6 +106,8 @@ export function DagWorkbenchPanel() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [mode, setMode] = useState<"list" | "work" | "input">("list");
+  // R16c: 新建项目自绘弹层(替代 window.prompt — 无头/自动化环境 prompt 卡死主线程)
+  const [askNewProject, setAskNewProject] = useState<{ template: "blank" | "five-stage"; title: string } | null>(null);
   const [nlInput, setNlInput] = useState("");
   const [nlBusy, setNlBusy] = useState(false);
   const [selNode, setSelNode] = useState<Node | null>(null);
@@ -413,11 +425,11 @@ export function DagWorkbenchPanel() {
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400">我的科研项目 ({projects.length})</span>
               <div className="flex gap-2">
-                <button disabled={busy} onClick={() => { const t = prompt("项目标题:"); if (t?.trim()) createProject(t.trim(), "blank"); }}
+                <button disabled={busy} onClick={() => setAskNewProject({ template: "blank", title: "" })}
                   className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50">
                   <Plus className="h-3 w-3" /> 空白画布
                 </button>
-                <button disabled={busy} onClick={() => { const t = prompt("论文主题:"); if (t?.trim()) createProject(t.trim(), "five-stage"); }}
+                <button disabled={busy} onClick={() => setAskNewProject({ template: "five-stage", title: "" })}
                   className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500 disabled:opacity-50">
                   <GitBranch className="h-3 w-3" /> 五阶段论文模板
                 </button>
@@ -722,6 +734,32 @@ export function DagWorkbenchPanel() {
           onBack={() => setShowFinalize(false)}
           onMsg={(m) => setErr(m)}
         />
+      )}
+
+      {/* 新建项目弹层(R16c: 替代 window.prompt, 自绘标题 input + 创建) */}
+      {askNewProject && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" onClick={() => setAskNewProject(null)}>
+          <div className="w-full max-w-sm rounded-xl border border-slate-600/60 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-1 text-sm font-semibold text-slate-100">
+              {askNewProject.template === "five-stage" ? "新建五阶段论文项目" : "新建空白项目"}
+            </p>
+            <p className="mb-3 text-[11px] text-slate-500">
+              {askNewProject.template === "five-stage" ? "论文主题 → 五阶段模板一键铺开(目标→样本→文献→数据→分析→图表→写作→审稿→交付)" : "自定义画布自由编排"}
+            </p>
+            <input
+              value={askNewProject.title}
+              onChange={(e) => setAskNewProject({ ...askNewProject, title: e.target.value })}
+              onKeyDown={(e) => { if (e.key === "Enter" && askNewProject.title.trim()) { const t = askNewProject.title.trim(); setAskNewProject(null); void createProject(t, askNewProject.template); } }}
+              autoFocus placeholder={askNewProject.template === "five-stage" ? "论文主题 (如: 数字经济与中小企业融资约束)" : "项目标题"}
+              className="w-full rounded-lg border border-slate-600/60 bg-slate-800 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500" />
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => setAskNewProject(null)} className="flex-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-700">取消</button>
+              <button disabled={busy || !askNewProject.title.trim()}
+                onClick={() => { const t = askNewProject.title.trim(); setAskNewProject(null); void createProject(t, askNewProject.template); }}
+                className="flex-1 rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-50">创建</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -7,9 +7,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpen, CheckCircle2, ClipboardList, FileDown, FileText, Gavel, Loader2,
-  PenLine, Printer, RefreshCw, ScrollText, Sparkles, Trash2,
+  PenLine, Plus, Printer, RefreshCw, ScrollText, Sparkles, Trash2,
 } from "lucide-react";
 import { readResume } from "./ResearchHistoryPanel";
+import { ConfirmDialog, type ConfirmSpec } from "./ConfirmDialog";
 
 interface ReviewJobLite {
   id: string; kind: string; title: string; status: string;
@@ -65,6 +66,8 @@ export function ReviewLabPanel() {
   const [partialJson, setPartialJson] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [result, setResult] = useState<ReviewResult | null>(null);
+  const [askNew, setAskNew] = useState<ConfirmSpec | null>(null); // 新建审稿确认层(闭源对齐)
+  const [askJournal, setAskJournal] = useState(false); // 手动新增期刊弹层开关
   const [curJob, setCurJob] = useState<string>("");
   // T3-3 原文对照: 稿件全文快照 + 报告子视图(report | diff)
   const [textSnap, setTextSnap] = useState<string>("");
@@ -285,6 +288,25 @@ export function ReviewLabPanel() {
   const delStandard = async (id: string) => { try { await j(`/api/review/standards/${id}`, { method: "DELETE" }); await loadAll(); } catch (e) { setErr((e as Error).message); } };
   const setDefault = async (id: string) => { try { await j(`/api/review/standards/${id}/default`, { method: "POST", body: JSON.stringify({ isDefault: true }) }); await loadAll(); } catch (e) { setErr((e as Error).message); } };
 
+  // 手动新增期刊(闭源 review/library "新增期刊" 弹层: 刊物名称+分类下拉7类+核心审稿要点"一行一条")
+  const [njName, setNjName] = useState("");
+  const [njLevel, setNjLevel] = useState("CSSCI");
+  const [njFocus, setNjFocus] = useState("");
+  const [njBusy, setNjBusy] = useState(false);
+  const LEVELS = ["CSSCI", "北大核心", "SCI", "SSCI", "学位论文", "普通期刊", "其他"];
+  const saveJournalManual = async () => {
+    if (!njName.trim()) { setErr("请填刊物名称"); return; }
+    setNjBusy(true); setErr("");
+    try {
+      const scope = njFocus.split("\n").map((l) => l.trim()).filter(Boolean).join(";");
+      await j("/api/review/journals", {
+        method: "POST",
+        body: JSON.stringify({ name: njName.trim(), level: njLevel, scope, submissionGuideText: njFocus }),
+      });
+      setAskJournal(false); setNjName(""); setNjFocus(""); await loadAll();
+    } catch (e) { setErr((e as Error).message); } finally { setNjBusy(false); }
+  };
+
   const statusColor = (s: string) =>
     s === "done" ? "bg-green-500/15 text-green-300" : s === "failed" ? "bg-red-500/15 text-red-300"
       : s === "cancelled" ? "bg-slate-500/15 text-slate-400" : "bg-amber-500/15 text-amber-300";
@@ -301,13 +323,61 @@ export function ReviewLabPanel() {
         <div className="flex gap-1 rounded-lg bg-slate-800/80 p-0.5">
           {([["new", "新建审稿", <PenLine key="i" className="h-3 w-3" />], ["jobs", "审稿记录", <ClipboardList key="i" className="h-3 w-3" />],
             ["journals", "期刊库", <BookOpen key="i" className="h-3 w-3" />], ["standards", "审核标准", <ScrollText key="i" className="h-3 w-3" />]] as Array<[Tab, string, React.ReactNode]>).map(([k, label, ic]) => (
-            <button key={k} onClick={() => setTab(k)}
+            <button key={k} onClick={() => {
+              // 新建审稿确认层(闭源: "开始新的审稿?当前审稿状态将清除。" — 已有报告/进行中任务时先确认)
+              if (k === "new" && tab !== "new" && (result || curJob)) {
+                setAskNew({ title: "新建审稿", desc: "开始新的审稿？当前审稿状态将清除。", confirmText: "确认", danger: false });
+                return;
+              }
+              setTab(k);
+            }}
               className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs", tab === k ? "bg-slate-600 text-white" : "text-slate-400 hover:text-slate-200")}>
               {ic}{label}
             </button>
           ))}
         </div>
       </div>
+
+      <ConfirmDialog spec={askNew} onDone={(ok) => { setAskNew(null); if (ok) { setResult(null); setCurJob(""); setTab("new"); } }} />
+      {askJournal && <div className="hidden" /> /* 新增期刊弹层渲染位 */}
+
+      {/* 新增期刊弹层(闭源 review/library: 刊物名称必填 + 分类下拉 7 类 + 核心审稿要点一行一条) */}
+      {askJournal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" onClick={() => setAskJournal(false)}>
+          <div className="w-full max-w-md rounded-xl border border-slate-600/60 bg-slate-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-semibold text-slate-100">新增期刊要求</p>
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-400">刊物名称 *</label>
+                  <input value={njName} onChange={(e) => setNjName(e.target.value)} placeholder="如: 中国社会科学"
+                    className="w-full rounded-lg border border-slate-600/60 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-500" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-400">分类 *</label>
+                  <select value={njLevel} onChange={(e) => setNjLevel(e.target.value)}
+                    className="w-full rounded-lg border border-slate-600/60 bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200">
+                    {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-400">核心审稿要点</label>
+                <textarea value={njFocus} onChange={(e) => setNjFocus(e.target.value)} rows={4}
+                  placeholder={"一行一条，AI 会自动识别字数、格式、风格等要素\n\n如:\n正文 8000-12000 字\n需有摘要与关键词\n实证方法须交代数据来源"}
+                  className="w-full resize-none rounded-lg border border-slate-600/60 bg-slate-800/70 px-2.5 py-2 text-xs text-slate-200 placeholder:text-slate-500" />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setAskJournal(false)} className="rounded-lg border border-slate-600/60 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">取消</button>
+              <button onClick={saveJournalManual} disabled={njBusy || !njName.trim()}
+                className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50">
+                {njBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {err && <div className="mb-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{err}</div>}
 
@@ -678,7 +748,14 @@ export function ReviewLabPanel() {
       {tab === "journals" && (
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_340px] gap-3">
           <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-700/60 bg-slate-900/50 p-3">
-            <p className="mb-2 text-xs font-semibold text-slate-300">期刊库 ({journals.length})</p>
+            <p className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-300">
+              <span>期刊库 ({journals.length})</span>
+              {/* 闭源 review/library: 新增期刊(名称+分类下拉+核心审稿要点一行一条) */}
+              <button onClick={() => setAskJournal(true)} data-control="review_add_journal"
+                className="flex items-center gap-1 rounded-md bg-purple-600/20 px-2 py-0.5 text-[10px] font-medium text-purple-300 hover:bg-purple-600/30">
+                <Plus className="h-3 w-3" />新增期刊
+              </button>
+            </p>
             {/* W11(闭源审稿库实拍): 分类 chips 过滤(全部/CSSCI/北大核心/SCI/SSCI/学位论文/普通期刊/其他) */}
             <div className="mb-2 flex flex-wrap gap-1">
               {["", "CSSCI", "北大核心", "SCI", "SSCI", "学位论文", "普通期刊", "其他"].map((c) => (

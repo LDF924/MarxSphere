@@ -454,23 +454,32 @@ export async function activateVersion(userId: string, projectId: string, version
 // ═══ DAG 模板(标准五阶段 → 画布节点+连线) ═══
 export function dagTemplateFiveStage(topic: string): CanvasState {
   const x0 = 60;
-  const stages: Array<{ type: CanvasNode["type"]; label: string }> = [
-    { type: "goal", label: "研究目标" },
-    { type: "object_sample", label: "对象/样本" },
-    { type: "literature", label: "文献证据" },
-    { type: "data_design", label: "数据与研究设计" },
-    { type: "analysis", label: "数据分析" },
-    { type: "chart", label: "图表产物" },
-    { type: "writing", label: "论文写作" },
-    { type: "review", label: "审稿修订" },
-    { type: "deliverable", label: "交付成果" },
-    { type: "end", label: "任务终点" },
+  // R10/R16 对齐(闭源 AgentFlowNode): index 序号 + module 徽标 + 输入/输出 meta + systemStart
+  const stages: Array<{ type: CanvasNode["type"]; label: string; module: string; input: string; output: string }> = [
+    { type: "goal", label: "研究目标", module: "SYSTEM", input: "用户目标", output: "研究框架" },
+    { type: "object_sample", label: "对象/样本", module: "STANDARD WORKFLOW", input: "框架", output: "样本方案" },
+    { type: "literature", label: "文献证据", module: "STANDARD WORKFLOW", input: "主题", output: "文献清单" },
+    { type: "data_design", label: "数据与研究设计", module: "STANDARD WORKFLOW", input: "变量", output: "数据方案" },
+    { type: "analysis", label: "数据分析", module: "STANDARD WORKFLOW", input: "数据", output: "实证结果" },
+    { type: "chart", label: "图表产物", module: "STANDARD WORKFLOW", input: "结果", output: "图表" },
+    { type: "writing", label: "论文写作", module: "STANDARD WORKFLOW", input: "素材", output: "章节草稿" },
+    { type: "review", label: "审稿修订", module: "STANDARD WORKFLOW", input: "草稿", output: "修改稿" },
+    { type: "deliverable", label: "交付成果", module: "STANDARD WORKFLOW", input: "修改稿", output: "论文终稿" },
+    { type: "end", label: "任务终点", module: "SYSTEM", input: "终稿", output: "交付" },
   ];
   const nodes: CanvasNode[] = stages.map((s, i) => ({
     id: `n_${i + 1}`,
     type: s.type,
     position: { x: x0, y: 60 + i * 96 },
-    data: { label: i === 0 ? `${s.label}·${topic}` : s.label, status: "idle" },
+    data: {
+      label: i === 0 ? `${s.label}·${topic}` : s.label,
+      status: "idle",
+      index: i === 0 ? "00" : String(i).padStart(2, "0"),
+      module: s.module,
+      input: s.input,
+      output: s.output,
+      systemStart: i === 0,
+    },
   }));
   const edges: CanvasEdge[] = nodes.slice(0, -1).map((n, i) => ({
     id: `e_${i + 1}`,
