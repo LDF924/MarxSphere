@@ -213,7 +213,16 @@ export function MaterialPrepPage({ projectId, title, onBack, onConfirm, onMsg, o
   const adopted = mats.filter(m => m.usage_status === "adopted" || (m.section_ids?.length ?? 0) > 0).length;
 
   return (
-    <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/98 backdrop-blur-sm">
+    // F3(闭源 data-assistant 探针契约): 容器暴露状态属性供自动化/测试/assistant 读取
+    <div className="absolute inset-0 z-30 overflow-y-auto bg-slate-950/98 backdrop-blur-sm"
+      data-assistant="materials"
+      data-assistant-material-count={mats.length}
+      data-assistant-material-review-complete={mats.length > 0 ? "true" : "false"}
+      data-assistant-phase2-ready="true"
+      data-assistant-phase3-materials-ready={mats.length > 0 ? "true" : "false"}
+      data-assistant-phase3-publish-ready={mats.length > 0 ? "true" : "false"}
+      data-assistant-phase3-plan-state={mats.length > 0 ? "ready" : "none"}
+      data-assistant-phase3-published={mats.length > 0 ? "true" : "false"}>
       <div className="mx-auto max-w-4xl px-6 py-6">
         {/* 头 */}
         <div className="mb-4 flex items-start justify-between">

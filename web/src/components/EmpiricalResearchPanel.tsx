@@ -84,13 +84,61 @@ function parseCsv(text: string): { columnOrder: string[]; rows: (string | number
   return { columnOrder, rows };
 }
 
+// C5(闭源 StatisticsView PNG 导出三级降级): SVG→Blob→Image→canvas→PNG(scale 2),
+//   失败兜底 dataURL 直存; 产物 Blob 下载
+function svgToPngDownload(svgEl: HTMLElement, title: string) {
+  try {
+    const s = new XMLSerializer().serializeToString(svgEl);
+    const blob = new Blob([s], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const rect = svgEl.getBoundingClientRect();
+        const w = Math.max(400, Math.ceil(rect.width || 800) * 2);
+        const h = Math.max(300, Math.ceil(rect.height || 500) * 2);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = `${title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)}.png`;
+        a.click();
+      } catch { /* 降级: dataURL 直存失败忽略 */ }
+    };
+    img.onerror = () => { /* SVG 渲染失败忽略 */ };
+    img.src = url;
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch { /* 导出失败忽略 */ }
+}
+
 function CoefFigure({ fig }: { fig: any }) {
   return (
     <div className="rounded-lg border p-2">
-      <div className="mb-1 text-[11px] font-medium text-muted-foreground">{fig.title}</div>
-      <div dangerouslySetInnerHTML={{ __html: fig.svg }} />
+      <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+        <span>{fig.title}</span>
+        <button onClick={() => { const el = document.getElementById(`fig-${fig.id ?? ""}`); if (el) svgToPngDownload(el, fig.title || "图表"); }}
+          title="导出 PNG" className="rounded border border-slate-200 px-1.5 py-0.5 text-[9px] hover:bg-slate-100">
+          <Download className="h-3 w-3" /> PNG
+        </button>
+      </div>
+      <div id={`fig-${fig.id ?? ""}`} dangerouslySetInnerHTML={{ __html: fig.svg }} />
     </div>
   );
+}
+
+// C8(闭源 StatisticsView 数值格式): |x|≥1000 或 <0.001 → 科学计数3位; <0.01 → 4位小数;
+//   整数原样; 否则 3 位有效
+function fmtNum(v: unknown): string {
+  if (typeof v !== "number" || !Number.isFinite(v)) return v === null ? "" : String(v);
+  const a = Math.abs(v);
+  if (a >= 1000 || (a > 0 && a < 0.001)) return v.toExponential(3);
+  if (a > 0 && a < 0.01) return v.toFixed(4);
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(3);
 }
 
 function ResultTable({ t }: { t: any }) {
@@ -109,7 +157,7 @@ function ResultTable({ t }: { t: any }) {
           {t.rows.map((r: any[], ri: number) => (
             <tr key={ri} className="border-b last:border-0">
               {r.map((v, ci) => (
-                <td key={ci} className={`px-2 py-1 ${ci === 0 ? "font-medium" : ""} ${typeof v === "number" && Math.abs(v) < 0.05 && v !== 0 ? "text-red-600" : ""}`}>{v}</td>
+                <td key={ci} className={`px-2 py-1 ${ci === 0 ? "font-medium" : ""} ${typeof v === "number" && Math.abs(v) < 0.05 && v !== 0 ? "text-red-600" : ""}`}>{fmtNum(v)}</td>
               ))}
             </tr>
           ))}

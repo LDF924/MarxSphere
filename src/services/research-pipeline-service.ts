@@ -17,7 +17,7 @@ export interface CanvasNode {
   position: { x: number; y: number };
   data: Record<string, unknown>; // { label, status?, payload? }
 }
-export interface CanvasEdge { id: string; source: string; target: string; }
+export interface CanvasEdge { id: string; source: string; target: string; data?: Record<string, unknown>; }
 export interface CanvasState { nodes: CanvasNode[]; edges: CanvasEdge[]; }
 
 export interface ResearchTask {
@@ -481,10 +481,12 @@ export function dagTemplateFiveStage(topic: string): CanvasState {
       systemStart: i === 0,
     },
   }));
+  // E2(闭源 agent-edge- 自动补边): 模板边带 kind:auto(前端渲染为绿虚线), 与用户手动边(蓝实线)区分
   const edges: CanvasEdge[] = nodes.slice(0, -1).map((n, i) => ({
     id: `e_${i + 1}`,
     source: n.id,
     target: nodes[i + 1].id,
+    data: { kind: "auto" },
   }));
   return { nodes, edges };
 }
@@ -517,10 +519,20 @@ export async function nlToDag(userId: string, projectId: string, description: st
 }
 
 // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate → {analysis, questions[5]带id/category/guidance/importance}) ═══
+// E4(闭源 2 轮集中补齐): answers(已答上下文)传入 → 第二轮只追问仍模糊的点(≤3 问)
 export async function generateClarify(input: {
   title: string; outline?: string; requirements?: string; researchMethod?: string;
   totalWordCount?: number; sampleContent?: string;
+  answers?: Array<{ question: string; answer: string }>;
+  round?: number;
 }): Promise<{ analysis: string; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string }> }> {
+  const round = input.round ?? 0;
+  const answersBlock = Array.isArray(input.answers) && input.answers.length
+    ? input.answers.map((a) => `- Q: ${a.question}\n  已答: ${a.answer?.slice(0, 300) || "未答"}`).join("\n")
+    : "";
+  const roundPrompt = round >= 1
+    ? `这是第 2 轮追问(集中补齐): 基于以上已答内容, 只输出仍模糊的关键点(≤3 问, 不重复已明确项)。若已足够则 questions 返回 []。`
+    : `要求: 5个问题, 每个带可操作的 guidance(含举例), category 按 scope/method/theory/innovation/data 分类。`;
   const ans = await llmJson(`你是科研需求澄清专家。分析用户研究方案, 找出关键模糊点, 输出 JSON:
 {"analysis":"总体分析(150字内: 已明确什么+存在哪些关键模糊点)","questions":[{"id":"q1","category":"scope|method|theory|innovation|data","question":"澄清问题(一句话)","guidance":"引导用户回答的具体方向(50-80字, 含示例)","importance":"高|中|低"}]}
 
@@ -529,9 +541,10 @@ export async function generateClarify(input: {
 ${input.researchMethod ? `【方法】${input.researchMethod}` : ""}
 ${input.requirements ? `【已有要求】${input.requirements.slice(0, 500)}` : ""}
 ${input.totalWordCount ? `【目标字数】${input.totalWordCount}` : ""}
+${answersBlock ? `\n【第一轮问答记录】\n${answersBlock}` : ""}
 
-要求: 5个问题, 每个带可操作的 guidance(含举例), category 按 scope/method/theory/innovation/data 分类。`, undefined, 4000);
-  const questions = Array.isArray(ans?.questions) ? ans.questions.slice(0, 5) : [];
+${roundPrompt}`, undefined, 4000);
+  const questions = Array.isArray(ans?.questions) ? ans.questions.slice(0, round >= 1 ? 3 : 5) : [];
   return {
     analysis: String(ans?.analysis ?? "已分析研究方案, 见以下澄清问题。"),
     questions: questions.map((q: Record<string, unknown>, i: number) => ({

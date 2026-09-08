@@ -124,10 +124,120 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
   return { url, key, model };
 }
 
-/** 解析 LLM 返回中的 JSON（剥 code fence） */
+/** 解析 LLM 返回中的 JSON — 五级容错(对齐闭源 ReviewView jsonrepair 语义)
+ * L1 直解 / L2 剥 code fence / L3 括号平衡修复 / L4 常见字符串损坏修复 / L5 截断回溯+外圈提取
+ */
 export function parseLlmJson(text: string): any {
-  const cleaned = text.replace(/^```(?:json)?\s*\n?|```\s*$/g, "").trim();
-  try { return JSON.parse(cleaned); } catch { return null; }
+  const cleaned = String(text ?? "").replace(/^```(?:json)?\s*\n?|```\s*$/g, "").trim();
+  if (!cleaned) return null;
+  // L1+L2: 直解与剥围栏后解
+  try { return JSON.parse(cleaned); } catch { /* fallthrough */ }
+  // L3: 括号平衡修复 — 截到最后一个可闭合的 } 或 ], 补全缺失的右括号
+  const fixes = [fixBrackets(cleaned), stripToOuterJson(cleaned)];
+  for (const f of fixes) {
+    if (!f) continue;
+    try { const v = JSON.parse(f); if (v !== null && typeof v === "object") return v; } catch { /* next */ }
+  }
+  // L4: 常见字符串损坏(未转义引号/换行/尾逗号)
+  const repaired = repairCommonJson(cleaned);
+  try {
+    const v = JSON.parse(repaired);
+    if (v !== null && typeof v === "object") return v;
+  } catch { /* fallthrough */ }
+  // L5: 截断回溯 — 值中途截断时, 从尾往前退到最近一个完整闭合的 JSON 结构点再补括号
+  const back = backtrackTruncated(cleaned);
+  if (back) {
+    try { const v = JSON.parse(back); if (v !== null && typeof v === "object") return v; } catch { /* next */ }
+  }
+  return null;
+}
+
+function backtrackTruncated(s: string): string | null {
+  // 找到最后一个可独立闭合的 }/] 位置往前逐段试(最多回退 12 个结构点)
+  const closeIdxs: number[] = [];
+  let inStr = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"' && (i === 0 || s[i - 1] !== "\\")) inStr = !inStr;
+    else if (!inStr && (c === "}" || c === "]")) closeIdxs.push(i + 1);
+  }
+  for (let k = closeIdxs.length - 1; k >= Math.max(0, closeIdxs.length - 12); k--) {
+    const end = closeIdxs[k];
+    // 跳过明显短于 4 字符的尾段
+    if (s.length - end > 40) continue;
+    const head = s.slice(0, end);
+    const fb = fixBrackets(head);
+    if (!fb) continue;
+    try { const v = JSON.parse(fb); if (v !== null && typeof v === "object") return fb; } catch { /* try shorter */ }
+  }
+  return null;
+}
+
+function fixBrackets(s: string): string | null {
+  // 从第一个 { 或 [ 起截取; 若右括号数不足(流截断), 补全未闭合栈
+  let depth = 0; let started = false; let end = -1;
+  const pairs: Record<string, string> = { "{": "}", "[": "]", '"': '"' };
+  const stack: string[] = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (!started) { if (c === "{" || c === "[") { started = true; stack.push(c); depth = 1; } continue; }
+    if (c === '"') { i = skipString(s, i); continue; }
+    if (c === "{" || c === "[") { stack.push(c); depth++; }
+    else if (c === "}" || c === "]") {
+      const open = stack.pop();
+      if ((open === "{" && c === "}") || (open === "[" && c === "]")) depth--;
+      else return null; // 括号错配, 放弃本策略
+    }
+    if (depth === 0) { end = i + 1; break; }
+  }
+  if (!started) return null;
+  // 未闭合(流截断): 尾到字符串尽头, 补全栈内未闭合括号
+  const head = end === -1 ? s : s.slice(0, end);
+  // 丢弃字符串尾部残缺内容(停在引号内/值中途会导致解析失败 — 截断点回溯到最后的完整值)
+  const tail = stack.slice().reverse().map((o) => pairs[o]).join("");
+  return head + tail;
+}
+
+function skipString(s: string, i: number): number {
+  let j = i + 1;
+  while (j < s.length) {
+    if (s[j] === "\\") { j += 2; continue; }
+    if (s[j] === '"') return j;
+    j++;
+  }
+  return s.length - 1;
+}
+
+function stripToOuterJson(s: string): string | null {
+  // 文本中找第一个 { / [ 和与之配对的最后 } / ](朴素计数), 截中间
+  let start = -1;
+  for (let i = 0; i < s.length; i++) { if (s[i] === "{" || s[i] === "[") { start = i; break; } }
+  if (start === -1) return null;
+  let depth = 0;
+  const openC = s[start], closeC = openC === "{" ? "}" : "]";
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"') { i = skipString(s, i); continue; }
+    if (c === openC) depth++;
+    else if (c === closeC) { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return depth > 0 ? fixBrackets(s.slice(start)) : null;
+}
+
+function repairCommonJson(s: string): string {
+  // 尾逗号删除 + 未转义控制字符清理(保留中文)
+  let r = s.replace(/,\s*([}\]])/g, "$1");
+  r = r.replace(/[ --]/g, " ");
+  // 引号内裸换行 → \\n
+  let inStr = false;
+  let out = "";
+  for (let i = 0; i < r.length; i++) {
+    const c = r[i];
+    if (c === '"' && (i === 0 || r[i - 1] !== "\\")) { inStr = !inStr; out += c; continue; }
+    if (inStr && c === "\n") { out += "\\n"; continue; }
+    out += c;
+  }
+  return out;
 }
 
 /** 架构E2: 流式响应读取 — SSE 逐块解析, 回调 onStream(delta) / onReasoning(reasoning), 返回聚合 text */

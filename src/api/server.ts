@@ -5355,7 +5355,13 @@ export function buildHttpServer() {
     if (body.format === "csv") {
       return reply.type("text/csv").send(empiricalService.csvTable(body.table));
     }
-    return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "format 需为 latex 或 csv" } });
+    // C4(闭源三线表 Word 导出): python-docx 生成 booktabs 风格 docx
+    if (body.format === "docx") {
+      const r = await empiricalService.exportTableDocx(body.table);
+      if (!r.ok || !r.base64) return reply.code(500).send({ error: { code: "EXPORT_FAILED", message: r.error ?? "docx 生成失败" } });
+      return { ok: true, base64: r.base64, fileName: r.fileName };
+    }
+    return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "format 需为 latex/csv/docx" } });
   });
 
   // 存为知识页（联动 SAG 知识库）
@@ -9708,6 +9714,53 @@ except Exception as e:
     sse.end();
   });
 
+  // D4(闭源 VizView job 体系): 中长绘图任务 — 建 job(后台执行)→ SSE 观察(可断线重连重放)
+  app.post("/api/viz/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { sessionId?: string; message?: string; csv?: string; columnOrder?: string[]; spec?: Record<string, unknown> };
+    if (!body?.sessionId || !body?.message?.trim()) return reply.code(400).send({ error: "需要 sessionId 与 message" });
+    const vizJobService = await import("../services/viz-job-service.js");
+    try {
+      const r = await vizJobService.createVizJob(user.id, body.sessionId, body.message.trim(), {
+        csv: body.csv, columnOrder: body.columnOrder, spec: body.spec,
+      });
+      return r;
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      return reply.code((e as { status?: number }).status ?? 500).send({ error: code === "NOT_FOUND" ? "会话不存在" : String((e as Error).message) });
+    }
+  });
+  app.get("/api/viz/jobs/:jobId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const vizJobService = await import("../services/viz-job-service.js");
+    const job = await vizJobService.getVizJob(user.id, jobId);
+    if (!job) return reply.code(404).send({ error: "任务不存在" });
+    return { job };
+  });
+  app.get("/api/viz/jobs/:jobId/stream", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const q = request.query as { after?: string };
+    const vizJobService = await import("../services/viz-job-service.js");
+    const sse = attachSse(reply);
+    try { await vizJobService.streamVizJob(user.id, jobId, sse, Number(q.after) || 0); }
+    catch { sse.error({ code: "STREAM_FAILED", userMessage: "观察流失败", canRetry: true }); sse.end(); }
+  });
+  app.post("/api/viz/jobs/:jobId/cancel", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const vizJobService = await import("../services/viz-job-service.js");
+    return { ok: await vizJobService.cancelVizJob(user.id, jobId) };
+  });
+  app.post("/api/viz/jobs/:jobId/retry", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const vizJobService = await import("../services/viz-job-service.js");
+    const r = await vizJobService.retryVizJob(user.id, jobId);
+    return r ?? reply.code(404).send({ error: "任务不存在或不可重试" });
+  });
+
   app.get("/api/viz/sessions/:sessionId/messages", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { sessionId } = request.params as { sessionId: string };
@@ -9791,7 +9844,22 @@ except Exception as e:
   app.put("/api/editor/v1/documents/:docId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { docId } = request.params as { docId: string };
-    const body = request.body as { title?: string; content?: string; tags?: string[] };
+    // A1(闭源 content_hash 乐观锁): 前端带 expectedContentHash → 与当前版本 hash 对比,
+    // 不一致 = 他窗口已改 → 409 冲突(前端提示刷新)
+    const body = request.body as { title?: string; content?: string; tags?: string[]; expectedContentHash?: string };
+    if (body.expectedContentHash && body.content !== undefined) {
+      const cur = await pool.query(
+        `select v.content_hash, v.content from doc2_versions v
+           join documents_v2 d on d.current_version_id = v.id
+          where d.id=$1 and d.user_id=$2`,
+        [docId, user.id]
+      );
+      const curHash = cur.rows[0]?.content_hash ?? null;
+      const curContent = String(cur.rows[0]?.content ?? "");
+      if (curHash && curHash !== body.expectedContentHash && curContent !== body.content) {
+        return reply.code(409).send({ error: "文档已在其他窗口被修改, 请刷新后继续", code: "DOC_CONFLICT" });
+      }
+    }
     const r = await editorService.saveDoc(user.id, docId, body);
     if (!r) return reply.code(404).send({ error: "文档不存在" });
     return { ok: true, wordCount: r.word_count, currentVersion: r.currentVersion ?? null };
@@ -10448,9 +10516,10 @@ except Exception as e:
   });
 
   // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate) ═══
+  // E4(闭源 2 轮集中补齐): 透传 round/answers — 前端第一轮答完可再发起第二轮追问
   app.post("/api/clarify/generate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { title?: string; outline?: string; requirements?: string; researchMethod?: string; totalWordCount?: number; sampleContent?: string };
+    const body = request.body as { title?: string; outline?: string; requirements?: string; researchMethod?: string; totalWordCount?: number; sampleContent?: string; round?: number; answers?: Array<{ question: string; answer: string }> };
     if (!body?.title?.trim()) return reply.code(400).send({ error: "缺少 title" });
     return { success: true, data: await researchPipeline.generateClarify(body as never) };
   });

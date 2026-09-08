@@ -20,6 +20,22 @@ interface TaskRecord {
   createdAt: number;
   result?: unknown;
   error?: string;
+  userMessage?: string;
+}
+
+// C3(闭源 StatisticsView it() 翻译表): Python 异常串 → 用户可读中文
+export function translatePyError(raw: string): string {
+  const s = String(raw ?? "");
+  const has = (...re: RegExp[]) => re.some((r) => r.test(s));
+  if (has(/unsupported operand/i, /can't multiply|int.*str|str.*int/i, /not supported between/i)) return "数据类型不匹配: 分析方法与所选变量的数据类型不符(如对文本列做了数值运算)";
+  if (has(/shape|dimension|broadcast|reshape|size mismatch|align/i)) return "维度错误: 变量长度或矩阵维度不一致, 请检查数据行列";
+  if (has(/KeyError|column.*not|no.*column|index.*out of/i, /NameError/i)) return "变量名不存在: 所选变量在数据中找不到(可能被删或拼写不同), 请重新选择";
+  if (has(/DataFrame|attribute|'[a-z_]+' object has no/i)) return "后端计算异常: 数据处理环节出错, 请检查数据格式(表头/数值列)";
+  if (has(/ValueError|could not convert|invalid literal/i)) return "非数字内容: 变量含无法转为数字的文本/空值, 请先清洗数据";
+  if (has(/NaN|null|missing|empty|no data|all.*na/i)) return "缺失值过多: 数据包含大量缺失/空值, 建议先处理缺失再分析";
+  if (has(/HTTP \d+/i)) return "服务器错误: 后端服务异常, 请稍后重试";
+  if (has(/Traceback|Error|Exception/i)) return `分析失败: ${s.split("\n").filter((l) => /Error|Exception/.test(l)).pop()?.trim().slice(0, 150) ?? "Python 执行出错"}`;
+  return "";
 }
 
 const tasks = new Map<string, TaskRecord>();
@@ -154,7 +170,7 @@ export async function spawnPythonTask(
 
   // 异步 spawn（不阻塞主线程; 结果由轮询读取; stderr 完整保留供诊断）
   // V413: 独立脚本按 scriptName 通用分发（empirical_runner.py 委托模式 + metaanalysis/simulate/figures）
-  const runnerPath = ["empirical_metaanalysis.py", "empirical_simulate.py", "empirical_figures.py", "empirical_report_export.py"].includes(scriptName)
+  const runnerPath = ["empirical_metaanalysis.py", "empirical_simulate.py", "empirical_figures.py", "empirical_report_export.py", "empirical_table_docx.py"].includes(scriptName)
     ? path.join(process.env.SAG_ROOT || process.cwd(), "scripts", scriptName)
     : RUNNER;
   execFile(
@@ -192,6 +208,8 @@ export async function spawnPythonTask(
         rec.error = error
           ? `${String(error.message).slice(0, 300)}${stderrTail ? `\n${stderrTail}` : ""}`
           : "执行失败(无结果文件)";
+        // C3(闭源 StatisticsView Python 异常→中文翻译表): 附加用户可读提示
+        rec.userMessage = translatePyError(String(stderr ?? "") + "\n" + String(error?.message ?? ""));
         cleanup();
       };
       const cleanup = () => {
@@ -205,10 +223,10 @@ export async function spawnPythonTask(
 }
 
 /** 查询任务结果 */
-export async function getEmpiricalResult(taskId: string): Promise<{ status: string; result?: unknown; error?: string }> {
+export async function getEmpiricalResult(taskId: string): Promise<{ status: string; result?: unknown; error?: string; userMessage?: string }> {
   const t = tasks.get(taskId);
   if (!t) return { status: "not_found" };
-  return { status: t.status, result: t.result, error: t.error };
+  return { status: t.status, result: t.result, error: t.error, userMessage: t.userMessage };
 }
 
 /** venv 安装状态自检（前端徽标） */
@@ -557,4 +575,32 @@ export async function exportProjectReport(input: {
   });
 }
 
-export const empiricalService = { runEmpirical, spawnPythonTask, getEmpiricalResult, getEmpiricalMeta, saveEmpiricalResult, listEmpiricalHistory, getEmpiricalHistory, deleteEmpiricalHistory, latexTable, csvTable, saveAsKnowledgePage, listEmpiricalDatasets, fetchEmpiricalDataset, simulateQuestionnaireData, generateEmpiricalFigures, exportProjectReport };
+/** C4(闭源三线表 Word 导出): 同步 execFile 跑 empirical_table_docx.py → 读 table.docx → base64 */
+export async function exportTableDocx(table: { title?: string; cols?: string[]; rows?: unknown[][]; notes?: string }): Promise<{ ok: boolean; base64?: string; fileName?: string; error?: string }> {
+  const taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "emp-table-"));
+  try {
+    const cols = (table.cols ?? []).map((c) => String(c).slice(0, 60));
+    const rows = (table.rows ?? []).slice(0, 200).map((r) => (r ?? []).map((v) => String(v ?? "").slice(0, 400)));
+    const clean = cols.filter((c) => c && /^[一-龥A-Za-z0-9_%()\-./()\s:：]+$/.test(c));
+    if (!clean.length || clean.length !== cols.length) {
+      // 表头含异常字符仍放行(仅截断), 不因特殊字符阻断导出
+    }
+    const input = { table: { title: String(table.title ?? "分析结果").slice(0, 200), cols, rows, notes: String(table.notes ?? "").slice(0, 500) } };
+    fs.writeFileSync(path.join(taskDir, "input.json"), JSON.stringify(input), "utf8");
+    const py = path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "empirical_table_docx.py");
+    await new Promise<void>((resolve, reject) => {
+      execFile(PYTHON, [py, taskDir], { timeout: 60_000, windowsHide: true, cwd: process.env.SAG_ROOT || process.cwd() }, (err) => (err ? reject(new Error(String(err.message ?? err).slice(0, 200))) : resolve()));
+    });
+    const f = path.join(taskDir, "table.docx");
+    if (!fs.existsSync(f)) return { ok: false, error: "docx 未生成" };
+    const buf = fs.readFileSync(f);
+    const safeTitle = String(table.title ?? "表格").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+    return { ok: true, base64: buf.toString("base64"), fileName: `${safeTitle || "table"}.docx` };
+  } catch (e) {
+    return { ok: false, error: String(e instanceof Error ? e.message : e).slice(0, 300) };
+  } finally {
+    try { fs.rmSync(taskDir, { recursive: true, force: true }); } catch { /* 忽略 */ }
+  }
+}
+
+export const empiricalService = { runEmpirical, spawnPythonTask, getEmpiricalResult, getEmpiricalMeta, saveEmpiricalResult, listEmpiricalHistory, getEmpiricalHistory, deleteEmpiricalHistory, latexTable, csvTable, exportTableDocx, saveAsKnowledgePage, listEmpiricalDatasets, fetchEmpiricalDataset, simulateQuestionnaireData, generateEmpiricalFigures, exportProjectReport };

@@ -126,6 +126,31 @@ export function EditorView() {
   const [showChart, setShowChart] = useState(false);
   // UI审计T5: AI右侧常驻面板
   const [showAiPanel, setShowAiPanel] = useState(false);
+  // A6(闭源 ade-ai-panel-width): AI 面板宽度持久化(clamp 300-560) + 左缘拖拽调宽
+  const [aiPanelW, setAiPanelW] = useState<string>(() => { try { return localStorage.getItem("ade-ai-panel-width") || "340px"; } catch { return "340px"; } });
+  const aiPanelWRef = useRef(340);
+  useEffect(() => {
+    const m = aiPanelW.match(/(\d+)/);
+    aiPanelWRef.current = m ? Number(m[1]) : 340;
+  }, [aiPanelW]);
+  const onAiPanelDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = aiPanelWRef.current;
+    const onMove = (ev: PointerEvent) => {
+      // 拖动在 AI 面板左侧 → 面板宽 = 起始宽 - 位移
+      const w = Math.min(560, Math.max(300, startW - (ev.clientX - startX)));
+      aiPanelWRef.current = w;
+      setAiPanelW(`${w}px`);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      try { localStorage.setItem("ade-ai-panel-width", aiPanelWRef.current + "px"); } catch { /* 忽略 */ }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
   const [lockedBy, setLockedBy] = useState("");
   const [delAsk, setDelAsk] = useState<{ id: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,9 +174,12 @@ export function EditorView() {
   useEffect(() => { void loadDocs(); }, [loadDocs]);
 
   // 历史中心 deep-resume: 从历史记录 editor 区卡点击跳入 → 自动打开对应文档
+  // A3(闭源 editor.activeDocumentId): 最后打开文档 localStorage 持久化, 冷启动恢复
   useEffect(() => {
     const r = readResume("editor");
+    const lastId = (() => { try { return localStorage.getItem("editor.activeDocumentId"); } catch { return null; } })();
     if (r?.id) void openDoc(String(r.id));
+    else if (lastId && !curIdRef.current) void openDoc(lastId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -162,6 +190,7 @@ export function EditorView() {
       setCurId(id); setTitle(r.document.title); setContent(r.document.content);
       setWordCount(r.document.word_count); setLockedBy(r.document.locked_by);
       setRewriteBox(null); setCheckResult(null); setChartArt(null);
+      try { localStorage.setItem("editor.activeDocumentId", id); } catch { /* 忽略 */ }
       // 持锁 + 心跳(编辑会话; 每 30s 续, 5min 超时自动放)
       await j(`/api/editor/v1/documents/${id}/lock`, { method: "POST", body: "{}" });
       setLockedBy(`user:${tokenOf().slice(0, 6)}`);
@@ -242,12 +271,27 @@ export function EditorView() {
   const saveNow = async (payload?: { title?: string; content?: string }) => {
     if (!curId) return;
     setSaving(true);
-    try {      const body = payload ?? { title, content };
+    try {
+      const body = payload ?? { title, content };
+      // A1(闭源 content_hash 乐观锁): 带当前内容 FNV hash, 后端与他窗口版本对比,
+      // 冲突 409 → 提示刷新(不覆盖他窗口内容)
+      if (body.content !== undefined) {
+        const h = (body as { content?: string }).content ?? "";
+        let hv = 0x811c9dc5;
+        for (let i = 0; i < h.length; i++) { hv ^= h.charCodeAt(i); hv = (hv * 0x01000193) >>> 0; }
+        (body as { expectedContentHash?: string }).expectedContentHash = hv.toString(16);
+      }
       const r = await j<{ wordCount: number }>(`/api/editor/v1/documents/${curId}`, {
         method: "PUT", body: JSON.stringify(body),
       });
       setWordCount(r.wordCount);
-    } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes("其他窗口") || msg.includes("DOC_CONFLICT")) {
+        setErr("文档已在其他窗口被修改 — 已停止保存你的更改。请刷新加载最新内容(未保存内容已丢失)");
+        window.dispatchEvent(new CustomEvent("doc-conflict"));
+      } else { setErr(msg); }
+    } finally { setSaving(false); }
   };
 
   const onContentChange = (v: string) => {
@@ -256,14 +300,14 @@ export function EditorView() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     // 传最新值快照, 防闭包旧值(Bugfix T1: 此前防抖回调读渲染期 content, 新输入永不落库)
     const snap = { title, content: v };
-    saveTimer.current = setTimeout(() => void saveNow(snap), 1500); // 自动保存防抖
+    saveTimer.current = setTimeout(() => void saveNow(snap), 1200); // A2: 自动保存防抖(闭源 1200ms)
   };
 
   const removeDoc = async (id: string) => {
     setDelAsk(null);
     try {
       await j(`/api/editor/v1/documents/${id}`, { method: "DELETE" });
-      if (curId === id) { setCurId(null); setContent(""); setTitle(""); }
+      if (curId === id) { setCurId(null); setContent(""); setTitle(""); try { localStorage.removeItem("editor.activeDocumentId"); } catch { /* 忽略 */ } }
       await loadDocs();
     } catch (e) { setErr((e as Error).message); }
   };
@@ -456,7 +500,9 @@ export function EditorView() {
         </div>
       )}
 
-      <div className={cn("grid min-h-0 flex-1 gap-3", showAiPanel ? "grid-cols-[200px_1fr_280px]" : "grid-cols-[200px_1fr]")}>
+      {/* A6(闭源 ade-ai-panel-width): AI 面板宽 CSS 变量驱动+拖拽持久化 */}
+      <div className={cn("grid min-h-0 flex-1 gap-3", showAiPanel ? "grid-cols-[200px_1fr_var(--ai-panel-w,340px)]" : "grid-cols-[200px_1fr]")}
+        style={{ "--ai-panel-w": aiPanelW } as React.CSSProperties}>
         {/* 文档列表 */}
         <div className="flex min-h-0 flex-col overflow-y-auto rounded-xl border border-slate-700/60 bg-slate-900/50 p-2">
           <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase text-slate-500">我的文档 ({docs.length})</p>
@@ -543,9 +589,12 @@ export function EditorView() {
                     ))}
                   </div>
                   {/* R5: 预览走 MarkdownRich(KaTeX 公式+代码高亮, 对齐闭源 AI 面板双渲染) */}
-                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                    <div className="markdown-rich-body" style={DOC_STYLES[docStyle]?.style}>
-                      <MarkdownRich content={content || "*（空文档）*"} />
+                  {/* A4(闭源 210mm A4 纸面视口): 预览正文包白色纸面卡, CSS 变量驱动排版预设 */}
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={{ background: "#3a3f4b" }}>
+                    <div className="mx-auto max-w-[210mm] rounded-sm bg-white px-[2.5rem] py-16 shadow-[0_2px_16px_rgba(0,0,0,0.35)]">
+                      <div className="markdown-rich-body" style={DOC_STYLES[docStyle]?.style}>
+                        <MarkdownRich content={content || "*（空文档）*"} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -657,15 +706,23 @@ export function EditorView() {
 
       {/* UI审计T5: AI 面板(第三栏) */}
       {showAiPanel && curId && (
-        <AiEditorPanel
-          content={content}
-          title={title}
-          selText={selText || grabSelection()}
-          onInsert={(t) => { onContentChange(content + String.fromCharCode(10,10) + t); flash('已插入到文末'); }}
-          onApplyTitle={(t) => { setTitle(t); void saveNow(); flash('标题已更新'); }}
-          onMsg={(m) => setErr(m)}
-        />
+        <div className="relative flex min-h-0 flex-col">
+          {/* A6: 左缘拖拽调宽 handle(闭源 ade-ai-panel__resize-handle) */}
+          <div onPointerDown={onAiPanelDrag} title="拖动调整面板宽度"
+            className="absolute -left-1 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-cyan-500/30" />
+          <AiEditorPanel
+            content={content}
+            title={title}
+            selText={selText || grabSelection()}
+            onInsert={(t) => { onContentChange(content + String.fromCharCode(10,10) + t); flash('已插入到文末'); }}
+            onApplyTitle={(t) => { setTitle(t); void saveNow(); flash('标题已更新'); }}
+            onMsg={(m) => setErr(m)}
+          />
+        </div>
       )}
+      {/* A5(闭源 ai-apply 事件): AI 结果经 window CustomEvent 落文 — 主组件先做选区原文回读校验
+          再决定覆盖选区(改写)或文末追加(生成)。兼容 props onInsert(老调用), 事件为统一通道 */}
+      <ApplyAiResultBridge content={content} onContentChange={onContentChange} onFlash={flash} selText={selText} taRef={taRef} />
       <ConfirmDialog spec={delAsk ? { title: "删除文档?", desc: "将永久删除该文档(含全部保存版本), 不可恢复。", confirmText: "删除", danger: true } : null}
         onDone={(ok) => { if (ok && delAsk) void removeDoc(delAsk.id); else setDelAsk(null); }} />
 
@@ -685,6 +742,62 @@ export function EditorView() {
       )}
     </div>
   );
+}
+
+/** A5(闭源 window CustomEvent ai-apply/ai-insert-chart): AI 面板结果统一经事件总线落文。
+ *  改写场景带 originalText → 主组件做选区原文回读校验(避免用户在 AI 生成期间改了选区);
+ *  校验失败则降级文末追加并提示。 */
+function ApplyAiResultBridge({ content, onContentChange, onFlash, selText, taRef }: {
+  content: string; onContentChange: (v: string) => void; onFlash: (m: string) => void; selText: string;
+  taRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  useEffect(() => {
+    const onApply = (e: Event) => {
+      const d = (e as CustomEvent<{ text?: string; kind?: string; originalText?: string }>).detail;
+      if (!d?.text) return;
+      // 选区原文回读校验: 期望的 originalText 与当前选中/最近上下文一致才覆盖选区
+      if (d.kind === "rewrite" && d.originalText) {
+        const expect = d.originalText.trim();
+        const ta = taRef.current;
+        if (ta) {
+          const s = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+          if (s && s !== expect) {
+            // 用户在 AI 生成期间改动了选区 → 降级文末追加(不覆盖用户新内容)
+            onContentChange(content + String.fromCharCode(10, 10) + d.text);
+            onFlash("选区已变化, AI 结果已追加到文末(未覆盖你的新内容)");
+            return;
+          }
+          if (s === expect && s.length > 0) {
+            // 覆盖选区
+            const start = ta.selectionStart; const end = ta.selectionEnd;
+            const next = ta.value.slice(0, start) + d.text + ta.value.slice(end);
+            onContentChange(next);
+            onFlash("已替换选中文本");
+            return;
+          }
+        }
+        // 无活动选区: 回读最近文本兜底
+        if (selText?.trim() && selText.trim() === expect) {
+          onContentChange(content.replace(expect, d.text));
+          onFlash("已替换选中文本");
+          return;
+        }
+      }
+      // 普通生成 → 文末追加
+      onContentChange(content + String.fromCharCode(10, 10) + d.text);
+      onFlash("已插入到文末");
+    };
+    const onInsertChart = (e: Event) => {
+      const d = (e as CustomEvent<{ markdown?: string }>).detail;
+      if (!d?.markdown) return;
+      onContentChange(content + String.fromCharCode(10, 10) + d.markdown);
+      onFlash("图表已插入到文末");
+    };
+    window.addEventListener("ai-apply", onApply);
+    window.addEventListener("ai-insert-chart", onInsertChart);
+    return () => { window.removeEventListener("ai-apply", onApply); window.removeEventListener("ai-insert-chart", onInsertChart); };
+  }, [content, selText, onContentChange, onFlash]);
+  return null;
 }
 export function AiEditorPanel(props: {
   content: string; title: string; selText: string;
