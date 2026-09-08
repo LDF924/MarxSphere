@@ -130,6 +130,9 @@ export function DagWorkbenchPanel() {
   const [clarifyBusy, setClarifyBusy] = useState(false);
   const [clarifyData, setClarifyData] = useState<{ analysis: string; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string }> } | null>(null);
   const [clarifyAnswers, setClarifyAnswers] = useState<string[]>([]);
+  // E4(闭源 2 轮集中补齐): round 1 = 首轮 5 问; 答后可再点 → round 2 追问剩余模糊点(≤3)
+  const [clarifyRound, setClarifyRound] = useState(0);
+  const [clarifyHistory, setClarifyHistory] = useState<Array<{ question: string; answer: string }>>([]);
 
   const toggleClarify = async () => {
     if (showClarify) { setShowClarify(false); return; }
@@ -138,22 +141,55 @@ export function DagWorkbenchPanel() {
     try {
       const r = await j<{ success: boolean; data: { analysis: string; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string }> } }>("/api/clarify/generate", {
         method: "POST",
-        body: JSON.stringify({ title: cur.title, researchMethod: cur.topic || undefined }),
+        body: JSON.stringify({ title: cur.title, researchMethod: cur.topic || undefined, round: 0 }),
       });
       if (!r.success) throw new Error("澄清生成失败");
-      setClarifyData(r.data); setClarifyAnswers(new Array(r.data.questions.length).fill("")); setShowClarify(true);
+      setClarifyData(r.data); setClarifyAnswers(new Array(r.data.questions.length).fill("")); setClarifyHistory([]); setClarifyRound(0); setShowClarify(true);
+    } catch (e) { setErr((e as Error).message); } finally { setClarifyBusy(false); }
+  };
+
+  // E4: 第二轮集中补齐(带第一轮问答上下文追问)
+  const clarifyFollowUp = async () => {
+    if (!cur || !clarifyData) return;
+    setClarifyBusy(true); setErr("");
+    try {
+      const hist = [
+        ...clarifyHistory,
+        ...clarifyData.questions.map((q, i) => ({ question: q.question, answer: (clarifyAnswers[i] ?? "").trim() || "未答" })),
+      ];
+      const r = await j<{ success: boolean; data: { analysis: string; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string }> } }>("/api/clarify/generate", {
+        method: "POST",
+        body: JSON.stringify({ title: cur.title, researchMethod: cur.topic || undefined, round: 1, answers: hist }),
+      });
+      if (!r.success) throw new Error("追问生成失败");
+      setClarifyHistory(hist);
+      if (r.data.questions.length === 0) {
+        // 已无模糊点 → 直接归档
+        await saveClarifyAnswersWith(hist);
+        return;
+      }
+      setClarifyData(r.data); setClarifyAnswers(new Array(r.data.questions.length).fill("")); setClarifyRound(1);
     } catch (e) { setErr((e as Error).message); } finally { setClarifyBusy(false); }
   };
 
   const saveClarifyAnswers = async () => {
     if (!cur || !clarifyData) return;
+    const hist = [
+      ...clarifyHistory,
+      ...clarifyData.questions.map((q, i) => ({ question: q.question, answer: (clarifyAnswers[i] ?? "").trim() || "无" })),
+    ];
+    await saveClarifyAnswersWith(hist);
+  };
+
+  const saveClarifyAnswersWith = async (hist: Array<{ question: string; answer: string }>) => {
+    if (!cur) return;
     setErr("");
     try {
-      const lines = clarifyData.questions.map((q, i) => `Q(${q.category}): ${q.question}\n  → ${(clarifyAnswers[i] ?? "").trim() || "无"}`);
+      const lines = hist.map((h) => `Q: ${h.question}\n  → ${h.answer}`);
       const text = `【AI需求澄清结果】\n${lines.join("\n")}`;
       await j(`/api/research/projects/${cur.id}/nodes/clarify`, {
         method: "PUT",
-        body: JSON.stringify({ payload: { analysis: clarifyData.analysis, qa: lines }, sourceRole: "user", note: "需求澄清归档" }),
+        body: JSON.stringify({ payload: { analysis: clarifyData?.analysis ?? "", qa: lines }, sourceRole: "user", note: "需求澄清归档" }),
       });
       setErr("已归档到 clarify 节点");
       setShowClarify(false);
@@ -246,7 +282,13 @@ export function DagWorkbenchPanel() {
   const onConnect = useCallback((conn: Connection) => {
     if (!cur) return;
     setEdges((eds) => {
-      const next = addEdge({ ...conn, id: `e${Date.now().toString(36)}`, markerEnd: { type: MarkerType.ArrowClosed } }, eds);
+      // E2(闭源 manual-edge- 手动边): 用户手动画线=手动边(蓝), 后端自动补边=自动边(绿虚线)
+      const next = addEdge({
+        ...conn, id: `e${Date.now().toString(36)}`,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        data: { kind: "manual" },
+        style: { stroke: "#38bdf8", strokeWidth: 1.5 },
+      }, eds);
       persistCanvas(nodes, next);
       return next;
     });
@@ -526,6 +568,11 @@ export function DagWorkbenchPanel() {
             </div>
             <ReactFlow
               nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+              // E2(闭源三色边): 手动边蓝实线(onConnect 标 manual) / 后端模板·自动补边绿虚线(默认)
+              defaultEdgeOptions={{
+                markerEnd: { type: MarkerType.ArrowClosed },
+                style: { stroke: "#4ade80", strokeWidth: 1.5, strokeDasharray: "5 3" },
+              }}
               onNodesChange={(ch) => {
                 onNodesChange(ch);
                 // 拖拽结束落库
@@ -591,7 +638,18 @@ export function DagWorkbenchPanel() {
                           placeholder="回答(可选, 将归档进研究要求)" className="mt-1.5 w-full rounded border border-slate-600/50 bg-slate-900 px-2 py-1 text-[10px] text-slate-200 placeholder:text-slate-600" />
                       </div>
                     ))}
-                    <button onClick={saveClarifyAnswers} className="w-full rounded-lg bg-sky-600 py-1.5 text-[11px] text-white hover:bg-sky-500">归档回答到研究要求</button>
+                    <div className="flex gap-1.5">
+                      {/* E4: 第二轮集中补齐(round 1 时改为归档) */}
+                      {clarifyRound === 0 && (
+                        <button onClick={clarifyFollowUp} disabled={clarifyBusy}
+                          className="flex-1 rounded-lg border border-sky-600/50 py-1.5 text-[11px] text-sky-300 hover:bg-sky-500/10 disabled:opacity-50">
+                          {clarifyBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}继续追问 (第二轮补齐)
+                        </button>
+                      )}
+                      <button onClick={saveClarifyAnswers} className="flex-1 rounded-lg bg-sky-600 py-1.5 text-[11px] text-white hover:bg-sky-500">
+                        {clarifyRound === 0 ? "归档回答到研究要求" : "归档两轮回答"}
+                      </button>
+                    </div>
                   </div>
                 )}
                 {showAnalyze && (
@@ -937,7 +995,7 @@ const JOB_LABELS: Record<string, string> = {
   analyze: "正在进行结构化分析", chapter_gen: "正在生成章节内容",
 };
 function RunningTasks({ projectId }: { projectId: string }) {
-  const [tasks, setTasks] = useState<Array<{ id: string; jobKind: string; status: string; goal: string; progress?: { stage?: string; current?: number; total?: number } }>>([]);
+  const [tasks, setTasks] = useState<Array<{ id: string; jobKind: string; status: string; goal: string; progress?: { stage?: string; current?: number; total?: number }; resultText?: string; summary?: string }>>([]);
   const [busyMsg, setBusyMsg] = useState("");
   useEffect(() => {
     if (!projectId) return;
@@ -972,7 +1030,19 @@ function RunningTasks({ projectId }: { projectId: string }) {
       {tasks.slice(0, 4).map((t) => (
         <div key={t.id} className="rounded bg-slate-900/60 px-2 py-1 text-[10px]">
           <div className="flex items-center justify-between">
-            <span className="truncate text-slate-400">{JOB_LABELS[t.jobKind] ?? t.jobKind}: {t.goal?.slice(0, 30) ?? ""}</span>
+            {/* E3(闭源消息卡 kind): 按 jobKind 映射消息类型徽标 — plan=规划/artifact=产物/
+                question=澄清/progress=进度/text=文本 */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className={cn("shrink-0 rounded px-1 py-px text-[8px] font-semibold",
+                t.jobKind === "phase4_batch" || t.jobKind === "chapter_batch" || t.jobKind === "merge" ? "bg-purple-500/20 text-purple-300"
+                  : t.jobKind === "literature-search" || t.jobKind === "table-generate" || t.jobKind === "theory-generate" || t.jobKind === "chapter_gen" ? "bg-emerald-500/20 text-emerald-300"
+                    : t.jobKind === "clarify" ? "bg-sky-500/20 text-sky-300" : "bg-slate-600/40 text-slate-400")}>
+                {t.jobKind === "phase4_batch" || t.jobKind === "chapter_batch" || t.jobKind === "merge" || t.jobKind === "revise" ? "PLAN"
+                  : t.jobKind === "literature-search" || t.jobKind === "table-generate" || t.jobKind === "theory-generate" ? "ARTIFACT"
+                    : t.jobKind === "clarify" ? "QUESTION" : t.jobKind === "analyze" ? "PLAN" : "TEXT"}
+              </span>
+              <span className="truncate text-slate-400">{JOB_LABELS[t.jobKind] ?? t.jobKind}: {t.goal?.slice(0, 26) ?? ""}</span>
+            </span>
             <span className={cn("shrink-0 rounded px-1.5 py-0.5", t.status === "running" ? "bg-amber-500/20 text-amber-300" : "bg-sky-500/20 text-sky-300")}>{t.status === "running" ? "执行中" : "排队中"}</span>
           </div>
           {(t.progress?.stage) && (
@@ -985,6 +1055,10 @@ function RunningTasks({ projectId }: { projectId: string }) {
               )}
               {typeof t.progress.current === "number" && t.progress.total && <span className="shrink-0 text-slate-500">{t.progress.current}/{t.progress.total}</span>}
             </div>
+          )}
+          {/* E3: node-update 型 — 完成后展示产物摘要(如有 result 摘要) */}
+          {(t.status === "done" && (t.resultText || t.summary)) && (
+            <p className="mt-1 truncate text-[9px] text-emerald-300/80">✓ {(t.resultText || t.summary)?.slice(0, 60)}</p>
           )}
         </div>
       ))}

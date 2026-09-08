@@ -252,17 +252,57 @@ export function ReviewLabPanel() {
     } catch (e) { setErr((e as Error).message); } finally { setExportBusy(false); }
   };
 
-  // 期刊解析入库
+  // B2(闭源 LibraryHome 前端正则 6 类归槽): 投稿须知 → 结构化规则(本机先解, AI 后端精修)
+  const regexParseSubmissionGuide = (raw: string): { formatRules: string[]; reviewFocus: string[]; citationRules: string[]; scope: string } => {
+    const rules = { formatRules: [] as string[], reviewFocus: [] as string[], citationRules: [] as string[], scope: "" };
+    const lines = raw.split(/\n+/).map((l) => l.replace(/^\s*[-*·•]\s*/, "").trim()).filter(Boolean);
+    for (const line of lines) {
+      const t = line;
+      if (/(\d+)\s*[-~～至到]\s*(\d+)\s*(字|词|字符)/i.test(t)) rules.formatRules.push(t);
+      else if (/字数|页数|篇幅|不超过|不低于/.test(t)) rules.formatRules.push(t);
+      else if (/引用|citation|gb\/t|apa|mla|chicago|参考文献|脚注|尾注/i.test(t)) rules.citationRules.push(t);
+      else if (/风格|语气|人称|被动|主动|学术性/.test(t)) rules.formatRules.push(`风格要求: ${t}`);
+      else if (/结构|章节|文献综述|方法论|结论|引言|摘要/.test(t)) rules.reviewFocus.push(t);
+      else if (/盲审|匿名|英文|关键词|利益冲突|基金|声明/.test(t)) rules.formatRules.push(t);
+      else if (/禁止|不得|不允许|不能|请勿/.test(t)) rules.formatRules.push(`禁止: ${t}`);
+      else { rules.formatRules.push(t); }
+    }
+    // scope: 学科归类(简单启发)
+    if (/经济|金融|管理|社会|政治|哲学|法学|教育|心理/.test(raw)) rules.scope = "社科";
+    else if (/数学|物理|化学|生物|医学|工程|计算机/.test(raw)) rules.scope = "理工";
+    else rules.scope = "";
+    // 去重保序
+    const dedupe = (a: string[]) => [...new Set(a)];
+    rules.formatRules = dedupe(rules.formatRules).slice(0, 20);
+    rules.citationRules = dedupe(rules.citationRules).slice(0, 10);
+    rules.reviewFocus = dedupe(rules.reviewFocus).slice(0, 10);
+    return rules;
+  };
+
+  // 期刊解析入库(B2: 前端正则先行, 无网/AI 降级也可用)
   const parseJournal = async () => {
     if (!jpInput.trim() || !jpName.trim()) { setErr("请填期刊名+粘贴投稿须知"); return; }
     setParseBusy(true); setErr("");
     try {
-      const r = await j<{ parsed: { formatRules: string[]; reviewFocus: string[]; citationRules: string[]; scope: string } }>("/api/review/journals/parse", {
-        method: "POST", body: JSON.stringify({ rawText: jpInput }),
-      });
+      const localRules = regexParseSubmissionGuide(jpInput);
+      let parsed = localRules;
+      try {
+        const r = await j<{ parsed: { formatRules: string[]; reviewFocus: string[]; citationRules: string[]; scope: string } }>("/api/review/journals/parse", {
+          method: "POST", body: JSON.stringify({ rawText: jpInput }),
+        });
+        // AI 结果更全则用; 失败保留本地正则结果
+        if (r.parsed && (r.parsed.formatRules?.length || r.parsed.reviewFocus?.length)) {
+          parsed = {
+            formatRules: r.parsed.formatRules?.length ? r.parsed.formatRules : localRules.formatRules,
+            reviewFocus: r.parsed.reviewFocus?.length ? r.parsed.reviewFocus : localRules.reviewFocus,
+            citationRules: r.parsed.citationRules?.length ? r.parsed.citationRules : localRules.citationRules,
+            scope: r.parsed.scope || localRules.scope,
+          };
+        }
+      } catch { /* AI 解析失败 → 用本地正则结果 */ }
       await j("/api/review/journals", {
         method: "POST",
-        body: JSON.stringify({ name: jpName.trim(), submissionGuideText: jpInput, parsedRules: r.parsed }),
+        body: JSON.stringify({ name: jpName.trim(), submissionGuideText: jpInput, parsedRules: parsed }),
       });
       setJpInput(""); setJpName(""); await loadAll();
     } catch (e) { setErr((e as Error).message); } finally { setParseBusy(false); }
@@ -442,11 +482,19 @@ export function ReviewLabPanel() {
                   {strictness === "lax" ? "宽松 · 仅重大问题" : strictness === "standard" ? "标准 · 核心问题" : "严格 · 逐项检查"}
                 </span>
               </p>
-              <input type="range" min={0} max={2} step={1} value={["lax", "standard", "strict"].indexOf(strictness)}
-                onChange={(e) => setStrictness(["lax", "standard", "strict"][Number(e.target.value)] as "lax" | "standard" | "strict")}
-                className="w-full accent-rose-500" />
-              <div className="flex justify-between text-[9px] text-slate-600">
-                <span>宽松</span><span>标准</span><span>严格</span>
+              {/* B5(闭源 review radio 三档): 宽松/标准/严格 radio 组(替代 range slider) */}
+              <div className="flex gap-1.5">
+                {([["lax", "宽松", "仅重大问题"], ["standard", "标准", "核心问题"], ["strict", "严格", "逐项检查"]] as Array<["lax" | "standard" | "strict", string, string]>).map(([v, label, sub]) => (
+                  <label key={v} onClick={() => setStrictness(v)}
+                    className={cn("flex-1 cursor-pointer rounded-lg border px-2 py-1.5 text-center transition",
+                      strictness === v
+                        ? v === "strict" ? "border-rose-500/60 bg-rose-500/15" : v === "standard" ? "border-amber-500/60 bg-amber-500/15" : "border-emerald-500/60 bg-emerald-500/15"
+                        : "border-slate-700/50 bg-slate-800/40 hover:border-slate-500")}>
+                    <input type="radio" name="strictness" value={v} checked={strictness === v} onChange={() => setStrictness(v)} className="sr-only" data-control="review_strictness" />
+                    <p className={cn("text-[10px] font-medium", strictness === v ? (v === "strict" ? "text-rose-200" : v === "standard" ? "text-amber-200" : "text-emerald-200") : "text-slate-300")}>{label}</p>
+                    <p className="text-[8px] text-slate-500">{sub}</p>
+                  </label>
+                ))}
               </div>
               <p className="mt-0.5 text-[9px] text-slate-600">严格度影响判分尺度和问题发现密度</p>
             </div>
@@ -839,14 +887,32 @@ function ReviewDiffView({ text, annotations, resolved, onToggle }: {
   const [active, setActive] = useState<string | null>(null);
   const anns = annotations.filter((a) => a.highlightText);
   if (!text && !anns.length) return <p className="py-10 text-center text-xs text-slate-600">无原文快照与批注</p>;
-  // 原文按段拆分, 段落内命中 highlightText 则高亮(前缀匹配 12 字以上防误标)
+  // 原文按段拆分, 段落内命中 highlightText 则高亮(B4: 空白归一化双索引匹配 —
+  // 两端抹掉空白定位再映射回原串坐标, 修复"引文原文与批注文本间空白/换行差异"导致的漏标)
   const paras = (text || "(无原文快照)").split(/\n{1,}/).filter((p) => p.trim());
+  const normOf = (s: string) => s.replace(/\s+/g, "");
   const markPara = (p: string) => {
+    const pNorm = normOf(p);
     const hits = anns
       .map((a, i) => {
         const t = a.highlightText.trim();
-        const idx = p.indexOf(t.slice(0, 24));
-        return idx >= 0 && t.length >= 6 ? { i, idx, len: t.length, a } : null;
+        const tn = normOf(t);
+        // 先试原文直找(带空白), 失败再走归一化映射
+        let idx = p.indexOf(t);
+        let len = t.length;
+        if (idx < 0 && tn.length >= 4) {
+          const ni = pNorm.indexOf(tn);
+          if (ni >= 0) {
+            // 归一化坐标 → 原串坐标(数原串在归一化位置前的非空白字符数)
+            let count = 0, orig = 0;
+            while (orig < p.length && count < ni) { if (!/\s/.test(p[orig])) count++; orig++; }
+            let end = orig;
+            const targetEnd = ni + tn.length;
+            while (end < p.length && count < targetEnd) { if (!/\s/.test(p[end])) count++; end++; }
+            idx = orig; len = end - orig;
+          }
+        }
+        return idx >= 0 && t.length >= 6 ? { i, idx, len, a } : null;
       })
       .filter((x): x is { i: number; idx: number; len: number; a: (typeof anns)[0] } => !!x)
       .sort((x, y) => x.idx - y.idx);

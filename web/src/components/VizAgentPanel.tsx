@@ -9,6 +9,7 @@ import {
   MessageSquarePlus, Send, Sparkles, Trash2, Upload, Wand2,
 } from "lucide-react";
 import { readResume } from "./ResearchHistoryPanel";
+import { MarkdownRich } from "./MarkdownRich";
 
 interface Session { id: string; title: string; status: string; created_at: string; updated_at?: string; artifact_count: string; }
 interface Artifact { id: string; session_id: string; version: number; prompt: string; png_path: string; svg_editable_path: string; critique: { improve?: string }; status: string; created_at: string; }
@@ -111,15 +112,20 @@ export function VizAgentPanel() {
   useEffect(() => { void loadSessions(); }, [loadSessions]);
 
   // 历史中心 deep-resume: 从历史记录 viz 区卡点击跳入 → 自动打开对应绘图会话
+  // D6(闭源 viz_save_<uid>_<taskId>): 无 resume 时恢复 localStorage 最后会话
   useEffect(() => {
     const r = readResume("viz");
-    if (r?.id) void loadSession(String(r.id));
+    if (r?.id) { void loadSession(String(r.id)); return; }
+    const last = (() => { try { return localStorage.getItem("viz_save_active"); } catch { return null; } })();
+    if (last) void loadSession(last);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSession = async (sid: string) => {
     setCurSession(sid); setMessages([]); setArtifacts([]); setErr("");
     try {
+      // D6(闭源 viz_save_<uid>_<taskId>): 会话双写 localStorage, 供刷新/重进恢复
+      try { localStorage.setItem("viz_save_active", sid); } catch { /* 忽略 */ }
       const [m, a] = await Promise.all([
         j<{ messages: Msg[] }>(`/api/viz/sessions/${sid}/messages`),
         j<{ artifacts: Artifact[] }>(`/api/viz/sessions/${sid}/artifacts`),
@@ -152,46 +158,58 @@ export function VizAgentPanel() {
     reader.readAsText(f);
   };
 
+  // D4(闭源 viz job): 观察 job SSE — after>0 重连重放, 事件驱动 live 更新
+  const observeJob = async (jobId: string, after = 0): Promise<void> => {
+    const liveBuf: Array<{ kind: string; text: string }> = [];
+    const handle = (ev: string, obj: Record<string, unknown>) => {
+      liveBuf.push({ kind: ev, text: typeof obj?.content === "string" ? String(obj.content).slice(0, 300) : "" });
+      setLive([...liveBuf]);
+      if (ev === "viz.completed" && curSession) {
+        void j<{ artifacts: Artifact[] }>(`/api/viz/sessions/${curSession}/artifacts`).then((a) => setArtifacts(a.artifacts ?? [])).catch(() => {});
+      }
+      if (ev === "error") setErr((obj as { userMessage?: string }).userMessage || "绘图失败");
+    };
+    const r = await fetch(`/api/viz/jobs/${jobId}/stream?after=${after}`, {
+      headers: { Authorization: `Bearer ${tokenOf()}`, Accept: "text/event-stream" },
+    });
+    if (!r.ok || !r.body) throw new Error(`观察连接失败 ${r.status}`);
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
+      for (const p of parts) {
+        const ev = p.match(/event: (\S+)/)?.[1];
+        const data = p.match(/data: (.*)/s)?.[1];
+        if (!data || !ev) continue;
+        const obj = JSON.parse(data);
+        if (ev === "error") { handle("error", obj); continue; }
+        handle(ev, obj);
+      }
+    }
+  };
+
   const send = async () => {
     const msg = input.trim();
     if (!msg || !curSession) return;
     setInput(""); setBusy(true); setErr(""); setLive([]);
     // 本地上屏
     setMessages((ms) => [...ms, { id: `local-${Date.now()}`, role: "user", content: { text: msg }, seq: ms.length + 1, created_at: new Date().toISOString() }]);
-    const liveBuf: Array<{ kind: string; text: string }> = [];
     try {
-      const r = await fetch(`/api/viz/sessions/${curSession}/turns`, {
+      // D4: 建 job(后台执行, 断线不中断) → 存 activeJobId → SSE 观察
+      const r = await j<{ job_id: string }>("/api/viz/jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenOf()}`, Accept: "text/event-stream" },
         body: JSON.stringify({
+          sessionId: curSession,
           message: msg,
           csv: csvRef.current?.csv,
           columnOrder: csvRef.current?.cols ?? [],
           spec: SPEC_PRESETS[specPreset]?.spec ?? SPEC_PRESETS["journal-double"].spec,
         }),
       });
-      if (!r.ok || !r.body) throw new Error(`连接失败 ${r.status}`);
-      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const parts = buf.split("\n\n"); buf = parts.pop() ?? "";
-        for (const p of parts) {
-          const ev = p.match(/event: (\S+)/)?.[1];
-          const data = p.match(/data: (.*)/s)?.[1];
-          if (!data) continue;
-          const obj = JSON.parse(data);
-          liveBuf.push({ kind: ev ?? "", text: typeof obj?.content === "string" ? obj.content.slice(0, 300) : "" });
-          setLive([...liveBuf]);
-          if (ev === "viz.completed") {
-            // 新产物出现 → 拉一次 artifacts
-            const a = await j<{ artifacts: Artifact[] }>(`/api/viz/sessions/${curSession}/artifacts`);
-            setArtifacts(a.artifacts ?? []);
-          }
-          if (ev === "error") setErr(obj.userMessage || "绘图失败");
-        }
-      }
+      try { localStorage.setItem("viz_active_job", r.job_id); } catch { /* 忽略 */ }
+      await observeJob(r.job_id);
       // 结束后刷消息+产物
       const [m, a] = await Promise.all([
         j<{ messages: Msg[] }>(`/api/viz/sessions/${curSession}/messages`),
@@ -200,8 +218,31 @@ export function VizAgentPanel() {
       setMessages(m.messages ?? []);
       setArtifacts(a.artifacts ?? []);
       await loadSessions();
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); setLive([]); }
+    } catch (e) { setErr((e as Error).message); } finally {
+      setBusy(false); setLive([]);
+      try { localStorage.removeItem("viz_active_job"); } catch { /* 忽略 */ }
+    }
   };
+
+  // D4: 挂载断线恢复 — 上次会话有 activeJob 未完成 → 重连观察(重放事件)
+  useEffect(() => {
+    const activeJob = (() => { try { return localStorage.getItem("viz_active_job"); } catch { return null; } })();
+    if (activeJob) {
+      void (async () => {
+        try {
+          const jr = await j<{ job: { status: string } }>(`/api/viz/jobs/${activeJob}`);
+          if (jr.job && (jr.job.status === "queued" || jr.job.status === "running")) {
+            setBusy(true);
+            await observeJob(activeJob, 0);
+          }
+        } catch { /* job 不存在/过期忽略 */ } finally {
+          setBusy(false); setLive([]);
+          try { localStorage.removeItem("viz_active_job"); } catch { /* 忽略 */ }
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 入素材库
   const toMaterials = async (art: Artifact) => {
@@ -285,6 +326,29 @@ export function VizAgentPanel() {
                     {m.role === "tool" ? <Wand2 className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" /> : m.role === "critique" ? <Bug className="mt-0.5 h-3 w-3 shrink-0 text-rose-400" /> : <ChevronDown className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />}
                     <span className="shrink-0 font-semibold">{liveLabel(m.role)}</span>
                     <span className="truncate">{msgText(m).slice(0, 200)}</span>
+                  </div>
+                );
+              }
+              // D5(闭源 viz markdown 渲染 + 失败可见性): done.error / assistant 文本消息走 MarkdownRich
+              if (m.role === "done") {
+                const errMsg = (c as { error?: string }).error;
+                if (!errMsg) return null;
+                return (
+                  <div key={m.id} className="flex justify-start">
+                    <div className="max-w-[85%] rounded-xl rounded-tl-sm border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs leading-relaxed text-rose-200">
+                      <MarkdownRich content={`⚠️ ${errMsg}`} />
+                    </div>
+                  </div>
+                );
+              }
+              if (m.role === "assistant" || (m.role !== "chart" && m.role !== "tool" && m.role !== "plan" && m.role !== "thinking" && m.role !== "critique" && m.role !== "critique_fix")) {
+                const txt = msgText(m);
+                if (!txt) return null;
+                return (
+                  <div key={m.id} className="flex justify-start">
+                    <div className="max-w-[85%] rounded-xl rounded-tl-sm bg-slate-800/80 px-3 py-2 text-xs leading-relaxed text-slate-200">
+                      <MarkdownRich content={txt} />
+                    </div>
                   </div>
                 );
               }

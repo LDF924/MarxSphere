@@ -1,6 +1,6 @@
 // llm-common.test.ts — G1: callLlm 重试/错误分类/退避 单测
 import { describe, it, expect } from "vitest";
-import { classifyLlmError, retryBackoffMs } from "../src/ai/llm-common.js";
+import { classifyLlmError, retryBackoffMs, parseLlmJson } from "../src/ai/llm-common.js";
 
 describe("classifyLlmError", () => {
   it("429 → rate_limit 可重试", () => {
@@ -42,5 +42,27 @@ describe("retryBackoffMs", () => {
   });
   it("上限 30s", () => {
     expect(retryBackoffMs(8)).toBe(30_000);
+  });
+});
+
+describe("parseLlmJson 五级容错(R16b 对齐闭源 jsonrepair)", () => {
+  it("直解+围栏", () => {
+    expect(parseLlmJson('{"a":1}')).toEqual({ a: 1 });
+    expect(parseLlmJson("```json\n{\"b\":2}\n```")).toEqual({ b: 2 });
+  });
+  it("括号截断补全", () => {
+    expect(parseLlmJson('{"x": [1, 2, 3], "y": {"z": true}')).toEqual({ x: [1, 2, 3], y: { z: true } });
+  });
+  it("尾逗号/内嵌文本", () => {
+    expect(parseLlmJson('{"d":[1,2,]}')).toEqual({ d: [1, 2] });
+    expect(parseLlmJson('前面文本 {"e":{"f":5}} 后面')).toEqual({ e: { f: 5 } });
+  });
+  it("值中途截断回溯", () => {
+    expect(parseLlmJson('{"arr": [{"k": "v"}, {"k')).toEqual({ arr: [{ k: "v" }] });
+    expect(parseLlmJson('{"list": [1, 2, 3')).toEqual({ list: [1, 2, 3] });
+  });
+  it("完全损坏返 null", () => {
+    expect(parseLlmJson('{"a": "未闭合字符串')).toBeNull();
+    expect(parseLlmJson('')).toBeNull();
   });
 });
