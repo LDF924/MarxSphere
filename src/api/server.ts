@@ -9192,6 +9192,17 @@ except Exception as e:
 
   // ═══ SocialSci 补漏组4: P3/P4/P5 子任务端点(HAR 语义: 章节素材三件套/批量章节/合稿) ═══
   // P3: 单节文献检索(→ citation 素材)
+  app.post("/api/research/jobs/phase3/material-plan", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; goal?: string; l1Sections?: Array<{ id: string; title: string }>; variables?: Array<{ name: string; role?: string }>; hasDataFile?: boolean };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const t = await researchPipeline.createTask({
+      userId: user.id, projectId: body.projectId, module: "workflow", jobKind: "material-plan",
+      goal: body.goal ?? "素材生成计划",
+      inputSnapshot: { l1Sections: body.l1Sections ?? [], variables: body.variables ?? [], hasDataFile: Boolean(body.hasDataFile) },
+    });
+    return { job: t };
+  });
   app.post("/api/research/jobs/phase3/literature-search", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { taskId?: string; projectId?: string; sectionId?: string; sectionTitle?: string; keywords?: string[]; count?: number };
@@ -9425,7 +9436,7 @@ except Exception as e:
       tags?: string[]; sourceRef?: string; producedByDagNode?: string; meta?: Record<string, unknown>;
     };
     if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
-    const kind = ["note", "citation", "data_result", "figure", "file", "theory"].includes(body.kind ?? "") ? body.kind : "note";
+    const kind = ["note", "citation", "data_result", "figure", "file", "theory", "table"].includes(body.kind ?? "") ? body.kind : "note";
     const { id } = await researchMaterials.createMaterial({
       projectId: body.projectId, userId: user.id, kind: kind as never,
       title: body.title, contentMd: body.contentMd, tags: body.tags,
@@ -9737,6 +9748,13 @@ except Exception as e:
       return reply.code((e as { status?: number }).status ?? 500).send({ error: code === "NOT_FOUND" ? "会话不存在" : String((e as Error).message) });
     }
   });
+  app.get("/api/viz/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const vizJobService = await import("../services/viz-job-service.js");
+    const limit = Number((request.query as { limit?: string }).limit ?? 20);
+    return { jobs: await vizJobService.listVizJobs(user.id, Math.min(limit, 100)) };
+  });
+
   app.get("/api/viz/jobs/:jobId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
@@ -10233,6 +10251,108 @@ except Exception as e:
     return { usage: r.rows };
   });
 
+  // ═══ SocialSci Vue M3: 统计分析 17 法 jobs 全契约(闭源 decoded-stats-viz §1.5) ═══
+  // POST /api/statistics-jobs {tool,fileId,variables,...} → {job:{id,status}}
+  // GET /api/statistics-jobs?limit=N → {jobs:[...]}; GET /:id → {job}
+  // POST /:id/cancel|retry; GET /:id/stream → SSE(事件 stats.completed/failed/cancelled + job.snapshot)
+  app.get("/api/statistics/health", async () => {
+    // 闭源 StatisticsView 徽标轮询(health check); python venv 状态一并回
+    let venvReady = false;
+    try {
+      const { getEmpiricalMeta } = await import("../services/empirical-service.js");
+      const meta = await getEmpiricalMeta();
+      venvReady = meta.venvReady && meta.statsModels;
+    } catch { /* 降级 */ }
+    return { ok: true, service: "FlowMaster v5 统计分析后端", venvReady };
+  });
+
+  app.post("/api/statistics-jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const job = svc.createStatsJob(user.id, (request.body ?? {}) as Record<string, unknown>);
+    if (!job) return reply.code(400).send({ error: "任务创建失败" });
+    return { job: { id: job.id, status: job.status, tool: job.tool } };
+  });
+
+  app.get("/api/statistics-jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const limit = Number((request.query as { limit?: string }).limit ?? 30);
+    const list = svc.listStatsJobs(user.id, limit);
+    return { jobs: list.map((j) => ({
+      id: j.id, tool: j.tool, method: j.tool, status: j.status,
+      created_at: new Date(j.createdAt).toISOString(),
+      source_task_id: j.sourceTaskId ?? null
+    })) };
+  });
+
+  app.get("/api/statistics-jobs/:jobId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const j = svc.getStatsJob(user.id, jobId);
+    if (!j) return reply.code(404).send({ error: "任务不存在" });
+    return { job: {
+      id: j.id, tool: j.tool, status: j.status,
+      result: j.result, result_version_id: j.resultVersionId,
+      error: j.error ?? undefined, sourceTaskId: j.sourceTaskId
+    } };
+  });
+
+  app.post("/api/statistics-jobs/:jobId/cancel", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const j = await svc.cancelStatsJob(user.id, jobId);
+    if (!j) return reply.code(404).send({ error: "任务不存在" });
+    return { job: { id: j.id, status: j.status } };
+  });
+
+  app.post("/api/statistics-jobs/:jobId/retry", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const j = await svc.retryStatsJob(user.id, jobId);
+    if (!j) return reply.code(404).send({ error: "任务不存在" });
+    return { job: { id: j.id, status: j.status } };
+  });
+
+  // 任务执行 SSE(闭源: 可恢复事件流; 完成前挂起等待 → 完成后推送 stats.completed)
+  app.get("/api/statistics-jobs/:jobId/stream", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const { attachSse } = await import("./stream-utils.js");
+    const j = svc.getStatsJob(user.id, jobId);
+    if (!j) return reply.code(404).send({ error: "任务不存在" });
+    const sse = attachSse(reply);
+    // 已终态直接回放
+    if (["completed", "failed", "cancelled"].includes(j.status)) {
+      if (j.status === "completed") sse.send("stats.completed", { result: j.result, result_version_id: j.resultVersionId });
+      else if (j.status === "failed") sse.send("stats.failed", { error: j.error });
+      else sse.send("stats.cancelled", {});
+      sse.end();
+      return;
+    }
+    // 轮询等待终态(上限 5 分钟)
+    const started = Date.now();
+    const POLL_TTL = 300_000;
+    const timer = setInterval(() => {
+      const cur = svc.getStatsJob(user.id, jobId);
+      if (!cur || ["completed", "failed", "cancelled"].includes(cur.status) || Date.now() - started > POLL_TTL) {
+        clearInterval(timer);
+        if (cur?.status === "completed") sse.send("stats.completed", { result: cur.result, result_version_id: cur.resultVersionId });
+        else if (cur?.status === "failed") sse.send("stats.failed", { error: cur.error });
+        else if (cur?.status === "cancelled") sse.send("stats.cancelled", {});
+        else sse.send("stats.failed", { error: { code: "TIMEOUT", message: "分析超时" } });
+        sse.end();
+      } else if (cur) {
+        sse.send("job.snapshot", { status: cur.status, tool: cur.tool });
+      }
+    }, 900);
+    request.raw.on("close", () => clearInterval(timer));
+  });
+
   // 统计图表产物(SocialSci 补漏: PUT statistics-jobs/artifacts/{id}/image → 素材)
   // 语义: 前端把统计结果图(plotly/py 渲染的 png)上传存为 stats_artifact; 可导入素材库
   app.post("/api/statistics-jobs/artifacts", async (request, reply) => {
@@ -10415,7 +10535,7 @@ except Exception as e:
     fs.mkdirSync(dir, { recursive: true });
     const rel = `data/user-files/${user.id}/${id}.bin`;
     fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), buf);
-    // 文本自动剖析(前 200KB → 行列概览)
+    // 文本自动剖析(前 200KB → 行列概览 + 变量类型推断)
     let profile: Record<string, unknown> = {};
     const text = buf.length <= 200_000 ? buf.toString("utf-8") : "";
     if (text.trim()) {
@@ -10423,7 +10543,31 @@ except Exception as e:
       profile = { kind: "text", lines: lines.length, chars: text.length };
       if (lines.length > 1 && lines[0].includes(",")) {
         const cols = lines[0].split(",").map((c) => c.trim());
-        profile = { kind: "csv", rowCount: lines.length - 1, columnCount: cols.length, columns: cols.slice(0, 20) };
+        // M3: 变量类型推断(闭源 profile.variables[{name,type}] 契约) — 采样前 50 行数值探测
+        const sample = lines.slice(1, 51).map((l) => l.split(",").map((c) => c.trim()));
+        const variables = cols.slice(0, 20).map((c, ci) => {
+          let num = 0;
+          let total = 0;
+          for (const row of sample) {
+            const v = row[ci];
+            if (v === undefined || v === "") continue;
+            total++;
+            if (v !== "" && !Number.isNaN(Number(v))) num++;
+          }
+          const ratio = total ? num / total : 0;
+          const type = ratio >= 0.9 ? "scale" : ratio <= 0.1 ? "nominal" : "unknown";
+          return { name: c, type };
+        });
+        profile = {
+          kind: "csv",
+          parseStatus: "completed", // viz 前端契约(闭源 o() 判定)
+          rowCount: lines.length - 1,
+          columnCount: cols.length,
+          colCount: cols.length, // 别名(viz 前端读 colCount)
+          columns: cols.slice(0, 20),
+          variables,
+          sampleRows: sample.slice(0, 20) // 前 20 行样例(viz 绑定数据/预览)
+        };
       }
     }
     await pool.query(

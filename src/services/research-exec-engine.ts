@@ -130,9 +130,11 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
   try {
     // SocialSci 补漏组4: 专用执行器分派(P3 子任务/P4 批量/P5 合稿; review/viz/statistics 由对应面板直连)
     const executorMap: Record<string, (task: any, ctx: ExecCtx) => Promise<{ text: string; structured?: unknown }>> = {
+      "material-plan": runMaterialPlan,
       "literature-search": runLiteratureSearch,
       "theory-generate": runTheoryGenerate,
       "table-generate": runTableGenerate,
+      "data-analysis": runDataAnalysisPlan,
       chapter_batch: runChapterBatch,
       phase4_batch: runChapterBatch,
       review: runPhase5,
@@ -226,6 +228,8 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     title: `检索方案 · ${String(sectionTitle).slice(0, 30)}`,
     contentMd: `检索词:\n${queries.join("\n")}\n\n(实际检索需接知识库/CNKI, 命中后追加来源)`,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // B5 来源徽章: platformType=literature(文献库检索); 检索器未实际命中 → status empty
+    meta: { platformType: "literature", source: { sourceStatus: { wanfang: queries.length ? "empty" : "failed" } } },
   });
   return { text: `已生成 ${queries.length} 组检索词`, structured: { queries } };
 }
@@ -255,7 +259,38 @@ async function runTheoryGenerate(task: any, ctx: ExecCtx) {
   return { text: `理论框架: ${theory?.name ?? "未生成"}`, structured: { theory } };
 }
 
-/** P3 表格设计(per section): 设计论文所需表格规范 → data_result 素材 */
+/** P3 素材生成执行计划(闭源 material-plan): 基于章节+变量产出 literatureSearch/textTables/dataAnalysis 三段计划 */
+async function runMaterialPlan(task: any, ctx: ExecCtx) {
+  const snapshot = task.input_snapshot ?? {};
+  const l1 = Array.isArray(snapshot.l1Sections) ? snapshot.l1Sections as Array<{ id: string; title: string }> : [];
+  const variables = Array.isArray(snapshot.variables) ? snapshot.variables as Array<{ name: string; role?: string }> : [];
+  const hasData = Boolean(snapshot.hasDataFile);
+  const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+  const res = await fetchLlm({
+    url: ep.url, key: ep.key, model: ep.model,
+    messages: [{ role: "user", content: `你是社科研究素材规划专家。为一篇论文规划素材生成执行计划, 输出 JSON:
+{"plan":{"literatureSearch":[{"sectionId":"sec id","sectionTitle":"章节名","keywords":["检索词1","检索词2"],"count":5,"_enabled":true}],
+"textTables":[{"sectionId":"sec id","sectionTitle":"章节名","title":"拟生成的表格标题","columns":["列名"],"rows":1,"_enabled":true}],
+"dataAnalysis":[${hasData ? `{"analysisType":"descriptive|regression","variables":[${variables.map((v) => `"${v.name}"`).join(",")}],"methods":["描述统计"],"sectionId":"","_enabled":true}` : "[]"}]}}
+
+【论文主题】${ctx.goal}
+【一级章节】${l1.map((s) => `${s.id}:${s.title}`).join("; ")}
+${variables.length ? `【研究变量】${variables.map((v) => `${v.name}(${v.role ?? ""})`).join(", ")}` : ""}
+${hasData ? "" : "(无数据文件: dataAnalysis 段输出空数组)"}` }],
+    temperature: 0.3, maxTokens: 3000, timeoutMs: 180_000,
+  });
+  let plan: { literatureSearch?: unknown[]; textTables?: unknown[]; dataAnalysis?: unknown[] } = {};
+  try {
+    const j = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim());
+    plan = j?.plan ?? j ?? {};
+  } catch { /* 降级空计划 */ }
+  return {
+    text: `已生成执行计划: 文献 ${(plan.literatureSearch ?? []).length} 组, 表格 ${(plan.textTables ?? []).length} 个, 分析 ${(plan.dataAnalysis ?? []).length} 项`,
+    structured: { plan }
+  };
+}
+
+/** P3 表格设计(per section): 设计论文所需表格规范 → table 素材(归"表格素材"分组, 与手动添加一致; data_result 留给实证产物) */
 async function runTableGenerate(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   const sectionTitle = snapshot.sectionTitle ?? "本节";
@@ -272,12 +307,42 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
   let tables: Array<{ title?: string; columns?: string[]; purpose?: string }> = [];
   try { tables = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim())?.tables ?? []; } catch { /* 忽略 */ }
   await materials.createMaterial({
-    projectId: ctx.projectId, userId: ctx.userId, kind: "data_result",
+    projectId: ctx.projectId, userId: ctx.userId, kind: "table",
     title: `表格设计 · ${String(sectionTitle).slice(0, 30)}`,
     contentMd: tables.map((t) => `- ${t.title}: [${(t.columns ?? []).join("|")}] ${t.purpose ?? ""}`).join("\n"),
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
   });
   return { text: `已设计 ${tables.length} 张表`, structured: { tables } };
+}
+
+/** P3 数据分析方案(闭源 plan.dataAnalysis 段执行): 对变量产出拟用分析方法/验证路径 → data_result 素材(归"数据分析素材"分组) */
+async function runDataAnalysisPlan(task: any, ctx: ExecCtx) {
+  const snapshot = task.input_snapshot ?? {};
+  const analysisType = String(snapshot.analysisType ?? "descriptive");
+  const variables = Array.isArray(snapshot.variables) ? snapshot.variables as Array<{ name?: string; role?: string }> : [];
+  const methods = Array.isArray(snapshot.methods) ? snapshot.methods as string[] : [];
+  const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+  const res = await fetchLlm({
+    url: ep.url, key: ep.key, model: ep.model,
+    messages: [{ role: "user", content: `你是社科数据分析专家。为论文章节规划数据分析方案, 输出 JSON:
+{"analysis":{"type":"${analysisType}","coreMethod":"主方法","design":"方案设计100字内","expectedTables":["拟生成表/图1","拟生成表/图2"]}}
+
+【研究主题】${ctx.goal}
+【分析类型】${analysisType === "regression" ? "回归分析" : "描述统计"}
+${variables.length ? `【涉及变量】${variables.map((v) => `${v.name}(${v.role ?? ""})`).join(", ")}` : ""}
+${methods.length ? `【备选方法】${methods.join("、")}` : ""}` }],
+    temperature: 0.4, maxTokens: 2500, timeoutMs: 240_000,
+  });
+  let analysis: { type?: string; coreMethod?: string; design?: string; expectedTables?: string[] } | null = null;
+  try { analysis = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim())?.analysis ?? null; } catch { /* 忽略 */ }
+  const title = `${analysisType === "regression" ? "回归" : "描述"}分析方案 · ${variables.map((v) => v.name).filter(Boolean).join("+").slice(0, 24) || ctx.goal.slice(0, 24)}`;
+  await materials.createMaterial({
+    projectId: ctx.projectId, userId: ctx.userId, kind: "data_result",
+    title,
+    contentMd: `分析方法: ${analysis?.coreMethod ?? (methods[0] ?? analysisType)}\n\n${analysis?.design ?? ""}${(analysis?.expectedTables ?? []).length ? `\n拟产出: ${(analysis?.expectedTables ?? []).join("; ")}` : ""}`,
+    sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+  });
+  return { text: `数据分析方案: ${analysis?.coreMethod ?? "已生成"}`, structured: { analysis } };
 }
 
 /** P4 章节批量生成(HAR: phase4/batch sectionSnapshots 含 skill_prompt; 复用 generateChapter) */
@@ -400,7 +465,8 @@ async function buildCitationPool(userId: string, projectId: string): Promise<str
  *  产物链 revisionOf 指向被修订版本(发布版本号), activate 端点把版本置终稿。 */
 async function runPhase5(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
-  const kind = task.job_kind; // merge | review | revise
+  // 前缀归一: executorMap 用 phase5_merge/phase5_review/phase5_revise 注册 → 内部统一为短名
+  const kind = (task.job_kind ?? "").replace(/^phase5_/, ""); // merge | review | revise
   const sections = Array.isArray(snapshot.sections) ? snapshot.sections as Array<{ title?: string }> : [];
   const bodies = Array.isArray(snapshot.chapterContents) ? snapshot.chapterContents as string[] : [];
   if (kind === "merge") {

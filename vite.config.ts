@@ -22,7 +22,9 @@ export default defineConfig({
       "/sources": "http://127.0.0.1:4173",
       "/ingest": "http://127.0.0.1:4173",
       "/search": "http://127.0.0.1:4173",
-      "/events": "http://127.0.0.1:4173"
+      "/events": "http://127.0.0.1:4173",
+      // SocialSci Vue 子应用 dev 直连(独立 vite 5174; 生产走 fastify-static web/dist/soc)
+      "/soc": "http://127.0.0.1:5174"
     }
   },
   build: {
