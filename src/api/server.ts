@@ -5346,7 +5346,14 @@ export function buildHttpServer() {
       if (body.format === "csv") {
         return reply.type("text/csv").send(tables.map((t: any) => empiricalService.csvTable(t)).join("\n\n"));
       }
-      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "format 需为 latex 或 csv" } });
+      // 审查 P2-5: recordId 分支补 docx(历史卡导出) — 取第一条表生成三线表 Word
+      if (body.format === "docx") {
+        if (!tables.length) return reply.code(422).send({ error: { code: "NO_TABLE", message: "该记录无表格可导出" } });
+        const r = await empiricalService.exportTableDocx(tables[0]);
+        if (!r.ok || !r.base64) return reply.code(500).send({ error: { code: "EXPORT_FAILED", message: r.error ?? "docx 生成失败" } });
+        return { ok: true, base64: r.base64, fileName: r.fileName };
+      }
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "format 需为 latex/csv/docx" } });
     }
     if (!body.table) return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "需要 table 或 recordId" } });
     if (body.format === "latex") {
@@ -9838,7 +9845,15 @@ except Exception as e:
     const { docId } = request.params as { docId: string };
     const doc = await editorService.getDoc(user.id, docId);
     if (!doc) return reply.code(404).send({ error: "文档不存在" });
-    return { document: doc };
+    // 审查 P0-1A: 带出当前版本 content_hash(前端初始化乐观锁基准用)
+    let contentHash = "";
+    try {
+      const hv = await pool.query(
+        `select content_hash from doc2_versions where id=$1`, [doc.current_version_id]
+      );
+      contentHash = hv.rows[0]?.content_hash ?? "";
+    } catch { /* hash 取不到不阻断 */ }
+    return { document: { ...doc, content_hash: contentHash } };
   });
 
   app.put("/api/editor/v1/documents/:docId", async (request, reply) => {
@@ -9860,7 +9875,9 @@ except Exception as e:
         return reply.code(409).send({ error: "文档已在其他窗口被修改, 请刷新后继续", code: "DOC_CONFLICT" });
       }
     }
-    const r = await editorService.saveDoc(user.id, docId, body);
+    // 审查 P0-1B: expectedContentHash 仅用于冲突检测, 不能进 saveDoc(表无此列 → 500)
+    const { expectedContentHash: _ech, ...saveBody } = body;
+    const r = await editorService.saveDoc(user.id, docId, saveBody as { title?: string; content?: string; tags?: string[] });
     if (!r) return reply.code(404).send({ error: "文档不存在" });
     return { ok: true, wordCount: r.word_count, currentVersion: r.currentVersion ?? null };
   });

@@ -166,7 +166,12 @@ export async function listTasks(userId: string, projectId?: string, status?: str
   const clauses = ["user_id=$1"];
   const vals: unknown[] = [userId];
   if (projectId) { vals.push(projectId); clauses.push(`project_id=$${vals.length}`); }
-  if (status) { vals.push(status); clauses.push(`status=$${vals.length}`); }
+  if (status) {
+    // 支持逗号分隔多状态(running,queued) — RunningTasks 轮询用
+    const parts = status.split(",").map((x) => x.trim()).filter(Boolean);
+    if (parts.length === 1) { vals.push(parts[0]); clauses.push(`status=$${vals.length}`); }
+    else { vals.push(parts); clauses.push(`status = any($${vals.length}::text[])`); }
+  }
   const r = await pool.query(
     `select * from research_tasks where ${clauses.join(" and ")} order by created_at desc limit 100`,
     vals
@@ -187,6 +192,8 @@ export async function updateTaskStatus(userId: string, taskId: string, status: s
   const vals: unknown[] = [taskId, userId, status];
   if (patch.error !== undefined) { sets.push(`error=$${vals.length + 1}`); vals.push(JSON.stringify(patch.error)); }
   if (patch.progress !== undefined) { sets.push(`progress=$${vals.length + 1}`); vals.push(JSON.stringify(patch.progress)); }
+  // 审查 P1: patch.result 曾被静默丢弃 — 经此收尾的任务结果永空(历史中心/任务摘要取不到)
+  if (patch.result !== undefined) { sets.push(`result=$${vals.length + 1}`); vals.push(JSON.stringify(patch.result)); }
   const r = await pool.query(
     `update research_tasks set ${sets.join(",")} where id=$1 and user_id=$2 returning id, status`,
     vals

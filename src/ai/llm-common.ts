@@ -34,13 +34,16 @@ function recordLatency(ms: number): void {
   }
 }
 
+// 审查 P0-2(代理4): 幻影计数修复 — 慢路径 waiter 唤醒后不再自增:
+// releaseLlmSlot 已替接替者 llmActive++(占位), 若 43 行再 ++ 则每次排队交接净 +1,
+// 空闲期无人 release → llmActive 永达 cap → 所有 callLlm 永久挂起(死锁)
 async function acquireLlmSlot(): Promise<() => void> {
   if (llmActive < adaptiveCap) {
     llmActive++;
     return () => { llmActive--; };
   }
   await new Promise<void>((resolve) => llmWaiters.push(resolve));
-  llmActive++;
+  // 唤醒后不自增 — releaseLlmSlot 已替本接替者占位
   return () => { llmActive--; };
 }
 
@@ -235,6 +238,8 @@ function repairCommonJson(s: string): string {
     const c = r[i];
     if (c === '"' && (i === 0 || r[i - 1] !== "\\")) { inStr = !inStr; out += c; continue; }
     if (inStr && c === "\n") { out += "\\n"; continue; }
+    // P2-2(审查): 引号内裸 CR(Windows 行尾)同样非法 — 一并转义
+    if (inStr && c === "\r") { out += "\\r"; continue; }
     out += c;
   }
   return out;
