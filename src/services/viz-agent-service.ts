@@ -103,6 +103,9 @@ export async function runTurn(userId: string, sessionId: string, userMsg: string
     let artifacts: { pngRel: string; svgRel: string } | null = null;
     let lastCritique = "";
     let done = false;
+    // 本次 turn 的稳定图身份: chart 事件多次迭代(自审修订)共用同一 figureId,
+    // 前端按 vizJobId+figureId 合并到同一图卡(闭源 Xe() 语义), 避免每版本开新卡
+    const figureId = `figure:${randomUUID().slice(0, 8)}`;
 
     for (let round = 0; round <= MAX_CRITIQUE_ROUNDS && !done; round++) {
       const isFix = round > 0;
@@ -129,7 +132,7 @@ ${round > 0 ? "注意: 必须修复上轮 critique 指出的全部问题!" : ""}
       }
       artifacts = { pngRel: rendered.pngRel!, svgRel: rendered.svgRel! };
       sse.send("tool", { name: "render_chart", status: "done", pngRel: rendered.pngRel, svgRel: rendered.svgRel });
-      sse.send("chart", { artifact: { pngRel: rendered.pngRel, svgRel: rendered.svgRel }, version: round + 1, round });
+      sse.send("chart", { artifact: { pngRel: rendered.pngRel, svgRel: rendered.svgRel }, version: round + 1, round, figureId });
 
       // ─── 4. critique 自审(强制步骤: 匹配度/统计正确/可视化规范) ───
       const crit = await llmJson(`你是科研图表审稿专家。审查刚生成的 matplotlib 图表方案, 输出 JSON:

@@ -16,7 +16,7 @@ function toPgArray(items: string[]): string {
 export interface MaterialInput {
   projectId: string;
   userId: string;
-  kind: "note" | "citation" | "data_result" | "figure" | "file" | "theory";
+  kind: "note" | "citation" | "data_result" | "figure" | "file" | "theory" | "table";
   title?: string;
   contentMd?: string;
   tags?: string[];
@@ -66,12 +66,44 @@ export async function listMaterials(userId: string, projectId?: string, kind?: s
   if (projectId) { vals.push(projectId); clauses.push(`project_id=$${vals.length}`); }
   if (kind) { vals.push(kind); clauses.push(`kind=$${vals.length}`); }
   const r = await pool.query(
-    `select id, project_id, kind, title, tags, source_ref, produced_by_dag_node, section_ids, usage_status, created_at
+    `select id, project_id, kind, title, tags, source_ref, produced_by_dag_node, section_ids, usage_status,
+            content_md, caption, summary, source_type, source_url, image_path, table_data, analysis_method,
+            section_id, references_json, meta, created_at, updated_at
        from research_materials where ${clauses.join(" and ")}
       order by created_at desc limit 200`,
     vals
   );
-  return r.rows;
+  // 富列 camelCase 映射(前端素材卡/编排/预览直接消费; snake 列与老调用方 getMaterial 兼容)
+  return r.rows.map((m) => {
+    const meta = (m.meta ?? {}) as Record<string, unknown>;
+    const source = (meta.source ?? {}) as Record<string, unknown>;
+    return {
+      id: m.id,
+      projectId: m.project_id,
+      kind: m.kind,
+      title: m.title ?? "",
+      tags: m.tags ?? [],
+      sourceRef: m.source_ref ?? "",
+      producedByDagNode: m.produced_by_dag_node ?? "",
+      sectionIds: m.section_ids ?? [],
+      usageStatus: m.usage_status ?? "candidate",
+      contentMd: m.content_md ?? "",
+      caption: m.caption ?? "",
+      summary: m.summary ?? "",
+      sourceType: m.source_type ?? "",
+      sourceUrl: m.source_url ?? "",
+      imagePath: m.image_path ?? "",
+      tableData: m.table_data ?? {},
+      analysisMethod: m.analysis_method ?? "",
+      sectionId: m.section_id ?? "",
+      references: m.references_json ?? [],
+      // B5 来源徽章: platformType(闭源键)+ source.sourceStatus 展开(meta 兜底)
+      platformType: String(meta.platformType ?? m.source_type ?? ""),
+      source: { sourceStatus: (meta.sourceStatus ?? source ?? {}) as Record<string, string> },
+      createdAt: m.created_at ?? null,
+      updatedAt: m.updated_at ?? null
+    };
+  });
 }
 
 export async function getMaterial(userId: string, materialId: string) {

@@ -139,7 +139,49 @@ export async function createVizJob(userId: string, sessionId: string, prompt: st
 
 export async function getVizJob(userId: string, jobId: string) {
   const r = await pool.query(`select * from viz_jobs where id=$1 and user_id=$2`, [jobId, userId]);
-  return r.rows[0] ?? null;
+  const job = r.rows[0];
+  if (!job) return null;
+  // 聚合: 该会话的最新产物 → job.result.charts(闭源 getJob result.charts 语义)
+  try {
+    const arts = await pool.query(
+      `select python_code, png_path, svg_editable_path, critique, spec, prompt, version, created_at
+         from viz_artifacts where session_id=$1 and user_id=$2
+        order by version desc limit 20`,
+      [job.session_id, userId]
+    );
+    const charts = arts.rows.map((a: Record<string, unknown>) => {
+      const spec = (a.spec ?? {}) as Record<string, unknown>;
+      const critique = (a.critique ?? {}) as Record<string, unknown>;
+      const caption = String(spec.caption ?? spec.chartIntent ?? a.prompt ?? "");
+      const chartType = String(spec.chartType ?? "plotly");
+      return {
+        png: a.png_path ? `/api/viz/files/${String(a.png_path)}` : null,
+        code: a.python_code,
+        caption,
+        analysisText: String(spec.analysis ?? ""),
+        chartType,
+        chartVersionId: String(a.version),
+        figureId: `figure:${a.version}`,
+        metadata: { chartType, figureId: `figure:${a.version}` }
+      };
+    });
+    const content = charts.length ? `已生成 ${charts.length} 张图(最后版本 v${arts.rows[0]?.version ?? 1})` : "";
+    return { ...job, result: { charts, content } };
+  } catch {
+    return job;
+  }
+}
+
+/** 任务列表(闭源 viz-jobs?limit=N 语义): 最近 N 个 + 图数/错误摘要 */
+export async function listVizJobs(userId: string, limit = 20): Promise<unknown[]> {
+  const r = await pool.query(
+    `select j.id, j.session_id, j.prompt, j.status, j.error, j.created_at, j.updated_at,
+            (select count(*) from viz_job_events e where e.job_id=j.id and e.event='chart') as chart_count
+       from viz_jobs j where j.user_id=$1
+       order by j.created_at desc limit $2`,
+    [userId, limit]
+  );
+  return r.rows;
 }
 
 /** 取消(幂等 — 审查 M3): DB 置 cancelled(仅非终态), 通知 running 标记; 不删 map(finally 删) */
