@@ -287,7 +287,7 @@ export function VizAgentPanel() {
         <div className="flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-pink-400" />
           <h2 className="text-base font-bold text-slate-100">科研绘图</h2>
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">SocialSci 对齐</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">科研工作台</span>
         </div>
         <button onClick={newSession} className="flex items-center gap-1.5 rounded-lg bg-pink-600 px-3 py-1.5 text-xs text-white hover:bg-pink-500">
           <MessageSquarePlus className="h-3.5 w-3.5" /> 新建绘图会话

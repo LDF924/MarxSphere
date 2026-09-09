@@ -75,7 +75,7 @@ export function SiteContentPanel() {
         <div className="flex items-center gap-2">
           <Info className="h-5 w-5 text-sky-400" />
           <h2 className="text-base font-bold text-slate-100">站点内容</h2>
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">SocialSci 对齐</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">科研工作台</span>
         </div>
         <div className="flex gap-1 rounded-lg bg-slate-800/80 p-0.5">
           {tabBtn("announce", "公告", <Megaphone className="h-3 w-3" />)}

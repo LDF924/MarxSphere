@@ -464,7 +464,7 @@ function OpsBlocks({ onMsg, onReload }: { onMsg: (m: string) => void; onReload: 
 
   return (
     <div className="mt-3 grid gap-3 rounded-xl border p-4 lg:grid-cols-2">
-      <span className="text-xs font-semibold text-muted-foreground">运营扩展 · SocialSci 对齐</span>
+      <span className="text-xs font-semibold text-muted-foreground">科研中心运营扩展</span>
 
       {/* 积分充扣 */}
       <div className="rounded-lg border border-white/10 bg-muted/10 p-3">

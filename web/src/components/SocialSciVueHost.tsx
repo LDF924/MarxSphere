@@ -1,5 +1,5 @@
 /**
- * SocialSciVueHost — 在 React 父级 iframe 内嵌 Vue3 子应用视图
+ * VueHost — 在 React 父级 iframe 内嵌 Vue3 子应用视图(历史 hash 兼容入口)
  * 嵌入架构: vue 子工程独立构建到 web/dist/soc(后端 fastify-static root=web/dist 已托管),
  * 父级经 viewRegistry 注册 6 个入口, 每个渲染本宿主, route 决定子应用 hash 路由。
  * dev 模式: 根 vite.config.ts server.proxy 增 "/soc" → http://127.0.0.1:5174。
@@ -42,18 +42,17 @@ export default function SocialSciVueHost({ route = "/workflow/input", label }: {
   }, [route]);
 
   return (
-    <div style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "#f3f5f8" }}>
+    <div style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "#0a1120" }}>
       {label ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
-          <strong style={{ fontSize: 13, color: "#1e293b" }}>{label}</strong>
-          <span style={{ fontSize: 11, color: "#94a3b8" }}>SocialSci Vue3 还原版 · 闭源实现逻辑 1:1</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: "#11192c", borderBottom: "1px solid #222f44", flexShrink: 0 }}>
+          <strong style={{ fontSize: 13, color: "#f1f5f9" }}>{label}</strong>
         </div>
       ) : null}
       <iframe
         ref={ref}
         src={`/soc/index.html#${route}`}
-        title={label ?? "SocialSci Vue"}
-        style={{ flex: 1, width: "100%", border: 0, minHeight: 0, background: "#fff" }}
+        title={label ?? "科研工作台"}
+        style={{ flex: 1, width: "100%", border: 0, minHeight: 0, background: "#0a1120" }}
         allow="clipboard-write; clipboard-read"
       />
     </div>

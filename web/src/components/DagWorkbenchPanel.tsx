@@ -470,7 +470,7 @@ export function DagWorkbenchPanel() {
         <div className="flex items-center gap-2">
           <Network className="h-5 w-5 text-cyan-400" />
           <h2 className="text-base font-bold text-slate-100">科研工作台 · 可视化 DAG 编排</h2>
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">SocialSci 对齐</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">科研工作台</span>
         </div>
         {mode === "work" && cur && (
           <button onClick={backToList} className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-700">
