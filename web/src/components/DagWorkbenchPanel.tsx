@@ -7,7 +7,7 @@
 // 配套后端: /api/research/*(research-pipeline-service); 迁移114/115
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState,
+  ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState, Handle, Position,
   type Connection, type Edge, type Node, type NodeTypes, MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -69,6 +69,9 @@ function DAGNodeChip({ data, id }: { data: { label: string; type: string; status
   return (
     <div className={cn("w-52 rounded-lg border px-2.5 py-2 text-left shadow-lg backdrop-blur", statusColor, state === "locked" || data.locked ? "opacity-60" : "")}
       style={{ borderLeft: `3px solid ${meta.color}` }}>
+      {/* 连线柄(审查修复: 原节点无 Handle → ReactFlow 无法拖线) */}
+      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border !border-slate-500 !bg-cyan-300" />
+      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border !border-slate-500 !bg-cyan-300" />
       <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: meta.color }}>
         {/* R10/R16(闭源 AgentFlowNode): index 序号 + module 徽标 */}
         {(data.index !== undefined && data.index !== null) && <span className="text-[10px] font-bold">{data.index}</span>}
@@ -548,6 +551,16 @@ export function DagWorkbenchPanel() {
           title={cur.title}
           onDone={() => {
             setMode("work");
+            // 审查修复: 向导提交后重拉画布(后端模板已铺 10 节点; 原实现不重拉 → 画布空等刷新)
+            void (async () => {
+              if (!cur) return;
+              try {
+                const c = await j<{ canvas: { nodes: Node[]; edges: Edge[] }; canvasVersion: number }>(`/api/research/projects/${cur.id}/canvas`);
+                setCanvasVer(c.canvasVersion);
+                setNodes(c.canvas.nodes ?? []);
+                setEdges(c.canvas.edges ?? []);
+              } catch { /* 容忍 */ }
+            })();
             // T7 对齐闭源: 提交 → 进"科研架构确认页"(自动生成, 失败可重试, 确认才进创作)
             setShowArchConfirm(true);
           }}
@@ -611,6 +624,7 @@ export function DagWorkbenchPanel() {
               // 审查 P2-8: 仅 add/remove 边触发持久化(选择/悬浮是 UI 态不落库)
               onEdgesChange={(ch) => { onEdgesChange(ch); if (ch.some((c) => c.type === "add" || c.type === "remove")) persistCanvas(nodesRef.current, edgesRef.current); }}
               onConnect={onConnect}
+              onNodeClick={(_, n) => openNodePanel(n)}
               onNodeDoubleClick={(_, n) => openNodePanel(n)}
               onPaneClick={() => { setSelNode(null); setNodePayload(null); }}
               fitView minZoom={0.3} maxZoom={1.8}

@@ -130,6 +130,7 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
   try {
     // SocialSci 补漏组4: 专用执行器分派(P3 子任务/P4 批量/P5 合稿; review/viz/statistics 由对应面板直连)
     const executorMap: Record<string, (task: any, ctx: ExecCtx) => Promise<{ text: string; structured?: unknown }>> = {
+      analyze: runAnalyzeArchitecture,
       "material-plan": runMaterialPlan,
       "literature-search": runLiteratureSearch,
       "theory-generate": runTheoryGenerate,
@@ -204,6 +205,148 @@ export async function syncTaskDependenciesFromCanvas(projectId: string) {
 }
 
 // ═══ SocialSci 补漏组4: P3/P4/P5 专用执行器(HAR 实测语义: phase3 literature-search/theory-generate/table-generate; phase4 batch; phase5 merge/revise) ═══
+
+/** 章节结构解析(闭源 goal→outline 规则): ①引号/"研究X"/主题句 → 段 ②数字/汉字/章节头 → 层级 ③兜底 5 段默认模板 */
+export function parseGoalToSections(goal: string): Array<{ id: string; title: string; level: number }> {
+  const src = String(goal ?? "").trim();
+  const topic = ((): string => {
+    if (!src) return "";
+    const qm = src.match(/["“"']([^""']{4,50})["”"']/);
+    if (qm) return qm[1];
+    const m = src.match(/(?:研究|探讨|分析|影响|机制|效应|实证|基于)[^。；;，,\n]{4,60}/);
+    if (m) return m[0].slice(0, 50);
+    return src.slice(0, 50);
+  })();
+  const CN: Record<string, number> = {};
+  "一二三四五六七八九十".split("").forEach((c, i) => (CN[c] = i));
+  const lines = src.split(/\n/);
+  const out: Array<{ id: string; title: string; level: number }> = [];
+  let order = 0;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    let level = 0;
+    let title = "";
+    if (/^\d+\.\d+(\.\d+)*/.test(t)) { level = 2; title = t.replace(/^\d+(\.\d+)+\.?\s*/, ""); }
+    else if (/^\d+[.、]\s*/.test(t)) { level = 1; title = t.replace(/^\d+[.、]\s*/, ""); }
+    else if (/^第[一二三四五六七八九十百0-9]+章/.test(t)) { level = 1; title = t.replace(/^第[一二三四五六七八九十百0-9]+章[、.\s]*/, ""); }
+    else if (/^[一二三四五六七八九十]+、/.test(t)) { level = 1; title = t.replace(/^[一二三四五六七八九十]+、\s*/, ""); }
+    else if (/^（[一二三四五六七八九十]+）/.test(t)) { level = 2; title = t.replace(/^（[一二三四五六七八九十]+）\s*/, ""); }
+    else if (/^\s{2,}/.test(raw)) { level = 2; title = t; }
+    else { level = 1; title = t; }
+    if (!title) continue;
+    if (level === 1 && out.length && CN[title.slice(0, 1)] !== undefined && CN[out[out.length - 1].title.slice(0, 1)] !== undefined &&
+        CN[title.slice(0, 1)] !== undefined) {
+      // 汉字序号文本且非递增/孤立 → 仍按一级(标题语义优先)
+    }
+    out.push({ id: `sec_${order}`, title: title.slice(0, 60), level });
+    order += 1;
+  }
+  if (!out.length && topic) out.push({ id: "sec_0", title: topic.slice(0, 60), level: 1 });
+  // 少于 5 节 → 默认模板补足(闭源"标准流程 Phase1-5"信息录入默认 outline)
+  if (out.length < 5) {
+    const defaults = ["引言", "文献综述与分析框架", "现状描述或案例呈现", "问题分析与对策建议", "结语"];
+    for (const d of defaults) {
+      if (out.length >= 5) break;
+      const has = out.some((s) => s.title.includes(d.slice(0, 2)));
+      if (!has) out.push({ id: `sec_${out.length}`, title: d, level: 1 });
+    }
+  }
+  return out;
+}
+
+/**
+ * analyze 执行器 — 科研架构阶段(闭源 phase2 createPhase2 + publishPhase2 语义):
+ * 结构三段: ①节点快照大纲(结构源自项目 input 节点 outline 或任务 goal 解析) ②LLM 架构分析(变量/方法/逻辑)
+ *   ③sections 节点落库(status=pending) → phrase4/5 消费; 无 LLM 时快照段兜底仍产出
+ */
+async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: string; structured?: unknown }> {
+  const projectId = ctx.projectId;
+  // ① 结构快照: 读 input 节点 outline → 无则从任务快照 sections → 无则 goal 解析
+  const outline = (async (): Promise<string> => {
+    const n = await pool.query(`select payload from research_nodes where project_id=$1 and node_key='input'`, [projectId]).catch(() => ({ rows: [] as unknown[] }));
+    const payload = (n?.rows?.[0]?.payload ?? {}) as { outline?: string; title?: string };
+    const goal = String(ctx.goal ?? "");
+    return String(payload.outline ?? goal ?? "");
+  })();
+  const snapSecs = Array.isArray(task.input_snapshot?.sections) ? (task.input_snapshot.sections as Array<Record<string, unknown>>) : [];
+  const sections = snapSecs.length
+    ? snapSecs.map((s, i) => ({ id: String(s.id ?? `sec_${i}`), title: String(s.title ?? `章节 ${i + 1}`), level: Number(s.level ?? 1) }))
+    : parseGoalToSections(await outline);
+  if (!sections.length) throw new Error("缺少论文主题/大纲, 无法生成科研架构");
+  // ② LLM 架构分析(非硬依赖: 失败仅记 result 不阻塞节点落库)
+  let variables: unknown[] = [];
+  let logicFlow = "";
+  let stepTexts: Record<string, string> = {};
+  try {
+    const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+    const res = await fetchLlm({
+      url: ep.url, key: ep.key, model: ep.model,
+      messages: [{ role: "user", content: `你是社科研究架构分析专家。为论文生成科研架构, 输出 JSON:
+{"variables":[{"name":"变量名","role":"自变量|因变量|中介|调节|控制","description":"界定","measurement":"测度"}],
+ "logicFlow":"研究主线逻辑(120字内)",
+ "step2Text":"研究思路与分析框架说明(400字内)",
+ "step3Text":"写作安排: 各章核心任务(400字内)"}
+
+【论文主题】${String(ctx.goal ?? "").slice(0, 300)}
+【章节结构】${sections.map((s) => `${s.id}:${s.title}`).join("; ")}` }],
+      temperature: 0.3, maxTokens: 3000, timeoutMs: 180_000,
+    });
+    const j = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim()) ?? {};
+    variables = Array.isArray(j.variables) ? j.variables : [];
+    logicFlow = String(j.logicFlow ?? "");
+    stepTexts = { "2": String(j.step2Text ?? ""), "3": String(j.step3Text ?? "") };
+  } catch { /* LLM 不可用 → 仅结构 */ }
+  // ③ 落库: sections 节点(status=pending, 含 title/level) + analysis 节点(变量/逻辑/文本)
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const node = await client.query(
+      `select id from research_nodes where project_id=$1 and node_key='sections' for update`, [projectId]);
+    const payload = JSON.stringify({ sections: sections.map((s) => ({ ...s, status: "pending" })) });
+    if (node.rows.length) {
+      await client.query(
+        `update research_nodes set payload=$2::jsonb, version=version+1, updated_at=now() where project_id=$1 and node_key='sections'`,
+        [projectId, payload]);
+    } else {
+      await client.query(
+        `insert into research_nodes (project_id, task_id, node_key, payload, version, source_role) values ($1,$2,'sections',$3,1,'agent')`,
+        [projectId, ctx.taskId, payload]);
+    }
+    const an = await client.query(
+      `select id from research_nodes where project_id=$1 and node_key='analysis' for update`, [projectId]);
+    const apayload = JSON.stringify({
+      variables, logicFlow, stepAnalysisTexts: stepTexts,
+      generatedAt: new Date().toISOString(), sectionsCount: sections.length,
+    });
+    if (an.rows.length) {
+      await client.query(
+        `update research_nodes set payload=$2::jsonb, version=version+1, updated_at=now() where project_id=$1 and node_key='analysis'`,
+        [projectId, apayload]);
+    } else {
+      await client.query(
+        `insert into research_nodes (project_id, task_id, node_key, payload, version, source_role) values ($1,$2,'analysis',$3,1,'agent')`,
+        [projectId, ctx.taskId, apayload]);
+    }
+    // job_kind+project_id 单跑链唯一 → 后发 analyze 覆盖前者(防止多次 analyze 各自建 sections 混杂)
+    await client.query(
+      `update research_tasks set result=result, status=status where id=$1`, [ctx.taskId]).catch(() => null);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+  return {
+    text: `科研架构完成: ${sections.length} 个章节, ${variables.length} 个变量`,
+    structured: {
+      sections: sections.map((s) => ({ id: s.id, title: s.title, level: s.level })),
+      variables, logicFlow, stepAnalysisTexts: stepTexts,
+      steps: [{ status: "completed", contentText: `章节结构(${sections.length})` }],
+    },
+  };
+}
 
 /** P3 文献检索子任务(per section): sectionTitle+keywords → citation 素材 */
 async function runLiteratureSearch(task: any, ctx: ExecCtx) {
@@ -462,13 +605,25 @@ async function buildCitationPool(userId: string, projectId: string): Promise<str
 /** P5 合并/审查/修订(job_kind: merge|review|revise; 合并走 generateComponent 要件)
  *  P-A 对齐闭源 #589/#601/#612/#651: review 产六维报告存 task.result+project.review_result;
  *  revise 读报告对 merge 产物做有向修订(输出去AI痕迹+按 checks 改), 产出修订稿覆盖 merged_*,
- *  产物链 revisionOf 指向被修订版本(发布版本号), activate 端点把版本置终稿。 */
+ *  产物链 revisionOf 指向被修订版本(发布版本号), activate 端点把版本置终稿。
+ *  正文真源: sections 节点(analyze 建结构/phase4_batch 回写正文); merge 空正文保护不清既有全文 */
 async function runPhase5(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   // 前缀归一: executorMap 用 phase5_merge/phase5_review/phase5_revise 注册 → 内部统一为短名
   const kind = (task.job_kind ?? "").replace(/^phase5_/, ""); // merge | review | revise
-  const sections = Array.isArray(snapshot.sections) ? snapshot.sections as Array<{ title?: string }> : [];
-  const bodies = Array.isArray(snapshot.chapterContents) ? snapshot.chapterContents as string[] : [];
+  // 正文真源: 优先 sections 节点(content 已生成章), 兜底 inputSnapshot(旧调用方直传 bodies)
+  const nodeSections = await (async (): Promise<Array<{ title?: string; content?: string }>> => {
+    const r = await pool.query(
+      `select payload from research_nodes where project_id=$1 and node_key='sections'`, [ctx.projectId]).catch(() => ({ rows: [] as unknown[] }));
+    const list = (r?.rows?.[0]?.payload?.sections ?? []) as Array<{ title?: string; content?: string }>;
+    return Array.isArray(list) ? list : [];
+  })();
+  const sections = (Array.isArray(snapshot.sections) && (snapshot.sections as Array<{ title?: string }>).length
+    ? snapshot.sections as Array<{ title?: string }>
+    : nodeSections.map((s) => ({ title: s.title ?? "" })));
+  const bodies = (Array.isArray(snapshot.chapterContents) && (snapshot.chapterContents as string[]).some((c) => c && c.trim().length > 20)
+    ? snapshot.chapterContents as string[]
+    : nodeSections.map((s) => s.content ?? "").filter((c) => c && c.trim().length > 20));
   if (kind === "merge") {
     const abstract = await generateComponent({
       kind: "abstract", topic: ctx.goal,
@@ -479,6 +634,17 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     // SocialSci R3: 合并结果落 finalize 字段(mergedTitle/Abstract/Keywords/FullText/References + merge_generated)
     const fulltext = (bodies ?? []).join("\n\n");
     const references = await buildMergedReferences(ctx.userId, ctx.projectId);
+    // 空正文保护: 无可用章节正文时仅回写摘要/关键词, 不清空既有全文(0 字节覆盖即"产物为空"根因)
+    if (fulltext.trim().length < 20) {
+      await pool.query(
+        `update research_projects set
+           merged_abstract=coalesce(merged_abstract, $3),
+           merged_keywords=coalesce(merged_keywords, $4),
+           merge_generated=true, updated_at=now()
+         where id=$1`,
+        [ctx.projectId, ctx.goal, abstract.content, keywords.content]);
+      return { text: `合并完成(无章节正文: ${sections.length} 章均空, 保留既有全文)`, structured: { abstract: abstract.content, keywords: keywords.content, references, emptyBodies: true } };
+    }
     await pool.query(
       `update research_projects set
          merged_title=coalesce(nullif(merged_title,''), $2),
@@ -487,7 +653,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
          updated_at=now()
        where id=$1`,
       [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]);
-    return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references } };
+    return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references, wordCount: fulltext.replace(/\s/g, "").length } };
   }
 
   // ═══ P-A: review/revise 以 finalize 节点为真源(前端 PUT nodes/finalize 写入 merged_* + reviewReport) ═══
