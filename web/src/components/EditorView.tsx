@@ -472,7 +472,7 @@ export function EditorView() {
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-indigo-400" />
           <h2 className="text-base font-bold text-slate-100">学术编辑器</h2>
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">SocialSci 对齐</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">科研工作台</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg bg-slate-800/80 p-0.5">

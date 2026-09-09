@@ -77,12 +77,7 @@ import { Textarea } from "./components/ui/textarea";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
 import { TaskPanel } from "./components/TaskPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板级错误边界
-import { PaperOutlinePanel } from "./components/PaperOutlinePanel";
-import { DagWorkbenchPanel } from "./components/DagWorkbenchPanel"; // SocialSci P0-1: 可视化DAG科研工作台
-import { ReviewLabPanel } from "./components/ReviewLabPanel"; // SocialSci P0-3: 审稿实验室(在线科研审查)
-import { VizAgentPanel } from "./components/VizAgentPanel"; // SocialSci P0-4: 对话式科研绘图
-import { EditorView } from "./components/EditorView"; // SocialSci P0-5: 在线学术文本编辑器
-import FusionPanel, { type FusionTabDef } from "./components/FusionPanel"; // M1-M6 Vue 完整版 ↔ React 面板融合容器
+import FusionPanel, { type FusionTabDef } from "./components/FusionPanel"; // M1-M6 Vue 完整版融合容器(单一完整形态)
 import { FloatingAssistantFAB } from "./components/FloatingAssistantFAB"; // SocialSci P0-7: 全局悬浮助手
 import { SiteContentPanel } from "./components/SiteContentPanel"; // SocialSci P2: 站点内容(公告/帮助/条款/资源导航)
 import { ResearchHistoryPanel } from "./components/ResearchHistoryPanel"; // SocialSci UI审计: 历史记录中心(6模块分区)
@@ -92,37 +87,32 @@ import { AgentConsole } from "./components/AgentConsole";
 import { MetaSkillPanel } from "./components/MetaSkillPanel";  // V404-4: MetaSkill DAG 试点
 import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream 巩固
 
-// ── 科研中心 5 大融合 tab(M1-M6 Vue 完整还原 ↔ React 自有面板; 命名避开闭源原名) ──
-const FUSION_TABS: Record<string, FusionTabDef> = {
+// ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开闭源原名, 单一完整形态) ──
+const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
     title: "研途写作舱",
     vueRoute: "/workflow/input",
-    hint: "精简工具 = 自有写作台; 完整工作流 = Vue 阶段化研究(信息→架构→素材→创作→定稿)",
-    legacy: <PaperOutlinePanel />,
+    hint: "阶段化论文研究: 信息录入 → 科研架构 → 素材准备 → 文本创作 → 合稿定稿",
   },
   dag: {
     title: "课题流程编排",
     vueRoute: "/workbench/quick",
-    hint: "精简工具 = 画布编排(React); 完整工作流 = Vue 对话式 DAG 自动执行",
-    legacy: <DagWorkbenchPanel />,
+    hint: "对话式 DAG 工作流: 主题确认后 Agent 自动执行五阶段",
   },
   review: {
     title: "论文质量评审",
     vueRoute: "/review",
-    hint: "精简工具 = 评审实验室(React); 完整工作流 = Vue 传稿审稿/审稿库",
-    legacy: <ReviewLabPanel />,
+    hint: "期刊标准审稿: 多维评分 + 原文批注 + 审稿历史库",
   },
   plot: {
     title: "成果可视化工坊",
     vueRoute: "/viz",
-    hint: "精简工具 = 对话出图(React); 完整工作流 = Vue 科研绘图会话",
-    legacy: <VizAgentPanel />,
+    hint: "对话式科研绘图: 数据上传/描述需求 → 出版级图表",
   },
   editor: {
     title: "学术文本工作台",
     vueRoute: "/editor",
-    hint: "精简工具 = 双栏编辑器(React); 完整工作流 = Vue 学术编辑器(选区改写/图表/版本)",
-    legacy: <EditorView />,
+    hint: "在线学术编辑器: 富文本写作 + AI 选区改写 + 图表/版本",
   },
 };
 import { P2OView } from "./components/P2OView";
@@ -2040,15 +2030,15 @@ function AppShell() {
             ) : workspaceView === "corpus" ? (
               <ErrorBoundary><WritingCorpusPanel /></ErrorBoundary>
             ) : workspaceView === "paper-outline" ? (
-              <ErrorBoundary><FusionPanel tab={FUSION_TABS.paperOutline} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.paperOutline, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "dag-workbench" ? (
-              <ErrorBoundary><FusionPanel tab={FUSION_TABS.dag} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.dag, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "review-lab" ? (
-              <ErrorBoundary><FusionPanel tab={FUSION_TABS.review} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.review, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "plot-agent" ? (
-              <ErrorBoundary><FusionPanel tab={FUSION_TABS.plot} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.plot, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "editor" ? (
-              <ErrorBoundary><FusionPanel tab={FUSION_TABS.editor} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.editor, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "site-content" ? (
               <ErrorBoundary><SiteContentPanel /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
@@ -2609,10 +2599,10 @@ function MainWorkspaceTabs(props: {
         { value: "cjournal", label: t("政经C刊科研", "C-Journal") },
         { value: "corpus", label: t("写作语料库", "Corpus") },
         { value: "paper-outline", label: t("研途写作舱", "Writing Studio") },
-        { value: "dag-workbench", label: t("课题流程编排", "Flow Orchestrator") },  // SocialSci P0-1: React 精简 + Vue M6 完整版
-        { value: "review-lab", label: t("论文质量评审", "Review Studio") },            // SocialSci P0-3: React 精简 + Vue M2 完整版
-        { value: "plot-agent", label: t("成果可视化工坊", "Viz Studio") },               // SocialSci P0-4: React 精简 + Vue M4 完整版
-        { value: "editor", label: t("学术文本工作台", "Editor Studio") },                      // SocialSci P0-5: React 精简 + Vue M1 完整版
+        { value: "dag-workbench", label: t("课题流程编排", "Flow Orchestrator") },  // SocialSci P0-1: Vue M6 完整版
+        { value: "review-lab", label: t("论文质量评审", "Review Studio") },            // SocialSci P0-3: Vue M2 完整版
+        { value: "plot-agent", label: t("成果可视化工坊", "Viz Studio") },               // SocialSci P0-4: Vue M4 完整版
+        { value: "editor", label: t("学术文本工作台", "Editor Studio") },                      // SocialSci P0-5: Vue M1 完整版
         { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },  // V404-33: 科研工具归科研中心
         // ── Vue 完整还原版收敛: 统计工作台(React 侧无对应精简面板, 单独保留) ──
         { value: "soc-statistics", label: t("实证统计工作台", "Stats Studio") },

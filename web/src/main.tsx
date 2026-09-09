@@ -55,9 +55,9 @@ const theme = storedTheme === "light" ? "light" : "dark";
 document.documentElement.classList.toggle("light", theme === "light");
 document.documentElement.classList.toggle("dark", theme === "dark");
 
-// ── SocialSci 闭源 Vue3 反混淆还原 6 模块嵌入(方案 A) ──
+// ── Vue3 子应用 6 模块嵌入(历史 hash 兼容入口: soc-* 直达) ──
 // 宿主组件在 iframe 内嵌独立构建的 web/dist/soc(后端 fastify-static 已托管), route=子应用 hash 路由
-import SocialSciVueHost from "./components/SocialSciVueHost";
+import VueHost from "./components/SocialSciVueHost";
 import { SOCIALSCI_ROUTES } from "./components/SocialSciVueHost";
 
 SOCIALSCI_ROUTES.forEach((def) => {
@@ -66,9 +66,9 @@ SOCIALSCI_ROUTES.forEach((def) => {
     label: def.label,
     labelEn: def.label,
     category: "tools",
-    component: () => <SocialSciVueHost route={def.route} label={def.label} />,
+    component: () => <VueHost route={def.route} label={def.label} />,
     dot: "hsl(214 60% 55%)",
-    desc: `社科研修云 · ${def.label}(Vue3 还原版)`,
+    desc: `MarxSphere · ${def.label}`,
   });
 });
 

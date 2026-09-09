@@ -379,7 +379,7 @@ export function ReviewLabPanel() {
         <div className="flex items-center gap-2">
           <Gavel className="h-5 w-5 text-rose-400" />
           <h2 className="text-base font-bold text-slate-100">审稿实验室</h2>
-          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">SocialSci 对齐</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">科研工作台</span>
         </div>
         <div className="flex gap-1 rounded-lg bg-slate-800/80 p-0.5">
           {([["new", "新建审稿", <PenLine key="i" className="h-3 w-3" />], ["jobs", "审稿记录", <ClipboardList key="i" className="h-3 w-3" />],
