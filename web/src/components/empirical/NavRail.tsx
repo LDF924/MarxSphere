@@ -19,7 +19,7 @@ const SECTIONS: { id: SectionId; label: string; icon: any; ready?: boolean }[] =
   { id: "regression", label: "回归", icon: LineChart },
   { id: "interpretation", label: "结果解释", icon: FileText },
   { id: "ledger", label: "证据账本", icon: BookMarked },
-  { id: "methods", label: "方法执行", icon: PlaySquare },
+  { id: "methods", label: "统一分析台", icon: PlaySquare },
 ];
 
 export function NavRail({ active, onSelect, ready }: { active: SectionId; onSelect: (s: SectionId) => void; ready?: (id: SectionId) => boolean }) {
