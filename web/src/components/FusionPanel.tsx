@@ -64,9 +64,17 @@ export default function FusionPanel({ tab, panelKey }: { tab: FusionTabDef; pane
       iframe.addEventListener("load", () => setReady(true));
       entry = { iframe, usedBy: null };
       keepAlivePool.set(key, entry);
-    } else if (entry.iframe.contentWindow && entry.iframe.contentWindow.location.href) {
-      // 已加载过 → 直接 ready
-      setReady(true);
+    } else {
+      // 已加载过 → 直接 ready(读 location 需 try/catch: dev 下 React(4174) 与 Vue(5174)
+      // 跨域, 裸读 contentWindow.location.href 会抛 SecurityError — V415 修复)
+      try {
+        if (entry.iframe.contentWindow && entry.iframe.contentWindow.location.href) {
+          setReady(true);
+        }
+      } catch {
+        // 跨域不可读 → 以 load 事件为准(load 未触时下面兜底置 ready, 避免永远 loading)
+        setReady(true);
+      }
     }
     entry.usedBy = key;
     heldEntryRef.current = entry;

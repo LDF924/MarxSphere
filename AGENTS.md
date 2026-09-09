@@ -45,7 +45,7 @@ npm run dev                 # 开发: 仅 API 4173(无 5173 dev server)
 |---|---|
 | `npm test` | 736 项单元测试（Vitest） |
 | `npm run typecheck` | 前后端类型检查 |
-| `npm run build` | 后端 tsc + 前端 vite 构建 |
+| `npm run build` | 后端 tsc + React 前端 + Vue 子应用(socialsci-vue→web/dist/soc)全量构建 |
 | `npm start` | 生产模式（4173） |
 | `npm run mcp` | 启动 MCP Server（stdio） |
 | `npm run build:desktop` | 打包桌面端 NSIS 安装包 |

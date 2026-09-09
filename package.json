@@ -13,7 +13,7 @@
     "start:api": "tsx src/index.ts",
     "start:api:web": "concurrently -k -n api,web -c blue,green \"tsx src/index.ts\" \"vite --host 0.0.0.0\"",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean && npm run build:api && npm run build:web",
+    "build": "npm run clean && npm run build:api && npm run build:web && npm run build:socialsci-vue",
     "build:api": "tsc -p tsconfig.build.json",
     "build:web": "vite build",
     "dev:desktop": "npm run build:electron && node scripts/dev-desktop.mjs",

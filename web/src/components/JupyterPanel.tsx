@@ -332,11 +332,13 @@ export function JupyterPanel() {
   const runCell = async (i: number) => {
     if (cells[i].type === "md") { setResults((prev) => { const n = [...prev]; n[i] = { ok: true, output: "", figures: [], variables: {} }; return n; }); return; }
     setRunning(i);
+    // 2026-09-09: 沙箱冷启动可达 30s+, 加 90s 超时防 fetch 永久挂起
     const res = await fetch("/api/jupyter/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: cells[i].content, sessionId, cellIndex: i }),
-    }).then((r) => r.json()).catch(() => ({ result: { ok: false, output: "", error: "请求失败" } }));
+      signal: AbortSignal.timeout(90_000),
+    }).then((r) => r.json()).catch(() => ({ result: { ok: false, output: "", error: "请求失败或超时" } }));
     const r = res.result as CellResult;
     setResults((prev) => { const n = [...prev]; n[i] = r; return n; });
     if (r.variables) setVars(r.variables);

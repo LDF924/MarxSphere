@@ -2591,7 +2591,7 @@ function MainWorkspaceTabs(props: {
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
         { value: "empirical-research", label: t("实证研究", "Empirical") },
-        { value: "jupyter", label: t("Notebook 工作台", "Notebook") },   // 2026-08-27: 轻量 notebook (ScienceX 通用计算)
+        // 2026-09-09: Notebook/统计工作台已并入实证研究「统计·Notebook」区段(双栏联动), 移除旧独立入口
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
         { value: "format-eval", label: t("格式智能评测", "Format Eval") },      // 2026-09-03: 论文格式评测 (规则引擎+LLM)
@@ -2604,8 +2604,7 @@ function MainWorkspaceTabs(props: {
         { value: "plot-agent", label: t("成果可视化工坊", "Viz Studio") },               // SocialSci P0-4: Vue M4 完整版
         { value: "editor", label: t("学术文本工作台", "Editor Studio") },                      // SocialSci P0-5: Vue M1 完整版
         { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },  // V404-33: 科研工具归科研中心
-        // ── Vue 完整还原版收敛: 统计工作台(React 侧无对应精简面板, 单独保留) ──
-        { value: "soc-statistics", label: t("实证统计工作台", "Stats Studio") },
+        // 2026-09-09: 实证统计工作台已并入实证研究「统计·Notebook」区段, 移除旧独立菜单入口(hash 深链保留)
       ],
     },
     {
