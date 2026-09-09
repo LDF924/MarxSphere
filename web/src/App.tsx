@@ -2030,15 +2030,15 @@ function AppShell() {
             ) : workspaceView === "corpus" ? (
               <ErrorBoundary><WritingCorpusPanel /></ErrorBoundary>
             ) : workspaceView === "paper-outline" ? (
-              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.paperOutline, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel panelKey="workflow-input" tab={{ ...FUSION_TABS.paperOutline, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "dag-workbench" ? (
-              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.dag, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel panelKey="quick" tab={{ ...FUSION_TABS.dag, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "review-lab" ? (
-              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.review, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel panelKey="review" tab={{ ...FUSION_TABS.review, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "plot-agent" ? (
-              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.plot, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel panelKey="viz" tab={{ ...FUSION_TABS.plot, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "editor" ? (
-              <ErrorBoundary><FusionPanel tab={{ ...FUSION_TABS.editor, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><FusionPanel panelKey="editor" tab={{ ...FUSION_TABS.editor, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "site-content" ? (
               <ErrorBoundary><SiteContentPanel /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
