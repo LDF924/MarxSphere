@@ -25,6 +25,8 @@ export interface StatsJob {
   error: { code?: string; message?: string } | null;
   sourceTaskId?: string;
   createdAt: number;
+  /** 2026-09-09 白盒: 当前执行阶段(来自 runner stage.json) */
+  stage?: string;
 }
 
 const jobs = new Map<string, StatsJob>();
@@ -54,6 +56,30 @@ export function getStatsJob(userId: string, jobId: string): StatsJob | null {
   return j && j.userId === userId ? j : null;
 }
 
+/**
+ * 任务 → 原始数据集(图表复用/回查用)
+ * 统计产物本身只有图, 数据真源是"任务 input.fileId 指向的 user_files";
+ * 进程重启后内存 job 丢失, 故支持按 stats_jobs 表回查 file_id
+ * (fileId 为空的任务: 粘贴/仿真数据只在跑分析时临时上传, 拿不到原始数据 → 返回 null 由调用方明示)
+ */
+export async function getStatsJobDataset(
+  userId: string,
+  jobId: string
+): Promise<{ columnOrder: string[]; rows: unknown[][]; fileName: string; profile?: Record<string, unknown> } | null> {
+  let fileId = String(jobs.get(jobId)?.input?.fileId ?? "");
+  if (!fileId) {
+    try {
+      const r = await pool.query(`select input->>'fileId' as file_id from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
+      fileId = String(r.rows[0]?.file_id ?? "");
+    } catch { /* 回查失败按无数据处理 */ }
+  }
+  if (!fileId) return null;
+  const loaded = await loadUserFileData(userId, fileId);
+  if (!loaded) return null;
+  return { columnOrder: loaded.columnOrder, rows: loaded.rows, fileName: String(loaded.filename ?? "") };
+}
+
+/** 内存态历史(调用方应优先用 listStatsJobsAsync: 重启后内存为空) */
 export function listStatsJobs(userId: string, limit = 30): StatsJob[] {
   return [...jobs.values()].filter((j) => j.userId === userId).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
 }
@@ -73,7 +99,7 @@ async function persistJob(job: StatsJob): Promise<void> {
 }
 
 /** 从文件仓取数据(user_files) → 行/列结构 */
-async function loadUserFileData(userId: string, fileId: string): Promise<{ columnOrder: string[]; rows: unknown[][]; profile?: Record<string, unknown> } | null> {
+async function loadUserFileData(userId: string, fileId: string): Promise<{ columnOrder: string[]; rows: unknown[][]; profile?: Record<string, unknown>; filename?: string } | null> {
   try {
     const rawId = String(fileId).replace(/^file_/, "");
     const r = await pool.query(`select storage_rel, filename, profile from user_files where id=$1 and user_id=$2`, [rawId, userId]);
@@ -89,7 +115,7 @@ async function loadUserFileData(userId: string, fileId: string): Promise<{ colum
     const parseLine = (l: string) => l.split(delim).map((c) => c.trim());
     const columnOrder = parseLine(lines[0]).map((c) => (c.startsWith("﻿") ? c.slice(1) : c));
     const rows = lines.slice(1).map(parseLine);
-    return { columnOrder, rows, profile: row.profile };
+    return { columnOrder, rows, profile: row.profile, filename: row.filename };
   } catch (e) {
     console.error("[stats-job] 数据读取失败", String(e).slice(0, 160));
     return null;
@@ -115,8 +141,28 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
   const job = jobs.get(jobId);
   if (!job || job.status !== "queued") return;
   job.status = "running";
+  job.stage = "准备数据";
   void persistJob(job);
   const taskDir = `${process.env.SAG_ROOT || process.cwd()}/data/statistics-jobs/${jobId}`;
+  // 2026-09-09 白盒: 监听 runner 的 stage.json 更新 job.stage(500ms; ESM 动态 import)
+  let stageTimer: ReturnType<typeof setInterval> | null = null;
+  const startStageWatch = (dir: string) => {
+    stageTimer = setInterval(() => {
+      void (async () => {
+        try {
+          const fs = await import("node:fs");
+          const p = `${dir}/stage.json`;
+          if (fs.existsSync(p)) {
+            const st = JSON.parse(fs.readFileSync(p, "utf-8")) as { stage?: string };
+            if (st.stage && st.stage !== job.stage) {
+              job.stage = st.stage;
+            }
+          }
+        } catch { /* 容忍 */ }
+      })();
+    }, 500);
+  };
+  const stopStageWatch = () => { if (stageTimer) clearInterval(stageTimer); stageTimer = null; };
   try {
     const { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } = await import("node:fs");
     const fileId = String(job.input.fileId ?? "");
@@ -131,6 +177,7 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
       data: loaded ? { columnOrder: loaded.columnOrder, rows: loaded.rows.slice(0, 50_000) } : { columnOrder: [], rows: [] }
     };
     writeFileSync(`${taskDir}/input.json`, JSON.stringify(inputPayload), "utf-8");
+    startStageWatch(taskDir);
     await new Promise<void>((resolve, reject) => {
       execFile(PYTHON, [RUNNER, taskDir], { timeout: 300_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, _stdout, stderr) => {
         const resultPath = `${taskDir}/result.json`;
@@ -171,6 +218,7 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
       void persistJob(job);
     }
   } finally {
+    stopStageWatch();
     // 清理任务目录(保留 result 到 DB)
     try {
       const { rmSync } = await import("node:fs");
@@ -180,7 +228,7 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
 }
 
 export async function cancelStatsJob(userId: string, jobId: string): Promise<StatsJob | null> {
-  const j = getStatsJob(userId, jobId);
+  const j = await getStatsJobAsync(userId, jobId);
   if (!j) return null;
   if (j.status === "queued" || j.status === "running") {
     j.status = "cancelled";
@@ -191,7 +239,7 @@ export async function cancelStatsJob(userId: string, jobId: string): Promise<Sta
 
 /** retry: failed/cancelled → 重排队重跑(闭源 retry 语义) */
 export async function retryStatsJob(userId: string, jobId: string): Promise<StatsJob | null> {
-  const j = getStatsJob(userId, jobId);
+  const j = await getStatsJobAsync(userId, jobId);
   if (!j || !["failed", "cancelled"].includes(j.status)) return j;
   j.status = "queued";
   j.result = null;
@@ -202,33 +250,61 @@ export async function retryStatsJob(userId: string, jobId: string): Promise<Stat
   return j;
 }
 
-/** 数据库恢复: 服务重启后拉取未过期历史(最多 50 条近期) */
-export async function restoreStatsJobs(userId?: string): Promise<void> {
+/** DB 行 → StatsJob(内存恢复与异步读取共用同一映射) */
+function rowToJob(row: Record<string, unknown>): StatsJob {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    tool: String(row.tool ?? "descriptive"),
+    input: (row.input as Record<string, unknown>) ?? {},
+    status: row.status as StatsJob["status"],
+    result: (row.result as Record<string, unknown>) ?? null,
+    resultVersionId: (row.result_version_id as string) ?? null,
+    error: (row.error as StatsJob["error"]) ?? null,
+    sourceTaskId: (row.source_task_id as string) ?? undefined,
+    createdAt: Number(row.created_at_ms ?? Date.now()),
+  };
+}
+
+const JOB_COLUMNS = `id, user_id, tool, input, status, result, result_version_id, error, source_task_id,
+                     extract(epoch from created_at)*1000 as created_at_ms`;
+
+/**
+ * 单任务读取(内存 miss 时回源 DB 并写回内存)
+ * ⚠ 只读内存会在服务重启后返回 null — cancel/retry/详情都依赖本函数而非同步 getStatsJob
+ */
+export async function getStatsJobAsync(userId: string, jobId: string): Promise<StatsJob | null> {
+  const mem = jobs.get(jobId);
+  if (mem && mem.userId === userId) return mem;
   try {
-    const r = await pool.query(
-      `select id, user_id, tool, input, status, result, result_version_id, error, source_task_id,
-              extract(epoch from created_at)*1000 as created_at_ms
-         from stats_jobs
-        where created_at > now() - interval '7 days'
-        order by created_at desc limit 200`
-    );
-    for (const row of r.rows) {
-      jobs.set(row.id, {
-        id: row.id,
-        userId: row.user_id,
-        tool: row.tool,
-        input: row.input ?? {},
-        status: row.status,
-        result: row.result ?? null,
-        resultVersionId: row.result_version_id ?? null,
-        error: row.error ?? null,
-        sourceTaskId: row.source_task_id ?? undefined,
-        createdAt: Number(row.created_at_ms ?? Date.now())
-      });
-    }
-  } catch (e) {
-    console.error("[stats-job] 恢复失败", String(e).slice(0, 160));
+    const r = await pool.query(`select ${JOB_COLUMNS} from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
+    const row = r.rows[0];
+    if (!row) return null;
+    const j = rowToJob(row);
+    jobs.set(j.id, j);
+    return j;
+  } catch {
+    return null;
   }
 }
 
-export const statsJobService = { createStatsJob, getStatsJob, listStatsJobs, cancelStatsJob, retryStatsJob, restoreStatsJobs };
+/**
+ * 历史列表(DB 为真源)
+ * ⚠ 内存 Map 只在服务存活期间有效, 只扫内存会导致重启后"历史为空";
+ *   内存里尚未落库的 queued/running 也会合并进来(避免刚提交的任务看不见)
+ */
+export async function listStatsJobsAsync(userId: string, limit = 30): Promise<StatsJob[]> {
+  const out = new Map<string, StatsJob>();
+  for (const j of jobs.values()) if (j.userId === userId) out.set(j.id, j);
+  try {
+    const r = await pool.query(
+      `select ${JOB_COLUMNS} from stats_jobs where user_id=$1 order by created_at desc limit $2`,
+      [userId, limit]);
+    for (const row of r.rows) if (!out.has(String(row.id))) out.set(String(row.id), rowToJob(row));
+  } catch (e) {
+    console.error("[stats-job] 历史读取失败(仅返回内存中的)", String(e).slice(0, 160));
+  }
+  return [...out.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+}
+
+export const statsJobService = { createStatsJob, getStatsJob, getStatsJobAsync, getStatsJobDataset, listStatsJobs, listStatsJobsAsync, cancelStatsJob, retryStatsJob };

@@ -70,10 +70,19 @@ def add_bar_chart(title, cats, values, xlabel=None, ylabel=None):
         }
     })
 
+# ─── 白盒阶段上报(2026-09-09: 任务执行进度可见 — task_dir/stage.json 供服务端轮询推送) ───
+def set_stage(label):
+    try:
+        with open(os.path.join(task_dir, "stage.json"), "w", encoding="utf-8") as _f:
+            _f.write(json.dumps({"stage": label, "ts": os.path.getmtime(os.path.join(task_dir, "input.json")) if os.path.exists(os.path.join(task_dir, "input.json")) else 0}))
+    except Exception:
+        pass
+
 # ─── 17 方法实现 ───
 variables = [v for v in (params.get("variables") or []) if v in df.columns]
 
 if tool == "descriptive":
+    set_stage("描述统计计算")
     opts = params.get("options") or params
     stats_cols = variables or _num_cols()
     rows_out = []
@@ -106,6 +115,7 @@ if tool == "descriptive":
             charts.append({"config": {"data": [{"type": "bar", "x": mids, "y": h.tolist(), "name": "频数"}], "layout": {"title": {"text": f"{c0} 直方图"}, "template": "plotly_white"}}})
 
 elif tool == "frequency":
+    set_stage("频数统计")
     for v in variables or _cat_cols():
         vc = df[v].value_counts(dropna=False)
         pct = (vc / vc.sum() * 100).round(2)
@@ -113,6 +123,7 @@ elif tool == "frequency":
                   [[str(k), int(c), float(pct[k])] for k, c in vc.items()])
 
 elif tool == "classify":
+    set_stage("分组汇总")
     gv = params.get("groupVar")
     stats_cols = [v for v in variables if pd.api.types.is_numeric_dtype(df[v])]
     rows_out = []
@@ -127,6 +138,7 @@ elif tool == "classify":
     add_table("分类汇总", ["分组", "变量", "N", "均值", "标准差", "最小值", "最大值"], rows_out)
 
 elif tool == "transform":
+    set_stage("数据转换")
     trs = params.get("transforms") or []
     new_df = df.copy()
     for v in variables:
@@ -151,6 +163,7 @@ elif tool == "transform":
               footnote="新列已生成: " + ", ".join([c for c in new_df.columns if c not in df.columns]))
 
 elif tool == "filter":
+    set_stage("条件筛选")
     conds = params.get("conditions") or []
     logic = params.get("logic") or "and"
     mask = pd.Series(True, index=df.index)
@@ -180,6 +193,7 @@ elif tool == "filter":
               footnote="满足条件行数: " + str(int(mask.sum())))
 
 elif tool == "t-test":
+    set_stage("t 检验")
     from scipy import stats as sps
     tt = params.get("testType", "one_sample")
     if tt == "one_sample":
@@ -221,6 +235,7 @@ elif tool == "t-test":
                           [[round(float(t), 3), int(len(common) - 1), round(float(p), 4), round(float((a[common] - b[common]).mean()), 3)]])
 
 elif tool == "anova":
+    set_stage("方差分析")
     from scipy import stats as sps
     gv = params.get("groupVar")
     if gv in df.columns:
@@ -238,6 +253,7 @@ elif tool == "anova":
                            ["总计", round(float(((all_s - all_s.mean()) ** 2).sum()), 3), int(len(all_s) - 1), "", "", ""]])
 
 elif tool == "multivariate-anova":
+    set_stage("多因素方差")
     dep = params.get("dependentVar")
     factors = params.get("factors") or []
     from scipy import stats as sps
@@ -257,6 +273,7 @@ elif tool == "multivariate-anova":
             warnings.append(f"多因素 ANOVA 拟合失败: {str(e)[:200]}")
 
 elif tool == "correlation":
+    set_stage("相关分析")
     from scipy import stats as sps
     method = params.get("method", "pearson")
     cols = [v for v in variables if pd.api.types.is_numeric_dtype(df[v])]
@@ -284,6 +301,7 @@ elif tool == "correlation":
         charts.append({"config": {"data": [{"type": "heatmap", "z": corr.values.tolist(), "x": cols, "y": cols, "colorscale": "RdBu", "zmin": -1, "zmax": 1}], "layout": {"title": {"text": f"相关矩阵热图({method})"}, "template": "plotly_white"}}})
 
 elif tool == "crosstab":
+    set_stage("交叉表卡方")
     rv = params.get("rowVar")
     cv = params.get("colVar")
     if rv in df.columns and cv in df.columns:
@@ -298,6 +316,7 @@ elif tool == "crosstab":
                   [[round(float(chi2), 3), int(dof), round(float(p), 4), round(float(np.sqrt(chi2 / (ct.values.sum() * (min(ct.shape) - 1)))) if min(ct.shape) > 1 and ct.values.sum() else 0, 3)]])
 
 elif tool == "nonparametric":
+    set_stage("非参数检验")
     from scipy import stats as sps
     tt = params.get("testType", "mann-whitney")
     gv = params.get("groupVar")
@@ -327,6 +346,7 @@ elif tool == "nonparametric":
                       [[round(float(h), 3), int(len(groups) - 1), round(float(p), 4)]])
 
 elif tool == "normality":
+    set_stage("正态性检验")
     from scipy import stats as sps
     for v in variables:
         s = pd.to_numeric(df[v], errors="coerce").dropna()
@@ -341,6 +361,7 @@ elif tool == "normality":
                   [[round(float(ks), 4), round(float(kp), 4), "符合正态" if kp > 0.05 else "偏离正态"]])
 
 elif tool == "regression":
+    set_stage("回归拟合")
     dep = params.get("dependentVar")
     indep = params.get("independentVars") or []
     if dep in df.columns and indep:
@@ -365,6 +386,7 @@ elif tool == "regression":
                         "layout": {"title": {"text": f"{dep} 回归系数图"}, "template": "plotly_white"}}})
 
 elif tool == "logistic-regression":
+    set_stage("Logistic 拟合")
     dep = params.get("dependentVar")
     indep = params.get("independentVars") or []
     if dep in df.columns and indep:
@@ -390,6 +412,7 @@ elif tool == "logistic-regression":
             warnings.append(f"Logistic 拟合失败: {str(e)[:200]}")
 
 elif tool == "reliability":
+    set_stage("信度 α 计算")
     cols = [v for v in variables if pd.api.types.is_numeric_dtype(df[v])]
     if len(cols) >= 2:
         items = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
@@ -409,6 +432,7 @@ elif tool == "reliability":
             add_table("删除项后的 α", ["变量", "删除后 α"], rows_out)
 
 elif tool == "efa":
+    set_stage("因子分析")
     from factor_analyzer import FactorAnalyzer
     cols = [v for v in variables if pd.api.types.is_numeric_dtype(df[v])]
     if len(cols) >= 3:
@@ -434,6 +458,7 @@ elif tool == "efa":
             warnings.append("有效样本数不足(需大于变量数)")
 
 elif tool == "mediation-moderation":
+    set_stage("中介调节分析")
     at = params.get("analysisType", "mediation")
     xv = params.get("xVar")
     yv = params.get("yVar")

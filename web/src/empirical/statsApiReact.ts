@@ -39,6 +39,7 @@ export interface StatsJob {
   result_version_id?: string | null;
   error?: { code?: string; message?: string; detail?: string } | null;
   created_at?: string;
+  stage?: string | null;
 }
 
 /** 上传数据文件(base64 JSON) → fileId + 变量画像 */
@@ -81,4 +82,54 @@ export async function retryStatsJobReact(jobId: string): Promise<{ job: { id: st
 /** 历史任务列表(React 版统计法历史回看) */
 export async function listStatsJobsReactAll(limit = 30): Promise<{ jobs: StatsJob[] }> {
   return apiFetch(`/api/statistics-jobs?limit=${limit}`);
+}
+
+// ═══ SSE 流(2026-09-09 双轨: 与轮询并行, 收终态即收敛; 断流由轮询兜底) ═══
+export interface SseStatsHandlers {
+  onSnapshot?: (s: { status: string; stage?: string | null; tool?: string }) => void;
+  onCompleted?: (r: { result?: StatsJobResult | null; result_version_id?: string | null }) => void;
+  onFailed?: (e?: unknown) => void;
+  onCancelled?: () => void;
+}
+
+/** 打开 SSE 流; 返回 abort 函数(组件卸载/轮询先收敛时调用) */
+export function streamStatsJobReact(jobId: string, handlers: SseStatsHandlers): { abort: () => void; done: Promise<void> } {
+  const ctrl = new AbortController();
+  const token = authToken();
+  const done = (async () => {
+    try {
+      const res = await fetch(`/api/statistics-jobs/${jobId}/stream`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) { handlers.onFailed?.({ code: "SSE_" + (res.status ?? "ERR") }); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done: rd, value } = await reader.read();
+        if (rd) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          let event: string | null = null;
+          let data = "";
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (event === null) continue;
+          let payload: any = null;
+          try { payload = data ? JSON.parse(data) : null; } catch { payload = data; }
+          if (event === "stats.completed") { handlers.onCompleted?.(payload ?? {}); return; }
+          if (event === "stats.failed") { handlers.onFailed?.(payload?.error); return; }
+          if (event === "stats.cancelled") { handlers.onCancelled?.(); return; }
+          if (event === "job.snapshot") handlers.onSnapshot?.(payload ?? {});
+        }
+      }
+    } catch { /* abort/断流 — 轮询兜底 */ }
+  })();
+  return { abort: () => ctrl.abort(), done };
 }

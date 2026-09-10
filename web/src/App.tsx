@@ -233,6 +233,11 @@ function AppShell() {
   const [modeMenuOpen, setModeMenuOpen] = useState(false);  // V390: 运行模式切换菜单展开状态
   // 待播放的 demo 查询（Hero 按钮 → AskPanel 自动检索）
   const pendingDemoRef = useRef<string | null>(null);
+  const pendingEditorDocRef = useRef<{ title: string; markdown: string } | null>(null);
+  // 统一分析台最近一次数据集(iframe 晚挂载时补发一次, 避免时序丢失)
+  const latestDatasetRef = useRef<{ csv: string; columnOrder: string[]; fileName: string } | null>(null);
+  // 统一分析台「送工坊精修」待处理的作图种子
+  const pendingVizSeedRef = useRef<{ title: string; csv: string; columnOrder: string[]; message: string } | null>(null);
 
   // ── V398: AI 对话页状态（assistant 视图）──
   const [chatSessions, setChatSessions] = useState<McpSessionRecord[]>([]);
@@ -598,6 +603,102 @@ function AppShell() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  // ── 统一分析台「✎ 写入论文」: 导航 editor 视图, 待 iframe 挂载后把 markdown 注入编辑器 ──
+  useEffect(() => {
+    const onOpenEditorWithDoc = (e: Event) => {
+      const d = (e as CustomEvent).detail as { title?: string; markdown?: string } | undefined;
+      if (!d?.markdown) return;
+      pendingEditorDocRef.current = { title: d.title ?? "分析结果", markdown: d.markdown };
+      navigateView("editor");
+    };
+    window.addEventListener("empirical:open-editor-with-doc", onOpenEditorWithDoc);
+    return () => window.removeEventListener("empirical:open-editor-with-doc", onOpenEditorWithDoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceView]);
+
+  // 进入 editor 视图且有待注入文档 → 等 iframe 挂载后 postMessage 注入(markdown → 编辑器侧转 HTML)
+  useEffect(() => {
+    if (workspaceView !== "editor") return;
+    if (!pendingEditorDocRef.current && !latestDatasetRef.current) return;
+    const doc = pendingEditorDocRef.current;
+    const ds = latestDatasetRef.current;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const iframe = document.querySelector('iframe[title="学术文本工作台"], iframe[src*="/editor"]') as HTMLIFrameElement | null;
+      if (iframe?.contentWindow) {
+        try {
+          // 数据集补发: iframe 晚于 broadcast 挂载时的时序兜底
+          if (ds) iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-dataset", ...ds }, "*");
+          if (doc) iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-insert-doc", title: doc.title, markdown: doc.markdown }, "*");
+          pendingEditorDocRef.current = null;
+          clearInterval(timer);
+          return;
+        } catch { /* 跨域忽略 */ }
+      }
+      if (tries > 30) { pendingEditorDocRef.current = null; clearInterval(timer); }
+    }, 300);
+    return () => clearInterval(timer);
+  }, [workspaceView]);
+
+  // 统一分析台数据集变更 → 广播给编辑器 iframe(图表 tab 复用同一份数据, 免重传)
+  useEffect(() => {
+    const onDataset = (e: Event) => {
+      const d = (e as CustomEvent).detail as { csv?: string; columnOrder?: string[]; fileName?: string } | undefined;
+      if (!d?.csv || !d.columnOrder?.length) return;
+      latestDatasetRef.current = { csv: d.csv, columnOrder: d.columnOrder, fileName: d.fileName ?? "实证数据集" };
+      const iframe = document.querySelector('iframe[title="学术文本工作台"], iframe[src*="/editor"]') as HTMLIFrameElement | null;
+      try {
+        iframe?.contentWindow?.postMessage(
+          { source: "marxsphere-app", type: "empirical-dataset", ...latestDatasetRef.current }, "*");
+      } catch { /* 跨域忽略 */ }
+    };
+    window.addEventListener("empirical:dataset-changed", onDataset);
+    return () => window.removeEventListener("empirical:dataset-changed", onDataset);
+  }, []);
+
+  // 统一分析台「送工坊精修」→ 导航成果可视化工坊, 并把数据集与需求交给 viz 视图
+  useEffect(() => {
+    const onOpenViz = (e: Event) => {
+      const d = (e as CustomEvent).detail as { title?: string; csv?: string; columnOrder?: string[]; message?: string } | undefined;
+      if (!d) return;
+      pendingVizSeedRef.current = {
+        title: d.title ?? "分析结果",
+        csv: d.csv ?? "",
+        columnOrder: d.columnOrder ?? [],
+        message: d.message ?? "基于分析结果重绘图表",
+      };
+      if (d.csv && d.columnOrder?.length) {
+        latestDatasetRef.current = { csv: d.csv, columnOrder: d.columnOrder, fileName: d.title ?? "分析结果" };
+      }
+      navigateView("soc-viz");
+    };
+    window.addEventListener("empirical:open-viz-workshop", onOpenViz);
+    return () => window.removeEventListener("empirical:open-viz-workshop", onOpenViz);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 进入 viz 视图 → 把待画的图种子交给 iframe(viz 视图侧读 window 事件)
+  useEffect(() => {
+    if (workspaceView !== "soc-viz" || !pendingVizSeedRef.current) return;
+    const seed = pendingVizSeedRef.current;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const iframe = document.querySelector('iframe[title="成果可视化工坊"], iframe[src*="/viz"]') as HTMLIFrameElement | null;
+      if (iframe?.contentWindow) {
+        try {
+          iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-viz-seed", ...seed }, "*");
+          pendingVizSeedRef.current = null;
+          clearInterval(timer);
+          return;
+        } catch { /* 跨域忽略 */ }
+      }
+      if (tries > 30) { pendingVizSeedRef.current = null; clearInterval(timer); }
+    }, 300);
+    return () => clearInterval(timer);
+  }, [workspaceView]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,

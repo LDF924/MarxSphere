@@ -57,6 +57,7 @@ describe("findReadyTasks 就绪判定", () => {
 describe("executeReadyTask 执行器分派", () => {
   beforeEach(() => {
     vi.mocked(pool.query).mockReset();
+    vi.mocked(pool.connect).mockReset();
     vi.mocked(llmCommon.fetchLlm).mockClear();
   });
 
@@ -71,11 +72,12 @@ describe("executeReadyTask 执行器分派", () => {
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)     // 1 getTaskById
       .mockResolvedValueOnce({ rows: [] } as any)      // 2 markRunning(依赖空跳过校验)
-      .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n正文内容若干。", mergedAbstract: "", mergedKeywords: "" } }] } as any) // 3 finalize 节点
-      .mockResolvedValueOnce({ rows: [{ merged_title: "测试论文", merged_fulltext: "## 引言\n正文内容若干。", merged_abstract: "", merged_keywords: "", merged_references: "", review_result: null, published_version: 0, phase_label: "" }] } as any) // 4 project 行
-      .mockResolvedValueOnce({ rows: [] } as any)      // 5 review_result 回写 project
-      .mockResolvedValueOnce({ rows: [] } as any)      // 6 review_result 回写 finalize 节点
-      .mockResolvedValueOnce({ rows: [] } as any);     // 7 markDone(落 result)
+      .mockResolvedValueOnce({ rows: [] } as any)      // 3 sections 节点(正文真源, runPhase5 开头)
+      .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n正文内容若干。", mergedAbstract: "", mergedKeywords: "" } }] } as any) // 4 finalize 节点
+      .mockResolvedValueOnce({ rows: [{ merged_title: "测试论文", merged_fulltext: "## 引言\n正文内容若干。", merged_abstract: "", merged_keywords: "", merged_references: "", review_result: null, published_version: 0, phase_label: "" }] } as any) // 5 project 行
+      .mockResolvedValueOnce({ rows: [] } as any)      // 6 review_result 回写 project
+      .mockResolvedValueOnce({ rows: [] } as any)      // 7 review_result 回写 finalize 节点
+      .mockResolvedValueOnce({ rows: [] } as any);     // 8 markDone(落 result)
     const r = await executeReadyTask("t1");
     expect(r.ok, "SQLs: " + JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => String(c[0]).slice(0, 110)))).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
@@ -100,6 +102,7 @@ describe("executeReadyTask 执行器分派", () => {
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)     // getTaskById
       .mockResolvedValueOnce({ rows: [] } as any)      // markRunning
+      .mockResolvedValueOnce({ rows: [] } as any)      // sections 节点(正文真源)
       .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。", mergedAbstract: "旧摘要", mergedKeywords: "旧;关键词", reviewReport: projectRow.review_result } }] } as any) // finalize 节点(真源)
       .mockResolvedValueOnce({ rows: [projectRow] } as any) // project 行
       .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿覆盖 project merged_*
@@ -117,16 +120,31 @@ describe("executeReadyTask 执行器分派", () => {
 
   it("通用 analyze 任务: LLM 执行成功 → done", async () => {
     const t = task("queued", { job_kind: "analyze" });
+    // analyze 走 runAnalyzeArchitecture: pool.query 4 次(读任务/markRunning/读 input 节点/markDone);
+    // sections+analysis 节点落库走 pool.connect 事务(client.query), 故需单独 mock connect
+    const clientQuery = vi.fn(async (sql: string) => {
+      // 节点不存在 → 走 insert 分支(选择节点用 for update)
+      if (String(sql).includes("for update")) return { rows: [] };
+      return { rows: [] };
+    });
+    const release = vi.fn();
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)  // getTaskById
-      .mockResolvedValueOnce({ rows: [] } as any)   // 依赖校验(空跳过)
       .mockResolvedValueOnce({ rows: [] } as any)   // markRunning
-      .mockResolvedValueOnce({ rows: [] } as any)   // markDone
-      .mockResolvedValueOnce({ rows: [] } as any);  // (预留)
+      .mockResolvedValueOnce({ rows: [] } as any)   // input 节点(无 → goal 解析章节)
+      .mockResolvedValueOnce({ rows: [] } as any);  // markDone
+    vi.mocked(pool.connect).mockResolvedValue({ query: clientQuery, release } as any);
     const r = await executeReadyTask("t1");
-    expect(r.ok).toBe(true);
+    expect(r.ok, "err=" + (r.error ?? "")).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
     expect(sqls.some((s) => s.includes("status='done'"))).toBe(true);
+    // 事务路径: begin/commit + sections/analysis 节点落库
+    const clientSqls = clientQuery.mock.calls.map((c) => String(c[0]));
+    expect(clientSqls).toContain("begin");
+    expect(clientSqls).toContain("commit");
+    expect(clientSqls.some((s) => s.includes("node_key='sections'"))).toBe(true);
+    expect(clientSqls.some((s) => s.includes("node_key='analysis'"))).toBe(true);
+    expect(release).toHaveBeenCalled();
   });
 });
 

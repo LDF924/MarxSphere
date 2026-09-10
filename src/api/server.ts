@@ -60,7 +60,7 @@ import { jobsService } from "../services/jobs-service.js";
 import { eventBus } from "../services/event-bus.js";
 import { memoryService } from "../services/memory-service.js";
 import { agentTaskService } from "../services/agent-task-service.js";
-import { LLM_MODEL_REGISTRY, getRoleModel, getRoleModelMap, resolveModelAlias, setRoleModel, type LlmRole } from "../services/llm-model-registry.js";
+import { LLM_MODEL_REGISTRY, getRoleModel, getRoleModelMap, resolveModelAlias, setRoleModel, isModelUsable, findModelOption, getProviderEndpoint, isEditorModelSet, type LlmRole } from "../services/llm-model-registry.js";
 import { traceService } from "../services/trace-service.js";
 import { quotaService } from "../services/quota-service.js";
 import { globalRateLimiter, tokenRateLimiter, tenantRateLimiter, tryAcquireTenantSlot, releaseTenantSlot, tenantConcurrencyLimit } from "../services/rate-limiter.js";
@@ -6189,10 +6189,17 @@ except Exception as e:
     return { ok: true, diag: routingDiagnostics() };
   });
 
-  app.put("/api/llm/models", async (request) => {
+  app.put("/api/llm/models", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { role?: LlmRole; modelId?: string };
-    if (!body.role || !body.modelId) return { error: "role 和 modelId 必填" };
+    if (!body.role || !body.modelId) return reply.code(400).send({ error: "role 和 modelId 必填" });
+    if (!findModelOption(body.modelId)) return reply.code(400).send({ error: `未知模型: ${body.modelId}` });
+    if (!isModelUsable(body.modelId)) {
+      const opt = findModelOption(body.modelId)!;
+      return reply.code(400).send({ error: `${opt.label} 的密钥未配置(${getProviderEndpoint(opt.provider).keyEnv}), 无法使用` });
+    }
     setRoleModel(body.role, body.modelId);
+    await saveModelSelection();
     return { ok: true, roleMap: getRoleModelMap() };
   });
 
@@ -9799,6 +9806,17 @@ except Exception as e:
     return { artifacts: await vizAgent.listArtifacts(user.id, sessionId) };
   });
 
+  // 我的全部绘图产物(跨会话, 最近优先) — 编辑器「辅助工具→图表」可直接插入工坊产出的图
+  app.get("/api/viz/artifacts", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r = await pool.query(
+      `select a.id, a.session_id, a.png_path, a.svg_editable_path, a.version, a.prompt, a.created_at
+         from viz_artifacts a join viz_sessions s on s.id=a.session_id
+        where s.user_id=$1
+        order by a.created_at desc limit 30`, [user.id]);
+    return { artifacts: r.rows };
+  });
+
   // 产物静态文件(路径形如 data/viz-files/{userId}/{hash}.png|svg)
   app.get("/api/viz/files/*", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -9946,10 +9964,56 @@ except Exception as e:
   // R6(闭源 Editor AI job 契约): 统一 AI job + SSE + cancel/retry
   app.post("/api/editor/v1/ai/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { action?: string; text?: string; mode?: string; context?: string; document_id?: string };
+    const body = request.body as { action?: string; text?: string; mode?: string; context?: string; document_id?: string; model?: string };
     const job = aiJobService.createAiJob(user.id, body);
     if (!job) return reply.code(400).send({ error: "action 需为 rewrite/check/title/format_refs" });
-    return { job_id: job.id };
+    return { job_id: job.id, model: job.model };
+  });
+
+  /**
+   * 角色→模型映射落库(agent_settings.llm_roles)
+   * 此前 setRoleModel 只写内存, 服务重启即回默认值 — 与同面板"格式预设存 localStorage"两套标准
+   */
+  async function saveModelSelection(): Promise<void> {
+    try {
+      const { setAgentSetting } = await import("../services/agent-settings.js");
+      await setAgentSetting("llm_roles", { modelMap: getRoleModelMap(), editorSet: isEditorModelSet() });
+    } catch { /* 持久化失败不影响本次切换 */ }
+  }
+
+  // 编辑器 AI 模型: 读/切「学术写作」角色模型(独立于推理链 reason 角色, 互不影响)
+  // 2026-09-10: 只返回 provider 密钥已配置的模型 — 未配置的选了必然报错, 不该出现在下拉里
+  app.get("/api/editor/v1/ai/model", async () => {
+    const usable = LLM_MODEL_REGISTRY.filter((m) => isModelUsable(m.id));
+    return {
+      current: getRoleModel("editor"),
+      roleMap: getRoleModelMap(),
+      models: usable,
+      // 全量注册表(含不可用), 前端可提示"配了密钥才能选"
+      allModels: LLM_MODEL_REGISTRY.map((m) => ({
+        ...m,
+        usable: isModelUsable(m.id),
+        keyEnv: getProviderEndpoint(m.provider).keyEnv,
+      })),
+    };
+  });
+  app.put("/api/editor/v1/ai/model", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { modelId?: string };
+    if (!body?.modelId) return reply.code(400).send({ error: "modelId 必填" });
+    // 校验模型存在且 provider 已配置 — 否则切换会把编辑器 AI 切到一个必然失败的组合
+    if (!findModelOption(body.modelId)) {
+      return reply.code(400).send({ error: `未知模型: ${body.modelId}` });
+    }
+    const opt = findModelOption(body.modelId)!;
+    if (!isModelUsable(body.modelId)) {
+      return reply.code(400).send({
+        error: `${opt.label} 的密钥未配置(${getProviderEndpoint(opt.provider).keyEnv}), 无法使用`,
+      });
+    }
+    setRoleModel("editor", body.modelId);
+    await saveModelSelection();
+    return { ok: true, current: getRoleModel("editor") };
   });
   app.get("/api/editor/v1/ai/jobs/:jobId/stream", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -10005,14 +10069,40 @@ except Exception as e:
   });
 
   // 图表代码(LLM 出图代码 → 复用 viz runner 渲染)
+  // UI审计T11: 支持真实数据(实证工作台/统计结果/粘贴 CSV) + 列名与样本进 prompt(防 LLM 猜列名 KeyError)
   app.post("/api/editor/v1/chart-code", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { description?: string; csv?: string; columnOrder?: string[] };
+    const body = request.body as { description?: string; csv?: string; columnOrder?: string[]; chart_type?: string };
     if (!body?.description?.trim()) return reply.code(400).send({ error: "请描述图表需求" });
     const ep = getLlmEndpoint({ model: getRoleModel("reason") });
+    // 数据未提供 → 明示无数据(禁止 LLM 写 pd.read_csv), 避免 FileNotFoundError
+    const csvText = String(body.csv ?? "").trim();
+    const cols = Array.isArray(body.columnOrder) ? body.columnOrder.filter(Boolean) : [];
+    const dataBlock = csvText && cols.length
+      ? `【数据列名(必须原样使用, 不得改写或翻译)】${cols.join(", ")}
+【数据前几行样例(仅用于理解列含义, 不要在代码里硬编码这些值)】
+${csvText.split(/\r?\n/).slice(0, 6).join("\n")}
+【数据规模】共 ${Math.max(0, csvText.split(/\r?\n/).filter((l) => l.trim()).length - 1)} 行
+
+【运行环境(严格遵守, 否则报错)】
+代码运行时 df 与 ax 已由宿主准备好, 不要重新创建:
+  - 不要 import matplotlib.pyplot / pandas, 不要 plt.subplots(), 不要 pd.read_csv()
+  - 绝对不要给 DATA_CSV 赋值(宿主已注入正确路径, 覆盖它会导致找不到文件)
+  - 直接用 df 取列(如 df['${cols[1] ?? cols[0]}']), 用 ax 画图(ax.bar / ax.plot / ax.scatter ...)
+  - 中文字符串直接写在标签/图例里(python 字符串), 列名保持英文原样`
+      : `【数据】本次无数据文件 —— 不要写 pd.read_csv, 也不要引用 df。
+宿主已准备好 ax, 请直接用 ax 画图, 数值用示例数据(自拟并在标签中标注为"示意")。`;
+    const chartType = String(body.chart_type ?? "echarts_bar");
+    const typeHint = chartType.startsWith("mermaid")
+      ? `图表形式: ${chartType === "mermaid_mindmap" ? "思维导图" : "流程图"}(用 graph TD / mindmap 语法, 本类型不需要数据)`
+      : `图表形式: matplotlib 代码(用户选的类型 ${chartType} 仅作参考, 以需求描述为准)`;
     const res = await fetchLlm({
       url: ep.url, key: ep.key, model: ep.model,
-      messages: [{ role: "user", content: `你是科研绘图专家。生成 matplotlib 绘图代码(只写绘图部分, 数据在 DATA_CSV 用 pd.read_csv 读取, 中文标签直接写), 输出 JSON:{"code":"...","title":"图表标题"}
+      messages: [{ role: "user", content: `你是科研绘图专家。按需求生成绘图代码, 输出 JSON:{"code":"...","title":"图表标题"}
+
+${typeHint}
+${dataBlock}
+
 需求: ${body.description?.slice(0, 800)}` }],
       temperature: 0.4, maxTokens: 4000, timeoutMs: 240_000,
     });
@@ -10023,9 +10113,13 @@ except Exception as e:
       code = String(j?.code ?? "");
     } catch { /* 解析失败 */ }
     if (!code) return reply.code(422).send({ error: "AI 未能生成代码" });
-    const rendered = await vizExec.renderChart(user.id, code, body.csv, body.columnOrder ?? []);
+    // mermaid 类型是前端直接渲染的图代码, 不走 matplotlib runner
+    if (chartType.startsWith("mermaid")) {
+      return { code, chartType, dataUsed: false };
+    }
+    const rendered = await vizExec.renderChart(user.id, code, csvText || undefined, csvText ? cols : []);
     if (!rendered.ok) return reply.code(422).send({ error: rendered.error ?? "渲染失败" });
-    return { code, ...rendered };
+    return { code, chartType, dataUsed: Boolean(csvText && cols.length), ...rendered };
   });
 
   // ═══ SocialSci P0-5: 数据自动 profiling(上传即剖析, 复用 viz analyzeData) ═══
@@ -10278,11 +10372,12 @@ except Exception as e:
     const user = await requireUser(request, reply); if (!user) return;
     const { statsJobService: svc } = await import("../services/statistics-job-service.js");
     const limit = Number((request.query as { limit?: string }).limit ?? 30);
-    const list = svc.listStatsJobs(user.id, limit);
+    const list = await svc.listStatsJobsAsync(user.id, limit);
     return { jobs: list.map((j) => ({
       id: j.id, tool: j.tool, method: j.tool, status: j.status,
       created_at: new Date(j.createdAt).toISOString(),
-      source_task_id: j.sourceTaskId ?? null
+      source_task_id: j.sourceTaskId ?? null,
+      stage: j.stage ?? null
     })) };
   });
 
@@ -10290,13 +10385,42 @@ except Exception as e:
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
     const { statsJobService: svc } = await import("../services/statistics-job-service.js");
-    const j = svc.getStatsJob(user.id, jobId);
+    const j = await svc.getStatsJobAsync(user.id, jobId);
     if (!j) return reply.code(404).send({ error: "任务不存在" });
     return { job: {
       id: j.id, tool: j.tool, status: j.status,
       result: j.result, result_version_id: j.resultVersionId,
-      error: j.error ?? undefined, sourceTaskId: j.sourceTaskId
+      error: j.error ?? undefined, sourceTaskId: j.sourceTaskId,
+      stage: j.stage ?? null
     } };
+  });
+
+  /**
+   * 任务 → 原始数据集回查(图表 tab「已保存的统计结果」与「送工坊精修」共用)
+   * 数据真源: 任务 input.fileId 指向的 user_files
+   * rows 默认 200(代理画图够用), 传 rows=5000 可拉全量用于工坊精修; 上限 20000 防超大响应
+   * fileId 为空(粘贴/仿真数据临时上传)或文件已删 → 404 + 明确原因, 前端据此提示而不是静默按无数据出图
+   */
+  app.get("/api/statistics-jobs/:jobId/dataset", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const want = Number((request.query as { rows?: string }).rows);
+    const limit = Number.isFinite(want) && want > 0 ? Math.min(want, 20_000) : 200;
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const ds = await svc.getStatsJobDataset(user.id, jobId);
+    if (!ds) return reply.code(404).send({ error: "该任务的原始数据集已不可用(粘贴/仿真数据不落文件, 或文件已被删除)" });
+    const job = await svc.getStatsJobAsync(user.id, jobId);
+    return {
+      dataset: {
+        jobId,
+        title: job ? `${job.tool} 分析结果` : "统计分析结果",
+        fileName: ds.fileName || "分析数据",
+        columnOrder: ds.columnOrder,
+        rowCount: ds.rows.length,
+        truncated: ds.rows.length > limit,
+        sampleRows: ds.rows.slice(0, limit),
+      },
+    };
   });
 
   app.post("/api/statistics-jobs/:jobId/cancel", async (request, reply) => {
@@ -10323,7 +10447,7 @@ except Exception as e:
     const { jobId } = request.params as { jobId: string };
     const { statsJobService: svc } = await import("../services/statistics-job-service.js");
     const { attachSse } = await import("./stream-utils.js");
-    const j = svc.getStatsJob(user.id, jobId);
+    const j = await svc.getStatsJobAsync(user.id, jobId);
     if (!j) return reply.code(404).send({ error: "任务不存在" });
     const sse = attachSse(reply);
     // 已终态直接回放
@@ -10347,7 +10471,7 @@ except Exception as e:
         else sse.send("stats.failed", { error: { code: "TIMEOUT", message: "分析超时" } });
         sse.end();
       } else if (cur) {
-        sse.send("job.snapshot", { status: cur.status, tool: cur.tool });
+        sse.send("job.snapshot", { status: cur.status, tool: cur.tool, stage: cur.stage ?? null });
       }
     }, 900);
     request.raw.on("close", () => clearInterval(timer));
@@ -10535,9 +10659,36 @@ except Exception as e:
     fs.mkdirSync(dir, { recursive: true });
     const rel = `data/user-files/${user.id}/${id}.bin`;
     fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), buf);
-    // 文本自动剖析(前 200KB → 行列概览 + 变量类型推断)
+    // 2026-09-09 xlsx 支持: .xlsx/.xls → openpyxl 转 CSV 后按文本剖析(实证 venv 有 openpyxl)
+    let rawBuf = buf;
+    const lower = String(body.filename ?? "").toLowerCase();
+    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+      try {
+        const { execFile } = await import("node:child_process");
+        const PY = process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python";
+        const xlsxPath = path.join(dir, `${id}.xlsx`);
+        fs.writeFileSync(xlsxPath, buf);
+        const csvText = await new Promise<string>((resolve, reject) => {
+          execFile(PY, [path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py"), xlsxPath],
+            { timeout: 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
+            (err, stdout, stderr) => {
+              try { fs.unlinkSync(xlsxPath); } catch { /* 忽略 */ }
+              if (err) reject(new Error(stderr || err.message));
+              else resolve(stdout);
+            });
+        });
+        const csvRel = `data/user-files/${user.id}/${id}.csv`;
+        fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), csvRel), csvText, "utf-8");
+        rawBuf = Buffer.from(csvText, "utf-8");
+        // 替换 .bin 为 .csv 落库(内容为转出的 CSV)
+        fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), rawBuf);
+      } catch (e) {
+        return reply.code(400).send({ error: `xlsx 解析失败: ${String((e as Error).message).slice(0, 160)}` });
+      }
+    }
+    // 文本自动剖析(前 200KB → 行列概览 + 变量类型推断; xlsx 转换后 rawBuf 为 CSV 文本)
     let profile: Record<string, unknown> = {};
-    const text = buf.length <= 200_000 ? buf.toString("utf-8") : "";
+    const text = rawBuf.length <= 200_000 ? rawBuf.toString("utf-8") : "";
     if (text.trim()) {
       const lines = text.split(/\r?\n/).filter((l) => l.trim());
       profile = { kind: "text", lines: lines.length, chars: text.length };
@@ -10573,7 +10724,7 @@ except Exception as e:
     await pool.query(
       `insert into user_files (id, user_id, filename, mime, size_bytes, storage_rel, profile)
        values ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, user.id, body.filename ?? "upload.bin", body.mime ?? "application/octet-stream", buf.length, rel, JSON.stringify(profile)]);
+      [id, user.id, body.filename ?? "upload.bin", body.mime ?? "application/octet-stream", rawBuf.length, rel, JSON.stringify(profile)]);
     return { fileId: `file_${id}`, filename: body.filename ?? "upload.bin", profile };
   });
 

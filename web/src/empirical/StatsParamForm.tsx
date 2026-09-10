@@ -9,6 +9,8 @@ interface Props {
   values: Record<string, unknown>;
   onChange: (key: string, val: unknown) => void;
   vars?: VarDef[]; // fromVars 过滤来源(上传数据变量)
+  /** 当前方法 id(供 filter 特殊条件行渲染) */
+  methodId?: string;
 }
 
 export function varsForFilter(vars: VarDef[], filter?: string): VarDef[] {
@@ -16,8 +18,62 @@ export function varsForFilter(vars: VarDef[], filter?: string): VarDef[] {
   return vars.filter((v) => v.type === filter);
 }
 
-export default function StatsParamForm({ fields, values, onChange, vars = [] }: Props) {
+interface CondRow { variable: string; operator: string; value: string }
+
+export default function StatsParamForm({ fields, values, onChange, vars = [], methodId }: Props) {
   const set = (k: string, v: unknown) => onChange(k, v);
+
+  // ── filter 方法: 可视化条件行(变量/运算符/值 + AND/OR + 添加/删除) ──
+  if (methodId === "filter") {
+    const conds = (values.conditions as CondRow[] | undefined) ?? [];
+    const logic = String(values.logic ?? "and");
+    const setConds = (c: CondRow[]) => set("conditions", c);
+    return (
+      <div className="space-y-1.5 text-[11px]">
+        {conds.map((c, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <select
+              className="w-[38%] rounded-md border bg-background px-1 py-1 text-[10px]"
+              value={c.variable}
+              onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, variable: e.target.value } : x)))}
+            >
+              <option value="">变量</option>
+              {vars.map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
+            </select>
+            <select
+              className="w-[22%] rounded-md border bg-background px-1 py-1 text-[10px]"
+              value={c.operator}
+              onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, operator: e.target.value } : x)))}
+            >
+              {[">=", ">", "<=", "<", "==", "!="].map((op) => <option key={op} value={op}>{op}</option>)}
+            </select>
+            <input
+              className="min-w-0 flex-1 rounded-md border bg-background px-1.5 py-1 text-[10px]"
+              placeholder="值"
+              value={c.value}
+              onChange={(e) => setConds(conds.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
+            />
+            <button type="button" title="删除条件"
+              onClick={() => setConds(conds.length > 1 ? conds.filter((_, j) => j !== i) : [{ variable: "", operator: ">=", value: "" }])}
+              className="rounded p-0.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-600">✕</button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-0.5">
+          <label className="flex cursor-pointer items-center gap-1">
+            <input type="radio" className="accent-emerald-600" checked={logic === "and"} onChange={() => set("logic", "and")} />
+            <span className="text-[10px]">AND(全部满足)</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-1">
+            <input type="radio" className="accent-emerald-600" checked={logic === "or"} onChange={() => set("logic", "or")} />
+            <span className="text-[10px]">OR(任一满足)</span>
+          </label>
+          <button type="button"
+            onClick={() => setConds([...conds, { variable: "", operator: ">=", value: "" }])}
+            className="ml-auto rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-500/20">+ 添加条件</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2.5 text-[11px]">

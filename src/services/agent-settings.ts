@@ -3,7 +3,7 @@
 // 预设/自主级别 等运行时设置落库（重启保持）; 环境变量优先级高于 DB（启动时 DB 覆盖）
 import { pool } from "../db/pool.js";
 
-export type SettingKey = "preset" | "autonomy" | "sandbox_profile" | "tool_whitelist";
+export type SettingKey = "preset" | "autonomy" | "sandbox_profile" | "tool_whitelist" | "llm_roles";
 
 /** 读设置（DB; 不存在返回 null） */
 export async function getAgentSetting(key: SettingKey): Promise<unknown | null> {
@@ -44,6 +44,13 @@ export async function restoreAgentSettings(): Promise<{ restored: string[] }> {
       // 沙箱级别通过环境变量透传（DB 值写入 env 供 defaultSandboxProfile 读取）
       process.env.AGENT_SANDBOX_PROFILE = sandbox;
       restored.push(`sandbox=${sandbox}`);
+    }
+    // 2026-09-10: 角色→模型选择(此前只存内存, 重启即回默认)
+    const roles = await getAgentSetting("llm_roles") as { modelMap?: Record<string, string>; editorSet?: boolean } | null;
+    if (roles?.modelMap) {
+      const { setRoleModelMap, getRoleModelMap } = await import("./llm-model-registry.js");
+      setRoleModelMap(roles.modelMap as never);
+      restored.push(`llm_roles(editor=${getRoleModelMap().editor})`);
     }
     if (restored.length > 0) {
       console.log(`[agent] 差距P③ 设置恢复: ${restored.join(", ")}`);

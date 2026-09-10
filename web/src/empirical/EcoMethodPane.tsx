@@ -30,7 +30,39 @@ function fmtNum(v: unknown): string {
   return v.toFixed(3);
 }
 
-export default function EcoMethodPane({ method, data }: { method: EcoMethod; data: EcoShared }) {
+/** SVG → PNG 下载(与 EmpiricalResearchPanel 同款降级链) */
+function svgToPngDownloadById(elId: string, title: string) {
+  try {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const s = new XMLSerializer().serializeToString(el);
+    const blob = new Blob([s], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const rect = el.getBoundingClientRect();
+        const w = Math.max(400, Math.ceil(rect.width || 800) * 2);
+        const h = Math.max(300, Math.ceil(rect.height || 500) * 2);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const a = document.createElement("a");
+        a.href = canvas.toDataURL("image/png");
+        a.download = `${title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)}.png`;
+        a.click();
+      } catch { /* 降级忽略 */ }
+    };
+    img.onerror = () => { /* SVG 渲染失败忽略 */ };
+    img.src = url;
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  } catch { /* 导出失败忽略 */ }
+}
+
+export default function EcoMethodPane({ method, data, onResult }: { method: EcoMethod; data: EcoShared; onResult?: (r: any) => void }) {
   const schema = ECO_SCHEMAS[method.id] ?? { fields: [] };
   const [params, setParams] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
@@ -38,7 +70,7 @@ export default function EcoMethodPane({ method, data }: { method: EcoMethod; dat
   const [error, setError] = useState("");
   const [preprocess, setPreprocess] = useState(data.preprocess);
 
-  useEffect(() => { setParams({}); setResult(null); setError(""); }, [method.id]);
+  useEffect(() => { setParams({}); setResult(null); onResult?.(null); setError(""); }, [method.id]);
   useEffect(() => { setPreprocess(data.preprocess); }, [data.preprocess]);
 
   const setP = (k: string, v: string) => setParams((p) => ({ ...p, [k]: v }));
@@ -125,7 +157,7 @@ export default function EcoMethodPane({ method, data }: { method: EcoMethod; dat
         const s = await fetch(`/api/empirical/result/${tid}`, {
           headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
         }).then((res) => res.json()).catch(() => ({ status: "running" }));
-        if (s.status === "done") { setResult(s.result ?? {}); setRunning(false); return; }
+        if (s.status === "done") { const rr = s.result ?? {}; setResult(rr); onResult?.(rr); setRunning(false); return; }
         if (s.status === "failed") { setError(s.error ?? "分析失败"); setRunning(false); return; }
       }
       setRunning(false); setError("分析超时");
@@ -203,8 +235,12 @@ export default function EcoMethodPane({ method, data }: { method: EcoMethod; dat
             <div key={i} className="rounded-lg border bg-card/50 p-1.5">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[10px] font-medium">{f.title}</span>
+                <button type="button"
+                  onClick={() => svgToPngDownloadById(`eco-fig-${i}`, f.title || "图表")}
+                  className="rounded border border-slate-300/40 px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent"
+                  title="导出 PNG">⬇ PNG</button>
               </div>
-              <div dangerouslySetInnerHTML={{ __html: f.svg ?? "" }} />
+              <div id={`eco-fig-${i}`} dangerouslySetInnerHTML={{ __html: f.svg ?? "" }} />
             </div>
           ))}
           {result.diagnostics?.map((d: any, i: number) => (
