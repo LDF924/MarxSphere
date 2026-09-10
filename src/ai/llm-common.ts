@@ -3,7 +3,7 @@
 // fetchLlm: 带真实 token 采集的 fetch；getLlmEndpoint: 端点选择（DeepSeek 原生优先，DashScope 兜底）
 // G11: 全局 LLM 并发信号量 — 简单令牌计数, 最大 8 路并发(AGENT_LLM_CONCURRENCY 覆盖), 超出排队等待
 // G4: fallback 模型链 — 主模型失败换备用（见 callLlm 包装）
-import { resolveModelAlias } from "../services/llm-model-registry.js";
+import { resolveModelAlias, findModelOption, getProviderEndpoint } from "../services/llm-model-registry.js";
 import { getModelFallbacks } from "../services/agent-model-router.js";
 
 // ═══ G11: LLM 并发信号量（令牌计数）═══
@@ -73,7 +73,30 @@ export async function fetchLlm(input: {
   maxTokens?: number;
   timeoutMs?: number;
 }): Promise<{ text: string; tokens: { in: number; out: number } | null; cacheHit: number | null } | null> {
+  const r = await fetchLlmDetailed(input);
+  return r.ok ? { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit } : null;
+}
+
+/**
+ * 带失败原因的 LLM 调用
+ * 2026-09-10: 此前 fetchLlm 对任何失败 catch{return null}, 状态码与错误详情全丢 →
+ *   调用方拿到空字符串只能当"成功但内容为空", 前端显示空白却报 done。
+ *   需要区分失败原因的调用方(编辑器 AI 等)用本函数。
+ */
+export async function fetchLlmDetailed(input: {
+  url: string;
+  key: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+}): Promise<
+  | { ok: true; text: string; tokens: { in: number; out: number } | null; cacheHit: number | null; finishReason: string }
+  | { ok: false; status: number | null; message: string; detail: string }
+> {
   try {
+    if (!input.key) return { ok: false, status: null, message: "模型密钥未配置", detail: input.url };
     const isAnthropic = input.url.includes("/messages") && !input.url.includes("/chat/completions");
     const headers: Record<string, string> = isAnthropic
       ? { 'x-api-key': input.key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
@@ -99,8 +122,22 @@ export async function fetchLlm(input: {
       headers,
       body: JSON.stringify(body),
       signal: (AbortSignal as any).timeout(input.timeoutMs ?? 180_000),
-    }).catch(() => null);
-    if (!resp || !resp.ok) return null;
+    }).catch((e: unknown) => ({ __netError: String((e as Error)?.message ?? e) }) as unknown as Response);
+    if ((resp as unknown as { __netError?: string }).__netError) {
+      return { ok: false, status: null, message: "网络请求失败", detail: String((resp as unknown as { __netError: string }).__netError) };
+    }
+    if (!resp.ok) {
+      let detail = "";
+      try { detail = (await resp.text()).slice(0, 400); } catch { /* 忽略 */ }
+      const friendly =
+        resp.status === 401 || /invalid_api_key|unauthorized/i.test(detail) ? "密钥无效或未授权"
+        : resp.status === 404 || /model.*not.*(exist|support|found)/i.test(detail) ? `模型 ${input.model} 在该端点不存在`
+        : resp.status === 429 ? "触发限流, 请稍后重试"
+        : resp.status === 400 ? "请求被拒绝(通常是模型名与端点不匹配)"
+        : resp.status >= 500 ? "上游服务错误"
+        : "调用失败";
+      return { ok: false, status: resp.status, message: friendly, detail };
+    }
     const j = await resp.json();
     // Anthropic 响应: {content:[{type:'text',text}], usage:{input_tokens, output_tokens}}
     const text = isAnthropic
@@ -111,12 +148,28 @@ export async function fetchLlm(input: {
       ? { in: isAnthropic ? u.input_tokens : u.prompt_tokens, out: isAnthropic ? u.output_tokens : (u.completion_tokens ?? 0) }
       : null;
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
-    return { text, tokens, cacheHit };
-  } catch { return null; }
+    const finishReason = String(j?.choices?.[0]?.finish_reason ?? (isAnthropic ? j?.stop_reason : "") ?? "");
+    return { ok: true, text, tokens, cacheHit, finishReason };
+  } catch (e) {
+    return { ok: false, status: null, message: "调用异常", detail: String((e as Error)?.message ?? e).slice(0, 300) };
+  }
 }
 
-/** 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底） */
+/** 取 LLM 端点配置
+ * 2026-09-10 修复: 传入 model 时按**该模型所属 provider** 解析 url/key(此前 url 只看 DEEPSEEK_API_KEY
+ *   是否存在, 导致选 Claude/通义千问时把它们的模型名发给了 DeepSeek 端点 → 必然 400)
+ * 未传 model 时保持旧行为: DeepSeek 优先, 否则 MAAS/DashScope 兼容兜底
+ */
 export function getLlmEndpoint(overrides?: { model?: string }): { url: string; key: string; model: string } {
+  const wanted = overrides?.model ? resolveModelAlias(overrides.model) : "";
+  if (wanted) {
+    const opt = findModelOption(wanted);
+    // 注册表里没有的模型名: 仍按旧逻辑(宁可发出去拿到明确报错, 也不要静默换模型)
+    if (opt) {
+      const ep = getProviderEndpoint(opt.provider);
+      return { url: ep.url, key: ep.key, model: wanted };
+    }
+  }
   const ds = process.env.DEEPSEEK_API_KEY || '';
   const key = ds || (process.env.LLM_API_KEY || '');
   const url = ds

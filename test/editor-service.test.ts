@@ -7,10 +7,18 @@ vi.mock("../src/db/pool.js", () => ({
 }));
 vi.mock("../src/services/llm-model-registry.js", () => ({
   getRoleModel: () => "test-model",
+  getLlmEndpoint: () => ({ url: "http://mock/chat/completions", key: "k", model: "m" }),
 }));
+// llmReply: null=模拟调用失败(抛错); 字符串=模拟成功返回该文本
+let llmReply: string | null = "{}";
+const MOCK_REWRITE = "改写后的学术文本";
 vi.mock("../src/ai/llm-common.js", () => ({
-  getLlmEndpoint: () => ({ url: "http://mock", key: "k", model: "m" }),
-  fetchLlm: async () => ({ text: "{}" }),
+  getLlmEndpoint: () => ({ url: "http://mock/chat/completions", key: "k", model: "m" }),
+  fetchLlm: async () => (llmReply === null ? null : { text: llmReply }),
+  fetchLlmDetailed: async () =>
+    llmReply === null
+      ? { ok: false, status: 401, message: "密钥无效或未授权", detail: "mock" }
+      : { ok: true, text: llmReply, tokens: null, cacheHit: null, finishReason: "stop" },
 }));
 
 import { pool } from "../src/db/pool.js";
@@ -69,23 +77,42 @@ describe("editor-service 锁语义", () => {
 });
 
 describe("editor-service 改写与全文检查", () => {
-  beforeEach(() => { vi.mocked(pool.query).mockReset(); });
+  beforeEach(() => { vi.mocked(pool.query).mockReset(); llmReply = MOCK_REWRITE; });
 
-  it("rewriteText: 6 模式走对应提示词(LLM空→原文兜底)", async () => {
+  it("rewriteText: 6 模式走对应提示词, 返回模型改写结果", async () => {
     const modes = ["condense", "de-template", "polish", "proofread", "journal-style", "humanize"] as const;
     for (const m of modes) {
       const r = await rewriteText(m, "测试文本内容需要改写");
-      // fetchLlm mock 返回 {} → text 空 → 兜底原文
-      expect(typeof r.text).toBe("string");
-      expect(r.text.length).toBeGreaterThan(0);
+      expect(r.text).toBe(MOCK_REWRITE);
     }
   });
 
-  it("checkFulltext: LLM 非JSON → 兜底失败结构", async () => {
+  it("rewriteText: 失败如实抛出, 不静默回原文(否则按钮徒有其表)", async () => {
+    llmReply = null;  // 模拟调用失败
+    // 抛出且带真实病因(密钥无效/模型不存在...), 而不是把用户原文当成改写结果返回
+    await expect(rewriteText("polish", "测试文本内容需要改写")).rejects.toThrow(/密钥无效|未授权/);
+  });
+
+  it("checkFulltext: 模型返回非 JSON → 诚实兜底结构(带解析失败说明)", async () => {
+    llmReply = "这不是 JSON";
     const r = await checkFulltext("全文内容".repeat(30));
     expect(Array.isArray(r.checks)).toBe(true);
     expect(r.checks.length).toBeGreaterThan(0);
-    expect(typeof r.checks[0].ok).toBe("boolean");
-    expect(typeof r.checks[0].name).toBe("string");
+    expect(r.checks[0].ok).toBe(false);
+    expect(r.checks[0].findings.join("")).toMatch(/解析失败/);
+  });
+
+  it("checkFulltext: 调用失败 → 指出真实原因, 不谎称解析失败", async () => {
+    llmReply = null;
+    const r = await checkFulltext("全文内容".repeat(30));
+    expect(r.checks[0].ok).toBe(false);
+    expect(r.checks[0].findings.join("")).toMatch(/质检调用失败/);
+  });
+
+  it("checkFulltext: 正常 JSON → 原样透传 checks", async () => {
+    llmReply = JSON.stringify({ checks: [{ name: "全文逻辑检查", ok: true, findings: [] }] });
+    const r = await checkFulltext("全文内容".repeat(30), "logic");
+    expect(r.checks).toHaveLength(1);
+    expect(r.checks[0].ok).toBe(true);
   });
 });
