@@ -60,7 +60,7 @@ describe("freezeCharge 冻结记账口径", () => {
 describe("settleCharge 核销记账口径", () => {
   beforeEach(() => { vi.mocked(pool.query).mockReset(); });
 
-  it("settle: amount=-cost, settle_amount=+cost; 同事务含 usage 统计", async () => {
+  it("settle: amount=0(核销不动可用余额), settle_amount=+cost; 同事务含 usage 统计", async () => {
     const client = txClient([
       () => ({ rows: [{ balance: "100", frozen: "0" }] }),    // frozen 扣减
       () => ({}),                                             // ledger insert
@@ -72,8 +72,11 @@ describe("settleCharge 核销记账口径", () => {
     const ledger = client.query.mock.calls.find((c) => String(c[0]).includes("insert into points_ledger"));
     const [sql, vals] = ledger as unknown as [string, unknown[]];
     expect(sql).toContain("'settle'");
-    expect(vals[1]).toBe(-50);
-    expect(vals[2]).toBe(50); // settle_amount 正
+    // 2026-09-11 回归: 核销时钱早已在 freeze 那步从 balance 划入 frozen, 本步只划走 frozen,
+    //   balance 不变 → amount 必须为 0。此前记 -cost, 导致 freeze+settle 对同一笔钱
+    //   各记一次余额减少, 任何按 amount 汇总的报表都双倍计费。
+    expect(vals[1]).toBe(0);
+    expect(vals[2]).toBe(50); // settle_amount 才是"本次核销多少"
     const usage = client.query.mock.calls.find((c) => String(c[0]).includes("points_usage_daily"));
     expect(usage).toBeTruthy();
   });
@@ -96,6 +99,21 @@ describe("rollbackFreeze 归还对冲", () => {
     expect(sql).toContain("'refund'");
     expect(vals[1]).toBe(30);      // amount 正(归还入账)
     expect(vals[2]).toBe(-30);     // freeze_amount 负(对冲)
+  });
+
+  // 2026-09-11 回归: pg 返回的 numeric 是字符串, `"100" + 30` 会拼接成 "10030"
+  it("balance_after 必须是数值相加(不是字符串拼接)", async () => {
+    const client = txClient([
+      () => ({ rows: [{ balance: "600", frozen: "30" }] }),        // frozen 扣减(字符串余额)
+      () => ({}),                                                  // balance 加回
+      () => ({}),                                                  // ledger insert
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+    await rollbackFreeze("u1", 30, "editor:title", "r2");
+    const ledger = client.query.mock.calls.find((c) => String(c[0]).includes("insert into points_ledger"));
+    const vals = (ledger as unknown as [string, unknown[]])[1];
+    expect(typeof vals[5]).toBe("number");   // balance_after
+    expect(vals[5]).toBe(630);               // 而不是 "60030"
   });
 });
 

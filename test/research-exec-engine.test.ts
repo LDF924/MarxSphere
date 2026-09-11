@@ -71,7 +71,7 @@ describe("executeReadyTask 执行器分派", () => {
     const t = task("queued", { job_kind: "review", project_id: "p1" });
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)     // 1 getTaskById
-      .mockResolvedValueOnce({ rows: [] } as any)      // 2 markRunning(依赖空跳过校验)
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any)  // 2 markRunning(原子抢占成功)
       .mockResolvedValueOnce({ rows: [] } as any)      // 3 sections 节点(正文真源, runPhase5 开头)
       .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n正文内容若干。", mergedAbstract: "", mergedKeywords: "" } }] } as any) // 4 finalize 节点
       .mockResolvedValueOnce({ rows: [{ merged_title: "测试论文", merged_fulltext: "## 引言\n正文内容若干。", merged_abstract: "", merged_keywords: "", merged_references: "", review_result: null, published_version: 0, phase_label: "" }] } as any) // 5 project 行
@@ -101,7 +101,7 @@ describe("executeReadyTask 执行器分派", () => {
     };
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)     // getTaskById
-      .mockResolvedValueOnce({ rows: [] } as any)      // markRunning
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any)  // markRunning(原子抢占成功)
       .mockResolvedValueOnce({ rows: [] } as any)      // sections 节点(正文真源)
       .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。", mergedAbstract: "旧摘要", mergedKeywords: "旧;关键词", reviewReport: projectRow.review_result } }] } as any) // finalize 节点(真源)
       .mockResolvedValueOnce({ rows: [projectRow] } as any) // project 行
@@ -130,7 +130,7 @@ describe("executeReadyTask 执行器分派", () => {
     const release = vi.fn();
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)  // getTaskById
-      .mockResolvedValueOnce({ rows: [] } as any)   // markRunning
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any)   // markRunning(原子抢占成功)
       .mockResolvedValueOnce({ rows: [] } as any)   // input 节点(无 → goal 解析章节)
       .mockResolvedValueOnce({ rows: [] } as any);  // markDone
     vi.mocked(pool.connect).mockResolvedValue({ query: clientQuery, release } as any);
@@ -210,8 +210,8 @@ describe("SocialSci 补漏组4: 专用执行器分派", () => {
     // getTaskById + 依赖校验 + markRunning + LLM(fetchLlm mock {}→空) + createMaterial insert + markDone
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)
-      .mockResolvedValueOnce({ rows: [] } as any)
-      .mockResolvedValueOnce({ rows: [] } as any)
+      // depends_on 为空 → 依赖校验被跳过, 所以这里就是 markRunning(靠 rowCount 判是否抢到)
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any)
       .mockResolvedValueOnce({ rows: [{ id: "m1" }] } as any)
       .mockResolvedValueOnce({ rows: [] } as any);
     const r = await executeReadyTask("t1");
@@ -225,9 +225,8 @@ describe("SocialSci 补漏组4: 专用执行器分派", () => {
     const t = task("queued", { job_kind: "phase4_batch", input_snapshot: {} }); // 无 sections → 抛错
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)
-      .mockResolvedValueOnce({ rows: [] } as any)
-      .mockResolvedValueOnce({ rows: [] } as any) // markRunning
-      .mockResolvedValueOnce({ rows: [] } as any); // markFailed
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any) // markRunning(原子抢占成功)
+      .mockResolvedValueOnce({ rows: [] } as any);             // markFailed
     const r = await executeReadyTask("t1");
     expect(r.ok).toBe(false);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));

@@ -7,6 +7,7 @@
 import { pool } from "../db/pool.js";
 import { callLlm } from "../ai/llm-common.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
+import { withRunLease } from "./singleton-scheduler.js";
 
 /** 单次最多创建任务数（防刷屏） */
 const MAX_TASKS_PER_RUN = 2;
@@ -148,7 +149,9 @@ export function startProactiveResearchScheduler(): void {
     return;
   }
   const INTERVAL_MS = parseInt(process.env.AGENT_PROACTIVE_INTERVAL_MS || "86400000", 10);  // 默认 24h
-  void runProactiveResearch();
-  setInterval(() => { void runProactiveResearch(); }, INTERVAL_MS);
-  console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检)`);
+  // 多副本: 主动研究会创建真实任务(烧 LLM) → 加跨副本租约, 每轮仅一个副本执行
+  const guarded = withRunLease("proactive-research", runProactiveResearch, INTERVAL_MS + 300_000);
+  void guarded();
+  setInterval(() => { void guarded(); }, INTERVAL_MS);
+  console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检, 多副本下每轮仅一个副本执行)`);
 }

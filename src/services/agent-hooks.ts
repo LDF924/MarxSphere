@@ -1,3 +1,4 @@
+import { dataPath } from "./storage-paths.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // agent-hooks.ts — 借鉴 DSH hooks 包: 任务/工具生命周期钩子
 // 事件: task_start/task_end/tool_before/tool_after/step_fail/reflect
@@ -190,7 +191,7 @@ export function snapshotWorkspace(taskId: string): void {
   try {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
-    const ws = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const ws = dataPath("agent_workspace");
     if (!fs.existsSync(ws)) return;
     const snap = new Map<string, { mtime: number; size: number }>();
     const walk = (dir: string, depth: number) => {
@@ -214,7 +215,7 @@ export function diffWorkspace(taskId: string): Array<{ file: string; change: "mo
   try {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
-    const ws = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const ws = dataPath("agent_workspace");
     const before = workspaceSnapshots.get(taskId);
     if (!before || !fs.existsSync(ws)) return [];
     const changes: Array<{ file: string; change: "modified" | "created" | "deleted" }> = [];

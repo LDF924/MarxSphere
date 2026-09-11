@@ -110,6 +110,40 @@ export async function chargeUser(userId: string, model: string, tokensIn: number
   } finally { client.release(); }
 }
 
+/**
+ * JWT 用户额度预检(2026-09-11)
+ * 原先只有外部 sag_ token 有配额预检(onRequest hook 对本机 socket 直接 return),
+ * 登录用户(@ 前端)完全不拦 —— 配合 chargeUser 只记账不拦截, 表现为"随便用, 从不拦"。
+ * BYOK 用户 LLM 自付, 不拦。超限返回 blocked + 原因, 由调用方转 402/429。
+ */
+export async function ensureWithinBudget(userId: string): Promise<{
+  blocked: boolean; reason?: string; usedTokens: number; quotaTokens: number; balanceCents: number;
+}> {
+  try {
+    const u = await pool.query("select plan, balance_cents, llm_provider from users where id=$1", [userId]);
+    const row = u.rows[0];
+    if (!row) return { blocked: true, reason: "用户不存在", usedTokens: 0, quotaTokens: 0, balanceCents: 0 };
+    const balanceCents = Number(row.balance_cents ?? 0);
+    // BYOK: LLM 费用用户自付, 平台不设限
+    if (row.llm_provider === "byok") {
+      return { blocked: false, usedTokens: 0, quotaTokens: 0, balanceCents };
+    }
+    const { usedTokens, quotaTokens, remaining } = await getSubscriptionQuota(userId);
+    // 额度用尽且余额 <= 0 → 拦截(余额为负视为欠费, 同样拦)
+    if (remaining <= 0 && balanceCents <= 0) {
+      return {
+        blocked: true,
+        reason: `本月额度已用尽(${usedTokens.toLocaleString()}/${quotaTokens.toLocaleString()} tokens)且余额为 0, 请充值或升级套餐`,
+        usedTokens, quotaTokens, balanceCents,
+      };
+    }
+    return { blocked: false, usedTokens, quotaTokens, balanceCents };
+  } catch {
+    // 预检查询失败不拦(不能因计费系统抖动阻断全部 AI 功能)
+    return { blocked: false, usedTokens: 0, quotaTokens: 0, balanceCents: 0 };
+  }
+}
+
 /** 充值入账（手动/支付回调） */
 export async function recharge(userId: string, amountCents: number, provider = "manual"): Promise<{ ok: boolean; balanceCents: number }> {
   const client = await pool.connect();

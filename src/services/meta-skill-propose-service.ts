@@ -4,10 +4,11 @@
 // 人工审(隔离区 proposals.jsonl) → accept 进运行时注册表(DB) → /api/meta-skill/list 可见可跑
 // 红线: 提案不自动 accept; 不自动进全局 META_SKILLS(静态); 由人工审后注册
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dataPath } from "./storage-paths.js";
 import path from "node:path";
 import { callLlm } from "../ai/llm-common.js";
 
-export const DAG_PROPOSALS_DIR = path.resolve(process.env.SAG_DAG_PROPOSALS_DIR || path.join(process.cwd(), "data", "dag-proposals"));
+export const DAG_PROPOSALS_DIR = path.resolve(process.env.SAG_DAG_PROPOSALS_DIR || dataPath("dag-proposals"));
 const PROPOSALS_FILE = path.join(DAG_PROPOSALS_DIR, "proposals.jsonl");
 
 export interface DagProposal {

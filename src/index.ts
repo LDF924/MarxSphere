@@ -37,14 +37,21 @@ try {
 } catch { /* mode.json 损坏忽略 */ }
 
 // V397 桌面端: 启动前自举数据库迁移（迁移文件幂等, 首次启动安全执行）
+// 多副本: 迁移带 pg_advisory_lock, 并发启动时只有一个真正应用, 其余等锁。
+// 原来是 fire-and-forget —— 迁移失败也照常 listen, 等于对着半迁移的 schema 提供服务。
 import { migrate } from "./db/migrate.js";
-migrate().catch((e: unknown) => {
-  console.error("[sag] 数据库迁移失败（首次启动可忽略, 重试中）:", String((e as Error)?.message || e).slice(0, 200));
-});
 
 // V405(P0 成本账本): 启动后 seed 平台默认模型单价(仅插缺省, 不覆盖 admin 调价)
 import { seedDefaultPrices } from "./services/cost-ledger-service.js";
 setTimeout(() => { void seedDefaultPrices(); }, 2500);
+
+// 先迁移再监听: 迁移失败直接退出(而不是带病启动), 容器编排会重启并重试
+migrate()
+  .then(() => { console.log("[sag] 数据库迁移完成"); })
+  .catch((e: unknown) => {
+    console.error("[sag] 数据库迁移失败, 拒绝带病启动:", String((e as Error)?.message || e).slice(0, 300));
+    process.exit(1);
+  });
 
 startHttpServer().catch((error: unknown) => {
   const code = (error as NodeJS.ErrnoException)?.code;
@@ -56,6 +63,13 @@ startHttpServer().catch((error: unknown) => {
   }
   process.exit(1);
 });
+
+// 多副本: 实测集群实例数 — 后端登记心跳 + 数活跃条数, 供部署形态自检与"降级均分"使用。
+// 必须等 buildHttpServer 把后端接上(它里面 attachRateLimitBackend), 所以延后到启动后;
+// 之后每 30s 复测一次(实例随时会加/减)。不依赖部署时声明 REPLICA_COUNT —— 忘了设才是常态。
+import { refreshClusterSize } from "./services/rate-limiter.js";
+setTimeout(() => { void refreshClusterSize(); }, 3000);
+setInterval(() => { void refreshClusterSize(); }, 30000);
 
 // V395-38: 期刊实时同步管道（启动即同步一次 + 每6小时自动）
 startJournalSyncScheduler();
@@ -77,6 +91,14 @@ if (config.AGENT_EVAL_AUTO_ENABLED) {
 import { agentTaskQueue } from "./services/agent-task-queue.js";
 setTimeout(() => { void agentTaskQueue.recoverAfterRestart(); }, 3000);
 
+// 多副本: DB 领取扫描 — 队列表里"没人领"的条目由空闲实例接手, 副本缩容时任务不会蒸发。
+// 执行方式由队列条目的 runner 名重建(见 server.ts 的 registerAgentQueueRunners)。
+// 关闭: AGENT_QUEUE_DB_DRAIN=0
+if (process.env.AGENT_QUEUE_DB_DRAIN !== "0") {
+  setInterval(() => { void agentTaskQueue.drainDbQueueOnce().catch(() => { /* 单轮失败不打断 */ }); }, 5000);
+  console.log("[agent-queue] DB 领取扫描已启动(5s)");
+}
+
 // V404-25(H6): 文档变更集崩溃恢复 — 启动时把 reserved/ambiguous 残留置 failed(客户端幂等重试)
 import { reconcileMutationAttempts } from "./services/doc-session-service.js";
 setTimeout(() => { void reconcileMutationAttempts(); }, 4000);
@@ -93,6 +115,16 @@ setTimeout(() => { startProactiveResearchScheduler(); }, 15000);
 // 差距P③: Agent 设置持久化恢复（预设/自主级别/沙箱级别, DB 覆盖环境变量默认）
 import { restoreAgentSettings } from "./services/agent-settings.js";
 setTimeout(() => { void restoreAgentSettings(); }, 20000);
+
+// viz: 卡死绘图任务自愈 — 重启后遗留的 running/queued 没有执行者, 会让观察流永久挂住
+import { reapStaleVizJobs } from "./services/viz-job-service.js";
+setTimeout(() => { void reapStaleVizJobs(); }, 22000);
+
+// review: 集群并发槽位补齐(多实例部署时各实例都调, 幂等) + 卡死任务自愈
+// 自愈必要: 审稿没有事件回放, 一个 running 卡死的任务, 用户点开只会永久空转
+import { ensureReviewSlots, reapStaleReviewJobs } from "./services/review-service.js";
+setTimeout(() => { void ensureReviewSlots(); }, 8000);
+setTimeout(() => { void reapStaleReviewJobs(); }, 24000);
 
 // V404-7: 记忆 Dream 巩固 — 每日确定性扫描一次(零 LLM 成本, 候选隔离区人工审)
 // 开关: SAG_DREAM_DAILY=0 关闭(默认开); 与 Agent 定时器同款模式

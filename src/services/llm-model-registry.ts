@@ -2,11 +2,13 @@
 // llm-model-registry.ts — 统一 LLM 模型注册表（2026-08-07）
 // 角色 → 模型映射集中管理，前端可选择，所有调用点读取
 // 角色: reason(推理合成) / judge(评测打分) / review(评审) / plan(规划) / verify(题型复核) / strategy(策略决策)
+//       viz(科研绘图: 规划/出图代码/自审 — 用户可在绘图面板单独切换)
 //       editor(学术写作: 编辑器 AI 助手 — 与推理链解耦, 用户可在编辑器面板单独切换)
 
-export type LlmRole = "reason" | "judge" | "review" | "plan" | "verify" | "strategy" | "editor";
+export type LlmRole = "reason" | "judge" | "review" | "plan" | "verify" | "strategy" | "viz" | "editor";
 
-const ALL_ROLES: LlmRole[] = ["reason", "judge", "review", "plan", "verify", "strategy", "editor"];
+/** 全部角色(注册表里"支持所有角色"的模型直接展开它, 免得每加一个角色就要改 N 处) */
+const ALL_ROLES: LlmRole[] = ["reason", "judge", "review", "plan", "verify", "strategy", "viz", "editor"];
 
 export interface LlmModelOption {
   id: string;
@@ -39,7 +41,7 @@ export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
   },
   {
     id: "qwen-plus", label: "通义千问 Plus", provider: "dashscope",
-    desc: "阿里 DashScope（历史默认，兜底）", roles: ["reason", "judge", "editor"],
+    desc: "阿里 DashScope（历史默认，兜底）", roles: ["reason", "judge", "viz", "editor"],
   },
   {
     id: "claude-sonnet-4-8", label: "Claude Sonnet 4.8", provider: "claude",
@@ -47,11 +49,11 @@ export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
   },
   {
     id: "claude-opus-4-8", label: "Claude Opus 4.8", provider: "claude",
-    desc: "Anthropic 最强推理（需 Anthropic 端点配置）", roles: ["reason", "judge", "review", "editor"],
+    desc: "Anthropic 最强推理（需 Anthropic 端点配置）", roles: ["reason", "judge", "review", "viz", "editor"],
   },
   {
     id: "claude-haiku-4-5", label: "Claude Haiku 4.5", provider: "claude",
-    desc: "Anthropic 快速轻量（需 Anthropic 端点配置）", roles: ["judge", "verify", "strategy", "editor"],
+    desc: "Anthropic 快速轻量（需 Anthropic 端点配置）", roles: ["judge", "verify", "strategy", "viz", "editor"],
   },
 ];
 
@@ -63,6 +65,7 @@ const roleModelMap: Record<LlmRole, string> = {
   plan: "deepseek-v4-pro",
   verify: "deepseek-v4-flash",
   strategy: "deepseek-v4-flash",
+  viz: "deepseek-v4-flash",
   // 学术写作: 与 reason 同源起步, 但独立存储 —— 切换它不影响推理链
   editor: "deepseek-v4-flash",
 };
@@ -111,7 +114,11 @@ export function getRoleModelMap(): Record<LlmRole, string> {
   return { ...roleModelMap };
 }
 
-/** 覆盖全部角色映射(用户设置落库后回灌; 非法模型名忽略) */
+/**
+ * 批量覆盖角色映射(用户设置落库后回灌; 非法模型名忽略)。
+ * editor 需单独标记"是否被显式设置过" —— 否则下次读取时无法区分
+ * "用户就是要用 reason 的模型" 与 "用户从没选过, 默认跟随 reason"。
+ */
 export function setRoleModelMap(map: Partial<Record<LlmRole, string>>): void {
   for (const role of ALL_ROLES) {
     const m = map[role];
@@ -123,15 +130,15 @@ export function setRoleModelMap(map: Partial<Record<LlmRole, string>>): void {
   }
 }
 
-/** editor 角色是否被显式设置过(持久化时需要一并存这个标志, 否则"跟随 reason"的语义会丢) */
+/** editor 角色是否被显式设置过(持久化时要一并存这个标志, 否则"跟随 reason"的语义会丢) */
 export function isEditorModelSet(): boolean {
   return editorModelSet;
 }
 
 // ═══ provider 端点解析 ═══
 // 2026-09-10 修复: 原先 model 由用户选择、url/key 却只看 DEEPSEEK_API_KEY 是否存在,
-// 导致选 Claude/通义千问时把它们的模型名发给了 DeepSeek 端点(必然 400 → 静默空结果)。
-// 现在按 model 所属 provider 解析端点, 两者强制联动。
+//   导致选 Claude/通义千问时把它们的模型名发给了 DeepSeek 端点(必然 400 → 静默空结果)。
+//   现在按 model 所属 provider 解析端点, 两者强制联动。
 export interface ProviderEndpoint {
   provider: LlmModelOption["provider"];
   url: string;

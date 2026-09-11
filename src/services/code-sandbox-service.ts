@@ -4,6 +4,7 @@
 // 借鉴2(Codex PermissionProfile): 沙箱分级 read-only/workspace-write/full-access + 升级链
 // 用法: executeCode({ language, code, timeoutMs, profile })
 import { execFile } from "node:child_process";
+import { dataPath } from "./storage-paths.js";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
@@ -60,7 +61,7 @@ export function suggestSandboxEscalation(code: string, profile: SandboxProfile):
 /** 按级别决定 cwd 与 env（read-only 用只读临时目录+禁网; workspace-write 允许 agent_workspace; full-access 保留代理白名单） */
 function sandboxCwd(profile: SandboxProfile): string {
   if (profile === "workspace-write") {
-    const ws = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const ws = dataPath("agent_workspace");
     try { fs.mkdirSync(ws, { recursive: true }); } catch { /* 目录创建失败 → 回退临时目录 */ }
     if (fs.existsSync(ws)) return ws;
   }

@@ -45,12 +45,19 @@ export async function findReadyTasks(projectId?: string): Promise<any[]> {
   return r.rows;
 }
 
-/** 将任务标记 running(带 8MiB 线程语义无关; 乐观执行) */
-export async function markRunning(taskId: string) {
-  await pool.query(
-    `update research_tasks set status='running', updated_at=now() where id=$1`,
+/**
+ * 原子抢占: queued → running(带条件更新)。
+ * 原来是无条件 update, 手动 /run-scheduling-round 与 2 秒调度泵(以及多副本)会同时通过
+ * "status !== queued" 的复查, 把同一份稿子生成两遍(每次都是真 LLM, 费用翻倍)。
+ * 返回 false 表示已被别人抢走, 调用方必须跳过。
+ */
+export async function markRunning(taskId: string): Promise<boolean> {
+  const r = await pool.query(
+    `update research_tasks set status='running', updated_at=now()
+      where id=$1 and status='queued' returning id`,
     [taskId]
   );
+  return (r.rowCount ?? 0) > 0;
 }
 
 export async function markDone(taskId: string, result: unknown) {
@@ -120,7 +127,7 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
     const allDone = r.rows.length === deps.length && r.rows.every((d) => d.status === "done");
     if (!allDone) return { ok: false, error: "前置任务未完成" };
   }
-  await markRunning(taskId);
+  if (!(await markRunning(taskId))) return { ok: false, error: "任务已被其他执行者接走" };
   const ctx: ExecCtx = {
     taskId, projectId: task.project_id, userId: task.user_id,
     dagNodeId: task.dag_node_id ?? "", module: task.module ?? "workflow",

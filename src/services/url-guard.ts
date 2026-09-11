@@ -2,15 +2,20 @@
 // url-guard.ts — SSRF 防护: 校验 URL 仅允许访问公网地址
 // 拦截: 私网(10/172.16-31/192.168/100.64 CGNAT)/回环(127.*/::1)/链路本地(169.254/fe80::)
 //       云元数据端点(169.254.169.254)/0.0.0.0/未指定地址(::)
-// 放行 localhost 仅当精确匹配系统自身 API（SELF_BASE, 默认 http://127.0.0.1:4173; 可传 allowSelfBase）
+// 放行自身 API 仅当精确匹配 selfBaseUrl()（未配置时 = 服务实际监听地址; 可传 allowSelfBase）
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { domainToASCII } from "node:url";
+import { selfBaseUrl } from "./base-urls.js";
 
 const GUARD_ERR = "URL 不允许访问内网/本地地址";
 
-/** 系统自身 API 地址（SELF_BASE 环境变量可覆盖; 默认本机 4173） */
-export const SELF_BASE = process.env.SELF_BASE || "http://127.0.0.1:4173";
+/**
+ * 系统自身 API 地址。
+ * 从 base-urls 统一解析(显式配置优先, 否则按 HTTP_HOST/HTTP_PORT 推导) —— 自我请求与白名单
+ * 必须同源, 否则跨机部署时"自己打自己"会被自家 SSRF 防护拦下。
+ */
+export const SELF_BASE = selfBaseUrl();
 
 /** 回环别名互通（SELF_BASE 配 127.0.0.1 时 localhost/::1 同样精确放行; 反之亦然） */
 const SELF_HOST_ALIASES = ["127.0.0.1", "localhost", "::1"];

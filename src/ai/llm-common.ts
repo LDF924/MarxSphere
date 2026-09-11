@@ -4,6 +4,7 @@
 // G11: 全局 LLM 并发信号量 — 简单令牌计数, 最大 8 路并发(AGENT_LLM_CONCURRENCY 覆盖), 超出排队等待
 // G4: fallback 模型链 — 主模型失败换备用（见 callLlm 包装）
 import { resolveModelAlias, findModelOption, getProviderEndpoint } from "../services/llm-model-registry.js";
+import { currentUserId, isPointsCovered, noteLlmCall } from "../services/request-context.js";
 import { getModelFallbacks } from "../services/agent-model-router.js";
 
 // ═══ G11: LLM 并发信号量（令牌计数）═══
@@ -63,7 +64,12 @@ export function llmConcurrencyStats(): { active: number; waiting: number; max: n
 
 /** 统一 LLM fetch — 从响应 usage 采真实 token，返回 { text, tokens, cacheHit }
  *  模型中立（2026-08-27 ScienceX 理念）: 自动识别 Anthropic 原生格式（URL 含 /messages）
- *  vs OpenAI 兼容格式（/chat/completions）— 两者请求/响应结构不同 */
+ *  vs OpenAI 兼容格式（/chat/completions）— 两者请求/响应结构完全不同
+ *
+ *  2026-09-11: 成本账本下沉到本函数 —— 此前只有 llm-client 那条链(搜索/对话)记账,
+ *  走本函数的 16 个服务(综述/评审/选题/信效度/质量检查…)共 25 个调用点完全不计费。
+ *  这里给默认 ledger(endpoint "llm"), 调用方传 ledger 可覆盖 endpoint 并补 userId/taskId 归属。
+ *  注: inference-service 有自己的一份同名本地函数(不走这里), 不会重复记账。 */
 export async function fetchLlm(input: {
   url: string;
   key: string;
@@ -72,8 +78,9 @@ export async function fetchLlm(input: {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
 }): Promise<{ text: string; tokens: { in: number; out: number } | null; cacheHit: number | null } | null> {
-  const r = await fetchLlmDetailed(input);
+  const r = await fetchLlmDetailed({ ...input, ledger: input.ledger ?? { endpoint: "llm" } });
   return r.ok ? { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit } : null;
 }
 
@@ -82,6 +89,8 @@ export async function fetchLlm(input: {
  * 2026-09-10: 此前 fetchLlm 对任何失败 catch{return null}, 状态码与错误详情全丢 →
  *   调用方拿到空字符串只能当"成功但内容为空", 前端显示空白却报 done。
  *   需要区分失败原因的调用方(编辑器 AI 等)用本函数。
+ * 2026-09-11: 采集 usage 后写 llm_usage_ledger(V405 成本账本) —— 此前只有 llm-client 那条链记账,
+ *   走本函数的服务(编辑器 AI 等)完全不计费, 账本有缺口。调用方传 ledger 即可归属到用户/任务。
  */
 export async function fetchLlmDetailed(input: {
   url: string;
@@ -91,6 +100,7 @@ export async function fetchLlmDetailed(input: {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
 }): Promise<
   | { ok: true; text: string; tokens: { in: number; out: number } | null; cacheHit: number | null; finishReason: string }
   | { ok: false; status: number | null; message: string; detail: string }
@@ -149,6 +159,34 @@ export async function fetchLlmDetailed(input: {
       : null;
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
     const finishReason = String(j?.choices?.[0]?.finish_reason ?? (isAnthropic ? j?.stop_reason : "") ?? "");
+    // 成本账本: 有 usage 才记(拿不到 usage 就记 0 会把账目搅浑)
+    if (tokens) {
+      noteLlmCall();   // 积分按"真的消耗了"结算 — 提前返回(无检索结果/无证据)不算消费
+      const led = input.ledger ?? { endpoint: "llm" };
+      // 归属: 显式传参优先, 否则从请求上下文取(路由包装层已注入调用者身份)
+      const userId = led.userId ?? currentUserId() ?? null;
+      void import("../services/cost-ledger-service.js").then(({ recordLedger }) => {
+        recordLedger({
+          kind: "llm",
+          endpoint: led.endpoint,
+          model: input.model,
+          tokensIn: tokens.in,
+          tokensOut: tokens.out,
+          tokensCacheRead: cacheHit ?? 0,
+          userId,
+          taskId: led.taskId ?? null,
+          context: led.context ?? null,
+        });
+      }).catch(() => { /* 记账失败不影响调用结果 */ });
+      // 用户计费: 订阅额度→超额扣余额(与 /api/reason/query 同口径);
+      // 系统调用(userId 为空)不扣费。chargeUser 自身按事务写 user_usage_log + billing_records。
+      // 已被积分覆盖的功能(points-gate)跳过 token 计费 —— 否则同一功能既扣积分又扣额度(收两次钱)。
+      if (userId && !isPointsCovered()) {
+        void import("../services/billing-service.js")
+          .then(({ chargeUser }) => chargeUser(userId, input.model, tokens.in, tokens.out, led.endpoint))
+          .catch(() => { /* 计费失败不阻塞调用 */ });
+      }
+    }
     return { ok: true, text, tokens, cacheHit, finishReason };
   } catch (e) {
     return { ok: false, status: null, message: "调用异常", detail: String((e as Error)?.message ?? e).slice(0, 300) };
@@ -160,14 +198,27 @@ export async function fetchLlmDetailed(input: {
  *   是否存在, 导致选 Claude/通义千问时把它们的模型名发给了 DeepSeek 端点 → 必然 400)
  * 未传 model 时保持旧行为: DeepSeek 优先, 否则 MAAS/DashScope 兼容兜底
  */
+/** 取 LLM 端点配置 — 指定模型时按其 provider 解析端点(url/key), 二者强制联动
+ * 2026-09-11: 此前 model 由用户选、url/key 只看 DEEPSEEK_API_KEY 是否存在,
+ *   选 Claude/通义千问会把模型名发给 DeepSeek 端点(必然 400 → 静默空结果)。
+ * 未指定模型或模型未登记时, 回落到原"DeepSeek 优先 / DashScope 兜底"行为。
+ */
 export function getLlmEndpoint(overrides?: { model?: string }): { url: string; key: string; model: string } {
   const wanted = overrides?.model ? resolveModelAlias(overrides.model) : "";
   if (wanted) {
     const opt = findModelOption(wanted);
-    // 注册表里没有的模型名: 仍按旧逻辑(宁可发出去拿到明确报错, 也不要静默换模型)
     if (opt) {
       const ep = getProviderEndpoint(opt.provider);
-      return { url: ep.url, key: ep.key, model: wanted };
+      // 该 provider 没配 key: 回落到通用中转(LLM_API_KEY/LLM_BASE_URL), 但保留用户选的模型名。
+      //   直接返回空 key 会让"选了 qwen"变成静默失败, 而改前它是能走中转出结果的(实测对比过)。
+      if (ep.key) return { url: ep.url, key: ep.key, model: wanted };
+      const relayKey = process.env.LLM_API_KEY || "";
+      const relayUrl = process.env.LLM_BASE_URL || "";
+      if (relayKey && relayUrl) {
+        return { url: relayUrl.endsWith("/chat/completions") ? relayUrl : `${relayUrl.replace(/\/$/, "")}/chat/completions`,
+                 key: relayKey, model: wanted };
+      }
+      return { url: ep.url, key: "", model: wanted };   // 两端都没有 → 交给 fetchLlm 明确报错
     }
   }
   const ds = process.env.DEEPSEEK_API_KEY || '';

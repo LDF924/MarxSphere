@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import fs from "node:fs";
+import { dataRoot } from "../services/storage-paths.js";
+import { dataPath } from "../services/storage-paths.js";
+import { vaultRoot as kbVaultRoot } from "../services/kb-paths.js";
+import { selfBaseUrl } from "../services/base-urls.js";
+import { getObject, putObject } from "../services/blob-store.js";
+import { loginAllowed, loginSucceeded, loginIpLimiter, loginUserLimiter } from "../services/login-guard.js";
+import { buildRedisBackendFromEnv } from "../services/redis-rate-limit.js";
 import * as os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { z } from "zod";
@@ -63,7 +71,9 @@ import { agentTaskService } from "../services/agent-task-service.js";
 import { LLM_MODEL_REGISTRY, getRoleModel, getRoleModelMap, resolveModelAlias, setRoleModel, isModelUsable, findModelOption, getProviderEndpoint, isEditorModelSet, type LlmRole } from "../services/llm-model-registry.js";
 import { traceService } from "../services/trace-service.js";
 import { quotaService } from "../services/quota-service.js";
-import { globalRateLimiter, tokenRateLimiter, tenantRateLimiter, tryAcquireTenantSlot, releaseTenantSlot, tenantConcurrencyLimit } from "../services/rate-limiter.js";
+import { runWithContext } from "../services/request-context.js";
+import { InsufficientPointsError, withPoints, pointsEnabled } from "../services/points-gate.js";
+import { globalRateLimiter, tokenRateLimiter, tenantRateLimiter, tryAcquireTenantSlot, releaseTenantSlot, tenantConcurrencyLimit, attachRateLimitPool, attachRateLimitBackend, configureRateLimitBackends, PgRateLimitBackend, acquireTenantSlotAsync, releaseTenantSlotAsync, renewTenantSlotAsync, pruneRateLimitCounters, SLOT_HEARTBEAT_MS } from "../services/rate-limiter.js";
 import { breakers } from "../services/circuit-breaker.js";import "../services/jobs-handlers.js";
 import { vaultService } from "../services/vault-service.js";
 import { truthService } from "../services/truth-service.js";
@@ -118,9 +128,42 @@ import * as wechatAuth from "../services/wechat-auth-service.js";
 import * as chapterSkill from "../services/chapter-skill-service.js";
 
 // 桌面端封装（V397）: SAG_ROOT 环境变量覆盖资源根目录（安装目录 vs 运行时目录分离）
+//
+// 2026-09-11: 前端产物目录改成"候选回退 + 启动时打印实际路径"。
+// 起因是本地 worktree 开发: SAG_ROOT 指主仓 → 读主仓的 web/dist, 而新构建的产物在 worktree 里,
+// 表现为"改了前端但页面没变", 且没有任何提示(同 migrate.ts 那个坑)。
+// 现在优先用 SAG_ROOT(显式配置), 但它下面没有构建产物时回退到模块相对路径, 并把实际用的路径打出来。
 const rootDir = process.env.SAG_ROOT || process.cwd();
-const webDistDir = path.join(rootDir, "web", "dist");
+// ESM 下没有 __dirname(踩过: 直接写会让服务启动即崩)
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+function webDistCandidates(): string[] {
+  const cands = [path.join(rootDir, "web", "dist")];
+  // 源码运行: <repo>/src/api → <repo>/web/dist; 编译后: <repo>/dist/src/api → <repo>/web/dist
+  cands.push(path.resolve(moduleDir, "..", "..", "web", "dist"));
+  cands.push(path.resolve(moduleDir, "..", "..", "..", "web", "dist"));
+  cands.push(path.join(process.cwd(), "web", "dist"));
+  return [...new Set(cands)];
+}
+
+function resolveWebDist(): string {
+  const cands = webDistCandidates();
+  for (const d of cands) {
+    try {
+      if (fs.existsSync(path.join(d, "index.html"))) return d;
+    } catch { /* 试下一个 */ }
+  }
+  return cands[0];
+}
+
+const webDistDir = resolveWebDist();
 const webIndexFile = path.join(webDistDir, "index.html");
+// 明确打印, 免得"页面没变"时要去猜服务读的是哪一份产物
+if (fs.existsSync(webIndexFile)) {
+  console.log(`[sag] 前端产物: ${webDistDir}`);
+} else {
+  console.warn(`[sag] 未找到前端产物(index.html), 只提供 API。查找过: ${webDistCandidates().join(" | ")}`);
+}
 
 // 上传大小限制 — 与 webui-service.ts MAX_UPLOAD_BYTES 一致, 这里在 schema 层拦截(防 POST /ingest 绕过)
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -243,9 +286,50 @@ const aiSettingsSchema = z.object({
 });
 
 export function buildHttpServer() {
+  /** 客户端 IP(反代后取 X-Forwarded-For 首段; 直连取 socket 地址) */
+  const clientIp = (request: any): string => {
+    const fwd = String(request.headers?.["x-forwarded-for"] || "").split(",")[0].trim();
+    return fwd || request.socket?.remoteAddress || request.ip || "unknown";
+  };
+  /** 无鉴权入口(登录/注册/找回)的限流判定 —— IP + 用户名双维度, 多副本共享配额 */
+  const allowAuthAttempt = async (request: any, ident: string): Promise<boolean> => {
+    const r = await loginAllowed(clientIp(request), ident || "-");
+    if (!r.allowed) {
+      console.warn(`[auth-guard] 尝试过于频繁, 已拒绝: ip=${clientIp(request)} ident=${String(ident).slice(0, 40)}`);
+    }
+    return r.allowed;
+  };
+  const authRateLimited = { error: "尝试过于频繁, 请稍后再试", code: "RATE_LIMITED" };
+
   // 启动限流器桶清理 (防 Map 无限增长)
   globalRateLimiter.startCleanup();
   tokenRateLimiter.startCleanup();
+  tenantRateLimiter.startCleanup();
+  loginIpLimiter.startCleanup();
+  loginUserLimiter.startCleanup();
+  // 多副本: 限流计数落共享后端(各副本共享同一配额)。
+  // 后端选择: RATE_LIMIT_BACKEND=redis(需 REDIS_URL) > pg(默认, 需 DATABASE_URL) > 进程内。
+  // 两者都配了时, 选中的做主后端、另一个做备用 —— 只有一个存储挂了不会退化成"各发各的"。
+  // 关掉: RATE_LIMIT_DB=0
+  if (process.env.RATE_LIMIT_DB !== "0") {
+    const want = (process.env.RATE_LIMIT_BACKEND || "").toLowerCase();
+    const redis = buildRedisBackendFromEnv();
+    const pg = new PgRateLimitBackend(pool);
+    if (want === "redis" && !redis) {
+      // 明确要求了 redis 却没配 URL —— 静默回退会让"以为共享其实没共享", 必须说清楚
+      console.error("[rate-limit] RATE_LIMIT_BACKEND=redis 但未配置 REDIS_URL, 回退到 pg");
+    }
+    const useRedis = Boolean(redis) && (want === "redis" || want === "");
+    if (useRedis) {
+      // 默认(未指定 want)也优先 redis: 它是为计数场景选的后端, 不压业务库
+      configureRateLimitBackends(redis!, pg);
+    } else {
+      configureRateLimitBackends(pg, redis);
+    }
+    // 过期计数窗口清理(仅 pg 后端需要; redis 靠键 TTL 自过期)
+    const t = setInterval(() => { void pruneRateLimitCounters(60_000); }, 10 * 60_000);
+    t.unref?.();
+  }
   const app = Fastify({
     // V412: 全局请求体上限 30MB（问卷文件解析/附件上传需要；默认 1MB 会挡掉 base64 大文件）
     bodyLimit: 30 * 1024 * 1024,
@@ -453,6 +537,102 @@ export function buildHttpServer() {
     quotaService.recordUsage(ctx.tokenId, "other", {});
   });
 
+  // ─── 调用者身份上下文(2026-09-11) ───
+  // 服务层的 LLM 调用要按用户记账/计费, 但那些函数拿不到 request。
+  // 实测: Fastify 的 onRequest hook 里 als.run() **不会**传播到 handler, 必须在处理器入口 run。
+  // 故此处统一包装路由注册: handler 执行前从 JWT 解出 userId 放进 AsyncLocalStorage,
+  // 覆盖 handler 及其 await 的所有深层服务调用。无 token(本机/匿名)则不设 userId = 不计费。
+  const alsUserIdOf = (request: any): { userId?: string; tenantId?: string } => {
+    try {
+      const token = String((request.headers?.authorization || "").replace("Bearer ", "").trim());
+      if (!token) return {};
+      const p = authService.verifyToken(token);
+      return p ? { userId: p.uid, tenantId: (p as { tenantId?: string }).tenantId } : {};
+    } catch { return {}; }
+  };
+  /** 场景类端点的积分功能键 — 只登记**确定烧 LLM** 的路径。
+   *  支持两种形式(按前缀优先, 长的先匹配):
+   *    "prefix:/api/xxx/"  整个前缀下的请求都计费
+   *    "exact:/api/xxx"    仅该路径计费(列表/控制类接口不能收费) */
+  const POINTS_FEATURE_RULES: ReadonlyArray<readonly [string, string]> = [
+    ["prefix:/api/writing/", "writing:research"],
+    ["prefix:/api/writing-out/", "writing:output"],
+    ["prefix:/api/quality/", "quality:check"],
+    ["prefix:/api/classical/", "classical:study"],
+    ["prefix:/api/theory/", "theory:reflect"],
+    ["prefix:/api/academic/", "academic:research"],
+    // 评审: **只有真正跑评审的 stream 会烧 LLM**。
+    //   注意 POST /api/review/jobs 仅创建 job(返回 jobId) 不调 LLM, 登记它会白收一次费。
+    ["exact:/api/review/jobs/:jobId/stream", "review:paper"],
+    // 实证分析: 只有执行分析的路径
+    ["prefix:/api/empirical/analyze", "empirical:analyze"],
+    ["exact:/api/empirical/run", "empirical:analyze"],
+  ];
+  /** 匹配请求 URL → 功能键(未登记返回 undefined = 不收费) */
+  const pointsFeatureOf = (url: string): string | undefined => {
+    const path = url.split("?")[0];
+    for (const [rule, feature] of POINTS_FEATURE_RULES) {
+      const [kind, pat] = rule.split(/:(.*)/s);
+      if (kind === "prefix" && path.startsWith(pat)) return feature;
+      if (kind === "exact") {
+        // 支持 :param 段
+        const re = new RegExp("^" + pat.replace(/:[A-Za-z]+/g, "[^/]+") + "$");
+        if (re.test(path)) return feature;
+      }
+    }
+    return undefined;
+  };
+
+  for (const method of ["get", "post", "put", "delete", "patch", "all", "options", "head"] as const) {
+    const orig = (app as any)[method].bind(app);
+    (app as any)[method] = (url: string, ...rest: any[]) => {
+      const feature = pointsFeatureOf(url);
+      const hi = rest.findIndex((x) => typeof x === "function");
+      if (hi >= 0) {
+        const handler = rest[hi];
+        rest[hi] = function (this: unknown, request: any, reply: any) {
+          const ctx = alsUserIdOf(request);
+          return runWithContext(ctx, async () => {
+            if (!feature || !ctx.userId || !pointsEnabled()) return handler.call(this, request, reply);
+            // 同步/流式端点: 冻结 → 执行 → 成功核销 / 失败归还(与 viz:chart 同语义)
+            try {
+              return await withPoints(ctx.userId, feature, randomUUID(), () => handler.call(this, request, reply));
+            } catch (e) {
+              if (e instanceof InsufficientPointsError) {
+                return reply.code(402).send({ error: e.message, code: "INSUFFICIENT_POINTS", needPoints: e.needPoints });
+              }
+              throw e;
+            }
+          });
+        };
+      }
+      return orig(url, ...rest);
+    };
+  }
+
+  // 额度预检: 会对用户产生 LLM 花费的端点(前缀匹配) — 超额直接 402, 不等到跑完才记账
+  // 注: 只覆盖"用户主动发起 + 确定烧 token"的路由; 系统/后台任务无 userId 不拦
+  const BUDGET_GATED_PREFIXES = [
+    "/api/editor/v1/ai/",   // 编辑器 AI 助手(14 按钮)
+    "/api/format-eval/",    // 格式检查(可带 llm:true)
+    "/api/quality/",        // 论文质量检查
+    "/api/review/",         // 论文评审
+    "/api/academic/",       // 学术场景
+    "/api/writing/",        // 写作场景
+    "/api/classical/",      // 经典文本
+    "/api/theory/",         // 理论思辨
+  ];
+  app.addHook("preHandler", async (request: any, reply: any) => {
+    const url = String(request.url || "").split("?")[0];
+    if (!BUDGET_GATED_PREFIXES.some((p) => url.startsWith(p))) return;
+    const { userId } = alsUserIdOf(request);
+    if (!userId) return;   // 本机/匿名/系统调用不拦
+    const r = await billingService.ensureWithinBudget(userId);
+    if (r.blocked) {
+      return reply.code(402).send({ error: r.reason, code: "QUOTA_EXCEEDED", usedTokens: r.usedTokens, quotaTokens: r.quotaTokens, balanceCents: r.balanceCents });
+    }
+  });
+
   // V389修复: 场景 API 租户校验 — JWT 用户请求体含 sourceId 时校验归属（公共库放行/他人私有 403）
   // 覆盖 classical/academic/writing/quality/theory 等所有场景 API（原仅 reason 校验）
   // V390修复: onRequest 阶段 body 尚未解析(校验从未生效) — 改为 preHandler 再校验, 并解决 body 二次解析限制:
@@ -537,22 +717,28 @@ export function buildHttpServer() {
   async function chargeUserForReasonTask(userId: string, taskId: string | undefined): Promise<void> {
     try {
       if (!taskId) return;
+      // 2026-09-11: 按模型分组计费 — 此前用 min(parameters->>'model') 取单一模型, 而且该字段恒空
+      //   (写入方只塞了 tokens, 没塞 model), 于是整条推理链一律按 deepseek-v4-flash 定价 ——
+      //   用 pro 跑链路时单价差 4 倍(16 vs 4 元/百万), 长期少收 75%。
       const agg = await pool.query(
-        `select coalesce(sum((parameters->'tokens'->>'in')::int), 0) as tin,
-                coalesce(sum((parameters->'tokens'->>'out')::int), 0) as tout,
-                coalesce(min(parameters->>'model'), '') as model
-         from retrieve_steps where task_id = $1`, [taskId]);
-      const tin = Number(agg.rows[0]?.tin || 0);
-      const tout = Number(agg.rows[0]?.tout || 0);
-      if (tin + tout > 0) {
-        let model = String(agg.rows[0]?.model || "");
-        if (!model || model === "unknown") {
-          const llmCfg = await authService.getUserLlmConfig(userId);
-          model = llmCfg.provider === "byok" ? "byok" : "deepseek-v4-flash";
-        }
-        if (model !== "byok") {
-          await billingService.chargeUser(userId, model, tin, tout, "/api/reason/query");
-        }
+        `select coalesce(nullif(parameters->>'model', ''), '') as model,
+                coalesce(sum((parameters->'tokens'->>'in')::int), 0) as tin,
+                coalesce(sum((parameters->'tokens'->>'out')::int), 0) as tout
+           from retrieve_steps where task_id = $1
+          group by 1`, [taskId]);
+      const byModel = agg.rows.filter((r: any) => Number(r.tin) + Number(r.tout) > 0);
+      if (!byModel.length) return;
+      // 老数据(改动前落库的)没有 model 字段 → 退回按用户配置推断, 与旧行为一致
+      const needGuess = byModel.some((r: any) => !r.model);
+      let guess = "";
+      if (needGuess) {
+        const llmCfg = await authService.getUserLlmConfig(userId);
+        guess = llmCfg.provider === "byok" ? "byok" : "deepseek-v4-flash";
+      }
+      for (const row of byModel) {
+        const model = String(row.model || "") || guess;
+        if (!model || model === "byok") continue;   // BYOK: LLM 自付, 平台不扣
+        await billingService.chargeUser(userId, model, Number(row.tin), Number(row.tout), "/api/reason/query");
       }
     } catch { /* 计费失败不阻塞响应 */ }
   }
@@ -657,8 +843,9 @@ export function buildHttpServer() {
   // ─── 经典文本研究 API（马理论 5 大能力）───
   // V390: 默认源按用户配置 — JWT 用户未传 sourceId 时用"用户自己的 source"(私有库/首个source), 未认证(本机/API令牌)回退公共库
   const DEFAULT_SOURCE = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
-  // 修复1: Agent 步骤执行器 self-fetch base — AGENT_API_BASE 覆盖（局域网部署用局域网 IP）
-  const SELF_BASE = process.env.AGENT_API_BASE || "http://localhost:4173";
+  // 修复1: Agent 步骤执行器 self-fetch base — 统一走 base-urls(AGENT_API_BASE 等显式配置优先,
+  // 否则按 HTTP_HOST/HTTP_PORT 推导, 免得"监听在哪"与"自我请求打哪"分叉)
+  const SELF_BASE = selfBaseUrl();
   const PUBLIC_TENANT = "00000000-0000-0000-0000-000000000001";
 
   /** 解析请求的默认 sourceId：请求带 sourceId 直接返回；否则按 JWT 用户租户取私有库，最后回退公共库 */
@@ -1529,7 +1716,7 @@ export function buildHttpServer() {
 
     if (kind === "cases") {
       try {
-        const j = JSON.parse(fs.readFileSync(path.join(rootDir, "data", "education-cases.json"), "utf-8"));
+        const j = JSON.parse(fs.readFileSync(dataPath("education-cases.json"), "utf-8"));
         return { ok: true, cases: j.cases || [] };
       } catch { return { ok: false, error: "案例库读取失败" }; }
     }
@@ -1595,7 +1782,7 @@ export function buildHttpServer() {
       if (!safeName.endsWith(".json")) return { ok: false, error: "文件名需以 .json 结尾" };
       let dir: string;
       if (body.kind === "templates") dir = path.join(rootDir, "education-templates");
-      else if (body.kind === "cases") dir = path.join(rootDir, "data");
+      else if (body.kind === "cases") dir = dataRoot();
       else return { ok: false, error: "kind 仅支持 templates/cases" };
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, safeName), JSON.stringify(body.data, null, 2), "utf-8");
@@ -1851,19 +2038,23 @@ export function buildHttpServer() {
   // ───── 商业化认证 API（V388+: 注册/登录/me） ─────
   app.post("/api/auth/register", async (request, reply) => {
     const body = request.body as { username?: string; password?: string; email?: string };
+    if (!(await allowAuthAttempt(request, body.username || ""))) return reply.code(429).send(authRateLimited);
     const r = await authService.register(body.username || "", body.password || "", body.email);
     if (!r.ok) return reply.code(400).send({ error: r.error });
     // V390修复: 注册即登录 — 直接签发 JWT（原只返回 user, 前端无 token 导致计费/运营接口全部 401）
     const loginRes = await authService.login(body.username || "", body.password || "");
     if (loginRes.ok && loginRes.token) {
+      loginSucceeded(clientIp(request), (body.username || "").toLowerCase());
       return { token: loginRes.token, user: loginRes.user };
     }
     return { user: r.user };
   });
   app.post("/api/auth/login", async (request, reply) => {
     const body = request.body as { username?: string; password?: string };
+    if (!(await allowAuthAttempt(request, body.username || ""))) return reply.code(429).send(authRateLimited);
     const r = await authService.login(body.username || "", body.password || "");
     if (!r.ok) return reply.code(401).send({ error: r.error });
+    loginSucceeded(clientIp(request), (body.username || "").toLowerCase());
     return { token: r.token, user: r.user };
   });
   app.get("/api/auth/me", async (request, reply) => {
@@ -1889,6 +2080,8 @@ export function buildHttpServer() {
   // 忘记密码 → 发重置邮件（无需登录; 防枚举统一返回 ok）
   app.post("/api/auth/forgot-password", async (request, reply) => {
     const body = request.body as { email?: string };
+    // 发信是有成本的(且可用来轰炸他人邮箱) → 与登录同一套限流
+    if (!(await allowAuthAttempt(request, body.email || ""))) return reply.code(429).send(authRateLimited);
     const r = await authService.requestPasswordReset(body.email || "", String(request.headers.origin || request.protocol + "://" + request.hostname + (request.port ? ":" + request.port : "")));
     if (r.smtpError) return { ok: true, smtpError: r.smtpError };  // SMTP 未配置: 前端提示需配置（不暴露邮箱存在性）
     if (!r.ok) return reply.code(400).send({ error: r.error });
@@ -2944,10 +3137,9 @@ export function buildHttpServer() {
     const fs = await import("node:fs");
     const nodePath = await import("node:path");
     const { randomUUID } = await import("node:crypto");
-    const uploadsDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "chat_uploads");
-    fs.mkdirSync(uploadsDir, { recursive: true });
     const fileName = `${randomUUID()}.${ext}`;
-    fs.writeFileSync(nodePath.join(uploadsDir, fileName), raw);
+    // 走 blob-store: 上传的图片随对话在副本间共享, 多副本下不会再"附件在本副本上没有"
+    await putObject(`chat-uploads/${fileName}`, raw);
     return { path: `chat_uploads/${fileName}`, name: fileName, sizeKB: Math.round(raw.length / 1024) };
   }
 
@@ -3102,17 +3294,20 @@ export function buildHttpServer() {
       if (u.rows.length > 0) {
         const tenantId = u.rows[0].tenant_id;
         const plan = u.rows[0].plan || "free";
-        // 租户频率限制（60s 窗口）
-        const rateCheck = tenantRateLimiter.check(`tenant:${tenantId}`, 30);
+        // 租户频率限制（60s 窗口; DB 模式跨副本共享配额, 单机退化为进程内）
+        const rateCheck = await tenantRateLimiter.checkAsync(`tenant:${tenantId}`, 30);
         if (!rateCheck.allowed) {
           return reply.code(429).send({ error: { code: "TENANT_RATE_LIMITED", message: "租户请求过于频繁, 请稍后再试", retryAfterSec: rateCheck.retryAfterSec } });
         }
-        // 并发槽位
-        if (!tryAcquireTenantSlot(tenantId, plan)) {
+        // 并发槽位(DB 模式跨副本共享; 否则 free 2 并发 × N 副本)
+        if (!(await acquireTenantSlotAsync(tenantId, plan))) {
           return reply.code(429).send({ error: { code: "TENANT_BUSY", message: `租户并发推理已达上限(${tenantConcurrencyLimit(plan)}), 请稍后再试` } });
         }
         reasonQuery.tenantId = tenantId;
-        reasonQuery.releaseTenantSlot = () => releaseTenantSlot(tenantId);
+        // 心跳续期: 否则超过 10 分钟的长推理会被其他副本当成陈旧槽位回收 → 并发上限被突破
+        const hb = setInterval(() => { void renewTenantSlotAsync(tenantId); }, SLOT_HEARTBEAT_MS);
+        hb.unref?.();
+        reasonQuery.releaseTenantSlot = () => { clearInterval(hb); void releaseTenantSlotAsync(tenantId); };
       }
     }
     try {
@@ -3960,7 +4155,7 @@ export function buildHttpServer() {
   app.get("/api/memory/recall-report", async () => {
     try {
       const f = await import("fs/promises");
-      const p = path.join(process.env.SAG_ROOT || process.cwd(), "data", "memory-recall-report.json");
+      const p = dataPath("memory-recall-report.json");
       const raw = await f.readFile(p, "utf8");
       return { ok: true, report: JSON.parse(raw) };
     } catch {
@@ -5296,7 +5491,7 @@ export function buildHttpServer() {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const rootDir = process.env.SAG_ROOT || process.cwd();
-    const uploadsDir = path.join(rootDir, ".cache", "jupyter-uploads");
+    const uploadsDir = dataPath("jupyter", "uploads");
     fs.mkdirSync(uploadsDir, { recursive: true });
     try {
       fs.writeFileSync(path.join(uploadsDir, body.fileName), body.content, "utf-8");
@@ -5464,7 +5659,7 @@ export function buildHttpServer() {
         return { ok: true, text: text.slice(0, 50_000) };
       }
       // Office/PDF → Python 子进程解析
-      const tmpDir = pathMod.join(process.env.SAG_ROOT || process.cwd(), "data", "questionnaire_tmp");
+      const tmpDir = dataPath("questionnaire_tmp");
       mkdirSync(tmpDir, { recursive: true });
       const tmpFile = pathMod.join(tmpDir, `q_${Date.now()}${ext}`);
       writeFileSync(tmpFile, Buffer.from(body.base64, "base64"));
@@ -5571,21 +5766,24 @@ except Exception as e:
 
   // V413: 报告文件下载(data/agent_workspace/reports/)
   app.get("/api/empirical/reports/:file", async (request, reply) => {
-    const raw = String((request.params as { file?: string }).file ?? "");
-    const fs = await import("node:fs");
+    // 鉴权: 这三条静态路由原本完全开放(实测: 未登录 curl 能下到别人的报告/图/聊天附件)
+    const user = await requireUser(request, reply); if (!user) return;
+    void user;
     const nodePath = await import("node:path");
-    const repDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "reports");
-    const target = nodePath.resolve(repDir, raw);
-    if (!(target === repDir || target.startsWith(repDir + nodePath.sep))) {
-      return reply.code(400).send({ error: "路径越界" });
+    const raw = String((request.params as { file?: string }).file ?? "");
+    // 单层文件名(旧实现允许子路径, 这里收紧; 脚本产出始终是平铺文件名)
+    if (!raw || raw.includes("/") || raw.includes("\\") || raw.includes("..") || raw.includes(":")) {
+      return reply.code(400).send({ error: "文件名非法" });
     }
-    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在" });
-    const ext = nodePath.extname(target).toLowerCase();
+    // 走 blob-store: 本地盘 / 共享卷 / 对象存储同一套代码 —— 多副本下不会再"文件在本副本上没有"
+    const data = await getObject(`empirical/reports/${raw}`);
+    if (!data) return reply.code(404).send({ error: "文件不存在" });
+    const ext = nodePath.extname(raw).toLowerCase();
     const mime = ext === ".docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       : ext === ".tex" ? "text/plain" : ext === ".pdf" ? "application/pdf" : "application/octet-stream";
     reply.header("Content-Type", mime);
-    reply.header("Content-Disposition", `attachment; filename="${nodePath.basename(target)}"`);
-    return reply.send(fs.readFileSync(target));
+    reply.header("Content-Disposition", `attachment; filename="${nodePath.basename(raw)}"`);
+    return reply.send(data);
   });
 
   const dataVersionSchema = z.object({
@@ -5657,22 +5855,23 @@ except Exception as e:
     }
   });
 
-  // GET /api/empirical/figures/:file — 生成的图表静态服务(data/agent_workspace/figures/)
+  // GET /api/empirical/figures/:file — 生成的图表静态服务(blob-store: empirical/figures/)
   app.get("/api/empirical/figures/:file", async (request, reply) => {
-    const raw = String((request.params as { file?: string }).file ?? "");
-    const fs = await import("node:fs");
+    const user = await requireUser(request, reply); if (!user) return;
+    void user;
     const nodePath = await import("node:path");
-    const figDir = nodePath.join(process.env.SAG_ROOT || nodePath.resolve(process.cwd()), "data", "agent_workspace", "figures");
-    const target = nodePath.resolve(figDir, raw);
-    if (!(target === figDir || target.startsWith(figDir + nodePath.sep))) {
-      return reply.code(400).send({ error: "路径越界" });
+    const raw = String((request.params as { file?: string }).file ?? "");
+    if (!raw || raw.includes("/") || raw.includes("\\") || raw.includes("..") || raw.includes(":")) {
+      return reply.code(400).send({ error: "文件名非法" });
     }
-    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在" });
-    const ext = nodePath.extname(target).toLowerCase();
+    // 走 blob-store —— 多副本下不会再"图在本副本上没有"
+    const data = await getObject(`empirical/figures/${raw}`);
+    if (!data) return reply.code(404).send({ error: "文件不存在" });
+    const ext = nodePath.extname(raw).toLowerCase();
     const mime = ext === ".pdf" ? "application/pdf" : ext === ".svg" ? "image/svg+xml" : "image/png";
     reply.header("Content-Type", mime);
     reply.header("Cache-Control", "public, max-age=3600");
-    return reply.send(fs.readFileSync(target));
+    return reply.send(data);
   });
 
   // 演示数据: 基于《农村经营形态调查问卷(最终打印版).pdf》模板生成的 50 份全量模拟作答
@@ -6172,8 +6371,10 @@ except Exception as e:
   // ───── LLM 模型注册表 API（2026-08-07：模型选择 + 角色映射）─────
   // GET /api/llm/models — 可用模型列表 + 角色映射
   // PUT /api/llm/models — 设置角色模型 {role, modelId}
+  // usable: 只含"所属 provider 已配置密钥"的模型(前端下拉直接用, 避免选了必然失败的项)
   app.get("/api/llm/models", async () => ({
     models: LLM_MODEL_REGISTRY,
+    usable: LLM_MODEL_REGISTRY.filter((m) => isModelUsable(m.id)),
     roleMap: getRoleModelMap(),
   }));
 
@@ -6249,15 +6450,63 @@ except Exception as e:
       const uQ = await pool.query("select plan from users where id = $1", [jwtPQ.uid]);
       if (uQ.rows.length > 0) priority = agentTaskQueue.priorityForPlan(uQ.rows[0].plan || "free");
     }
+    // 执行方式登记: 别的实例(或本进程重启后)从队列表里领到这条时, 用它重建执行闭包。
+    //   request 不能跨实例传, 所以重建时用一个最小 request(只带必要头部)。
+    await registerAgentQueueRunners();
     agentTaskQueue.enqueueTask({
       taskId: params.id,
       priority,
       run: () => runAgentTaskInner(params.id, task, request),
+      runner: "agent-task",
+      payload: { taskId: params.id, auth: String(request.headers.authorization || "") },
     });
     return { ok: true, taskId: params.id, queued: true, priority };
   });
 
   // V394-4: 队列内部执行器（原 run 路由的后台执行逻辑抽出）
+  /**
+   * 注册"可跨实例重建"的执行方式。
+   * 队列表里存的是 runner 名字 + payload; 任何实例(或本进程重启后)领取时用它重建闭包,
+   * 这样副本缩容时任务不会蒸发。request 不能跨界传, 所以用 payload 里的 auth 重建最小 request。
+   * 幂等: 模块级只注册一次。
+   */
+  let queueRunnersRegistered = false;
+  async function registerAgentQueueRunners(): Promise<void> {
+    const agentTaskQueueMod = await import("../services/agent-task-queue.js");
+    if (queueRunnersRegistered) return;
+    queueRunnersRegistered = true;
+    const { registerQueueRunner } = agentTaskQueueMod;
+    registerQueueRunner("agent-task", async (payload) => {
+      const id = String(payload.taskId ?? "");
+      if (!id) return;
+      const r = await pool.query("select * from agent_tasks where id = $1::uuid", [id]);
+      const task = r.rows[0];
+      if (!task) return;
+      // request 不能跨实例传 → 用 payload 里的 auth 重建一个最小请求对象(执行器只读 headers)
+      const fakeReq = { headers: { authorization: String(payload.auth ?? "") } } as unknown as Parameters<typeof runAgentTaskInner>[2];
+      await runAgentTaskInner(id, task, fakeReq);
+    });
+    registerQueueRunner("orchestrator", async (payload) => {
+      const id = String(payload.taskId ?? "");
+      if (!id) return;
+      const { agentOrchestrator } = await import("../services/agent-orchestrator.js");
+      // 工人执行仍走本实例的推理接口(与入队时同一条路径), 目标/项目从 payload 重建
+      await agentOrchestrator.dispatchWorkers({
+        parentTaskId: id,
+        goal: String(payload.goal ?? ""),
+        workerRunner: async (worker) => {
+          const res = await fetch(SELF_BASE + "/api/reason/query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourceId: (payload.projectId as string) || undefined, query: worker.goal, mode: "adaptive" }),
+          });
+          const data: any = await res.json();
+          return data?.trace?.hypothesis?.content || data?.error || "（无结果）";
+        },
+      });
+    });
+  }
+
   async function runAgentTaskInner(id: string, task: any, request: any): Promise<void> {
     await agentTaskService.runAgentTask(id, async (step) => {
       // 步骤执行器：V393-1 先 LLM 动态选工具（真·工具调用），失败回退类型调度
@@ -6858,7 +7107,7 @@ except Exception as e:
     const { agentToolRouter } = await import("../services/agent-tool-router.js");
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const workspace = dataPath("agent_workspace");
     const rel = String(body.path || "").replace(/^[/\\]+/, "");
     const target = path.resolve(workspace, rel);
     if (!(target === workspace || target.startsWith(workspace + path.sep))) {
@@ -6877,23 +7126,23 @@ except Exception as e:
 
   // V398: 对话图片静态服务（ChatPanel 消息内联预览；限 agent_workspace/chat_uploads 内，防路径穿越）
   app.get("/api/chat/images/*", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    void user;
     const raw = String((request.params as { "*"?: string })["*"] ?? "");
     // 兼容两种相对路径：`chat_uploads/xxx.png`（上传接口返回值）或 `xxx.png`（直接文件名）
     const rel = raw.replace(/^[/\\]+/, "").replace(/^chat_uploads[/\\]/, "");
-    const fs = await import("node:fs");
     const path = await import("node:path");
-    const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
-    const uploadsDir = path.join(workspace, "chat_uploads");
-    const target = path.resolve(uploadsDir, rel);
-    if (!(target === uploadsDir || target.startsWith(uploadsDir + path.sep))) {
-      return reply.code(400).send({ error: "路径越界", code: "AGENT_BAD_REQUEST" });
+    // 单层文件名(与 viz 产物同一约束: 不收子路径/盘符/上跳)
+    if (!rel || rel.includes("/") || rel.includes("\\") || rel.includes("..") || rel.includes(":")) {
+      return reply.code(400).send({ error: "文件名非法", code: "AGENT_BAD_REQUEST" });
     }
-    if (!fs.existsSync(target)) return reply.code(404).send({ error: "文件不存在", code: "AGENT_NOT_FOUND" });
-    const ext = path.extname(target).toLowerCase();
+    const data = await getObject(`chat-uploads/${rel}`);
+    if (!data) return reply.code(404).send({ error: "文件不存在", code: "AGENT_NOT_FOUND" });
+    const ext = path.extname(rel).toLowerCase();
     const mime = ext === ".png" ? "image/png" : ext === ".gif" ? "image/gif" : ext === ".webp" ? "image/webp" : ext === ".bmp" ? "image/bmp" : "image/jpeg";
     reply.header("Content-Type", mime);
     reply.header("Cache-Control", "public, max-age=86400");
-    return reply.send(fs.readFileSync(target));
+    return reply.send(data);
   });
 
   // 差距P③(DSH settings): 设置读写 + 差距P⑤ 子进程状态
@@ -7070,6 +7319,22 @@ except Exception as e:
     const lastEventId = Number((request.headers as any)["last-event-id"] || 0);
     const missed = bufferedEventsSince(params.id, lastEventId || undefined);
     for (const ev of missed) send(ev.type, ev.data, ev.seq);
+    // 多副本: 内存缓冲是**执行者进程**的, 连到别的实例时它是空的 → 从库里回放历史事件。
+    //   不回放的话, 用户只收到 snapshot + 心跳, 永久卡"运行中"且不报错(实测路径)。
+    const { replayAgentEvents } = await import("../services/agent-progress.js");
+    let replayCursor = lastEventId || missed.reduce((m, e) => Math.max(m, e.seq ?? 0), 0);
+    try {
+      const history = await replayAgentEvents(params.id, replayCursor);
+      for (const ev of history) { send(ev.type, ev.data, ev.seq); replayCursor = Math.max(replayCursor, ev.seq ?? 0); }
+    } catch { /* 表不可用 → 退化成实时推送 */ }
+    // 终态任务: 回放完直接收尾, 不让客户端等一个永远不会来的 done
+    const TERMINAL = ["completed", "failed", "cancelled"];
+    if (TERMINAL.includes(String(task.status))) {
+      send("done", { status: task.status, result: task.result ?? null, progress: task.progress ?? "" }, replayCursor + 1);
+      clearInterval(heartbeat);
+      try { reply.raw.end(); } catch { /* 已关闭 */ }
+      return;
+    }
     // 初始快照（连上即有完整状态, 不漏事件）
     send("snapshot", { task });
     const unsubscribe = subscribeAgentProgress(params.id, (ev) => {
@@ -7158,9 +7423,12 @@ except Exception as e:
       if (uO.rows.length > 0) priority = agentTaskQueue.priorityForPlan(uO.rows[0].plan || "free");
     }
     // 后台编排执行（并行工人 → 主管汇总）— 入队, 与任务共享并发槽位
+    await registerAgentQueueRunners();
     agentTaskQueue.enqueueTask({
       taskId: parent.id,
       priority,
+      runner: "orchestrator",
+      payload: { taskId: parent.id, goal: body.goal.trim(), projectId: parent.projectId ?? null },
       run: () => agentOrchestrator.dispatchWorkers({
       parentTaskId: parent.id,
       goal: body.goal.trim(),
@@ -7455,9 +7723,8 @@ except Exception as e:
     // 路径校验: 仅允许文献库/资料库(VAULT_ROOT)/桌面(VAULT_DIR 兼容)目录内
     const abs = path.resolve(body.path);
     const scanDir = path.resolve(literatureService.scanDir);
-    // VAULT_ROOT 默认与 vault-service 一致: ~/1.Obsidian Vault
-    const { homedir } = await import("node:os");
-    const vaultRoot = path.resolve(process.env.VAULT_ROOT || path.join(homedir(), "1.Obsidian Vault"));
+    // vaultRoot 与 vault-service 同源(kb-paths): 未配 VAULT_ROOT 时回退 <数据根>/kb/vault
+    const vaultRoot = path.resolve(kbVaultRoot());
     const vaultDir = path.resolve(process.env.VAULT_DIR || "");
     const allowed = abs.startsWith(scanDir + path.sep) || abs.startsWith(vaultRoot + path.sep) || (vaultDir && abs.startsWith(vaultDir + path.sep));
     if (!allowed) {
@@ -9570,19 +9837,32 @@ except Exception as e:
       settings?: { strictness?: string; standardIds?: string[]; customRequirements?: string };
       sidebarTaskId?: string; sourceFileId?: string; sourceFileName?: string; sourceFileType?: string };
     if (!body?.text?.trim()) return reply.code(400).send({ error: "请提供稿件文本(或稍后支持文件上传)" });
+    // 上限与前端 MAX_REVIEW_CHARS 一致: 此前 API 对长度不设防, 30 万字能建出 75 段任务
+    //   (每段一次 LLM → 成本失控), 而前端静默砍到 12 万, 两端口径还对不上
+    const MAX_REVIEW_CHARS = 120_000;
+    const textIn = String(body.text).slice(0, MAX_REVIEW_CHARS);
     const r = await reviewService.createReviewJob({
-      userId: user.id, title: body.title, text: body.text, kind: body.kind,
+      userId: user.id, title: body.title, text: textIn, kind: body.kind,
       journalId: body.journalId, standardId: body.standardId,
       settings: body.settings, sidebarTaskId: body.sidebarTaskId,
       sourceFileId: body.sourceFileId, sourceFileName: body.sourceFileName, sourceFileType: body.sourceFileType,
     });
-    return { jobId: r.id, segmentCount: r.segmentCount, dimensions: r.dimensions };
+    return { jobId: r.id, segmentCount: r.segmentCount, dimensions: r.dimensions,
+      truncated: String(body.text).length > MAX_REVIEW_CHARS, chars: textIn.length };
   });
 
   app.get("/api/review/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const q = request.query as { limit?: string };
-    return { jobs: await reviewService.listReviewJobs(user.id, Number(q.limit) || 50) };
+    const q = request.query as { limit?: string; offset?: string };
+    // clamp: limit=-5 会让 PG 直接报 "LIMIT must not be negative" → 500
+    const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
+    const offset = Math.max(0, Number(q.offset) || 0);
+    const [jobs, total] = await Promise.all([
+      reviewService.listReviewJobs(user.id, limit, offset),
+      reviewService.countReviewJobs(user.id),
+    ]);
+    // total 让前端能显示"共 N 条"并决定还要不要"加载更多"(否则只能靠"这页满没满"猜)
+    return { jobs, total };
   });
 
   app.get("/api/review/jobs/:jobId", async (request, reply) => {
@@ -9593,12 +9873,39 @@ except Exception as e:
     return { job };
   });
 
+  // 删除审稿记录(报告+批注+进度)。
+  // 2026-09-11: 前端一直有这个按钮, 但后端从来没有这条路由 —— 404 被前端的 .catch 吞掉,
+  //   UI 弹"已删除"而记录仍在。现在补齐, 并把失败原因如实回给前端。
+  app.delete("/api/review/jobs/:jobId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const ok = await reviewService.deleteReviewJob(user.id, jobId);
+    if (!ok) {
+      // 区分"不存在/不是你的"与"正在跑不能删": 前者 404, 后者要告诉用户先取消
+      const job = await reviewService.getReviewJob(user.id, jobId);
+      if (!job) return reply.code(404).send({ error: "审稿任务不存在" });
+      return reply.code(409).send({ error: "该任务正在执行或排队中, 请先取消再删除" });
+    }
+    return { ok: true };
+  });
+
   // SSE 流式审稿(review.started/status/delta/completed)
   app.get("/api/review/jobs/:jobId/stream", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
     const sse = attachSse(reply);
-    await reviewService.runReviewJob(user.id, jobId, sse);
+    // 集群级闸: 抢任务租约(防同一任务被两个执行者审两遍) + 抢全局槽位(限制同时执行数)
+    const gate = await reviewService.acquireReviewSlot({ userId: user.id, jobId, sse });
+    if (!gate.ok) {
+      // 没拿到执行权: 任务可能正被别的实例/标签页推进 —— 不关流, 让本页继续收进度
+      // (审稿没有事件回放, 关掉的话用户会看不到任何进展)
+      return;
+    }
+    try {
+      await reviewService.runReviewJob(user.id, jobId, sse, { guard: gate.guard });
+    } finally {
+      gate.release();
+    }
     sse.end();
   });
 
@@ -9663,10 +9970,22 @@ except Exception as e:
 
   app.post("/api/review/journals/parse", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { rawText?: string };
-    if (!body?.rawText?.trim()) return reply.code(400).send({ error: "请粘贴投稿须知原文" });
-    const parsed = await reviewService.parseSubmissionGuide(body.rawText);
-    return { parsed };
+    const body = request.body as { rawText?: string; text?: string };
+    const raw = body?.rawText ?? body?.text;
+    if (!raw?.trim()) return reply.code(400).send({ error: "请粘贴投稿须知原文" });
+    const parsed = await reviewService.parseSubmissionGuide(raw);
+    // 面板读 {data:{name,category,structuredRules}} — 只回 {parsed} 时它拿不到任何字段
+    return {
+      parsed,
+      data: {
+        name: "", category: "",
+        structuredRules: {
+          formatRules: parsed.formatRules, reviewFocus: parsed.reviewFocus,
+          citationRules: parsed.citationRules, scope: parsed.scope,
+        },
+      },
+      error: (parsed as { error?: string }).error,
+    };
   });
 
   // 审核标准库
@@ -9677,16 +9996,24 @@ except Exception as e:
 
   app.post("/api/review/standards", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { name?: string; sourceText?: string; dimensions?: unknown };
+    const body = request.body as { name?: string; sourceText?: string; description?: string; dimensions?: unknown };
     if (!body?.name?.trim()) return reply.code(400).send({ error: "请填写标准名" });
-    return await reviewService.createStandard({ ...body, name: body.name.trim(), userId: user.id });
+    // 只取白名单字段: 原来 {...body} 会把 builtIn/isDefault 一起透传 —— 任何用户都能造一条
+    //   "内置"标准, 被全站用户看到/选用/删除(实测可污染所有人的默认审稿维度)
+    return await reviewService.createStandard({
+      name: body.name.trim(), sourceText: body.sourceText, description: body.description,
+      dimensions: body.dimensions, userId: user.id,
+    });
   });
 
   app.put("/api/review/standards/:standardId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { standardId } = request.params as { standardId: string };
-    const body = request.body as { name?: string; sourceText?: string; dimensions?: unknown };
-    const r = await reviewService.updateStandard(user.id, standardId, body);
+    const body = request.body as { name?: string; sourceText?: string; description?: string; dimensions?: unknown; isDefault?: boolean };
+    const r = await reviewService.updateStandard(user.id, standardId, {
+      name: body.name, sourceText: body.sourceText, description: body.description,
+      dimensions: body.dimensions, isDefault: body.isDefault,
+    });
     if (!r) return reply.code(404).send({ error: "标准不存在或无权限" });
     return { ok: true };
   });
@@ -9708,9 +10035,10 @@ except Exception as e:
 
   app.post("/api/review/standards/parse", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { rawText?: string };
-    if (!body?.rawText?.trim()) return reply.code(400).send({ error: "请粘贴评分标准原文" });
-    return await reviewService.parseStandardText(body.rawText);
+    const body = request.body as { rawText?: string; text?: string };
+    const raw = body?.rawText ?? body?.text;
+    if (!raw?.trim()) return reply.code(400).send({ error: "请粘贴评分标准原文" });
+    return await reviewService.parseStandardText(raw);
   });
 
   // ═══ SocialSci P0-4: 对话式科研绘图 Agent(迁移118) ═══
@@ -9742,18 +10070,31 @@ except Exception as e:
   // D4(闭源 VizView job 体系): 中长绘图任务 — 建 job(后台执行)→ SSE 观察(可断线重连重放)
   app.post("/api/viz/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { sessionId?: string; message?: string; csv?: string; columnOrder?: string[]; spec?: Record<string, unknown> };
+    const body = request.body as {
+      sessionId?: string; message?: string; csv?: string; columnOrder?: string[]; spec?: Record<string, unknown>;
+      fileId?: string; fileName?: string; journalConfig?: Record<string, unknown>;
+    };
     if (!body?.sessionId || !body?.message?.trim()) return reply.code(400).send({ error: "需要 sessionId 与 message" });
     const vizJobService = await import("../services/viz-job-service.js");
     try {
       const r = await vizJobService.createVizJob(user.id, body.sessionId, body.message.trim(), {
         csv: body.csv, columnOrder: body.columnOrder, spec: body.spec,
+        // 数据接入统一(2026-09-11): 前端上传发的 fileId 此前被丢弃 → 服务端按 fileId 取真实数据
+        fileId: body.fileId, fileName: body.fileName,
+        // 闭源 VizView journalConfig(期刊/双栏/DPI/字号/配色) — 此前前端发了后端没用
+        journalConfig: body.journalConfig,
       });
       return r;
     } catch (e) {
       const code = (e as { code?: string }).code;
       return reply.code((e as { status?: number }).status ?? 500).send({ error: code === "NOT_FOUND" ? "会话不存在" : String((e as Error).message) });
     }
+  });
+  // 可用作图表的已上传数据(数据源选择器)
+  app.get("/api/viz/data-files", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const vizExec = await import("../services/viz-exec-service.js");
+    return { files: await vizExec.listDataFiles(user.id) };
   });
   app.get("/api/viz/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -9762,6 +10103,14 @@ except Exception as e:
     return { jobs: await vizJobService.listVizJobs(user.id, Math.min(limit, 100)) };
   });
 
+  app.get("/api/viz/jobs/:jobId/dataset", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const vizJobService = await import("../services/viz-job-service.js");
+    const ds = await vizJobService.getVizJobDataset(user.id, jobId, 200);
+    if (!ds) return reply.code(404).send({ error: "任务不存在" });
+    return ds;
+  });
   app.get("/api/viz/jobs/:jobId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
@@ -9822,9 +10171,8 @@ except Exception as e:
     const user = await requireUser(request, reply); if (!user) return;
     const url = request.url; // /api/viz/files/data/viz-files/...
     const rel = url.replace(/^\/api\/viz\/files\//, "");
-    // 归属校验: 路径须含自己 userId
-    if (!rel.includes(`/${user.id}/`)) return reply.code(403).send({ error: "无权访问该文件" });
-    const buf = vizExec.readVizFile(rel);
+    // 归属校验 + 目录钉死都在 readVizFile 内完成(它只认 .../viz-files/<自己uid>/<单层文件名>)
+    const buf = await vizExec.readVizFile(rel, user.id);
     if (!buf) return reply.code(404).send({ error: "文件不存在" });
     const isSvg = rel.endsWith(".svg");
     reply.header("Content-Type", isSvg ? "image/svg+xml" : "image/png");
@@ -9965,9 +10313,18 @@ except Exception as e:
   app.post("/api/editor/v1/ai/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { action?: string; text?: string; mode?: string; context?: string; document_id?: string; model?: string };
-    const job = aiJobService.createAiJob(user.id, body);
+    // createAiJob 抛错: 并发超限 → 429; 积分不足 → 402
+    let job: Awaited<ReturnType<typeof aiJobService.createAiJob>>;
+    try {
+      job = await aiJobService.createAiJob(user.id, body);
+    } catch (e) {
+      if (e instanceof InsufficientPointsError) {
+        return reply.code(402).send({ error: e.message, code: "INSUFFICIENT_POINTS", needPoints: e.needPoints });
+      }
+      return reply.code(429).send({ error: (e as Error).message });
+    }
     if (!job) return reply.code(400).send({ error: "action 需为 rewrite/check/title/format_refs" });
-    return { job_id: job.id, model: job.model };
+    return { job_id: job.id, model: job.model, pointsCost: job.points?.cost ?? 0 };
   });
 
   /**
@@ -10030,8 +10387,15 @@ except Exception as e:
   app.post("/api/editor/v1/ai/jobs/:jobId/retry", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
-    const j = aiJobService.retryAiJob(user.id, jobId);
-    return j ? { job_id: j.id } : reply.code(404).send({ error: "任务不存在或不可重试" });
+    try {
+      const j = await aiJobService.retryAiJob(user.id, jobId);
+      return j ? { job_id: j.id, pointsCost: j.points?.cost ?? 0 } : reply.code(404).send({ error: "任务不存在或不可重试" });
+    } catch (e) {
+      if (e instanceof InsufficientPointsError) {
+        return reply.code(402).send({ error: e.message, code: "INSUFFICIENT_POINTS", needPoints: e.needPoints });
+      }
+      throw e;
+    }
   });
 
   // 选区改写 5 模式 + humanize
@@ -10113,13 +10477,27 @@ ${dataBlock}
       code = String(j?.code ?? "");
     } catch { /* 解析失败 */ }
     if (!code) return reply.code(422).send({ error: "AI 未能生成代码" });
-    // mermaid 类型是前端直接渲染的图代码, 不走 matplotlib runner
-    if (chartType.startsWith("mermaid")) {
-      return { code, chartType, dataUsed: false };
+    // 积分闸门(2026-09-11): 出图是功能级消费 → 冻结 → 渲染 → 成功核销 / 失败归还。
+    //   mermaid 分支与下面的 renderChart 都要覆盖, 故整体包在 withPoints 里(用 job 侧同一个
+    //   key 空间: refId 用本次请求的随机 id, 便于与退还对账)。
+    const refId = randomUUID();
+    try {
+      return await withPoints(user.id, "viz:chart", refId, async () => {
+        // mermaid 类型是前端直接渲染的图代码, 不走 matplotlib runner
+        if (chartType.startsWith("mermaid")) {
+          return { code, chartType, dataUsed: false };
+        }
+        const rendered = await vizExec.renderChart(user.id, code, csvText || undefined, csvText ? cols : []);
+        if (!rendered.ok) throw new Error(rendered.error ?? "渲染失败");
+        return { code, chartType, dataUsed: Boolean(csvText && cols.length), ...rendered };
+      });
+    } catch (e) {
+      if (e instanceof InsufficientPointsError) {
+        return reply.code(402).send({ error: e.message, code: "INSUFFICIENT_POINTS", needPoints: e.needPoints });
+      }
+      // 渲染失败: 积分已归还, 保持原有 422 语义
+      return reply.code(422).send({ error: (e as Error).message });
     }
-    const rendered = await vizExec.renderChart(user.id, code, csvText || undefined, csvText ? cols : []);
-    if (!rendered.ok) return reply.code(422).send({ error: rendered.error ?? "渲染失败" });
-    return { code, chartType, dataUsed: Boolean(csvText && cols.length), ...rendered };
   });
 
   // ═══ SocialSci P0-5: 数据自动 profiling(上传即剖析, 复用 viz analyzeData) ═══
@@ -10368,10 +10746,12 @@ ${dataBlock}
     return { job: { id: job.id, status: job.status, tool: job.tool } };
   });
 
+  // 统计任务的历史回查: 内存只保留本次进程的任务, 重启后必须落库查(此前只读内存 → 历史列表恒空)
   app.get("/api/statistics-jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { statsJobService: svc } = await import("../services/statistics-job-service.js");
-    const limit = Number((request.query as { limit?: string }).limit ?? 30);
+    // 上界 100: limit=1e9 会让 PG 全表扫, 上限与 /api/review/jobs 同一口径
+    const limit = Math.min(Math.max(1, Number((request.query as { limit?: string }).limit ?? 30)), 100);
     const list = await svc.listStatsJobsAsync(user.id, limit);
     return { jobs: list.map((j) => ({
       id: j.id, tool: j.tool, method: j.tool, status: j.status,
@@ -10410,7 +10790,15 @@ ${dataBlock}
     const ds = await svc.getStatsJobDataset(user.id, jobId);
     if (!ds) return reply.code(404).send({ error: "该任务的原始数据集已不可用(粘贴/仿真数据不落文件, 或文件已被删除)" });
     const job = await svc.getStatsJobAsync(user.id, jobId);
+    // 两种形状都给(合并 2026-09-11): 两个前端各读各的, 只给一种就得改另一处调用点。
+    //   · 顶层 columnOrder/rows/totalRows/fileId —— viz 数据源选择器(要 fileId 走"只传 id 服务端取数")
+    //   · dataset 包裹(含 title/sampleRows/truncated) —— 编辑器 AIPanel 与实证面板 UnifiedWorkspace
     return {
+      columnOrder: ds.columnOrder,
+      rows: ds.rows.slice(0, limit),
+      totalRows: ds.rows.length,
+      fileName: ds.fileName,
+      fileId: ds.fileId,
       dataset: {
         jobId,
         title: job ? `${job.tool} 分析结果` : "统计分析结果",
@@ -10447,6 +10835,7 @@ ${dataBlock}
     const { jobId } = request.params as { jobId: string };
     const { statsJobService: svc } = await import("../services/statistics-job-service.js");
     const { attachSse } = await import("./stream-utils.js");
+    // 必须走 DB 回查: 内存 Map 在服务重启/多副本下查不到 → 直接 404"任务不存在"
     const j = await svc.getStatsJobAsync(user.id, jobId);
     if (!j) return reply.code(404).send({ error: "任务不存在" });
     const sse = attachSse(reply);
@@ -10461,9 +10850,14 @@ ${dataBlock}
     // 轮询等待终态(上限 5 分钟)
     const started = Date.now();
     const POLL_TTL = 300_000;
-    const timer = setInterval(() => {
-      const cur = svc.getStatsJob(user.id, jobId);
-      if (!cur || ["completed", "failed", "cancelled"].includes(cur.status) || Date.now() - started > POLL_TTL) {
+    let polling = false;
+    const timer = setInterval(async () => {
+      if (polling) return;                       // 上一轮 DB 查询未回来时跳过, 防叠加
+      polling = true;
+      let cur: Awaited<ReturnType<typeof svc.getStatsJobAsync>> = null;
+      try { cur = await svc.getStatsJobAsync(user.id, jobId); } catch { /* 查询失败按未终态继续等 */ }
+      polling = false;
+      if (!cur || ["completed", "failed", "cancelled"].includes(cur.status ?? "") || Date.now() - started > POLL_TTL) {
         clearInterval(timer);
         if (cur?.status === "completed") sse.send("stats.completed", { result: cur.result, result_version_id: cur.resultVersionId });
         else if (cur?.status === "failed") sse.send("stats.failed", { error: cur.error });
@@ -10477,60 +10871,10 @@ ${dataBlock}
     request.raw.on("close", () => clearInterval(timer));
   });
 
-  // 统计图表产物(SocialSci 补漏: PUT statistics-jobs/artifacts/{id}/image → 素材)
-  // 语义: 前端把统计结果图(plotly/py 渲染的 png)上传存为 stats_artifact; 可导入素材库
-  app.post("/api/statistics-jobs/artifacts", async (request, reply) => {
-    const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { statsJobId?: string; method?: string; title?: string; pngBase64?: string };
-    if (!body?.pngBase64 || !body?.statsJobId) return reply.code(400).send({ error: "缺少 statsJobId/pngBase64" });
-    const id = randomUUID();
-    // png 落盘到 viz-files 目录(复用静态服务) — 存 base64 → 文件
-    const buf = Buffer.from(String(body.pngBase64).replace(/^data:image\/png;base64,/, ""), "base64");
-    const rel = `data/viz-files/${user.id}/${id}.png`;
-    const abs = path.join(process.env.SAG_ROOT || process.cwd(), rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, buf);
-    await pool.query(
-      `insert into stats_artifacts (id, user_id, stats_job_id, method, title, png_rel)
-       values ($1,$2,$3,$4,$5,$6)
-       on conflict (user_id, stats_job_id, method)
-       do update set png_rel=$6, title=$5, updated_at=now()`,
-      [id, user.id, body.statsJobId, body.method ?? "", body.title ?? "", rel]);
-    return { id, pngRel: rel };
-  });
-  app.get("/api/statistics-jobs/artifacts", async (request, reply) => {
-    const user = await requireUser(request, reply); if (!user) return;
-    const r = await pool.query(
-      `select id, stats_job_id, method, title, png_rel, created_at
-         from stats_artifacts where user_id=$1 order by created_at desc limit 50`, [user.id]);
-    return { artifacts: r.rows };
-  });
-  app.delete("/api/statistics-jobs/artifacts/:artifactId", async (request, reply) => {
-    const user = await requireUser(request, reply); if (!user) return;
-    const { artifactId } = request.params as { artifactId: string };
-    await pool.query(`delete from stats_artifacts where id=$1 and user_id=$2`, [artifactId, user.id]);
-    return { ok: true };
-  });
-  // 统计产物 → 素材库(研究素材闭环)
-  app.post("/api/statistics-jobs/artifacts/:artifactId/to-materials", async (request, reply) => {
-    const user = await requireUser(request, reply); if (!user) return;
-    const { artifactId } = request.params as { artifactId: string };
-    const body = request.body as { projectId?: string };
-    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
-    const r = await pool.query(`select * from stats_artifacts where id=$1 and user_id=$2`, [artifactId, user.id]);
-    if (!r.rows.length) return reply.code(404).send({ error: "产物不存在" });
-    const a = r.rows[0];
-    const mid = randomUUID();
-    await pool.query(
-      `insert into research_materials
-         (id, project_id, user_id, kind, title, content_md, source_ref, meta)
-       values ($1,$2,$3,'figure',$4,$5,$6,$7)`,
-      [mid, body.projectId, user.id,
-       `${a.title || "统计图表"} (${a.method})`,
-       `![统计图](/api/viz/files/${a.png_rel})`,
-       artifactId, JSON.stringify({ statsArtifact: artifactId, method: a.method })]);
-    return { id: mid };
-  });
+  // 注(2026-09-11): 原先此处有 4 条 stats_artifacts 路由。经核实**全仓零调用者**(POST 是唯一写入者,
+  //   要求前端传 pngBase64, 而没有任何前端调用它) → 表恒 0 行, 其余 3 条都依赖它产出的行, 故整组移除。
+  //   统计图的可用路径: ①「送工坊精修」把原始数据交给 viz 画真 PNG/SVG ②工坊产物 → /api/viz/artifacts/:id/to-materials。
+  //   表由迁移 134_drop_stats_artifacts.sql 删除(同批处理)。
 
   // ═══ UI审计T7: 参考文献批量解析(GB/T7714 正则拆条目→人工核对) ═══
   app.post("/api/research/references/parse", async (request, reply) => {
@@ -10589,17 +10933,15 @@ ${dataBlock}
     return { suggestions: r.suggestions };
   });
 
-  // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源; 来源: stats_artifacts/viz_artifacts/material)
+  // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源)
   app.post("/api/research/artifacts/import", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { sourceType?: string; sourceId?: string; sourceTaskId?: string; snapshot?: unknown };
     if (!body?.sourceType || !body?.sourceId) return reply.code(400).send({ error: "缺少 sourceType/sourceId" });
     // 取来源内容构造快照 + 哈希
+    // 注(2026-09-11): 原 "statistics" 分支读 stats_artifacts, 该表无生产者(恒 0 行), 分支已移除
     let snapshot: Record<string, unknown> = {};
-    if (body.sourceType === "statistics") {
-      const r = await pool.query(`select * from stats_artifacts where id=$1 and user_id=$2`, [body.sourceId, user.id]);
-      if (r.rows[0]) snapshot = { title: r.rows[0].title, method: r.rows[0].method, pngRel: r.rows[0].png_rel };
-    } else if (body.sourceType === "viz") {
+    if (body.sourceType === "viz") {
       const r = await pool.query(`select * from viz_artifacts where id=$1 and user_id=$2`, [body.sourceId, user.id]);
       if (r.rows[0]) snapshot = { title: r.rows[0].prompt, version: r.rows[0].version, pngRel: r.rows[0].png_path };
     } else if (body.sourceType === "material") {
@@ -10630,18 +10972,18 @@ ${dataBlock}
     const tmp = path.join(os.tmpdir(), `extract-${Date.now()}-${filename.replace(/[^a-zA-Z0-9.]/g, "_")}`);
     fs.writeFileSync(tmp, buf);
     try {
-      let text = "";
-      const lower = filename.toLowerCase();
-      if (lower.endsWith(".docx")) {
-        const { extractDocxText } = await import("../services/format-docx-service.js");
-        text = await extractDocxText(tmp);
-      } else if (lower.endsWith(".txt") || lower.endsWith(".md")) {
-        text = buf.toString("utf-8");
-      } else {
-        text = buf.toString("utf-8");
-      }
-      if (!text.trim()) return reply.code(422).send({ error: "未能提取到正文, 请改用粘贴方式" });
-      return { ok: true, text: text.slice(0, 200000), filename, sourceType: lower.endsWith(".docx") ? "docx" : lower.endsWith(".pdf") ? "pdf" : "text" };
+      const { extractDocumentText } = await import("../services/doc-text-extract.js");
+      const r = await extractDocumentText(buf, filename, {
+        tmpPath: tmp,
+        docx: async (p) => {
+          const { extractDocxText } = await import("../services/format-docx-service.js");
+          return await extractDocxText(p);
+        },
+      });
+      if (!r.ok) return reply.code(422).send({ error: r.error });
+      const text = r.result.text.slice(0, 200000);
+      // pageCount/extractedPages/truncated 交给前端(此前前端自己拿字符数除 2000 当页数, 是编的)
+      return { ok: true, filename, ...r.result, text };
     } finally {
       try { fs.unlinkSync(tmp); } catch { /* ignore */ }
     }
@@ -10655,37 +10997,36 @@ ${dataBlock}
     if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容" });
     const id = randomUUID();
     const buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
-    const dir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "user-files", user.id);
-    fs.mkdirSync(dir, { recursive: true });
-    const rel = `data/user-files/${user.id}/${id}.bin`;
-    fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), buf);
-    // 2026-09-09 xlsx 支持: .xlsx/.xls → openpyxl 转 CSV 后按文本剖析(实证 venv 有 openpyxl)
+    // 相对**数据根**存(不再是相对 SAG_ROOT): 上云后数据根可能挂到共享卷或对象存储
+    const rel = `user-files/${user.id}/${id}.bin`;
+    // 2026-09-09 xlsx 支持(主仓): .xlsx/.xls → openpyxl 转 CSV 后按文本剖析
+    // 与本分支的对象存储改造合并: Python 只能读**真实文件**, 所以先把字节落到临时文件转换,
+    //   再把转换结果(或原字节)交给 blob-store 落库 —— 不要既写临时文件又写数据目录。
     let rawBuf = buf;
     const lower = String(body.filename ?? "").toLowerCase();
     if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+      const os = await import("node:os");
+      const tmpXlsx = path.join(os.tmpdir(), `sag-xlsx-${id}.xlsx`);
       try {
+        fs.writeFileSync(tmpXlsx, buf);
         const { execFile } = await import("node:child_process");
         const PY = process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python";
-        const xlsxPath = path.join(dir, `${id}.xlsx`);
-        fs.writeFileSync(xlsxPath, buf);
         const csvText = await new Promise<string>((resolve, reject) => {
-          execFile(PY, [path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py"), xlsxPath],
+          execFile(PY, [path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py"), tmpXlsx],
             { timeout: 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
             (err, stdout, stderr) => {
-              try { fs.unlinkSync(xlsxPath); } catch { /* 忽略 */ }
               if (err) reject(new Error(stderr || err.message));
               else resolve(stdout);
             });
         });
-        const csvRel = `data/user-files/${user.id}/${id}.csv`;
-        fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), csvRel), csvText, "utf-8");
         rawBuf = Buffer.from(csvText, "utf-8");
-        // 替换 .bin 为 .csv 落库(内容为转出的 CSV)
-        fs.writeFileSync(path.join(process.env.SAG_ROOT || process.cwd(), rel), rawBuf);
       } catch (e) {
         return reply.code(400).send({ error: `xlsx 解析失败: ${String((e as Error).message).slice(0, 160)}` });
+      } finally {
+        try { fs.unlinkSync(tmpXlsx); } catch { /* 忽略 */ }
       }
     }
+    await putObject(rel, rawBuf);
     // 文本自动剖析(前 200KB → 行列概览 + 变量类型推断; xlsx 转换后 rawBuf 为 CSV 文本)
     let profile: Record<string, unknown> = {};
     const text = rawBuf.length <= 200_000 ? rawBuf.toString("utf-8") : "";
@@ -10744,9 +11085,8 @@ ${dataBlock}
     const rawId = (request.params as { fileId: string }).fileId.replace(/^file_/, "");
     const r = await pool.query(`select storage_rel, filename, mime from user_files where id=$1 and user_id=$2`, [rawId, user.id]);
     if (!r.rows.length) return reply.code(404).send({ error: "文件不存在" });
-    const abs = path.join(process.env.SAG_ROOT || process.cwd(), r.rows[0].storage_rel);
-    if (!fs.existsSync(abs)) return reply.code(404).send({ error: "文件已丢失" });
-    const data = fs.readFileSync(abs);
+    const data = await getObject(String(r.rows[0].storage_rel));
+    if (!data) return reply.code(404).send({ error: "文件已丢失" });
     reply.header("Content-Type", r.rows[0].mime || "application/octet-stream");
     reply.header("Content-Disposition", `attachment; filename="${encodeURIComponent(r.rows[0].filename)}"`);
     return reply.send(data);
@@ -10864,6 +11204,11 @@ ${dataBlock}
     };
   });
 
+  // 注册"可跨实例重建"的执行方式: 必须在 DB 领取扫描开始前完成, 否则重启后队列里的
+  //   条目会被当成"未知 runner"丢弃 —— 那等于副本重启即任务蒸发。
+  void registerAgentQueueRunners().catch((e) =>
+    console.error("[agent-queue] 执行方式注册失败:", String(e?.message ?? e).slice(0, 140)));
+
   return app;
 }
 
@@ -10943,6 +11288,7 @@ export async function startHttpServer(): Promise<void> {
   // 任务巡检监控（卡死检测：query_tasks 非终态超阈值 → 标记失败 + 告警；每 2 分钟）
   startTaskPatrol();
   console.log("[task-monitor] patrol started");
+
 
   // V379: 告警自愈巡检（每 60 秒自动处理未解决告警）
   selfHealService.startSelfHealPatrol();

@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { vaultRoot as resolveVaultRoot } from "./kb-paths.js";
 
 /**
- * vault-service — 读取 Obsidian 政策资料库（用户主目录白名单目录）
+ * vault-service — 读取 Obsidian 资料库（白名单目录）
  *
- * 白名单：~/1.Obsidian Vault 下的课题研究 / 课题文献库 / AI科研指令包V2-Obsidian
+ * 白名单：知识库根下的课题研究 / 课题文献库 / AI科研指令包V2-Obsidian
  * 提供：目录树 + 文件正文。服务端读取（前端不直接碰文件系统）。
+ *
+ * 路径解析统一走 kb-paths: VAULT_ROOT 优先, 未配置回退 <数据根>/kb/vault。
+ * 必须是**每次调用时解析** —— 测试会临时改 VAULT_ROOT 来隔离目录。
  */
 
-// 脱敏: 个人盘符路径改为 os.homedir() 相对（VAULT_ROOT env 可覆盖）
-const VAULT_ROOT = process.env.VAULT_ROOT || path.join(os.homedir(), "1.Obsidian Vault");
-
-const WHITELIST_DIRS = [
+/** 白名单子目录名（相对知识库根） */
+const WHITELIST_NAMES = [
   "课题研究",
   "课题文献库（CSSCI、北大核心、CSCD、AMI、WJCI）",
   "AI科研指令包V2-Obsidian"
-].map((dir) => path.join(VAULT_ROOT, dir));
+];
+
+function whitelistDirs(): string[] {
+  const root = resolveVaultRoot();
+  return WHITELIST_NAMES.map((dir) => path.join(root, dir));
+}
 
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown"]);
 const BINARY_EXTENSIONS = new Set([
@@ -42,7 +48,7 @@ export interface VaultFileRecord {
 
 function isAllowedRoot(absolutePath: string): boolean {
   const normalized = path.resolve(absolutePath);
-  return WHITELIST_DIRS.some((dir) => normalized === path.resolve(dir) || normalized.startsWith(path.resolve(dir) + path.sep));
+  return whitelistDirs().some((dir) => normalized === path.resolve(dir) || normalized.startsWith(path.resolve(dir) + path.sep));
 }
 
 function buildTree(dir: string, depth: number): VaultTreeNode[] | null {
@@ -84,8 +90,9 @@ function buildTree(dir: string, depth: number): VaultTreeNode[] | null {
 }
 
 function getVaultTree(): { root: string; nodes: VaultTreeNode[] } {
+  const root = resolveVaultRoot();
   const nodes: VaultTreeNode[] = [];
-  for (const dir of WHITELIST_DIRS) {
+  for (const dir of whitelistDirs()) {
     if (!fs.existsSync(dir)) continue;
     const children = buildTree(dir, 1) ?? [];
     nodes.push({
@@ -95,7 +102,7 @@ function getVaultTree(): { root: string; nodes: VaultTreeNode[] } {
       children
     });
   }
-  return { root: VAULT_ROOT, nodes };
+  return { root, nodes };
 }
 
 function getVaultFile(filePath: string): VaultFileRecord | null {
@@ -167,7 +174,7 @@ function searchVault(keyword: string, limit = 8): Array<{ path: string; name: st
   const kw = keyword.trim();
   if (!kw) return results;
   try {
-    for (const rootDir of WHITELIST_DIRS) {
+    for (const rootDir of whitelistDirs()) {
       if (!fs.existsSync(rootDir)) continue;
       const walk = (dir: string) => {
         let entries: fs.Dirent[] = [];
@@ -196,8 +203,9 @@ function searchVault(keyword: string, limit = 8): Array<{ path: string; name: st
 /** 保存学习记录到 Obsidian（写 课题研究/学习记录/ 目录）——白名单保护，只允许写学习记录子目录 */
 function saveStudyNote(input: { title: string; content: string; subject?: string }): { path: string; name: string } | null {
   try {
-    const studyDir = path.join(VAULT_ROOT, "课题研究", "学习记录");
-    if (!path.resolve(studyDir).startsWith(path.resolve(VAULT_ROOT))) return null;
+    const root = resolveVaultRoot();
+    const studyDir = path.join(root, "课题研究", "学习记录");
+    if (!path.resolve(studyDir).startsWith(path.resolve(root))) return null;
     fs.mkdirSync(studyDir, { recursive: true });
     const safeSubject = (input.subject || "通用").replace(/[\\/:*?"<>|]/g, "_");
     const safeTitle = (input.title || "学习记录").replace(/[\\/:*?"<>|]/g, "_").substring(0, 60);
@@ -215,7 +223,7 @@ function deleteVaultFile(filePath: string): boolean {
   try {
     const resolved = path.resolve(filePath);
     // 安全边界：只允许删除 学习记录 目录下的文件
-    const studyDir = path.resolve(path.join(VAULT_ROOT, "课题研究", "学习记录"));
+    const studyDir = path.resolve(path.join(resolveVaultRoot(), "课题研究", "学习记录"));
     if (!resolved.startsWith(studyDir + path.sep) && resolved !== studyDir) return false;
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return false;
     fs.unlinkSync(resolved);

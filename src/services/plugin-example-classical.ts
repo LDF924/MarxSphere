@@ -4,6 +4,7 @@
 // 注册: POST /api/agent/plugins {id:"classical-tools", name:"经典文本", entry:"./plugin-example-classical.js"}
 // 启用后 buildAgentTools 自动合并这些工具（工具名带插件前缀, LLM 可选择调用）
 import type { AgentToolDef } from "./agent-tool-router.js";
+import { selfBaseUrl } from "./base-urls.js";
 
 export const tools: AgentToolDef[] = [
   {
@@ -11,7 +12,7 @@ export const tools: AgentToolDef[] = [
     description: "经典文本概念溯源与语义演变（马理论经典研究专用）",
     params: { concept: { type: "string", required: true, desc: "概念名（如 剩余价值）" } },
     run: async (a) => {
-      const res = await fetch("http://localhost:4173/api/classical/concept-trace", {
+      const res = await fetch(`${selfBaseUrl()}/api/classical/concept-trace`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ concept: String(a.concept), sourceId: "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a" }),
       });

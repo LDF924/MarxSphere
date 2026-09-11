@@ -6,6 +6,7 @@
 import { pool } from "../db/pool.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
 import { callLlm } from "../ai/llm-common.js";
+import { withRunLease } from "./singleton-scheduler.js";
 
 export interface AgentEvalReport {
   /** 时间范围 */
@@ -468,9 +469,11 @@ export async function scheduledEvalSuiteRun(): Promise<{ ran: boolean; passed: n
 /** V6: 启动自动回归调度器（每 24h 跑一次） */
 export function startEvalSuiteScheduler(): void {
   const EVAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
-  void scheduledEvalSuiteRun();  // 启动即跑一次
-  setInterval(() => { void scheduledEvalSuiteRun(); }, EVAL_INTERVAL_MS);
-  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集)");
+  // 多副本: 评测要烧真实 LLM token, 每副本各跑一遍 = N 倍成本 → 加跨副本租约
+  const guarded = withRunLease("agent-eval-suite", scheduledEvalSuiteRun, EVAL_INTERVAL_MS + 300_000);
+  void guarded();  // 启动即跑一次
+  setInterval(() => { void guarded(); }, EVAL_INTERVAL_MS);
+  console.log("[agent-eval] V6 回归调度已启动 (每24h自动跑gold评测集, 多副本下每轮仅一个副本执行)");
 }
 
 export const agentEvalService = {

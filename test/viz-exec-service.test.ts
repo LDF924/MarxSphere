@@ -51,10 +51,21 @@ describe("validateColumns 列名白名单", () => {
   it("合法列名通过", () => {
     expect(validateColumns(["year", "gdp_2", "Region"])).toBeNull();
   });
+  // 2026-09-11 放宽: 原白名单要求 ^[A-Za-z_][A-Za-z0-9_]*$ 把中文表头全拒了 ——
+  //   社科数据几乎必然中文列名, 于是每次渲染都失败。列名来自用户上传的真实文件,
+  //   不是 LLM 编的参数, 真正的注入防线在 runner 侧(模块白名单 + os/sys 残桩)。
+  it("中文/括号/空格/数字开头列名放行(实测回归)", () => {
+    expect(validateColumns(["地区", "GDP", "人口"])).toBeNull();
+    expect(validateColumns(["GDP(亿元)", "增速(%)"])).toBeNull();
+    expect(validateColumns(["2020年产值"])).toBeNull();
+    expect(validateColumns(["变量 1", "变量 2"])).toBeNull();
+  });
   it("危险/非法列名拦截", () => {
     expect(validateColumns(["__import__"])).not.toBeNull();
-    expect(validateColumns(["os"])).not.toBeNull();
-    expect(validateColumns(["col name"])).not.toBeNull();
+    expect(validateColumns(["eval"])).not.toBeNull();
+    // 换行/NUL 会破坏 CSV 结构与解析
+    expect(validateColumns(["a" + String.fromCharCode(10) + "b"])).not.toBeNull();
+    expect(validateColumns(["a" + String.fromCharCode(0) + "b"])).not.toBeNull();
   });
 });
 

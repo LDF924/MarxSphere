@@ -9,7 +9,7 @@ import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlmDetailed } from "../ai/llm-common.js";
 
 // 学术写作角色: 编辑器 AI 单独路由(用户可在 AI 面板切换, 不影响推理链 reason)
-async function callLlm(prompt: string, maxTokens = 4000, temperature = 0.4): Promise<string> {
+async function callLlm(prompt: string, maxTokens = 4000, temperature = 0.4, ctx: { userId?: string; action?: string } = {}): Promise<string> {
   const ep = getLlmEndpoint({ model: getRoleModel("editor") });
   // 2026-09-10: 此前用 fetchLlm(null 静默) → 失败被当成"成功但内容为空", 前端显示空白却报 done。
   // 现在如实抛出, 由 job 标 failed 并把原因显示到面板。
@@ -17,6 +17,8 @@ async function callLlm(prompt: string, maxTokens = 4000, temperature = 0.4): Pro
     url: ep.url, key: ep.key, model: ep.model,
     messages: [{ role: "user", content: prompt }],
     temperature, maxTokens, timeoutMs: 240_000,
+    // 2026-09-11: 成本账本归属(此前编辑器这条链完全不计费)
+    ledger: { endpoint: "editor-ai", userId: ctx.userId ?? null, context: ctx.action ?? null },
   });
   if (!res.ok) {
     const where = /not exist|不匹配|不存在/.test(res.message) ? ` (端点 ${new URL(ep.url).host})` : "";
@@ -167,7 +169,7 @@ const MODE_PROMPT: Record<RewriteMode, string> = {
   expand: "扩展论证: 补足推理链条和解释, 用证据/机理/示例把论点展开得更充分(不改变原观点, 扩充约 40-60%)",
 };
 
-export async function rewriteText(mode: RewriteMode, text: string, context = ""): Promise<{ text: string }> {
+export async function rewriteText(mode: RewriteMode, text: string, context = "", opts: { userId?: string } = {}): Promise<{ text: string }> {
   if (!text.trim()) return { text: "" };
   const instruction = MODE_PROMPT[mode];
   const ctx = context.trim() ? `\n【上下文(仅供判断风格与衔接, 不要改写)】\n${context.slice(0, 3000)}\n` : "";
@@ -176,7 +178,7 @@ ${ctx}
 【选中文本】
 ${text.slice(0, 6000)}
 
-直接输出改写后的文本(只输出正文, 不要解释)。`, 4000, 0.4);
+直接输出改写后的文本(只输出正文, 不要解释)。`, 4000, 0.4, { userId: opts.userId, action: `rewrite:${mode}` });
   // 2026-09-10: 不再 `out.trim() || text` 静默回原文 —— 那会让"润色"按钮在失败时
   // 原样返回用户自己的文字并显示成功(徒有其表)。callLlm 已在失败/空内容时抛错。
   return { text: out.trim() };
@@ -214,7 +216,7 @@ const CHECK_ALIAS: Record<string, string> = {
   variable_method_conclusion_check: "consistency",
   submission_check: "submission",
 };
-export async function checkFulltext(text: string, mode?: string): Promise<{ mode: string; modeName: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> }> {
+export async function checkFulltext(text: string, mode?: string, opts: { userId?: string } = {}): Promise<{ mode: string; modeName: string; checks: Array<{ name: string; ok: boolean; findings: string[] }> }> {
   const key = CHECK_ALIAS[mode ?? ""] ?? mode ?? "";
   const m = CHECK_MODES[key] ?? CHECK_MODES.logic;
   const fail = (reason: string) => ({ mode: m.mode ?? mode ?? "logic", modeName: m.name, checks: [{ name: m.name, ok: false, findings: [reason] }] });
@@ -227,7 +229,7 @@ export async function checkFulltext(text: string, mode?: string): Promise<{ mode
 ${text.slice(0, 12000)}
 
 输出 JSON: {"checks":[{"name":"${m.name}","ok":true/false,"findings":["问题1(带原文引用片段)"]}]}
-没有问题时 findings 为空数组, ok=true。`, 5000, 0.2);
+没有问题时 findings 为空数组, ok=true。`, 5000, 0.2, { userId: opts.userId, action: `check:${m.mode}` });
   } catch (e) {
     // 调用失败: 如实说明原因(此前只报"解析失败", 掩盖了真实故障)
     return fail(`质检调用失败: ${(e as Error).message}`);
@@ -265,7 +267,7 @@ const TITLE_PROMPT: Record<TitleKind, { name: string; prompt: string }> = {
 };
 
 /** 标题/摘要/关键词: mode 决定走哪一套 prompt(空 mode 走 title) */
-export async function generateTitleAbstract(text: string, mode?: string): Promise<{ title: string; abstract: string; keywords: string[]; alternatives?: string[]; issues?: string[]; reason?: string }> {
+export async function generateTitleAbstract(text: string, mode?: string, opts: { userId?: string } = {}): Promise<{ title: string; abstract: string; keywords: string[]; alternatives?: string[]; issues?: string[]; reason?: string }> {
   const kind: TitleKind = (["title", "abstract", "keywords"] as const).includes(mode as TitleKind) ? (mode as TitleKind) : "title";
   const spec = TITLE_PROMPT[kind];
   const out = await callLlm(`你是学术论文编辑。任务: ${spec.name}
@@ -274,7 +276,7 @@ ${spec.prompt}
 【全文】
 ${text.slice(0, 12000)}
 
-只输出 JSON。`, 4000, 0.3);
+只输出 JSON。`, 4000, 0.3, { userId: opts.userId, action: `title:${kind}` });
   try {
     const p = JSON.parse(out.replace(/```json|```/g, "").trim());
     return {
@@ -310,7 +312,7 @@ const CITATION_KIND: Record<CitationCheckKind, { name: string; prompt: string }>
 };
 
 /** 引文检查: 返回 {text, fixes, stats?}; kind 决定走一致性还是格式语言 */
-export async function formatReferences(text: string, kind: CitationCheckKind = "format"): Promise<{ text: string; fixes: string[]; stats?: { citedInText: number; listed: number } }> {
+export async function formatReferences(text: string, kind: CitationCheckKind = "format", opts: { userId?: string } = {}): Promise<{ text: string; fixes: string[]; stats?: { citedInText: number; listed: number } }> {
   const spec = CITATION_KIND[kind] ?? CITATION_KIND.format;
   const out = await callLlm(`你是参考文献编辑。任务: ${spec.name}
 ${spec.prompt}
@@ -318,7 +320,7 @@ ${spec.prompt}
 【原文】
 ${text.slice(0, 8000)}
 
-只输出 JSON。`, 4000, 0.3);
+只输出 JSON。`, 4000, 0.3, { userId: opts.userId, action: `refs:${kind}` });
   try {
     const p = JSON.parse(out.replace(/```json|```/g, "").trim());
     return {

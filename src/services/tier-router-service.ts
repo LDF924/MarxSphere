@@ -13,6 +13,7 @@
 // 默认开关 ROUTER_ENABLED=false → 行为与现网完全一致(基线不动)。
 // 决策每次落 audit 表(审计/调优数据源, 同 OpenSquilla router_decisions)。
 import { execFile } from "node:child_process";
+import { dataPath } from "./storage-paths.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pool } from "../db/pool.js";
@@ -36,15 +37,17 @@ const mlRouterEnabled = (): boolean => routerEnabled() && process.env.ML_ROUTER_
 /** 深度档阈值(可 env 覆盖, 评测用) */
 const DEEP_MAX_LEN = parseInt(process.env.ROUTER_DEEP_MAX_LEN || "1000", 10);
 
-/** Python 解释器与推理脚本(可 env 覆盖; 默认 cognee venv + 仓库内 predict_router.py) */
-const ML_PYTHON = process.env.ML_ROUTER_PYTHON || "C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe";
+/** Python 解释器与推理脚本(可 env 覆盖; 仓库内 predict_router.py) */
+// 默认用 PATH 上的 python —— 原来写死 C:/Users/<某台机器>/cognee/.venv312/Scripts/python.exe,
+// Linux 云主机/容器上根本不存在, ML 分类器会静默不可用。需要指定虚拟环境时设 ML_ROUTER_PYTHON。
+const ML_PYTHON = process.env.ML_ROUTER_PYTHON || (process.platform === "win32" ? "python.exe" : "python3");
 const SAG_ROOT = process.env.SAG_ROOT || process.cwd();
 const ML_SCRIPT = path.join(SAG_ROOT, "scripts", "ml-router", "predict_router.py");
 let _mlAssetsChecked: boolean | null = null;
 
 function mlAssetsReady(): boolean {
   if (_mlAssetsChecked !== null) return _mlAssetsChecked;
-  _mlAssetsChecked = existsSync(path.join(SAG_ROOT, "data", "ml-router", "lgbm_bin.txt"))
+  _mlAssetsChecked = existsSync(dataPath("ml-router", "lgbm_bin.txt"))
     && existsSync(ML_SCRIPT);
   return _mlAssetsChecked;
 }

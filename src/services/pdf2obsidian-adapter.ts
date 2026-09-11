@@ -3,6 +3,7 @@
 // 复用 yeora26/PDF2Obsidian 完整管线(importPdf): MinerU解析→规范化→翻译→Obsidian导出→质量检查
 // 直接从 vendor/pdf2obsidian 编译产物 import（保持开源项目独立性）
 import { createRequire } from "node:module";
+import { ovImportDir, p2oDocumentDir } from "./kb-paths.js";
 
 const require = createRequire(import.meta.url);
 
@@ -16,8 +17,10 @@ async function loadPipeline() {
 export function buildP2OConfig(overrides?: Record<string, unknown>): any {
   return {
     vault: {
-      path: overrides?.vaultPath || process.env.P2O_VAULT_PATH || "D:/Desktop/ov_import",
-      documentDir: "资本规范与引导、资本治理",
+      // 路径解析走 kb-paths: P2O_VAULT_PATH 优先, 未配置回退 <数据根>/kb/ov_import
+      // (原先是硬编码的 D:/Desktop/ov_import —— Linux 云主机上 P2O 工作台整体为空)
+      path: overrides?.vaultPath || ovImportDir(),
+      documentDir: p2oDocumentDir(),
       imageDirName: "images",
     },
     mineru: {

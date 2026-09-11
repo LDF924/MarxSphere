@@ -4,6 +4,7 @@ import type { ExtractedEntity, ExtractedEvent, EventRecord } from "../types.js";
 import { createModelCallLogger } from "../observability/model-call-log.js";
 import { breakers } from "../services/circuit-breaker.js";
 import { recordLedger } from "../services/cost-ledger-service.js";
+import { currentUserId } from "../services/request-context.js";
 import { buildExtractionMessages } from "../ingestion/prompts/build-extraction-messages.js";
 import { validateExtractionResponse } from "../ingestion/prompts/extraction-schema.js";
 import { isLikelyLanguageDrift, isMostlyChinese } from "../ingestion/prompts/extraction-utils.js";
@@ -61,7 +62,20 @@ export class OpenAICompatibleLlmClient implements LlmClient {
         tokensIn: this._lastUsage.in,
         tokensOut: this._lastUsage.out,
         tokensCacheRead: this._lastUsage.cacheHit,
+        // 2026-09-11: 归属到调用者(搜索链/对话链) — 此前恒 NULL, 这两条链的花费算不到人头也不扣费。
+        // 由 server.ts 的路由包装层经 AsyncLocalStorage 注入; 后台任务无上下文时为空。
+        userId: currentUserId() ?? null,
       });
+      // 2026-09-11: 用户计费 —— 此前只有 /api/reason/* 在路由层扣费, 走 llmClient 的对话/搜索链
+      //   只写成本账本、从不扣用户额度(实测 user_usage_log 无 composeAnswer 记录)。
+      //   推理链不吃这里: inference-service **不调用** llmClient 的方法(仅有一条未使用的 import),
+      //   它的扣费仍由路由层 chargeUserForReasonTask 负责, 故不会重复扣。
+      const uid = currentUserId();
+      if (uid) {
+        void import("../services/billing-service.js")
+          .then(({ chargeUser }) => chargeUser(uid, model ?? "unknown", this._lastUsage!.in, this._lastUsage!.out, endpoint))
+          .catch(() => { /* 计费失败不阻塞调用 */ });
+      }
     }
   }
 

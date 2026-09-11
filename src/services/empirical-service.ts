@@ -3,6 +3,8 @@
 // 数据上传 → spawn Python 沙箱(独立 venv, 不依赖 MCP 池) → 结果回传 + 持久化
 // 安全: 复用 sag_execute_code 的防护思路(独立 venv 隔离 + 参数白名单方法 + 大小守卫)
 import { execFile } from "node:child_process";
+import { dataPath } from "./storage-paths.js";
+import { putObject, getObject, listObjects } from "./blob-store.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +16,36 @@ const PYTHON = process.env.EMPIRICAL_PYTHON || "";
 const RUNNER = path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "empirical_runner.py");
 const TASKS_DIR = path.join(os.tmpdir(), "empirical-tasks");
 const TASK_TTL_MS = 30 * 60_000; // 30 分钟清理
+/** 产物暂存目录(任务目录的子目录); Python 写这里, 任务完成后搬到 blob-store。
+ *  为什么不让脚本直接写 final outDir: 脚本写本地路径是同步的, 而对象存储要异步上传;
+ *  让脚本写任务目录、由我们搬运, 是唯一不把异步泄漏进 Python 的做法。 */
+const ARTIFACT_SUBDIR = "_artifacts";
+
+/** 任务完成后把 {子目录}/{file} 搬到 blob-store 的 key 前缀 */
+async function liftArtifacts(rec: TaskRecord, taskDir: string, keyPrefix: string): Promise<void> {
+  const from = path.join(taskDir, ARTIFACT_SUBDIR);
+  // 两个脚本的产物清单都在 result.meta 下: report_export→files, figures→charts
+  const meta = (rec.result as any)?.meta ?? {};
+  const files: Array<{ name?: string; file?: string }> = Array.isArray(meta.files) ? meta.files
+    : Array.isArray(meta.charts) ? meta.charts : [];
+  if (!files.length) return;
+  for (const f of files) {
+    const name = String(f?.name ?? f?.file ?? "");
+    if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) continue;
+    const src = path.join(from, name);
+    if (!fs.existsSync(src)) {
+      console.error(`[empirical] 产物缺失, 跳过上传: ${keyPrefix}/${name}`);
+      continue;
+    }
+    try {
+      await putObject(`${keyPrefix}/${name}`, fs.readFileSync(src));
+    } catch (e) {
+      // 单张失败不该让整个任务变失败; 但那一条会在读取时 404, 所以要说清楚
+      console.error(`[empirical] 产物上传失败 ${keyPrefix}/${name}:`, String((e as Error)?.message || e).slice(0, 160));
+    }
+  }
+}
+
 
 interface TaskRecord {
   status: "running" | "done" | "error";
@@ -159,6 +191,10 @@ export async function spawnPythonTask(
   }
   const taskId = randomUUID();
   const taskDir = path.join(TASKS_DIR, taskId);
+  // 产物类任务: 脚本一律写**任务目录下的暂存区**(绝对路径), 完成后由本函数搬到 blob-store。
+  // 为什么不让脚本直接写最终目录: 对象存储要异步上传, 而 Python 只会同步写本地路径。
+  const artKey = String((input as { _artifactKey?: unknown })._artifactKey ?? "");
+  if (artKey) input.outDir = path.join(taskDir, ARTIFACT_SUBDIR);
   try {
     fs.mkdirSync(taskDir, { recursive: true });
     fs.writeFileSync(path.join(taskDir, "input.json"), JSON.stringify(input), "utf-8");
@@ -194,6 +230,13 @@ export async function spawnPythonTask(
           } catch {
             rec.status = "error";
             rec.error = "结果解析失败";
+          }
+          if (artKey) {
+            // 先搬产物再清理任务目录 —— 顺序反了会把还没上传的文件删掉
+            void liftArtifacts(rec, taskDir, artKey)
+              .catch((e) => console.error("[empirical] 产物搬运失败:", String((e as Error)?.message || e).slice(0, 160)))
+              .finally(cleanup);
+            return;
           }
           cleanup();
           return;
@@ -556,7 +599,9 @@ export async function generateEmpiricalFigures(input: {
   }
   return spawnPythonTask("empirical_figures.py", {
     script: "figures", spec: input.spec,
-    outDir: input.outDir ?? path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "figures"),
+    // 脚本写任务目录下的暂存区, 完成后由 spawnPythonTask 搬进 blob-store
+    outDir: ARTIFACT_SUBDIR,
+    _artifactKey: input.outDir ?? "empirical/figures",
   });
 }
 
@@ -568,11 +613,21 @@ export async function exportProjectReport(input: {
   if (!input.overview || typeof input.overview !== "object") {
     return { ok: false, error: "overview 不能为空" };
   }
-  const figDir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "figures");
-  const outDir = path.join(process.env.SAG_ROOT || process.cwd(), "data", "agent_workspace", "reports");
-  return spawnPythonTask("empirical_report_export.py", {
-    script: "report_export", overview: input.overview, figuresDir: figDir, outDir,
-  });
+  // 图表已进 blob-store, 但 LaTeX/Word 导出脚本要**真实路径**嵌图 → 先把图取到本地暂存
+  const figDir = fs.mkdtempSync(path.join(os.tmpdir(), "emp-figs-"));
+  try {
+    for (const key of await listObjects("empirical/figures")) {
+      const buf = await getObject(key);
+      if (buf) fs.writeFileSync(path.join(figDir, path.basename(key)), buf);
+    }
+    return await spawnPythonTask("empirical_report_export.py", {
+      script: "report_export", overview: input.overview, figuresDir: figDir,
+      outDir: ARTIFACT_SUBDIR,
+      _artifactKey: input.outDir ?? "empirical/reports",
+    });
+  } catch (e) {
+    return { ok: false, error: `报告导出失败: ${String((e as Error)?.message || e).slice(0, 200)}` };
+  }
 }
 
 /** C4(闭源三线表 Word 导出): 同步 execFile 跑 empirical_table_docx.py → 读 table.docx → base64 */

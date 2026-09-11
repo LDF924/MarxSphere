@@ -13,7 +13,7 @@
 ## R8: VizView Nature 投稿参数面板
 - 闭源 de 默认: journal=nature/layout=single-column/colorScheme=nature-default/dpi=600/fontSize=7/fontFamily=Arial/axisLineWidth=0.8/dataLineWidth=1/widthMm=89/heightMm=62.3
 - 请求体: {chartType:"自动判断",journal,journal_name:"Nature",layout,colorScheme...}
-- 我方 VizAgentPanel 无期刊参数卡 → 绘图面板加"投稿参数"区(期刊/布局/DPI/字号/宽高mm), 请求透传后端生成时套用
+- ✅ 已完成(2026-09-11): 期刊参数卡落在 Vue VizChatPanelV2「出版规范」条(6 期刊预设+配色+尺寸/DPI/字号/线宽), journalConfig 经 POST /viz/jobs 透传后端 mergeSpec→specPrompt 套用; React VizAgentPanel(已废)连同此待办一并移除
 
 ## R9: VizView 图片加载重试
 - 闭源: fetch blob(cache no-store), 失败仅 401/404/408/425/429/500/502/503/504 重试 4 次(150ms*(attempt+1) 退避)

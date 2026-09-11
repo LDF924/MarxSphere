@@ -7,10 +7,11 @@
 //   2. 用户负评(👍👎 系统)接入时: 若该次任务用便宜档 → 记一条"低估"样本到同文件 {event:"underestimate"}
 //   3. 定期统计: 按模型聚合"低估率"(underestimate/decisions), 超阈值的建议降权(简单统计, 输出诊断)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { dataPath } from "./storage-paths.js";
 import path from "node:path";
 
 export const ROUTING_LOG_FILE = path.resolve(
-  process.env.SAG_ROUTING_LOG_FILE || path.join(process.cwd(), "data", "routing-decisions.jsonl")
+  process.env.SAG_ROUTING_LOG_FILE || dataPath("routing-decisions.jsonl")
 );
 
 /** 角色名归一(短)— 避免 JSONL 里塞长提示词 */

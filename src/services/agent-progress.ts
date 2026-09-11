@@ -42,10 +42,12 @@ export function subscribeAgentProgress(taskId: string, cb: Listener): () => void
   };
 }
 
-/** 发布一次进度事件（所有订阅者收到; 监听器异常不影响发布; W3: 写入环形缓冲带序号） */
+/** 发布一次进度事件（所有订阅者收到; 监听器异常不影响发布; W3: 写入环形缓冲带序号）
+ *  同时落库(异步, 不阻塞): 多副本下观察者可能连在别的实例上, 只靠内存缓冲会"零事件永不 done"。 */
 export function publishAgentProgress(ev: Omit<AgentProgressEvent, "timestamp">): void {
   const seq = ++globalSeq;
   const full: AgentProgressEvent = { ...ev, timestamp: Date.now(), seq };
+  void persistEvent(full);
   // W3: 写入环形缓冲（每任务最多 100 条, 供断线重连补发）
   const buf = eventBuffer.get(ev.taskId) || [];
   buf.push(full);
@@ -86,3 +88,53 @@ export const agentProgressService = {
   bufferedEventsSince,
   clearEventBuffer,
 };
+
+
+// ═══════ 多副本: 事件落库(观察者与执行者解耦) ═══════
+/** 事件写入(尽力而为: 失败不影响实时推送, 只让跨实例回放少一条) */
+async function persistEvent(ev: AgentProgressEvent): Promise<void> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    await pool.query(
+      `insert into agent_task_events (task_id, seq, event, payload)
+       values ($1::uuid, $2, $3, $4::jsonb) on conflict (task_id, seq) do nothing`,
+      [ev.taskId, ev.seq ?? 0, ev.type, JSON.stringify({ data: ev.data, timestamp: ev.timestamp, source: ev.source, tool: ev.tool })]
+    );
+  } catch { /* 事件表不可用时退化成纯内存(单机照常) */ }
+}
+
+/** 从库里回放 seq > after 的事件(跨实例/进程重启后仍能看到历史) */
+export async function replayAgentEvents(taskId: string, after = 0, limit = 500): Promise<AgentProgressEvent[]> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      `select seq, event, payload, created_at from agent_task_events
+        where task_id = $1::uuid and seq > $2 order by seq asc limit $3`,
+      [taskId, after, limit]
+    );
+    return r.rows.map((row: Record<string, unknown>) => {
+      const p = (row.payload ?? {}) as Record<string, unknown>;
+      return {
+        type: String(row.event) as AgentProgressEvent["type"],
+        taskId,
+        seq: Number(row.seq),
+        timestamp: Number(p.timestamp ?? 0) || new Date(String(row.created_at)).getTime(),
+        data: (p.data ?? {}) as Record<string, unknown>,
+        ...(p.source ? { source: String(p.source) } : {}),
+        ...(p.tool ? { tool: String(p.tool) } : {}),
+      };
+    });
+  } catch { return []; }
+}
+
+/** 清理过期事件(默认保留 3 天), 由启动巡检调用 */
+export async function pruneAgentEvents(days = 3): Promise<number> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      `delete from agent_task_events where created_at < now() - ($1::int || ' days')::interval`,
+      [days]
+    );
+    return r.rowCount ?? 0;
+  } catch { return 0; }
+}

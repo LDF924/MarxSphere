@@ -3,6 +3,9 @@
 // 规划时不再定死工具类型: 每步执行时 LLM 从工具清单选工具+参数, 运行时调度
 // 工具清单: SAG 现有能力注册表（推理/检索/写作/实证/政策等）
 import { callLlm } from "../ai/llm-common.js";
+import { dataPath } from "./storage-paths.js";
+import { selfBaseUrl } from "./base-urls.js";
+import { edgePath as edgeBrowserPath, edgePathHint } from "./browser-path.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
 import { agentModelRouter } from "./agent-model-router.js";
 import { guardUserInput } from "./prompt-guard.js";  // G23: 用户输入分界防护
@@ -27,22 +30,6 @@ export interface AgentToolDef {
   lastUsage?: { tokensIn: number; tokensOut: number; costCents: number };
 }
 
-/** 修复2: Edge 路径探测（同步, 模块加载时缓存） */
-function detectEdgePath(): string {
-  const candidates = [
-    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    (process.env.LOCALAPPDATA || "") + "/Microsoft/Edge/Application/msedge.exe",
-  ];
-  try {
-    const { existsSync } = require("node:fs") as typeof import("node:fs");
-    for (const c of candidates) {
-      if (c && existsSync(c)) return c;
-    }
-  } catch { /* ESM 下 require 不可用 → 用默认 */ }
-  return candidates[0];
-}
-
 /** 工具注册表（V393-1: 首批 8 个核心工具; V395-1: +pdf_parse 多模态） */
 export async function buildAgentTools(opts?: {
   sourceId?: string;
@@ -52,10 +39,12 @@ export async function buildAgentTools(opts?: {
 }): Promise<AgentToolDef[]> {
   const exposure = opts?.exposure || "full";
   const sourceId = opts?.sourceId || "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
-  // 修复1: API base 集中配置 — AGENT_API_BASE 覆盖（局域网部署设局域网 IP）; 默认本机
-  const apiBase = process.env.AGENT_API_BASE || "http://localhost:4173";
-  // 修复2: Edge 路径探测 — AGENT_EDGE_PATH 覆盖; 否则探测 3 个常见安装位置
-  const edgePath = process.env.AGENT_EDGE_PATH || detectEdgePath();
+  // 修复1: API base 集中配置 — 走 base-urls(AGENT_API_BASE 等显式配置优先, 否则按监听地址推导)
+  const apiBase = selfBaseUrl();
+  // 修复2: 无头浏览器路径 — AGENT_EDGE_PATH 覆盖; 否则按平台探测(Windows Edge/Chrome,
+  //   Linux/macOS chromium/chrome)。找不到返回 null, 各调用点已有 fetch 兜底。
+  //   原实现在 ESM 里用 require 做探测, 实际从未生效(每次都返回硬编码的 Windows 路径)。
+  const edgePath = edgeBrowserPath();
   const callApi = async (path: string, body: Record<string, unknown>): Promise<string> => {
     const res = await fetch(`${apiBase}${path}`, {
       method: "POST",
@@ -300,7 +289,7 @@ export async function buildAgentTools(opts?: {
           body.chapter = topic; body.text = topic; body.problemStatement = topic;
         }
         try {
-          const SAG_URL = process.env.SAG_INTERNAL_URL || "http://127.0.0.1:4173";
+          const SAG_URL = selfBaseUrl();
           // V393: 新学习引擎接口前缀分发 — plan-chain/material/pref 在 /api 顶层, 其余在 /api/education 下
           const topLevel = path2.startsWith("/learning-plans") || path2.startsWith("/materials") || path2.startsWith("/memory");
           const fullUrl = topLevel ? `${SAG_URL}/api${path2}` : `${SAG_URL}/api/education${path2}`;
@@ -592,7 +581,7 @@ export async function buildAgentTools(opts?: {
           try {
             const { searchWithRegistry, rankedProviders } = await import("./search-provider-registry.js");
             const providers = rankedProviders(["web"]).map((p) => p.providerId);
-            const r = await searchWithRegistry(query + (source === "academic" ? " 论文 研究" : ""), { maxResults, providers, edgePath });
+            const r = await searchWithRegistry(query + (source === "academic" ? " 论文 研究" : ""), { maxResults, providers, edgePath: edgePath ?? undefined });
             if ("ok" in r && !r.ok) {
               return `（搜索失败: ${r.error}）`;
             }
@@ -622,6 +611,7 @@ export async function buildAgentTools(opts?: {
           const outFile = path.join(tmpDir, `search-${Date.now()}.html`);
           const edge = edgePath;
           try {
+            if (!edge) throw new Error(edgePathHint());
             await execFileAsync(edge, [
               "--headless", "--disable-gpu", "--dump-dom",
               "--virtual-time-budget=4000",
@@ -670,7 +660,7 @@ export async function buildAgentTools(opts?: {
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           const patch = String(a.patch || "");
           // 解析补丁: 按 @@ 分割块; 跳过 *** Begin Patch 头（无 @@ 前缀）
           const rawBlocks = patch.split(/@@\s+/).filter((b) => b.trim() && !b.trim().startsWith("*** Begin Patch"));
@@ -754,7 +744,7 @@ export async function buildAgentTools(opts?: {
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           fs.mkdirSync(workspace, { recursive: true });
           const todoPath = path.join(workspace, "todo.md");
           const action = String(a.action || "list");
@@ -833,7 +823,7 @@ export async function buildAgentTools(opts?: {
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           const rel = String(a.path || "").replace(/^[/\\]+/, "");
           const target = path.resolve(workspace, rel);
           if (!(target === workspace || target.startsWith(workspace + path.sep))) {
@@ -1383,7 +1373,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           const rel = String(a.path || "").replace(/^[/\\]+/, "");
           const target = path.resolve(workspace, rel);
           if (!(target === workspace || target.startsWith(workspace + path.sep))) return `（路径越界: ${rel}）`;
@@ -1463,6 +1453,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
           const outFile = path.join(tmpDir, `page-${Date.now()}.html`);
           const edge = edgePath;
           try {
+            if (!edge) throw new Error(edgePathHint());
             await execFileAsync(edge, [
               "--headless", "--disable-gpu", "--dump-dom",
               "--virtual-time-budget=3000",
@@ -1684,7 +1675,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           const rel = String(a.path || "").replace(/^[/\\]+/, "");
           const target = path.resolve(workspace, rel);
           if (!(target === workspace || target.startsWith(workspace + path.sep))) {
@@ -1724,7 +1715,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         try {
           const fs = await import("node:fs");
           const path = await import("node:path");
-          const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+          const workspace = dataPath("agent_workspace");
           fs.mkdirSync(workspace, { recursive: true });
           const rel = String(a.path || "").replace(/^[/\\]+/, "");
           const target = path.resolve(workspace, rel);
@@ -2396,7 +2387,7 @@ export async function analyzeImageAtPath(relPath: string, mode = "describe"): Pr
   try {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+    const workspace = dataPath("agent_workspace");
     const rel = String(relPath || "").replace(/^[/\\]+/, "");
     const target = path.resolve(workspace, rel);
     if (!(target === workspace || target.startsWith(workspace + path.sep))) return `（路径越界: ${rel}）`;

@@ -3,6 +3,7 @@
 // 替代 execSync + python -c 的脆弱的字符串拼接（中文实体名会转义出错）
 // 用法: await neo4jQuery(11001, "MATCH (e:Entity {name: $n}) RETURN e", {n: "风险共担"})
 import neo4j, { type Driver, type Session } from "neo4j-driver";
+import { neo4jBoltUrl } from "../services/kb-paths.js";
 
 const AUTH = { user: "neo4j", password: "neo4j123" };
 const drivers = new Map<number, Driver>();
@@ -10,7 +11,7 @@ const drivers = new Map<number, Driver>();
 function getDriver(port: number): Driver {
   let driver = drivers.get(port);
   if (!driver) {
-    driver = neo4j.driver(`bolt://127.0.0.1:${port}`, neo4j.auth.basic(AUTH.user, AUTH.password), {
+    driver = neo4j.driver(neo4jBoltUrl(port), neo4j.auth.basic(AUTH.user, AUTH.password), {
       connectionTimeout: 8000,
       maxConnectionLifetime: 30 * 60 * 1000
     });

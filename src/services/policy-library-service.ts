@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // policy-library-service.ts — 政策资料库服务
 // 浏览课题研究政策目录（已有 317 文件）+ gov.cn 检索 + 保存政策到库
+// 路径解析统一走 kb-paths (POLICY_DIR 优先, 未配置回退 <数据根>/kb/policy), 每次调用时解析
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-
-// 脱敏: 个人盘符路径改为 os.homedir() 相对（POLICY_DIR env 可覆盖）
-const POLICY_DIR = process.env.POLICY_DIR || path.join(os.homedir(), "1.Obsidian Vault", "课题研究", "1.农业农村现代化进程中规范与引导工商资本路径研究", "著作、政策、会议");
+import { policyDir } from "./kb-paths.js";
 
 export interface PolicyTreeNode {
   name: string;
@@ -47,10 +45,11 @@ function buildTree(dir: string, depth: number): PolicyTreeNode[] {
 }
 
 function getPolicyTree(): { root: string; nodes: PolicyTreeNode[] } {
-  if (!fs.existsSync(POLICY_DIR)) {
-    return { root: POLICY_DIR, nodes: [] };
+  const root = policyDir();
+  if (!fs.existsSync(root)) {
+    return { root, nodes: [] };
   }
-  return { root: POLICY_DIR, nodes: buildTree(POLICY_DIR, 0) };
+  return { root, nodes: buildTree(root, 0) };
 }
 
 /**
@@ -72,7 +71,7 @@ function savePolicy(input: {
   if (!title) return { ok: false, error: "标题为空" };
 
   const category = input.category?.trim() || "abeedata-资本相关政策";
-  const categoryDir = path.join(POLICY_DIR, category);
+  const categoryDir = path.join(policyDir(), category);
 
   try {
     fs.mkdirSync(categoryDir, { recursive: true });
@@ -105,5 +104,6 @@ function savePolicy(input: {
 export const policyLibraryService = {
   getTree: getPolicyTree,
   savePolicy,
-  policyDir: POLICY_DIR
+  /** 当前政策库根(每次读取, 反映 POLICY_DIR 的实时配置) */
+  get policyDir(): string { return policyDir(); }
 };

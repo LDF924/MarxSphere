@@ -6,6 +6,7 @@
 //   2. 双引擎: Graphiti(11001) 优先, 失败尝试 Cognee(11003)
 //   3. MERGE 幂等: 同 (student, concept) 只更新关系属性, 不重复建节点
 import neo4j from "neo4j-driver";
+import { neo4jBoltUrl, neo4jHost } from "./kb-paths.js";
 
 const ENGINE_PORTS = [11001, 11003];  // Graphiti 优先, Cognee 兜底
 const NEO4J_AUTH = () => neo4j.auth.basic("neo4j", process.env.NEO4J_PASSWORD || "neo4j123");
@@ -22,13 +23,13 @@ async function getNeo4jDriver(): Promise<any | null> {
     try {
       const probe = await new Promise<boolean>((resolve) => {
         const net = require("node:net");
-        const s = net.connect(port, "127.0.0.1");
+        const s = net.connect(port, neo4jHost());
         s.once("connect", () => { s.destroy(); resolve(true); });
         s.once("error", () => { s.destroy(); resolve(false); });
         setTimeout(() => { s.destroy(); resolve(false); }, 1500);
       });
       if (!probe) continue;
-      const driver = neo4j.driver(`bolt://127.0.0.1:${port}`, NEO4J_AUTH(), { connectionTimeout: 5000 });
+      const driver = neo4j.driver(neo4jBoltUrl(port), NEO4J_AUTH(), { connectionTimeout: 5000 });
       // 验证连接
       await driver.verifyConnectivity();
       cachedDriver = driver;

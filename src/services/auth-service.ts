@@ -7,6 +7,7 @@ import { randomUUID, createCipheriv, createDecipheriv, createHash } from "node:c
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
+import { selfBaseUrl } from "./base-urls.js";
 
 // V389修复: JWT_SECRET 无默认公开值 — 未设时用随机生成(防伪造admin token), 提示显式设置
 const JWT_SECRET = process.env.JWT_SECRET || (() => {
@@ -316,7 +317,7 @@ export async function requestPasswordReset(email: string, baseUrl: string): Prom
     [user.id, tokenHash]
   );
   const resetPath = `/reset-password?token=${token}`;
-  const resetUrl = (baseUrl || "http://localhost:4173") + resetPath;
+  const resetUrl = (baseUrl || selfBaseUrl()) + resetPath;
   const { sendResetEmail } = await import("./email-service.js");
   const sent = await sendResetEmail(mail, resetUrl, user.username);
   if (!sent.ok) return { ok: false, smtpError: sent.error };
