@@ -4,11 +4,12 @@
 // 核心: 单元格代码 → venv 执行 → 输出/图表/持久变量回传（variables 模拟 notebook 内核状态）
 // API: POST /api/jupyter/execute { code, variables?, sessionId? }
 import { execFile } from "node:child_process";
+import { dataPath } from "./storage-paths.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-const TASKS_DIR = path.join(process.env.SAG_ROOT || process.cwd(), ".cache", "jupyter-tasks");
+const TASKS_DIR = dataPath("jupyter", "tasks");
 const PYTHON = process.env.EMPIRICAL_PYTHON || process.env.PYTHON || "python";
 const RUNNER = path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "jupyter_runner.py");
 
@@ -59,7 +60,7 @@ export function executeJupyterCell(input: JupyterExecInput, timeoutMs = 120_000)
 
   return new Promise((resolve) => {
     // 2026-08-27: cwd 指向上传目录 — pandas 用相对路径(pd.read_csv("xxx.csv"))即可读用户上传的文件
-    const uploadsDir = path.join(process.env.SAG_ROOT || process.cwd(), ".cache", "jupyter-uploads");
+    const uploadsDir = dataPath("jupyter", "uploads");
     fs.mkdirSync(uploadsDir, { recursive: true });
     execFile(
       PYTHON,

@@ -58,6 +58,13 @@ const taskApi = {
   async run(id: string): Promise<void> {
     await fetch(`/api/agent/tasks/${id}/run`, { method: "POST" });
   },
+  /** 轮询兜底用: 取单个任务的最新状态(SSE 不可靠时靠它收敛) */
+  async get(id: string): Promise<TaskRecord | null> {
+    const res = await fetch(`/api/agent/tasks/${id}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.task ?? null;
+  },
   async control(id: string, action: "pause" | "resume" | "cancel"): Promise<TaskRecord> {
     const res = await fetch(`/api/agent/tasks/${id}/control`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -265,6 +272,23 @@ export const TaskPanel: FC = () => {
   // V395-2: 订阅任务 SSE — 替换 3 秒轮询（task/step/reflect/done 事件实时刷新; exec_log 事件追加实时日志）
   const subscribeTaskStream = (taskId: string) => {
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
+    // 轮询兜底: SSE 可能连到没有该任务事件的实例(多副本), 或者事件缓冲为空。
+    //   之前 pollRef 只被清理、从未被赋值 → 后端"零事件永不 done"时 UI 永久卡"运行中",
+    //   连接是健康的所以 onerror 也不触发, 用户看不到任何异常。
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    pollRef.current = setInterval(() => {
+      void (async () => {
+        try {
+          const t = await taskApi.get(taskId);
+          const st = t?.status;
+          if (!st) return;
+          setTasks((prev) => prev.map((x) => (x.id === taskId ? { ...x, ...t } : x)));
+          if (["completed", "failed", "cancelled"].includes(st)) {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          }
+        } catch { /* 容忍: 下一轮再试 */ }
+      })();
+    }, 5000);
     setLiveLogTaskId(taskId);
     setLiveLogs([]);
     const es = new EventSource(`/api/agent/tasks/${taskId}/stream`);
@@ -329,6 +353,7 @@ export const TaskPanel: FC = () => {
     });
     // done: 任务结束（关闭连接 + 刷新列表）
     es.addEventListener("done", (e) => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       const d = parse(e);
       if (!d) return;
       setTasks((prev) => prev.map((t) => t.id === d.taskId ? { ...t, status: d.data?.status || "completed", result: d.data?.result || t.result, loopCount: d.data?.loopCount ?? t.loopCount, progress: d.data?.note ? `完成（${d.data.note}）` : "全部完成" } : t));

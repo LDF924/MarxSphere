@@ -6,11 +6,12 @@
 //   (支持行号窗口/关键词聚焦), 防上下文被长输出撑爆、防截断丢信息。
 //   7 天保留: 每次写前清理过期记录(按 mtime)。
 import { gzipSync, gunzipSync } from "node:zlib";
+import { dataPath } from "./storage-paths.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
-export const TOOL_RESULT_DIR = path.resolve(process.env.SAG_TOOL_RESULT_DIR || path.join(process.cwd(), "data", "tool-results"));
+export const TOOL_RESULT_DIR = path.resolve(process.env.SAG_TOOL_RESULT_DIR || dataPath("tool-results"));
 /** 超过该字符数视为"大输出", 走压缩存储(参考 OpenSquilla: 8KB 起投影; 本项目用 6000 字符) */
 export const TOOL_RESULT_CHAR_THRESHOLD = 6000;
 /** 返回给模型的预览长度 */

@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+import { withRunLease } from "./singleton-scheduler.js";
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;  // 6 小时
 const MIN_CONTENT_LEN = 1000;  // 小于此长度视为跳转页/空页, 不算抓取成功
 const WEIXIN_DELAY_MS = 1500;  // 微信搜索间隔(防搜狗限流)
@@ -221,9 +222,11 @@ export async function listJournalUpdates(journalId?: string, limit = 50): Promis
 
 /** 自动同步定时器（模块级自启动: 立即跑一次 + 每 6 小时） */
 export function startJournalSyncScheduler(): void {
-  void syncAllJournals();  // 启动即同步一次
-  setInterval(() => { void syncAllJournals(); }, SYNC_INTERVAL_MS);
-  console.log("[journal-sync] 期刊同步管道已启动 (每6小时自动同步)");
+  // 多副本: 期刊同步会抓外部站点, 每个副本各跑一遍 = N 倍请求(会被风控限流) → 加跨副本租约
+  const guarded = withRunLease("journal-sync", syncAllJournals, SYNC_INTERVAL_MS + 60_000);
+  void guarded();  // 启动即同步一次
+  setInterval(() => { void guarded(); }, SYNC_INTERVAL_MS);
+  console.log("[journal-sync] 期刊同步管道已启动 (每6小时自动同步, 多副本下每轮仅一个副本执行)");
 }
 
 /** 手动触发同步（API 用, 跳过单例锁判断的强制版） */

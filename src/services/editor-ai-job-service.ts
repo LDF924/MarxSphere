@@ -7,6 +7,8 @@
 import { randomUUID } from "node:crypto";
 import { rewriteText, checkFulltext, generateTitleAbstract, formatReferences, type RewriteMode } from "./editor-service.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
+import { freezeCharge, settleCharge, rollbackFreeze } from "./points-service.js";
+import { pointsEnabled, featureCost, InsufficientPointsError } from "./points-gate.js";
 import type { AttachedSse } from "../api/stream-utils.js";
 
 interface AiJob {
@@ -14,6 +16,10 @@ interface AiJob {
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   content: string; result?: unknown; error?: string; createdAt: number;
   model: string;
+  /** 已冻结的积分(创建时冻结, run() 结束时核销/归还) */
+  points?: { cost: number; feature: string };
+  /** 用户已取消(取消在途任务无法中断 LLM, 但收尾时不得按成功核销) */
+  cancelled?: boolean;
 }
 const jobs = new Map<string, AiJob>();
 const TTL = 30 * 60_000;
@@ -22,28 +28,85 @@ setInterval(() => {
   for (const [id, j] of jobs) if (now - j.createdAt > TTL) jobs.delete(id);
 }, 5 * 60_000).unref?.();
 
-export function createAiJob(userId: string, body: { action?: string; text?: string; mode?: string; context?: string; document_id?: string; model?: string }): AiJob | null {
+/** 同一用户同时运行的编辑器 AI 任务上限 — 每个任务最长 240s、maxTokens 4000,
+ *  无上限时连点 14 个按钮会并发打出 14 路长请求(实测无任何成本/并发护栏) */
+const MAX_CONCURRENT_PER_USER = Math.max(1, parseInt(process.env.EDITOR_AI_MAX_CONCURRENT || "3", 10));
+
+/** 该用户当前在跑/排队的任务数 */
+export function countActiveAiJobs(userId: string): number {
+  let n = 0;
+  for (const j of jobs.values()) {
+    if (j.userId === userId && (j.status === "queued" || j.status === "running")) n++;
+  }
+  return n;
+}
+
+export async function createAiJob(userId: string, body: { action?: string; text?: string; mode?: string; context?: string; document_id?: string; model?: string }): Promise<AiJob | null> {
   const action = body?.action;
   const ok = ["rewrite", "check", "title", "format_refs"].includes(action ?? "");
   if (!ok) return null;
+  // 并发上限: 超出直接拒绝(前端会收到明确原因), 避免无限并发烧 token
+  if (countActiveAiJobs(userId) >= MAX_CONCURRENT_PER_USER) {
+    throw new Error(`同时进行的 AI 任务已达上限(${MAX_CONCURRENT_PER_USER} 个), 请等前一个完成或取消`);
+  }
   const job: AiJob = { id: randomUUID(), userId, action: action!, payload: body as Record<string, unknown>, status: "queued", content: "", createdAt: Date.now(), model: resolveModelAlias(getRoleModel("editor")) };
+
+  // 积分闸门(2026-09-11): 冻结在**创建时**, 核销/归还在 run() 结束时。
+  //   job 是异步的(创建即返回), 用 withPoints 包 run 会导致 HTTP 响应一直挂到任务跑完,
+  //   故这里拆开: 冻结失败直接抛(路由转 402), 把 cost 记在 job 上供 run 收尾。
+  if (pointsEnabled()) {
+    const feature = `editor:${EDITOR_FEATURE[action!] ?? action!}`;
+    const cost = featureCost(feature);
+    if (cost > 0) {
+      const r = await freezeCharge(userId, cost, feature, job.id);
+      if (!r.ok) throw new InsufficientPointsError(cost);
+      job.points = { cost, feature };
+    }
+  }
+
   jobs.set(job.id, job);
   void run(job);
   return job;
 }
+
+/** JS 动作名(action: rewrite/check/title/format_refs) → 定价键(editor:rewrite/check/title/refs) */
+const EDITOR_FEATURE: Record<string, string> = {
+  rewrite: "rewrite",
+  check: "check",
+  title: "title",
+  format_refs: "refs",
+};
 export function getAiJob(userId: string, jobId: string) {
   const j = jobs.get(jobId);
   return j && j.userId === userId ? j : null;
 }
 export function cancelAiJob(userId: string, jobId: string) {
   const j = getAiJob(userId, jobId);
-  if (j && (j.status === "queued" || j.status === "running")) { j.status = "cancelled"; return true; }
+  if (j && (j.status === "queued" || j.status === "running")) {
+    j.status = "cancelled";
+    // 2026-09-11: 必须置独立标志 —— 在途的 LLM 调用无法真正中断(已产生的 token 平台承担),
+    //   但 run() 回来后会**无条件**把 status 覆盖成 "done", 导致"点了取消仍按成功核销积分"。
+    //   settlePoints 依据 cancelled 决定核销还是归还。
+    j.cancelled = true;
+    return true;
+  }
   return false;
 }
-export function retryAiJob(userId: string, jobId: string) {
+export async function retryAiJob(userId: string, jobId: string): Promise<AiJob | null> {
   const j = getAiJob(userId, jobId);
   if (!j || (j.status !== "failed" && j.status !== "cancelled")) return null;
+  // 重跑 = 再消耗一次 → 重新冻结(失败的上一轮已在 settlePoints 里归还过)
+  if (pointsEnabled()) {
+    const feature = `editor:${EDITOR_FEATURE[j.action] ?? j.action}`;
+    const cost = featureCost(feature);
+    if (cost > 0) {
+      const r = await freezeCharge(userId, cost, feature, j.id);
+      if (!r.ok) throw new InsufficientPointsError(cost);
+      j.points = { cost, feature };
+    }
+  }
   j.status = "queued"; j.content = ""; j.error = undefined; j.createdAt = Date.now();
+  j.cancelled = false;   // 重跑是新的开始, 不清会把跑完的结果又标回 cancelled
   void run(j);
   return j;
 }
@@ -53,26 +116,27 @@ async function run(job: AiJob) {
   try {
     const text = String(job.payload.text ?? "");
     const mode = String(job.payload.mode ?? "");
+    const u = { userId: job.userId };
     switch (job.action) {
       case "rewrite": {
         // 前端直传后端 RewriteMode; 无 mode 时兜底 polish
-        job.result = await rewriteText((mode || "polish") as RewriteMode, text, String(job.payload.context ?? ""));
+        job.result = await rewriteText((mode || "polish") as RewriteMode, text, String(job.payload.context ?? ""), u);
         job.content = (job.result as { text?: string }).text ?? "";
         break;
       }
       case "check": {
-        const r = await checkFulltext(text, mode || "logic");
+        const r = await checkFulltext(text, mode || "logic", u);
         job.result = r;
         job.content = renderCheckContent(r);
         break;
       }
       case "title": {
-        job.result = await generateTitleAbstract(text, mode);
+        job.result = await generateTitleAbstract(text, mode, u);
         job.content = renderTitleContent(mode, job.result as TitleResult);
         break;
       }
       case "format_refs": {
-        job.result = await formatReferences(text, (mode === "consistency" ? "consistency" : "format"));
+        job.result = await formatReferences(text, (mode === "consistency" ? "consistency" : "format"), u);
         job.content = renderCitationContent(job.result as CitationResult);
         break;
       }
@@ -81,6 +145,28 @@ async function run(job: AiJob) {
   } catch (e) {
     job.status = "failed";
     job.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    // 取消在途: run 仍会跑完(LLM 调用不可中断), 但不能覆盖成 done, 否则会按成功核销
+    if (job.cancelled) job.status = "cancelled";
+    await settlePoints(job);
+  }
+}
+
+/** 任务收尾结算积分: 成功核销, 失败/取消归还(冻结不回滚会永久占用用户余额) */
+async function settlePoints(job: AiJob): Promise<void> {
+  const p = job.points;
+  if (!p) return;
+  job.points = undefined;   // 置空防重复结算(retry 会重新冻结)
+  try {
+    if (job.status === "done") {
+      const r = await settleCharge(job.userId, p.cost, p.feature, job.id);
+      if (!r.ok) console.error(`[editor-ai] 积分核销失败 ${job.id}: ${r.error}`);
+    } else {
+      const r = await rollbackFreeze(job.userId, p.cost, p.feature, job.id);
+      if (!r.ok) console.error(`[editor-ai] 积分归还失败 ${job.id}: ${r.error}`);
+    }
+  } catch (e) {
+    console.error(`[editor-ai] 积分结算异常 ${job.id}:`, String(e).slice(0, 120));
   }
 }
 

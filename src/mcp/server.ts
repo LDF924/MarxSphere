@@ -9,6 +9,7 @@ import { graphService } from "../services/graph-service.js";
 import { getChunkById, listChunksByDocument, listDocumentsBySource, searchChunksByText } from "../db/repositories.js";
 import { config } from "../config/env.js";
 import { logger } from "../observability/logger.js";
+import { edgePath, edgePathHint } from "../services/browser-path.js";
 import { subscribeModelCallLogs, type ModelCallLogRecord } from "../observability/model-call-log.js";
 import type { SearchProgressEvent } from "../types.js";
 
@@ -147,7 +148,8 @@ export function buildMcpServer(): McpServer {
       const tmpDir = path.join(os.tmpdir(), "sag-browse");
       mkdirSync(tmpDir, { recursive: true });
       const outFile = path.join(tmpDir, `page-${Date.now()}.html`);
-      const edge = process.env.AGENT_EDGE_PATH || "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+      const edge = edgePath();
+      if (!edge) throw new Error(edgePathHint());
       try {
         await execFileAsync(edge, [
           "--headless", "--disable-gpu", "--dump-dom",

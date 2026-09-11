@@ -3,6 +3,7 @@
 // 每次 agent 写文件 → append 一条记录到 data/provenance/provenance.jsonl(append-only, 单行 JSON)
 // 版本号按文件路径递增 → 可回看文件演化。详见 docs/PROVENANCE-DESIGN.md。
 import { createHash } from "node:crypto";
+import { dataPath } from "./storage-paths.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -55,7 +56,7 @@ export async function readEnvSnapshot(envHash?: string): Promise<string | null> 
 }
 
 function provenanceDir(): string {
-  return path.join(process.env.SAG_ROOT || process.cwd(), "data", "provenance");
+  return dataPath("provenance");
 }
 
 export function provenanceFile(): string {

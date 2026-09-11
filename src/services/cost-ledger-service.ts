@@ -74,6 +74,12 @@ export function calcLedgerCostCny(model: string, tokensIn: number, tokensOut: nu
 }
 
 /** 落账一条(轮级明细)。失败只 log 不阻塞主流程(与 quota recordUsage 同款容错) */
+/** 成本账本写入。
+ *  口径(2026-09-11): 成本账本记**平台全部 LLM 花费**, 不限于可计费部分 ——
+ *  后台/定时任务没有请求上下文(userId 为空)仍会花钱, 漏记会让审计少算。
+ *  与之对应的**计费账**(user_usage_log)只记有归属的调用, 故两表总额天然存在差额,
+ *  差额 = 系统调用成本。这是设计如此, 不是缺陷; 对账时按 user_id 是否为空区分。
+ */
 export function recordLedger(entry: LedgerEntry): void {
   const tokensIn = Math.max(0, Math.round(entry.tokensIn ?? 0));
   const tokensOut = Math.max(0, Math.round(entry.tokensOut ?? 0));

@@ -7,6 +7,7 @@ import { pool } from "../db/pool.js";
 import { config } from "../config/env.js";
 import { getVectorStore, getLanceDbStore } from "../db/vector-store.js";
 import { getLlmEndpoint } from "../ai/llm-common.js";
+import { neo4jBoltUrl } from "./kb-paths.js";
 
 const NEO4J_AUTH = { user: "neo4j", password: "neo4j123" };
 const NEO4J_PORTS = { graphiti: 11001, cognee: 11003 } as const;
@@ -16,7 +17,7 @@ const _drivers = new Map<number, Driver>();
 function neo4jDriver(port: number): Driver {
   let driver = _drivers.get(port);
   if (!driver) {
-    driver = neo4j.driver(`bolt://127.0.0.1:${port}`, neo4j.auth.basic(NEO4J_AUTH.user, NEO4J_AUTH.password), {
+    driver = neo4j.driver(neo4jBoltUrl(port), neo4j.auth.basic(NEO4J_AUTH.user, NEO4J_AUTH.password), {
       connectionTimeout: 5000,
     });
     _drivers.set(port, driver);

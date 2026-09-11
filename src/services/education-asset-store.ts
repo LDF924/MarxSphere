@@ -4,6 +4,7 @@
 //   学生端操作只影响学生空间，教师端操作只影响教师空间，互不同步互不干扰。
 // 预置内容（模板/案例/示例课程）两端各初始化一份（seed 时按 role 复制）。
 import { pool } from "../db/pool.js";
+import { dataPath } from "./storage-paths.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -63,7 +64,7 @@ async function seedPublicForRole(role: string): Promise<void> {
       }
     }
     // 案例：data/education-cases.json
-    const casesPath = path.join(rootDir, "data", "education-cases.json");
+    const casesPath = dataPath("education-cases.json");
     if (fs.existsSync(casesPath)) {
       try {
         const j = JSON.parse(fs.readFileSync(casesPath, "utf-8"));

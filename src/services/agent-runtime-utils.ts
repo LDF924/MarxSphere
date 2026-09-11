@@ -3,6 +3,7 @@
 // ④ spill: 上下文溢出 → 历史归档到工作区文件（防丢失, 可检索）
 // ⑤ subprocess: 集中子进程注册表（统一超时/清理/状态, 防孤儿进程）
 import { pool } from "../db/pool.js";
+import { dataPath } from "./storage-paths.js";
 import type { ChildProcess } from "node:child_process";
 
 // ═══ ④ spill: 上下文溢出归档 ═══
@@ -14,7 +15,7 @@ export async function spillMessagesToFile(
   try {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const ws = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace", "spill");
+    const ws = dataPath("agent_workspace", "spill");
     fs.mkdirSync(ws, { recursive: true });
     const file = path.join(ws, `task-${taskId.slice(0, 8)}-${Date.now()}.md`);
     const content = messages.map((m) => `## [${m.role}]\n${m.content}\n`).join("\n");

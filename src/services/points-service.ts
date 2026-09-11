@@ -217,8 +217,12 @@ export async function settleCharge(userId: string, cost: number, refType: string
     await client.query(
       `insert into points_ledger (user_id, type, amount, settle_amount, ref_type, ref_id, balance_after, note)
        values ($1,'settle',$2,$3,$4,$5,$6,'消费实扣(核销)')`,
-      // amount 记账口径: -cost(余额变化), settle_amount: +cost(核销总额口径)
-      [userId, -cost, cost, refType, refId, f.rows[0].balance]);
+      // amount 口径 = **可用余额的变化量**。核销时钱早已在 freeze 那步从 balance 划入 frozen,
+      //   本步只把 frozen 划走, balance 不变 → amount 必须为 0。
+      //   (2026-09-11 修: 此前记 -cost, 导致 freeze+settle 对同一笔钱各记一次余额减少,
+      //    任何按 amount 汇总的报表都双倍计费, 用户看明细也会以为被扣两次。
+      //    settle_amount 才是"本次核销多少"的口径, 保持不变。)
+      [userId, 0, cost, refType, refId, f.rows[0].balance]);
     await client.query(
       `insert into points_usage_daily (user_id, date, kind, count, cost)
        values ($1, current_date, $2, 1, $3)
@@ -254,7 +258,9 @@ export async function rollbackFreeze(userId: string, cost: number, refType: stri
       `insert into points_ledger (user_id, type, amount, freeze_amount, ref_type, ref_id, balance_after, note)
        values ($1,'refund',$2,$3,$4,$5,$6,'冻结归还')`,
       // refund 同时以 freeze_amount 负值对冲原冻结行(解冻口径)
-      [userId, cost, -cost, refType, refId, f.rows[0].balance + cost]);
+      // ⚠ pg 返回的 numeric 是**字符串**, 直接 `balance + cost` 会变成字符串拼接
+      //   ("600" + 30 = "60030"), 曾把 balance_after 记成 10 倍。必须显式转数字。
+      [userId, cost, -cost, refType, refId, Number(f.rows[0].balance) + cost]);
     await client.query("commit");
     return { ok: true };
   } catch (e) {

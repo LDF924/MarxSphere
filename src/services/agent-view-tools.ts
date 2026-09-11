@@ -3,6 +3,7 @@
 // 把各视图面板的核心后端能力封装为 Agent 工具，注册进 buildAgentTools。
 // 原则：只读优先、结果截断、异常兜底为「（不可用: …）」不抛断工具循环。
 import type { AgentToolDef } from "./agent-tool-router.js";
+import { selfBaseUrl } from "./base-urls.js";
 
 /** 安全地执行服务调用，异常兜底为可读文本（不抛断工具循环） */
 async function safeCall(fn: () => Promise<string>): Promise<string> {
@@ -399,7 +400,7 @@ export const VIEW_TOOLS: AgentToolDef[] = [
           const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools);
           if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
         }
-        const SELF_BASE = process.env.AGENT_API_BASE || "http://localhost:4173";
+        const SELF_BASE = selfBaseUrl();
         const res = await fetch(SELF_BASE + "/api/reason/query", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sourceId: task.projectId || undefined, query: step.query, mode: "adaptive" }),
@@ -443,7 +444,7 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       limit: { type: "number", desc: "返回条数(默认5)" },
     },
     run: async (a) => safeCall(async () => {
-      const SELF_BASE = process.env.AGENT_API_BASE || "http://localhost:4173";
+      const SELF_BASE = selfBaseUrl();
       const res = await fetch(`${SELF_BASE}/api/alerts`);
       const data: any = await res.json();
       const items = (data?.alerts ?? []).slice(0, Math.min(Math.max(Number(a.limit) || 5, 1), 10)) as Array<{ message?: string; level?: string; createdAt?: string }>;

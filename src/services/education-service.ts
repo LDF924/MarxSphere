@@ -7,8 +7,9 @@
 import { pool } from "../db/pool.js";
 import { getRoleModel } from "./llm-model-registry.js";
 import { callLlm, getLlmEndpoint } from "../ai/llm-common.js";
+import { selfBaseUrl } from "./base-urls.js";
 
-const SAG_URL = process.env.SAG_INTERNAL_URL || "http://127.0.0.1:4173";
+const SAG_URL = selfBaseUrl();
 export const DEFAULT_SOURCE = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
 
 export async function llmJson(prompt: string, modelOverride?: string): Promise<any | null> {

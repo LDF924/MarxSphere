@@ -57,8 +57,47 @@ const step = (n, ok, d) => { results.push({ n, ok, d }); console.log(`${ok ? "PA
   })()`, true);
   step("切换模型成功并落库", sw === "deepseek-v4-flash", `current=${sw}`);
 
+  // ═══ 顺序讲究: 先播种一篇有内容的文档测真实调用, 再新建空文档测门控 ═══
+  // 播种: 编辑器会自动载入"最近更新"的文档, 所以先用 API 造一篇有正文的, 再重新加载
+  const seeded = await ev(`(async () => {
+    const t = localStorage.getItem('skf_auth_token') || '';
+    const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t };
+    const c = await fetch('/api/editor/v1/documents', { method:'POST', headers:H, body: JSON.stringify({ title: '模型实测文档' }) }).then(x=>x.json());
+    const id = c?.id || c?.document?.id;
+    if (!id) return 'CREATE_FAIL';
+    const para = '本文研究数字经济对区域协调发展的影响。基于2011-2022年省级面板数据,采用双向固定效应模型进行实证检验。研究发现数字经济显著促进区域协调发展,且存在空间溢出效应。';
+    const doc = { type:'doc', content:[{ type:'paragraph', content:[{ type:'text', text: para }] }] };
+    const r = await fetch('/api/editor/v1/documents/' + id, { method:'PUT', headers:H, body: JSON.stringify({ content: JSON.stringify(doc) }) });
+    if (!r.ok) return 'SAVE_FAIL_' + r.status;
+    // 编辑器重载后打开的是 editor.activeDocumentId 记住的文档, 这里指向刚播种的
+    localStorage.setItem('editor.activeDocumentId', id);
+    return 'OK';
+  })()`, true);
+  step("播种有内容的文档", seeded === "OK", String(seeded));
+
+  // 重新加载使编辑器载入刚播种的文档
+  await send("Page.reload", { ignoreCache: true });
+  await sleep(10000);
+  if (!(await ev(`!!document.querySelector('.ade-ai-panel')`))) {
+    await ev(`(() => { const b=[...document.querySelectorAll('button')].find(e=>(e.textContent||'').includes('辅助工具')); if(b) b.click(); return !!b; })()`);
+    await sleep(2000);
+  }
+
+  // ── 真实 AI 调用: 切到题名摘要 tab + 点「优化论文标题」──
+  await ev(`(() => { const t=[...document.querySelectorAll('.ade-ai-panel__tab')].find(e=>(e.textContent||'').trim()==='题名摘要'); if(t) t.click(); return !!t; })()`);
+  await sleep(900);
+  const hasDoc = await ev(`(() => { const ed=document.querySelector('.tiptap, .ProseMirror'); return ed ? ed.textContent.trim().length : -1; })()`);
+  step("有正文(真实调用前置条件)", hasDoc > 20, `正文${hasDoc}字`);
+  if (hasDoc > 20) {
+    await ev(`(() => { const el=[...document.querySelectorAll('.ade-ai-panel button')].find(b=>/优化论文标题/.test(b.textContent||'')); if(el && !el.disabled) el.click(); return el ? el.disabled : 'NO'; })()`);
+    await sleep(60000);
+    const card = await ev(`(() => { const c=document.querySelector('.ade-result-card__content'); return c ? c.textContent.replace(/\\s+/g,' ').slice(0,260) : ''; })()`);
+    const hasErr = /错误:/.test(card);
+    step("真实调用返回标题内容", card.length > 40 && !hasErr, card.slice(0, 150) || "(结果卡为空)");
+  }
+
   // ── 新建空文档 → 按钮应被门控(不是静默无反应) ──
-  // 走真实用户路径: 「＋ 新建文档」→ 填标题 → 创建(比在 tiptap 里模拟全选删除可靠)
+  // 走真实用户路径: 「＋ 新建文档」→ 填标题 → 创建
   await ev(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/新建文档/.test(x.textContent||'')); if(b) b.click(); return !!b; })()`);
   await sleep(1800);
   await ev(`(() => {
@@ -78,38 +117,20 @@ const step = (n, ok, d) => { results.push({ n, ok, d }); console.log(`${ok ? "PA
     if(btn){ btn.click(); return 'created'; }
     return 'NO_BTN';
   })()`);
-  await sleep(4000);
+  await sleep(4500);
   const emptyLen = await ev(`(() => { const ed=document.querySelector('.tiptap, .ProseMirror'); return ed ? ed.textContent.trim().length : -1; })()`);
-  step("新建文档正文为空(前置条件)", emptyLen === 0, `正文${emptyLen}字`);
+  step("新建文档正文为空(门控前置条件)", emptyLen === 0, `正文${emptyLen}字`);
 
   await ev(`(() => { const t=[...document.querySelectorAll('.ade-ai-panel__tab')].find(e=>(e.textContent||'').trim()==='题名摘要'); if(t) t.click(); return !!t; })()`);
   await sleep(1000);
   const guard = await ev(`(() => {
     const el=[...document.querySelectorAll('.ade-ai-panel button')].find(b=>/优化论文标题/.test(b.textContent||''));
     if(!el) return JSON.stringify({no:true});
-    const panel=document.querySelector('.ade-ai-panel');
-    const hint=(panel?panel.textContent:'').replace(/\\s+/g,' ');
-    return JSON.stringify({ no:false, disabled:Boolean(el.disabled), title:String(el.getAttribute('title')||''), hinted:/正文为空|请先|请选中/.test(hint) });
+    return JSON.stringify({ no:false, disabled:Boolean(el.disabled) });
   })()`);
   const g = JSON.parse(guard || "{}");
-  step("正文清空后按钮被门控(disabled)", emptyLen === 0 && !g.no && g.disabled === true,
+  step("空正文时按钮被门控(disabled)", emptyLen === 0 && !g.no && g.disabled === true,
     `正文${emptyLen}字 disabled=${g.disabled}`);
-
-  // ── 真实 AI 调用: 填正文 + 切到题名摘要 tab + 点「优化论文标题」 ──
-  await ev(`(() => { const ed=document.querySelector('.tiptap, .ProseMirror'); if(ed){ ed.focus(); } return !!ed; })()`);
-  await send("Input.insertText", { text: "本文研究数字经济对区域协调发展的影响。基于2011-2022年省级面板数据,采用双向固定效应模型进行实证检验。研究发现数字经济显著促进区域协调发展,且存在空间溢出效应。" });
-  await sleep(1500);
-  const filled = await ev(`(() => { const ed=document.querySelector('.tiptap, .ProseMirror'); return ed ? ed.textContent.trim().length : -1; })()`);
-  step("正文已填入(真实调用前置条件)", filled > 20, `正文${filled}字`);
-  await ev(`(() => { const t=[...document.querySelectorAll('.ade-ai-panel__tab')].find(e=>(e.textContent||'').trim()==='题名摘要'); if(t) t.click(); return !!t; })()`);
-  await sleep(900);
-  const clicked = await ev(`(() => { const el=[...document.querySelectorAll('.ade-ai-panel button')].find(b=>/优化论文标题/.test(b.textContent||'')); if(el && !el.disabled){ el.click(); return 'clicked'; } return el ? 'disabled' : 'NO_BTN'; })()`);
-  await sleep(60000);
-  void clicked;
-  const card = await ev(`(() => { const c=document.querySelector('.ade-result-card__content'); return c ? c.textContent.replace(/\\s+/g,' ').slice(0,260) : ''; })()`);
-  const hasErr = /错误:/.test(card);
-  const hasTitle = card.length > 40;
-  step("真实调用返回标题内容", hasTitle && !hasErr, card.slice(0, 150) || "(结果卡为空)");
 
   const pass = results.filter((r) => r.ok).length;
   console.log(`\n=== ${pass}/${results.length} PASS ===`);

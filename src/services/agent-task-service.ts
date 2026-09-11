@@ -12,6 +12,7 @@ import { callLlm } from "../ai/llm-common.js";
 import { logAgentExec } from "./agent-exec-log.js";
 import { publishAgentProgress } from "./agent-progress.js";
 import { guardUserInput } from "./prompt-guard.js";  // G23: prompt 注入防护(用户内容分界+长度/换行控制)
+import { acquireRunLease } from "./singleton-scheduler.js";
 
 export interface AgentTaskStep {
   id: string;
@@ -1023,12 +1024,14 @@ const APPROVAL_TIMEOUT_MINUTES = parseInt(process.env.AGENT_APPROVAL_TIMEOUT_MIN
 export function startApprovalTimeoutScheduler(): void {
   if ((globalThis as any).__agentApprovalSchedulerStarted) return;
   (globalThis as any).__agentApprovalSchedulerStarted = true;
-  const check = () => {
+  const check = async () => {
+    // 多副本: 每副本各扫一遍是重复写库(且并发改同一批任务状态) → 加跨副本租约
+    if (!(await acquireRunLease("approval-timeout", APPROVAL_TIMEOUT_CHECK_MS + 60_000))) return;
     void timeoutPendingApprovals(APPROVAL_TIMEOUT_MINUTES).catch((e: any) =>
       console.error("[agent] G6 审批超时巡检失败:", String(e?.message || e).slice(0, 100)));
   };
-  check();  // 启动即扫一次（清理重启前的残留）
-  setInterval(check, APPROVAL_TIMEOUT_CHECK_MS);
+  void check();  // 启动即扫一次（清理重启前的残留）
+  setInterval(() => { void check(); }, APPROVAL_TIMEOUT_CHECK_MS);
   console.log(`[agent] G6 审批超时巡检已启动 (每 ${Math.round(APPROVAL_TIMEOUT_CHECK_MS / 60000)} 分钟, 超时 ${APPROVAL_TIMEOUT_MINUTES} 分钟自动拒绝)`);
 }
 

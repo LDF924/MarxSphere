@@ -12,6 +12,7 @@ import { memoryService } from "./memory-service.js";
 import { getRoleModel, resolveModelAlias, type LlmRole } from "./llm-model-registry.js";
 import { breakers, MAX_STEP_ITERATIONS, SESSION_TOKEN_BUDGET, MAX_CONSECUTIVE_SAME_FAILURES, assertNoLlmSideEffect } from "./circuit-breaker.js";
 import { recordLedger } from "./cost-ledger-service.js";
+import { currentUserId } from "../services/request-context.js";
 import { recordAlert } from "./alert-service.js";
 import { tierRouterService } from "./tier-router-service.js";
 import { applyBacklinkBoost, applyChronicleTypeBoost, applyTitleBoost, classifyQueryIntent } from "./gbrain-boosts.js";
@@ -36,6 +37,10 @@ export interface StepTokens {
   in: number;
   out: number;
   cacheHit?: number;
+  /** 2026-09-11: 产生这些 token 的模型名 — 供 retrieve_steps 落库, 计费按真实模型定价。
+   *  此前该字段缺失, 导致 chargeUserForReasonTask 查 parameters->>'model' 恒空,
+   *  整条推理链一律按 deepseek-v4-flash 定价(用 pro 时单价差 4 倍)。 */
+  model?: string;
 }
 
 /** V405(P0 成本账本): 最近一次 fetchLlm 的模型 — recordStageStep 落 parameters.model, 供按模型计费 */
@@ -72,7 +77,7 @@ async function fetchLlm(input: {
     const text = j?.choices?.[0]?.message?.content || '';
     const u = j?.usage;
     const tokens: StepTokens | null = (u && typeof u.prompt_tokens === 'number')
-      ? { in: u.prompt_tokens ?? 0, out: u.completion_tokens ?? 0 }
+      ? { in: u.prompt_tokens ?? 0, out: u.completion_tokens ?? 0, model: input.model }
       : null;
     // V306: KV Cache 命中 token（DeepSeek 官方字段; 无则 null）
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
@@ -88,6 +93,9 @@ async function fetchLlm(input: {
         tokensIn: tokens.in,
         tokensOut: tokens.out,
         tokensCacheRead: cacheHit ?? 0,
+        // 2026-09-11: 归属到调用者(52 步推理链) — 此前恒 NULL, 推理花费算不到人头也不扣费。
+        // 由 server.ts 的路由包装层经 AsyncLocalStorage 注入; 后台任务(定时/队列)无上下文时为空。
+        userId: currentUserId() ?? null,
       });
     }
     // V380(P0-8): 前缀稳定监控 — 打点 KV Cache 命中率（仅 debug 级别，不阻塞主流程）
@@ -3133,7 +3141,9 @@ ${catalog.map((c) => `- ${c.id} [${c.group}][成本${c.cost}]${c.dependsOn.lengt
         `INSERT INTO retrieve_steps (task_id, outline_id, engine, search_type, query, parameters, result_count, duration_ms, status)
          VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, 'completed')`,
         [taskId, op.group === 'prep' || op.group === 'fusion' || op.group === 'gen' ? 'sag' : op.group, 'adaptive_' + op.id, ctx.query,
-         JSON.stringify({ mode: 'adaptive', tokens: ctx.tokens[op.id] ?? null }), resultCount, dur]
+         // model 提到顶层: chargeUserForReasonTask 读的是 parameters->>'model';
+         // 嵌在 tokens 里它读不到(历史 bug: 导致整链按 flash 定价)
+         JSON.stringify({ mode: 'adaptive', model: ctx.tokens[op.id]?.model ?? null, tokens: ctx.tokens[op.id] ?? null }), resultCount, dur]
       );
     } catch (e: any) {
       console.error(`[sag] adaptive op ${op.id} FAIL:`, e.message?.substring(0, 80));

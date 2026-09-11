@@ -106,7 +106,7 @@ export default function FusionPanel({ tab, panelKey }: { tab: FusionTabDef; pane
             className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium transition-colors hover:bg-white/10"
             style={{ color: "hsl(210 40% 96%)" }}
           >
-            ← 返回
+            ← 科研中心
           </button>
         )}
         <div className="flex min-w-0 flex-col">

@@ -7,6 +7,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { ovImportDir, p2oDocumentDir } from "./kb-paths.js";
 
 /** 6 阶段管线（vendor importPdf 事件序列） */
 export const P2O_STEPS = ["upload", "mineru", "normalize", "translate", "obsidian_export", "quality_check"];
@@ -154,7 +155,7 @@ export async function runP2oPipeline(taskId: string): Promise<P2oTaskRecord> {
   const readingAssetsEnabled = result?.configSummary?.readingAssetsEnabled === true;
   let reading: { summaryPath?: string; termsPath?: string; qaPath?: string } | undefined = undefined;
   if (readingAssetsEnabled && result?.slug) {
-    const documentRoot = path.join("D:/Desktop/ov_import", "资本规范与引导、资本治理", result.slug);
+    const documentRoot = path.join(ovImportDir(), p2oDocumentDir(), result.slug);
     reading = {
       summaryPath: path.join(documentRoot, "摘要.md"),
       termsPath: path.join(documentRoot, "术语表.md"),

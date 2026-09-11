@@ -4,6 +4,7 @@
 // / dream_cycle（夜间自整理 9-phase）/ batch_ingest（批量入库）/ hyperedge（超边）
 import { randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
+import { selfBaseUrl } from "./base-urls.js";
 import { registerHandler, type MinionJob } from "./jobs-service.js";
 
 /** lint：检查 entities/events/chunks 数据完整性 */
@@ -300,7 +301,7 @@ registerHandler("autonomous_research", async () => {
       report.researched = topTopic;
       // 用 SAG 检索跑一次（如果服务可用）
       try {
-        const searchRes = await fetch("http://localhost:4173/api/search", {
+        const searchRes = await fetch(`${selfBaseUrl()}/api/search`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: topTopic, sourceIds: ["c609acbf-1d6e-4bd5-9ae1-92fa6c64021a"], topK: 5 }),

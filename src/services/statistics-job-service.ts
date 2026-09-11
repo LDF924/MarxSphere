@@ -7,6 +7,10 @@
 // 执行: 文件仓取数据(user_files) → statistics_runner.py(独立 venv, pandas/scipy/statsmodels) → 结果 DB 落库
 // 闭源语义: decoded-stats-viz.md §1(17 法参数/输出契约/Python 异常翻译); 与 empirical 域隔离独立实现
 import { randomUUID } from "node:crypto";
+import { getObject } from "./blob-store.js";
+import path from "node:path";
+import { dataRoot } from "./storage-paths.js";
+import { dataPath } from "./storage-paths.js";
 import { execFile } from "node:child_process";
 import { pool } from "../db/pool.js";
 
@@ -56,33 +60,11 @@ export function getStatsJob(userId: string, jobId: string): StatsJob | null {
   return j && j.userId === userId ? j : null;
 }
 
-/**
- * 任务 → 原始数据集(图表复用/回查用)
- * 统计产物本身只有图, 数据真源是"任务 input.fileId 指向的 user_files";
- * 进程重启后内存 job 丢失, 故支持按 stats_jobs 表回查 file_id
- * (fileId 为空的任务: 粘贴/仿真数据只在跑分析时临时上传, 拿不到原始数据 → 返回 null 由调用方明示)
- */
-export async function getStatsJobDataset(
-  userId: string,
-  jobId: string
-): Promise<{ columnOrder: string[]; rows: unknown[][]; fileName: string; profile?: Record<string, unknown> } | null> {
-  let fileId = String(jobs.get(jobId)?.input?.fileId ?? "");
-  if (!fileId) {
-    try {
-      const r = await pool.query(`select input->>'fileId' as file_id from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
-      fileId = String(r.rows[0]?.file_id ?? "");
-    } catch { /* 回查失败按无数据处理 */ }
-  }
-  if (!fileId) return null;
-  const loaded = await loadUserFileData(userId, fileId);
-  if (!loaded) return null;
-  return { columnOrder: loaded.columnOrder, rows: loaded.rows, fileName: String(loaded.filename ?? "") };
-}
-
 /** 内存态历史(调用方应优先用 listStatsJobsAsync: 重启后内存为空) */
 export function listStatsJobs(userId: string, limit = 30): StatsJob[] {
   return [...jobs.values()].filter((j) => j.userId === userId).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
 }
+
 
 /** 数据库持久化(stats_jobs 历史; 失败不影响主流程) */
 async function persistJob(job: StatsJob): Promise<void> {
@@ -99,23 +81,24 @@ async function persistJob(job: StatsJob): Promise<void> {
 }
 
 /** 从文件仓取数据(user_files) → 行/列结构 */
-async function loadUserFileData(userId: string, fileId: string): Promise<{ columnOrder: string[]; rows: unknown[][]; profile?: Record<string, unknown>; filename?: string } | null> {
+async function loadUserFileData(userId: string, fileId: string): Promise<{ columnOrder: string[]; rows: unknown[][]; fileName: string; profile?: Record<string, unknown> } | null> {
   try {
     const rawId = String(fileId).replace(/^file_/, "");
     const r = await pool.query(`select storage_rel, filename, profile from user_files where id=$1 and user_id=$2`, [rawId, userId]);
     if (!r.rows.length) return null;
     const row = r.rows[0];
-    const abs = `${process.env.SAG_ROOT || process.cwd()}/${row.storage_rel}`;
-    const { readFileSync } = await import("node:fs");
-    const text = readFileSync(abs, "utf-8").slice(0, 1_500_000);
+    // storage_rel 历史上有两种存法(data/ 前缀 与 无前缀), blob-store 按同一规则归一化
+    const buf = await getObject(String(row.storage_rel));
+    if (!buf) return null;
+    const text = buf.toString("utf-8").slice(0, 1_500_000);
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    if (lines.length < 2) return { columnOrder: [], rows: [] };
+    if (lines.length < 2) return { columnOrder: [], rows: [], fileName: String(row.filename ?? "") };
     // CSV 或 TSV 探测
     const delim = (lines[0].match(/\t/) ? "\t" : lines[0].includes(",") ? "," : "\t");
     const parseLine = (l: string) => l.split(delim).map((c) => c.trim());
-    const columnOrder = parseLine(lines[0]).map((c) => (c.startsWith("﻿") ? c.slice(1) : c));
+    const columnOrder = parseLine(lines[0]).map((c) => c.replace(/^﻿/, ""));
     const rows = lines.slice(1).map(parseLine);
-    return { columnOrder, rows, profile: row.profile, filename: row.filename };
+    return { columnOrder, rows, fileName: String(row.filename ?? ""), profile: row.profile };
   } catch (e) {
     console.error("[stats-job] 数据读取失败", String(e).slice(0, 160));
     return null;
@@ -143,7 +126,8 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
   job.status = "running";
   job.stage = "准备数据";
   void persistJob(job);
-  const taskDir = `${process.env.SAG_ROOT || process.cwd()}/data/statistics-jobs/${jobId}`;
+  // 两边都保留: 主仓新加的 stage 白盒监听 + 本分支的数据根抽象(云端 DATA_DIR 生效)
+  const taskDir = dataPath("statistics-jobs", jobId);
   // 2026-09-09 白盒: 监听 runner 的 stage.json 更新 job.stage(500ms; ESM 动态 import)
   let stageTimer: ReturnType<typeof setInterval> | null = null;
   const startStageWatch = (dir: string) => {
@@ -277,7 +261,8 @@ export async function getStatsJobAsync(userId: string, jobId: string): Promise<S
   const mem = jobs.get(jobId);
   if (mem && mem.userId === userId) return mem;
   try {
-    const r = await pool.query(`select ${JOB_COLUMNS} from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
+    const r = await pool.query(
+      `select ${JOB_COLUMNS} from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
     const row = r.rows[0];
     if (!row) return null;
     const j = rowToJob(row);
@@ -307,4 +292,46 @@ export async function listStatsJobsAsync(userId: string, limit = 30): Promise<St
   return [...out.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
 }
 
-export const statsJobService = { createStatsJob, getStatsJob, getStatsJobAsync, getStatsJobDataset, listStatsJobs, listStatsJobsAsync, cancelStatsJob, retryStatsJob };
+/**
+ * 任务 → 原始数据集(图表复用/回查用)。
+ * 统计产物本身只有图, 数据真源是"任务 input.fileId 指向的 user_files";
+ * 进程重启后内存 job 丢失, 故支持按 stats_jobs 表回查 file_id。
+ * (fileId 为空的任务: 粘贴/仿真数据只在跑分析时临时上传, 拿不到原始数据 → 返回 null 由调用方明示)
+ * 返回 fileId 供调用方继续复用同一份数据(前端"送入绘图"要带它)。
+ */
+export async function getStatsJobDataset(userId: string, jobId: string): Promise<{ columnOrder: string[]; rows: unknown[][]; fileName: string; fileId: string } | null> {
+  let fileId = String(jobs.get(jobId)?.input?.fileId ?? "");
+  if (!fileId) {
+    try {
+      const r = await pool.query(`select input->>'fileId' as file_id from stats_jobs where id=$1 and user_id=$2`, [jobId, userId]);
+      fileId = String(r.rows[0]?.file_id ?? "");
+    } catch { /* 回查失败按无数据处理 */ }
+  }
+  if (!fileId) return null;
+  const loaded = await loadUserFileData(userId, fileId);
+  if (!loaded || !loaded.columnOrder.length) return null;
+  return { columnOrder: loaded.columnOrder, rows: loaded.rows, fileName: loaded.fileName ?? "", fileId };
+}
+
+/**
+ * 启动恢复: 把最近 7 天的任务从库里灌回内存 Map。
+ * 没有它, 服务重启后"进行中的任务"在内存里查不到, 轮询永远停在 queued。
+ * (本分支独有; 与 listStatsJobsAsync 的分工: 那个是读列表, 这个是恢复运行态)
+ */
+export async function restoreStatsJobs(): Promise<void> {
+  try {
+    const r = await pool.query(
+      `select ${JOB_COLUMNS} from stats_jobs
+        where created_at > now() - interval '7 days'
+        order by created_at desc limit 200`
+    );
+    for (const row of r.rows) jobs.set(String(row.id), rowToJob(row));
+  } catch (e) {
+    console.error("[stats-job] 恢复失败", String(e).slice(0, 160));
+  }
+}
+
+export const statsJobService = {
+  createStatsJob, getStatsJob, getStatsJobAsync, getStatsJobDataset,
+  listStatsJobs, listStatsJobsAsync, cancelStatsJob, retryStatsJob, restoreStatsJobs,
+};

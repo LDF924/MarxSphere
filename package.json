@@ -35,7 +35,8 @@
     "deploy": "node scripts/deploy.mjs",
     "dev:socialsci-vue": "vite --config web/socialsci-vue/vite.config.ts",
     "build:socialsci-vue": "vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit && vite build --config web/socialsci-vue/vite.config.ts",
-    "typecheck:socialsci-vue": "vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit"
+    "typecheck:socialsci-vue": "vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit",
+    "reconcile": "tsx scripts/reconcile-accounts.ts"
   },
   "dependencies": {
     "@embedpdf/core": "2.14.4",
@@ -110,6 +111,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^9.1.0",
+    "redis": "^5.12.1",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",

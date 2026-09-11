@@ -83,9 +83,13 @@ let patrolTimer: NodeJS.Timeout | null = null;
  */
 export async function recoverInterruptedAgentTasks(): Promise<{ recovered: number }> {
   try {
+    // 归属过滤(多副本关键): 这条原来把**所有** running/planning 判死, 既在启动时跑、
+    //   又被 2 分钟巡检调用 —— 新副本一上线就会干掉兄弟副本正在跑的任务(扩容即破坏)。
+    //   只处理"没有租约或租约已过期"的行: 那才是真的没人推进。
     const r = await pool.query(
       `update agent_tasks set status = 'failed', progress = '服务重启导致中断（可重新运行）', updated_at = now()
-       where status in ('running', 'planning')`
+       where status in ('running', 'planning')
+         and (exec_lease_until is null or exec_lease_until < now())`
     );
     // awaiting_approval 的任务保留挂起状态（审批请求仍有效, 用户批准后重新 run 从挂起步继续）
     if ((r.rowCount ?? 0) > 0) {

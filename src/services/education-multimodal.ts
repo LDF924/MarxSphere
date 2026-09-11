@@ -7,6 +7,7 @@
 // 合规: 语音仅本地处理 + 会话后即删（不落库不训练）；采集前明示学生
 // 复用: analyzeImageAtPath（agent-tool-router）/ whisper（code-sandbox）
 import { pool } from "../db/pool.js";
+import { dataPath } from "./storage-paths.js";
 import { llmJson } from "./education-service.js";
 import { solveQuestion } from "./homework-help-service.js";
 
@@ -61,7 +62,7 @@ export async function speechAssessment(input: {
   const { promisify } = await import("node:util");
   const execFileAsync = promisify(execFile);
 
-  const workspace = path.join(process.env.SAG_ROOT || path.resolve(process.cwd()), "data", "agent_workspace");
+  const workspace = dataPath("agent_workspace");
   const target = path.resolve(workspace, String(input.audioPath).replace(/^[/\\]+/, ""));
   if (!(target === workspace || target.startsWith(workspace + path.sep))) return { ok: false, error: `（路径越界: ${input.audioPath}）` };
   if (!fs.existsSync(target)) return { ok: false, error: "（音频文件不存在）" };

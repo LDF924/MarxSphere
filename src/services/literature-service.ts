@@ -3,14 +3,13 @@
 // 读取用户主目录课题文献库的论文元数据，提供筛选检索。
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式，但数据是本地文献。
 //
-// 数据源: ~/1.Obsidian Vault/课题文献库/学术期刊/{主题}/Markdown/{论文}/
+// 数据源: <文献库根>/{主题}/Markdown/{论文}/
 //   每篇: {title}_信息.md (frontmatter) + {title}.index.md (元数据表) + {title}.original.md
+// 路径解析统一走 kb-paths (LITERATURE_DIR 优先, 未配置回退 <数据根>/kb/journal)。
+// 每次调用时解析 —— 测试会临时改 LITERATURE_DIR 来隔离目录。
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-
-// 脱敏: 个人盘符路径改为 os.homedir() 相对（LITERATURE_DIR env 可覆盖）
-const ACADEMIC_JOURNAL_DIR = process.env.LITERATURE_DIR || path.join(os.homedir(), "1.Obsidian Vault", "课题文献库（CSSCI、北大核心、CSCD、AMI、WJCI）", "学术期刊");
+import { literatureDir } from "./kb-paths.js";
 
 export interface LiteratureRecord {
   id: string;              // 论文唯一 id（用 sourceHash 或文件名 hash）
@@ -242,17 +241,17 @@ function scanTopic(topicDir: string, topicName: string): LiteratureRecord[] {
 }
 
 function scanAll(): LiteratureRecord[] {
-  if (!fs.existsSync(ACADEMIC_JOURNAL_DIR)) {
-    console.warn(`[literature] 目录不存在: ${ACADEMIC_JOURNAL_DIR}`);
+  if (!fs.existsSync(literatureDir())) {
+    console.warn(`[literature] 目录不存在: ${literatureDir()}`);
     return [];
   }
-  const topics = fs.readdirSync(ACADEMIC_JOURNAL_DIR, { withFileTypes: true })
+  const topics = fs.readdirSync(literatureDir(), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
 
   let all: LiteratureRecord[] = [];
   for (const topic of topics) {
-    const records = scanTopic(path.join(ACADEMIC_JOURNAL_DIR, topic), topic);
+    const records = scanTopic(path.join(literatureDir(), topic), topic);
     all = all.concat(records);
   }
   return all;
@@ -332,14 +331,14 @@ export interface PdfRecord {
 let pdfCache: PdfRecord[] | null = null;
 
 function scanAllPdfs(): PdfRecord[] {
-  if (!fs.existsSync(ACADEMIC_JOURNAL_DIR)) return [];
-  const topics = fs.readdirSync(ACADEMIC_JOURNAL_DIR, { withFileTypes: true })
+  if (!fs.existsSync(literatureDir())) return [];
+  const topics = fs.readdirSync(literatureDir(), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
 
   const all: PdfRecord[] = [];
   for (const topic of topics) {
-    const topicDir = path.join(ACADEMIC_JOURNAL_DIR, topic);
+    const topicDir = path.join(literatureDir(), topic);
     const pdfs = findPdfsRecursive(topicDir);
     for (const pdfPath of pdfs) {
       const fileName = path.basename(pdfPath);
@@ -455,5 +454,6 @@ export const literatureService = {
   getRecords,
   getDetail: getLiteratureDetail,
   searchPdfs,
-  scanDir: ACADEMIC_JOURNAL_DIR
+  /** 当前文献库根(每次读取, 反映 LITERATURE_DIR 的实时配置) */
+  get scanDir(): string { return literatureDir(); }
 };

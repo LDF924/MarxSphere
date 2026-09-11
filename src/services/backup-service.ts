@@ -14,6 +14,7 @@ import { join } from "node:path";
 import neo4j, { type Driver, type Session } from "neo4j-driver";
 import { pool } from "../db/pool.js";
 import { config } from "../config/env.js";
+import { neo4jBoltUrl } from "./kb-paths.js";
 
 // ═══ 常量 ═══
 
@@ -121,7 +122,7 @@ const _neo4jDrivers = new Map<number, Driver>();
 function neo4jDriver(port: number): Driver {
   let driver = _neo4jDrivers.get(port);
   if (!driver) {
-    driver = neo4j.driver(`bolt://127.0.0.1:${port}`, neo4j.auth.basic(NEO4J_AUTH.user, NEO4J_AUTH.password), {
+    driver = neo4j.driver(neo4jBoltUrl(port), neo4j.auth.basic(NEO4J_AUTH.user, NEO4J_AUTH.password), {
       connectionTimeout: 8000,
     });
     _neo4jDrivers.set(port, driver);
@@ -303,7 +304,7 @@ export async function createBackup(input: { includeGraphs?: boolean } = {}): Pro
       }
       if (!(await isNeo4jUp(port))) {
         parts[partName] = { sha256: "", size: 0, skipped: true };
-        warnings.push(`${engine} 容器未运行(bolt://127.0.0.1:${port}), 已跳过; 启动: docker compose up -d neo4j-${engine === "graphiti" ? "graphiti" : "cognee"}`);
+        warnings.push(`${engine} 容器未运行(${neo4jBoltUrl(port)}), 已跳过; 启动: docker compose up -d neo4j-${engine === "graphiti" ? "graphiti" : "cognee"}`);
         continue;
       }
       const path = join(tmpDir, partName);
