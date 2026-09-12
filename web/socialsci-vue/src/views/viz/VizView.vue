@@ -481,6 +481,15 @@ onMounted(() => {
   loadCanvas();
   void loadJobs();
   window.addEventListener("message", onEmpiricalSeed as unknown as EventListener);
+  // V414: 挂载完成 + 监听器已就绪 → 告知父级可以投递。
+  //   父级靠轮询 document.getElementById("app") 判断"就绪"是不可靠的: #app 只是 index.html 里的
+  //   静态挂载点(HTML 解析完就存在), 而本组件的 onMounted 要等动态 import 的 bundle 下载、
+  //   路由解析、组件挂载之后才跑。父级据此提前 postMessage → 监听器还不存在 → 消息静默丢失
+  //   (实测: 同一份代码三次验证两成一股, 随机成败)。打标由真正就绪的一方发出, 时序确定。
+  (window as unknown as { __socReady?: Record<string, boolean> }).__socReady = {
+    ...((window as unknown as { __socReady?: Record<string, boolean> }).__socReady ?? {}),
+    viz: true,
+  };
 });
 onUnmounted(() => {
   saveCanvas();
