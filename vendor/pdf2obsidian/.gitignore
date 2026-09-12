@@ -1,5 +1,10 @@
 node_modules/
-dist/
+# dist/ 原为忽略项, 2026-09-12 改为**必须入库**:
+#   src/services/pdf2obsidian-adapter.ts 直接 import packages/{pipeline,core}/dist/index.js,
+#   而这些 dist 一旦被忽略 → **任何全新克隆都构建不出后端**(tsc 报 TS2307 找不到模块)。
+#   实测: 主仓/open 本地磁盘上有 vendor dist(靠未入库的手工构建), 但 git ls-files 为空,
+#   克隆出来 dist/ 是 0 个文件。改动后请勿再忽略 dist —— 它是运行依赖, 不是可再生产物。
+#   仅忽略 .pipeline/ 与日志(真正的中间产物)。
 .pipeline/
 *.log
 .next/

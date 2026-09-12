@@ -37,9 +37,16 @@ const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md",
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
 const EXCLUDE_FILE = [/^\.env/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\.json$/, /^gold_dataset.*\.json$/, /^judge_results\.json$/, /^isolated_entities\.csv$/, /^batch-ingest-log/, /^cognee_entities_dump\.json$/, /^entity_(id|norm)_map\.json$/, /^paper_id_map\.json$/, /^run-eval-one-by-one/, /^start(_sag|-web)\./, /^compact-vhdx/, /^memory-settings\.json$/, /^node_modules\.zip$/];
 
+// vendor/pdf2obsidian 的 dist 是**运行依赖**而非可再生产物:
+//   src/services/pdf2obsidian-adapter.ts 直接 import 它的 {pipeline,core}/dist/*.js,
+//   一旦不同步 → 克隆后 tsc 报 TS2307, 后端根本构建不出来(2026-09-12 实测)。
+//   所以这三个包下的 dist 必须放行, 其它 dist(web/dist、packages/dist 等)继续排除。
+const VENDOR_DIST_ALLOW = /^vendor\/pdf2obsidian\/packages\/(core|pipeline|providers)\/dist(\/|$)/;
+
 function excluded(rel, isDir) {
   // 任意层级的排除目录(scripts/eval-archive 等)
   const relLower = rel.toLowerCase();
+  if (VENDOR_DIST_ALLOW.test(relLower)) return false;
   if (isDir && (EXCLUDE_DIR.has(rel) || relLower.split("/").some((seg) => EXCLUDE_DIR.has(seg)))) return true;
   const name = path.basename(rel);
   return EXCLUDE_FILE.some((re) => re.test(name));
