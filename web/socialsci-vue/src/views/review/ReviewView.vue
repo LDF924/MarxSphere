@@ -502,9 +502,16 @@ async function removePreset(p: ReviewPreset) {
 // 存 localStorage(按 jobId 分桶): 这是"我对这次结果的态度", 不是要长期归档的资产;
 //   跨任务汇总出的偏好才是有价值的, 见 buildReviewPrefs。
 const VERDICTS = [
-  { key: "agree", label: "同意", hint: "这条问题确实存在" },
-  { key: "disagree", label: "不同意", hint: "误报 —— 下次别再提这类" },
-  { key: "fixed", label: "已修改", hint: "已按建议改过了" },
+  // ⚠ cls 而不是 key 直接当 class 用: 值必须是 "rv-v-*" 带前缀的。
+  //   由来(2026-09-12 用户反馈"已修改这几个字出现在已修改的上面"): 这里原本
+  //   `:class="[v.key, ...]"` → 第三个按钮拿到字面量 class `fixed`, 而本子工程启用了
+  //   Tailwind(@tailwind utilities), 它扫描到源码里的 "fixed" 就生成了 `.fixed{position:fixed}`
+  //   → 该按钮被抽成固定定位、脱离文档流跑回容器左上角, 压在「我的判断」上(实测坐标 x=779,
+  //   与 label 完全重叠)。agree/disagree 侥幸没撞只是因为 Tailwind 没有同名工具类, 不是设计。
+  //   带前缀后彻底避开 Tailwind 的类名空间; key 保持原名(它同时是 localStorage 里的存储值)。
+  { key: "agree", cls: "rv-v-agree", label: "同意", hint: "这条问题确实存在" },
+  { key: "disagree", cls: "rv-v-disagree", label: "不同意", hint: "误报 —— 下次别再提这类" },
+  { key: "fixed", cls: "rv-v-fixed", label: "已修改", hint: "已按建议改过了" },
 ] as const;
 type VerdictKey = (typeof VERDICTS)[number]["key"];
 const VERDICT_KEY = "skf_review_verdicts";
@@ -1593,7 +1600,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
                   v-for="v in VERDICTS"
                   :key="v.key"
                   class="rv-btn"
-                  :class="[v.key, { on: verdictOf(activeAnnotation.id) === v.key }]"
+                  :class="[v.cls, { on: verdictOf(activeAnnotation.id) === v.key }]"
                   :title="v.hint"
                   @click="setVerdict(activeAnnotation.id, v.key)"
                 >{{ v.label }}</button>
@@ -2268,16 +2275,22 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .prog-found { font-size: 11.5px; color: #E8B54A; }
 
 /* ── 人工复核层(2026-09-12) ── */
+/* 复核条: 允许换行 + 每个按钮禁止被压窄。
+   由来(2026-09-12): 实测容器仅 460px, 「我的判断 + 三档 + 发到编辑器改写」在窄栏里会被挤压;
+   加 white-space:nowrap 保证按钮文字不折行(中文折行后按钮会变成细高条)。 */
 .review-verdict { display: flex; align-items: center; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
-.rv-label { font-size: 11.5px; color: #8B9BB1; }
+.rv-label { font-size: 11.5px; color: #8B9BB1; white-space: nowrap; flex-shrink: 0; }
 .rv-btn {
   padding: 3px 11px; font-size: 12px; border-radius: 13px; cursor: pointer;
   border: 1px solid #2A3A55; background: transparent; color: #A9BBD3; transition: all .15s;
+  white-space: nowrap; flex-shrink: 0;
 }
 .rv-btn:hover { border-color: #4D84CB; }
-.rv-btn.agree.on { border-color: #5FD0B4; background: rgba(95, 208, 180, .16); color: #5FD0B4; }
-.rv-btn.disagree.on { border-color: #E0715C; background: rgba(224, 113, 92, .16); color: #E0715C; }
-.rv-btn.fixed.on { border-color: #7EB0E8; background: rgba(126, 176, 232, .16); color: #7EB0E8; }
+/* 选中态: 用 rv-v-* 前缀(带 .rv-btn 提升特异性) —— 不用裸 .fixed/.agree/.disagree,
+   因为本子工程启用了 Tailwind, 裸类名会撞上它的工具类(见 VERDICTS 注释里 fixed 的事故) */
+.rv-btn.rv-v-agree.on { border-color: #5FD0B4; background: rgba(95, 208, 180, .16); color: #5FD0B4; }
+.rv-btn.rv-v-disagree.on { border-color: #E0715C; background: rgba(224, 113, 92, .16); color: #E0715C; }
+.rv-btn.rv-v-fixed.on { border-color: #7EB0E8; background: rgba(126, 176, 232, .16); color: #7EB0E8; }
 .rv-progress { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
 .rvp-bar { flex: 1; height: 5px; border-radius: 4px; background: #1B2438; overflow: hidden; }
 .rvp-fill { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #4D84CB, #5FD0B4); transition: width .3s ease; }
