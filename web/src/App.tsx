@@ -239,28 +239,6 @@ function AppShell() {
   // 统一分析台「送工坊精修」待处理的作图种子
   const pendingVizSeedRef = useRef<{ title: string; csv: string; columnOrder: string[]; message: string } | null>(null);
 
-  // V414: 判断 iframe 内的子应用**监听器是否已就绪**。
-  //   这里踩过两级坑, 记下来免得后人重犯:
-  //   1) 原来写 `iframe?.contentWindow` —— 永真: contentWindow 是 WindowProxy, iframe
-  //      元素一创建就存在, 此时指向的还是初始 about:blank 文档。
-  //   2) 改用 `document.getElementById("app")` —— 仍然不可靠: #app 只是 Vue 子应用
-  //      index.html 里的**静态挂载点**, HTML 一解析完就存在(实测 51ms), 而真正接收消息的
-  //      VizView/EditorView 的 onMounted 要等动态 import 的 bundle 下载 + 路由解析 + 组件
-  //      挂载之后才跑。父级据此提前投递 → 监听器还不存在 → 消息静默丢失。
-  //      实测证据: 同一份代码连跑三次, 送达/丢失随机出现 —— 典型竞态。
-  //   现在由**真正就绪的一方打标**: 两个 Vue 视图在 onMounted 注册完 message 监听后写
-  //   `window.__socReady[viz|editor] = true`, 父级只读这个标。时序确定, 不靠猜。
-  //   跨域(dev React 4174 / Vue 5174)读不到 → 返回 false 继续轮询, 保守但不误投。
-  const subAppReady = (iframe: HTMLIFrameElement | null, app: "viz" | "editor"): boolean => {
-    if (!iframe?.contentWindow) return false;
-    try {
-      const ready = (iframe.contentWindow as unknown as { __socReady?: Record<string, boolean> }).__socReady;
-      return !!ready?.[app];
-    } catch {
-      return false;
-    }
-  };
-
   // ── V398: AI 对话页状态（assistant 视图）──
   const [chatSessions, setChatSessions] = useState<McpSessionRecord[]>([]);
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
@@ -649,18 +627,18 @@ function AppShell() {
     const timer = setInterval(() => {
       tries++;
       const iframe = document.querySelector('iframe[title="学术文本工作台"], iframe[src*="/editor"]') as HTMLIFrameElement | null;
-      if (subAppReady(iframe, "editor")) {
+      if (iframe?.contentWindow) {
         try {
           // 数据集补发: iframe 晚于 broadcast 挂载时的时序兜底
-          if (ds) iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-dataset", ...ds }, "*");
-          if (doc) iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-insert-doc", title: doc.title, markdown: doc.markdown }, "*");
+          if (ds) iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-dataset", ...ds }, "*");
+          if (doc) iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-insert-doc", title: doc.title, markdown: doc.markdown }, "*");
           pendingEditorDocRef.current = null;
           clearInterval(timer);
           return;
         } catch { /* 跨域忽略 */ }
       }
-      if (tries > 200) { pendingEditorDocRef.current = null; clearInterval(timer); }
-    }, 50);
+      if (tries > 30) { pendingEditorDocRef.current = null; clearInterval(timer); }
+    }, 300);
     return () => clearInterval(timer);
   }, [workspaceView]);
 
@@ -712,21 +690,16 @@ function AppShell() {
     const timer = setInterval(() => {
       tries++;
       const iframe = document.querySelector('iframe[title="成果可视化工坊"], iframe[src*="/viz"]') as HTMLIFrameElement | null;
-      if (subAppReady(iframe, "viz")) {
+      if (iframe?.contentWindow) {
         try {
-          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-viz-seed", ...seed }, "*");
+          iframe.contentWindow.postMessage({ source: "marxsphere-app", type: "empirical-viz-seed", ...seed }, "*");
           pendingVizSeedRef.current = null;
           clearInterval(timer);
           return;
         } catch { /* 跨域忽略 */ }
       }
-      // V414: 原来 tries>30(约 9s) 时直接清空 ref 静默放弃 —— 用户点了「送工坊精修」
-      //   却什么也没发生, 且重试无门。改为保留种子(切走再切回可重投)并明确告知失败。
-      if (tries > 200) {
-        clearInterval(timer);
-        setError("未能把数据集送入成果工坊(子应用加载超时), 请重新点击「送工坊精修」");
-      }
-    }, 50);
+      if (tries > 30) { pendingVizSeedRef.current = null; clearInterval(timer); }
+    }, 300);
     return () => clearInterval(timer);
   }, [workspaceView]);
 

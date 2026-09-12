@@ -367,11 +367,6 @@ onMounted(() => {
   window.addEventListener(EVT.aiInsertChart, onAiInsertChart as EventListener);
   window.addEventListener("doc-word-import", onWordImport as EventListener);
   window.addEventListener("message", onAppInsertDoc as unknown as EventListener);
-  // V414: 同 VizView —— 监听器就绪后打标, 供父级判断可投递(替代不可靠的 #app 轮询)
-  (window as unknown as { __socReady?: Record<string, boolean> }).__socReady = {
-    ...((window as unknown as { __socReady?: Record<string, boolean> }).__socReady ?? {}),
-    editor: true,
-  };
   window.addEventListener("beforeunload", flushAndSave);
   void handleRouteIntent();
 });

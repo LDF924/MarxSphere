@@ -3,7 +3,7 @@
 // scripts/sync-open.mjs — main→open-source 一键同步(V393, 2026-08-30)
 // 流程:
 //   1. 复制 main 的全部代码/文档到 open-source(排除 .env/.git/node_modules/dist 等)
-//   2. open-source 提交 + push origin main
+//   2. open-source 提交 + push origin main  (临时改动)
 // 用法:
 //   node scripts/sync-open.mjs           # 同步+提交+push
 //   node scripts/sync-open.mjs --dry-run # 只显示差异不复制
@@ -112,6 +112,10 @@ try {
   openTracked = out.split("\n").map((s) => s.trim()).filter(Boolean);
 } catch { /* open 仓无 git / 读不到 → 跳过检测 */ }
 const ghosts = openTracked.filter((rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)));
+// 有残留时用独立退出码, 让外部脚本/CI 能感知(原来无论如何都返回 0, 警告只打在
+// stdout —— 不盯着终端就等于静默, 2026-09-12 讨论确认这是真实风险)。
+// 2 = "同步成功但有残留待人工清理", 与 1 = "同步失败" 区分; 同步本身仍照常完成。
+const GHOST_EXIT = 2;
 if (ghosts.length) {
   console.log(`\n[sync-open] ⚠️ 检测到 ${ghosts.length} 个「main 已删、open 仍跟踪」的残留(本脚本不自动删):`);
   for (const g of ghosts) console.log(`  D ${g}`);
@@ -119,10 +123,19 @@ if (ghosts.length) {
   console.log(`  确认无用后手工清理:`);
   console.log(`    cd ${OPEN} && git rm -r -- ${ghosts.slice(0, 3).map((g) => JSON.stringify(g)).join(" ")}${ghosts.length > 3 ? " …" : ""}`);
   console.log(`  (注意: 只在上述范围内报告。examples/、skills/ 等不在 DIRS 里的差异是 open 独有的内容, 不算残留。)\n`);
+  console.log(`  → 本次退出码 ${GHOST_EXIT}(有残留); 若无残留为 0.`);
+  console.log(`  → 该提示同时写入 open 仓的提交信息, 供事后 git log 追溯。`);
 }
 
-if (DRY) { console.log("[sync-open] --dry-run: 未复制"); process.exit(0); }
-if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新(无新增/修改)"); process.exit(0); }
+// 留痕: 把残留写进提交信息, 这样即使没人盯终端, git log 里也查得到
+const GHOST_NOTE = ghosts.length
+  ? "\n\n[sync-open 残留提示] open 仓有 " + ghosts.length + " 个文件在 main 已删但仍被跟踪, 需人工清理:\n"
+    + ghosts.slice(0, 10).map((g) => "  - " + g).join("\n")
+    + (ghosts.length > 10 ? "\n  … 等 " + ghosts.length + " 个" : "")
+  : "";
+
+if (DRY) { console.log("[sync-open] --dry-run: 未复制"); process.exit(ghosts.length ? GHOST_EXIT : 0); }
+if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新(无新增/修改)"); process.exit(ghosts.length ? GHOST_EXIT : 0); }
 
 // ─── 复制 ───
 for (const rel of files) {
@@ -140,7 +153,10 @@ try {
   execSync(`git add -A`, { cwd: OPEN, stdio: "inherit" });
   const status = execSync(`git status --short`, { cwd: OPEN, encoding: "utf8" });
   if (status.trim()) {
-    execSync(`git commit -m ${JSON.stringify(COMMIT_MSG)}`, { cwd: OPEN, stdio: "inherit" });
+    // 用 `-F -` 从 stdin 读消息, 而不是 `-m ${JSON.stringify(...)}`:
+    // 后者消息里的换行会被 shell 当字面字符传进 git, 多行提示会显示成一行,
+    // 留痕形同失效(2026-09-12 实测)。stdin 方式换行才真的生效。
+    execSync(`git commit -F -`, { cwd: OPEN, input: COMMIT_MSG + GHOST_NOTE, stdio: ["pipe", "inherit", "inherit"] });
     console.log(`[sync-open] 已提交 open-source: ${COMMIT_MSG}`);
   }
   if (!NO_PUSH) {
@@ -153,4 +169,7 @@ try {
   console.error(`[sync-open] git 操作失败: ${String(e?.message || e).slice(0, 200)}`);
   process.exit(1);
 }
-console.log("[sync-open] ✅ 同步完成");
+console.log(ghosts.length
+  ? `[sync-open] ⚠️ 同步完成, 但有 ${ghosts.length} 个残留待人工清理(退出码 ${GHOST_EXIT})`
+  : "[sync-open] ✅ 同步完成");
+process.exit(ghosts.length ? GHOST_EXIT : 0);
