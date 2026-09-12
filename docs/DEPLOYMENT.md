@@ -150,7 +150,7 @@ git push origin v0.3.0
 | `/health` 的 `db: down` | PG 未启动/连接串错 | `docker compose up -d` 后重试 |
 | 文献库/政策库/资料库为空 | 目录路径未配置/不存在 | 设置 `LITERATURE_DIR` 等，见启动检查报告 |
 | 推理/检索无结果 | Embedding Key 未配 | 配 `EMBEDDING_API_KEY` |
-| typecheck 报 pdf2obsidian module-not-found | vendor dist 未构建 | `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build` |
+| typecheck 报 pdf2obsidian module-not-found | node_modules 半装（安装被中断） | `rm -rf node_modules && npm ci`；产物已入库，无需 pnpm 构建 |
 
 ## 5. 教育功能部署说明
 

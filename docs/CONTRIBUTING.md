@@ -33,7 +33,7 @@ npx vite build
 | 步骤 | 内容 |
 |---|---|
 | Setup | Node 20 + PG 16（pgvector 容器） |
-| Install | npm ci + vendor/pdf2obsidian 构建 |
+| Install | `npm ci`（vendor/pdf2obsidian 编译产物已入库，无需额外构建） |
 | **Typecheck** | 后端 + 前端 tsc |
 | **Unit tests** | vitest 全量 |
 | Frontend build | vite build |

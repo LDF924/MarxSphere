@@ -377,7 +377,8 @@ npm run quickstart       # 🚀 one-command start: install deps → env check �
 
 > Or step by step: `cp .env.example .env` (fill in LLM/Embedding keys) → `npm install` → `npm run db:setup` → `npm run dev`
 
-> **PDF2Obsidian (optional)**: `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
+> **PDF2Obsidian**: build artifacts are committed (`vendor/pdf2obsidian/packages/{core,pipeline,providers}/dist`), so `npm install` is enough — **no** pnpm rebuild needed.
+> Rebuild only if you changed `vendor/pdf2obsidian/packages/*/src`: `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 
 ### 3. Production
 

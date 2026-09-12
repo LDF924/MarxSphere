@@ -59,7 +59,12 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts
 ## 开发与发布
 
 ### Q10: typecheck 报 pdf2obsidian module-not-found？
-vendor 编译产物未构建（gitignored）：
+2026-09-12 起**编译产物已入库**，`npm install` 后即有，正常不会再遇到。
+若确实报错，多因 `node_modules` 装到一半被中断（半装状态里包目录存在但文件不全）——重装即可：
+```bash
+rm -rf node_modules && npm ci
+```
+只有在改动 `vendor/pdf2obsidian/packages/*/src` 之后，才需要重建产物：
 ```bash
 cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..
 ```

@@ -104,8 +104,9 @@ npm run dev # 开发: http://localhost:5173
 npm run build && npm start # 生产: http://localhost:4173
 ```
 
-> **PDF2Obsidian 功能**（可选）：`vendor/pdf2obsidian` 的编译产物（dist）为构建产物未随仓库提交，首次使用前执行
-> `cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`（否则 typecheck 报 2 个 module-not-found，PDF2Obsidian 功能不可用）。
+> **PDF2Obsidian 功能**：编译产物（`packages/{core,pipeline,providers}/dist`）**已随仓库提交**，`npm install` 后即可用。
+> 此前它被 gitignore 忽略，导致任何全新克隆都报 2 个 module-not-found、后端构建不出来（2026-09-12 修复）。
+> 仅当改动 `vendor/pdf2obsidian/packages/*/src` 后才需重建：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 >
 > **文献库/政策库/资料库数据源**：三个库页面扫描本地文件夹（`LITERATURE_DIR`/`POLICY_DIR`/`VAULT_ROOT` 环境变量，见 `.env.example` 底部）——指向任意本地目录即可，无需安装 Obsidian；未配置时页面为空，Ask/推理不受影响。
 
