@@ -344,3 +344,37 @@ describe("guardian_breaker_wiring", () => {
     expect(guardianBreakerOpen()).toBe(false);
   });
 });
+
+// ═══ 11. empirical_runner ologit 缺失值回归 (V414 修: astype(int) 早于 dropna) ═══
+describe("empirical_runner_ologit", () => {
+  const RUNNER = join(ROOT, "scripts", "empirical_runner.py");
+  // 因变量含缺失 → 原来必崩 "Cannot convert non-finite values (NA or inf) to integer"，
+  // 根因是 .astype(int) 排在 .dropna() 之前。这条用例钉住修复。
+  it.skipIf(!existsSync(RUNNER) || !pyHasPandas)("因变量含缺失值时不崩, 且阈值行被剔除", () => {
+    const dir = tmpDir();
+    try {
+      const n = 60;
+      const rows: unknown[][] = [];
+      for (let i = 0; i < n; i++) {
+        // 每 20 条挖一个洞, 制造 3 个缺失
+        const y = i % 20 === 0 ? null : 1 + (i % 3);
+        rows.push([y, i % 2, (i % 5) + 1]);
+      }
+      writeFileSync(join(dir, "input.json"), JSON.stringify({
+        method: "ologit",
+        data: { columnOrder: ["band", "x1", "x2"], rows },
+        params: { y: "band", xs: ["x1", "x2"] },
+      }), "utf-8");
+      const out = execFileSync(PY, [RUNNER, dir], { encoding: "utf-8", timeout: 90_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+      const res = JSON.parse(readFileSync(join(dir, "result.json"), "utf-8"));
+      expect(res.tables.length).toBeGreaterThan(0);
+      const vars = res.tables[0].rows.map((r: unknown[]) => String(r[0]));
+      expect(vars).toContain("x1");
+      // 阈值行(1/2, 2/3)不应出现在结果表里 —— 表注声称"阈值参数已省略"
+      expect(vars.some((v: string) => /^\d+\/\d+$/.test(v))).toBe(false);
+      expect(out).toBeDefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

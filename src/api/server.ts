@@ -5857,8 +5857,14 @@ except Exception as e:
 
   // GET /api/empirical/figures/:file — 生成的图表静态服务(blob-store: empirical/figures/)
   app.get("/api/empirical/figures/:file", async (request, reply) => {
-    const user = await requireUser(request, reply); if (!user) return;
-    void user;
+    // V414 fix: 原来无条件 requireUser —— 但前端是用 <img src> / <a href> 加载这张图的
+    //   (web/src/components/empirical/PipelineOverview.tsx:85-87), 浏览器这两种方式
+    //   **都带不了 Authorization 头** → 本机开发时图全是碎的(实测 401)。
+    //   本机 socket 连接按全局鉴权口径放行; 远程仍需登录。
+    if (!isLocalRequest(request)) {
+      const user = await requireUser(request, reply); if (!user) return;
+      void user;
+    }
     const nodePath = await import("node:path");
     const raw = String((request.params as { file?: string }).file ?? "");
     if (!raw || raw.includes("/") || raw.includes("\\") || raw.includes("..") || raw.includes(":")) {

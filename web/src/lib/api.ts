@@ -1302,7 +1302,15 @@ export const apiEmpirical = {
 
 // ─── 实证研究工作台增强（V380+）: 课题/问卷/数据版本 ───
 export interface QuestionOption { code: number; label: string }
-export interface SkipLogic { ifQid: string; ifOption: number | null; goto: string }
+// V414: ifOption 支持多值 —— 原著常写"选 A 或 B 时显示"。优先 ifOptions(数组), 兼容旧 ifOption。
+export interface SkipLogic {
+  ifQid: string;
+  ifOption?: number | null;
+  ifOptions?: number[] | null;
+  goto: string;
+}
+// V414: charts 每项含两份产物 —— file(png, 展示用) 与 pdfFile(矢量, 投稿用)
+export interface EmpiricalChart { id: string; title: string; file: string; pdfFile?: string; sizeKB: number }
 export interface Question {
   qid: string; varName: string; stem: string;
   type: "cat" | "ordinal" | "cont" | "text" | "multi";
