@@ -416,6 +416,8 @@ export function buildHttpServer() {
     // V395-11: 导航对齐 — PDF2Obsidian / Agent控制台+任务（本机豁免, 外部令牌需对应权限）
     ["/api/p2o", "p2o"],
     ["/api/agent", "agent"],
+    // V415: 编排器 — 画布 DAG 的执行入口(会调 agent 工具与各工作台端点), 外部令牌需 agent 权限
+    ["/api/orchestrator", "agent"],
     ["/api/backup", "admin"],        // P1: 备份/恢复(破坏性全量替换, 仅 admin)
   ];
 
@@ -6842,6 +6844,104 @@ except Exception as e:
     const body = request.body as { id?: string };
     const r = rejectDagProposal(String(body.id || ""));
     if (!r.ok) return reply.code(400).send({ error: r.error, code: "AGENT_BAD_REQUEST" });
+    return { ok: true };
+  });
+
+  // ═══ V415: 编排器 — 能力注册表 + 模板 + 运行(画布 DAG 真执行) ═══
+  // 由来(2026-09-12 用户: 课题流程编排前后端/组件/产出/功能都不完善, 尤其没有真正自由组合编排,
+  //   且只有一个工作流, 没反映 MarxSphere 的全部科研能力):
+  //   旧画布节点写死 5+4 个, 边不参与执行, 暂停只停前端轮询。
+  //   这里提供能力清单(100+ 项)、模板(10 条)、以及"按 edges 拓扑执行"的运行入口。
+  app.get("/api/orchestrator/capabilities", async (request) => {
+    const { listCapabilities } = await import("../services/capability-registry.js");
+    const { capabilityStats } = await import("../services/orchestrator-service.js");
+    const q = request.query as { refresh?: string };
+    const caps = await listCapabilities({ refresh: q.refresh === "1" });
+    return { ok: true, stats: await capabilityStats(), capabilities: caps };
+  });
+  app.get("/api/orchestrator/templates", async () => {
+    const { listTemplates } = await import("../services/orchestrator-service.js");
+    return { ok: true, templates: listTemplates() };
+  });
+  app.post("/api/orchestrator/run", async (request, reply) => {
+    const { startOrchestration } = await import("../services/orchestrator-service.js");
+    const body = (request.body ?? {}) as {
+      graph?: { id?: string; name?: string; nodes: any[]; edges: any[] };
+      templateId?: string; input?: string; model?: string;
+      userValues?: Record<string, string>; wait?: boolean;
+    };
+    // 画布执行权限: 与 agent 工具同等 —— 外部令牌需 agent 权限(编排会调工具与工作台端点)
+    const auth = request.headers.authorization as string | undefined;
+    try {
+      const r = await startOrchestration({
+        graph: body.graph as any, templateId: body.templateId, input: body.input,
+        model: body.model, userValues: body.userValues,
+        authToken: auth?.startsWith("Bearer ") ? auth.slice(7).trim() : undefined,
+      });
+      if (!body.wait) return { ok: true, runId: r.runId, steps: r.steps, order: r.order };
+      // 同步等待(供"子编排"节点内嵌调用): 轮询到终态再返回
+      const { getRunProgress } = await import("../services/orchestrator-service.js");
+      const deadline = Date.now() + 15 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((res) => setTimeout(res, 1500));
+        const p = await getRunProgress(r.runId);
+        if (["done", "failed", "cancelled"].includes(p.status)) {
+          return { ok: p.status === "done", runId: r.runId, status: p.status, stepLog: p.stepLog, outputs: p.outputs };
+        }
+        if (p.status === "waiting_input" || p.status === "paused") {
+          return { ok: false, runId: r.runId, status: p.status, stepLog: p.stepLog, note: "子编排需要人工输入或已暂停, 无法同步完成" };
+        }
+      }
+      return reply.code(202).send({ ok: false, runId: r.runId, status: "running", note: "子编排超时(15 分钟)" });
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: String(e?.message || e).slice(0, 300) } });
+    }
+  });
+  app.get("/api/orchestrator/progress", async (request) => {
+    const { getRunProgress } = await import("../services/orchestrator-service.js");
+    const q = request.query as { runId?: string };
+    return getRunProgress(String(q.runId || ""));
+  });
+  app.post("/api/orchestrator/control", async (request, reply) => {
+    const svc = await import("../services/orchestrator-service.js");
+    const body = (request.body ?? {}) as { runId?: string; action?: string; values?: Record<string, string> };
+    const runId = String(body.runId || "");
+    if (!runId) return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: "runId 必填" } });
+    const r = body.action === "cancel" ? svc.cancelRun(runId)
+      : body.action === "pause" ? svc.pauseRun(runId)
+      : body.action === "resume" ? await svc.resumeRun(runId)
+      : body.action === "input" ? svc.submitRunInput(runId, body.values || {})
+      : { ok: false, error: `未知动作: ${body.action}` };
+    if (!r.ok) return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: r.error } });
+    return { ok: true, action: body.action };
+  });
+  app.get("/api/orchestrator/runs", async (request) => {
+    const { listRuns } = await import("../services/orchestrator-service.js");
+    const q = request.query as { limit?: string };
+    return { ok: true, runs: await listRuns(Number(q.limit) || 30) };
+  });
+  // 用户自定义图的保存/读取(模板在代码里, 这里只存改过的)
+  app.get("/api/orchestrator/graphs", async () => {
+    const { listGraphs } = await import("../services/orchestrator-service.js");
+    return { ok: true, graphs: await listGraphs() };
+  });
+  app.get("/api/orchestrator/graphs/:id", async (request, reply) => {
+    const { loadGraph } = await import("../services/orchestrator-service.js");
+    const g = await loadGraph(String((request.params as { id: string }).id));
+    if (!g) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "编排图不存在" } });
+    return { ok: true, graph: g };
+  });
+  app.put("/api/orchestrator/graphs/:id", async (request, reply) => {
+    const { saveGraph } = await import("../services/orchestrator-service.js");
+    const body = (request.body ?? {}) as { name?: string; description?: string; nodes?: any[]; edges?: any[]; basedOn?: string };
+    if (!Array.isArray(body.nodes)) return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: "nodes 必须是数组" } });
+    const id = String((request.params as { id: string }).id);
+    const r = await saveGraph({ id, name: body.name, description: body.description, nodes: body.nodes as any, edges: body.edges ?? [], basedOn: body.basedOn });
+    return { ok: true, id: r.id };
+  });
+  app.delete("/api/orchestrator/graphs/:id", async (request) => {
+    const { deleteGraph } = await import("../services/orchestrator-service.js");
+    await deleteGraph(String((request.params as { id: string }).id));
     return { ok: true };
   });
 
