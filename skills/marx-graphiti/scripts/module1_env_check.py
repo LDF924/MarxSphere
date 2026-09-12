@@ -25,13 +25,28 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from pipeline import Neo4jConnection, get_logger
 
+def _find_neo4j_root(name="neo4j-community-5.26.27"):
+    """neo4j 安装根目录自动探测(2026-09-12 迁移到 E 盘后加入)
+    候选顺序: 环境变量 NEO4J_DIR -> E:/neo4j -> ~/neo4j -> E:/SAG-data/neo4j"""
+    import os as _os
+    from pathlib import Path as _P
+    _cands = []
+    _env = _os.environ.get("NEO4J_DIR")
+    if _env:
+        _cands.append(_P(_env))
+    _cands += [_P("E:/neo4j"), _P.home() / "neo4j", _P("E:/SAG-data/neo4j")]
+    for _c in _cands:
+        if (_c / name).is_dir():
+            return _c
+    return _P.home() / "neo4j"   # 兜底(保持旧行为, 便于报错可读)
+
 logger = get_logger("env_check")
 
 # ── 全局常量 ──
 MAX_RETRY = 3
 MARK_FILE = SCRIPT_DIR / ".env_check_ok.timestamp"
 BASE_DIR = Path(r"D:\Desktop\ov_import")
-BACKUP_DIR = Path(r"%USERPROFILE%\neo4j\neo4j-community-5.26.27\data\neo4j_backups")
+BACKUP_DIR = _find_neo4j_root() / "neo4j-community-5.26.27" / "data" / "neo4j_backups"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -264,8 +279,8 @@ def _find_neo4j_data_dir() -> Path:
             return Path(configs[0]["value"])
     except Exception:
         pass
-    for cand in [Path(r"%USERPROFILE%\neo4j\neo4j-community-5.26.27\data"),
-                 Path.home() / "neo4j" / "neo4j-community-5.26.27" / "data"]:
+    for cand in [_find_neo4j_root() / "neo4j-community-5.26.27" / "data",
+                 _find_neo4j_root() / "neo4j-community-5.26.27" / "data"]:
         if cand.exists():
             return cand
     return None
