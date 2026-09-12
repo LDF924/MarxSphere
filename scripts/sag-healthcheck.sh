@@ -43,7 +43,7 @@ echo ""
 
 # ─── 4. Python venv ───
 echo "【4/8】Python venv"
-PYTHON="COGNEE_DIR/.venv312/Scripts/python.exe"
+PYTHON="C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe"
 [ -f "$PYTHON" ] && echo "  [OK] venv Python" || echo "  [FAIL] venv Python not found"
 echo ""
 

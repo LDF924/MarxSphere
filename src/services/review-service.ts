@@ -70,6 +70,38 @@ export function defaultDimensions() {
   return JSON.parse(JSON.stringify(DEFAULT_DIMENSIONS));
 }
 
+/** 时间取毫秒: pg 的 timestamptz 默认解析成 Date, 但未类型化查询行可能是字符串; 缺失/非法统一给 null */
+function toMs(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const t = v instanceof Date ? v.getTime() : new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * 这个活跃状态是否"其实没人推进"。
+ *
+ * 由来(2026-09-12): 审稿的执行者是 **SSE 流** —— 前端连接 /stream 才跑(runReviewJob 唯一调用点)。
+ *   于是有两种没有执行者的"活跃"任务, 二者都会**卡住取消和删除**(实测用户遇到"删除没生效"):
+ *     ① 建完任务就去干别的 / 刷新页面 → 连接断了, 库里仍是 queued;
+ *     ② 服务重启 → 原执行者没了, 库里停在 queued。
+ *   此时「取消」按钮经同一个流执行 → `job.status === 'queued'` 使 runReviewJob 直接返回、
+ *   连 review.cancelled 事件都不发(静默失效); 而删除又被 ACTIVE_JOB_STATUS 拦住 → 死锁。
+ *
+ * 判据与 reapStaleReviewJobs 同一套(租约过期 + updated_at 陈旧), 只是**不改库**:
+ *   卡死的任务在用户按下取消/删除的那一刻就该可处置 —— 删除场景下前端不一定会补发取消,
+ *   所以不能依赖"先取消再删"这条前置动作。
+ */
+function isStaleActive(status: string, execLeaseUntil: unknown, updatedAt: unknown): boolean {
+  if (!ACTIVE_JOB_STATUS.includes(status)) return false;
+  const lease = toMs(execLeaseUntil);
+  if (lease !== null && lease > Date.now()) return false;
+  // updated_at 是 NOT NULL DEFAULT now(), 取不到值只可能是"调用方没查这一列"。
+  // 这种情况**不判死**: 误杀一个真在跑的任务(取消/删除掉用户的活)远重于让一条僵尸多留一会儿。
+  const updated = toMs(updatedAt);
+  if (updated === null) return false;
+  return Date.now() - updated > STALLED_ACTIVE_MS;
+}
+
 // ═══ 审稿任务 CRUD ═══
 export async function createReviewJob(input: {
   userId: string; title?: string; text: string; kind?: string;
@@ -218,13 +250,21 @@ export async function listReviewJobs(userId: string, limit = 50, offset = 0) {
  *   ① 只删自己的(user_id 过滤), 且**不含重审链的其他版本** —— 删一条就是删一条,
  *      顺手连带删掉用户没选中的历史版本是意外破坏;
  *   ② 正在执行/排队的任务不允许删(执行器还在写它, 删了会留下孤儿状态) → 返回 false;
+ *      但**"没人推进"的活跃任务放行**(见 isStaleActive) —— 否则连接断掉/服务重启留下的
+ *      queued 会永久卡死(既跑不了也删不掉, 实测栽过)。
  *   ③ 重审链: 若被删的是中间节点, 把指向它的子节点 retry_of 置空(它们变成链头), 避免出现断链。
  */
 export async function deleteReviewJob(userId: string, jobId: string): Promise<boolean> {
-  const cur = await pool.query(`select status from review_jobs where id=$1 and user_id=$2`, [jobId, userId]);
+  const cur = await pool.query(
+    `select status, exec_lease_until, updated_at from review_jobs where id=$1 and user_id=$2`, [jobId, userId]);
   if (!cur.rowCount) return false;
-  const st = String(cur.rows[0].status ?? "");
-  if (ACTIVE_JOB_STATUS.includes(st)) return false;   // 还在跑/排队: 先取消再删
+  const row = cur.rows[0];
+  const st = String(row.status ?? "");
+  // 卡死的"活跃"任务要放行(判据见 isStaleActive): 否则连接断掉/服务重启留下的 queued
+  //   永远删不掉 —— 实测 2026-09-12 有记录以 queued 状态躺了 27 小时、UI 删不掉也取消不了。
+  if (ACTIVE_JOB_STATUS.includes(st) && !isStaleActive(st, row.exec_lease_until, row.updated_at)) {
+    return false;   // 确实还在跑/排队: 先取消再删
+  }
 
   const client = await pool.connect();
   try {
@@ -328,6 +368,11 @@ let execSeq = 0;
  */
 const nextExecutionId = () => `${INSTANCE}#${++execSeq}`;
 const LEASE_TTL_SECONDS = Math.max(30, parseInt(process.env.REVIEW_LEASE_TTL || "120", 10));
+/**
+ * 多久没动静就算"这条活跃任务其实没人推进"。取几倍租约 TTL: 真正在跑的任务每 30s 心跳一次
+ * (heartbeatMs), 2 倍租约足够容忍一次网络抖动而不误杀。
+ */
+const STALLED_ACTIVE_MS = LEASE_TTL_SECONDS * 2 * 1000;
 // 取用时读(而不是模块加载时): 测试可以把间隔调到很小来真正驱动心跳
 const heartbeatMs = () => Math.max(20, parseInt(process.env.REVIEW_HEARTBEAT_MS || "30000", 10));
 /** 槽位轮询间隔(秒): 抢不到就等下一轮 */
@@ -595,6 +640,14 @@ export async function runReviewJob(
   // 排队期间被取消/已失败的任务不能复活 —— 否则会把 cancelled 覆盖回 segmenting 继续烧 token
   if (job.status === "cancelled" || job.status === "failed") {
     sse.send("review.cancelled", { userMessage: job.status === "cancelled" ? "审稿已取消" : "任务已失败, 请重新提交" });
+    return;
+  }
+  // 卡死的 queued(没有执行者/服务重启后遗留): 取消动作经这条流执行, 必须在这里把状态落成 cancelled
+  //   —— 否则用户点「取消」只是开了一条流又立刻返回, 库里 status 纹丝不动, 表现为"按了没反应",
+  //   而 queued 又拦着删除 → 记录永久卡在往期审稿里删不掉(实测 2026-09-12)。
+  if (job.status === "queued" && isStaleActive(job.status, job.exec_lease_until, job.updated_at)) {
+    await updateJobStatus(userId, jobId, "cancelled");
+    sse.send("review.cancelled", { userMessage: "已取消（该任务此前已无执行者推进）" });
     return;
   }
   const text = job.text_snapshot || "";

@@ -9,6 +9,21 @@ LOG="/tmp/sag-bootstrap.log"
 
 log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG"; }
 
+# 路径定义（ov-start.vbs 设计为由调用方传参，避免在其内部硬编码个人目录）
+SAG_ROOT="/c/Users/HUAWEI/SAG-main"
+OPENVIKING_DIR="C:\\Users\\HUAWEI"
+
+# Neo4j 位置自动探测（2026-09-12 从 C 盘迁至 E 盘后加入，避免再写死个人目录）
+# 依次尝试候选位置，取第一个含 neo4j-community-5.26.27 的目录
+NEO4J_DIR=""
+for _cand in "/e/neo4j" "/c/Users/HUAWEI/neo4j" "/e/SAG-data/neo4j"; do
+  if [ -d "$_cand/neo4j-community-5.26.27" ]; then NEO4J_DIR="$_cand"; break; fi
+done
+if [ -z "$NEO4J_DIR" ]; then
+  log "⚠️ 未找到 Neo4j 安装目录（已尝试 /e/neo4j 与 /c/Users/HUAWEI/neo4j）"
+  NEO4J_DIR="/c/Users/HUAWEI/neo4j"   # 保持旧值，让后续报错信息可读
+fi
+
 start_pg() {
   # PostgreSQL (Docker, sag_lite_postgres)
   local running
@@ -16,7 +31,7 @@ start_pg() {
   if [ -n "$running" ]; then log "PG 已在运行 (容器 $running)";
   else
     log "启动 PG (Docker)..."
-    cd SAG_ROOT && docker compose up -d sag_lite_postgres 2>/dev/null \
+    cd "$SAG_ROOT" && docker compose up -d sag_lite_postgres 2>/dev/null \
       || "/c/Program Files/Docker/Docker/resources/bin/docker.exe" start sag_lite_postgres 2>/dev/null \
       || log "⚠️ PG 启动失败（请检查 Docker）"
   fi
@@ -29,9 +44,9 @@ start_neo4j() {
     else
       log "启动 Neo4j :$port..."
       if [ "$port" = "11001" ]; then
-        cd NEO4J_DIR/neo4j-community-5.26.27 && (bin/neo4j.bat console > /dev/null 2>&1 &)
+        cd "$NEO4J_DIR"/neo4j-community-5.26.27 && (bin/neo4j.bat console > /dev/null 2>&1 &)
       else
-        cd NEO4J_DIR/neo4j-community-5.26.27-cognee && (bin/neo4j.bat console > /dev/null 2>&1 &)
+        cd "$NEO4J_DIR"/neo4j-community-5.26.27-cognee && (bin/neo4j.bat console > /dev/null 2>&1 &)
       fi
       sleep 3
     fi
@@ -53,7 +68,7 @@ start_sag() {
     log "SAG 已在运行 (4173)"
   else
     log "启动 SAG (4173) 静默..."
-    cscript //nologo SAG_ROOT\\scripts\\sag-start.vbs
+    cscript //nologo "$SAG_ROOT\\scripts\\sag-start.vbs"
     sleep 8
   fi
 }

@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 async function main() {
   console.log('=== 阶段 2.1: Cognee 侧补充 paper_id ===');
 
-  const c = new RichMcpClient({ name: 'cognee', command: 'COGNEE_DIR/.venv312/Scripts/python.exe', args: ['scripts/mcp_cognee_runner.py'], env: { PYTHONIOENCODING: 'utf-8', COGNEE_LOG_FILE: 'false' } });
+  const c = new RichMcpClient({ name: 'cognee', command: 'C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe', args: ['scripts/mcp_cognee_runner.py'], env: { PYTHONIOENCODING: 'utf-8', COGNEE_LOG_FILE: 'false' } });
   await c.connect();
 
   // 拉取 Cognee 的全部论文列表

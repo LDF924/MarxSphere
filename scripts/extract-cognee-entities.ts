@@ -23,7 +23,7 @@ function isBusinessEntity(name: string): boolean {
 async function main() {
   console.log('=== 提取 Cognee 高质量业务实体 ===');
 
-  const c = new RichMcpClient({ name: 'c', command: 'COGNEE_DIR/.venv312/Scripts/python.exe', args: ['scripts/mcp_cognee_runner.py'], env: { PYTHONIOENCODING: 'utf-8', COGNEE_LOG_FILE: 'false' } });
+  const c = new RichMcpClient({ name: 'c', command: 'C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe', args: ['scripts/mcp_cognee_runner.py'], env: { PYTHONIOENCODING: 'utf-8', COGNEE_LOG_FILE: 'false' } });
   await c.connect();
 
   const sourceId = '8ecb4299-1bec-45d5-afef-6da5c3843ef3';

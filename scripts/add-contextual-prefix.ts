@@ -9,7 +9,7 @@ import { embeddingClient } from "../src/ai/embedding-client.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import "dotenv/config";
 
-const PROGRESS_FILE = "SAG_ROOT/data/contextual-prefix-progress.json";
+const PROGRESS_FILE = "C:/Users/HUAWEI/SAG-main/data/contextual-prefix-progress.json";
 const PREFIX_MARKER = "[节选自";
 const BATCH_SIZE = 10;          // 每批 10 个 chunk（LLM 前缀生成 + embedding）
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY ?? "";
