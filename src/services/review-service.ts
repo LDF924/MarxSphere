@@ -693,7 +693,20 @@ export async function runReviewJob(
         sse.send("review.cancelled", { userMessage: "审稿已取消" });
         return;
       }
-      sse.send("review.status", { step: i, total: segments.length, message: `正在审阅第 ${i + 1}/${segments.length} 段...` });
+      // 进度细化(2026-09-12): 原来只有"第 N/M 段", 用户看不出这是论文的哪一部分、
+      //   也不知道该段审出多少问题。补上该段字数区间与累计发现数。
+      //   字数区间用**全局字符偏移**而非段内偏移 —— 用户对照原文时按全文字数找更直观。
+      const segText = segments[i] ?? "";
+      const segStart = segments.slice(0, i).reduce((n, s) => n + s.length, 0) + 1;
+      sse.send("review.status", {
+        step: i,
+        total: segments.length,
+        message: `正在审阅第 ${i + 1}/${segments.length} 段...`,
+        segChars: segText.length,
+        segFrom: segStart,
+        segTo: segStart + segText.length - 1,
+        foundSoFar: segResults.reduce((n, r) => n + (Array.isArray(r.issues) ? r.issues.length : 0), 0),
+      });
       const ans = await llmJson(`你是中文学术期刊审稿专家。一律使用简体中文(引用原文时也照原文的简体写法)。审阅论文的一个片段, 输出 JSON:
 {"issues":[{"level":"major|minor|suggestion","quote":"问题原文片段","comment":"问题说明","suggest":"修改建议"}],"notablePoints":["亮点"]}
 
@@ -866,6 +879,11 @@ function journalShape(row: Record<string, unknown>) {
     isBuiltIn: row.user_id == null,
     isVerified: row.user_id != null,          // 自建 = 已核对; 公共库条目仍是"待确认"
     useCount: Number(row.use_count ?? 0),
+    /** 规则来源标注(2026-09-12): 'ai' 可一键回退重解析, 'manual' 是用户填/改的 */
+    ruleSource: row.rule_source ?? null,
+    /** 是否留了可回退的原文 —— 前端据此决定"回退重解析"按钮是否可用 */
+    canReparse: String(row.rule_source ?? "") === "ai" && String(row.ai_source_text ?? "").trim() !== "",
+    aiParsedAt: row.ai_parsed_at ?? null,
     structuredRules: {
       // 原样保留库里的全部键: 面板读的是 AI 四类, 但本地正则产出的 6 类
       //   (wordCount/referenceFormat/languageStyle/…) 也必须带回前端, 否则编辑一次就永久丢失
@@ -943,9 +961,11 @@ export async function createJournal(input: { name: string; level?: string; categ
   const level = input.level ?? input.category ?? "other";
   const rules = input.parsedRules ?? input.structuredRules ?? {};
   const guide = input.submissionGuideText ?? String((input.structuredRules as Record<string, unknown> | undefined)?.submissionGuideText ?? "");
+  // 走 createJournal 的都是面板手填/编辑保存的路径 → 来源记为 manual。
+  //   AI 解析入库走的是 batchParseJournals / parse 路由, 那里显式写 'ai' 并留存原文。
   const r = await pool.query(
-    `insert into review_journals (name, level, scope, submission_guide_text, parsed_rules, user_id)
-     values ($1,$2,$3,$4,$5,$6) returning id`,
+    `insert into review_journals (name, level, scope, submission_guide_text, parsed_rules, user_id, rule_source)
+     values ($1,$2,$3,$4,$5,$6,'manual') returning id`,
     [input.name, level || "other", input.scope ?? "", guide,
      JSON.stringify(rules ?? {}), input.userId ?? null]);
   return { id: r.rows[0].id };
@@ -961,6 +981,9 @@ export async function updateJournal(userId: string, journalId: string, patch: { 
   if (patch.parsedRules !== undefined) cols.parsed_rules = patch.parsedRules;
   else if (patch.structuredRules !== undefined) cols.parsed_rules = patch.structuredRules;
   const sets = ["updated_at=now()"]; const vals: unknown[] = [journalId, userId];
+  // 用户改了规则 → 来源改判 manual(见 markJournalRulesManual 注释: 不改判的话
+  //   "回退重解析"会把用户手改的内容静默覆盖掉)
+  if (cols.parsed_rules !== undefined) sets.push(`rule_source='manual'`);
   for (const [k, v] of Object.entries(cols)) {
     if (v === undefined) continue;
     sets.push(`${k}=$${vals.length + 1}`);
@@ -1004,12 +1027,276 @@ ${text.slice(0, 6000)}`, undefined, 3000, 0.2);
   return { formatRules: [], reviewFocus: [], citationRules: [], scope: "", error: "AI 解析失败(JSON 格式无效), 请稍后重试或换一段更规范的原文" };
 }
 
+/**
+ * 多刊投稿须知 → 分条。
+ *
+ * 由来(2026-09-12): 期刊全库 80 本里配了规则的几乎为 0 —— 一本一本粘贴投稿须知是纯手工苦力,
+ *   而实际场景是"手头攒了十几家刊的须知, 一次性都录进去"。这里把一大段文本切成"每刊一块",
+ *   再逐块走既有的 parseSubmissionGuide(抽取与拆分分开做, 比让 LLM 一次同时干两件事稳)。
+ *
+ * 分隔规则(按优先级):
+ *   ① 显式分隔符 --- / === / 空行分隔的 "《刊名》"标题行;
+ *   ② 行首刊名: "《XXX》投稿须知/征稿启事/投稿指南/来稿要求" 这类标题行;
+ *   ③ 兜底: 整段当一刊(用户只粘了一本时不该被切碎)。
+ *
+ * ⚠ 宁少切不多切: 切错会产出一个"刊名乱码 + 规则混乱"的条目, 比不切更难收拾。
+ *   所以只认明确的标题形态, 不用"看起来像换刊了"这种模糊启发式。
+ */
+export function splitMultiJournalText(text: string): Array<{ name: string; text: string }> {
+  const raw = String(text ?? "").trim();
+  if (!raw) return [];
+
+  const HEADER = /^[《【\[]?\s*([^》】\]]{2,40}?)\s*[》】\]]?\s*(投稿须知|征稿启事|征稿简则|投稿指南|投稿要求|来稿要求|撰稿须知|投稿说明|稿件要求)\s*[:：]?\s*$/;
+  const lines = raw.split(/\r?\n/);
+  const blocks: Array<{ name: string; body: string[] }> = [];
+
+  for (const line of lines) {
+    const t = line.trim();
+    // 只把"独立的标题行"当分界: 正文里出现的"《XX》投稿须知"不切(实测混在段落里很常见)
+    const hm = (t.length <= 60 ? t.match(HEADER) : null);
+    if (hm) {
+      blocks.push({ name: hm[1].trim(), body: [] });
+      continue;
+    }
+    if (!blocks.length) {
+      // 分隔符 --- / === 出现在首个标题之前: 忽略, 用后面的标题建块
+      if (/^(-{3,}|={3,})$/.test(t)) continue;
+      blocks.push({ name: "", body: [] });   // 首块还没有刊名 → 兜底块
+    }
+    blocks[blocks.length - 1].body.push(line);
+  }
+
+  const out = blocks
+    .map((b) => ({ name: b.name, text: b.body.join("\n").trim() }))
+    .filter((b) => b.text || b.name);
+  // 整段没切出任何标题(blocks 只有那个兜底块) → 原样返回一条, 交给 LLM 从正文里认刊名
+  if (out.length <= 1) return [{ name: out[0]?.name ?? "", text: raw }];
+  // 有标题块: 丢掉"标题之前"的空兜底块(纯垃圾)
+  return out.filter((b) => b.text);
+}
+
+/** 判断解析出的规则是否为空(全空数组 = 没抽到东西, 不该入库) */
+function isEmptyRules(r: { formatRules?: unknown[]; reviewFocus?: unknown[]; citationRules?: unknown[]; scope?: string } | null): boolean {
+  if (!r) return true;
+  const n = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  return n(r.formatRules) + n(r.reviewFocus) + n(r.citationRules) === 0 && !r.scope;
+}
+
+/**
+ * 批量补规则: 一段/多段投稿须知 → 逐刊解析并入库。
+ *
+ * 只处理**全库(catalog)里还没有规则的刊**: 自建条目已有规则就不覆盖(那是用户精心配的),
+ * 但会报 skipped 让前端如实显示, 而不是静默吞掉。
+ */
+export async function batchParseJournals(input: { text: string; userId?: string | null; overwrite?: boolean }): Promise<{
+  results: Array<{ name: string; ok: boolean; created: boolean; journalId?: string; ruleCount?: number; error?: string }>;
+  summary: { total: number; ok: number; failed: number; created: number };
+}> {
+  const blocks = splitMultiJournalText(input.text);
+  const results: Array<{ name: string; ok: boolean; created: boolean; journalId?: string; ruleCount?: number; error?: string }> = [];
+
+  for (const blk of blocks) {
+    try {
+      const parsed = await parseSubmissionGuide(blk.text);
+      if (isEmptyRules(parsed)) {
+        results.push({ name: blk.name || "(未识别刊名)", ok: false, created: false, error: "AI 未从这段文本抽到规则(内容太短或不是投稿须知)" });
+        continue;
+      }
+      // 刊名: 标题优先; 抽不到就留个明显待改的占位, 不拿 AI 的 scope 硬凑名字
+      const name = blk.name.trim() || `待命名期刊-${results.length + 1}`;
+      const existing = await pool.query(
+        `select id, parsed_rules from review_journals where name=$1 and ${ownClause("user_id", 2)} limit 1`,
+        [name, input.userId ?? null]);
+      const rules = { ...parsed };
+      delete (rules as { error?: string }).error;
+      const ruleCount = (rules.formatRules?.length ?? 0) + (rules.reviewFocus?.length ?? 0) + (rules.citationRules?.length ?? 0);
+
+      if (existing.rowCount) {
+        const row = existing.rows[0];
+        if (rowHasRules(row) && !input.overwrite) {
+          results.push({ name, ok: false, created: false, journalId: String(row.id), error: "该刊已有规则(未覆盖; 需覆盖请勾选'覆盖已有')" });
+          continue;
+        }
+        await pool.query(
+          `update review_journals set parsed_rules=$2, submission_guide_text=$3,
+                  rule_source='ai', ai_source_text=$3, ai_parsed_at=now(), updated_at=now()
+            where id=$1`,
+          [row.id, JSON.stringify(rules), blk.text]);
+        results.push({ name, ok: true, created: false, journalId: String(row.id), ruleCount });
+      } else {
+        const ins = await pool.query(
+          `insert into review_journals (name, level, scope, submission_guide_text, parsed_rules, user_id,
+                                        rule_source, ai_source_text, ai_parsed_at)
+           values ($1,$2,$3,$4,$5,$6,'ai',$4,now()) returning id`,
+          [name, "other", String((rules as { scope?: string }).scope ?? ""), blk.text, JSON.stringify(rules), input.userId ?? null]);
+        results.push({ name, ok: true, created: true, journalId: String(ins.rows[0]?.id), ruleCount });
+      }
+    } catch (e) {
+      results.push({ name: blk.name || "(未识别刊名)", ok: false, created: false, error: String((e as Error)?.message ?? e).slice(0, 200) });
+    }
+  }
+
+  return {
+    results,
+    summary: {
+      total: results.length,
+      ok: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      created: results.filter((r) => r.created).length,
+    },
+  };
+}
+
+/** 该行是否已有规则(供批量补规则判断是否覆盖) */
+function rowHasRules(row: Record<string, unknown>): boolean {
+  const raw = row.parsed_rules;
+  if (!raw) return false;
+  if (typeof raw === "object") return Object.keys(raw as object).length > 0;
+  const s = String(raw).trim();
+  return s !== "" && s !== "{}" && s !== "null";
+}
+
+/**
+ * 一键回退重解析(2026-09-12): 用当初喂给 AI 的原文重新抽一遍规则。
+ *
+ * 由来: AI 抽歪一条时用户只能手改, 改完就丢了"原文→规则"的对应关系, 想重来也没依据。
+ *   ai_source_text 保留的就是**当初实际喂进去的原文**, 所以这里能原样重抽;
+ *   用户如果改了 submission_guide_text(展示字段), 不会影响重抽的输入 —— 两个字段是分开的。
+ *
+ * 前置: 该刊当初是 AI 解析来的(rule_source='ai' 且 ai_source_text 非空)。
+ *   手工建的刊没有原文可退, 如实报错而不是拿 submission_guide_text 猜一把。
+ */
+export async function reparseJournalRules(userId: string, journalId: string): Promise<
+  { ok: true; rules: Record<string, unknown>; ruleCount: number } | { ok: false; error: string }
+> {
+  const r = await pool.query(
+    `select id, rule_source, ai_source_text from review_journals
+      where id=$1 and ${ownClause("user_id", 2)} limit 1`, [journalId, userId]);
+  if (!r.rowCount) return { ok: false, error: "期刊不存在或不属于你" };
+  const row = r.rows[0];
+  const src = String(row.ai_source_text ?? "").trim();
+  if (!src) {
+    return {
+      ok: false,
+      error: row.rule_source === "manual"
+        ? "这条规则是手工填写/编辑过的, 没有可回退的 AI 原文。请用「AI 智能解析」重新粘贴投稿须知。"
+        : "没有留存 AI 解析时的原文(2026-09-12 之前的记录), 无法回退重解析。请重新粘贴投稿须知。",
+    };
+  }
+  const parsed = await parseSubmissionGuide(src);
+  if (isEmptyRules(parsed)) {
+    return { ok: false, error: "重解析没抽到规则(原文可能过短或不是投稿须知), 已保留原有规则" };
+  }
+  const rules = { ...parsed };
+  delete (rules as { error?: string }).error;
+  await pool.query(
+    `update review_journals set parsed_rules=$2, rule_source='ai', ai_parsed_at=now(), updated_at=now()
+      where id=$1`, [journalId, JSON.stringify(rules)]);
+  const ruleCount = (rules.formatRules?.length ?? 0) + (rules.reviewFocus?.length ?? 0) + (rules.citationRules?.length ?? 0);
+  return { ok: true, rules: rules as Record<string, unknown>, ruleCount };
+}
+
+/**
+ * 用户编辑过规则 → 来源改判为 manual。
+ * 不这么做的话, 界面上会一直显示"AI 抽取", 且"回退重解析"看起来可用 —— 但用户改过的内容
+ * 会被重抽覆盖掉, 那是**静默销毁用户劳动**, 比不提供回退更糟。
+ */
+export async function markJournalRulesManual(userId: string, journalId: string): Promise<void> {
+  try {
+    await pool.query(
+      `update review_journals set rule_source='manual'
+        where id=$1 and ${ownClause("user_id", 2)}`, [journalId, userId]);
+  } catch { /* 标注失败不影响保存本身 */ }
+}
+
 export async function listStandards(userId: string) {
   const r = await pool.query(
     `select s.*,
             (select count(*) from review_jobs x where x.standard_id = s.id) as use_count
        from review_standards s where ${ownClause("s.user_id")} or s.built_in order by s.is_default desc, s.name`, [userId]);
   return r.rows.map(standardShape);
+}
+
+/**
+ * 审稿使用统计反哺(2026-09-12)。
+ *
+ * 由来: 期刊卡片上的 useCount 只回答了"用得多不多", 回答不了"用它审出来多少分、
+ *   常出哪类问题" —— 而这才是选刊/调标准时真正要看的。
+ *
+ * 数据来源: review_jobs.result 里已有 grade/overallScore/dimensions[].issues[].severity。
+ * 两条口径必须说清楚(否则统计会误导):
+ *   ① 期刊维度: journal_id 指向 review_journals 的 uuid, 而全库条目前端传的是 catalog:xxx
+ *      —— 那类任务 journal_id 为空, 所以期刊层只统计"明确选了自建刊"的任务;
+ *   ② 没选刊的任务仍然有分数与问题, 归入全局层。
+ *   实测本机: 52 条任务里只有 5 条绑了刊、46 条有分数 —— 所以全局层是主视图, 期刊层是补充。
+ */
+export async function reviewStats(userId: string): Promise<{
+  overall: {
+    total: number; scored: number; avgScore: number | null;
+    grades: Array<{ grade: string; count: number }>;
+    severity: Array<{ severity: string; count: number }>;
+    topIssueDimensions: Array<{ name: string; count: number }>;
+  };
+  journals: Array<{ id: string; name: string; jobs: number; avgScore: number | null }>;
+}> {
+  const agg = await pool.query(
+    `select
+       count(*)::int as total,
+       count(*) filter (where result->>'overallScore' is not null)::int as scored,
+       avg((result->>'overallScore')::numeric) filter (where result->>'overallScore' ~ '^[0-9.]+$') as avg_score
+     from review_jobs where user_id=$1 and status='done'`, [userId]);
+  const row = agg.rows[0] ?? {};
+
+  // 等级分布: 只取真实有 grade 的任务(没跑到最后的任务不计, 否则 A/B 档会凭空多出分母)
+  const grades = await pool.query(
+    `select result->>'grade' as grade, count(*)::int as n
+       from review_jobs
+      where user_id=$1 and status='done' and coalesce(result->>'grade','') <> ''
+      group by 1 order by 2 desc`, [userId]);
+
+  // 问题严重度分布 + 高发维度: 都从 dimensions[].issues 里摊平统计
+  const sev = await pool.query(
+    `select i->>'severity' as severity, count(*)::int as n
+       from review_jobs j
+       cross join lateral jsonb_array_elements(coalesce(j.result->'dimensions','[]'::jsonb)) d
+       cross join lateral jsonb_array_elements(coalesce(d->'issues','[]'::jsonb)) i
+      where j.user_id=$1 and j.status='done' and coalesce(i->>'severity','') <> ''
+      group by 1 order by 2 desc`, [userId]);
+  const dims = await pool.query(
+    `select coalesce(nullif(d->>'name',''), '(未命名维度)') as name, count(*)::int as n
+       from review_jobs j
+       cross join lateral jsonb_array_elements(coalesce(j.result->'dimensions','[]'::jsonb)) d
+       cross join lateral jsonb_array_elements(coalesce(d->'issues','[]'::jsonb)) i
+      where j.user_id=$1 and j.status='done'
+      group by 1 order by 2 desc limit 8`, [userId]);
+
+  // 期刊层: 只在"任务确实绑定了本用户的自建刊"时统计(见上方 ①)
+  const jr = await pool.query(
+    `select j.id::text as id, j.name,
+            count(x.id)::int as jobs,
+            avg((x.result->>'overallScore')::numeric) filter (where x.result->>'overallScore' ~ '^[0-9.]+$') as avg_score
+       from review_journals j
+       left join review_jobs x on x.journal_id = j.id and x.status='done' and x.user_id=$1
+      where ${ownClause("j.user_id")}
+      group by j.id, j.name
+      having count(x.id) > 0
+      order by 3 desc, 2`, [userId]);
+
+  const avg = row.avg_score === null || row.avg_score === undefined ? null : Number(row.avg_score);
+  return {
+    overall: {
+      total: Number(row.total ?? 0),
+      scored: Number(row.scored ?? 0),
+      avgScore: avg === null || !Number.isFinite(avg) ? null : Math.round(avg * 10) / 10,
+      grades: grades.rows.map((r) => ({ grade: String(r.grade), count: Number(r.n) })),
+      severity: sev.rows.map((r) => ({ severity: String(r.severity), count: Number(r.n) })),
+      topIssueDimensions: dims.rows.map((r) => ({ name: String(r.name), count: Number(r.n) })),
+    },
+    journals: jr.rows.map((r) => {
+      const a = Number(r.avg_score);
+      return { id: String(r.id), name: String(r.name), jobs: Number(r.jobs), avgScore: Number.isFinite(a) ? Math.round(a * 10) / 10 : null };
+    }),
+  };
 }
 
 /** 面板维度 {name, weight, description, criteria:[{title}]} → 库格式 {key, name, weight, criteria(串), min, max} */

@@ -132,6 +132,25 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     }).catch(() => {});
   }, []);
 
+  /**
+   * soc iframe 报告 401 → 拉起登录(2026-09-12 死代码审计)。
+   *
+   * 由来: soc 的 shared/api.ts 收到 401 会清 token 并广播 `researchflow:auth-expired`,
+   *   但**两侧都没有监听者** —— 结果是登录过期后 token 已被清、界面却仍显示"已登录",
+   *   所有请求静默失败, 用户只能靠手动刷新才发现。
+   * CustomEvent 不跨 iframe, 所以 soc 侧改成 postMessage 通知父窗口(见 soc 的 auth-bridge.ts),
+   *   这里接手并复用既有 openLogin 模态。
+   */
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string } | null;
+      if (d?.source !== "marxsphere-soc" || d.type !== "auth-required") return;
+      setLoginOpen(true);
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
   // V399: 登录成功统一处理（认证启用/未启用共用）; user 来自 /auth/login 或微信 bind(形状不同), 收 unknown 归一化
   const handleAuthSuccess = (d: { token?: string; user: unknown }) => {
     if (d.token) safeStorage.set("sag_token", d.token);
