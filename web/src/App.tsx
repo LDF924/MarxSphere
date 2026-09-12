@@ -158,7 +158,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "soc-workflow" | "soc-review" | "soc-statistics" | "soc-viz" | "soc-editor" | "soc-quick";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -586,7 +586,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history", "soc-workflow", "soc-review", "soc-statistics", "soc-viz", "soc-editor", "soc-quick"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -672,7 +672,10 @@ function AppShell() {
       if (d.csv && d.columnOrder?.length) {
         latestDatasetRef.current = { csv: d.csv, columnOrder: d.columnOrder, fileName: d.title ?? "分析结果" };
       }
-      navigateView("soc-viz");
+      // V414: 原为 navigateView("soc-viz") —— soc-* 是一批无菜单入口的深链视图(现已全部清除),
+      //   跳过去会离开导航体系(用户回不去)。改指科研中心的「成果可视化工坊」tab(plot-agent, 有菜单入口),
+      //   两者渲染的都是同一个 Vue 路由 #/viz。下面的种子投递 effect 已同步监听 plot-agent。
+      navigateView("plot-agent");
     };
     window.addEventListener("empirical:open-viz-workshop", onOpenViz);
     return () => window.removeEventListener("empirical:open-viz-workshop", onOpenViz);
@@ -681,7 +684,7 @@ function AppShell() {
 
   // 进入 viz 视图 → 把待画的图种子交给 iframe(viz 视图侧读 window 事件)
   useEffect(() => {
-    if (workspaceView !== "soc-viz" || !pendingVizSeedRef.current) return;
+    if (workspaceView !== "plot-agent" || !pendingVizSeedRef.current) return;
     const seed = pendingVizSeedRef.current;
     let tries = 0;
     const timer = setInterval(() => {
