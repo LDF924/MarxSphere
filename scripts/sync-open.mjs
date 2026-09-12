@@ -3,7 +3,7 @@
 // scripts/sync-open.mjs — main→open-source 一键同步(V393, 2026-08-30)
 // 流程:
 //   1. 复制 main 的全部代码/文档到 open-source(排除 .env/.git/node_modules/dist 等)
-//   2. open-source 提交 + push origin main  (临时改动)
+//   2. open-source 提交 + push origin main
 // 用法:
 //   node scripts/sync-open.mjs           # 同步+提交+push
 //   node scripts/sync-open.mjs --dry-run # 只显示差异不复制
