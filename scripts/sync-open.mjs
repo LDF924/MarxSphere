@@ -26,7 +26,13 @@ const COMMIT_MSG = CUSTOM_MSG || `sync: 自动同步 main → open (${new Date()
 if (!existsSync(OPEN)) { console.error(`[sync-open] open-source 不存在: ${OPEN}`); process.exit(1); }
 
 // ─── 同步目录(与 sync-repos.mjs 的 EXCLUDE 对齐) ───
-const DIRS = ["src", "web/src", "web/public", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config"];
+// ⚠ 2026-09-12 修复: 原来只列了 "web/src", 而 collect() 不会跨进未列出的兄弟目录 ——
+//   于是 **web/socialsci-vue/ 从来没有被同步过**(open 侧整个目录不存在)。
+//   而 package.json 里 build:socialsci-vue 引用 web/socialsci-vue/vite.config.ts,
+//   即 open 仓库的 `npm run build` 一直是坏的; 更严重的是**审稿/统计/viz/编辑器四个
+//   工作台的全部前端代码都不在开源仓库里**。
+//   现在补上 web/socialsci-vue 与其构建配置; web/dist 等产物仍由 EXCLUDE_DIR 排除。
+const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
 const EXCLUDE_FILE = [/^\.env/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\.json$/, /^gold_dataset.*\.json$/, /^judge_results\.json$/, /^isolated_entities\.csv$/, /^batch-ingest-log/, /^cognee_entities_dump\.json$/, /^entity_(id|norm)_map\.json$/, /^paper_id_map\.json$/, /^run-eval-one-by-one/, /^start(_sag|-web)\./, /^compact-vhdx/, /^memory-settings\.json$/, /^node_modules\.zip$/];

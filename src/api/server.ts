@@ -9988,6 +9988,43 @@ except Exception as e:
     };
   });
 
+  // 批量补规则: 一次粘贴多刊投稿须知 → 逐刊解析入库(封面上的"待补规则 80"就是靠它消)
+  // ⚠ 必须注册在 /journals/:journalId 之前吗? 不需要 —— 路径字面量 /journals/batch-parse 不会被
+  //   :journalId 吞掉(Fastify 静态段优先于参数段), 但 POST /journals 是同段不同方法, 无冲突。
+  app.post("/api/review/journals/batch-parse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string; rawText?: string; overwrite?: boolean };
+    const raw = body?.text ?? body?.rawText;
+    if (!raw?.trim()) return reply.code(400).send({ error: "请粘贴投稿须知原文(可一次粘多刊, 用《刊名》投稿须知 作分隔)" });
+    const out = await reviewService.batchParseJournals({ text: raw, userId: user.id, overwrite: !!body?.overwrite });
+    return out;
+  });
+
+  // 一键回退重解析: 用当初喂给 AI 的原文重抽规则(手工填的刊没有原文可退, 如实报错)
+  app.post("/api/review/journals/:journalId/reparse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { journalId } = request.params as { journalId: string };
+    const r = await reviewService.reparseJournalRules(user.id, journalId);
+    if (!r.ok) return reply.code(400).send({ error: r.error });
+    return { ok: true, rules: r.rules, ruleCount: r.ruleCount };
+  });
+
+  // 分批预览: 只切分不解析(不烧 token), 让用户先确认切得对不对再提交
+  app.post("/api/review/journals/split-preview", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string; rawText?: string };
+    const raw = body?.text ?? body?.rawText;
+    if (!raw?.trim()) return reply.code(400).send({ error: "请粘贴投稿须知原文" });
+    const blocks = reviewService.splitMultiJournalText(raw);
+    return { blocks: blocks.map((b) => ({ name: b.name, chars: b.text.length, preview: b.text.slice(0, 120) })) };
+  });
+
+  // 审稿使用统计(2026-09-12): 分数分布 / 常见问题严重度 / 高发维度 / 各刊审稿均分
+  app.get("/api/review/stats", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return reviewService.reviewStats(user.id);
+  });
+
   // 审核标准库
   app.get("/api/review/standards", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
