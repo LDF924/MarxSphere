@@ -11,7 +11,15 @@ import { GuardError } from "./empirical-guards.js";
 
 // ─── 统一问卷数据结构 Question（前端类型 + DB jsonb + LLM 输出契约共用）───
 export interface QuestionOption { code: number; label: string }
-export interface SkipLogic { ifQid: string; ifOption: number | null; goto: string }
+// V414: ifOption 支持多值 —— 原著常写"选 A 或 B 时显示"(如"单身无经历 / 单身有过经历"都要答
+//   恋爱期待题)。原来只能存单个数字, 识别到的多值条件会被压成一个, 仿真时漏掉一半人。
+//   契约: 优先读 ifOptions(数组), 兼容旧的 ifOption(单值)。两个都读不到 = 无条件。
+export interface SkipLogic {
+  ifQid: string;
+  ifOption?: number | null;      // 旧字段, 单值
+  ifOptions?: number[] | null;   // 新字段, 多值
+  goto: string;
+}
 export interface Question {
   qid: string;            // 题号, 如 2-15 / 3a-1
   varName: string;        // 变量名, 小写下划线
@@ -30,13 +38,14 @@ Question 结构(JSON):
   "stem": "题干",
   "type": "cat|ordinal|cont|text|multi",
   "options": [{"code": 1, "label": "选项文案"}, ...],
-  "skipLogic": {"ifQid": "上一题号", "ifOption": 2, "goto": "目标题号"} 或 null,
+  "skipLogic": {"ifQid": "上一题号", "ifOptions": [1, 2], "goto": "目标题号"} 或 null,
   "derived": "建议衍生变量(如 流转率=转出面积/承包面积)"
 }
 约束:
 - type 必填; cat/ordinal/multi 必须带 options(code 为整数); cont/text 不带 options
 - 可多选 → type=multi; 1-5 程度 → ordinal; 数字类 → cont; 开放填写 → text
 - 选项预留"其他"用 code 99(说明性开放文本)
+- skipLogic.ifOptions 是**数组**("选 A 或 B 时显示"两个都要写上); 单条件也写数组 [1]
 - varName 必须小写下划线, 不重复
 - 缺失编码约定: -99 未适用(跳转), -88 拒答
 `;
@@ -136,7 +145,7 @@ export async function recognizeQuestionnaire(input: {
     let prompt = `你是问卷结构化专家。将以下问卷文本片段转换为结构化 Question 数组。
 识别要求:
 1. 逐题提取题号/题干/选项; 数字题→cont, 1-5 程度→ordinal, 单选→cat, 可多选→multi, 开放→text
-2. 题干含"若选择某选项则跳至"→ 识别 skipLogic
+2. 题干含"若选择某选项则跳至"→ 识别 skipLogic（多值条件用 ifOptions 数组，如"选 A 或 B"→ [1,2]）
 3. 只输出 JSON: {"questions": [...]}${bi === 0 ? `, "meta": {"subject": "...", "indicators": ["..."]}` : ""}
 问卷文本(第 ${bi + 1}/${blocks.length} 块, 约 ${block.length} 字符):
 ---开始---

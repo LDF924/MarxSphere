@@ -44,7 +44,11 @@ def savefig(fig, chart_id, title):
         fig.savefig(fp, bbox_inches="tight", dpi=200)
     plt.close(fig)
     png = out_dir / f"{chart_id}.png"
+    # V414 fix: PDF 一直有生成, 但过去只登记 png → liftArtifacts 只按清单搬产物,
+    #   .pdf 留在任务目录里被一起清掉, 用户拿不到矢量图。补 pdfFile 字段,
+    #   前端仍只读 file(png), 形状不变。
     charts.append({"id": chart_id, "title": title, "file": f"{chart_id}.png",
+                   "pdfFile": f"{chart_id}.pdf",
                    "sizeKB": round(png.stat().st_size / 1024, 1)})
     return chart_id
 

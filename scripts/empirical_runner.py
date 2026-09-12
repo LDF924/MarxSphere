@@ -577,8 +577,13 @@ elif method == "ologit":
         ycol = params.get("y")
         xs = params.get("xs") or []
         d = df.copy()
-        d[ycol] = pd.to_numeric(d[ycol], errors="coerce").round().astype(int)
+        # V414 fix: astype(int) 遇到 NaN 必抛 "Cannot convert non-finite values"。
+        # 原来 dropna 排在 astype 之后 —— 只要因变量有一个缺失值, 整个 ologit 就失败
+        # (实测: cons_band 有 3 个缺失 → 报错; 这不是数据问题, 是顺序问题)。
+        # 正确顺序: 数值化 → 剔缺失 → 再取整转 int。
+        d[ycol] = pd.to_numeric(d[ycol], errors="coerce")
         d = d.dropna(subset=[ycol])
+        d[ycol] = d[ycol].round().astype(int)
         # 过滤有效类别(至少2类)
         vc = d[ycol].value_counts()
         if len(vc) < 2:
@@ -589,7 +594,10 @@ elif method == "ologit":
         res = m.fit(method="bfgs", disp=0, maxiter=200)
         rows_t = []
         for name, val in res.params.items():
-            if name.startswith("cut"):
+            # OrderedModel 的阈值参数名是 "1/2"、"2/3"（不是 "cut*"），原来的
+            # startswith("cut") 过滤不掉任何东西 → 阈值行留在表里，而表注却写着
+            # "阈值参数已省略"，自相矛盾（实测）。这里把两种命名都过滤掉。
+            if name.startswith("cut") or _re_guard.fullmatch(r"\d+/\d+", str(name)):
                 continue
             se = res.bse[name]; pv = res.pvalues[name]
             lo, hi = res.conf_int().loc[name]

@@ -118,23 +118,47 @@ def answer_cont(q, latent):
 
 # ── 跳转范围 ──
 # 找出问卷结构中带 skipLogic 的题
+# V414: ifOption 支持多值 —— "选 A 或 B 时显示"(如单身两种状态都要答)原来只能存一个数字,
+#   识别到的多值条件被压成单个, 仿真时漏掉另一半人。现在优先读 ifOptions 数组, 兼容旧 ifOption。
+def _as_option_list(v):
+    """单值/数组/None → list[int]（None 表示"任意选项都触发"）"""
+    if v is None:
+        return []
+    if isinstance(v, (list, tuple)):
+        out = []
+        for x in v:
+            try:
+                out.append(int(x))
+            except (TypeError, ValueError):
+                pass
+        return out
+    try:
+        return [int(v)]
+    except (TypeError, ValueError):
+        return []
+
+
 skip_cfg = params.get("skip")
 skip_entries = []
 for q in qs:
     sl = q.get("skipLogic") or {}
     if sl and sl.get("ifQid"):
-        skip_entries.append({"ifQid": str(sl.get("ifQid")), "ifOption": sl.get("ifOption"),
+        opts = _as_option_list(sl.get("ifOptions"))
+        if not opts:
+            opts = _as_option_list(sl.get("ifOption"))
+        skip_entries.append({"ifQid": str(sl.get("ifQid")), "ifOptions": opts,
                              "goto": str(sl.get("goto")), "basedOn": str(q.get("qid"))})
 # 人工指定(兼容老问卷: 没 skipLogic 字段但文本里有)
 if skip_cfg:
-    skip_entries.append({"ifQid": str(skip_cfg.get("ifQid")), "ifOption": skip_cfg.get("ifOption"),
+    opts = _as_option_list(skip_cfg.get("ifOptions")) or _as_option_list(skip_cfg.get("ifOption"))
+    skip_entries.append({"ifQid": str(skip_cfg.get("ifQid")), "ifOptions": opts,
                          "goto": str(skip_cfg.get("goto")), "basedOn": skip_cfg.get("basedOn", "")})
 
 # 筛选题(触发跳转的题)不参与 latent 驱动, 独立小概率命中跳转选项(不看者 ~12-20%)
 FILTER_PROB = float((skip_cfg or {}).get("prob", 0.15))
 
 def skip_ranges():
-    """返回 [(触发题index, 触发选项, 跳过index集合), ...]"""
+    """返回 [(触发题index, 触发选项list, 跳过index集合), ...]；选项 list 为空 = 任意选项都触发"""
     idx = {str(q.get("qid")): i for i, q in enumerate(qs)}
     out = []
     for e in skip_entries:
@@ -147,7 +171,7 @@ def skip_ranges():
             rng = set(range(si + 1, len(qs)))
         else:
             rng = set(range(si + 1, gi))  # 跳到 goto 本身(再答 goto)
-        out.append((si, e["ifOption"], rng))
+        out.append((si, e["ifOptions"], rng))
     return out
 
 SKIP_RANGES = skip_ranges()
@@ -177,15 +201,18 @@ for _ in range(N):
         # 触发题: 概率命中"跳转选项"(筛选题不走 latent)
         is_filter = i in FILTER_IDX
         if is_filter:
-            for si, so, rng in SKIP_RANGES:
-                if si == i and so is not None:
+            for si, sopts, rng in SKIP_RANGES:
+                # V414: sopts 是选项列表 —— 命中其中一个就算触发跳转。
+                # 原来只比单个 so, 多值条件("选 A 或 B")永远只命中第一个。
+                if si == i and sopts:
                     if random.random() < FILTER_PROB:
-                        row[vn] = so
+                        row[vn] = random.choice(sopts)
                         hit_skip[si] = True
                     else:
-                        # 未命中跳转 → 正常作答(筛选题取第一个选项=继续)
+                        # 未命中跳转 → 正常作答(筛选题取任一非跳转选项=继续)
                         codes = opt_codes(q) or [1, 2]
-                        row[vn] = so if so in codes and False else random.choice([c for c in codes if c != so])
+                        others = [c for c in codes if c not in sopts]
+                        row[vn] = random.choice(others) if others else random.choice(codes)
                     break
         if vn in row:
             continue

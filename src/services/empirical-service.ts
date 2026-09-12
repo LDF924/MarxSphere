@@ -26,8 +26,15 @@ async function liftArtifacts(rec: TaskRecord, taskDir: string, keyPrefix: string
   const from = path.join(taskDir, ARTIFACT_SUBDIR);
   // 两个脚本的产物清单都在 result.meta 下: report_export→files, figures→charts
   const meta = (rec.result as any)?.meta ?? {};
-  const files: Array<{ name?: string; file?: string }> = Array.isArray(meta.files) ? meta.files
-    : Array.isArray(meta.charts) ? meta.charts : [];
+  const entries: Array<{ name?: string; file?: string; pdfFile?: string }> =
+    Array.isArray(meta.files) ? meta.files : Array.isArray(meta.charts) ? meta.charts : [];
+  // V414 fix: 一张图有两份产物 —— png(清单 file, 前端展示用) 与 pdf(矢量, 投稿用)。
+  //   过去只搬 file → PDF 生成了却拿不到。这里把 pdfFile 一并展开成待搬文件名。
+  const files = entries.flatMap((f) => {
+    const out: Array<{ name?: string; file?: string }> = [{ name: f.name ?? f.file }];
+    if (f?.pdfFile) out.push({ name: f.pdfFile });
+    return out;
+  });
   if (!files.length) return;
   for (const f of files) {
     const name = String(f?.name ?? f?.file ?? "");
