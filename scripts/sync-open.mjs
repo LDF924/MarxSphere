@@ -93,8 +93,36 @@ for (const f of changed.slice(0, 15)) console.log(`  M ${f}`);
 for (const f of added.slice(0, 10)) console.log(`  A ${f}`);
 if (changed.length + added.length > 15) console.log(`  … 等 ${changed.length + added.length - 15} 个`);
 
+// ─── 检测「main 已删、open 仍留着」的残留 ───
+// 本脚本只做单向复制(collect → 比对 → cpSync), **没有 unlink 分支**, 源仓删除不会
+// 传播到 open 仓 → open 留下孤儿文件(2026-09-12 实测: 删掉 web/src/components/
+// SocialSciVueHost.tsx 后, open 侧仍保留着它, 内容还引用着已被清空的注册链)。
+//
+// 这里**只检测并警告, 不自动删**。原因: 不能简单地"open 有而 main 没有就删" ——
+// open 仓**故意**保留了 400+ 个 main 没有的文件(examples/seed-corpus 语料、
+// skills/* 技能包、evaluation/eval-archive), 它们只是不在 DIRS 里、根本不属于同步
+// 范围。无脑自动删会把它们从公开仓库一起抹掉。
+// 所以先按 DIRS/ROOT_FILES 圈定范围, 再报出来让人来判断; 删除动作由人工执行。
+function inSyncScope(rel) {
+  return ROOT_FILES.includes(rel) || DIRS.some((d) => rel === d || rel.startsWith(`${d}/`));
+}
+let openTracked = [];
+try {
+  const out = execSync(`git ls-files`, { cwd: OPEN, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  openTracked = out.split("\n").map((s) => s.trim()).filter(Boolean);
+} catch { /* open 仓无 git / 读不到 → 跳过检测 */ }
+const ghosts = openTracked.filter((rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)));
+if (ghosts.length) {
+  console.log(`\n[sync-open] ⚠️ 检测到 ${ghosts.length} 个「main 已删、open 仍跟踪」的残留(本脚本不自动删):`);
+  for (const g of ghosts) console.log(`  D ${g}`);
+  console.log(`\n  这些文件在 main 仓已不存在, 但 open 仓仍在跟踪 —— 多半是孤儿代码。`);
+  console.log(`  确认无用后手工清理:`);
+  console.log(`    cd ${OPEN} && git rm -r -- ${ghosts.slice(0, 3).map((g) => JSON.stringify(g)).join(" ")}${ghosts.length > 3 ? " …" : ""}`);
+  console.log(`  (注意: 只在上述范围内报告。examples/、skills/ 等不在 DIRS 里的差异是 open 独有的内容, 不算残留。)\n`);
+}
+
 if (DRY) { console.log("[sync-open] --dry-run: 未复制"); process.exit(0); }
-if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新"); process.exit(0); }
+if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新(无新增/修改)"); process.exit(0); }
 
 // ─── 复制 ───
 for (const rel of files) {
