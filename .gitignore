@@ -9,7 +9,13 @@ data/*
 batch-ingest-log.json
 
 # V266: 构建产物与依赖（防误提交）
+# ⚠ vendor/pdf2obsidian 的 dist 是**运行依赖**不是可再生产物: src/services/pdf2obsidian-adapter.ts
+#   直接 import packages/{pipeline,core}/dist/*.js。全忽略它 → 任何全新克隆都构建不出后端
+#   (实测克隆 GitHub 后 tsc 报 TS2307)。故下列例外必须保留, 且要放在通配之后才生效。
 dist/
+!vendor/pdf2obsidian/packages/core/dist/
+!vendor/pdf2obsidian/packages/pipeline/dist/
+!vendor/pdf2obsidian/packages/providers/dist/
 node_modules/
 web/dist/
 
