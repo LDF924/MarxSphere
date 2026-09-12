@@ -27,7 +27,7 @@ const ev = async (e) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 科研中心 → 5 个 Vue 完整版 tab(注意: 与 SocialSciVueHost 里的 soc-* 视图同名不同处)
+// 科研中心 → 5 个 Vue 完整版 tab(每个对应 FUSION_TABS 里的一条 vueRoute)
 const TABS = [
   { label: "研途写作舱", route: "/workflow/input", want: /信息录入|科研架构|素材|工作流/ },
   { label: "课题流程编排", route: "/workbench/quick", want: /可视化DAG编排模式|标准工作流|科研 Agent/ },
