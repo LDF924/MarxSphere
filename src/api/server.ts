@@ -9180,6 +9180,15 @@ except Exception as e:
       if (request.url.startsWith("/api/") || request.url === "/health") {
         return reply.code(404).send(notFound("NOT_FOUND", "接口不存在"));
       }
+      // V414: 缺失的静态资源必须 404, 不能回落到 SPA 的 index.html。
+      //   静态站（@fastify/static）与 SPA 不同：资源路径是"文件"不是"路由"，
+      //   拼错/不存在的路径回落 index.html 会把 HTML 当脚本/页面交付 ——
+      //   实测后果：web/dist/soc/（SocialSci Vue 子应用）未构建时，/soc/index.html
+      //   返回 React 应用，iframe 里的"课题流程编排"等 5 个 tab 全被渲染成 AI 对话页。
+      //   浏览器本来就按扩展名认 MIME，这里只做兜底澄清。
+      if (/\.(js|mjs|css|json|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|otf|wasm|pdf|txt|xml|zip)$/i.test(request.url.split("?")[0])) {
+        return reply.code(404).send(notFound("NOT_FOUND", "静态资源不存在"));
+      }
       reply.header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
       return reply.type("text/html").send(fs.readFileSync(webIndexFile, "utf8"));
     });

@@ -1316,7 +1316,11 @@ export interface Question {
   type: "cat" | "ordinal" | "cont" | "text" | "multi";
   options?: QuestionOption[]; skipLogic?: SkipLogic | null; derived?: string;
 }
-export interface EmpiricalProject { id: string; title: string; topic: string; status: string; created_at: string }
+export interface EmpiricalProject {
+  id: string; title: string; topic: string; status: string; created_at: string;
+  /** V414: 产出计数 — 课题选择器显示"N 问卷 · N 数据 · N 分析", 区分空课题 */
+  counts?: { questionnaires: number; versions: number; runs: number };
+}
 export interface EmpiricalQuestionnaire { id: string; projectId: string | null; title: string; source: string; columns: string[]; meta: any; created_at: string }
 export interface EmpiricalDataVersion {
   id: string; projectId: string | null; name: string; columns: string[]; nRows: number;

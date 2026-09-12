@@ -226,8 +226,20 @@ export async function createProject(input: { title: string; topic?: string }): P
 }
 
 export async function listProjects(): Promise<Record<string, unknown>[]> {
-  const r = await pool.query(`select id, title, topic, status, created_at from empirical_projects order by created_at desc limit 50`);
-  return r.rows.map((row: any) => ({ id: String(row.id), title: row.title, topic: row.topic, status: row.status, created_at: new Date(row.created_at).toISOString() }));
+  // V414: 带上各课题的产出计数 — 课题选择器里要显示"N 问卷 · N 数据 · N 分析",
+  //   否则切到一个空课题时, 流水线总览整块消失, 用户会以为功能坏了(实测踩过)。
+  //   一次聚合查三个表, 避免大列表串行 N+1。
+  const r = await pool.query(
+    `select p.id, p.title, p.topic, p.status, p.created_at,
+            (select count(*)::int from empirical_questionnaires q where q.project_id = p.id) as n_questionnaires,
+            (select count(*)::int from empirical_data_versions v where v.project_id = p.id) as n_versions,
+            (select count(*)::int from empirical_pipeline_runs r where r.project_id = p.id) as n_runs
+     from empirical_projects p order by p.created_at desc limit 50`);
+  return r.rows.map((row: any) => ({
+    id: String(row.id), title: row.title, topic: row.topic, status: row.status,
+    created_at: new Date(row.created_at).toISOString(),
+    counts: { questionnaires: row.n_questionnaires, versions: row.n_versions, runs: row.n_runs },
+  }));
 }
 
 export async function saveQuestionnaire(input: {
@@ -381,9 +393,12 @@ export async function projectPipelineOverview(projectId: string): Promise<Record
     columns: row.columns ?? [], meta: row.meta ?? {},
     created_at: new Date(row.created_at).toISOString(),
   }));
+  // V414: 原来带 `or project_id is null` —— 把 10 条全局匿名版本算给了每一个课题,
+  //   导致"空课题"永远 hasData=true: 总览不消失, 却列着一堆不属于本课题的数据版本。
+  //   总览代表的是"本课题的产出", 这里改为只取本课题的版本。
   const vR = await pool.query(
     `select id, name, columns, n_rows, meta, content_hash, created_at from empirical_data_versions
-     where (project_id = $1 or project_id is null) order by created_at desc limit 20`, [projectId]);
+     where project_id = $1 order by created_at desc limit 20`, [projectId]);
   const versions = vR.rows.map((row: any) => ({
     id: String(row.id), name: row.name, columns: row.columns ?? [], nRows: row.n_rows,
     meta: row.meta ?? {}, contentHash: row.content_hash ?? null,

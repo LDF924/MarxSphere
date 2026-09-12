@@ -370,8 +370,10 @@ export const EmpiricalResearchPanel: FC = () => {
   const loadProjects = () => {
     void apiEmpiricalWorkshop.projects().then((r) => {
       setProjects(r.projects);
-      // 自动选第一个(若未选)
-      if (!projectId && r.projects.length > 0) setProjectId(r.projects[0].id);
+      // V414: 原来这里是 `if (!projectId) setProjectId(r.projects[0].id)` —— 静默选中列表第一个。
+      //   课题列表按 created_at desc 排, 顺序会随新建课题变化, 等于"悄悄换课题";
+      //   切到空课题时流水线总览整块消失, 用户会以为功能坏了(实测踩过)。
+      //   现在保持未选中状态, 由用户显式选择。
     }).catch(() => {});
   };
   useEffect(() => { loadProjects(); }, []);
@@ -409,15 +411,33 @@ export const EmpiricalResearchPanel: FC = () => {
               <span className="text-muted-foreground">▾</span>
             </button>
             {projectMenu && (
-              <div className="absolute right-0 z-20 mt-1 w-64 rounded-lg border bg-card p-2 shadow-lg">
-                <div className="mb-1 text-[9px] font-semibold text-muted-foreground">课题列表({projects.length})</div>
-                <div className="max-h-40 space-y-0.5 overflow-y-auto">
-                  {projects.map((p) => (
-                    <button key={p.id} className={`block w-full rounded px-1.5 py-1 text-left text-[10px] hover:bg-accent ${p.id === projectId ? "bg-emerald-500/10 text-emerald-700" : ""}`}
-                      onClick={() => { setProjectId(p.id); setProjectMenu(false); }}>
-                      {p.title}
-                    </button>
-                  ))}
+              <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border bg-card p-2 shadow-lg">
+                <div className="mb-1 text-[9px] font-semibold text-muted-foreground">课题列表({projects.length}) — 切换将更换整条流水线上下文</div>
+                <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                  {projects.map((p) => {
+                    const c = p.counts;
+                    const empty = !!c && c.questionnaires + c.versions + c.runs === 0;
+                    return (
+                      <button key={p.id} className={`block w-full rounded px-1.5 py-1 text-left text-[10px] hover:bg-accent ${p.id === projectId ? "bg-emerald-500/10 text-emerald-700" : ""}`}
+                        onClick={() => {
+                          if (p.id === projectId) { setProjectMenu(false); return; }
+                          setProjectId(p.id);
+                          setProjectMenu(false);
+                          // V414: 切课题静默生效过, 用户以为面板坏了 — 明确提示切到了哪个课题、有没有产出
+                          setNotice(empty
+                            ? `已切换到课题「${p.title}」— 该课题暂无产出, 流水线总览会是空的。分析结果只在当前选中的课题下汇总。`
+                            : `已切换到课题「${p.title}」— 问卷 ${c?.questionnaires ?? 0} · 数据 ${c?.versions ?? 0} · 分析 ${c?.runs ?? 0}`);
+                        }}>
+                        <div className="truncate font-medium">{p.title}</div>
+                        <div className={`mt-0.5 flex items-center gap-1 text-[9px] ${empty ? "text-amber-600" : "text-muted-foreground"}`}>
+                          {c ? (empty
+                            ? <span>暂无产出</span>
+                            : <span>📋 {c.questionnaires} · 🗄 {c.versions} · ⚗️ {c.runs}</span>)
+                            : <span className="text-muted-foreground/60">…</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
                   {projects.length === 0 && <div className="px-1.5 py-1 text-[9px] text-muted-foreground">暂无课题, 请先创建</div>}
                 </div>
                 <div className="mt-1.5 flex gap-1 border-t pt-1.5">
@@ -488,6 +508,15 @@ export const EmpiricalResearchPanel: FC = () => {
         </div>
       )}
 
+      {/* V414: 通知横幅 — 原来 notice 只渲染在上面的历史抽屉里, 不打开历史就永远看不到,
+          全面板的 setNotice(含课题切换提示) 等于静默。挪到面板级常驻。 */}
+      {notice && !showHistory && (
+        <div className="flex items-start gap-2 border-b bg-emerald-500/5 px-4 py-1.5 text-[10px] text-emerald-700">
+          <span className="flex-1">{notice}</span>
+          <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => setNotice("")}>×</button>
+        </div>
+      )}
+
       {/* 内容区 */}
       <div className="flex min-h-0 flex-1">
         {/* 左: 功能导航 */}
@@ -540,8 +569,10 @@ export const EmpiricalResearchPanel: FC = () => {
                     }
                   }} />
                 </div>
-                {/* V413: 课题流水线总览(问卷→数据→分析全链时间线) */}
-                {projectId && <PipelineOverview projectId={projectId} refreshKey={pipelineRefreshKey} />}
+                {/* V413: 课题流水线总览(问卷→数据→分析全链时间线)
+                    V414: 不再用 {projectId && …} 整块隐藏 —— 未选课题时它"凭空消失",
+                    用户看到的是功能没了; 常驻并由组件自己提示"先选课题"。 */}
+                <PipelineOverview projectId={projectId} refreshKey={pipelineRefreshKey} projectTitle={projects.find((p) => p.id === projectId)?.title} />
                 {/* 闸门状态总览 */}
                 {projectId && (
                   <div className="mt-2 rounded-lg border bg-muted/20 p-2">
