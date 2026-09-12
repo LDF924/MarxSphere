@@ -288,3 +288,51 @@ describe("setDefaultStandard 事务", () => {
     expect(client.release).toHaveBeenCalled();
   });
 });
+
+// ─── 卡死的"活跃"任务可处置(2026-09-12) ───
+// 执行者是 SSE 流: 连接断掉/服务重启后库里会留下没人推进的 queued。
+// 它既跑不了(没人连流), 又因 ACTIVE_JOB_STATUS 挡着删不掉 → 实测用户遇到"删除没生效"。
+describe("没人推进的活跃任务可取消/删除", () => {
+  const stale = () => new Date(Date.now() - 30 * 60 * 1000);
+  const fresh = () => new Date();
+
+  it("陈旧 queued: runReviewJob 落 cancelled 并发事件(不再静默返回)", async () => {
+    vi.mocked(pool.query).mockReset();
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ id: "j1", status: "queued", updated_at: stale(), exec_lease_until: null, text_snapshot: "x" }], rowCount: 1 } as never);
+    const sent: Array<{ event: string }> = [];
+    const sse = { send: (e: string) => { sent.push({ event: e }); }, error: () => {}, end: () => {}, closed: false } as never;
+    await runReviewJob("u1", "j1", sse);
+    expect(sent.some((x) => x.event === "review.cancelled")).toBe(true);
+    const updates = vi.mocked(pool.query).mock.calls.map((c) => ({ sql: String(c[0]), vals: c[1] as unknown[] }));
+    expect(updates.some((u) => u.sql.includes("update review_jobs") && u.vals?.includes("cancelled"))).toBe(true);
+  });
+
+  it("陈旧 queued: deleteReviewJob 放行", async () => {
+    vi.mocked(pool.query).mockReset();
+    const client = { query: vi.fn(async () => ({ rowCount: 1 })), release: vi.fn() };
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ status: "queued", updated_at: stale(), exec_lease_until: null }], rowCount: 1 } as never);
+    const { deleteReviewJob } = await import("../src/services/review-service.js");
+    await expect(deleteReviewJob("u1", "j1")).resolves.toBe(true);
+  });
+
+  it("持有有效租约的在跑任务: 删除仍被拒(不误杀)", async () => {
+    vi.mocked(pool.query).mockReset();
+    const client = { query: vi.fn(async () => ({ rowCount: 1 })), release: vi.fn() };
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [{ status: "running", updated_at: fresh(), exec_lease_until: new Date(Date.now() + 60_000) }], rowCount: 1,
+    } as never);
+    const { deleteReviewJob } = await import("../src/services/review-service.js");
+    await expect(deleteReviewJob("u1", "j1")).resolves.toBe(false);
+  });
+
+  it("无租约但刚更新(可能刚建完还没连流): 不判死", async () => {
+    vi.mocked(pool.query).mockReset();
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ id: "j1", status: "queued", updated_at: fresh(), exec_lease_until: null, text_snapshot: "x" }], rowCount: 1 } as never);
+    const sent: Array<{ event: string }> = [];
+    const sse = { send: (e: string) => { sent.push({ event: e }); }, error: () => {}, end: () => {}, closed: false } as never;
+    await runReviewJob("u1", "j1", sse);
+    expect(sent.some((x) => x.event === "review.cancelled")).toBe(false);
+  });
+});

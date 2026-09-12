@@ -4,4 +4,4 @@
 Set ws = CreateObject("Wscript.Shell")
 ' 延迟 30 秒（等 Docker/网络就绪）
 WScript.Sleep 30000
-ws.Run "bash SAG_ROOT/scripts\sag-bootstrap.sh", 0, False
+ws.Run """D:\Git\bin\bash.exe"" -lc ""C:/Users/HUAWEI/SAG-main/scripts/sag-bootstrap.sh""", 0, False

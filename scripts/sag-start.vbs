@@ -3,11 +3,11 @@
 ' 现在: 读 mode.json 的 mode 字段, preview → 设 MARXSPHERE_PREVIEW=1, full/其他 → 不设(完整模式)
 ' ws.Run 的第二个参数 0 = 隐藏窗口
 Set ws = CreateObject("Wscript.Shell")
-ws.CurrentDirectory = "SAG_ROOT"
+ws.CurrentDirectory = "C:\Users\HUAWEI\SAG-main"
 
 ' 读 mode.json 决定启动模式
 Set fso = CreateObject("Scripting.FileSystemObject")
-modeFile = "SAG_ROOT\mode.json"
+modeFile = "C:\Users\HUAWEI\SAG-main\mode.json"
 mode = "full"  ' 默认 full（完整推理/检索）
 If fso.FileExists(modeFile) Then
   Set f = fso.OpenTextFile(modeFile, 1)

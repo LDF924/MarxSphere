@@ -11,7 +11,7 @@
 # 依赖: 需先在 scripts/ 下构建好 eval-32-metrics.ts（npm run build 或 npx tsx 直接跑）
 
 set -e
-cd SAG_ROOT
+cd /c/Users/HUAWEI/SAG-main
 LOG="/tmp/eval-evolve-pipeline.log"
 TS=$(date +%Y%m%d-%H%M%S)
 ATTRIB_ONLY=""

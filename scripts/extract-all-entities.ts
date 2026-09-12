@@ -22,7 +22,7 @@ function isBusinessEntity(name: string): boolean {
 }
 
 const SOURCE_ID = '8ecb4299-1bec-45d5-afef-6da5c3843ef3';
-const PYTHON = 'COGNEE_DIR/.venv312/Scripts/python.exe';
+const PYTHON = 'C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe';
 const BATCH_EMBED = 10;
 
 // ─── Cognee: neo4j-driver 直连 Neo4j 11003 ───
