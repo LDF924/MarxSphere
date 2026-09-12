@@ -378,7 +378,8 @@ npm run quickstart       # 🚀 一键启动：自动装依赖 → 检查环境 
 
 > 或者手动分步：`cp .env.example .env`（填入 LLM/Embedding Key）→ `npm install` → `npm run db:setup` → `npm run dev`
 
-> **PDF2Obsidian（可选）**：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
+> **PDF2Obsidian**：编译产物已入库（`vendor/pdf2obsidian/packages/{core,pipeline,providers}/dist`），`npm install` 后即可直接使用，**无需** pnpm 重建。
+> 仅当你改了 `vendor/pdf2obsidian/packages/*/src` 时才需要重建：`cd vendor/pdf2obsidian && pnpm install && pnpm -r --filter "./packages/**" build && cd ../..`
 
 ### 3. 生产模式
 
