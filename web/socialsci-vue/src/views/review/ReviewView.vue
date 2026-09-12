@@ -1297,7 +1297,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
               </select>
               <router-link to="/review/library" class="setting-link">管理期刊库</router-link>
             </div>
-            <div class="setting-row">
+            <div class="setting-row std-row">
               <label class="setting-label">
                 审核标准
                 <span v-if="store.settings.standardIds.length" class="label-badge">{{ store.settings.standardIds.length }} 个</span>
@@ -2138,8 +2138,24 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
   margin-left: 6px; padding: 1px 6px; font-size: 10.5px; font-weight: 500;
   border-radius: 8px; background: rgba(77, 132, 203, .18); color: #7EB0E8;
 }
+/**
+ * 标准选择所在的行要**纵向排布**。
+ *
+ * 由来(2026-09-12 用户反馈"社科通用标准这几个字怎么是竖着排的"):
+ *   .setting-row 是 `display:flex; align-items:center`, 而 .setting-note 带
+ *   `flex-basis:100%`(它自己要占满整行)。picker 只有 `flex:1` → 在 395px 宽的行里
+ *   被挤到 **92px**, 里面的 .std-name 只剩 **13px** 宽; 13px 装不下一个汉字 →
+ *   中文逐字换行, 6 个字排成 6 行(实测 opt 高 123px / 行高 18.75 = 6 行)。
+ *   同时 align-items:center 把行高拉到 141px, 标签「审核标准」孤零零居中。
+ * 改为 column + stretch: 标签一行、picker 一行、提示一行, 各得整宽, 不再互相挤压。
+ */
+.std-row { flex-direction: column; align-items: stretch; gap: 8px; }
+.std-row .setting-label { width: auto; }
+/* flex-basis:100% 在横向 flex 里是"占满整行", 但纵向 flex 的主轴是**高度** ——
+   原样保留会变成"高度 100%", 把提示撑成一大块。这里按内容高度即可(它已独占一行)。 */
+.std-row .setting-note { flex-basis: auto; padding-left: 0; }
 .std-picker {
-  flex: 1; display: flex; flex-wrap: wrap; gap: 6px;
+  display: flex; flex-wrap: wrap; gap: 6px;
   padding: 8px 10px; border: 1px solid #222F44; border-radius: 8px; background: #131C2E;
   min-height: 38px; align-items: center;
 }
