@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Database, FlaskConical, Wand2, ClipboardList, Loader2, BarChart3, Table2, ScrollText, Download, FileDown } from "lucide-react";
 import { apiEmpiricalWorkshop } from "../../lib/api";
 
-interface PipelineProps { projectId: string; refreshKey?: number }
+interface PipelineProps { projectId?: string; refreshKey?: number; projectTitle?: string }
 
 const STAGE_META: Record<string, { label: string; icon: any; color: string }> = {
   recognize: { label: "问卷识别", icon: FileText, color: "text-blue-600" },
@@ -117,7 +117,7 @@ function StageCard({ run, index, total }: { run: any; index: number; total: numb
   );
 }
 
-export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
+export function PipelineOverview({ projectId, refreshKey, projectTitle }: PipelineProps) {
   const [overview, setOverview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -126,7 +126,7 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
   const [exportError, setExportError] = useState("");
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) { setOverview(null); setError(""); return; }   // V414: 取消选中时清掉上一条课题的数据, 免得残留
     setLoading(true); setError("");
     apiEmpiricalWorkshop.projectPipeline(projectId)
       .then((r) => setOverview(r.overview))
@@ -134,7 +134,8 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
       .finally(() => setLoading(false));
   }, [projectId, refreshKey]);
 
-  if (!projectId) return null;
+  // V414: 原来这里是 `if (!projectId) return null` — 未选课题时整块卡片直接不渲染,
+  //   看着就是"功能没了"。改成保留外壳 + 空状态说明, 让用户知道要先选课题。
   const qs = overview?.questionnaires ?? [];
   const versions = overview?.versions ?? [];
   const runs = overview?.runs ?? [];
@@ -142,6 +143,7 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
 
   /** V413: 导出全套报告(LaTeX + Word, 走报告脚本生成后提供下载链接) */
   const exportReport = async () => {
+    if (!projectId) return;
     setExporting(true); setExportError(""); setExportFiles(null);
     try {
       const r = await apiEmpiricalWorkshop.exportReport(projectId);
@@ -169,8 +171,7 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
         <span className="text-[11px] font-semibold">课题流水线总览</span>
         <span className="text-[9px] text-muted-foreground">问卷 → 数据 → 分析全链(点击展开结果)</span>
         <div className="ml-auto flex items-center gap-1.5">
-          {hasData && (
-            <>
+          {hasData && (<>
               <button
                 onClick={() => void exportReport()}
                 disabled={exporting}
@@ -192,9 +193,12 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
             </>
           )}
           <button
-            onClick={() => { setLoading(true); apiEmpiricalWorkshop.projectPipeline(projectId).then((r) => { setOverview(r.overview); setLoading(false); }).catch((e: any) => { setError(e?.message ?? "刷新失败"); setLoading(false); }); }}
-            className="text-[9px] text-muted-foreground hover:text-foreground"
-            disabled={loading}
+            onClick={() => {
+              if (!projectId) return;
+              setLoading(true); apiEmpiricalWorkshop.projectPipeline(projectId).then((r) => { setOverview(r.overview); setLoading(false); }).catch((e: any) => { setError(e?.message ?? "刷新失败"); setLoading(false); });
+            }}
+            className="text-[9px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+            disabled={loading || !projectId}
           >
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : "↻ 刷新"}
           </button>
@@ -206,7 +210,9 @@ export function PipelineOverview({ projectId, refreshKey }: PipelineProps) {
 
       {!loading && !hasData && (
         <div className="py-2 text-center text-[10px] text-muted-foreground">
-          暂无流水线产出 — 先识别问卷 / 生成仿真数据 / 跑信效度, 结果会按时间线汇总到这里
+          {projectTitle
+            ? <>当前课题「<span className="font-medium text-foreground">{projectTitle}</span>」暂无流水线产出。<br />在<b>本课题</b>下依次做 问卷识别 → 信效度 / 仿真 / 回归, 结果会按时间线汇总到这里。</>
+            : <>先在右上角选择一个课题 — 未选课题时不会汇总任何产出(分析结果挂在选中课题下)。</>}
         </div>
       )}
 

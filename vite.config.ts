@@ -29,6 +29,14 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    emptyOutDir: true
+    // V414: 整个仓库只有这一处必须关掉 emptyOutDir —— web/dist 是"两个构建共享"的目录:
+    //   React(本配置, root=web) 产出 assets/ + index.html;
+    //   SocialSci Vue 子应用(root=web/socialsci-vue, base=/soc/) 产出 soc/,
+    //   由 fastify-static 按同一 root 托管, 5 个 iframe tab 全靠它。
+    //   开 true 时 `vite build` 单独的 build:web 会连 soc/ 一起清掉, 而 package.json
+    //   的 build 之所以没暴露这个问题, 只是因为凑巧按 build:web → build:socialsci-vue 的顺序补了回来。
+    //   实测后果: 点击「课题流程编排」等 5 个 tab, iframe 落到 SPA 兜底 → 渲染成 AI 对话页。
+    //   陈旧 chunk 交给下面的 clean:web 清理(dist/ 的清理入口只有它一处, 语义清晰)。
+    emptyOutDir: false
   }
 });
