@@ -142,10 +142,40 @@ t("上游节点产出是真实生成内容(非指令回显)", upOut.length > 20 
 const upStep = p4.stepLog.find((s) => s.stepId === "up");
 const downStep = p4.stepLog.find((s) => s.stepId === "down");
 t("步骤日志记录了数据来源(画布连线可视证据)", (downStep?.inputsFrom ?? []).includes("up"), JSON.stringify(downStep?.inputsFrom ?? []));
-t("上下游产出不同(确实各自执行)", upOut !== downOut);
-t("下游确实消费了上游产出(长度同量级而非退回任务输入)",
-  downOut.length > upOut.length * 0.5 && downOut.length < upOut.length * 2.5,
-  `up=${upOut.length} down=${downOut.length}`);
+t("上游节点产出非空", upOut.length > 20, `len=${upOut.length}`);
+
+// ── 7b. 连线真的把上游产出传给了下游(确定性验证) ──
+// 上面那条跑真实 LLM 的链只能证明"两边都产出了", 证明不了"传过去的是上游产出" ——
+// LLM 输出自由(可能变长、可能雷同), 用它的长度/内容做判据会偶发假失败(实测连踩两次:
+// 先断言"逐字不同"→两次相同; 再断言"凝练变短"→反而变长 603→671)。
+// 这里用注入的 stepExecutor 直接把**下游实际收到的 stepInput** 抓出来比对, 不受模型波动影响。
+console.log(`\n[7b] 确定性验证: 连线传的是上游产出还是任务输入`);
+{
+  const { runMetaSkill } = await import("../src/services/meta-skill-runtime.ts");
+  const { graphToMetaSkill } = await import("../src/services/capability-registry.ts");
+  const { listCapabilities } = await import("../src/services/capability-registry.ts");
+  const caps = await listCapabilities();
+  const def = graphToMetaSkill({
+    id: "probe-chain", name: "链路探针",
+    nodes: [
+      { id: "A", capabilityId: "tool:llm_write", title: "上游" },
+      { id: "B", capabilityId: "tool:llm_write", title: "下游" },
+      { id: "C", capabilityId: "tool:llm_write", title: "孤岛" },   // 无入边 → 应拿任务输入
+    ],
+    edges: [{ source: "A", target: "B" }],
+  }, caps);
+  const seen = {};
+  const r = await runMetaSkill(def, "原始任务输入", {
+    stepExecutor: async (step, ctx) => {
+      seen[step.id] = ctx.stepInput ?? ctx.input;
+      return `产出-${step.id}`;
+    },
+  });
+  t("运行成功", r.status === "done", r.status);
+  t("下游 B 拿到的 {{inputs}} = 上游 A 的产出", seen.B === "产出-A", JSON.stringify(seen.B));
+  t("无入边的 C 拿到的 {{inputs}} = 任务输入", seen.C === "原始任务输入", JSON.stringify(seen.C));
+  t("A/B/C 三次执行互不污染(并发隔离)", Object.keys(seen).length === 3, JSON.stringify(Object.keys(seen)));
+}
 
 // ── 汇总 ──
 console.log(`\n${"=".repeat(50)}\n通过 ${pass} / 失败 ${fail}`);

@@ -230,7 +230,8 @@ const WEB_SOURCE_URLS: Record<string, string> = {
   aisixiang: "https://www.aisixiang.com/"
 };
 
-const CDP_PROXY = "http://localhost:3456";
+// V415: 与 cnki-citation-proxy 对齐 —— 原来这里写死, 换端口/非本机部署时 CDP 抓取会莫名失败
+const CDP_PROXY = process.env.CDP_PROXY_URL || "http://localhost:3456";
 
 async function searchWebSource(input: {
   source: string;

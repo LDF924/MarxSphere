@@ -16,14 +16,21 @@ SAG_ROOT="${SAG_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 OPENVIKING_DIR="${OPENVIKING_HOME:-$HOME}"
 
 # Neo4j 位置自动探测（2026-09-12 从 C 盘迁至 E 盘后加入，避免再写死个人目录）
-# 依次尝试候选位置，取第一个含 neo4j-community-5.26.27 的目录
+# 依次尝试候选位置，取第一个含 neo4j-community-<版本> 的目录。
+# V415(2026-09-13): 候选表里原来混着个人目录(/c/Users/HUAWEI/neo4j) —— 换机器时那一路必然
+#   落空, 且失败信息会把人引到不存在的路径。改为: NEO4J_HOME 显式指定优先, 否则只探常见位置。
+NEO4J_VERSION="${NEO4J_VERSION:-5.26.27}"
 NEO4J_DIR=""
-for _cand in "/e/neo4j" "/c/Users/HUAWEI/neo4j" "/e/SAG-data/neo4j"; do
-  if [ -d "$_cand/neo4j-community-5.26.27" ]; then NEO4J_DIR="$_cand"; break; fi
-done
+if [ -n "${NEO4J_HOME:-}" ] && [ -d "$NEO4J_HOME/neo4j-community-$NEO4J_VERSION" ]; then
+  NEO4J_DIR="$NEO4J_HOME"
+else
+  for _cand in "/e/neo4j" "/e/SAG-data/neo4j" "/opt/neo4j" "$HOME/neo4j" "$HOME/.neo4j"; do
+    if [ -d "$_cand/neo4j-community-$NEO4J_VERSION" ]; then NEO4J_DIR="$_cand"; break; fi
+  done
+fi
 if [ -z "$NEO4J_DIR" ]; then
-  log "⚠️ 未找到 Neo4j 安装目录（已尝试 /e/neo4j 与 /c/Users/HUAWEI/neo4j）"
-  NEO4J_DIR="/c/Users/HUAWEI/neo4j"   # 保持旧值，让后续报错信息可读
+  log "⚠️ 未找到 Neo4j 安装目录（已尝试 NEO4J_HOME 与 /e/neo4j, /e/SAG-data/neo4j, /opt/neo4j, \$HOME/neo4j; 期望其下有 neo4j-community-$NEO4J_VERSION）"
+  log "   提示: 设 NEO4J_HOME 指向 Neo4j 安装根目录即可。"
 fi
 
 start_pg() {
@@ -40,15 +47,22 @@ start_pg() {
 }
 
 start_neo4j() {
+  if [ -z "$NEO4J_DIR" ]; then
+    log "⚠️ 跳过 Neo4j 启动: 未找到安装目录(设 NEO4J_HOME 后重试)"
+    return 0
+  fi
   for port in 11001 11003; do
     if netstat -ano 2>/dev/null | grep -q ":$port .*LISTENING"; then
       log "Neo4j :$port 已在运行"
     else
       log "启动 Neo4j :$port..."
-      if [ "$port" = "11001" ]; then
-        cd "$NEO4J_DIR"/neo4j-community-5.26.27 && (bin/neo4j.bat console > /dev/null 2>&1 &)
+      # 11001 = 主实例(超边/社区), 11003 = cognee 实例; 目录名带 -cognee 后缀区分
+      _dir="$NEO4J_DIR/neo4j-community-${NEO4J_VERSION}"
+      [ "$port" = "11003" ] && _dir="${_dir}-cognee"
+      if [ -d "$_dir" ]; then
+        (cd "$_dir" && bin/neo4j.bat console > /dev/null 2>&1 &)
       else
-        cd "$NEO4J_DIR"/neo4j-community-5.26.27-cognee && (bin/neo4j.bat console > /dev/null 2>&1 &)
+        log "⚠️ 跳过 :$port — 目录不存在: $_dir"
       fi
       sleep 3
     fi
