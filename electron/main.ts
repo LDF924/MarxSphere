@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import fs, { cpSync, rmSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import http from "node:http";
 
 const DEFAULT_PORT = 4173;
@@ -379,17 +380,27 @@ function probeTcp(port: number): Promise<boolean> {
 /** 探测系统可用的 python 解释器（快速版: 只探测存在的路径 + PATH 首个命中, 单次超时 2s） */
 function probeSystemPython(): string[] {
   const found: string[] = [];
-  const fixedPaths = [
-    "C:/Python312/python.exe", "C:/Python311/python.exe",
-    "C:/Program Files/Python312/python.exe", "C:/Program Files/Python311/python.exe",
-    "C:/Users/" + (process.env.USERNAME || "") + "/AppData/Local/Programs/Python/Python312/python.exe",
-    "C:/Users/" + (process.env.USERNAME || "") + "/AppData/Local/Programs/Python/Python311/python.exe",
-  ];
+  const home = os.homedir();
+  // 安装位置分平台: Windows 的 C:/... 在 macOS/Linux 上根本不存在, 列了等于没探测。
+  // 家目录部分用 os.homedir() 拼, 不再插值 USERNAME(它在非 Windows 上也没有)。
+  const appData = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+  const fixedPaths = process.platform === "win32"
+    ? [
+      "C:/Python312/python.exe", "C:/Python311/python.exe",
+      "C:/Program Files/Python312/python.exe", "C:/Program Files/Python311/python.exe",
+      path.join(appData, "Programs", "Python", "Python312", "python.exe"),
+      path.join(appData, "Programs", "Python", "Python311", "python.exe"),
+    ]
+    : [
+      "/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3",  // macOS
+      "/usr/bin/python3", "/usr/local/bin/python3",                              // Linux
+    ];
   for (const p of fixedPaths) {
     if (fs.existsSync(p)) found.push(p);
   }
   // PATH 命令: 只测第一个命中（避免 py/python/python3 全测拖时间）
-  for (const cmd of ["python", "py"]) {
+  // py 是 Windows 的启动器, 别的平台没有这个命令
+  for (const cmd of process.platform === "win32" ? ["python", "py"] : ["python3", "python"]) {
     try {
       const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
       const r = execFileSync(cmd, ["--version"], { timeout: 2000, windowsHide: true, stdio: "pipe" });

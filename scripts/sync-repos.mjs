@@ -5,7 +5,8 @@
  *
  * 同步两个平行仓库（方向感知，每目录固定单向，杜绝双向覆盖）：
  *   OPENSOURCE = 开发主线（推 GitHub 的线，V438+ 持续开发提交）
- *   MAIN       = 工作副本 C:/Users/HUAWEI/SAG-main（本地运行/预览，无远端，不提交）
+ *   MAIN       = 工作副本（本地运行/预览，无远端，不提交）—— 默认取本仓库的上一级目录
+ *                （开发主线在 SAG-main 的子目录里跑时即指向 SAG-main），可用 SAG_MAIN_ROOT 覆盖
  *
  * 方向定义（2026-08-27 修正: open 是主线）:
  *   开源 → 主仓库:  src/ web/src/ test/ migrations/ electron/ docs/ scripts/ 根配置（主线为准，副本跟随）
@@ -37,7 +38,16 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OPENSOURCE = path.resolve(__dirname, "..");
-const MAIN = "C:/Users/HUAWEI/SAG-main";
+/**
+ * 工作副本位置: 环境变量 > 同级目录里真的存在的那个 > 本仓库(自己同步自己)。
+ * 2026-09-13: 原来写死 C:/Users/HUAWEI/SAG-main。改成"同级的 SAG-main/SAG-open-source"后
+ * 发现从主仓库侧跑时同级是 C:/Users/HUAWEI(没有这两个目录) —— 会静默退化成"自己同步自己"
+ * 的空操作, 比报错更糟(历史教训: sync-repos 的空操作曾被当成同步成功)。所以这里按实际
+ * 存在的目录认, 都不存在就显式落回本仓库, 由下面的 resolveRepos 打印出来。
+ */
+const MAIN = process.env.SAG_MAIN_ROOT
+  || ["SAG-main", "SAG-open-source"].map((d) => path.resolve(OPENSOURCE, "..", d)).find((p) => p !== OPENSOURCE && existsSync(path.join(p, "package.json")))
+  || OPENSOURCE;
 
 // ─── 方向规则：目录 → 源端 ───
 // 开源 → 主仓库（代码方向，开源领先）

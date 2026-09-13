@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.resolve(__dirname, "..");
-const OPEN = "C:/Users/HUAWEI/SAG-open-source";
+const OPEN = process.env.SAG_OPEN_ROOT || path.resolve(__dirname, "..", "..", "SAG-open-source");
 const DRY = process.argv.includes("--dry-run");
 const NO_PUSH = process.argv.includes("--push");
 // 自定义提交消息: 默认 "sync: 自动同步 main → open (日期)"; 功能提交用 --msg "feat(xxx): ..."

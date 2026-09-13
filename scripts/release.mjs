@@ -199,7 +199,7 @@ const upload = JSON.parse(execSync(
 console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.message || "?"}`);
 
 // 6) 同步安装包到主仓库（SAG-main release/）
-const mainReleaseDir = path.join("C:/Users/HUAWEI/SAG-main", "release");
+const mainReleaseDir = path.join(process.env.SAG_MAIN_ROOT || path.resolve(root, ".."), "release");
 if (existsSync(mainReleaseDir)) {
   execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
   console.log(`✅ 已同步到主仓库 release/ (MarxSphere Setup ${version}.exe)`);

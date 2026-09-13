@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-736%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-975%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -25,7 +25,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 70-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 72-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
 
 ### 🏗 System Architecture
 
@@ -52,7 +52,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **70-tool dispatch**: 48 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 43-view coverage)
+- **72-tool dispatch**: 50 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 43-view coverage)
 - **Command syntax**: `/` opens the skill command palette (208 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
@@ -76,7 +76,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | Task DAG | LLM decomposes subtasks → depends_on orchestration → concurrent queue (semaphore) → SSE progress |
 | Failure handling | tool timeout circuit breaker (90s) → exponential backoff → failure feedback loop → error classification (recoverable/unrecoverable) |
 
-**② Tool Matrix (48 Agent tools; plus 22 view tools = 70)**
+**② Tool Matrix (50 Agent tools; plus 22 view tools = 72)**
 
 | Category | Tools | Engineering |
 |---|---|---|

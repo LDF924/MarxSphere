@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-736%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-975%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -25,7 +25,7 @@
 
 ## 功能总览
 
-> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 70 工具矩阵(65 Agent + 22 视图) / 17 实证功能 / 桌面端细节 / 评测指标）
+> 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 66 场景清单 / 72 工具矩阵(65 Agent + 22 视图) / 17 实证功能 / 桌面端细节 / 评测指标）
 
 ### 🏗 系统架构
 
@@ -52,7 +52,7 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **70 工具自主调度**：48 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/教育能力/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，43 视图能力全覆盖）
+- **72 工具自主调度**：50 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/教育能力/格式评测/论文质量）+ 22 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，43 视图能力全覆盖）
 - **命令语法**：`/` 弹出技能命令面板（208 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
@@ -76,7 +76,7 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（48 个 Agent 工具；另有 22 个视图工具，合计 70）**
+**② 工具矩阵（50 个 Agent 工具；另有 22 个视图工具，合计 72）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
@@ -457,7 +457,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🧠 **52 步推理链路** | 问题分类 → 17 路粗检索 → Graphiti 精炼 → 超边三路检索 → 融合生成 → 自评自愈 |
 | 🔍 **Ask 18 步检索** | 多臂召回 → 加权 RRF → LLM 重排 → 带编号引用溯源 |
 | 🗄 **四源检索** | SAG 事件 + Graphiti 超边/社区 + Cognee 切片 + PG 向量/词法，RRF 融合 |
-| 🤖 **AI Agent** | 70 工具自主调度（含 Notebook 图表模板/桌面控制/格式评测）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
+| 🤖 **AI Agent** | 72 工具自主调度（含 Notebook 图表模板/桌面控制/格式评测）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
 | 💰 **成本可审计账本** | 轮级真实用量(按模型/来源三态) + 平台成本审计面板 |
 | 🔀 **三档成本路由** | 规则 + 本地 ML 分类器(lite/deep) 保守融合, 只升级不降级 |
 | 🔁 **B5 多模型集成** | 难题多模型并行成稿 + aggregator 融合, 渐进呈现/超时截断 |
@@ -496,7 +496,7 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明）
 migrations/          PostgreSQL schema（80+ 迁移）
 plugins/             Agent 插件目录
-test/                单元测试（736 项）
+test/                单元测试（975 项）
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选等）
 ```
@@ -504,13 +504,13 @@ data/                运行时数据（金标候选等）
 ## 测试
 
 ```bash
-npm test                # 736 项单元测试
+npm test                # 975 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（736 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（975 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 

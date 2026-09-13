@@ -143,13 +143,12 @@ import { promisify } from "node:util";
 import { existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolvePython } from "./py-path.js";
 
 const execFileAsync = promisify(execFile);
 
 function pythonBin(): string {
-  const venvPy = path.resolve(process.cwd(), ".venv-fmtcheck", "Scripts", "python.exe");
-  if (existsSync(venvPy)) return venvPy;
-  return process.platform === "win32" ? "python" : "python3";
+  return resolvePython();
 }
 
 /** 大纲树 → 结构化内容(标题+正文顺序展开) */

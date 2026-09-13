@@ -18,7 +18,9 @@
 
 $ErrorActionPreference = 'Continue'
 
-$LogDir = 'C:\Users\HUAWEI\SAG-main\logs'
+# 脚本在 <repo>/scripts/ 下, 回推仓库根(原来写死 C:\Users\<某台机器>\SAG-main)
+$SagRoot = Split-Path -Parent $PSScriptRoot
+$LogDir = Join-Path $SagRoot 'logs'
 $Log    = Join-Path $LogDir 'edge-orphan-guard.log'
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
 

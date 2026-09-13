@@ -84,6 +84,8 @@ import { policyService } from "../services/policy-service.js";
 import { apiTokenService } from "../services/api-token-service.js";
 import * as authService from "../services/auth-service.js";
 import * as billingService from "../services/billing-service.js";
+import { chargeUserForReasonTask } from "../services/reason-billing.js";
+import { requestNeedsBudgetCheck } from "../services/budget-gate.js";
 import * as opsService from "../services/ops-service.js";
 import { classicalTextService } from "../services/classical-text-service.js";
 import { academicResearchService } from "../services/academic-research-service.js";
@@ -619,14 +621,17 @@ export function buildHttpServer() {
     "/api/format-eval/",    // 格式检查(可带 llm:true)
     "/api/quality/",        // 论文质量检查
     "/api/review/",         // 论文评审
+    "/api/paper-outline/",  // 论文大纲: 生成正文/要件烧 LLM(导出已豁免, 见 budget-gate)
     "/api/academic/",       // 学术场景
     "/api/writing/",        // 写作场景
     "/api/classical/",      // 经典文本
     "/api/theory/",         // 理论思辨
   ];
   app.addHook("preHandler", async (request: any, reply: any) => {
-    const url = String(request.url || "").split("?")[0];
-    if (!BUDGET_GATED_PREFIXES.some((p) => url.startsWith(p))) return;
+    // 2026-09-13: 不再整段前缀一刀切 —— 纯读的期刊库/评审标准/统计/规则常量等不计费接口放行,
+    //   否则额度用尽的用户打开「论文质量评审」看到的是一片空白(面板首屏全 402)。
+    //   判定在 budget-gate.ts, 判据是"这次请求烧不烧 token"而不是 GET/POST。
+    if (!requestNeedsBudgetCheck(request, BUDGET_GATED_PREFIXES)) return;
     const { userId } = alsUserIdOf(request);
     if (!userId) return;   // 本机/匿名/系统调用不拦
     const r = await billingService.ensureWithinBudget(userId);
@@ -713,37 +718,6 @@ export function buildHttpServer() {
     }
   }
 
-  // V405(P0 成本账本): JWT 用户推理计费 — 聚合 retrieve_steps tokens → chargeUser（订阅额度→超额扣余额）
-  // 修复: 原逻辑 model 恒为 deepseek-v4-flash（llmCfg 两分支相同未用）→ 按 retrieve_steps 真实模型取单价;
-  //       无真实模型时按用户 llm_provider 判断（BYOK 自付不扣平台）。/api/reason/query 与 /stream 共用。
-  async function chargeUserForReasonTask(userId: string, taskId: string | undefined): Promise<void> {
-    try {
-      if (!taskId) return;
-      // 2026-09-11: 按模型分组计费 — 此前用 min(parameters->>'model') 取单一模型, 而且该字段恒空
-      //   (写入方只塞了 tokens, 没塞 model), 于是整条推理链一律按 deepseek-v4-flash 定价 ——
-      //   用 pro 跑链路时单价差 4 倍(16 vs 4 元/百万), 长期少收 75%。
-      const agg = await pool.query(
-        `select coalesce(nullif(parameters->>'model', ''), '') as model,
-                coalesce(sum((parameters->'tokens'->>'in')::int), 0) as tin,
-                coalesce(sum((parameters->'tokens'->>'out')::int), 0) as tout
-           from retrieve_steps where task_id = $1
-          group by 1`, [taskId]);
-      const byModel = agg.rows.filter((r: any) => Number(r.tin) + Number(r.tout) > 0);
-      if (!byModel.length) return;
-      // 老数据(改动前落库的)没有 model 字段 → 退回按用户配置推断, 与旧行为一致
-      const needGuess = byModel.some((r: any) => !r.model);
-      let guess = "";
-      if (needGuess) {
-        const llmCfg = await authService.getUserLlmConfig(userId);
-        guess = llmCfg.provider === "byok" ? "byok" : "deepseek-v4-flash";
-      }
-      for (const row of byModel) {
-        const model = String(row.model || "") || guess;
-        if (!model || model === "byok") continue;   // BYOK: LLM 自付, 平台不扣
-        await billingService.chargeUser(userId, model, Number(row.tin), Number(row.tout), "/api/reason/query");
-      }
-    } catch { /* 计费失败不阻塞响应 */ }
-  }
 
   // ─── API 令牌管理（生成/列出/撤销/删除）───
   // V381: 权限目录(设置页勾选列表)
@@ -3330,14 +3304,20 @@ export function buildHttpServer() {
       return reply.code(201).send(result);
     } catch (e: any) {
       const msg = e?.message || String(e);
+      // P0-12 错误扣留: 失败也要把 taskId 交出去 —— 否则客户端只拿到一个错误码, 不知道去查
+      //   哪个任务, 失败详情(query_tasks.error + 失败的 retrieve_steps)就只能翻服务端日志。
+      //   带上 taskId, 前端可查 GET /api/reason/tasks/:id 看跑到哪一步、哪步失败。
+      //   (恢复成功的中间态不会走到这里, 所以不违反"扣留中间态错误"。)
+      const failedTaskId = (e as { taskId?: string })?.taskId ?? null;
+      const withTask = (body: Record<string, unknown>) => (failedTaskId ? { ...body, taskId: failedTaskId } : body);
       if (msg.includes('_TIMEOUT') || msg.includes('MCP_TIMEOUT')) {
-        return reply.code(503).send({ error: { code: "RETRIEVAL_TIMEOUT", message: "检索超时，请稍后重试" } });
+        return reply.code(503).send(withTask({ error: { code: "RETRIEVAL_TIMEOUT", message: "检索超时，请稍后重试" } }));
       }
       if (e instanceof z.ZodError) {
-        return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "请求参数无效" } });
+        return reply.code(400).send(withTask({ error: { code: "BAD_REQUEST", message: "请求参数无效" } }));
       }
       logger.error({ error: msg }, "reason flow failed");
-      return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "推理服务暂时不可用" } });
+      return reply.code(500).send(withTask({ error: { code: "INTERNAL_ERROR", message: "推理服务暂时不可用" } }));
     }
   });
 
@@ -3384,7 +3364,8 @@ export function buildHttpServer() {
       }
       send("done", { type: "done", result });
     } catch (e: any) {
-      send("error", { type: "error", message: getErrorMessage(e) });
+      // P0-12: 失败事件带 taskId(由 inference-service 挂在错误上) —— 前端据此查失败详情
+      send("error", { type: "error", message: getErrorMessage(e), taskId: e?.taskId ?? null });
     } finally {
       reply.raw.end();
     }
@@ -6860,8 +6841,8 @@ except Exception as e:
     return { ok: true, stats: await capabilityStats(), capabilities: caps };
   });
   app.get("/api/orchestrator/templates", async () => {
-    const { listTemplates } = await import("../services/orchestrator-service.js");
-    return { ok: true, templates: listTemplates() };
+    const { listTemplatesWithCost } = await import("../services/orchestrator-service.js");
+    return { ok: true, templates: await listTemplatesWithCost() };
   });
   app.post("/api/orchestrator/run", async (request, reply) => {
     const { startOrchestration } = await import("../services/orchestrator-service.js");
@@ -6919,6 +6900,21 @@ except Exception as e:
     const { listRuns } = await import("../services/orchestrator-service.js");
     const q = request.query as { limit?: string };
     return { ok: true, runs: await listRuns(Number(q.limit) || 30) };
+  });
+  // V415: Agent 编排开关 —— 前端可见可切(env 为总闸; env 未开时前端只读展示)
+  app.get("/api/orchestrator/settings", async () => {
+    const { getAgentOrchestrationSetting } = await import("../services/orchestrator-service.js");
+    return { ok: true, settings: await getAgentOrchestrationSetting() };
+  });
+  app.put("/api/orchestrator/settings", async (request, reply) => {
+    const { setAgentOrchestrationSetting } = await import("../services/orchestrator-service.js");
+    const body = (request.body ?? {}) as { enabled?: boolean; maxNodes?: number; requireConfirm?: boolean };
+    try {
+      const s = await setAgentOrchestrationSetting(body);
+      return { ok: true, settings: s };
+    } catch (e: any) {
+      return reply.code(400).send({ error: { code: "ORCH_FORBIDDEN", message: String(e?.message || e).slice(0, 200) } });
+    }
   });
   // 用户自定义图的保存/读取(模板在代码里, 这里只存改过的)
   app.get("/api/orchestrator/graphs", async () => {

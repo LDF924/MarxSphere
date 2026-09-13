@@ -92,6 +92,9 @@ interface RetrieveStep {
   id: string;
   engine: string;
   search_type: string;
+  /** 后端按 search_type 反查出的逻辑步号(1..52) —— 按它对齐 REASON 步骤, 不用数组下标。
+   *  下标对齐会错位: 后端落库顺序是 outline → stage2_* → stage3_* → …, 与 52 步的编排顺序不同。 */
+  stepNo?: number | null;
   query: string;
   duration_ms: number;
   status: string;
@@ -125,6 +128,8 @@ export interface ReasonDetail {
   hyperEdges: HyperEdgeItem[];   // V211+: 超边知识层检索结果
   hypotheses: Hypothesis[];
   evaluations: Evaluation[];
+  /** 52 步定义(后端随详情下发) —— 前端不再自带一份静态数组, 两份定义会漂移 */
+  reasonSteps?: Array<{ no: number; name: string; trigger?: string }>;
 }
 
 interface HyperEdgeItem {
@@ -212,7 +217,11 @@ const reasonApi = {
         const evt = JSON.parse(dataLine.slice(6));
         if (evt.type === "token" && evt.text) onToken(evt.text);
         else if (evt.type === "done") result = evt.result;
-        else if (evt.type === "error") throw new Error(evt.message);
+        else if (evt.type === "error") {
+          // P0-12 错误扣留: 服务端在失败事件里带 taskId —— 留住它, 否则用户只看到一句
+          //   "推理失败", 没法去查是哪一步挂的(GET /api/reason/tasks/:id 有失败详情)。
+          throw Object.assign(new Error(evt.message), { taskId: evt.taskId ?? null });
+        }
       }
     }
     return result;
@@ -482,6 +491,13 @@ export const ReasonPanel: FC<{ onReasonStart?: () => void }> = ({ onReasonStart 
       }
     } catch (e: any) {
       setError(e.message);
+      // P0-12 错误扣留: 失败时服务端给了 taskId —— 顺手把失败详情拉出来(跑到哪步、哪步挂的、
+      //   服务端记的 error), 用户不用去翻日志。拿不到 taskId 就只显示错误消息。
+      const fid = e?.taskId;
+      if (fid) {
+        setTaskId(fid);
+        void reasonApi.getTask(fid).then((d) => setDetail(d)).catch(() => { /* 详情拉不到不影响错误提示 */ });
+      }
     } finally {
       setRunning(false);
     }
@@ -909,7 +925,7 @@ export const ReasonPanel: FC<{ onReasonStart?: () => void }> = ({ onReasonStart 
           {/* 检索步骤（52 步完整推理链路：已执行显示真实数据，其余灰态） */}
           <Card className="p-4">
             <h3 className="mb-2 font-medium text-sm text-muted-foreground">
-              检索步骤（{detail.retrieveSteps?.length ?? 0}/{REASON_52_STEPS.length} 步 · 52 步推理链路）
+              检索步骤（{detail.retrieveSteps?.filter((s) => s.stepNo != null).length ?? 0}/{(detail.reasonSteps ?? REASON_52_STEPS).length} 步 · 灰态为本次未触发或内部计算）
             </h3>
             <div className="flex flex-col gap-1">
               {REASON_52_STEPS.map((step, index) => {

@@ -29,6 +29,167 @@ const showDiff = ref(false);
 const diffText = ref("");
 const exportStatus = ref<"idle" | "running" | "completed" | "failed">("idle");
 const exportFmt = ref("md");
+const docxBusy = ref(false);
+const pptxBusy = ref(false);
+const chapterBusy = ref("");
+const componentBusy = ref("");
+
+// ── 大纲树 → 后端导出/生成接口要的节点结构 ──
+// 后端 /api/paper-outline/* 要的是 {title, level, content, children}; Vue 的 Section 是扁平表
+// (带 parentId/order, 见 stores/workflow.ts)。这里把扁平表拼成树 —— 原来这套能力只有被弃用的
+// React PaperOutlinePanel 在用, 2026-09-13 搬到 Vue 侧(否则 chapter/export-pptx 就没有界面入口了)。
+interface OutlineNode { title: string; level: number; content?: string; children?: OutlineNode[] }
+function buildOutlineTree(): OutlineNode[] {
+  // 先按 order 排好再挂父子, 这样同级顺序天然正确(不用事后递归排序)
+  const ordered = [...(store.sections ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const byId = new Map(ordered.map((s) => [s.id, { title: s.title, level: s.level, content: s.content ?? "", children: [] as OutlineNode[] }]));
+  const roots: OutlineNode[] = [];
+  for (const s of ordered) {
+    const node = byId.get(s.id);
+    if (!node) continue;
+    const parent = s.parentId ? byId.get(s.parentId) : null;
+    if (parent) parent.children!.push(node);
+    else roots.push(node);
+  }
+  // 没有子节点的节点不带空的 children 字段, 免得下游以为是"有子节点但为空"
+  const prune = (list: OutlineNode[]): OutlineNode[] => list.map((n) => {
+    if (!n.children?.length) { const { children: _drop, ...rest } = n; return rest as OutlineNode; }
+    return { ...n, children: prune(n.children) };
+  });
+  return prune(roots);
+}
+
+/** 已生成章节的正文, 按顺序取后 N 条作为"前文上下文" */
+function collectGeneratedContents(limit = 5): string[] {
+  return (store.sections ?? [])
+    .filter((s) => s.content && s.content.length > 0)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((s) => s.content as string)
+    .slice(-limit);
+}
+
+/** 大纲树的纯文本缩进形式(喂给模型的"全文结构"提示) */
+function outlineTreeText(nodes: OutlineNode[], depth = 0): string {
+  const lines: string[] = [];
+  for (const n of nodes) {
+    lines.push(`${"  ".repeat(depth)}${n.title}`);
+    if (n.children?.length) lines.push(outlineTreeText(n.children, depth + 1));
+  }
+  return lines.join("\n");
+}
+
+function safeFileName(base: string, ext: string): string {
+  return `${String(base || "未命名论文").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)}.${ext}`;
+}
+
+/** base64 → Blob 下载(与 review 侧同款: 不依赖后端给 URL) */
+function downloadBase64(base64: string, fileName: string, mime: string) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 导出 Word(.docx) — 后端 python-docx 生成, 带大纲层级与已生成正文 */
+async function exportDocx() {
+  const nodes = buildOutlineTree();
+  if (!nodes.length) { toast("大纲为空, 无法导出", "error"); return; }
+  docxBusy.value = true;
+  exportStatus.value = "running";
+  try {
+    const r = await q<{ ok: boolean; base64?: string }>("/paper-outline/export", {
+      method: "POST",
+      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes },
+    });
+    if (!r.base64) throw new Error("后端未返回文档内容");
+    downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    exportStatus.value = "completed";
+    toast("Word 已导出", "success");
+  } catch (e) {
+    exportStatus.value = "failed";
+    toast(`Word 导出失败: ${(e as Error).message}`, "error");
+  } finally { docxBusy.value = false; }
+}
+
+/** 导出 PPT(.pptx) — 后端按大纲逐节点出片, 每片抽要点做 bullet */
+async function exportPptx() {
+  const nodes = buildOutlineTree();
+  if (!nodes.length) { toast("大纲为空, 无法导出", "error"); return; }
+  pptxBusy.value = true;
+  try {
+    const r = await q<{ ok: boolean; base64?: string }>("/paper-outline/export-pptx", {
+      method: "POST",
+      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes },
+    });
+    if (!r.base64) throw new Error("后端未返回文件内容");
+    downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "pptx"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    toast("PPT 已导出", "success");
+  } catch (e) {
+    toast(`PPT 导出失败: ${(e as Error).message}`, "error");
+  } finally { pptxBusy.value = false; }
+}
+
+/** 论文要件(摘要/关键词/结论)生成 — 后端 LLM 产出, 结果并回对应章节 */
+async function genComponent(kind: "abstract" | "keywords" | "conclusion") {
+  const label = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[kind];
+  const nodes = buildOutlineTree();
+  const topic = store.mergedTitle || store.title || "";
+  if (!topic) { toast("请先填写论文标题", "warning"); return; }
+  componentBusy.value = kind;
+  try {
+    const r = await q<{ content?: string; wordCount?: number }>("/paper-outline/component", {
+      method: "POST",
+      body: {
+        kind, topic,
+        sections: nodes.map((n) => n.title).filter((t) => !["摘要", "关键词", "结论"].includes(t)),
+        chapterContents: collectGeneratedContents(30),
+      },
+    });
+    if (!r.content) throw new Error("后端未返回内容");
+    // 并回同级章节: 已有同名就覆盖内容, 没有就补一个挂在最前
+    const existing = (store.sections ?? []).find((s) => s.title === label);
+    if (existing) existing.content = r.content;
+    else store.sections.unshift({ id: `gen-${kind}-${Date.now()}`, title: label, level: 1, parentId: null, order: -1, content: r.content, status: "generated" });
+    await store.saveProject().catch(() => null);
+    toast(`${label} 已生成(${r.wordCount ?? r.content.length} 字)`, "success");
+  } catch (e) {
+    toast(`${label}生成失败: ${(e as Error).message}`, "error");
+  } finally { componentBusy.value = ""; }
+}
+
+/** 生成选中章节(sectionId)的正文 — 后端按大纲位置+前文上下文写 */
+async function genChapter(sectionId: string) {
+  const s = (store.sections ?? []).find((x) => x.id === sectionId);
+  if (!s) return;
+  const nodes = buildOutlineTree();
+  chapterBusy.value = sectionId;
+  try {
+    const r = await q<{ content?: string; wordCount?: number }>("/paper-outline/chapter", {
+      method: "POST",
+      body: {
+        nodeId: s.id, title: s.title, level: Math.min(Math.max(s.level - 1, 0), 3),
+        topic: store.mergedTitle || store.title || s.title,
+        prevContext: collectGeneratedContents(5).join("\n\n") || undefined,
+        outlineTree: outlineTreeText(nodes),
+      },
+    });
+    if (!r.content) throw new Error("后端未返回内容");
+    s.content = r.content;
+    s.status = "generated";
+    await store.saveProject().catch(() => null);
+    toast(`「${s.title}」已生成(${r.wordCount ?? r.content.length} 字)`, "success");
+  } catch (e) {
+    toast(`生成失败: ${(e as Error).message}`, "error");
+  } finally { chapterBusy.value = ""; }
+}
 
 let poll: ReturnType<typeof setInterval> | null = null;
 
@@ -569,6 +730,42 @@ onMounted(async () => {
         <button class="btn-preview" @click="store.exportFormat = 'preview'">预览全文</button>
         <button class="btn-back-ws" @click="router.push('/workflow/workspace')">返回工作台</button>
       </div>
+      <!-- 后端按大纲树出文件(与上面的"拼文本"路径互补): Word 带大纲层级 + PPT 逐节点成片。
+           这两个能力原先只有被弃用的 React 大纲面板在用, 搬到这里才有界面入口。 -->
+      <div class="export-row">
+        <span>按大纲导出</span>
+        <button class="btn-preview" :disabled="docxBusy" @click="exportDocx">
+          {{ docxBusy ? "生成中…" : "Word(大纲版)" }}
+        </button>
+        <button class="btn-preview" :disabled="pptxBusy" @click="exportPptx">
+          {{ pptxBusy ? "生成中…" : "PPT 汇报稿" }}
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ 逐章生成 / 论文要件(原先只有被弃用的 React 大纲面板有, 2026-09-13 搬过来) ═══ -->
+    <div v-if="store.sections?.length" class="export-card">
+      <div class="export-row">
+        <span>论文要件</span>
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('abstract')">
+          {{ componentBusy === "abstract" ? "生成中…" : "生成摘要" }}
+        </button>
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('keywords')">
+          {{ componentBusy === "keywords" ? "生成中…" : "生成关键词" }}
+        </button>
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('conclusion')">
+          {{ componentBusy === "conclusion" ? "生成中…" : "生成结论" }}
+        </button>
+      </div>
+      <div class="chapter-list">
+        <div v-for="s in [...store.sections].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))" :key="s.id" class="chapter-row">
+          <span class="chapter-title" :style="{ paddingLeft: `${Math.max(s.level - 1, 0) * 14}px` }">{{ s.title }}</span>
+          <span class="chapter-state">{{ s.content ? `${s.content.length} 字` : "未生成" }}</span>
+          <button class="btn-preview" :disabled="!!chapterBusy" @click="genChapter(s.id)">
+            {{ chapterBusy === s.id ? "生成中…" : s.content ? "重新生成" : "生成正文" }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 预览全文(简化版式) -->
@@ -683,6 +880,12 @@ onMounted(async () => {
 .btn-export:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-preview { padding: 8px 16px; border: 1px solid #222F44; border-radius: 8px; background: #11192C; color: #DCE6F2; font-size: 13px; cursor: pointer; }
 .btn-back-ws { margin-left: auto; padding: 8px 16px; border: 1px solid #222F44; border-radius: 8px; background: #1A2333; color: #8B9BB1; font-size: 13px; cursor: pointer; text-decoration: none; }
+.chapter-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.chapter-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid #1B2537; }
+.chapter-title { flex: 1; min-width: 0; font-size: 13px; color: #DCE6F2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapter-state { flex: 0 0 auto; font-size: 12px; color: #7A8AA0; }
+.chapter-row .btn-preview { padding: 5px 12px; font-size: 12px; }
+.chapter-row .btn-preview:disabled { opacity: 0.55; cursor: not-allowed; }
 .preview-card {
   position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.5);
   display: flex; align-items: center; justify-content: center; padding: 24px;
