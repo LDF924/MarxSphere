@@ -31,6 +31,7 @@ backups/sagbak_YYYYMMDD_HHMMSS.sagbak/
 ```bash
 node scripts/snapshot-code.mjs              # 快照到 E:\SAG-archive\SAG-main-backup-YYYYMMDD
 node scripts/snapshot-code.mjs --dry-run    # 只预览
+node scripts/snapshot-code.mjs --current-only   # 当前状态是否已偏离最近一份快照(只报告)
 SNAPSHOT_DEST=E:/其他路径 node scripts/snapshot-code.mjs
 ```
 
@@ -38,8 +39,19 @@ SNAPSHOT_DEST=E:/其他路径 node scripts/snapshot-code.mjs
   不再靠手打记忆 —— 此前手打时漏排 `.claude/worktrees`, 把别的 worktree 的 11865 个副本文件
   也备了进去(1.2G vs 应有的 562M)
 - 快照后**自检**: 排除项若出现在快照里就报错退出, 不留下一个"看起来成功但范围错"的备份
-- 自动写 `BACKUP.info`(HEAD / 提交信息 / 工作区状态 / open HEAD / GitHub 远端 / 文件数)
+- 自动写 `BACKUP.info`(HEAD / 提交信息 / 工作区状态 / **工作区指纹** / open HEAD / GitHub / 文件数)
 - **目标已存在则拒绝覆盖** —— 避免踩掉旧快照, 要重做须手工删
+
+### 顺序问题: 改完东西要先确认再重做
+
+快照抓的是**工作区内容**, 而 `BACKUP.info` 记的是 **HEAD** —— 两者不一致时那份 info 就是误导
+(实测踩过: 文档改完没提交就快照, info 指向的 HEAD 里是旧文档)。脚本对此有三道防护:
+
+1. **快照前后各取一次工作区指纹**(git status + 各改动文件的内容哈希), 不一致就警告
+   "快照内容可能是混合体、info 的版本信息不准", 并把该警告**写进 BACKUP.info**, 事后可查
+2. `--current-only`: 比对当前状态与最近一份快照记录的状态, 直接告诉你**要不要重做** ——
+   避免"忘了重做"与"白跑一次全量拷贝"两种浪费
+3. 推荐流程: 提交完所有代码/文档 → `--current-only` 确认 → 需要就重做快照
 
 **为何排除 `release/` 与 `resources/`**: 前者 2.1G 是 electron 打包产物(`npm run build:desktop`
 可重建), 后者 274M 是同一产物在 `resources/sag` 下的副本。20260912 那份备了 `resources/`,
