@@ -24,6 +24,28 @@ backups/sagbak_YYYYMMDD_HHMMSS.sagbak/
 - **手动触发 + API + 前端面板**(原仅计划任务)
 - **恢复流程**(原无恢复演练)
 
+## 代码快照(与上述数据备份互补)
+
+上面的都是**数据**备份; 代码侧另有一份整仓快照:
+
+```bash
+node scripts/snapshot-code.mjs              # 快照到 E:\SAG-archive\SAG-main-backup-YYYYMMDD
+node scripts/snapshot-code.mjs --dry-run    # 只预览
+SNAPSHOT_DEST=E:/其他路径 node scripts/snapshot-code.mjs
+```
+
+- **排除项写在脚本里**(`node_modules`/`.git`/`release`/`resources`/`dist`/`build`/缓存/日志/`.claude/worktrees`),
+  不再靠手打记忆 —— 此前手打时漏排 `.claude/worktrees`, 把别的 worktree 的 11865 个副本文件
+  也备了进去(1.2G vs 应有的 562M)
+- 快照后**自检**: 排除项若出现在快照里就报错退出, 不留下一个"看起来成功但范围错"的备份
+- 自动写 `BACKUP.info`(HEAD / 提交信息 / 工作区状态 / open HEAD / GitHub 远端 / 文件数)
+- **目标已存在则拒绝覆盖** —— 避免踩掉旧快照, 要重做须手工删
+
+**为何排除 `release/` 与 `resources/`**: 前者 2.1G 是 electron 打包产物(`npm run build:desktop`
+可重建), 后者 274M 是同一产物在 `resources/sag` 下的副本。20260912 那份备了 `resources/`,
+属于冗余而非必要。
+
+
 ## 使用
 
 ### CLI
