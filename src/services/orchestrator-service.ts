@@ -17,7 +17,7 @@ import { ORCHESTRATOR_TEMPLATES, getTemplate, type OrchestratorTemplate } from "
 import {
   runMetaSkill, resumeMetaSkillFromSnapshot, cancelMetaSkill, pauseMetaSkill, resumeMetaSkill,
   resumeMetaSkillInput, getLiveRunSnapshot, isLiveRun, setOrchestratorCaller,
-  type MetaSkillDef, type MetaStepRun, type MetaRunContext,
+  type MetaSkillDef, type MetaStepDef, type MetaStepRun, type MetaRunContext,
 } from "./meta-skill-runtime.js";
 
 export interface OrchestratorGraph {
@@ -221,6 +221,88 @@ export async function getRunProgress(runId: string): Promise<{
 }
 
 export function cancelRun(runId: string) { return cancelMetaSkill(runId); }
+
+/**
+ * V415(用户要求"把 MetaSkill DAG 的独有能力融合进课题流程编排"): 把一条已注册的 MetaSkill
+ * (内置的声明式 DAG, 或从提案 accept 进 agent_meta_dags 的)**反解成画布图**, 这样它就能
+ * 在编排页里被打开、改、再存成自己的模板 —— 而不是只能在 MetaSkill 面板里点"运行"。
+ *
+ * 节点 id 直接用 MetaSkill 的 step id: 画布保存时也按 step id 存, 两边同一套命名,
+ * 不需要额外映射表。
+ *
+ * 步骤→能力的还原规则(能力 id 必须与 registry 对得上):
+ *   tool_call + tool     → tool:<工具名>(registry 里 77 个 agent_tool 能力就是这么编的)
+ *   tool_call + endpoint → 反查 body 路径匹配的端点型能力
+ *   llm_chat/classify    → io:llm-write
+ *   llm_gate             → io:quality-gate
+ *   user_input           → io:clarify
+ *   agent                → **没有等价能力**: 它的实现是服务内部函数(literatureReviewGeneration),
+ *                          注册表里不存在对应节点。所以不绑能力、图结构照样带过去, 但要在标题上
+ *                          标明"打开后会退化成 LLM 生成", 免得用户以为它还是原来那种多源检索。
+ */
+export async function metaSkillToGraph(skillId: string): Promise<OrchestratorGraph | null> {
+  const { loadAllMetaSkills } = await import("./meta-skill-defs.js");
+  const all = await loadAllMetaSkills();
+  const def = all.find((s) => s.id === skillId);
+  if (!def) return null;
+  const caps = await listCapabilities();
+  const capFor = (step: MetaStepDef): string | undefined => {
+    const w = (step.with ?? {}) as Record<string, unknown>;
+    if (typeof w.tool === "string") {
+      const hit = caps.find((c) => c.tool === w.tool);
+      if (hit) return hit.id;
+    }
+    if (typeof w.endpoint === "string") {
+      const hit = caps.find((c) => c.endpoint?.path === w.endpoint);
+      if (hit) return hit.id;
+    }
+    const byKind: Record<string, string> = {
+      llm_chat: "io:llm-write", llm_classify: "io:llm-write", llm_gate: "io:quality-gate", user_input: "io:clarify",
+    };
+    return byKind[step.kind];
+  };
+  const nodes = def.steps.map((s) => {
+    const cid = capFor(s);
+    const cap = cid ? caps.find((c) => c.id === cid) : undefined;
+    // 参数: 只带用户能改的那几个(llm 的提示词/门的标准)。其余运行时字段(tool/args 骨架、
+    //   endpoint 路径)交给能力注册表自带的模板, 避免把内部结构塞进画布参数。
+    const w = (s.with ?? {}) as Record<string, unknown>;
+    const params: Record<string, unknown> = {};
+    if (typeof w.system === "string") params.system = w.system;
+    if (typeof w.task === "string") params.task = w.task;
+    if (typeof w.criteria === "string") params.criteria = w.criteria;
+    const noCap = !cid;
+    if (noCap && Object.keys(w).length) params.__stepWith = w;  // 兜底: 原样带走, 免得丢信息
+    const baseTitle = s.label || cap?.label || s.id;
+    return {
+      id: s.id,
+      capabilityId: cid,
+      // 无等价能力的步骤在标题上直说, 不要让它看着跟原来一样
+      title: noCap ? `${baseTitle}(原为 ${s.kind} 步骤, 打开后按 LLM 生成执行)` : baseTitle,
+      ...(Object.keys(params).length ? { params } : {}),
+    };
+  });
+  const edges = def.steps.flatMap((s) => (s.depends_on ?? []).map((d) => ({ source: d, target: s.id })));
+  return {
+    id: `ms-${def.id}`,
+    name: def.name,
+    description: def.description,
+    basedOn: def.id,
+    nodes,
+    edges,
+  };
+}
+
+/** 可打开到画布上的 MetaSkill 清单(内置 + 已注册的动态 DAG) */
+export async function listMetaSkillsForCanvas(): Promise<Array<{ id: string; name: string; description: string; steps: number; source: "builtin" | "registered" }>> {
+  const { loadAllMetaSkills, META_SKILLS } = await import("./meta-skill-defs.js");
+  const all = await loadAllMetaSkills();
+  const builtin = new Set(META_SKILLS.map((s) => s.id));
+  return all.map((s) => ({
+    id: s.id, name: s.name, description: s.description ?? "", steps: s.steps.length,
+    source: builtin.has(s.id) ? "builtin" as const : "registered" as const,
+  }));
+}
 export function pauseRun(runId: string) { return pauseMetaSkill(runId); }
 export function submitRunInput(runId: string, values: Record<string, string>) { return resumeMetaSkillInput(runId, values); }
 

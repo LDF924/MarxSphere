@@ -6810,7 +6810,10 @@ except Exception as e:
     return { ok: true, proposal: p };
   });
   app.get("/api/meta-skill/proposals", async () => {
-    const { listDagProposals } = await import("../services/meta-skill-propose-service.js");
+    const { listDagProposals, repairProposalSourceIds } = await import("../services/meta-skill-propose-service.js");
+    // V415: 先补历史提案里丢失的来源 id(2026-09-13 前的提案 sourceSkillIds 全 null)。
+    // 放在读接口里而不是定时任务里: 只在真有人看提案时才查一次技能表, 不占后台开销。
+    await repairProposalSourceIds().catch(() => 0);
     return { proposals: listDagProposals() };
   });
   app.post("/api/meta-skill/proposals/accept", async (request, reply) => {
@@ -6843,6 +6846,19 @@ except Exception as e:
   app.get("/api/orchestrator/templates", async () => {
     const { listTemplatesWithCost } = await import("../services/orchestrator-service.js");
     return { ok: true, templates: await listTemplatesWithCost() };
+  });
+  // V415: 把 MetaSkill(声明式 DAG, 含提案 accept 进来的)搬进画布 ——
+  //   列清单 + 反解成图。用户要求"MetaSkill DAG 的能力融合进课题流程编排"。
+  app.get("/api/orchestrator/meta-skills", async () => {
+    const { listMetaSkillsForCanvas } = await import("../services/orchestrator-service.js");
+    return { ok: true, skills: await listMetaSkillsForCanvas() };
+  });
+  app.get("/api/orchestrator/meta-skills/:id/graph", async (request, reply) => {
+    const { metaSkillToGraph } = await import("../services/orchestrator-service.js");
+    const id = String((request.params as { id?: string }).id || "");
+    const graph = await metaSkillToGraph(id);
+    if (!graph) return reply.code(404).send({ error: { code: "ORCH_NOT_FOUND", message: `MetaSkill 不存在: ${id}` } });
+    return { ok: true, graph };
   });
   app.post("/api/orchestrator/run", async (request, reply) => {
     const { startOrchestration } = await import("../services/orchestrator-service.js");

@@ -254,6 +254,33 @@ await open();
   t("新建空白任务后只剩一个起点节点", afterNew === 1, `${afterNew} 个节点`);
 }
 
+// ── ④c 声明式 DAG 区(MetaSkill 的独有能力融进编排页) ──
+// 两件事: ① 已注册的 DAG 能"打开到画布"继续改(以前只能在 MetaSkill 面板点运行);
+//         ② 候选流程(提案)能在这审 —— 且**来源技能可追溯**(此前 sourceSkillIds 全是 null)
+{
+  await open();
+  t("页面下方有「声明式 DAG」区", (await page.locator(".dag-strip").count()) === 1);
+  const dagItems = await page.locator('.dag-col').first().locator(".dag-item").count();
+  t("列出了可打开的已注册 DAG", dagItems > 0, `${dagItems} 条`);
+  const proposeBox = await page.locator(".dag-strip input.dag-input").count();
+  t("候选区可提交高频主题让平台组装", proposeBox > 0);
+
+  // 来源可追溯: 提案上要显示参与编排的技能名(修 null 之前这里是空的)
+  const propText = await page.locator(".dag-col").nth(1).locator(".dag-item").first().innerText().catch(() => "");
+  const srcLine = (propText.split("\n").find((l) => l.includes("来源技能")) ?? "(无)").trim();
+  t("候选条目显示了来源技能(可追溯)", srcLine.includes("来源技能"), srcLine);
+  t("来源技能不再标注 id 缺失", !propText.includes("id 缺失"));
+
+  // 打开到画布: 节点数应变成该 DAG 的步数
+  const n0 = await page.locator(".vue-flow__node").count();
+  await page.locator(".dag-item button", { hasText: "打开到画布" }).first().click({ force: true });
+  await page.waitForTimeout(1500);
+  const n1 = await page.locator(".vue-flow__node").count();
+  const titles = await page.locator(".vue-flow__node .node-title-row strong").allInnerTexts();
+  t("「打开到画布」把声明式 DAG 变成了可编辑节点", n1 > 0 && n1 !== n0, `${n0} → ${n1}`);
+  t("节点标题来自该 DAG 的步骤", /澄清综述范围|检索文献素材|生成综述/.test(titles.join("|")), titles.slice(0, 3).join(" | "));
+}
+
 // ── ⑤ 创作能力节点 ──
 {
   await open();

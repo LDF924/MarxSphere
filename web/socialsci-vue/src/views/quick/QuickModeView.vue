@@ -21,6 +21,7 @@ import { toast, confirmDialog } from "@/shared/ui";
 import {
   fetchCapabilities, fetchTemplates, startRun, fetchProgress, controlRun, fetchRuns,
   listGraphs, loadGraph, saveGraph, deleteGraph, fetchAgentSetting, updateAgentSetting,
+  fetchMetaSkills, fetchMetaSkillGraph, type OrchMetaSkill,
   RUN_STATUS_META, COST_META, stepStatusToNodeState,
   type OrchCapability, type OrchTemplate, type OrchProgress, type OrchRunRecord, type OrchGraph, type AgentOrchSetting,
 } from "@/shared/orchApi";
@@ -85,6 +86,82 @@ const openRuns = ref(false);
 const openGraphs = ref(false);
 /** V415: 自由创作节点弹层(标题 + 提示词) */
 const openCreate = ref(false);
+
+// ── MetaSkill 声明式 DAG(用户要求: 把它独有的能力融合进编排页) ──
+// 这里承载的是 MetaSkill 面板独有的两件事:
+//   ① 已注册的声明式 DAG 可以**打开到画布上**继续改(以前只能在那边点"运行")
+//   ② DAG 提案的审阅(平台按高频任务自动组装候选流程, 人工 accept 后才进注册表)
+const metaSkills = ref<OrchMetaSkill[]>([]);
+const proposals = ref<Array<{ id: string; triggerGoal: string; seenCount: number; status: string; sourceSkillNames?: string[]; sourceSkillIds?: number[]; dag: { name: string; description?: string; steps?: unknown[] } }>>([]);
+const dagBusy = ref(false);
+const proposeTopic = ref("");
+const metaLoaded = ref(false);
+
+async function loadMetaSkills() {
+  metaSkills.value = await fetchMetaSkills().catch(() => []);
+  metaLoaded.value = true;
+}
+async function loadProposals() {
+  try {
+    const r = await apiGetProposals();
+    proposals.value = r;
+  } catch { proposals.value = []; }
+}
+/** 提案接口不在 orchApi 里(属于 meta-skill 域), 这里直接打 */
+async function apiGetProposals() {
+  const res = await fetch("/api/meta-skill/proposals");
+  const j = await res.json();
+  return (j?.proposals ?? []) as typeof proposals.value;
+}
+/** 把一条已注册的 DAG 打开到画布上 —— 打开后就是普通图, 随便改随便存 */
+async function openMetaSkill(id: string) {
+  dagBusy.value = true;
+  try {
+    const g = await fetchMetaSkillGraph(id);
+    if (!g) { toast("读取失败: 这条 DAG 可能已被移除", "error"); return; }
+    loadGraphInto(g.nodes, g.edges, g.name || id, g.basedOn, undefined);
+    graphId.value = "";   // 打开副本: 不覆盖原 DAG, 要留住得自己另存
+    pushMsg({ role: "agent", text: `已把声明式 DAG「${g.name}」打开到画布。
+节点与连线都能改; 改动要复用请点「我的编排」保存。` });
+    toast(`已打开「${g.name}」`, "success");
+  } finally {
+    dagBusy.value = false;
+  }
+}
+/** 让平台按高频主题组装一条候选 DAG(走 /api/meta-skill/propose-dag, 不自动注册) */
+async function proposeDag() {
+  const topic = proposeTopic.value.trim();
+  if (!topic) { toast("写一个高频任务主题", "error"); return; }
+  dagBusy.value = true;
+  try {
+    const res = await fetch("/api/meta-skill/propose-dag", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: topic }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j?.proposal) { toast(`组装失败: ${j?.error || res.status}`, "error"); return; }
+    await loadProposals();
+    toast("已生成候选 DAG, 请在下方审阅后接受或否决", "success");
+    proposeTopic.value = "";
+  } finally {
+    dagBusy.value = false;
+  }
+}
+async function actProposal(id: string, action: "accept" | "reject") {
+  dagBusy.value = true;
+  try {
+    const res = await fetch(`/api/meta-skill/proposals/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(`${action === "accept" ? "接受" : "否决"}失败: ${j?.error || res.status}`, "error"); return; }
+    await loadProposals();
+    if (action === "accept") { await loadMetaSkills(); toast("已接受并注册, 可直接打开到画布", "success"); }
+    else toast("已否决", "success");
+  } finally {
+    dagBusy.value = false;
+  }
+}
 const createForm = ref({ title: "", task: "", system: "", maxTokens: "3000" });
 function openCreateNode() {
   createForm.value = { title: "", task: "", system: "", maxTokens: "3000" };
@@ -708,6 +785,8 @@ async function toggleAgentEnabled(v: boolean) {
 
 // ── 初始化 ──
 onMounted(async () => {
+  void loadMetaSkills();
+  void loadProposals();
   await loadAgentSetting();
   try {
     const [caps, tpls] = await Promise.all([fetchCapabilities(), fetchTemplates()]);
@@ -1072,6 +1151,71 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
       </section>
     </main>
 
+    <!-- V415: 声明式 DAG(MetaSkill 的独有能力搬到这里) —— 放在页面下方,
+         与画布互补: 画布是"自己排", 这里是"把平台沉淀的流程打开来改" + "审平台替你攒的候选流程" -->
+    <section class="dag-strip">
+      <header class="dag-strip-head">
+        <div>
+          <strong>声明式 DAG</strong>
+          <span>与画布同一个执行引擎 · 这里的每条都能打开到画布继续改</span>
+        </div>
+        <button class="hdr-btn" :disabled="dagBusy" @click="loadMetaSkills(); loadProposals()">刷新</button>
+      </header>
+
+      <div class="dag-cols">
+        <!-- ① 已注册的 DAG -->
+        <div class="dag-col">
+          <div class="dag-col-head">
+            <span class="dag-badge">已注册 {{ metaSkills.length }}</span>
+            <small>内置 + 提案通过后登记的</small>
+          </div>
+          <div v-if="!metaLoaded" class="dag-empty">正在加载…</div>
+          <div v-else-if="!metaSkills.length" class="dag-empty">还没有可打开的 DAG</div>
+          <div v-for="m in metaSkills" :key="m.id" class="dag-item">
+            <div class="dag-item-main">
+              <strong>{{ m.name }}</strong>
+              <small>{{ m.description }}</small>
+            </div>
+            <span class="dag-src" :class="{ 'is-builtin': m.source === 'builtin' }">{{ m.source === "builtin" ? "内置" : "已登记" }}</span>
+            <span class="run-meta">{{ m.steps }} 步</span>
+            <button class="workspace-secondary" :disabled="dagBusy || locked" @click="openMetaSkill(m.id)">打开到画布</button>
+          </div>
+        </div>
+
+        <!-- ② 候选流程(提案) —— 人工审, 不自动注册 -->
+        <div class="dag-col">
+          <div class="dag-col-head">
+            <span class="dag-badge">候选 {{ proposals.filter((p) => p.status === "proposed").length }}</span>
+            <small>平台按高频任务攒的, 要你点头才进注册表</small>
+          </div>
+          <div class="dag-propose-row">
+            <input v-model="proposeTopic" class="dag-input" placeholder="高频任务主题(如: 马理论选题与接口分析)" />
+            <button class="workspace-primary" :disabled="dagBusy || !proposeTopic.trim()" @click="proposeDag">
+              {{ dagBusy ? "组装中…" : "让平台组装一条" }}
+            </button>
+          </div>
+          <div v-if="!proposals.length" class="dag-empty">还没有候选</div>
+          <div v-for="p in proposals" :key="p.id" class="dag-item" :class="{ 'is-done': p.status !== 'proposed' }">
+            <div class="dag-item-main">
+              <strong>{{ p.dag?.name || p.id }}</strong>
+              <small>{{ p.dag?.description || p.triggerGoal }}</small>
+              <!-- 来源可追溯: 哪几个已批准技能参与了这条流程(此前全是 null, 已修) -->
+              <small v-if="p.sourceSkillNames?.length" class="dag-src-line">
+                来源技能: {{ p.sourceSkillNames.join("、") }}
+                <span v-if="!p.sourceSkillIds?.some((x) => x != null)" class="dag-warn">(id 缺失)</span>
+              </small>
+              <small class="dag-src-line">出现 {{ p.seenCount }} 次 · {{ p.dag?.steps?.length ?? 0 }} 步</small>
+            </div>
+            <span v-if="p.status === 'proposed'" class="dag-actions">
+              <button class="workspace-secondary" :disabled="dagBusy" @click="actProposal(p.id, 'reject')">否决</button>
+              <button class="workspace-primary" :disabled="dagBusy" @click="actProposal(p.id, 'accept')">接受</button>
+            </span>
+            <span v-else class="run-meta">{{ p.status === "accepted" ? "已接受" : "已否决" }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 模板库 -->
     <div v-if="openTemplates" class="modal-shell" @click.self="openTemplates = false">
       <div class="modal-card wide">
@@ -1429,6 +1573,31 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   color: #DCE6F2; font-size: 12px; cursor: pointer; text-align: left;
 }
 .context-menu-sep { height: 1px; margin: 5px 4px; background: #1E2A42; }
+/* V415: 页面下方的声明式 DAG 区 */
+.dag-strip { flex-shrink: 0; border-top: 1px solid var(--line); background: #0C1424; padding: 10px 14px 12px; }
+.dag-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.dag-strip-head strong { font-size: 12.5px; color: #E8EEF7; margin-right: 8px; }
+.dag-strip-head span { font-size: 10.5px; color: #7A8AA0; }
+.dag-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 1100px) { .dag-cols { grid-template-columns: 1fr; } }
+.dag-col { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.dag-col-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; }
+.dag-col-head small { font-size: 10px; color: #6E7F96; }
+.dag-badge { font-size: 10px; font-weight: 700; color: #9FC0E8; background: #1E2A48; border-radius: 9px; padding: 2px 9px; }
+.dag-empty { font-size: 11px; color: #6E7F96; padding: 8px 10px; }
+.dag-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #1E2A42; border-radius: 9px; background: #11192C; font-size: 11.5px; }
+.dag-item.is-done { opacity: 0.62; }
+.dag-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dag-item-main strong { color: #DCE6F2; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dag-item-main small { color: #7A8AA0; font-size: 10.5px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; }
+.dag-src { font-size: 9.5px; padding: 2px 8px; border-radius: 9px; background: #2A2414; color: #E8B54A; flex-shrink: 0; }
+.dag-src.is-builtin { background: #14281F; color: #5FD0B4; }
+.dag-src-line { white-space: normal !important; }
+.dag-warn { color: #E8B54A; }
+.dag-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.dag-propose-row { display: flex; gap: 7px; margin-bottom: 3px; }
+.dag-input { border: 1px solid #22304A; border-radius: 7px; background: #141D33; color: #E8EEF7; font-size: 11px; padding: 5px 8px; font-family: inherit; outline: none; min-width: 0; }
+.dag-propose-row .dag-input { flex: 1; }
 .context-menu-item:hover { background: #1E2A48; color: #9FC0E8; }
 .context-menu-item span { color: #7A8AA0; }
 .context-menu-item.is-danger { color: #F08A8A; }

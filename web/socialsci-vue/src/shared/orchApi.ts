@@ -193,6 +193,30 @@ export async function updateAgentSetting(patch: Partial<Pick<AgentOrchSetting, "
   return r.settings;
 }
 
+/** V415: 可打开的 MetaSkill 声明式 DAG(内置 + 提案通过后注册的) */
+export interface OrchMetaSkill {
+  id: string;
+  name: string;
+  description: string;
+  steps: number;
+  source: "builtin" | "registered";
+}
+
+export async function fetchMetaSkills(): Promise<OrchMetaSkill[]> {
+  const r = await q<{ skills: OrchMetaSkill[] }>("/orchestrator/meta-skills");
+  return r.skills ?? [];
+}
+
+/** 把一条 MetaSkill 反解成画布图, 打开后即可自由改 */
+export async function fetchMetaSkillGraph(id: string): Promise<OrchGraph | null> {
+  try {
+    const r = await q<{ graph: OrchGraph }>(`/orchestrator/meta-skills/${encodeURIComponent(id)}/graph`);
+    return r.graph ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** 运行状态 → 中文标签与配色 class(节点徽标/顶部状态共用) */
 export const RUN_STATUS_META: Record<string, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "st-draft" },
