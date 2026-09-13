@@ -113,6 +113,13 @@ const RULES: Array<{ file: string; rules: Rule[] }> = [
     { re: /(\d+) 项全绿/g, to: `${STATS.tests} 项全绿`, label: "测试数" },
     { re: /(\d+) 教育路由/g, to: `${STATS.eduRoutes} 教育路由`, label: "教育路由" },
   ]},
+  // V415(2026-09-13 补): CLAUDE.md 里也有 `npm test # N 项单元测试` ——
+  //   原来这份规则表没有它, 于是那个数字一直停在 736(实际已 1001), 而 docs:check 报绿。
+  //   漏的原因是"同步列表里没这个文件", 不是规则写错 —— 加文件即可。
+  { file: "CLAUDE.md", rules: [
+    { re: /npm test\s+# \d+ 项单元测试/g, to: `npm test            # ${STATS.tests} 项单元测试`, label: "测试数(命令)" },
+    { re: /(\d+) 项单元测试/g, to: `${STATS.tests} 项单元测试`, label: "测试数" },
+  ]},
 ];
 
 // ─── 3. 执行替换 ───
