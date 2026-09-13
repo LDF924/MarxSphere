@@ -22,17 +22,20 @@ If Len(ws.ExpandEnvironmentStrings("%SAG_BASH%")) > 0 And ws.ExpandEnvironmentSt
   If fso.FileExists(ws.ExpandEnvironmentStrings("%SAG_BASH%")) Then bash = ws.ExpandEnvironmentStrings("%SAG_BASH%")
 End If
 If bash = "" Then
-  ' PATH 上的 bash: `where` 会返回**多行**(本机实测 3 条), 必须只取第一条 ——
-  ' 早先把 \r\n 全删掉拼成了一条路径, FileExists 恒为 False, 于是总走"找不到 bash"分支。
-  On Error Resume Next
-  p = ws.Exec("cmd /c where bash 2>nul").StdOut.ReadAll
-  On Error GoTo 0
-  lines = Split(Replace(p, vbCrLf, vbLf), vbLf)
-  For Each ln In lines
-    ln = Trim(ln)
-    If Len(ln) > 0 And fso.FileExists(ln) Then
-      bash = ln
-      Exit For
+  ' PATH 上的 bash: **不要用 ws.Exec("cmd /c where bash")** —— WshShell.Exec 会弹一个控制台窗口。
+  ' 本脚本由计划任务每 5~30 分钟拉起一次(进程看门狗/入库看门狗/WAL 同步), 每个周期闪一下,
+  ' 用户看到的就是"命令行莫名其妙闪几次"。改为遍历 PATH 目录 + FileExists: 不启进程, 无窗口。
+  ' (2026-09-13: 这个坑是我加探测时引入的 —— 改前脚本只有 ws.Run 隐藏启动。)
+  For Each d In Split(ws.ExpandEnvironmentStrings("%PATH%"), ";")
+    d = Trim(d)
+    If Len(d) > 0 Then
+      For Each exe In Array("bash.exe", "bash")
+        If fso.FileExists(d & "\" & exe) Then
+          bash = d & "\" & exe
+          Exit For
+        End If
+      Next
+      If bash <> "" Then Exit For
     End If
   Next
 End If
