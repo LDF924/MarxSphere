@@ -258,7 +258,100 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
     },
   },
 
-  // ⑩ 空画布
+  // ⑩ 定稿润色车间(定稿之后还能干的活)
+  //
+  // 这条链的成立依赖两件 2026-09-13 才修好的事, 所以之前做不出模板:
+  //   ① 节点参数要进 with.body(否则 mode 传不进去, 端点直接 400);
+  //   ② 编辑器端点要求登录, 而编排在 HTTP 请求之外执行 —— 发起人身份要按运行带下去, 否则 401。
+  {
+    id: "tpl_polish",
+    name: "定稿润色车间",
+    description: "标题摘要 → 去AI味 → 语体统一 → 降重表述 → 引文格式 → 全文体检",
+    scenario: "稿子写完了, 送审前的语言与形式加工",
+    cost: "medium",
+    graph: {
+      id: "polish", name: "定稿润色车间",
+      description: "正文先分两路加工(去AI味 / 降重表述), 再走语体统一与引文规范, 最后全文体检",
+      nodes: [
+        { id: "source", capabilityId: "io:clarify", title: "录入待润色正文" },
+        { id: "meta", capabilityId: "editor:title-abstract", title: "拟标题与摘要" },
+        // 两路并联: 同一份正文分别去掉 AI 腔、再把重复表述压下来, 互不依赖可以同时跑
+        { id: "humanize", capabilityId: "editor:rewrite", title: "去 AI 味", params: { mode: "humanize" } },
+        { id: "dedupe", capabilityId: "editor:rewrite", title: "降重表述", params: { mode: "de-template" } },
+        { id: "style", capabilityId: "editor:rewrite", title: "语体统一为期刊体", params: { mode: "journal-style", text: "{{outputs.humanize}}\n\n{{outputs.dedupe}}" } },
+        { id: "refs", capabilityId: "editor:format-references", title: "引文格式规范化" },
+        { id: "check", capabilityId: "editor:check-fulltext", title: "全文体检(一致性/规范)" },
+      ],
+      edges: [
+        { source: "source", target: "meta" },
+        { source: "source", target: "humanize" },
+        { source: "source", target: "dedupe" },
+        { source: "humanize", target: "style" },
+        { source: "dedupe", target: "style" },
+        { source: "style", target: "refs" },
+        { source: "refs", target: "check" },
+      ],
+    },
+  },
+
+  // ⑪ 论文骨架到成稿(研途写作舱)
+  //
+  // 诚实标注: 大纲需要作者自己给 —— 章节目录是该工作台的核心输入, 平台里没有
+  // "由主题自动生成大纲树"的端点(创意工作, 不适合做成确定性节点)。所以这条链是
+  // 主题 + 章节目录 → 摘要 → 逐章正文, 不是"一句话出全文"。
+  // 想先出架构再写, 用「标准五阶段论文」, 那条的架构由 LLM 生成。
+  {
+    id: "tpl_outline",
+    name: "论文骨架到成稿",
+    description: "主题+章节目录 → 摘要关键词 → 逐章正文(需自备大纲)",
+    scenario: "大纲已定, 要把各章正文写出来",
+    cost: "heavy",
+    graph: {
+      id: "outline", name: "论文骨架到成稿",
+      description: "两章正文并联生成, 最后汇总 —— 章节多可继续加节点(复制改 nodeId)",
+      nodes: [
+        { id: "source", capabilityId: "io:clarify", title: "确认主题与章节目录" },
+        { id: "abstract", capabilityId: "outline:component", title: "摘要与关键词", params: { kind: "abstract", topic: "{{outputs.source}}" } },
+        { id: "ch1", capabilityId: "outline:chapter", title: "第一章正文", params: { topic: "{{outputs.source}}", title: "第一章", nodeId: "ch1", level: "1" } },
+        { id: "ch2", capabilityId: "outline:chapter", title: "第二章正文", params: { topic: "{{outputs.source}}", title: "第二章", nodeId: "ch2", level: "1" } },
+        { id: "merge", capabilityId: "tool:llm_write", title: "汇总成稿", params: { topic: "把各章正文与摘要汇总成完整稿件(保持章节顺序, 不要改写内容):\n摘要: {{outputs.abstract}}\n第一章: {{outputs.ch1}}\n第二章: {{outputs.ch2}}", length: "长" } },
+      ],
+      edges: [
+        { source: "source", target: "abstract" },
+        { source: "source", target: "ch1" },
+        { source: "source", target: "ch2" },
+        { source: "ch1", target: "merge" },
+        { source: "ch2", target: "merge" },
+      ],
+    },
+  },
+
+  // ⑫ 文献结构化精读(PDF → 结构化块 → 深读)
+  //
+  // 诚实标注: PDF2Obsidian 与人读 PDF 都需要文件路径(PDF 在服务端哪里), 不是正文文本;
+  // 路径由上游澄清节点收集或节点参数手填。转换是异步任务(返回 taskId), 若该 PDF 需要
+  // 图像分析(扫描件/图表多), 耗时可能远超单节点超时 —— 那一步的失败是预期内的, 不是链坏了。
+  {
+    id: "tpl_pdf_deepread",
+    name: "文献结构化精读",
+    description: "PDF 转换 → 图/表/公式定位 → 逐块解释 → 精读笔记",
+    scenario: "精读一篇文献, 要把图表公式都拎出来",
+    cost: "heavy",
+    graph: {
+      id: "pdf-deepread", name: "文献结构化精读",
+      description: "先转 Markdown, 再做结构解析与逐块理解",
+      nodes: [
+        { id: "source", capabilityId: "io:clarify", title: "确认 PDF 路径与精读目标" },
+        { id: "convert", capabilityId: "p2o:convert", title: "PDF → Markdown", params: { pdfPath: "{{outputs.source}}" } },
+        { id: "structure", capabilityId: "structure:overview", title: "图/表/公式定位" },
+        { id: "explain", capabilityId: "tool:llm_write", title: "逐块解释", params: { topic: "对下列结构化块逐个解释(每块给出: 它在论证里起什么作用、有没有问题):\n{{outputs.structure}}", length: "长" } },
+        { id: "notes", capabilityId: "tool:llm_write", title: "精读笔记", params: { topic: "把这份文献的转换结果与逐块解释整理成可复用的精读笔记(核心论点/论证结构/可引用数据/存疑处):\n原文: {{outputs.convert}}\n逐块: {{outputs.explain}}", length: "长" } },
+      ],
+      edges: chain(["source", "convert", "structure", "explain", "notes"]),
+    },
+  },
+
+  // ⑬ 空画布
   {
     id: "tpl_blank",
     name: "空白画布",

@@ -18,7 +18,6 @@ import type { MetaStepDef, MetaSkillDef } from "./meta-skill-runtime.js";
 export type CapabilityCategory =
   | "检索" | "推理" | "写作" | "实证" | "统计" | "审稿" | "绘图"
   | "编辑" | "格式" | "引文" | "经典" | "教育" | "知识" | "文件" | "通用";
-
 /** 能力实现方式 — 决定运行时怎么执行 */
 export type CapabilityKind =
   /** 复用 agent 工具注册表(有 params schema + risk) */
@@ -160,8 +159,14 @@ export async function listToolCapabilities(refresh = false): Promise<CapabilityD
 // ─── 工作台能力(HTTP 端点型) ───
 // 说明: 这些能力各自已有独立前端面板与 service, 此处登记"被编排时怎么调"。
 //   endpoint 型由 meta-skill-runtime 的 callEndpoint 统一执行(带鉴权转发 + 超时 + 错误细节抽取)。
-//   各能力的路径/请求体按 server.ts 里的实际 zod schema 写 —— 字段名错了会直接 400。
-
+//
+// 覆盖范围(2026-09-13 核对): 工作台里**有可执行的 HTTP 端点**的能力都在这张表里 ——
+//   检索/写作/质量/经典/学术/理论(agent 工具侧) + 实证/统计/绘图/审稿/格式/引文/政经C刊/语料/
+//   编辑器/大纲/PDF2Obsidian + 澄清与质量门。
+//   未登记的几处是有意为之, 不是漏:
+//     · 教育能力(120 路由)   —— 走 agent 工具 education_service 统一路由, 单独登记端点会变成两套;
+//     · 技能库 / Agent 面板   —— 技能是 agent 侧能力, 服务端没有"执行某个技能"的 HTTP 端点;
+//     · 知识库/文献库入库     —— 写操作, 由 agent 工具 sag_ingest 承担(manager 权限), 见下。
 function cap(c: CapabilityDef): CapabilityDef { return c; }
 
 export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
@@ -194,7 +199,10 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     endpoint: { path: "/api/empirical/regression/run", method: "POST", body: { code: "{{code}}" } },
     artifact: { where: "empirical-research", label: "实证研究·回归" },
     step: { id: "regression", kind: "tool_call", label: "回归分析", with: { endpoint: "/api/empirical/regression/run", body: { code: "{{code}}" } } },
-    fields: [{ name: "projectId", label: "课题 id", type: "string", placeholder: "留空则用当前编排的课题" }],
+    fields: [
+      { name: "code", label: "回归代码", type: "string", required: true, placeholder: "Python 代码, 用 pandas/statsmodels 读数据并输出结果" },
+      { name: "projectId", label: "课题 id", type: "string", placeholder: "留空则用当前编排的课题" },
+    ],
   }),
   cap({
     id: "emp:imputation", label: "缺失值插补", category: "实证", kind: "endpoint", cost: "heavy",
@@ -346,14 +354,111 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   // 注意: /api/education/capabilities 是 GET 且返回"教育能力清单"而非执行结果, 不适合作为
   //   编排节点 —— 它会让用户以为跑了一步实际只拿到目录。教育能力统一走 agent 工具
   //   education_service(它内部才真正路由到 120 条教育路由), 这里不再重复登记端点型入口。
+  // ── 学术文本编辑器(端点要求登录; 身份由编排层按运行带下去, 见 meta-skill-runtime 的 withCaller) ──
+  // 这几项是把"编辑器里已经做好的 14 个 AI 动作"接进编排 —— 之前它们在画布上完全不可见,
+  // 用户没法把"先改写再查重再定标题"排成一条链。
+  cap({
+    id: "editor:rewrite", label: "编辑器·段落改写", category: "编辑", kind: "endpoint", cost: "medium",
+    description: "对选中文本做定向改写: 压缩/去模板化/润色/校对/期刊语体/去AI味/扩写",
+    inputs: ["text"], outputs: ["text"], risk: "safe",
+    endpoint: { path: "/api/editor/v1/rewrite", method: "POST", body: { mode: "{{mode}}", text: "{{inputs}}" } },
+    artifact: { where: "editor", label: "学术文本工作台" },
+    step: { id: "editor_rewrite", kind: "tool_call", label: "编辑器·段落改写", with: { endpoint: "/api/editor/v1/rewrite", body: { mode: "humanize", text: "{{inputs}}" } } },
+    // body 里写的是默认值而不是 {{mode}}: renderTemplate 只认 inputs/user.x/outputs.x,
+    // 自定义字段名渲染出来是 "[未渲染:{{mode}}]", 传给端点直接参数校验失败。
+    // 用户改字段 → 节点参数覆盖 body.mode(见 dagNodeToMetaStep)。
+    fields: [{ name: "mode", label: "改写方式", type: "string", required: true, default: "humanize", placeholder: "condense/de-template/polish/proofread/journal-style/humanize/expand" }],
+  }),
+  cap({
+    id: "editor:title-abstract", label: "编辑器·标题摘要", category: "编辑", kind: "endpoint", cost: "medium",
+    description: "全文 → 标题 + 摘要 + 关键词",
+    inputs: ["text"], outputs: ["text"], risk: "safe",
+    endpoint: { path: "/api/editor/v1/title-abstract", method: "POST", body: { text: "{{inputs}}" } },
+    artifact: { where: "editor", label: "学术文本工作台" },
+    step: { id: "editor_title_abstract", kind: "tool_call", label: "编辑器·标题摘要", with: { endpoint: "/api/editor/v1/title-abstract", body: { text: "{{inputs}}" } } },
+  }),
+  cap({
+    id: "editor:check-fulltext", label: "编辑器·全文体检", category: "编辑", kind: "endpoint", cost: "medium",
+    description: "全文一致性与规范检查(术语/引文/结构)",
+    inputs: ["text"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/editor/v1/check-fulltext", method: "POST", body: { text: "{{inputs}}" } },
+    artifact: { where: "editor", label: "学术文本工作台" },
+    step: { id: "editor_check", kind: "tool_call", label: "编辑器·全文体检", with: { endpoint: "/api/editor/v1/check-fulltext", body: { text: "{{inputs}}" } } },
+  }),
+  cap({
+    id: "editor:format-references", label: "编辑器·引文规范化", category: "引文", kind: "endpoint", cost: "light",
+    description: "参考文献条目 → GB/T 7714 规范化",
+    inputs: ["text"], outputs: ["text"], risk: "safe",
+    endpoint: { path: "/api/editor/v1/format-references", method: "POST", body: { text: "{{inputs}}" } },
+    artifact: { where: "editor", label: "学术文本工作台" },
+    step: { id: "format_refs", kind: "tool_call", label: "编辑器·引文规范化", with: { endpoint: "/api/editor/v1/format-references", body: { text: "{{inputs}}" } } },
+  }),
+  // ── 研途写作舱(论文大纲) ──
+  // 入参按 server.ts 的 outlineChapterSchema / outlineComponentSchema 逐字对齐:
+  //   chapter 要 nodeId + level(必填), component 的 sections 必须是**数组**而非字符串 ——
+  //   端点走 zod 严格校验, 字段名或类型错了直接 400。
+  cap({
+    id: "outline:chapter", label: "大纲·章节正文", category: "写作", kind: "endpoint", cost: "heavy",
+    description: "按章节标题 + 主题生成该章正文(需上游给出章节节点 id 与层级)",
+    inputs: ["text"], outputs: ["text"], risk: "safe",
+    endpoint: { path: "/api/paper-outline/chapter", method: "POST", body: { nodeId: "{{nodeId}}", title: "{{title}}", level: "{{level}}", topic: "{{topic}}", thesis: "{{thesis}}" } },
+    artifact: { where: "paper-outline", label: "研途写作舱" },
+    step: { id: "outline_chapter", kind: "tool_call", label: "大纲·章节正文", with: { endpoint: "/api/paper-outline/chapter", body: { nodeId: "{{nodeId}}", title: "{{title}}", level: "{{level}}", topic: "{{topic}}" } } },
+    fields: [
+      { name: "topic", label: "论文主题", type: "string", required: true },
+      { name: "title", label: "章节标题", type: "string", required: true },
+      { name: "nodeId", label: "章节节点 id", type: "string", required: true, placeholder: "大纲树里的节点标识, 如 ch2" },
+      { name: "level", label: "层级(0-3)", type: "number", required: true, default: "1" },
+      { name: "thesis", label: "核心论点", type: "string", placeholder: "选填, 用于让本章贴合主线" },
+    ],
+  }),
+  cap({
+    id: "outline:component", label: "大纲·摘要关键词", category: "写作", kind: "endpoint", cost: "medium",
+    description: "由主题/论点和章节目录生成摘要、关键词或结论(章节目录为数组)",
+    inputs: ["text"], outputs: ["text"], risk: "safe",
+    endpoint: { path: "/api/paper-outline/component", method: "POST", body: { kind: "abstract", topic: "{{topic}}", thesis: "{{thesis}}", sections: ["第一章", "第二章"] } },
+    artifact: { where: "paper-outline", label: "研途写作舱" },
+    step: { id: "outline_component", kind: "tool_call", label: "大纲·摘要关键词", with: { endpoint: "/api/paper-outline/component", body: { kind: "abstract", topic: "{{topic}}", sections: ["第一章", "第二章"] } } },
+    // sections 必须是**数组**: zod 要求 string[]。默认值给两个占位章节, 用户改成自己的目录
+    //   (数组参数在 body 里保持数组, 见 meta-skill-runtime 的 renderBodyValue)。
+    fields: [
+      { name: "kind", label: "产出类型", type: "string", required: true, default: "abstract", placeholder: "abstract / keywords / conclusion" },
+      { name: "topic", label: "论文主题", type: "string", required: true },
+      { name: "thesis", label: "核心论点", type: "string" },
+    ],
+  }),
+  // ── PDF2Obsidian(PDF → Markdown/笔记) ──
+  // 用 pdfPath 分支: 服务端已有文件路径(与 Agent 工具/CLI 同一入口)。url/fileBase64 分支
+  //   要么需要编排层能发二进制、要么把整个 PDF 塞进 JSON, 都不是 DAG 节点该干的事。
+  cap({
+    id: "p2o:convert", label: "PDF→Obsidian 转换", category: "知识", kind: "endpoint", cost: "heavy",
+    description: "服务端 PDF 路径 → Markdown/笔记(异步任务, 返回 taskId; 图像分析耗时较长)",
+    inputs: ["pdfPath"], outputs: ["taskId"], risk: "safe",
+    endpoint: { path: "/api/p2o/tasks", method: "POST", body: { pdfPath: "{{pdfPath}}" } },
+    artifact: { where: "p2o", label: "PDF2Obsidian" },
+    step: { id: "p2o_convert", kind: "tool_call", label: "PDF→Obsidian 转换", with: { endpoint: "/api/p2o/tasks", body: { pdfPath: "{{pdfPath}}" } } },
+    fields: [{ name: "pdfPath", label: "PDF 路径(服务端)", type: "string", required: true, placeholder: "文献库内的 PDF 绝对路径" }],
+  }),
+  // ── 结构解析(图/表/公式/算法定位) ──
+  // 对应工作台「结构解析」面板: 论文正文 → 结构化块清单。纯规则解析, 不烧 LLM。
+  cap({
+    id: "structure:overview", label: "结构解析", category: "知识", kind: "endpoint", cost: "light",
+    description: "论文正文 → 图/表/公式/算法块清单与定位(纯解析, 不调 LLM)",
+    inputs: ["text"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/papers/structure", method: "POST", body: { content: "{{inputs}}" } },
+    artifact: { where: "structure", label: "结构解析" },
+    step: { id: "structure_overview", kind: "tool_call", label: "结构解析", with: { endpoint: "/api/papers/structure", body: { content: "{{inputs}}" } } },
+  }),
   // ── 编排入口自身(可嵌套) ──
   cap({
     id: "orch:sub-dag", label: "子编排(DAG 套 DAG)", category: "通用", kind: "endpoint", cost: "heavy",
     description: "把另一条编排作为本节点执行 — 复杂课题拆成可复用的子流程",
     inputs: ["text"], outputs: ["text"], risk: "safe",
-    endpoint: { path: "/api/orchestrator/run", method: "POST", body: { templateId: "{{templateId}}", input: "{{inputs}}", wait: true } },
-    step: { id: "sub_dag", kind: "tool_call", label: "子编排", with: { endpoint: "/api/orchestrator/run", body: { templateId: "{{templateId}}", input: "{{inputs}}", wait: true } } },
-    fields: [{ name: "templateId", label: "子流程", type: "string", required: true, placeholder: "模板 id" }],
+    endpoint: { path: "/api/orchestrator/run", method: "POST", body: { input: "{{inputs}}", wait: true } },
+    step: { id: "sub_dag", kind: "tool_call", label: "子编排", with: { endpoint: "/api/orchestrator/run", body: { input: "{{inputs}}", wait: true } } },
+    // templateId 由节点参数给字面值(字段默认 tpl_lit_review, 用户可改成别的模板 id),
+    // 模板里不写 {{templateId}} —— 那个占位符渲染不出来, 见编辑器改写的同处说明。
+    fields: [{ name: "templateId", label: "子流程", type: "string", required: true, default: "tpl_lit_review", placeholder: "模板 id, 如 tpl_five_stage" }],
   }),
   // ── 澄清节点(人机协同) ──
   cap({
@@ -468,10 +573,35 @@ export function dagNodeToMetaStep(node: {
         with: { system: "你是马克思主义理论研究领域的学术写作专家。", task: "{{inputs}}", maxTokens: 3000 },
       };
   step.depends_on = deps;
-  if (step.with) {
-    step.with = { ...step.with, ...(node.params || {}) };
-  } else if (node.params) {
-    step.with = { ...node.params };
+  /**
+   * V415(2026-09-13 实测修复): 节点参数要合进**运行时真正读的那个子对象**。
+   *
+   * 运行时只读 with.args(tool 型)/ with.body(端点型)/ with 顶层(llm_* 直接读),
+   * 而这里原来一律往 with 顶层合并 —— 后果是节点参数**全部是死键**:
+   *   · 模板里写好的 topic 文本(如"为题目《X》设计 5 章架构")被丢弃,
+   *     实际发出去的是 args.template 的 {{inputs}}(即上游整段产出);
+   *   · 端点型的字段永远不生效 —— 实测"编辑器改写"节点传 mode=humanize,
+   *     请求体里的 {{mode}} 渲染成空, 端点报 400"mode 需为 …", 而前端字段面板看着一切正常。
+   * 两者都不报错, 只是"怎么改都没反应"/"莫名 400", 属于最难查的一类。
+   */
+  const params = node.params || {};
+  const nested = step.kind === "tool_call" && (step.with?.tool || step.with?.endpoint)
+    ? (step.with.tool ? "args" : "body")
+    : null;
+  if (nested) {
+    const sub = { ...((step.with?.[nested] as Record<string, unknown>) || {}), ...params };
+    // 允许节点参数直接给 args/body(与子对象键重名时它更明确)
+    const override = params[nested];
+    step.with = {
+      ...step.with,
+      ...(override && typeof override === "object" ? override : {}),
+      [nested]: sub,
+    };
+    // 节点带上游依赖时, 那条链的主输入就是上游产出 —— 参数里没显式给 text/topic 就补上,
+    // 否则字段面板一填别的参数, 上游产出就进不来了。
+    if (nested === "args" && deps.length && sub.input == null && params.input == null) sub.input = "{{inputs}}";
+  } else if (Object.keys(params).length) {
+    step.with = { ...(step.with || {}), ...params };
   }
   if (node.onFailure) step.on_failure = node.onFailure;
   if (node.route?.length) step.route = node.route;

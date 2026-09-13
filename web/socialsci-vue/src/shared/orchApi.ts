@@ -89,6 +89,11 @@ export interface OrchProgress {
   stepLog: OrchStepRun[];
   outputs?: Record<string, string>;
   source?: "live" | "db" | "none";
+  /**
+   * V415: 这次运行按哪个工具角色执行 —— ui(画布点击, manager) / agent(外部 Agent 经 orch_run, analyst)。
+   * 写类能力(file_write / run_code / sag_ingest)在 agent 来源下会被权限拦下, 前端据此把原因说清楚。
+   */
+  runSource?: "ui" | "agent";
 }
 
 export interface OrchRunRecord {

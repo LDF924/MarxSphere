@@ -116,7 +116,15 @@ const agentNodeTypes = { agent: AgentFlowNode } as any;
 
 // ── 右键菜单(闭源: pane 空白右键 → 模块列表; node 右键 → 详情/删除) ──
 const canvasEl = ref<HTMLElement | null>(null);
-/** flow 坐标换算(screenToFlowCoordinate 需库实例; 简化: 相对画布 px 直接给菜单定位) */
+/**
+ * 屏幕坐标 → 画布容器内坐标(定位右键菜单用)。
+ *
+ * 刻意**不**做 flow 坐标换算: 读 .vue-flow__pane 上的 zoom/pan 再反算, 会因为菜单元素
+ * 定位在容器 padding box 而同 vue-flow 的坐标系差一个 padding 偏移 —— 实测 fitView
+ * 缩放 0.667 / 平移 (0,63) 时反算点落在点击点上方 40px(等于容器 padding-top 40)。
+ * 菜单只需要"贴住鼠标", 容器内相对坐标就是正确目标。
+ * 拖放落点才需要 flow 坐标, 那是另一回事: 见 onDrop。
+ */
 function relPos(ev: MouseEvent) {
   const rect = canvasEl.value?.getBoundingClientRect();
   return {
@@ -197,18 +205,49 @@ function onNodesChange(changes: NodeChange[]) {
   }
 }
 
+/**
+ * V415: 屏幕坐标 → flow 坐标。
+ *
+ * 活取 .vue-flow__pane 的实时 transform(zoom + pan)反算, 不另存一份状态 —— 用户滚轮缩过、
+ * 拖过画布之后, 只有库自己知道当前的 zoom/平移。
+ *
+ * 容器 padding 必须减掉: 节点是 .vue-flow__pane 的子元素, 而 pane 位于容器的 padding box
+ * 之内(容器 padding: 40px 0 0), 所以 pane 左上角 ≠ 容器左上角 —— 实测差 40px, 不减这一项
+ * 落点会整体偏下。这正是旧实现"看着像对"的原因: 它用一个比例系数把这个偏移顺手吞掉了。
+ *
+ * 旧实现(已删)按 `容器内坐标 * 0.72` 近似, 只在 fitView 恰好缩放到 1.0 时才碰巧正确 ——
+ * 而浏览器缩放/双屏 dpr 会让它变成 0.667 或 1.25, 那时落点偏得肉眼可见。
+ */
+function screenToFlow(clientX: number, clientY: number): { x: number; y: number } {
+  const host = canvasEl.value;
+  if (!host) return { x: 0, y: 0 };
+  const rect = host.getBoundingClientRect();
+  const cs = getComputedStyle(host);
+  const pl = parseFloat(cs.paddingLeft) || 0;
+  const pt = parseFloat(cs.paddingTop) || 0;
+  const pane = host.querySelector(".vue-flow__pane") as HTMLElement | null;
+  let scale = 1;
+  let tx = 0;
+  let ty = 0;
+  if (pane) {
+    const m = getComputedStyle(pane).transform.match(/matrix\(([^)]+)\)/);
+    if (m) {
+      const p = m[1].split(",").map(Number);
+      scale = p[0] || 1;
+      tx = p[4] || 0;
+      ty = p[5] || 0;
+    }
+  }
+  return { x: (clientX - rect.left - pl - tx) / scale, y: (clientY - rect.top - pt - ty) / scale };
+}
+
 /** V415: 能力面板拖放 —— 把屏幕坐标换成画布坐标后交给上层建节点 */
 function onDrop(ev: DragEvent) {
   if (!props.editable || props.locked) return;
   const capabilityId = ev.dataTransfer?.getData("application/x-orch-capability") || ev.dataTransfer?.getData("text/plain") || "";
   if (!capabilityId) return;
   ev.preventDefault();
-  const rect = canvasEl.value?.getBoundingClientRect();
-  // 屏幕 → 画布坐标: vue-flow 的投影在同一元素坐标系内; 页面滚动由 vue-flow 自己管, 这里用相对位置近似
-  emit("capability-dropped", {
-    capabilityId,
-    position: { x: (ev.clientX - (rect?.left ?? 0)) * 0.72, y: (ev.clientY - (rect?.top ?? 0)) * 0.72 },
-  });
+  emit("capability-dropped", { capabilityId, position: screenToFlow(ev.clientX, ev.clientY) });
 }
 function onDragOver(ev: DragEvent) {
   if (!props.editable || props.locked) return;
