@@ -32,15 +32,30 @@ const clickAt = async (x, y) => { await page.mouse.click(x, y); await page.waitF
 
 await open();
 
-// ── ① 左右拉伸 ──
+// ── ① 左右拉伸: 三栏之间有两条独立的拉伸条(助手↔能力节点 / 能力节点↔画布) ──
 {
+  const n = await page.locator(".pane-splitter").count();
+  t("三栏之间有两条拉伸条", n === 2, `${n} 条`);
+  // 先拖最左那条(助手 ↔ 能力节点) —— 第一版只做了右边那条, 用户当场发现左边拉不动
+  const a0 = await page.evaluate(() => document.querySelector(".agent-panel")?.getBoundingClientRect().width);
+  const s0 = await page.locator(".pane-splitter").first().boundingBox();
+  if (s0) {
+    await page.mouse.move(s0.x + s0.width / 2, s0.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(s0.x + s0.width / 2 + 110, s0.y + 200, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const a1 = await page.evaluate(() => document.querySelector(".agent-panel")?.getBoundingClientRect().width);
+    t("拖动后编排助手变宽", a1 > a0 + 70, `${Math.round(a0)} → ${Math.round(a1)}`);
+    t("助手宽度写入 localStorage", Number(await page.evaluate(() => localStorage.getItem("orch_agent_w"))) > 280);
+  }
   const w0 = await page.evaluate(() => document.querySelector(".palette-panel")?.getBoundingClientRect().width);
-  const sp = await page.locator(".pane-splitter").boundingBox();
+  const sp = await page.locator(".pane-splitter").nth(1).boundingBox();
   t("能力面板与画布之间有拉伸条", !!sp, sp ? `x=${Math.round(sp.x)} 命中宽=${Math.round(sp.width)}px` : "无");
   if (sp) {
     await page.mouse.move(sp.x + sp.width / 2, sp.y + 200);
     await page.mouse.down();
-    await page.mouse.move(sp.x + sp.width / 2 + 110, sp.y + 200, { steps: 10 });
+    await page.mouse.move(sp.x + sp.width / 2 + 90, sp.y + 200, { steps: 10 });
     await page.mouse.up();
     await page.waitForTimeout(400);
     const w1 = await page.evaluate(() => document.querySelector(".palette-panel")?.getBoundingClientRect().width);
