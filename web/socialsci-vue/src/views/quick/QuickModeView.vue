@@ -39,6 +39,11 @@ const nodes = ref<BizNode[]>([]);
 const userEdges = ref<Array<{ id: string; source: string; target: string }>>([]);
 const runState = ref<"draft" | "running" | "waiting_input" | "paused" | "done" | "failed" | "cancelled">("draft");
 const runId = ref("");
+/**
+ * V415: 本次运行的执行角色来源。后端按它决定工具角色(ui→manager / agent→analyst), 前端只做呈现。
+ * 新启动的运行由我们自己知道; 轮询到的运行以后端返回的 runSource 为准(别人的/恢复出来的运行)。
+ */
+const runSource = ref<"ui" | "agent">("ui");
 const progress = ref<OrchProgress | null>(null);
 const finalText = ref("");
 
@@ -170,6 +175,8 @@ const selectedNode = ref<BizNode | null>(null);
 const nodeForm = ref<Record<string, string>>({});
 const selectedCap = computed(() => capById(selectedNode.value?.capabilityId));
 const paramFields = computed(() => selectedCap.value?.fields ?? []);
+/** V415: 某节点在这张图里的入边条数(= 直接依赖数)。连线是唯一依据, 不另存一份依赖关系。 */
+function depCountOf(id: string): number { return userEdges.value.filter((e) => e.target === id).length; }
 
 function onNodeSelected(n: BizNode) {
   selectedNode.value = n;
@@ -272,6 +279,7 @@ async function startExecution() {
   try {
     const r = await startRun({ graph: graphPayload(), text: graphName.value, model: model.value || undefined });
     runId.value = r.runId;
+    runSource.value = "ui";   // 画布上手动启动 = manager 权限(后端同一口径)
     runState.value = "running";
     lastDone = new Set();
     pushMsg({ role: "user", text: "开始执行" });
@@ -307,6 +315,8 @@ function startPoll(id: string) {
 function applyProgress(p: OrchProgress) {
   progress.value = p;
   if (p.status !== "unknown") runState.value = p.status as typeof runState.value;
+  // 后端是角色的权威(可能是 Agent 触发的, 也可能是恢复出来的旧运行), 有值就以后端为准
+  if (p.runSource) runSource.value = p.runSource;
 
   const byStep = new Map(p.stepLog.map((s) => [s.stepId, s]));
   nodes.value = nodes.value.map((n) => {
@@ -398,7 +408,7 @@ async function cancelRun() {
 }
 function resetCanvas() {
   if (locked.value) return;
-  runState.value = "draft"; runId.value = ""; progress.value = null; finalText.value = "";
+  runState.value = "draft"; runId.value = ""; runSource.value = "ui"; progress.value = null; finalText.value = "";
   lastDone = new Set(); waitFields.value = [];
   nodes.value = nodes.value.map((n) => ({ ...n, state: "draft", stateLabel: "待执行", progress: undefined, artifactCount: undefined, outputPreview: undefined, executionDetail: undefined }));
 }
@@ -496,6 +506,18 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
         <span class="cost-chip" :class="COST_META[graphCost].cls" :title="'按节点能力推算的量级: ' + COST_META[graphCost].label">
           成本 {{ COST_META[graphCost].label }}
         </span>
+        <!-- V415: 当前运行的执行角色。外部 Agent 触发的运行只有 analyst 权限, 写类能力会被拦 ——
+             这一条是用户看到"为什么这个节点起不来"的答案, 所以常驻在顶部而不是藏在节点里。 -->
+        <span
+          v-if="runSource === 'agent'"
+          class="role-chip"
+          title="本次编排由 AI 对话里的 Agent 触发, 以 analyst 权限执行: 写类能力(文件写入/代码沙箱/入库)会被权限拦下。要跑这些能力请在画布上手动启动。"
+        >analyst 权限</span>
+        <span
+          v-else-if="runId"
+          class="role-chip is-manager"
+          title="本次编排由你在画布上启动, 以 manager 权限执行: 全部能力可用(含文件写入/代码沙箱/入库)。"
+        >manager 权限</span>
         <button
           class="agent-chip"
           :class="{ 'is-on': agentSetting?.enabled }"
@@ -701,6 +723,9 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
             <div class="drawer-row"><label>能力</label><span>{{ selectedNode.capabilityId || "（未绑定, 按通用生成执行）" }}</span></div>
             <div class="drawer-row"><label>输入</label><span>{{ selectedNode.input || "上游产出" }}</span></div>
             <div class="drawer-row"><label>输出</label><span>{{ selectedNode.output || "text" }}</span></div>
+            <!-- V415: 直接依赖数 = 这张图里有多少条边指向它。连线才是执行的依据, 数字对得上用户才看得出
+                 "我连的线生效了"; 与执行日志里的 ← 依赖列表是同一份事实的两种呈现。 -->
+            <div class="drawer-row"><label>直接依赖</label><span>{{ depCountOf(selectedNode.id) }} 个上游节点</span></div>
             <div v-if="selectedNode.artifact" class="drawer-artifact">
               <span>产物落点: {{ selectedNode.artifact.label }}</span>
               <button class="ws-ask-btn" @click="viewArtifact(selectedNode!.artifact!.where)">去查看</button>
@@ -871,6 +896,12 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .cost-chip.cost-light { background: #14281F; color: #5FD0B4; }
 .cost-chip.cost-medium { background: #1E2A48; color: #6FA6E8; }
 .cost-chip.cost-heavy { background: #2A2414; color: #E8B54A; }
+/* 执行权限角色: analyst(外部 Agent 触发, 写类能力被拦) / manager(用户在画布上启动) */
+.role-chip {
+  font-size: 10px; padding: 3px 9px; border-radius: 10px; white-space: nowrap;
+  background: #2A2414; color: #E8B54A; cursor: help;
+}
+.role-chip.is-manager { background: #1E2A48; color: #6FA6E8; }
 .agent-chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 10px; padding: 3px 9px; border-radius: 10px; cursor: pointer;

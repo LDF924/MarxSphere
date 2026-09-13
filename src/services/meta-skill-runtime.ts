@@ -7,6 +7,7 @@
 // 定义见 src/services/meta-skill-defs.ts; 前端最小 UI 见 AgentPanel 内 MetaSkillRunPanel
 import { callLlm } from "../ai/llm-common.js";
 import { selfBaseUrl } from "./base-urls.js";
+import { getRequestContext } from "./request-context.js";
 import pLimit from "p-limit";
 
 /**
@@ -45,6 +46,27 @@ const ENDPOINT_TIMEOUT_MS = Number(process.env.ORCH_ENDPOINT_TIMEOUT_MS) || 5 * 
  * 与 agent-view-tools 的 self-fetch 同一路径。跨机部署时 selfBaseUrl() 指向内部服务名,
  * 那种情形下由调用方(编排 API)传入令牌。
  */
+/**
+ * 渲染一个请求体字段。
+ * 标量按模板渲染后转字符串; **数组保持数组** —— 有端点的 zod 校验直接要 string[],
+ *   转成字符串会被拒(实测: 大纲的 sections 传字符串 → 400 "Expected array, received string")。
+ */
+function renderBodyValue(v: unknown, ctx: MetaRunContext): unknown {
+  if (Array.isArray(v)) return v.map((x) => (x && typeof x === "object" ? renderBodyValue(x, ctx) : renderTemplate(String(x ?? ""), ctx)));
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, inner] of Object.entries(v as Record<string, unknown>)) out[k] = renderBodyValue(inner, ctx);
+    return out;
+  }
+  return renderTemplate(String(v ?? ""), ctx);
+}
+
+/**
+ * 端点型步骤的请求体按模板渲染。
+ * body 里写 `{{sections}}` 这类**自定义字段**时, 它会渲染成 "[未渲染:{{sections}}]" ——
+ * 所以能力注册表里不该这么写(自定义字段由节点参数直接给值, 见 dagNodeToMetaStep)，
+ * 只有 {{inputs}}/{{user.x}}/{{outputs.x}} 才该出现在模板里。
+ */
 async function callEndpoint(
   path: string,
   rawBody: unknown,
@@ -53,7 +75,7 @@ async function callEndpoint(
 ): Promise<string> {
   const body: Record<string, unknown> = {};
   if (rawBody && typeof rawBody === "object") {
-    for (const [k, v] of Object.entries(rawBody as Record<string, unknown>)) body[k] = renderTemplate(String(v ?? ""), ctx);
+    for (const [k, v] of Object.entries(rawBody as Record<string, unknown>)) body[k] = renderBodyValue(v, ctx);
   }
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (opts.authToken) headers.Authorization = `Bearer ${opts.authToken}`;
@@ -77,6 +99,53 @@ async function callEndpoint(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * V415: 跑一段"属于某次编排运行"的代码时, 让它带上发起人的身份。
+ *
+ * 为什么必须做: 部分工作台端点(工具链的文档读写 / 编辑器改写 / 大纲补全)要求登录 ——
+ * 它们在请求进入时用 AsyncLocalStorage 记下调用者(request-context)。编排是**后台任务**:
+ * API 起完后立即返回 runId, 真正的步骤在 HTTP 请求之外执行 —— 于是那批能力一调就是 401
+ * "未登录", 而且报错信息看着像权限 bug, 极难定位(实测: 编排里放一个编辑器改写节点, 永远失败)。
+ *
+ * 做法: 启动编排的那次请求里记下身份, 之后每个步骤都在这份身份下执行。
+ * 与 HTTP 里的上下文是**同一个 store 对象**(不另开 run), 保证异步链路看到一致状态。
+ * 没有身份(脚本/定时任务起编排)时原样执行, 与后台任务语义一致。
+ */
+export interface CallerContext { userId?: string; tenantId?: string }
+const callerContexts = new Map<string, CallerContext>();
+let callerContext: CallerContext | undefined;
+export function setOrchestratorCaller(c: CallerContext | undefined, runId?: string): void {
+  if (runId) {
+    if (c?.userId) {
+      // 简单 LRU: 超量时淘汰最早一条(只为防内存无限增长, 不是缓存策略)
+      if (callerContexts.size >= 32) {
+        const oldest = callerContexts.keys().next().value;
+        if (oldest !== undefined) callerContexts.delete(oldest);
+      }
+      callerContexts.set(runId, c);
+    } else callerContexts.delete(runId);
+    return;
+  }
+  callerContext = c;
+}
+/**
+ * 取某次运行的发起人身份。
+ * runId 是**本进程内**生成的(orch-xxxx), 所以跨运行的键冲突不会发生; 32 条后淘汰最旧一条,
+ * 只为防内存无限增长 —— 调接口恢复的旧运行不在表里, 那时回退到单值 callerContext。
+ */
+function callerFor(runId: string): CallerContext | undefined {
+  const hit = callerContexts.get(runId);
+  return hit?.userId ? hit : callerContext;
+}
+/** 给某次运行绑定发起人(步骤执行时按 runId 取; 无绑定时回退到 setOrchestratorCaller 的单值) */
+function withCaller<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+  const ctx = getRequestContext();
+  const caller = callerFor(runId);
+  if (ctx && caller?.userId && !ctx.userId) ctx.userId = caller.userId;
+  if (ctx && caller?.tenantId && !ctx.tenantId) ctx.tenantId = caller.tenantId;
+  return fn();
 }
 
 export type MetaStepKind = "agent" | "llm_chat" | "llm_classify" | "user_input" | "tool_call" | "llm_gate";
@@ -162,6 +231,10 @@ export function renderTemplate(tpl: string, ctx: MetaRunContext): string {
     .replace(/\{\{\s*user\.(\w+)\s*\}\}/g, (_, k: string) => ctx.userValues[k] ?? "")
     .replace(/\{\{\s*outputs?\.([\w-]+)\s*\}\}/g, (_, id: string) => ctx.outputs[id] ?? "")
     .replace(/\{\{\s*(?:outputs?|user|inputs?)\.([\w-]+)\s*\|\s*slice\((\d+)\)\s*\}\}/g, (_, id: string, n: string) => (ctx.outputs[id] ?? ctx.userValues[id] ?? ctx.input).slice(0, Number(n)))
+    // 渲染不了的占位符**显式标记**而不是静默留空: 静默留空会让"模板写错"看起来像"上游没产出"。
+    // 注意这条只该兜住真正的笔误 —— 能力注册表里的模板不该出现 {{自定义字段}}:
+    //   自定义字段由节点参数直接给字面值(见 capability-registry 的 dagNodeToMetaStep),
+    //   那种写法渲染出来就是 "[未渲染:{{mode}}]", 传给端点直接参数校验失败。
     .replace(/\{\{([^}]+)\}\}/g, (m) => `[未渲染:${m.slice(0, 40)}]`);
   return out;
 }
@@ -272,7 +345,7 @@ async function waitForUserInput(ctx: MetaRunContext, timeoutMs: number, pollMs =
 }
 
 // ═══ 运行注册表: user_input 中途挂起 → 外部(resumeMetaSkillInput)提交续跑; stepLog 快照供前端逐步显示 ═══
-interface LiveRun { ctx: MetaRunContext; stepLog: MetaStepRun[]; }
+interface LiveRun { ctx: MetaRunContext; stepLog: MetaStepRun[]; runSource: "ui" | "agent"; }
 const liveRuns = new Map<string, LiveRun>();
 export function getLiveRun(runId: string): MetaRunContext | undefined { return liveRuns.get(runId)?.ctx; }
 /**
@@ -284,10 +357,10 @@ export function isLiveRun(runId: string, ctx: MetaRunContext): boolean {
   const cur = liveRuns.get(runId)?.ctx;
   return !!cur && cur === ctx && !ctx.pauseAborted;
 }
-export function getLiveRunSnapshot(runId: string): { runId: string; skillId: string; status: string; stepLog: MetaStepRun[] } | undefined {
+export function getLiveRunSnapshot(runId: string): { runId: string; skillId: string; status: string; stepLog: MetaStepRun[]; runSource: "ui" | "agent" } | undefined {
   const lr = liveRuns.get(runId);
   if (!lr) return undefined;
-  return { runId: lr.ctx.runId, skillId: lr.ctx.skillId, status: lr.ctx.status, stepLog: lr.stepLog };
+  return { runId: lr.ctx.runId, skillId: lr.ctx.skillId, status: lr.ctx.status, stepLog: lr.stepLog, runSource: lr.runSource };
 }
 export function listLiveRuns(): Array<{ runId: string; skillId: string; status: string }> {
   return [...liveRuns.entries()].map(([runId, lr]) => ({ runId, skillId: lr.ctx.skillId, status: lr.ctx.status }));
@@ -426,6 +499,17 @@ export interface MetaSkillExecutor {
    *             点了暂停还得盯着当前步跑完, 长任务体验很差)
    */
   pausePolicy?: "wait" | "abort";
+  /**
+   * V415: 工具步骤以什么角色执行。
+   *
+   * 这里原来写死 "analyst", 而 executeAgentTool 会拿它跟 TOOL_MIN_ROLE 比对 —— 于是
+   * manager 级工具(file_write / run_code / sag_ingest …)在编排里被直接判"需要 manager 角色"
+   * 而失败。默认仍是 "analyst"(分析类步骤够用, 也不给编排偷偷放大权限),
+   * 管理类编排要跑写工具, 由调用方显式抬到 "manager"。
+   */
+  role?: "reader" | "analyst" | "manager";
+  /** V415: 发起来源(随运行注册表一起带走, 供编排层落库/回读) */
+  runSource?: "ui" | "agent";
 }
 
 /** 生产执行器: agent→SAG 综述; llm_*→callLlm; tool_call→executeAgentTool; user_input→等提交 */
@@ -474,7 +558,7 @@ async function defaultStepExecutor(step: MetaStepDef, ctx: MetaRunContext, opts:
     if (!tool) throw new Error(`工具不存在: ${w.tool}`);
     const args: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(w.args || {})) args[k] = render(v);
-    const r = await executeAgentTool(tool, args, { role: "analyst" });
+    const r = await executeAgentTool(tool, args, { role: opts.role ?? "analyst" });
     if (!r.ok) throw new Error(r.result.slice(0, 150));
     return r.result;
   }
@@ -512,7 +596,7 @@ export async function runMetaSkill(def: MetaSkillDef, inputText: string, opts: M
     outputs: {}, userValues: opts.userValues || {}, status: "running",
   };
   const stepLog: MetaStepRun[] = def.steps.map((s) => ({ stepId: s.id, kind: s.kind, label: s.label, status: "pending" }));
-  liveRuns.set(runId, { ctx, stepLog });
+  liveRuns.set(runId, { ctx, stepLog, runSource: opts.runSource ?? "ui" });
   // V415: 每次状态/步骤变化都通知编排层落库 —— 刷新、换设备、进程重启后仍查得到跑到哪一步
   const hookStep = opts.onStep;
   const hooked: MetaSkillExecutor = {
@@ -670,7 +754,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
     }
 
     try {
-      let out = await execStep(step, ctxView);
+      let out = await withCaller(ctx.runId, () => execStep(step, ctxView));
       // llm_gate 判定不过 → 走失败语义(触发 on_failure 备胎)
       if (step.kind === "llm_gate") {
         const j = extractJson(out) || {};

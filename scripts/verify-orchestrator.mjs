@@ -41,7 +41,7 @@ t("每个 agent_tool 能力都带 tool 名", missingTool.length === 0, missingTo
 const tpls = listTemplates();
 console.log(`\n[2] 模板: ${tpls.length} 条`);
 for (const tp of tpls) console.log(`    ${tp.id.padEnd(22)} ${tp.name} (${tp.graph.nodes.length} 节点/${tp.graph.edges.length} 边)`);
-t("模板数 ≥ 10", tpls.length >= 10, `实际 ${tpls.length}`);
+t("模板数 ≥ 13(新增润色/大纲/精读三条)", tpls.length >= 13, `实际 ${tpls.length}`);
 const blank = tpls.find((x) => x.id === "tpl_blank");
 t("存在空白画布模板", !!blank);
 const multiChain = tpls.filter((x) => x.graph.edges.length > x.graph.nodes.length - 1);

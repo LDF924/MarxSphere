@@ -6853,10 +6853,13 @@ except Exception as e:
     };
     // 画布执行权限: 与 agent 工具同等 —— 外部令牌需 agent 权限(编排会调工具与工作台端点)
     const auth = request.headers.authorization as string | undefined;
+    // V415: 带上发起人身份 —— 编排在请求之外执行, 而部分工作台端点要求登录, 身份必须显式传下去
+    const caller = alsUserIdOf(request);
     try {
       const r = await startOrchestration({
         graph: body.graph as any, templateId: body.templateId, input: body.input,
         model: body.model, userValues: body.userValues,
+        userId: caller.userId, tenantId: caller.tenantId,
         authToken: auth?.startsWith("Bearer ") ? auth.slice(7).trim() : undefined,
       });
       if (!body.wait) return { ok: true, runId: r.runId, steps: r.steps, order: r.order };
@@ -6890,7 +6893,7 @@ except Exception as e:
     if (!runId) return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: "runId 必填" } });
     const r = body.action === "cancel" ? svc.cancelRun(runId)
       : body.action === "pause" ? svc.pauseRun(runId)
-      : body.action === "resume" ? await svc.resumeRun(runId)
+      : body.action === "resume" ? await svc.resumeRun(runId, alsUserIdOf(request))
       : body.action === "input" ? svc.submitRunInput(runId, body.values || {})
       : { ok: false, error: `未知动作: ${body.action}` };
     if (!r.ok) return reply.code(400).send({ error: { code: "ORCH_BAD_REQUEST", message: r.error } });

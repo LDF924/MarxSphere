@@ -16,7 +16,7 @@ import { listCapabilities, graphToMetaSkill, type CapabilityDef } from "./capabi
 import { ORCHESTRATOR_TEMPLATES, getTemplate, type OrchestratorTemplate } from "./orchestrator-templates.js";
 import {
   runMetaSkill, resumeMetaSkillFromSnapshot, cancelMetaSkill, pauseMetaSkill, resumeMetaSkill,
-  resumeMetaSkillInput, getLiveRunSnapshot, isLiveRun,
+  resumeMetaSkillInput, getLiveRunSnapshot, isLiveRun, setOrchestratorCaller,
   type MetaSkillDef, type MetaStepRun, type MetaRunContext,
 } from "./meta-skill-runtime.js";
 
@@ -73,13 +73,13 @@ function rowToRecord(r: any): RunRecord {
  */
 async function persist(
   runId: string, ctx: MetaRunContext, stepLog: MetaStepRun[],
-  extra: { error?: string; finalText?: string; graph?: OrchestratorGraph } = {},
+  extra: { error?: string; finalText?: string; graph?: OrchestratorGraph; source?: "ui" | "agent" } = {},
 ): Promise<void> {
   if (!isLiveRun(runId, ctx)) return;
   await persistRunSnapshot({
     runId, skillId: ctx.skillId, input: ctx.input, outputs: ctx.outputs,
     status: ctx.status, stepLog, graph: extra.graph,
-    error: extra.error, finalText: extra.finalText,
+    error: extra.error, finalText: extra.finalText, source: extra.source,
   });
 }
 
@@ -92,6 +92,10 @@ export interface StartRunOptions {
   /** 画布会话 id(可复用已有运行记录; 用于"接着上次继续") */
   runId?: string;
   authToken?: string;
+  /** V415: 发起人身份 —— 端点型能力里有要求登录的工作台端点(编辑器改写/大纲补全等),
+   *  编排在请求之外执行, 必须把身份带进执行期, 否则一律 401。 */
+  userId?: string;
+  tenantId?: string;
   /**
    * V415: 调用来源。Agent 触发时受"单次最多节点数"限制, 画布上用户自己点的则不受限
    *   —— 自己画的图自己跑, 加个上限反而碍事; 但 Agent 可能一句话就排一条 20 节点的长链。
@@ -105,21 +109,37 @@ export interface StartRunResult {
   order: string[];
 }
 
+/**
+ * V415: 工具步骤的执行角色。
+ *
+ * ui    = 用户在画布上自己画的图自己点运行 → manager, 写类工具(文件/沙箱/入库)可用。
+ * agent = 外部 Agent 经 orch_run 触发 → 只给 analyst, 不放宽到写操作。
+ *
+ * 这才是唯一的门 —— 开关那一侧只管"要不要让 Agent 进来", 不管进来后能干什么。
+ */
+function toolRoleFor(source: StartRunOptions["source"]): "analyst" | "manager" {
+  return source === "agent" ? "analyst" : "manager";
+}
+
 /** 起后台执行并立刻拿到 runId(不能等运行时自己生成 id —— API 要先把 id 返回给前端) */
 function launch(def: MetaSkillDef, runId: string, opts: StartRunOptions, graph: OrchestratorGraph): void {
-  const onStatus = (ctx: MetaRunContext, stepLog: MetaStepRun[]) => { void persist(ctx.runId, ctx, stepLog, { graph }); };
+  const caller = opts.userId ? { userId: opts.userId, tenantId: opts.tenantId } : undefined;
+  setOrchestratorCaller(caller, runId);
+  const onStatus = (ctx: MetaRunContext, stepLog: MetaStepRun[]) => { void persist(ctx.runId, ctx, stepLog, { graph, source: opts.source }); };
   void runMetaSkill(def, opts.input ?? "", {
     model: opts.model,
     userValues: opts.userValues,
     authToken: opts.authToken,
     runId,
     onStatus,
+    role: toolRoleFor(opts.source),
+    runSource: opts.source ?? "ui",
     // 编排里的步骤以只读检索与 LLM 生成为主, 天然幂等 —— 中断后重跑不会造成重复副作用,
     // 所以选 abort: 用户点暂停/取消立刻生效, 而不是"等当前这步跑完"(可能是几分钟的长文生成)。
     pausePolicy: "abort",
   }).then((r) => {
     const ctx = { runId: r.runId, skillId: def.id, input: opts.input ?? "", outputs: r.outputs, userValues: {}, status: r.status } as MetaRunContext;
-    return persist(r.runId, ctx, r.stepLog, { graph, finalText: r.output, error: r.status === "failed" ? r.output.slice(0, 500) : undefined });
+    return persist(r.runId, ctx, r.stepLog, { graph, source: opts.source, finalText: r.output, error: r.status === "failed" ? r.output.slice(0, 500) : undefined });
   }).catch((e) => {
     console.warn(`[orchestrator] 运行 ${runId} 异常退出: ${String(e?.message || e).slice(0, 200)}`);
   });
@@ -128,6 +148,9 @@ function launch(def: MetaSkillDef, runId: string, opts: StartRunOptions, graph: 
 /**
  * 启动一次编排。返回 runId 后由前端轮询 /api/orchestrator/progress(与既有 MetaSkill 一致的模式)。
  * 后台执行: user_input 节点会挂起等前端提交(不占 HTTP 连接)。
+ *
+ * 调用方身份(opts.userId)由 launch 在拿到 runId 之后按运行绑定 —— 编排在 HTTP 请求之外执行,
+ * 而部分工作台端点要求登录, 身份必须跟着运行走(见 meta-skill-runtime 的 withCaller)。
  */
 export async function startOrchestration(opts: StartRunOptions): Promise<StartRunResult> {
   const caps = await listCapabilities();
@@ -178,17 +201,23 @@ function buildDef(graph: OrchestratorGraph, caps: Awaited<ReturnType<typeof list
 export async function getRunProgress(runId: string): Promise<{
   ok: boolean; runId: string; status: string; stepLog: MetaStepRun[];
   outputs?: Record<string, string>; source: "live" | "db" | "none";
+  /**
+   * V415: 这次运行是按哪个工具角色在执行(ui→manager / agent→analyst)。
+   * 前端据此回答"这个节点为什么灰了/为什么报需要 manager" —— 只读会话里拿 agent 权限跑,
+   * 写类节点会失败, 用户需要看得见原因而不是只看到一个红叉。
+   */
+  runSource: "ui" | "agent";
 }> {
   const live = getLiveRunSnapshot(runId);
-  if (live) return { ok: true, runId, status: live.status, stepLog: live.stepLog, source: "live" };
+  if (live) return { ok: true, runId, status: live.status, stepLog: live.stepLog, source: "live", runSource: live.runSource };
   try {
     const r = await pool.query("select * from orchestrator_runs where id = $1", [runId]);
     if (r.rows[0]) {
       const rec = rowToRecord(r.rows[0]);
-      return { ok: true, runId, status: rec.status, stepLog: rec.stepLog, outputs: rec.outputs, source: "db" };
+      return { ok: true, runId, status: rec.status, stepLog: rec.stepLog, outputs: rec.outputs, source: "db", runSource: r.rows[0].source === "agent" ? "agent" : "ui" };
     }
   } catch { /* 表不存在 → 当作查不到 */ }
-  return { ok: false, runId, status: "unknown", stepLog: [], source: "none" };
+  return { ok: false, runId, status: "unknown", stepLog: [], source: "none", runSource: "ui" };
 }
 
 export function cancelRun(runId: string) { return cancelMetaSkill(runId); }
@@ -196,9 +225,9 @@ export function pauseRun(runId: string) { return pauseMetaSkill(runId); }
 export function submitRunInput(runId: string, values: Record<string, string>) { return resumeMetaSkillInput(runId, values); }
 
 /** 从 DB 的 graph_json + step_log 取回"这次跑的是哪张图、已经完成到哪" */
-async function loadRunSnapshot(runId: string): Promise<{ graph: OrchestratorGraph; input: string; outputs: Record<string, string>; completed: string[]; userValues: Record<string, string> } | null> {
+async function loadRunSnapshot(runId: string): Promise<{ graph: OrchestratorGraph; input: string; outputs: Record<string, string>; completed: string[]; userValues: Record<string, string>; source?: "ui" | "agent" } | null> {
   try {
-    const r = await pool.query("select graph_json, input, outputs_json, step_log_json from orchestrator_runs where id = $1", [runId]);
+    const r = await pool.query("select graph_json, input, outputs_json, step_log_json, source from orchestrator_runs where id = $1", [runId]);
     if (!r.rows[0]) return null;
     const row = r.rows[0];
     const graph = (typeof row.graph_json === "string" ? JSON.parse(row.graph_json) : row.graph_json) as OrchestratorGraph;
@@ -215,7 +244,7 @@ async function loadRunSnapshot(runId: string): Promise<{ graph: OrchestratorGrap
         if (m) userValues[m[1]] = m[2];
       }
     }
-    return { graph, input: String(row.input ?? ""), outputs, completed, userValues };
+    return { graph, input: String(row.input ?? ""), outputs, completed, userValues, source: row.source === "agent" ? "agent" : "ui" };
   } catch { return null; }
 }
 
@@ -229,7 +258,11 @@ async function loadRunSnapshot(runId: string): Promise<{ graph: OrchestratorGrap
  * 重建的代价只是重新遍历一遍步骤表; 已完成步骤被替换成回放节点(直接返回快照产物, 不调 LLM),
  * 所以不会重复烧 token。恢复前把这条运行的旧代任务摘掉, 防止它与新代抢写同一个 runId。
  */
-export async function resumeRun(runId: string): Promise<{ ok: boolean; error?: string; rebuilt?: boolean }> {
+export async function resumeRun(runId: string, caller?: { userId?: string; tenantId?: string }): Promise<{ ok: boolean; error?: string; rebuilt?: boolean }> {
+  // V415: 恢复同样是后台续跑, 身份要从**调用恢复接口的这个请求**重新取(进程可能已经重启过,
+  // 原来那次启动请求早就结束了)。少了它, 恢复后跑到的端点型能力会 401。
+  // 按 runId 绑定而非全局单值: 同一进程可能同时跑多条编排, 全局单值会张冠李戴。
+  if (caller?.userId) setOrchestratorCaller(caller, runId);
   // 先把可能残留的旧代任务标记为被接管(若已经收尾, 这步是空操作)
   resumeMetaSkill(runId);
   const snap = await loadRunSnapshot(runId);
@@ -245,11 +278,13 @@ export async function resumeRun(runId: string): Promise<{ ok: boolean; error?: s
   void resumeMetaSkillFromSnapshot(def, snap.input, {
     runId, outputs: snap.outputs, completed: snap.completed, userValues: snap.userValues,
   }, {
-    onStatus: (ctx, stepLog) => { void persist(ctx.runId, ctx, stepLog, { graph: snap.graph }); },
+    onStatus: (ctx, stepLog) => { void persist(ctx.runId, ctx, stepLog, { graph: snap.graph, source: snap.source }); },
+    role: toolRoleFor(snap.source),
+    runSource: snap.source ?? "ui",
     pausePolicy: "abort",
   }).then((r) => {
     void persist(runId, { runId, skillId: def.id, input: snap.input, outputs: r.outputs, userValues: {}, status: r.status } as MetaRunContext, r.stepLog, {
-      graph: snap.graph, finalText: r.output, error: r.status === "failed" ? r.output.slice(0, 500) : undefined,
+      graph: snap.graph, source: snap.source, finalText: r.output, error: r.status === "failed" ? r.output.slice(0, 500) : undefined,
     });
   }).catch((e) => {
     console.warn(`[orchestrator] 恢复 ${runId} 异常: ${String(e?.message || e).slice(0, 200)}`);

@@ -27,6 +27,11 @@ export interface RunSnapshot {
   graph?: unknown;
   error?: string;
   finalText?: string;
+  /**
+   * V415: 发起来源。恢复时要靠它定回同一个工具角色 —— 少了这一项, UI 上跑的图一暂停再恢复
+   * 就从 manager 掉到 analyst, 写类工具全部被权限判死(见 orchestrator-service 的 toolRoleFor)。
+   */
+  source?: "ui" | "agent";
 }
 
 /** 写一行运行快照(upsert)。失败只 warn —— 记录是辅助, 不能因为写库失败把编排搞崩。 */
@@ -50,8 +55,8 @@ async function doPersist(s: RunSnapshot): Promise<void> {
   if (dbg) console.log(`[orch-dbg] ${dbg}`);
   try {
     await pool.query(
-      `insert into orchestrator_runs (id, graph_id, graph_name, input, status, graph_json, step_log_json, outputs_json, final_text, error, updated_at, finished_at)
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, now(), case when $11 then now() else null end)
+      `insert into orchestrator_runs (id, graph_id, graph_name, input, status, graph_json, step_log_json, outputs_json, final_text, error, source, updated_at, finished_at)
+       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11, now(), case when $12 then now() else null end)
        on conflict (id) do update set
          status = excluded.status,
          step_log_json = excluded.step_log_json,
@@ -59,13 +64,17 @@ async function doPersist(s: RunSnapshot): Promise<void> {
          graph_json = coalesce(excluded.graph_json, orchestrator_runs.graph_json),
          final_text = coalesce(excluded.final_text, orchestrator_runs.final_text),
          error = coalesce(excluded.error, orchestrator_runs.error),
+         source = excluded.source,
          updated_at = now(),
          finished_at = coalesce(excluded.finished_at, orchestrator_runs.finished_at)`,
       [
         s.runId, s.skillId, s.skillId, s.input, s.status,
         s.graph ? JSON.stringify(s.graph) : null,
         JSON.stringify(s.stepLog), JSON.stringify(s.outputs),
-        s.finalText ?? null, s.error ?? null, finished,
+        s.finalText ?? null, s.error ?? null,
+        // 显式传 NULL 会撞 not-null 约束(列虽带 default, 但显式 NULL 优先于 default)。
+        // 缺省按 ui 记 —— 能跑到这里的运行都是画布上人工发起的, agent 来源必带值。
+        s.source ?? "ui", finished,
       ]
     );
   } catch (e: any) {

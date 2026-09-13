@@ -6,10 +6,22 @@ const BASE = process.env.ORCH_BASE || "http://127.0.0.1:4173";
 let pass = 0, fail = 0;
 const t = (name, ok, extra = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${name}${extra ? " — " + extra : ""}`); ok ? pass++ : fail++; };
 
+/**
+ * V415: 带令牌 —— 部分能力(编辑器改写/大纲补全)的端点在 SAG_AUTH_ENABLED=true 时要求登录。
+ * 令牌来源: ORCH_TOKEN 环境变量, 或由调用方注册一个探针账号后传进来。
+ * 没有令牌也能跑: 那几项断言会自动跳过并在输出里说明(不静默, 见下方 sk()).
+ */
+const TOKEN = process.env.ORCH_TOKEN || "";
+const skip = [];
+const sk = (name, why) => { console.log(`  skip  ${name} — ${why}`); skip.push(name); };
+
 async function j(method, path, body) {
   const res = await fetch(BASE + path, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -37,7 +49,7 @@ const tplRes = await j("GET", "/api/orchestrator/templates");
 t("GET /templates 200", tplRes.status === 200, `status=${tplRes.status}`);
 const tpls = tplRes.data?.templates ?? [];
 console.log(`\n[2] 模板 ${tpls.length} 条: ${tpls.map((x) => x.name).join(" / ")}`);
-t("模板数 ≥ 10", tpls.length >= 10, `${tpls.length}`);
+t("模板数 ≥ 13", tpls.length >= 13, `${tpls.length}`);
 t("每个模板都有可执行图", tpls.every((x) => x.graph?.nodes?.length > 0));
 t("模板节点引用的能力都真实存在",
   tpls.every((x) => x.graph.nodes.every((n) => !n.capabilityId || caps.some((c) => c.id === n.capabilityId))),
@@ -181,5 +193,98 @@ t("对不存在的运行控制返回 400", bad3.status === 400, `${bad3.status} 
 const bad4 = await j("POST", "/api/orchestrator/control", { runId: "x", action: "nonsense" });
 t("未知动作返回 400", bad4.status === 400, `${bad4.status}`);
 
-console.log(`\n${"=".repeat(54)}\n通过 ${pass} / 失败 ${fail}`);
+// ── 12. V415 新增: 编辑器/大纲能力进了注册表 + 澄清节点跑通 + 执行角色可见 ──
+const NEW_CAPS = ["editor:rewrite", "editor:title-abstract", "editor:check-fulltext", "editor:format-references", "outline:chapter", "outline:component", "p2o:convert"];
+t("编辑器/大纲/PDF 能力已登记",
+  NEW_CAPS.every((id) => caps.some((c) => c.id === id)),
+  NEW_CAPS.filter((id) => !caps.some((c) => c.id === id)).join(",") || "全部在列");
+
+// 澄清节点(io:clarify)是全场景起点: 挂起 → 提交 → 续跑到终态。之前只有白盒覆盖。
+const r3 = await j("POST", "/api/orchestrator/run", { graph: {
+  id: "api-clarify", name: "API 澄清探针",
+  nodes: [
+    { id: "c1", capabilityId: "io:clarify", title: "澄清" },
+    { id: "w1", capabilityId: "io:llm-write", title: "生成", params: { task: "{{inputs}}", system: "只回一句" } },
+  ],
+  edges: [{ source: "c1", target: "w1" }],
+} });
+const rid3 = r3.data?.runId;
+if (!rid3) { t("澄清图可启动", false, r3.text?.slice(0, 120)); }
+else {
+  await new Promise((r) => setTimeout(r, 3000));
+  const p3 = (await j("GET", `/api/orchestrator/progress?runId=${rid3}`)).data;
+  t("澄清节点让运行挂起等待输入", p3?.status === "waiting_input", `status=${p3?.status}`);
+  t("挂起节点带等待字段", ((p3?.stepLog ?? []).find((s) => s.stepId === "c1")?.waitingFields ?? []).length > 0,
+    JSON.stringify(((p3?.stepLog ?? []).find((s) => s.stepId === "c1")?.waitingFields ?? []).map((f) => f.name)));
+  t("进度回读带执行角色", p3?.runSource === "ui", `runSource=${p3?.runSource}`);
+  const inp = await j("POST", "/api/orchestrator/control", { runId: rid3, action: "input", values: { topic: "基层治理数字化" } });
+  t("提交澄清输入 200", inp.status === 200, `${inp.status}`);
+  let p3b = null;
+  const dl = Date.now() + 120_000;
+  do { await new Promise((r) => setTimeout(r, 3000)); p3b = (await j("GET", `/api/orchestrator/progress?runId=${rid3}`)).data; }
+  while (!["done", "failed", "cancelled"].includes(p3b?.status) && Date.now() < dl);
+  t("提交输入后跑到终态", p3b?.status === "done", `status=${p3b?.status}`);
+}
+
+// 编辑器改写节点: 端点要求登录。有令牌则必须真跑通(身份带不过去就是 401);
+// 无令牌时说明跳过原因, 不把"没测"包装成"通过"。
+if (!TOKEN) {
+  sk("编辑器改写节点在编排里可执行", "未提供 ORCH_TOKEN(端点要求登录); 用 ORCH_TOKEN=<jwt> 重跑");
+} else {
+  const r4 = await j("POST", "/api/orchestrator/run", { graph: {
+    id: "api-editor", name: "API 编辑器探针",
+    nodes: [{ id: "e1", capabilityId: "editor:rewrite", title: "去AI味", params: { mode: "humanize", text: "综上所述, 本文进行了深入的研究。" } }],
+    edges: [],
+  } });
+  const rid4 = r4.data?.runId;
+  let p4 = null;
+  const dl4 = Date.now() + 120_000;
+  if (rid4) {
+    do { await new Promise((r) => setTimeout(r, 3000)); p4 = (await j("GET", `/api/orchestrator/progress?runId=${rid4}`)).data; }
+    while (!["done", "failed", "cancelled"].includes(p4?.status) && Date.now() < dl4);
+  }
+  const step4 = (p4?.stepLog ?? []).find((s) => s.stepId === "e1");
+  t("编辑器改写节点在编排里可执行(身份带得下去)", p4?.status === "done",
+    `status=${p4?.status} err=${String(step4?.error ?? "").slice(0, 120)}`);
+}
+
+// 新模板"定稿润色车间"端到端: 它把编辑器端点串成 7 节点并联图(去AI味/降重并行 → 语体统一 → 引文 → 体检)。
+// 这条链只有真跑一遍才能证明: ① 节点参数(mode)真的进了 body; ② 编辑器端点要求的登录身份被带下去了;
+// ③ 并联分支的两份产出都汇进了下游的 {{outputs.x}}。缺任何一条都会在这一段暴露成 failed。
+if (!TOKEN) {
+  sk("定稿润色车间模板端到端", "未提供 ORCH_TOKEN; 用 ORCH_TOKEN=<jwt> 重跑");
+} else {
+  const rp = await j("POST", "/api/orchestrator/run", {
+    templateId: "tpl_polish",
+    input: "综上所述, 本文对抗逆力这一概念进行了深入的研究, 具有重要的理论意义与实践价值。研究采用了文献分析法与案例分析法, 对相关问题进行了系统的探讨。",
+  });
+  const ridp = rp.data?.runId;
+  t("润色模板可启动", !!ridp, rp.text?.slice(0, 120));
+  if (ridp) {
+    // 第一个节点是澄清(要正文) —— 与前端一致: 挂起 → 提交 → 继续
+    let pp = null;
+    let dlp = Date.now() + 60_000;
+    do { await new Promise((r) => setTimeout(r, 2000)); pp = (await j("GET", `/api/orchestrator/progress?runId=${ridp}`)).data; }
+    while (pp?.status !== "waiting_input" && !["done", "failed"].includes(pp?.status) && Date.now() < dlp);
+    if (pp?.status === "waiting_input") {
+      await j("POST", "/api/orchestrator/control", {
+        runId: ridp, action: "input",
+        values: { topic: "综上所述, 本文对抗逆力这一概念进行了深入的研究, 具有重要的理论意义与实践价值。研究采用了文献分析法与案例分析法, 对相关问题进行了系统的探讨。", object: "抗逆力", method: "文献分析", boundary: "近五年" },
+      });
+    }
+    dlp = Date.now() + 300_000;
+    do { await new Promise((r) => setTimeout(r, 3000)); pp = (await j("GET", `/api/orchestrator/progress?runId=${ridp}`)).data; }
+    while (!["done", "failed", "cancelled"].includes(pp?.status) && Date.now() < dlp);
+    console.log(`\n[13] 润色模板 status=${pp?.status} | ${(pp?.stepLog ?? []).map((s) => `${s.stepId}:${s.status}`).join(", ")}`);
+    const editorSteps = ["humanize", "dedupe", "style", "refs", "check"];
+    const editorDone = editorSteps.filter((id) => (pp?.stepLog ?? []).find((s) => s.stepId === id)?.status === "done");
+    t("润色模板跑到终态", pp?.status === "done", `status=${pp?.status} 失败于: ${(pp?.stepLog ?? []).filter((s) => s.status === "failed").map((s) => s.stepId + ":" + String(s.error ?? "").slice(0, 60)).join(" | ")}`);
+    t("编辑器链的节点全部执行成功", editorDone.length === editorSteps.length, `${editorDone.length}/${editorSteps.length}: ${editorDone.join(",")}`);
+    t("并联分支的两份产出都汇入了下游",
+      ((pp?.stepLog ?? []).find((s) => s.stepId === "style")?.inputsFrom ?? []).length === 2,
+      JSON.stringify((pp?.stepLog ?? []).find((s) => s.stepId === "style")?.inputsFrom ?? []));
+  }
+}
+
+console.log(`\n${"=".repeat(54)}\n通过 ${pass} / 失败 ${fail}${skip.length ? ` / 跳过 ${skip.length}` : ""}`);
 process.exit(fail ? 1 : 0);
