@@ -30,6 +30,26 @@ const edgesOf = () => page.evaluate(() => [...document.querySelectorAll(".vue-fl
 /** 用坐标点: locator.click 的可点性检查会被浮层动画挡出假超时(实测踩过) */
 const clickAt = async (x, y) => { await page.mouse.click(x, y); await page.waitForTimeout(600); };
 
+/**
+ * 取元素中心的**屏幕坐标**, 并保证它在视口内。
+ *
+ * 为什么必须滚到可见: 布局是"上排三块 + 下方通栏画布", 两者加起来超过视口高度, 画布里的节点
+ * 天然有一部分在视口外。直接 getBoundingClientRect 取到的 y 可能 > innerHeight,
+ * page.mouse.click 就会点在窗口外 —— 不报错, 只是什么都没发生(我已因此误判过两次"功能坏了")。
+ * scrollIntoView 之后再取点。
+ */
+async function centerOf(selector) {
+  const el = page.locator(selector).first();
+  await el.scrollIntoViewIfNeeded().catch(() => {});
+  await page.waitForTimeout(150);
+  const box = await el.boundingBox();
+  if (!box) return null;
+  const pt = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+  const inView = await page.evaluate(({ x, y }) =>
+    y > 0 && y < window.innerHeight && x > 0 && x < window.innerWidth, pt);
+  return inView ? pt : null;
+}
+
 await open();
 
 // ── ① 左右拉伸: 三栏之间有两条独立的拉伸条(助手↔能力节点 / 能力节点↔画布) ──
@@ -162,12 +182,9 @@ await open();
 
   // 4b. → 打开详情面板
   await open();
-  const arrow = await page.evaluate(() => {
-    const a = document.querySelector(".vue-flow__node .node-arrow");
-    const r = a.getBoundingClientRect();
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-  });
-  await clickAt(arrow.x, arrow.y);
+  const arrow = await centerOf(".vue-flow__node .node-arrow");
+  t("探针能取到卡片 → 的可见坐标", !!arrow, arrow ? JSON.stringify(arrow) : "元素不在视口内");
+  if (arrow) await clickAt(arrow.x, arrow.y);
   t("卡片「待执行 →」能打开详情面板", await page.locator(".workspace-panel").isVisible().catch(() => false));
 
   // 4c. 浮层里有删除按钮, 且真的删掉
@@ -184,12 +201,18 @@ await open();
   // 4d. 选中连线后出现删除按钮, 点了能删
   // 注意: 只有**边**用这个浮动按钮 —— 节点卡片自带 ✕, 再挂一个圆形钮是重复的(用户指出过)。
   await open();
+  // 连线是 SVG 曲线: 取路径中点(包围盒中心常常不在曲线上)。先把画布滚进视口再取,
+  // 否则 y 可能 > innerHeight, 点了等于没点(和上面 → 是同一类坑)。
+  await page.locator(".vue-flow__pane").scrollIntoViewIfNeeded().catch(() => {});
+  await page.waitForTimeout(200);
   const p = await page.evaluate(() => {
     const el = document.querySelector(".vue-flow__edge path");
     const q = el.getPointAtLength(el.getTotalLength() / 2);
     const m = el.getScreenCTM();
-    return { x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f };
+    const x = q.x * m.a + q.y * m.c + m.e, y = q.x * m.b + q.y * m.d + m.f;
+    return { x, y, inView: y > 0 && y < window.innerHeight && x > 0 && x < window.innerWidth };
   });
+  t("连线中点落在视口内(探针取点前提)", p.inView, JSON.stringify({ x: Math.round(p.x), y: Math.round(p.y) }));
   await clickAt(p.x, p.y);
   const k = await page.locator(".canvas-kill.is-edge").count();
   t("点中连线后出现删除按钮", k > 0, `${k} 个`);
