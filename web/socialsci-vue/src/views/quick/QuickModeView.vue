@@ -17,7 +17,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import AgentFlowCanvas from "./AgentFlowCanvas.vue";
 import type { BizNode } from "./AgentFlowCanvas.vue";
 import { useDraggablePanel } from "./useDraggablePanel";
-import { toast } from "@/shared/ui";
+import { toast, confirmDialog } from "@/shared/ui";
 import {
   fetchCapabilities, fetchTemplates, startRun, fetchProgress, controlRun, fetchRuns,
   listGraphs, loadGraph, saveGraph, deleteGraph, fetchAgentSetting, updateAgentSetting,
@@ -283,12 +283,102 @@ function addCapability(cap: OrchCapability, position?: { x: number; y: number })
   toast(`已添加「${cap.label}」`, "success");
 }
 
-function removeNode(id: string) {
+/**
+ * V415(2026-09-13 用户选择"不保护, 但给后果提示"):
+ * 新架构下节点来自模板、图是用户自己的, 所以不做"不可删"硬保护(那会妨碍自由组合编排)。
+ * 但起点节点(澄清/信息录入)删掉后下游全都没有输入来源, 整张图跑不出东西 ——
+ * 这类"删了会坏事"的情况先说清楚再删, 而不是静默把图搞坏。
+ *
+ * 判据用**图结构**(有无入边/出边), 不用"是不是模板起始节点"这种身份标记:
+ * 用户可以把任何节点连成起点, 结构才是事实。
+ */
+async function removeNode(id: string, opts: { skipConfirm?: boolean } = {}) {
   if (locked.value) return;
+  const node = nodes.value.find((n) => n.id === id);
+  if (!node) return;
+  if (!opts.skipConfirm) {
+    const outs = userEdges.value.filter((e) => e.source === id);
+    const ins = userEdges.value.filter((e) => e.target === id);
+    const titleOf = (nid: string) => nodes.value.find((n) => n.id === nid)?.title ?? nid;
+    if (outs.length) {
+      const names = outs.slice(0, 4).map((e) => titleOf(e.target)).join("、");
+      const more = outs.length > 4 ? ` 等 ${outs.length} 个` : "";
+      const blocked = ins.length === 0;   // 没有入边 = 起点节点
+      const ok = await confirmDialog({
+        title: blocked ? "这是起点节点" : "删除节点",
+        message: blocked
+          ? `「${node.title}」没有上游输入, 删掉后下游 ${outs.length} 个节点(${names}${more})将失去输入来源, 整张图可能跑不出结果。
+
+确定删除吗?`
+          : `「${node.title}」有 ${outs.length} 个下游节点(${names}${more}), 删掉后它们会失去这部分输入。
+
+确定删除吗?`,
+        okText: "仍然删除",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+  }
   nodes.value = nodes.value.filter((n) => n.id !== id);
   userEdges.value = userEdges.value.filter((e) => e.source !== id && e.target !== id);
   if (selectedNode.value?.id === id) selectedNode.value = null;
   toast("节点已移除", "success");
+}
+
+/**
+ * 新建空白任务(原版右键菜单里的项, 重写时丢了)。
+ * 与"清空画布"的区别: 这里留一个起点节点 —— 空白图直接开跑没有任何输入来源,
+ * 留一个澄清节点才能立刻开始连下游。
+ */
+function newBlankCanvas() {
+  closeCtxMenu();
+  const startCap = capabilities.value.find((c) => c.id === "io:clarify");
+  const id = nextNodeId("start");
+  nodes.value = [{
+    id,
+    title: startCap?.label ?? "起点(澄清需求)",
+    module: startCap?.category ?? "通用",
+    index: "01",
+    state: "draft",
+    stateLabel: "待执行",
+    input: "上游产出",
+    output: startCap?.outputs.join(" / ") || "text",
+    capabilityId: startCap?.id,
+    params: startCap ? defaultParams(startCap) : undefined,
+    artifact: startCap?.artifact,
+    canvasPosition: { x: 40, y: 50 },
+  }];
+  userEdges.value = [];
+  graphId.value = "";
+  graphName.value = "自定义编排";
+  graphBasedOn.value = "";
+  runState.value = "draft";
+  runId.value = "";
+  progress.value = null;
+  finalText.value = "";
+  selectedNode.value = null;
+  toast("已新建空白任务", "success");
+}
+
+/** 清空画布(破坏性, 先确认) */
+async function clearCanvas() {
+  closeCtxMenu();
+  if (!nodes.value.length) return;
+  const ok = await confirmDialog({
+    title: "清空画布",
+    message: `将移除全部 ${nodes.value.length} 个节点与连线。未保存的改动会丢失, 确定吗?`,
+    okText: "清空",
+    danger: true,
+  });
+  if (!ok) return;
+  nodes.value = [];
+  userEdges.value = [];
+  selectedNode.value = null;
+  runState.value = "draft";
+  runId.value = "";
+  progress.value = null;
+  finalText.value = "";
+  toast("画布已清空", "success");
 }
 
 function onCapabilityDropped(p: { capabilityId: string; position: { x: number; y: number } }) {
@@ -904,6 +994,12 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
           <template v-else>
             <div class="context-menu-label">常用能力</div>
             <button v-for="c in capabilities.slice(0, 8)" :key="c.id" class="context-menu-item" @click="addCapability(c); closeCtxMenu()">{{ c.label }} <span>＋</span></button>
+            <!-- V415: 这两项是原来有、我在重写时丢掉的(用户对照旧版发现的)。
+                 新建空白任务 = 换一张干净的图继续排(不是清空当前思路), 所以给个默认起点节点;
+                 清空画布则是真的清空, 要确认。 -->
+            <div class="context-menu-sep"></div>
+            <button class="context-menu-item" @click="newBlankCanvas">新建空白任务 <span>＋</span></button>
+            <button class="context-menu-item is-danger" :disabled="!nodes.length" @click="clearCanvas">清空画布 <span>×</span></button>
           </template>
         </div>
         <div v-if="ctxMenu" class="ctx-backdrop" @click="closeCtxMenu" @contextmenu.prevent="closeCtxMenu"></div>
@@ -1332,6 +1428,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   padding: 7px 9px; border: 0; border-radius: 7px; background: transparent;
   color: #DCE6F2; font-size: 12px; cursor: pointer; text-align: left;
 }
+.context-menu-sep { height: 1px; margin: 5px 4px; background: #1E2A42; }
 .context-menu-item:hover { background: #1E2A48; color: #9FC0E8; }
 .context-menu-item span { color: #7A8AA0; }
 .context-menu-item.is-danger { color: #F08A8A; }

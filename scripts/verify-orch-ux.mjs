@@ -93,8 +93,11 @@ await open();
   const n = await page.locator(".vue-flow__node .node-del").count();
   const nodes = await page.locator(".vue-flow__node").count();
   t("每个节点卡片上都有删除按钮", n === nodes && n > 0, `${n} 个按钮 / ${nodes} 个节点`);
+  // 首个节点是起点、有下游 → 现在会先弹后果确认(见 4b); 这里走完整流程
   const before = nodes;
   await page.locator(".vue-flow__node .node-del").first().click({ force: true });
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: "仍然删除" }).click({ force: true });
   await page.waitForTimeout(700);
   t("点卡片上的 ✕ 能删掉节点", (await page.locator(".vue-flow__node").count()) === before - 1, `${before} → ${await page.locator(".vue-flow__node").count()}`);
 }
@@ -172,6 +175,9 @@ await open();
   t("详情浮层里有「删除节点」按钮", btns.some((b) => /删除节点/.test(b)), JSON.stringify(btns.map((s) => s.trim())));
   const nBefore = await page.locator(".vue-flow__node").count();
   await page.locator(".workspace-panel button", { hasText: "删除节点" }).first().click({ force: true });
+  await page.waitForTimeout(800);
+  // 起点节点有下游 → 会弹确认; 确认后才删
+  await page.getByRole("button", { name: "仍然删除" }).click({ force: true });
   await page.waitForTimeout(700);
   t("点删除后画布节点数 -1", (await page.locator(".vue-flow__node").count()) === nBefore - 1, `${nBefore} → ${await page.locator(".vue-flow__node").count()}`);
 
@@ -195,6 +201,57 @@ await open();
     await page.waitForTimeout(600);
     t("点小红叉删掉这条连线", (await page.locator(".vue-flow__edge").count()) === eBefore - 1, `${eBefore} → ${await page.locator(".vue-flow__edge").count()}`);
   }
+}
+
+// ── ④b 删除的后果提示(用户选的是"不保护但给提示") + 空白处右键的两项 ──
+// 设计: 节点**都可删**(不硬保护, 免得妨碍自由组合), 但删掉会让下游失去输入的, 先弹确认。
+// 判据是图结构(有无出边)而不是"是不是模板起点" —— 用户可以把任何节点连成起点。
+{
+  await open();
+  const n0 = await page.locator(".vue-flow__node").count();
+  // 4b-1 删有下游的节点 → 弹确认, 取消后不删
+  await page.locator(".vue-flow__node .node-del").first().click({ force: true });
+  await page.waitForTimeout(900);
+  const dlgTitle = (await page.locator("h3").first().innerText().catch(() => "")).trim();
+  // 取整个确认浮层的文本: 正文是 head 的兄弟, 不是 h3 的兄弟(按 h3 找会拿到 × 按钮)
+  const dlgBody = await page.evaluate(() => {
+    const ov = [...document.querySelectorAll("div")].find((d) => d.style.position === "fixed" && d.style.zIndex === "200");
+    return ov ? ov.innerText : "";
+  });
+  t("删除有下游的节点会先提示后果", dlgTitle.length > 0, `标题=「${dlgTitle}」`);
+  t("提示里说清了下游数量与名字", /下游|失去输入/.test(dlgBody) && /[0-9]/.test(dlgBody), dlgBody.replace(/\s+/g, " ").slice(0, 90));
+  await page.getByRole("button", { name: "取消" }).click({ force: true });
+  await page.waitForTimeout(500);
+  t("取消后节点仍在", (await page.locator(".vue-flow__node").count()) === n0, `${n0} → ${await page.locator(".vue-flow__node").count()}`);
+
+  // 4b-2 确认后才真的删
+  await page.locator(".vue-flow__node .node-del").first().click({ force: true });
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: "仍然删除" }).click({ force: true });
+  await page.waitForTimeout(800);
+  t("确认后真的删掉", (await page.locator(".vue-flow__node").count()) === n0 - 1, `${n0} → ${await page.locator(".vue-flow__node").count()}`);
+
+  // 4b-3 删末端节点(无下游)不打扰用户
+  await open();
+  const n1 = await page.locator(".vue-flow__node").count();
+  await page.locator(".vue-flow__node .node-del").last().click({ force: true });
+  await page.waitForTimeout(800);
+  const popped = await page.locator("h3").first().isVisible().catch(() => false);
+  t("删无下游的节点不弹确认", !popped, popped ? "弹了" : "直接删");
+  t("末端节点已删除", (await page.locator(".vue-flow__node").count()) === n1 - 1, `${n1} → ${await page.locator(".vue-flow__node").count()}`);
+
+  // 4b-4 空白处右键补回的两项(原版有「新建空白任务」, 重写时丢了)
+  await open();
+  const paneBox = await page.locator(".vue-flow__pane").boundingBox();
+  await page.mouse.click(paneBox.x + 120, paneBox.y + paneBox.height - 60, { button: "right" });
+  await page.waitForTimeout(700);
+  const pmenu = await page.locator(".canvas-context-menu").innerText().catch(() => "");
+  t("空白处右键有「新建空白任务」", /新建空白任务/.test(pmenu));
+  t("空白处右键有「清空画布」", /清空画布/.test(pmenu));
+  await page.locator(".context-menu-item", { hasText: "新建空白任务" }).click({ force: true });
+  await page.waitForTimeout(800);
+  const afterNew = await page.locator(".vue-flow__node").count();
+  t("新建空白任务后只剩一个起点节点", afterNew === 1, `${afterNew} 个节点`);
 }
 
 // ── ⑤ 创作能力节点 ──
