@@ -8,7 +8,16 @@ import os
 import hashlib, json
 from pathlib import Path
 
-OV_IMPORT = Path(r"D:\Desktop\ov_import")
+# V415: 原来写死 r"D:\Desktop\ov_import" —— 换机器必挂。
+# 优先级与 TS 侧 kb-paths.ovImportDir() 对齐: P2O_VAULT_PATH → OV_IMPORT_DIR → <SAG_ROOT>/data/kb/ov_import
+def _ov_import_dir() -> Path:
+    for env in ("P2O_VAULT_PATH", "OV_IMPORT_DIR"):
+        v = os.environ.get(env)
+        if v:
+            return Path(v)
+    return Path(os.environ.get("SAG_ROOT", ".")) / "data" / "kb" / "ov_import"
+
+OV_IMPORT = _ov_import_dir()
 MAP_PATH = Path(Path(os.environ.get('SAG_ROOT', '.')) / 'paper_id_map.json')
 GOLD_PATH = Path(Path(os.environ.get('SAG_ROOT', '.')) / 'gold_dataset.json')
 

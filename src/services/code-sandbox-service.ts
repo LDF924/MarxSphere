@@ -91,8 +91,12 @@ export function sandboxEnv(profile: SandboxProfile): Record<string, string> { //
     base.HTTPS_PROXY = "http://127.0.0.1:1";
     base.NO_PROXY = "";
   } else {
-    base.HTTP_PROXY = "http://127.0.0.1:8899";  // 白名单代理（只放行 pypi/github 等）
-    base.HTTPS_PROXY = "http://127.0.0.1:8899";
+    // V415: 端口可配(原来写死 8899) —— allowlist-proxy 支持 --port, 换端口时沙盒会静默断网。
+    // SANDBOX_ALLOWLIST_PROXY 可给完整 URL(跨机部署时指向代理所在主机)。
+    const proxy = process.env.SANDBOX_ALLOWLIST_PROXY
+      || `http://127.0.0.1:${process.env.SANDBOX_ALLOWLIST_PORT || "8899"}`;
+    base.HTTP_PROXY = proxy;   // 白名单代理（只放行 pypi/github 等）
+    base.HTTPS_PROXY = proxy;
     base.NO_PROXY = "";
   }
   return base;

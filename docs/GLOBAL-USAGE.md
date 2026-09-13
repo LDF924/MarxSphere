@@ -6,10 +6,11 @@ MarxSphere 可在任意目录启动（2026-08-27）：服务端通过 `SAG_ROOT`
 
 ```bash
 # 在任意目录启动服务（资源从 SAG_ROOT 定位）
-SAG_ROOT=C:/Users/HUAWEI/SAG-main npx tsx src/index.ts
+# 把 <仓库路径> 换成你本机的实际路径, 例如 /home/me/SAG-main 或 C:/work/SAG-main
+SAG_ROOT=<仓库路径> npx tsx src/index.ts
 
 # 或 Windows:
-set SAG_ROOT=C:/Users/HUAWEI/SAG-main
+set SAG_ROOT=<仓库路径>
 npx tsx src/index.ts
 ```
 

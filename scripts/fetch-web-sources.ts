@@ -13,19 +13,25 @@ import path from "node:path";
 import os from "node:os";
 
 // Edge headless 打印（绕过 web_to_pdf.py 的 virtual-time-budget 问题）
-const EDGE_CANDIDATES = [
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-];
+// V415: 浏览器复用服务侧的跨平台探测, 再回退本机候选表(原来只有 Windows 路径)。
+// 用静态 import —— ESM 里没有 require, 写 require 会被吞掉导致探测静默失效。
+import { edgePath, edgePathHint } from "../src/services/browser-path.js";
 
 function findBrowser(): string {
   if (process.env.PDF_ENGINE_PATH) return process.env.PDF_ENGINE_PATH;
+  const p = edgePath();
+  if (p) return p;
+  const EDGE_CANDIDATES = [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+  ];
   for (const candidate of EDGE_CANDIDATES) {
     if (fs.existsSync(candidate)) return candidate;
   }
-  throw new Error("未找到 Edge/Chrome，请设置 PDF_ENGINE_PATH");
+  throw new Error(`${edgePathHint()}（也可用 PDF_ENGINE_PATH 显式指定）`);
 }
 
 function printToPdf(browser: string, url: string, outpath: string, extraArgs: string[] = []): { ok: boolean; size: number; error?: string } {

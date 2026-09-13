@@ -175,7 +175,10 @@ function run() {
   console.log("[snapshot] 自检通过: 排除项均未进入快照");
 
   // ── BACKUP.info: 记录快照对应的代码状态, 供事后追溯 ──
-  const openDir = process.env.SAG_OPEN_ROOT || "C:/Users/HUAWEI/SAG-open-source";
+  // V415: 原来兜底到某个人的 C:/Users/HUAWEI/SAG-open-source。改为 SAG_OPEN_ROOT 优先,
+  //   否则取与本仓同级的 SAG-open-source(两仓并排是默认布局); 都没有就如实记为"未找到"。
+  const openDir = process.env.SAG_OPEN_ROOT
+    || path.resolve(process.cwd(), "..", "SAG-open-source");
   const openExists = existsSync(path.join(openDir, ".git"));
   const countFiles = (dir) => {
     let n = 0;

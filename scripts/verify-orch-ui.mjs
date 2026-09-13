@@ -3,64 +3,44 @@
 //       切换模板 → 页面内启动编排并观察到终态 → 依赖传递 → 控制按钮随状态切换
 // 用法: node scripts/verify-orch-ui.mjs
 import { chromium } from "playwright";
-import { existsSync, readdirSync } from "node:fs";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 
 const BASE = process.env.ORCH_UI_BASE || "http://127.0.0.1:4173";
 let pass = 0, fail = 0;
 const t = (name, ok, extra = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${name}${extra ? " — " + extra : ""}`); ok ? pass++ : fail++; };
 
-/** Playwright 各平台的浏览器缓存根目录(扫描用; 不同平台默认路径不同) */
-function playwrightRoots() {
-  const home = process.env.HOME || process.env.USERPROFILE || "";
-  return [
-    process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}/ms-playwright` : "",      // Windows
-    home ? `${home}/.cache/ms-playwright` : "",                                        // Linux
-    home ? `${home}/Library/Caches/ms-playwright` : "",                                // macOS
-    process.env.PLAYWRIGHT_BROWSERS_PATH || "",
-  ].filter(Boolean);
-}
-
-/** 扫描各平台缓存目录, 找出实际装着的 chromium(目录名带版本号, 不能硬编码) */
-function findBrowsers() {
-  const out = [];
-  for (const root of playwrightRoots()) {
-    if (!existsSync(root)) continue;
-    try {
-      for (const d of readdirSync(root).filter((x) => /^chromium/.test(x))) {
-        for (const p of [`${root}/${d}/chrome-win64/chrome.exe`, `${root}/${d}/chrome-linux/chrome`, `${root}/${d}/chrome-mac/Chromium.app/Contents/MacOS/Chromium`]) {
-          if (existsSync(p)) out.push(p);
-        }
-      }
-    } catch { /* 权限/损坏目录跳过 */ }
-  }
-  return out;
-}
-
+/**
+ * 浏览器定位走共享模块 scripts/lib/find-browser.mjs(与 CDP 类验证脚本同一份候选链),
+ * 避免每个脚本各写一套。
+ *
+ * 与 CDP 脚本的差别: 那些 spawn 可执行文件, 路径存在就能跑; 这里走 Playwright 的 launch,
+ * **路径存在 ≠ 能启动**(可能缺依赖库/版本不匹配), 所以拿到候选后还要逐个试 launch。
+ * 环境变量沿用共享模块的 UI_VERIFY_BROWSER(不再另立 ORCH_UI_BROWSER)。
+ */
 async function launchBrowser() {
-  const systemBrowsers = [
-    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  ];
-  const attempts = [
-    { how: "ORCH_UI_BROWSER 指定", opts: process.env.ORCH_UI_BROWSER ? { executablePath: process.env.ORCH_UI_BROWSER } : null },
-    { how: "Playwright 默认", opts: {} },
-    ...findBrowsers().map((p) => ({ how: `扫描到的 chromium(${p.split("/").slice(-3)[0]})`, opts: { executablePath: p } })),
-    ...systemBrowsers.map((p) => ({ how: `系统浏览器 ${p}`, opts: { executablePath: p } })),
-  ].filter((a) => a.opts !== null);
   const failures = [];
-  for (const a of attempts) {
+  const tryLaunch = async (how, opts) => {
     try {
-      const b = await chromium.launch({ headless: true, ...a.opts });
-      console.log(`[env] 浏览器: ${a.how}\n`);
+      const b = await chromium.launch({ headless: true, ...opts });
+      console.log(`[env] 浏览器: ${how}\n`);
       return b;
     } catch (e) {
-      failures.push(`${a.how}: ${String(e?.message ?? e).split("\n")[0].slice(0, 90)}`);
+      failures.push(`${how}: ${String(e?.message ?? e).split("\n")[0].slice(0, 90)}`);
+      return null;
     }
-  }
+  };
+
+  // ① 共享模块给的候选(环节变量指定 / Playwright 缓存 / 系统浏览器)
+  const resolved = resolveBrowser({ envVar: "UI_VERIFY_BROWSER", label: "node scripts/verify-orch-ui.mjs" });
+  const byPath = await tryLaunch(`UI_VERIFY_BROWSER 候选链 (${resolved})`, { executablePath: resolved });
+  if (byPath) return byPath;
+
+  // ② 兜底: 交给 Playwright 自己解析(装了对应版本的浏览器就能起)
+  const byDefault = await tryLaunch("Playwright 默认解析", {});
+  if (byDefault) return byDefault;
+
   console.error("找不到可用的浏览器。已尝试:\n" + failures.map((f) => "  - " + f).join("\n"));
-  console.error("\n解决(任选其一):\n  npx playwright install chromium        # 装 Playwright 自带浏览器(约 200MB)\n  ORCH_UI_BROWSER=<chrome/edge 可执行文件路径> node scripts/verify-orch-ui.mjs");
+  console.error("\n解决(任选其一):\n  npx playwright install chromium        # 装 Playwright 自带浏览器(约 200MB)\n  UI_VERIFY_BROWSER=<chrome/edge 可执行文件路径> node scripts/verify-orch-ui.mjs");
   process.exit(1);
 }
 const browser = await launchBrowser();

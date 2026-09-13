@@ -2703,17 +2703,27 @@ export class InferenceService {
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
         const execFileAsync = promisify(execFile);
-        const searchUrl = `https://www.gov.cn/search/?searchWord=${encodeURIComponent(query.substring(0, 30))}`;
-        const { stdout } = await execFileAsync(
-          "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-          ["--headless", "--disable-gpu", "--dump-dom", "--virtual-time-budget=4000", searchUrl],
-          { timeout: 45000, maxBuffer: 20 * 1024 * 1024, windowsHide: true }
-        ).catch(() => ({ stdout: "" }));
-        if (stdout && stdout.length > 1000) {
-          const text = stdout.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1500);
-          if (text.length > 200) {
-            enhanced += `\n\n【工具:网页抓取】\n${text}`;
-            toolCalls.push("sag_browse");
+        // V415: 原来这里写死 "C:/Program Files (x86)/Microsoft/Edge/...msedge.exe"。
+        // browser-path.ts 的建立(2026-09-11 上云审计)就是因为"两处写死 Edge 路径",
+        // 当时修了两处, **漏了这一处** —— Linux/非默认安装位置上这里永远失败,
+        // 而外层 catch 吞掉异常返回空串, 用户只会看到"没有实时信息", 查不到根因。
+        const { edgePath, edgePathHint } = await import("./browser-path.js");
+        const browser = edgePath();
+        if (!browser) {
+          console.warn(`[inference] 实时检索跳过: ${edgePathHint()}`);
+        } else {
+          const searchUrl = `https://www.gov.cn/search/?searchWord=${encodeURIComponent(query.substring(0, 30))}`;
+          const { stdout } = await execFileAsync(
+            browser,
+            ["--headless", "--disable-gpu", "--dump-dom", "--virtual-time-budget=4000", searchUrl],
+            { timeout: 45000, maxBuffer: 20 * 1024 * 1024, windowsHide: true }
+          ).catch(() => ({ stdout: "" }));
+          if (stdout && stdout.length > 1000) {
+            const text = stdout.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1500);
+            if (text.length > 200) {
+              enhanced += `\n\n【工具:网页抓取】\n${text}`;
+              toolCalls.push("sag_browse");
+            }
           }
         }
       } catch { /* 工具失败不阻塞 */ }

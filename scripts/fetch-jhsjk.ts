@@ -9,22 +9,31 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-const CDP_PROXY = "http://localhost:3456";
-const POLICY_DIR = process.env.POLICY_DIR || "E:\\1.Obsidian Vault\\课题研究\\1.农业农村现代化进程中规范与引导工商资本路径研究\\著作、政策、会议";
+const CDP_PROXY = process.env.CDP_PROXY_URL || "http://localhost:3456";
+// V415: 这里原来兜底到某个人的私人 Obsidian 库绝对路径(还带具体课题名)——
+// 别人跑这脚本会一脸懵地写到我不认识的目录。改为: 必须由 --out 或 POLICY_DIR 给出。
+const POLICY_DIR = process.env.POLICY_DIR || "";
 
-const EDGE_CANDIDATES = [
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
-];
+// 浏览器候选: 复用服务侧的跨平台探测(AGENT_EDGE_PATH → 按平台探测), 再回退本地候选表。
+// 注意用静态 import —— ESM 里没有 require, 写成 require(...) 会被 catch 吞掉、
+// 探测静默失效(这正是 browser-path.ts 文件头记录过的那个坑, 别再踩第三次)。
+import { edgePath, edgePathHint } from "../src/services/browser-path.js";
 
 function findBrowser(): string {
   if (process.env.PDF_ENGINE_PATH) return process.env.PDF_ENGINE_PATH;
+  const p = edgePath();
+  if (p) return p;
+  const EDGE_CANDIDATES = [
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+  ];
   for (const candidate of EDGE_CANDIDATES) {
     if (fs.existsSync(candidate)) return candidate;
   }
-  throw new Error("未找到 Edge/Chrome");
+  throw new Error(`${edgePathHint()}（也可用 PDF_ENGINE_PATH 显式指定）`);
 }
 
 async function cdpNew(url: string): Promise<string> {
@@ -92,6 +101,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // V415: 未给 --out 且未配 POLICY_DIR 时明确报错退出。
+  // 原来会兜底写进某个人的私人 Obsidian 库路径 —— 静默写到别人不认识的目录比报错更糟。
+  if (!out && !POLICY_DIR) {
+    console.error("需要输出目录: 用 --out <目录> 指定, 或设置环境变量 POLICY_DIR(脚本会在其下建「02-习近平论述摘编」)。");
+    process.exit(1);
+  }
   const targetDir = out || path.join(POLICY_DIR, "02-习近平论述摘编");
   fs.mkdirSync(targetDir, { recursive: true });
 
