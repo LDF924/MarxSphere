@@ -493,6 +493,41 @@ function startSplit(ev: PointerEvent) {
   ev.preventDefault();
 }
 
+/**
+ * V415: 编排助手(最左)的宽度, 与上面那个是**两件独立的事**
+ * (用户指出"编排助手与能力节点之间不能左右拉伸" —— 那一段当时根本没收拉伸条)。
+ * 助手更宽有用: 它的对话/计划消息比较长。
+ */
+const AGENT_MIN = 200;
+const AGENT_MAX = 560;
+const agentWidth = ref(Number(localStorage.getItem("orch_agent_w")) || 0);
+const splitAgent = ref(false);
+/** 没存过宽度时用旧样式的 clamp(240, 28%, 310) 兜底 —— 保持首屏观感不变 */
+const agentPanelWidth = computed(() => {
+  if (agentWidth.value) return `${agentWidth.value}px`;
+  const host = (typeof document !== "undefined" ? document.querySelector(".quick-shell") : null) as HTMLElement | null;
+  const w = host?.clientWidth ?? 1400;
+  return `${Math.min(310, Math.max(240, Math.round(w * 0.28)))}px`;
+});
+function startSplitAgent(ev: PointerEvent) {
+  if (ev.button !== 0) return;
+  splitAgent.value = true;
+  const startX = ev.clientX;
+  const startW = Number(agentWidth.value) || parseFloat(agentPanelWidth.value) || 260;
+  const move = (e: PointerEvent) => {
+    agentWidth.value = Math.min(AGENT_MAX, Math.max(AGENT_MIN, startW + (e.clientX - startX)));
+  };
+  const up = () => {
+    splitAgent.value = false;
+    localStorage.setItem("orch_agent_w", String(agentWidth.value));
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  ev.preventDefault();
+}
+
 // ── 模板/图/记录 ──
 async function loadRuns() { runs.value = await fetchRuns(30); }
 async function loadMyGraphs() { myGraphs.value = await listGraphs(); }
@@ -649,7 +684,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 
     <main class="quick-shell">
       <!-- 左: 对话 -->
-      <aside class="agent-panel">
+      <aside class="agent-panel" :class="{ 'is-resized': !!agentWidth }" :style="{ width: agentPanelWidth }">
         <div class="agent-panel-header">
           <div class="agent-avatar">Q</div>
           <div>
@@ -718,6 +753,14 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
           </template>
         </div>
       </aside>
+
+      <!-- V415: 助手 ↔ 能力节点 之间的拉伸条(用户指出这里也拉不动) -->
+      <div
+        class="pane-splitter"
+        :class="{ 'is-dragging': splitAgent }"
+        title="拖动调整编排助手宽度"
+        @pointerdown="startSplitAgent"
+      ></div>
 
       <!-- 中: 能力面板(拖到画布即建节点) -->
       <aside v-if="!paletteCollapsed" class="palette-panel" :style="{ width: paletteWidth + 'px' }">
@@ -1125,6 +1168,11 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   width: clamp(240px, 28%, 310px); flex-shrink: 0; border-right: 1px solid var(--line);
   display: flex; flex-direction: column; background: #11192C; min-height: 0;
 }
+/* 用户拖过宽度后以 px 为准(内联 style 直接取胜, 这条只是把 flex 约束住) */
+.agent-panel.is-resized { min-width: 0; }
+/* 拉伸条: 命中区 7px 比 1px 视觉线好抓; 拖动/悬停高亮 */
+.pane-splitter { flex: 0 0 7px; margin: 0 -3px; cursor: col-resize; background: transparent; position: relative; z-index: 5; }
+.pane-splitter:hover, .pane-splitter.is-dragging { background: rgba(77, 132, 203, 0.35); }
 .agent-panel-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #212C45; }
 .agent-avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #0F1830; color: #F1F5F9; font-weight: 800; }
 .agent-panel-header strong { font-size: 13.5px; }
@@ -1190,8 +1238,6 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 /* 能力面板 */
 .palette-panel { flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: #0F172A; }
 /* 拉伸条: 命中区 7px 比视觉线宽(视觉 1px 太难抓), hover / 拖动时高亮 */
-.pane-splitter { flex: 0 0 7px; margin: 0 -3px; cursor: col-resize; background: transparent; position: relative; z-index: 5; }
-.pane-splitter:hover, .pane-splitter.is-dragging { background: rgba(77, 132, 203, 0.35); }
 .palette-head { display: flex; align-items: center; gap: 6px; padding: 9px 11px; border-bottom: 1px solid #1E2A42; }
 .palette-head strong { font-size: 12px; white-space: nowrap; }
 .palette-search { flex: 1; min-width: 0; border: 1px solid #22304A; border-radius: 7px; background: #141D33; color: #E8EEF7; font-size: 11px; padding: 5px 8px; font-family: inherit; outline: none; }
