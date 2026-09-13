@@ -84,7 +84,6 @@ import { ResearchHistoryPanel } from "./components/ResearchHistoryPanel"; // Soc
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
 import { StructurePanel } from "./components/StructurePanel";
 import { AgentConsole } from "./components/AgentConsole";
-import { MetaSkillPanel } from "./components/MetaSkillPanel";  // V404-4: MetaSkill DAG 试点
 import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream 巩固
 
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开闭源原名, 单一完整形态) ──
@@ -159,7 +158,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "meta-skill" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
+type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -609,7 +608,7 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "meta-skill", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
+    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -2150,10 +2149,7 @@ function AppShell() {
             ) : workspaceView === "tasks" ? (
               <ErrorBoundary><TaskPanel /></ErrorBoundary>
             ) : workspaceView === "agent-console" ? (
-              <ErrorBoundary><AgentConsole /></ErrorBoundary>
-            ) : workspaceView === "meta-skill" ? (
-              <ErrorBoundary><MetaSkillPanel /></ErrorBoundary>
-            ) : workspaceView === "dream" ? (
+              <ErrorBoundary><AgentConsole /></ErrorBoundary>            ) : workspaceView === "dream" ? (
               <ErrorBoundary><DreamPanel /></ErrorBoundary>
 
             ) : workspaceView === "p2o" ? (
@@ -2698,7 +2694,7 @@ function MainWorkspaceTabs(props: {
     // 后台/系统组（灰）: Jobs/任务/Trace/评测/Inbox/账户计费/运营管理/文档中心
     jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)", "site-content": "hsl(220 10% 55%)", "research-history": "hsl(220 10% 55%)",
     // 科研工具（绿，归文献研究组）: PDF2Obsidian/政经C刊科研/写作语料库
-    p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)", "meta-skill": "hsl(150 45% 50%)",
+    p2o: "hsl(150 45% 50%)", cjournal: "hsl(150 45% 50%)", corpus: "hsl(150 45% 50%)",
   };
 
   const categories: NavCategory[] = [
@@ -2738,7 +2734,6 @@ function MainWorkspaceTabs(props: {
         { value: "review-lab", label: t("论文质量评审", "Review Studio") },            // SocialSci P0-3: Vue M2 完整版
         { value: "plot-agent", label: t("成果可视化工坊", "Viz Studio") },               // SocialSci P0-4: Vue M4 完整版
         { value: "editor", label: t("学术文本工作台", "Editor Studio") },                      // SocialSci P0-5: Vue M1 完整版
-        { value: "meta-skill", label: t("MetaSkill DAG", "MetaSkill") },  // V404-33: 科研工具归科研中心
         // 2026-09-09: 实证统计工作台已并入实证研究「统计·Notebook」区段, 移除旧独立菜单入口(hash 深链保留)
       ],
     },

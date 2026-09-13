@@ -701,6 +701,10 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
   const stepLimit = concurrencyLimit();
   const runStep = async (stepId: string, step: MetaStepDef): Promise<void> => {
     const log = logOf(stepId);
+    // V415: user_input 步骤**不占并发槽**(见调度处的说明), 所以它可能在等了很久之后
+    // 才被唤醒 —— 醒来时整条运行可能已经被取消/失败。这里必须自查一次:
+    // 对已终态的 ctx 仍去改输出/状态, 等于给死掉的运行写幽灵数据。
+    if (isTerminal()) return;
     const deps = (step.depends_on ?? []).filter((d) => ctx.outputs[d] !== undefined);
     log.inputsFrom = deps.length ? deps : undefined;
     const ctxView = Object.create(ctx) as MetaRunContext;
@@ -839,7 +843,16 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
     pending -= batch.length;
     await Promise.all(batch.map((s) => {
       runningIds.add(s.id);
-      return stepLimit(() => runStep(s.id, s)).finally(() => runningIds.delete(s.id));
+      // V415: **等人输入**的步骤不占并发槽。
+      //
+      // 槽的本意是"限制同时在跑的 LLM/沙箱任务", 而 user_input 只是挂起等人工提交 ——
+      // 它一旦占槽, 3 条等输入的运行就能把全进程的 3 个槽占死, 后来者永远拿不到槽:
+      // 表现为新起的运行五步全 pending、卡住不动、**没有任何提示**(2026-09-13 实测踩到,
+      // 重启后端才恢复)。而且它的等待上限是 5 分钟, 期间整条链都在阻塞别人。
+      const run = s.kind === "user_input"
+        ? () => runStep(s.id, s)
+        : () => stepLimit(() => runStep(s.id, s));
+      return run().finally(() => runningIds.delete(s.id));
     }));
     // 依赖失败而跳过的步骤: 在这里统一记失败(否则它们的下游会永远等不到)
     for (const s of schedulable) {
