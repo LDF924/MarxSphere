@@ -13,7 +13,7 @@
  *   模板     = 10 条内置编排, 选中即作为起点自由改
  *   运行记录 = 后端落库(orchestrator_runs), 刷新/换设备可查
  */
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import AgentFlowCanvas from "./AgentFlowCanvas.vue";
 import type { BizNode } from "./AgentFlowCanvas.vue";
 import { useDraggablePanel } from "./useDraggablePanel";
@@ -118,6 +118,12 @@ const runs = ref<OrchRunRecord[]>([]);
 const myGraphs = ref<Awaited<ReturnType<typeof listGraphs>>>([]);
 
 function capById(id?: string) { return id ? capabilities.value.find((c) => c.id === id) : undefined; }
+
+/** 画布实例(用于"加完节点把它带进视野") —— 组件那边 expose 了 fitView */
+const canvasRef = ref<InstanceType<typeof AgentFlowCanvas> | null>(null);
+function fitCanvas() {
+  try { (canvasRef.value as unknown as { fitView?: () => void } | null)?.fitView?.(); } catch { /* 画布还没挂载就算了 */ }
+}
 
 /** 依赖分层布局: 深度=x 同层=y —— 并联分支上下排开, 比旧的"两行"布局更能看出 DAG 形状 */
 function autoLayout(ids: string[], edges: Array<{ source: string; target: string }>) {
@@ -225,9 +231,37 @@ function nextNodeId(base: string) {
   return id;
 }
 
+/**
+ * V415(2026-09-13 用户反馈"点击能力节点的加号时并没有出现新的节点"):
+ * 老算法是 `x = 40 + (len % 5) * 240, y = 50 + floor(len / 5) * 235` —— 纯按节点数算的全局网格,
+ * **与当前视野无关**。节点一多、或图被 fitView 缩放过, 新节点就落到可视区外, 看着像"没加上"。
+ *
+ * 注意这里用的是 **flow 坐标**(画布内有缩放/平移), 不是容器像素 —— 两者不能混算。
+ * 所以策略是: ①贴着已有节点右边找个空格放; ②放完让画布 fitView 把新节点带进视野(见 addCapability)。
+ */
+function nextFreePosition(existing: BizNode[]): { x: number; y: number } {
+  const CELL_X = 215, CELL_Y = 205;
+  if (!existing.length) return { x: 40, y: 50 };
+  const occupied = new Set(
+    existing.map((n) => `${Math.round((n.canvasPosition?.x ?? 0) / CELL_X)},${Math.round((n.canvasPosition?.y ?? 0) / CELL_Y)}`),
+  );
+  // 从最右下的节点开始往右找, 到头换行往下 —— 保证贴着已有内容, 不会离得老远
+  const maxX = Math.max(...existing.map((n) => n.canvasPosition?.x ?? 0));
+  const maxY = Math.max(...existing.map((n) => n.canvasPosition?.y ?? 0));
+  for (let r = 0; r < 40; r++) {
+    for (let c = 0; c < 40; c++) {
+      const x = 40 + c * CELL_X;
+      const y = 50 + r * CELL_Y;
+      if (x < maxX || y < maxY) continue;          // 只在已有内容的右下方找
+      if (!occupied.has(`${Math.round(x / CELL_X)},${Math.round(y / CELL_Y)}`)) return { x, y };
+    }
+  }
+  return { x: maxX + CELL_X, y: maxY };
+}
+
 function addCapability(cap: OrchCapability, position?: { x: number; y: number }) {
   const id = nextNodeId(cap.id);
-  const pos = position ?? { x: 40 + (nodes.value.length % 5) * 240, y: 50 + Math.floor(nodes.value.length / 5) * 235 };
+  const pos = position ?? nextFreePosition(nodes.value);
   nodes.value = [...nodes.value, {
     id,
     title: cap.label,
@@ -242,6 +276,10 @@ function addCapability(cap: OrchCapability, position?: { x: number; y: number })
     artifact: cap.artifact,
     canvasPosition: pos,
   }];
+  // 加完把画布缩放到"全部可见" —— 否则节点可能落在当前视野外, 用户以为没加上。
+  // 时序: nextTick 只是 DOM 更新完, vue-flow 内部还没量到新节点的尺寸(它异步测量),
+  // 此时 fitView 算的还是旧集合。所以要等两帧再 fit(实测一帧不够)。
+  void nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => fitCanvas())));
   toast(`已添加「${cap.label}」`, "success");
 }
 
@@ -812,6 +850,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
       <!-- 右: 画布 -->
       <section class="workspace-stage">
         <AgentFlowCanvas
+          ref="canvasRef"
           :nodes="nodes"
           :edges="userEdges"
           :editable="!locked"

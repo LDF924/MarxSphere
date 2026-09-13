@@ -174,6 +174,12 @@ const nodeActions = {
     ev.preventDefault();
     emit("node-selected", biz);
   },
+  /** V415: 卡片上的 × —— 直接删, 不用先选中再找浮层按钮 */
+  remove: (ev: MouseEvent, biz: BizNode) => {
+    if (props.locked) return;
+    ev.preventDefault();
+    emit("node-delete", { id: biz.id });
+  },
 };
 provide(ORCH_NODE_ACTIONS, nodeActions);
 
@@ -413,6 +419,14 @@ watch(
 );
 onMounted(() => buildLayout());
 
+/**
+ * V415: 把"缩放/平移到全部节点可见"暴露给上层。
+ * 用途: 点能力项的 ➕ 后新节点可能落在当前视野外(尤其中小窗口), 用户会以为"没加上" ——
+ * 上层加完节点调一次 fit 就能把它带进视野。
+ */
+const flowRef = ref<{ fitView?: (opts?: unknown) => void } | null>(null);
+defineExpose({ fitView: () => flowRef.value?.fitView?.({ padding: 0.15, duration: 200 }) });
+
 const nodeColor = (n: Node) => {
   const st = (n.data as BizNode | undefined)?.state;
   if (st === "running") return "#7184f5";
@@ -424,6 +438,7 @@ const nodeColor = (n: Node) => {
 <template>
   <div ref="canvasEl" class="agent-flow-canvas" :class="{ 'is-locked': locked }" @contextmenu.prevent="onPaneContextMenu" @drop="onDrop" @dragover="onDragOver">
     <VueFlow
+      ref="flowRef"
       v-model:nodes="flowNodes"
       v-model:edges="flowEdges"
       :node-types="agentNodeTypes"

@@ -64,6 +64,41 @@ await open();
   }
 }
 
+// ── ①b 加节点必须落在看得见的地方 ──
+// 用户报"点击加号时并没有出现新的节点" —— 老算法按节点数排全局网格, 与视野无关,
+// 节点一多就落到可视区外(实测 1100x700 时第 7 个压在画布底边)。这里在窄窗口下连加 3 次逐个验可见性。
+{
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.waitForTimeout(600);
+  for (let i = 1; i <= 3; i++) {
+    const n0 = await page.locator(".vue-flow__node").count();
+    await page.locator(".pi-add").first().click({ force: true });
+    await page.waitForTimeout(1100);
+    const n1 = await page.locator(".vue-flow__node").count();
+    const inside = await page.evaluate(() => {
+      const c = document.querySelector(".agent-flow-canvas").getBoundingClientRect();
+      const last = [...document.querySelectorAll(".vue-flow__node")].pop();
+      const r = last.getBoundingClientRect();
+      return r.top >= c.top - 4 && r.bottom <= c.bottom + 4 && r.left >= c.left - 4 && r.right <= c.right + 4;
+    });
+    t(`窄窗口第 ${i} 次加节点, 新节点完整可见`, n1 === n0 + 1 && inside, `${n0}→${n1} visible=${inside}`);
+  }
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await page.waitForTimeout(600);
+}
+
+// ── ①c 卡片上要有固定的删除按钮 ──
+// 用户报"删除按钮怎么是浮动的, 不是在节点上固定的" —— 现在 ✕ 常驻卡片头部。
+{
+  const n = await page.locator(".vue-flow__node .node-del").count();
+  const nodes = await page.locator(".vue-flow__node").count();
+  t("每个节点卡片上都有删除按钮", n === nodes && n > 0, `${n} 个按钮 / ${nodes} 个节点`);
+  const before = nodes;
+  await page.locator(".vue-flow__node .node-del").first().click({ force: true });
+  await page.waitForTimeout(700);
+  t("点卡片上的 ✕ 能删掉节点", (await page.locator(".vue-flow__node").count()) === before - 1, `${before} → ${await page.locator(".vue-flow__node").count()}`);
+}
+
 // ── ② 页面上下滚动(窗口压矮) ──
 {
   // 视口 560 时内容正好铺满(不该出现滚动条), 所以用 460 —— 那时必然溢出
