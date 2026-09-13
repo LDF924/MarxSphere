@@ -28,15 +28,18 @@ If Len(ws.ExpandEnvironmentStrings("%SAG_BASH%")) > 0 And ws.ExpandEnvironmentSt
   If fso.FileExists(ws.ExpandEnvironmentStrings("%SAG_BASH%")) Then bash = ws.ExpandEnvironmentStrings("%SAG_BASH%")
 End If
 If bash = "" Then
-  ' PATH 上的 bash: `where` 会返回多行, 只取第一条(拼在一起会变成无效路径 —— 见 run-script-hidden.vbs 同处注释)
-  On Error Resume Next
-  p = ws.Exec("cmd /c where bash 2>nul").StdOut.ReadAll
-  On Error GoTo 0
-  For Each ln In Split(Replace(p, vbCrLf, vbLf), vbLf)
-    ln = Trim(ln)
-    If Len(ln) > 0 And fso.FileExists(ln) Then
-      bash = ln
-      Exit For
+  ' PATH 上的 bash: 遍历目录 + FileExists —— 不用 ws.Exec, 那会弹控制台窗口
+  ' (2026-09-13: 实测这会让计划任务周期性地闪窗, 见 run-script-hidden.vbs 同处注释)
+  For Each d In Split(ws.ExpandEnvironmentStrings("%PATH%"), ";")
+    d = Trim(d)
+    If Len(d) > 0 Then
+      For Each exe In Array("bash.exe", "bash")
+        If fso.FileExists(d & "\" & exe) Then
+          bash = d & "\" & exe
+          Exit For
+        End If
+      Next
+      If bash <> "" Then Exit For
     End If
   Next
 End If
