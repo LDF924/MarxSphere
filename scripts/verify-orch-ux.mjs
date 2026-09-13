@@ -315,6 +315,24 @@ await open();
   t("候选条目显示了来源技能(可追溯)", srcLine.includes("来源技能"), srcLine);
   t("来源技能不再标注 id 缺失", !propText.includes("id 缺失"));
 
+  // V415: 迁移过来的两块能力(原 MetaSkillPanel 独有, 页面已删)
+  t("每条 DAG 都有「▶ 运行」", (await page.locator('.dag-row').first().locator('button:has-text("▶ 运行")').count()) > 0);
+  t("每条 DAG 都有「🎬 演示」", (await page.locator('.dag-row').first().locator('button:has-text("🎬 演示")').count()) > 0);
+  t("任务输入框常驻(运行与演示共用)", (await page.locator(".ms-input-row input").count()) === 1);
+  // 演示: 零成本, 应把步骤逐个点亮并给出演示产出
+  await page.locator('.dag-row').first().locator('button:has-text("🎬 演示")').first().click({ force: true });
+  await page.waitForTimeout(1000);
+  t("演示启动后有步骤列表", (await page.locator(".ms-step").count()) > 0, `${await page.locator(".ms-step").count()} 步`);
+  t("演示标注为零成本", /零成本/.test(await page.locator(".ms-tag").innerText().catch(() => "")));
+  let demoOk = false;
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(1200);
+    if (await page.locator(".ms-final-text").count()) { demoOk = true; break; }
+  }
+  t("演示跑到完成并给出演示产出", demoOk, demoOk ? (await page.locator(".ms-final-text").innerText()).slice(0, 40).split("\n").join(" ") : "超时");
+  await page.locator('.ms-run-head button:has-text("清空")').click({ force: true });
+  await page.waitForTimeout(400);
+
   // 打开到画布: 节点数应变成该 DAG 的步数
   const n0 = await page.locator(".vue-flow__node").count();
   await page.locator(".dag-item button", { hasText: "打开到画布" }).first().click({ force: true });
@@ -377,7 +395,32 @@ await open();
   }
 }
 
+// ── ④d ▶ 运行必须真的把请求发出去并到达后端 ──
+// 为什么单独测这条: 我曾经在把运行逻辑搬进编排页的**同时又删掉了它调用的路由**,
+// 于是按钮点了没反应(404) —— 而当时的回归只覆盖了「🎬 演示」(纯前端, 不走网络), 漏了它。
+// 判据不是"按钮存在", 而是 **POST 真的发出** 且运行到达 waiting_input。
+{
+  await open();
+  const posts = [];
+  page.on("request", (r) => { if (r.method() === "POST" && r.url().includes("meta-skill")) posts.push(r.url().split("4173")[1]); });
+  await page.locator(".ms-input-row input").fill("回归: 运行链路探针");
+  await page.locator('.dag-row').first().locator('button:has-text("▶ 运行")').first().click({ force: true });
+  await page.waitForTimeout(3000);
+  t("▶ 运行真的发出了请求(不是 404 空转)", posts.includes("/api/meta-skill/run"), JSON.stringify(posts));
+  const runMeta = await page.locator(".ms-run-head .run-meta").innerText().catch(() => "");
+  t("运行拿到 runId 并进入执行", /ms-/.test(runMeta), runMeta.trim());
+  let waited = false;
+  for (let i = 0; i < 15; i++) {
+    await page.waitForTimeout(1500);
+    if (await page.locator(".ms-form").count()) { waited = true; break; }
+  }
+  t("澄清节点挂起并弹出表单", waited);
+  t("表单字段来自该 DAG 的 clarify 定义", (await page.locator(".ms-form-row").count()) > 0, `${await page.locator(".ms-form-row").count()} 个字段`);
+  await page.locator('.ms-run-head button:has-text("清空")').click({ force: true }).catch(() => {});
+}
+
 t("页面无 JS 错误", errors.length === 0, errors.slice(0, 2).join(" | "));
 console.log(`\n${"=".repeat(52)}\n通过 ${pass} / 失败 ${fail}`);
 await browser.close();
 process.exit(fail ? 1 : 0);
+

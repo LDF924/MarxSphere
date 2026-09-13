@@ -6766,7 +6766,11 @@ except Exception as e:
     return { stats: await agentFeedbackService.agentFeedbackStats() };
   });
 
-  // ═══ V404-4: MetaSkill DAG(声明式步骤编排试点) — 列表/定义/执行/进度/输入提交 ═══
+  // ═══ V415: MetaSkill 执行接口(list/run/progress/input) ═══
+  // 原使用者是 web/src/components/MetaSkillPanel.tsx(已删)。这些接口**不能跟着删** ——
+  // 「课题流程编排 → 声明式 DAG」区把面板的"▶ 运行 / 澄清表单 / 进度"搬了过去, 现在由它调用。
+  // (2026-09-13 我先删了它们, 结果搬过来的 ▶ 运行 直接 404; 是残留审计查出来的。)
+  // 另: meta_invoke / meta_list 两个 agent 工具是进程内调用, 与这些接口无关。
   app.get("/api/meta-skill/list", async () => {
     const { loadAllMetaSkills } = await import("../services/meta-skill-defs.js");
     const skills = await loadAllMetaSkills(); // V404-10: 静态 + DB 动态(人工审 accept)合并

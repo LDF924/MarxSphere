@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // src/services/meta-skill-propose-service.ts — V404-10: auto_propose → MetaSkill DAG 衔接
 // 桥接: agent_skills 已批准技能 + 高频任务主题 → LLM 组装声明式步骤 DAG 提案
-// 人工审(隔离区 proposals.jsonl) → accept 进运行时注册表(DB) → /api/meta-skill/list 可见可跑
+// 人工审(隔离区 proposals.jsonl) → accept 进运行时注册表(DB) → /api/orchestrator/meta-skills 可见可跑
 // 红线: 提案不自动 accept; 不自动进全局 META_SKILLS(静态); 由人工审后注册
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dataPath } from "./storage-paths.js";

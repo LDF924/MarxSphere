@@ -91,7 +91,7 @@ const openCreate = ref(false);
 // 这里承载的是 MetaSkill 面板独有的两件事:
 //   ① 已注册的声明式 DAG 可以**打开到画布上**继续改(以前只能在那边点"运行")
 //   ② DAG 提案的审阅(平台按高频任务自动组装候选流程, 人工 accept 后才进注册表)
-const metaSkills = ref<OrchMetaSkill[]>([]);
+const metaSkills = ref<OrchMetaSkill[]>([]);  // 含 steps 数量(明细要另拉图)
 const proposals = ref<Array<{ id: string; triggerGoal: string; seenCount: number; status: string; sourceSkillNames?: string[]; sourceSkillIds?: number[]; dag: { name: string; description?: string; steps?: unknown[] } }>>([]);
 const dagBusy = ref(false);
 const proposeTopic = ref("");
@@ -162,8 +162,127 @@ async function actProposal(id: string, action: "accept" | "reject") {
     dagBusy.value = false;
   }
 }
-const createForm = ref({ title: "", task: "", system: "", maxTokens: "3000" });
-function openCreateNode() {
+// ── V415: 从已删除的 MetaSkill 面板搬过来的两块能力(用户要求"先转移再删") ──
+//  ① 演示运行: 纯前端假跑, 不调 LLM 不花钱, 用定时器把步骤一格格点亮 —— 用来看"这条 DAG 会怎么跑"
+//  ② 真实运行: 选一条 DAG + 填输入 → 起运行 → 轮询进度 → 澄清表单 → 终态产出
+// 说明: 这两块以前只在 MetaSkill 面板有, 编排页只能"把图打开到画布", 看不到"直接跑这条 DAG"。
+const msRunId = ref("");
+const msStatus = ref("");
+const msStepLog = ref<Array<{ stepId: string; kind: string; label?: string; status: string; output?: string; waitingFields?: Array<{ name: string; prompt: string; required: boolean }> }>>([]);
+const msOutput = ref("");
+const msForm = ref<Record<string, string>>({});
+const msTopic = ref("");
+const msDemo = ref(false);          // 演示模式(纯前端, 不落库不烧钱)
+const msBusy = ref(false);
+let msPollTimer: ReturnType<typeof setInterval> | null = null;
+let msDemoTimers: ReturnType<typeof setTimeout>[] = [];
+
+function msStopPoll() { if (msPollTimer) { clearInterval(msPollTimer); msPollTimer = null; } }
+function msClearDemo() { for (const t of msDemoTimers) clearTimeout(t); msDemoTimers = []; }
+function msReset() {
+  msStopPoll(); msClearDemo();
+  msRunId.value = ""; msStatus.value = ""; msStepLog.value = []; msOutput.value = ""; msForm.value = {}; msDemo.value = false;
+}
+
+/** ▶ 真实运行: 走 /api/meta-skill/run(与画布的"开始执行"同引擎, 但直接跑指定 DAG, 不用先打开到画布) */
+async function msRun(skillId: string) {
+  const input = msTopic.value.trim();
+  if (!input) { toast("先填任务输入", "error"); return; }
+  msReset(); msBusy.value = true;
+  try {
+    const r = await fetch("/api/meta-skill/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skillId, input }),
+    }).then((res) => res.json());
+    if (!r?.runId) { msBusy.value = false; toast(`启动失败: ${r?.error || "未知错误"}`, "error"); return; }
+    msRunId.value = r.runId;
+    msStatus.value = "running";
+    msPollTimer = setInterval(() => void msPoll(), 1500);
+  } catch (e) {
+    msBusy.value = false;
+    toast(`启动失败: ${(e as Error).message}`, "error");
+  }
+}
+async function msPoll() {
+  const id = msRunId.value;
+  if (!id) return;
+  const j = await fetch(`/api/meta-skill/progress?runId=${encodeURIComponent(id)}`).then((r) => r.json()).catch(() => null);
+  // 运行结束被清理 → ok=false, 此时停轮询(与面板原来的处理一致)
+  if (!j?.ok) { msStopPoll(); msBusy.value = false; return; }
+  msStatus.value = j.status ?? "";
+  msStepLog.value = j.stepLog ?? [];
+  if (j.status === "done" || j.status === "failed") {
+    msStopPoll(); msBusy.value = false;
+    const last = [...(j.stepLog ?? [])].reverse().find((s: { output?: string }) => s.output);
+    msOutput.value = last?.output || "（无输出）";
+  }
+}
+/** 提交澄清字段 → 续跑 */
+async function msSubmitForm() {
+  if (!msRunId.value) return;
+  await fetch("/api/meta-skill/input", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runId: msRunId.value, values: msForm.value }),
+  }).catch(() => null);
+  msForm.value = {};
+}
+
+/** 演示要用步骤明细(清单接口只给数量) → 拉一次图; 拿不到就退化成"N 步"进度 */
+async function demoSteps(skill: OrchMetaSkill): Promise<Array<{ id: string; kind: string; label?: string }>> {
+  const g = await fetchMetaSkillGraph(skill.id);
+  return (g?.nodes ?? []).map((n) => ({ id: n.id, kind: String((n as { kind?: string }).kind ?? "step"), label: n.title }));
+}
+/**
+ * 🎬 演示运行 —— 纯前端假跑: 不调 LLM、不落库、不花钱, 只把步骤按序点亮。
+ * 用途: 先看清"这条 DAG 有几个步骤、每步哪种类型、会问什么", 再决定要不要真跑。
+ * (这是原 MetaSkill 面板唯一编排页没有的能力, 用户要求删页面前先搬过来。)
+ */
+async function msPlayDemo(skill: OrchMetaSkill) {
+  msReset(); msDemo.value = true; msBusy.value = true;
+  msRunId.value = "demo-run";
+  const log: typeof msStepLog.value = (await demoSteps(skill)).map((s) => ({ stepId: s.id, kind: s.kind, label: s.label, status: "pending" }));
+  const cur = { i: 0 };
+  msStepLog.value = [...log];
+  const advance = () => {
+    if (cur.i >= log.length) {
+      msBusy.value = false; msStatus.value = "done";
+      msOutput.value = "【演示产出】这是一段示例文献综述。\n## 一、研究缘起\n关于该主题的学术讨论源于……\n## 二、发展脉络\n……\n（演示文本; 真实运行会生成真实综述）";
+      return;
+    }
+    const step = log[cur.i];
+    const isInput = step.kind === "user_input";
+    step.status = isInput ? "waiting_input" : "running";
+    if (isInput) step.waitingFields = [{ name: "topic", prompt: "综述主题", required: true }];
+    msStatus.value = "running";
+    msStepLog.value = [...log];
+    msDemoTimers.push(setTimeout(() => {
+      step.status = "done";
+      step.output = isInput
+        ? "topic: 演示主题"
+        : `【${step.kind} 演示输出】${
+          step.kind === "llm_gate" ? '{"pass":true,"reason":"引用检查通过"}'
+            : step.kind === "llm_chat" ? "这是演示生成的综述草稿……(真实运行会调用 LLM)"
+              : "检索到示例文献 8 篇……"}`;
+      step.waitingFields = undefined;
+      cur.i++;
+      msStepLog.value = [...log];
+      msDemoTimers.push(setTimeout(advance, 900));
+    }, isInput ? 400 : 700));
+  };
+  advance();
+}
+const msWaiting = computed(() => msStepLog.value.find((s) => s.status === "waiting_input"));
+/**
+ * 澄清表单能不能提交: 必填字段都填了。
+ * 放计算属性而不是写在模板里 —— Vue 模板表达式对"可选链 + 嵌套箭头函数"这种组合解析不了
+ * (实测报 Identifier expected), 放 here 更清楚也更好测。
+ */
+const msFormReady = computed(() => {
+  const fields = msWaiting.value?.waitingFields ?? [];
+  return fields.every((f) => !f.required || (msForm.value[f.name] ?? "").trim().length > 0);
+});
+
+const createForm = ref({ title: "", task: "", system: "", maxTokens: "3000" });function openCreateNode() {
   createForm.value = { title: "", task: "", system: "", maxTokens: "3000" };
   openCreate.value = true;
 }
@@ -1033,7 +1152,12 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
         <div class="dag-row">
           <div class="dag-col-head">
             <span class="dag-badge">已注册 {{ metaSkills.length }}</span>
-            <small>内置 + 提案通过后登记的</small>
+            <small>内置 + 提案通过后登记的 · 「运行」与「演示」共用下面这个输入</small>
+          </div>
+          <!-- V415: 任务输入必须**常驻**。第一版把它塞进了运行结果面板里, 而结果面板要有运行状态才显示 ——
+               于是没输入就没法运行、没运行就不显示输入, 死锁(实测输入框数 0)。 -->
+          <div class="ms-input-row">
+            <input v-model="msTopic" class="dag-input" placeholder="任务输入(如: 资本下乡对村级治理的影响) — 「运行」「演示」都用它" />
           </div>
           <div class="dag-scroll">
             <div v-if="!metaLoaded" class="dag-empty">正在加载…</div>
@@ -1046,6 +1170,40 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
               <span class="dag-src" :class="{ 'is-builtin': m.source === 'builtin' }">{{ m.source === "builtin" ? "内置" : "已登记" }}</span>
               <span class="run-meta">{{ m.steps }} 步</span>
               <button class="workspace-secondary" :disabled="dagBusy || locked" @click="openMetaSkill(m.id)">打开到画布</button>
+              <!-- V415: 直接从这跑这条 DAG(不用先打开到画布 —— 那是"改"的路径, 这是"用"的路径) -->
+              <button class="workspace-secondary" :disabled="msBusy || !msTopic.trim()" @click="msRun(m.id)">▶ 运行</button>
+              <button class="workspace-secondary" :disabled="msBusy" title="零成本演示: 不调 LLM, 只把步骤按序点亮" @click="msPlayDemo(m)">🎬 演示</button>
+            </div>
+          </div>
+
+          <!-- V415: 运行/演示的进度与产出(从 MetaSkill 面板搬来) -->
+          <div v-if="msStatus || msStepLog.length" class="ms-run">
+            <div class="ms-run-head">
+              <span class="ms-tag" :class="{ 'is-demo': msDemo }">{{ msDemo ? "演示(零成本)" : "真实运行" }}</span>
+              <span class="run-meta">{{ msRunId }} · {{ msStepLog.filter((s) => s.status === "done").length }}/{{ msStepLog.length }} 步</span>
+              <button class="workspace-secondary" @click="msReset()">清空</button>
+            </div>
+            <div class="ms-steps">
+              <div v-for="(s, i) in msStepLog" :key="s.stepId" class="ms-step" :class="'is-' + s.status">
+                <span class="run-step-no">{{ String(i + 1).padStart(2, "0") }}</span>
+                <span class="state-chip sm" :class="runMetaOf(s.status === 'done' ? 'done' : s.status).cls">{{ stepLabel(s.status) }}</span>
+                <strong>{{ s.label || s.stepId }}</strong>
+                <span class="run-meta">{{ s.kind }}</span>
+                <div v-if="s.output" class="ms-step-out">{{ s.output.slice(0, 160) }}{{ s.output.length > 160 ? " …" : "" }}</div>
+              </div>
+            </div>
+            <!-- 澄清表单(真实运行挂起时) -->
+            <div v-if="msWaiting" class="ms-form">
+              <div class="ms-form-title">这一步需要补充信息</div>
+              <div v-for="f in msWaiting.waitingFields" :key="f.name" class="ms-form-row">
+                <label>{{ f.prompt || f.name }}<span v-if="f.required" class="ms-req">*</span></label>
+                <input v-model="msForm[f.name]" class="dag-input" :placeholder="f.prompt || f.name" />
+              </div>
+              <button class="workspace-primary" :disabled="!msFormReady" @click="msSubmitForm()">提交并继续</button>
+            </div>
+            <div v-if="msOutput" class="ms-final">
+              <div class="ms-form-title">产出</div>
+              <pre class="ms-final-text">{{ msOutput.slice(0, 1200) }}{{ msOutput.length > 1200 ? "\n…" : "" }}</pre>
             </div>
           </div>
         </div>
@@ -1584,13 +1742,19 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .dag-panel {
   flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: 10px;
-  padding: 12px 16px; overflow: hidden;
+  padding: 12px 16px;
+  /* V415: overflow 必须是 auto —— 原来是 hidden, 而两行都 flex:1 + min-height:0 会被压缩,
+     第一行的内容(运行面板)溢出后**不裁剪**, 被后画的候选行盖住。实测后果: 提交按钮的
+     中心点上最上层元素是候选列表的文字, 坐标点击根本点不到按钮(POST 一次都没发出去),
+     而派发事件却能通 —— 功能没问题, 是被盖住了。 */
+  overflow-y: auto;
   background: #0C1424; border-left: 1px solid var(--line);
 }
-.dag-row { display: flex; flex-direction: column; gap: 5px; min-height: 0; flex: 1; }
+/* 正常流: 行按内容取高, 谁都不压谁(压缩式 flex 正是上面那个重叠的成因) */
+.dag-row { display: flex; flex-direction: column; gap: 5px; flex: none; }
 /* 独立滚动区: 条目多时在这一条里滚, 不把整页撑长(用户要求"弄个框子能在里面上下滑") */
 .dag-scroll {
-  flex: 1; min-height: 60px; overflow-y: auto;
+  max-height: 200px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 5px;
   border: 1px solid #1E2A42; border-radius: 10px; padding: 7px; background: #0A1220;
 }
@@ -1616,7 +1780,32 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .dag-src-line { white-space: normal !important; }
 .dag-warn { color: #E8B54A; }
 .dag-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.dag-propose-row { display: flex; gap: 7px; margin-bottom: 3px; }
+.dag-propose-row { display: flex; gap: 7px; margin-bottom: 3px; }/* V415: 运行/演示面板(从 MetaSkill 面板搬来) */
+/* V415: 这里**不要**再限高/自己滚 —— 加了 max-height:260 之后, 澄清表单的提交按钮被算在
+   260px 之外(实测按钮布局在 y=579 而面板底在 y=507), 被自己的小框裁掉: 用户得先在这个小框里
+   滚动才找得到按钮, 自动化探针则直接点穿到下层元素。滚动只留 .dag-panel 一处。 */
+.ms-run { border: 1px solid #2A3A55; border-radius: 10px; background: #0E1626; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.ms-run-head { display: flex; align-items: center; gap: 8px; }
+.ms-tag { font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 9px; background: #1E2A48; color: #6FA6E8; }
+.ms-tag.is-demo { background: #2A2414; color: #E8B54A; }
+.ms-input-row { display: flex; gap: 6px; }
+.ms-input-row .dag-input { flex: 1; }
+.ms-steps { display: flex; flex-direction: column; gap: 4px; }
+.ms-step { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 5px 7px; border-radius: 7px; background: #111C30; font-size: 11px; }
+.ms-step.is-running { border-left: 2px solid #7184f5; }
+.ms-step.is-done { border-left: 2px solid #5FD0B4; }
+.ms-step.is-waiting_input { border-left: 2px solid #E8B54A; }
+.ms-step.is-failed { border-left: 2px solid #F08A8A; }
+.ms-step strong { color: #DCE6F2; font-size: 11.5px; }
+.ms-step-out { flex-basis: 100%; color: #93A5BC; font-size: 10px; line-height: 1.5; }
+.ms-form { border-top: 1px solid #1E2A42; padding-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.ms-form-title { font-size: 10.5px; font-weight: 700; color: #9FC0E8; }
+.ms-form-row { display: flex; align-items: center; gap: 8px; }
+.ms-form-row label { font-size: 11px; color: #A9BBD0; min-width: 90px; }
+.ms-form-row .dag-input { flex: 1; }
+.ms-req { color: #E8B54A; margin-left: 2px; }
+.ms-final { border-top: 1px solid #1E2A42; padding-top: 6px; }
+.ms-final-text { margin: 4px 0 0; max-height: 140px; overflow: auto; white-space: pre-wrap; font-size: 10.5px; line-height: 1.6; color: #A9BBD0; font-family: inherit; }
 .dag-input { border: 1px solid #22304A; border-radius: 7px; background: #141D33; color: #E8EEF7; font-size: 11px; padding: 5px 8px; font-family: inherit; outline: none; min-width: 0; }
 .dag-propose-row .dag-input { flex: 1; }
 .context-menu-item:hover { background: #1E2A48; color: #9FC0E8; }
