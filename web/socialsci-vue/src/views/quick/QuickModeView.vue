@@ -1017,7 +1017,77 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
       ></div>
 
       <!-- 右: 画布 -->
-      <section class="workspace-stage">
+      <!-- V415: 声明式 DAG + 候选 —— 合并成一面, 占原画布位置(用户要求)。
+           两处修正: ① 已注册/候选不再左右分栏, 改成上下两段(候选在下面);
+                     ② 画布挪到页面下方通栏, 所以这一面能占满高度。 -->
+      <section class="dag-panel">
+        <header class="dag-strip-head">
+          <div>
+            <strong>声明式 DAG</strong>
+            <span>与画布同一个执行引擎 · 打开后就是普通图, 随便改</span>
+          </div>
+          <button class="hdr-btn" :disabled="dagBusy" @click="loadMetaSkills(); loadProposals()">刷新</button>
+        </header>
+
+        <!-- ① 已注册的 DAG(独立滚动区, 条目多也不会把整页撑长) -->
+        <div class="dag-row">
+          <div class="dag-col-head">
+            <span class="dag-badge">已注册 {{ metaSkills.length }}</span>
+            <small>内置 + 提案通过后登记的</small>
+          </div>
+          <div class="dag-scroll">
+            <div v-if="!metaLoaded" class="dag-empty">正在加载…</div>
+            <div v-else-if="!metaSkills.length" class="dag-empty">还没有可打开的 DAG</div>
+            <div v-for="m in metaSkills" :key="m.id" class="dag-item">
+              <div class="dag-item-main">
+                <strong>{{ m.name }}</strong>
+                <small>{{ m.description }}</small>
+              </div>
+              <span class="dag-src" :class="{ 'is-builtin': m.source === 'builtin' }">{{ m.source === "builtin" ? "内置" : "已登记" }}</span>
+              <span class="run-meta">{{ m.steps }} 步</span>
+              <button class="workspace-secondary" :disabled="dagBusy || locked" @click="openMetaSkill(m.id)">打开到画布</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ② 候选流程(提案) —— 人工审, 不自动注册 -->
+        <div class="dag-row">
+          <div class="dag-col-head">
+            <span class="dag-badge">候选 {{ proposals.filter((p) => p.status === "proposed").length }}</span>
+            <small>平台按高频任务攒的, 要你点头才进注册表</small>
+          </div>
+          <div class="dag-propose-row">
+            <input v-model="proposeTopic" class="dag-input" placeholder="高频任务主题(如: 马理论选题与接口分析)" />
+            <button class="workspace-primary" :disabled="dagBusy || !proposeTopic.trim()" @click="proposeDag">
+              {{ dagBusy ? "组装中…" : "让平台组装一条" }}
+            </button>
+          </div>
+          <div class="dag-scroll">
+            <div v-if="!proposals.length" class="dag-empty">还没有候选</div>
+            <div v-for="p in proposals" :key="p.id" class="dag-item" :class="{ 'is-done': p.status !== 'proposed' }">
+              <div class="dag-item-main">
+                <strong>{{ p.dag?.name || p.id }}</strong>
+                <small>{{ p.dag?.description || p.triggerGoal }}</small>
+                <!-- 来源可追溯: 哪几个已批准技能参与了这条流程(此前全是 null, 已修) -->
+                <small v-if="p.sourceSkillNames?.length" class="dag-src-line">
+                  来源技能: {{ p.sourceSkillNames.join("、") }}
+                  <span v-if="!p.sourceSkillIds?.some((x) => x != null)" class="dag-warn">(id 缺失)</span>
+                </small>
+                <small class="dag-src-line">出现 {{ p.seenCount }} 次 · {{ p.dag?.steps?.length ?? 0 }} 步</small>
+              </div>
+              <span v-if="p.status === 'proposed'" class="dag-actions">
+                <button class="workspace-secondary" :disabled="dagBusy" @click="actProposal(p.id, 'reject')">否决</button>
+                <button class="workspace-primary" :disabled="dagBusy" @click="actProposal(p.id, 'accept')">接受</button>
+              </span>
+              <span v-else class="run-meta">{{ p.status === "accepted" ? "已接受" : "已否决" }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- V415: 标准工作流画布 —— 从右栏挪到页面下方通栏(不与 DAG 面板争宽, 画布更大) -->
+    <section class="canvas-band workspace-stage">
         <AgentFlowCanvas
           ref="canvasRef"
           :nodes="nodes"
@@ -1149,72 +1219,6 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
           <span>本次产出 {{ finalText.replace(/\s/g, "").length }} 字</span>
         </div>
       </section>
-    </main>
-
-    <!-- V415: 声明式 DAG(MetaSkill 的独有能力搬到这里) —— 放在页面下方,
-         与画布互补: 画布是"自己排", 这里是"把平台沉淀的流程打开来改" + "审平台替你攒的候选流程" -->
-    <section class="dag-strip">
-      <header class="dag-strip-head">
-        <div>
-          <strong>声明式 DAG</strong>
-          <span>与画布同一个执行引擎 · 这里的每条都能打开到画布继续改</span>
-        </div>
-        <button class="hdr-btn" :disabled="dagBusy" @click="loadMetaSkills(); loadProposals()">刷新</button>
-      </header>
-
-      <div class="dag-cols">
-        <!-- ① 已注册的 DAG -->
-        <div class="dag-col">
-          <div class="dag-col-head">
-            <span class="dag-badge">已注册 {{ metaSkills.length }}</span>
-            <small>内置 + 提案通过后登记的</small>
-          </div>
-          <div v-if="!metaLoaded" class="dag-empty">正在加载…</div>
-          <div v-else-if="!metaSkills.length" class="dag-empty">还没有可打开的 DAG</div>
-          <div v-for="m in metaSkills" :key="m.id" class="dag-item">
-            <div class="dag-item-main">
-              <strong>{{ m.name }}</strong>
-              <small>{{ m.description }}</small>
-            </div>
-            <span class="dag-src" :class="{ 'is-builtin': m.source === 'builtin' }">{{ m.source === "builtin" ? "内置" : "已登记" }}</span>
-            <span class="run-meta">{{ m.steps }} 步</span>
-            <button class="workspace-secondary" :disabled="dagBusy || locked" @click="openMetaSkill(m.id)">打开到画布</button>
-          </div>
-        </div>
-
-        <!-- ② 候选流程(提案) —— 人工审, 不自动注册 -->
-        <div class="dag-col">
-          <div class="dag-col-head">
-            <span class="dag-badge">候选 {{ proposals.filter((p) => p.status === "proposed").length }}</span>
-            <small>平台按高频任务攒的, 要你点头才进注册表</small>
-          </div>
-          <div class="dag-propose-row">
-            <input v-model="proposeTopic" class="dag-input" placeholder="高频任务主题(如: 马理论选题与接口分析)" />
-            <button class="workspace-primary" :disabled="dagBusy || !proposeTopic.trim()" @click="proposeDag">
-              {{ dagBusy ? "组装中…" : "让平台组装一条" }}
-            </button>
-          </div>
-          <div v-if="!proposals.length" class="dag-empty">还没有候选</div>
-          <div v-for="p in proposals" :key="p.id" class="dag-item" :class="{ 'is-done': p.status !== 'proposed' }">
-            <div class="dag-item-main">
-              <strong>{{ p.dag?.name || p.id }}</strong>
-              <small>{{ p.dag?.description || p.triggerGoal }}</small>
-              <!-- 来源可追溯: 哪几个已批准技能参与了这条流程(此前全是 null, 已修) -->
-              <small v-if="p.sourceSkillNames?.length" class="dag-src-line">
-                来源技能: {{ p.sourceSkillNames.join("、") }}
-                <span v-if="!p.sourceSkillIds?.some((x) => x != null)" class="dag-warn">(id 缺失)</span>
-              </small>
-              <small class="dag-src-line">出现 {{ p.seenCount }} 次 · {{ p.dag?.steps?.length ?? 0 }} 步</small>
-            </div>
-            <span v-if="p.status === 'proposed'" class="dag-actions">
-              <button class="workspace-secondary" :disabled="dagBusy" @click="actProposal(p.id, 'reject')">否决</button>
-              <button class="workspace-primary" :disabled="dagBusy" @click="actProposal(p.id, 'accept')">接受</button>
-            </span>
-            <span v-else class="run-meta">{{ p.status === "accepted" ? "已接受" : "已否决" }}</span>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- 模板库 -->
     <div v-if="openTemplates" class="modal-shell" @click.self="openTemplates = false">
@@ -1574,13 +1578,27 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 }
 .context-menu-sep { height: 1px; margin: 5px 4px; background: #1E2A42; }
 /* V415: 页面下方的声明式 DAG 区 */
-.dag-strip { flex-shrink: 0; border-top: 1px solid var(--line); background: #0C1424; padding: 10px 14px 12px; }
-.dag-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+/* V415: 声明式 DAG + 候选合并成一面, 占原画布位置(用户要求: 先看到可复用的流程, 再往下看画布) */
+.dag-panel {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 16px; overflow: hidden;
+  background: #0C1424; border-left: 1px solid var(--line);
+}
+.dag-row { display: flex; flex-direction: column; gap: 5px; min-height: 0; flex: 1; }
+/* 独立滚动区: 条目多时在这一条里滚, 不把整页撑长(用户要求"弄个框子能在里面上下滑") */
+.dag-scroll {
+  flex: 1; min-height: 60px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid #1E2A42; border-radius: 10px; padding: 7px; background: #0A1220;
+}
+.dag-scroll::-webkit-scrollbar { width: 8px; }
+.dag-scroll::-webkit-scrollbar-thumb { background: #2A3A55; border-radius: 4px; }
+/* 画布通栏: 给足高度让 DAG 画得开(原来挤在右栏里只有半宽) */
+.canvas-band { flex: none; height: min(62vh, 780px); min-height: 420px; }
+.dag-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dag-strip-head strong { font-size: 12.5px; color: #E8EEF7; margin-right: 8px; }
 .dag-strip-head span { font-size: 10.5px; color: #7A8AA0; }
-.dag-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 1100px) { .dag-cols { grid-template-columns: 1fr; } }
-.dag-col { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .dag-col-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; }
 .dag-col-head small { font-size: 10px; color: #6E7F96; }
 .dag-badge { font-size: 10px; font-weight: 700; color: #9FC0E8; background: #1E2A48; border-radius: 9px; padding: 2px 9px; }
@@ -1766,6 +1784,8 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   .palette-panel { width: 100% !important; max-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
   .palette-expand { writing-mode: horizontal-tb; width: 100%; height: 22px; border-right: 0; border-bottom: 1px solid var(--line); }
   .workspace-stage { min-height: 360px; }
+  .canvas-band { height: auto; min-height: 420px; }
+  .dag-panel { border-left: 0; border-top: 1px solid var(--line); }
   .workspace-panel { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 60%; }
 }
 </style>

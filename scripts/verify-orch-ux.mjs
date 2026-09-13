@@ -243,7 +243,12 @@ await open();
   // 4b-4 空白处右键补回的两项(原版有「新建空白任务」, 重写时丢了)
   await open();
   const paneBox = await page.locator(".vue-flow__pane").boundingBox();
-  await page.mouse.click(paneBox.x + 120, paneBox.y + paneBox.height - 60, { button: "right" });
+  // 注意: 取点必须在窗口内。画布挪到下方通栏后, "pane 底边 - 60" 会算到 y>窗口高,
+  // elementFromPoint 返回 null → 右键落空(实测踩到, 一度以为菜单坏了)。用 pane 内靠上的点。
+  const clickPt = { x: Math.round(paneBox.x + 60), y: Math.round(paneBox.y + 60) };
+  const inWindow = await page.evaluate(({ x, y }) => y < window.innerHeight && x < window.innerWidth, clickPt);
+  t("探针取点在窗口内", inWindow, JSON.stringify(clickPt));
+  await page.mouse.click(clickPt.x, clickPt.y, { button: "right" });
   await page.waitForTimeout(700);
   const pmenu = await page.locator(".canvas-context-menu").innerText().catch(() => "");
   t("空白处右键有「新建空白任务」", /新建空白任务/.test(pmenu));
@@ -259,14 +264,30 @@ await open();
 //         ② 候选流程(提案)能在这审 —— 且**来源技能可追溯**(此前 sourceSkillIds 全是 null)
 {
   await open();
-  t("页面下方有「声明式 DAG」区", (await page.locator(".dag-strip").count()) === 1);
-  const dagItems = await page.locator('.dag-col').first().locator(".dag-item").count();
+  // 位置: 声明式 DAG 现在占据右栏(原画布位置), 画布挪到页面下方通栏 —— 用几何关系断言,
+  // 不写死"在页面下方"这种会随布局变动的措辞
+  t("右栏是「声明式 DAG」面板", (await page.locator(".dag-panel").count()) === 1);
+  const geo = await page.evaluate(() => {
+    const dag = document.querySelector(".dag-panel")?.getBoundingClientRect();
+    const band = document.querySelector(".canvas-band")?.getBoundingClientRect();
+    const pal = document.querySelector(".palette-panel")?.getBoundingClientRect();
+    return dag && band ? {
+      dagTop: Math.round(dag.top), bandTop: Math.round(band.top),
+      dagRightOfPalette: pal ? dag.left >= pal.right - 2 : true,
+      bandIsFullWidth: Math.round(band.width) > Math.round(dag.width),
+    } : null;
+  });
+  t("DAG 面板在画布上方", !!geo && geo.dagTop < geo.bandTop, JSON.stringify(geo));
+  t("DAG 面板与能力面板并排(不重叠)", !!geo && geo.dagRightOfPalette);
+  t("画布通栏比 DAG 面板宽", !!geo && geo.bandIsFullWidth, JSON.stringify(geo));
+  const dagItems = await page.locator('.dag-row').first().locator(".dag-item").count();
   t("列出了可打开的已注册 DAG", dagItems > 0, `${dagItems} 条`);
-  const proposeBox = await page.locator(".dag-strip input.dag-input").count();
+  const proposeBox = await page.locator(".dag-panel input.dag-input").count();
   t("候选区可提交高频主题让平台组装", proposeBox > 0);
 
   // 来源可追溯: 提案上要显示参与编排的技能名(修 null 之前这里是空的)
-  const propText = await page.locator(".dag-col").nth(1).locator(".dag-item").first().innerText().catch(() => "");
+  // 已注册/候选改成上下两段后, 候选是第二个 .dag-row(原来是第二个 .dag-col)
+  const propText = await page.locator(".dag-row").nth(1).locator(".dag-item").first().innerText().catch(() => "");
   const srcLine = (propText.split("\n").find((l) => l.includes("来源技能")) ?? "(无)").trim();
   t("候选条目显示了来源技能(可追溯)", srcLine.includes("来源技能"), srcLine);
   t("来源技能不再标注 id 缺失", !propText.includes("id 缺失"));
