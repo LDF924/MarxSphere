@@ -1446,7 +1446,9 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .hdr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* 空间够时铺满(不出现滚动条), 空间不够时由 .quick-view 滚动而不是把面板压扁 */
-.quick-shell { flex: 1; min-height: 420px; display: flex; }
+/* V415: 上方三块(助手/能力/DAG)的高度 —— 用视口比例而不是 flex:1, 让画布也拿到足够高度。
+   0.58 是"上排明显变高但画布仍占大头"的折中; 下限 420 保证小窗口不塌, 上限 760 防超宽屏过高。 */
+.quick-shell { flex: none; height: clamp(440px, 62vh, 820px); display: flex; }
 .agent-panel {
   width: clamp(240px, 28%, 310px); flex-shrink: 0; border-right: 1px solid var(--line);
   display: flex; flex-direction: column; background: #11192C; min-height: 0;
@@ -1594,8 +1596,9 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 }
 .dag-scroll::-webkit-scrollbar { width: 8px; }
 .dag-scroll::-webkit-scrollbar-thumb { background: #2A3A55; border-radius: 4px; }
-/* 画布通栏: 给足高度让 DAG 画得开(原来挤在右栏里只有半宽) */
-.canvas-band { flex: none; height: min(62vh, 780px); min-height: 420px; }
+/* 画布通栏: 给足高度让 DAG 画得开(原来挤在右栏里只有半宽)。
+   0.62 视口比 + 下限 520 —— 上排变高后画布也要跟着变高, 不是被挤掉。 */
+.canvas-band { flex: none; height: clamp(560px, 68vh, 1000px); }
 .dag-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dag-strip-head strong { font-size: 12.5px; color: #E8EEF7; margin-right: 8px; }
 .dag-strip-head span { font-size: 10.5px; color: #7A8AA0; }
@@ -1784,7 +1787,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   .palette-panel { width: 100% !important; max-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
   .palette-expand { writing-mode: horizontal-tb; width: 100%; height: 22px; border-right: 0; border-bottom: 1px solid var(--line); }
   .workspace-stage { min-height: 360px; }
-  .canvas-band { height: auto; min-height: 420px; }
+  .canvas-band { height: auto; min-height: 560px; }
   .dag-panel { border-left: 0; border-top: 1px solid var(--line); }
   .workspace-panel { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 60%; }
 }
