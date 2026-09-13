@@ -77,7 +77,10 @@ export async function proposeMetaSkillDag(goal: string, seenCount: number, skill
       r = await pool.query("select id, name, when_to_apply, skill_md from agent_skills where status='approved' order by consensus desc limit 5");
     }
     // DB 行(snake) → buildDagPrompt 期望 camel
-    const skills: Array<{ name: string; whenToApply: string; skillMd: string }> = (r.rows as Array<Record<string, unknown>>).map((x) => ({
+    // 注意 id 也要带上: 下面写提案时要用它记 sourceSkillIds —— 早先这里漏了 id,
+    // 于是 `Number(s.id)` 得到 NaN, JSON 序列化成 null, 提案来源全成了 [null,null,…](实测踩到)。
+    const skills: Array<{ id: number; name: string; whenToApply: string; skillMd: string }> = (r.rows as Array<Record<string, unknown>>).map((x) => ({
+      id: Number(x.id),
       name: String(x.name || "未命名"),
       whenToApply: String(x.when_to_apply || ""),
       skillMd: String(x.skill_md || ""),
@@ -104,8 +107,9 @@ export async function proposeMetaSkillDag(goal: string, seenCount: number, skill
     }
     const proposal: DagProposal = {
       id: `dagp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      sourceSkillIds: skills.map((s: any) => Number(s.id)),
-      sourceSkillNames: skills.map((s: any) => String(s.name)),
+      // 过滤掉取不到 id 的行(理论上有 DB 主键就不会)—— 宁可少记一个, 也不写 null 进可追溯字段
+      sourceSkillIds: skills.map((s) => s.id).filter((n) => Number.isFinite(n) && n > 0),
+      sourceSkillNames: skills.map((s) => s.name),
       triggerGoal: goal,
       seenCount,
       dag: {
@@ -128,6 +132,44 @@ export async function proposeMetaSkillDag(goal: string, seenCount: number, skill
 
 /** 列出提案(前端审阅) */
 export function listDagProposals(): DagProposal[] { return readProposals(); }
+
+/**
+ * V415: 修复历史提案里丢失的来源 id。
+ *
+ * 2026-09-13 前的提案 sourceSkillIds 全是 [null,…](构造 skills 时漏了 id, 见上方注释),
+ * 只剩名字可用。这里按名字回查 agent_skills 补回 id; 查不到的名字保留 null 位置不动
+ * (不猜、不编 id —— 宁可留着缺口, 也不写一个错的来源)。
+ * @returns 修好的提案数
+ */
+export async function repairProposalSourceIds(): Promise<number> {
+  const all = readProposals();
+  const need = all.filter((p) => p.sourceSkillIds?.some((x) => x == null));
+  if (!need.length) return 0;
+  const names = Array.from(new Set(need.flatMap((p) => p.sourceSkillNames ?? []).filter(Boolean)));
+  if (!names.length) return 0;
+  let idByName = new Map<string, number>();
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query("select id, name from agent_skills where name = any($1::text[])", [names]);
+    idByName = new Map((r.rows as Array<{ id: number; name: string }>).map((x) => [String(x.name), Number(x.id)]));
+  } catch (e: any) {
+    console.warn(`[dag-propose] 来源 id 修复跳过(取不到技能表): ${String(e?.message || e).slice(0, 100)}`);
+    return 0;
+  }
+  let fixed = 0;
+  for (const p of need) {
+    const before = p.sourceSkillIds ?? [];
+    const after = (p.sourceSkillNames ?? []).map((n, i) => {
+      const cur = before[i];
+      if (cur != null) return cur;
+      const hit = idByName.get(String(n));
+      return hit ?? null;   // 名字也查不到 → 保持 null(不猜)
+    });
+    if (after.some((x, i) => x !== before[i])) { p.sourceSkillIds = after as number[]; fixed++; }
+  }
+  if (fixed) writeProposals(all);
+  return fixed;
+}
 
 /**
  * V405-ML: 空闲凝练 DAG 提案(dream 调度器调用) — 取 top 高频未覆盖任务 → LLM 组装工作流候选。
