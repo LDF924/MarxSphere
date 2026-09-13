@@ -145,29 +145,26 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
   {
     id: "tpl_classical",
     name: "经典文本研究",
-    description: "概念溯源 → 论证拆解 → 互文对照 → 版本校勘 → 综合阐释",
-    scenario: "读经典原著做文本细读(五场景并联)",
+    description: "概念溯源 → 晦涩阐释 → 版本校勘 → 综合阐释",
+    scenario: "读经典原著做文本细读(多场景并联)",
     cost: "medium",
     graph: {
       id: "classical", name: "经典文本研究",
-      description: "四个分析视角从同一份原文出发并联, 最后综合",
+      description: "三个分析视角从同一份原文出发并联, 最后综合",
       nodes: [
-        { id: "source", capabilityId: "io:clarify", title: "录入原文段落/篇目" },
+        { id: "source", capabilityId: "io:clarify", title: "确认概念与原文段落" },
         { id: "concept", capabilityId: "classical:concept-trace", title: "概念溯源" },
-        { id: "argument", capabilityId: "classical:argument-structure", title: "论证拆解" },
-        { id: "intertext", capabilityId: "classical:intertextual", title: "互文对照" },
+        { id: "exegesis", capabilityId: "classical:exegesis", title: "晦涩阐释" },
         { id: "collation", capabilityId: "classical:collation", title: "版本校勘" },
-        { id: "synthesize", capabilityId: "tool:llm_write", title: "综合阐释", params: { topic: "综合四个视角的结果, 写一篇文本阐释:\n概念: {{outputs.concept}}\n论证: {{outputs.argument}}\n互文: {{outputs.intertext}}\n校勘: {{outputs.collation}}", length: "长" } },
+        { id: "synthesize", capabilityId: "tool:llm_write", title: "综合阐释", params: { topic: "综合三个视角的结果, 写一篇文本阐释:\n概念: {{outputs.concept}}\n阐释: {{outputs.exegesis}}\n校勘: {{outputs.collation}}", length: "长" } },
       ],
-      // 四个视角并联(都只依赖 source), 最后汇入综合节点 —— 这就是"边决定执行计划"的直观例子
+      // 三个视角并联, 最后汇入综合节点 —— 这就是"边决定执行计划"的直观例子
       edges: [
         { source: "source", target: "concept" },
-        { source: "source", target: "argument" },
-        { source: "source", target: "intertext" },
+        { source: "source", target: "exegesis" },
         { source: "source", target: "collation" },
         { source: "concept", target: "synthesize" },
-        { source: "argument", target: "synthesize" },
-        { source: "intertext", target: "synthesize" },
+        { source: "exegesis", target: "synthesize" },
         { source: "collation", target: "synthesize" },
       ],
     },
@@ -240,9 +237,11 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
       description: "三路检索并联(平台四源混合的能力在编排层的直白表达)",
       nodes: [
         { id: "source", capabilityId: "io:clarify", title: "确认检索主题" },
+        // 各检索工具的必填参数名不同(知识库/政策=query, 学术/文献库=query, 话题节点产出走 outputs.source):
+        // 这里显式写 query, 不依赖 {{inputs}} —— 起始知识检索节点的"输入"就是用户确认的主题。
         { id: "kb", capabilityId: "tool:sag_search", title: "知识库检索", params: { query: "{{outputs.source}}", topK: 15 } },
-        { id: "external", capabilityId: "tool:view_sciverse_search", title: "外部学术检索", params: { query: "{{outputs.source}}" } },
-        { id: "library", capabilityId: "tool:view_literature_search", title: "文献库检索", params: { query: "{{outputs.source}}" } },
+        { id: "external", capabilityId: "tool:view_sciverse_search", title: "外部学术检索", params: { query: "{{outputs.source}}", limit: 8 } },
+        { id: "library", capabilityId: "tool:view_literature_search", title: "文献库检索", params: { query: "{{outputs.source}}", limit: 8 } },
         { id: "policy", capabilityId: "tool:policy_search", title: "政策文件检索", params: { query: "{{outputs.source}}" } },
         { id: "merge", capabilityId: "tool:llm_write", title: "去重汇编与综述", params: { topic: "把四路检索结果去重后汇编成综述(标注每条来源):\n知识库: {{outputs.kb}}\n外部: {{outputs.external}}\n文献库: {{outputs.library}}\n政策: {{outputs.policy}}", length: "长" } },
       ],

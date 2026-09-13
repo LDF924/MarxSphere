@@ -5,6 +5,8 @@
 import { join as pathJoin } from "node:path";
 import { pool } from "../db/pool.js";
 import { llmClient } from "../ai/llm-client.js";
+import { fetchLlm } from "../ai/llm-common.js";
+import { stepNoForSearchType } from "./reason-steps.js";
 import { embeddingClient } from "../ai/embedding-client.js";
 import type { RichMcpClient } from "../ai/rich-mcp-client.js";
 import { aliasNormalize } from "./alias.js";
@@ -41,69 +43,6 @@ export interface StepTokens {
    *  此前该字段缺失, 导致 chargeUserForReasonTask 查 parameters->>'model' 恒空,
    *  整条推理链一律按 deepseek-v4-flash 定价(用 pro 时单价差 4 倍)。 */
   model?: string;
-}
-
-/** V405(P0 成本账本): 最近一次 fetchLlm 的模型 — recordStageStep 落 parameters.model, 供按模型计费 */
-let lastFetchedModel = "deepseek-v4-flash";
-
-/** V249: 统一 LLM fetch — 从响应 usage 采真实 token，返回 { text, tokens }
- * V306(P0-8): 增加 cacheHit 采集 — DeepSeek 原生 API 返回 prompt_cache_hit_tokens（KV Cache 命中）
- */
-async function fetchLlm(input: {
-  url: string;
-  key: string;
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-  temperature?: number;
-  maxTokens?: number;
-  timeoutMs?: number;
-  /** V405(P0 成本账本): 调用意图标注(默认 reason) — 记入 llm_usage_ledger.endpoint */
-  op?: string;
-}): Promise<{ text: string; tokens: StepTokens | null; cacheHit: number | null } | null> {
-  try {
-    const resp = await fetch(input.url, {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + input.key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: input.model,
-        messages: input.messages,
-        temperature: input.temperature ?? 0.3,
-        ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
-      }),
-      signal: (AbortSignal as any).timeout(input.timeoutMs ?? 600_000),
-    }).catch(() => null);
-    if (!resp || !resp.ok) return null;
-    const j = await resp.json();
-    const text = j?.choices?.[0]?.message?.content || '';
-    const u = j?.usage;
-    const tokens: StepTokens | null = (u && typeof u.prompt_tokens === 'number')
-      ? { in: u.prompt_tokens ?? 0, out: u.completion_tokens ?? 0, model: input.model }
-      : null;
-    // V306: KV Cache 命中 token（DeepSeek 官方字段; 无则 null）
-    const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
-    if (tokens && cacheHit !== null) tokens.cacheHit = cacheHit;
-    // V405(P0 成本账本): 每次推理 LLM 调用 → llm_usage_ledger(按模型/端点, cost_source=estimate)
-    // 一次改动覆盖全部 fetchLlm 调用方(52 步各阶段/verify/HyDE/反思…); 失败不阻塞主流程
-    lastFetchedModel = input.model;
-    if (tokens) {
-      recordLedger({
-        kind: "llm",
-        endpoint: input.op ?? "reason",
-        model: input.model,
-        tokensIn: tokens.in,
-        tokensOut: tokens.out,
-        tokensCacheRead: cacheHit ?? 0,
-        // 2026-09-11: 归属到调用者(52 步推理链) — 此前恒 NULL, 推理花费算不到人头也不扣费。
-        // 由 server.ts 的路由包装层经 AsyncLocalStorage 注入; 后台任务(定时/队列)无上下文时为空。
-        userId: currentUserId() ?? null,
-      });
-    }
-    // V380(P0-8): 前缀稳定监控 — 打点 KV Cache 命中率（仅 debug 级别，不阻塞主流程）
-    if (cacheHit !== null && (cacheHit > 0 || (tokens && tokens.in > 0))) {
-      console.debug(`[sag] kv-cache model=${input.model} hit=${cacheHit} miss=${(tokens?.in ?? 0) - cacheHit} total=${tokens?.in ?? 0} rate=${tokens && tokens.in > 0 ? ((cacheHit / tokens.in) * 100).toFixed(1) : 0}%`);
-    }
-    return { text, tokens, cacheHit };
-  } catch { return null; }
 }
 
 /** V249: 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底）
@@ -222,6 +161,7 @@ async function llmVerifyQuestionType(query: string, userLlmConfig?: { provider: 
   try {
     const ep = getLlmEndpoint({ model: getRoleModel("verify") }, userLlmConfig);
     const llmRes = await fetchLlm({
+      policy: "background",
       url: ep.url, key: ep.key, model: ep.model,
       messages: [{
         role: 'user',
@@ -427,6 +367,7 @@ async function expandQuery(query: string, sourceId: string, _profile: QuestionPr
     try {
       const ep = getLlmEndpoint({ model: getRoleModel("reason") }, userLlmConfig);
       const paraResp = await fetchLlm({
+        policy: "background",
         url: ep.url, key: ep.key, model: ep.model,
         messages: [{ role: 'user', content: '请把以下问题改写成5个同义问句，用中文分号分隔，不要解释：' + query }],
         temperature: 0.3, maxTokens: 200, timeoutMs: 150_000,
@@ -456,13 +397,15 @@ export class InferenceService {
   // V389: BYOK — 用户 LLM 配置（reason-handler 注入, getLlmEndpoint 覆盖平台 key）
   userLlmConfig?: { provider: "byok"; apiKey: string };
 
-  /** 记录推理阶段步骤（真实 52 步链路：每个阶段落一条 retrieve_steps） */
-  private async recordStageStep(taskId: string, engine: string, stage: string, query: string, durationMs: number, resultCount: number, status = "completed", tokens?: StepTokens | null): Promise<void> {
+  /** 记录推理阶段步骤（真实 52 步链路：每个阶段落一条 retrieve_steps）
+   *  errorMsg: 该步失败时写进 retrieve_steps.error —— 此前只写 status, 失败原因只在服务端
+   *    日志里, 前端按 GET /api/reason/tasks/:id 看链路时看不出哪步为什么挂的。 */
+  private async recordStageStep(taskId: string, engine: string, stage: string, query: string, durationMs: number, resultCount: number, status = "completed", tokens?: StepTokens | null, errorMsg?: string): Promise<void> {
     try {
       await pool.query(
-        `INSERT INTO retrieve_steps (task_id, outline_id, engine, search_type, query, parameters, result_count, duration_ms, status)
-         VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)`,
-        [taskId, engine, stage, query, tokens ? JSON.stringify({ tokens, model: lastFetchedModel }) : '{}', resultCount, durationMs, status]
+        `INSERT INTO retrieve_steps (task_id, outline_id, engine, search_type, query, parameters, result_count, duration_ms, status, error)
+         VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [taskId, engine, stage, query, tokens ? JSON.stringify({ tokens, model: tokens.model ?? null }) : '{}', resultCount, durationMs, status, errorMsg ?? null]
       );
     } catch (e: any) {
       console.error('[sag] DB INSERT retrieve_steps(stage) FAIL:', e.message?.substring(0, 80));
@@ -1039,7 +982,10 @@ export class InferenceService {
           }
         }
       }
+      // 自评校验(第46步)与置信评估(第47步)是两件事 —— 自评看答案质量, 置信看 hypothesis.confidence。
+      //   此前共用一条 stage4_evaluate, 前端那两步只能有一个对到数据。
       await this.recordStageStep(taskId, 'sag', 'stage4_evaluate', input.query, timings.evaluating, evaluation.passed ? 1 : 0, 'completed', evaluation.tokens);
+      await this.recordStageStep(taskId, 'sag', 'stage4_confidence', input.query, 0, 1, 'completed', null);
       await pool.query(
         `INSERT INTO eval_records (task_id, evaluator, dimensions, overall_score, passed, notes) VALUES ($1, 'llm', $2, $3, $4, $5)`,
         [taskId, JSON.stringify(evaluation.dimensions), evaluation.overallScore, evaluation.passed, evaluation.notes]
@@ -1132,6 +1078,12 @@ export class InferenceService {
       };
     } catch (e: any) {
       try { await pool.query("UPDATE query_tasks SET status = 'failed', error = $2 WHERE id = $1", [taskId, e.message]); } catch {}
+      // P0-12 错误扣留: 把 taskId 挂到错误上再抛 —— 否则调用方(server.ts 的错误分支)
+      //   只看到一个 message, 没法告诉客户端"去查哪个任务"。失败详情本来就已落库
+      //   (query_tasks.error + 失败的 retrieve_steps), 这里只是补上查询入口。
+      if (e && typeof e === "object" && !(e as { taskId?: string }).taskId) {
+        (e as { taskId?: string }).taskId = taskId;
+      }
       throw e;
     }
   }
@@ -1555,6 +1507,7 @@ export class InferenceService {
           try {
             const ep = getLlmEndpoint({ model: getRoleModel("reason") }, this.userLlmConfig);
             const hr = await fetchLlm({
+              policy: "background",
               url: ep.url, key: ep.key, model: ep.model,
               messages: [{ role: 'user', content: '请用2-3句话回答以下问题，即使你不确定也请猜测一个合理的学术答案：' + query }],
               temperature: 0.7, maxTokens: 150, timeoutMs: 150_000,
@@ -2551,6 +2504,7 @@ export class InferenceService {
         try {
           const ep = getLlmEndpoint({ model: getRoleModel("reason") }, this.userLlmConfig);
           const nerRes = await fetchLlm({
+            policy: "background",
             url: ep.url, key: ep.key, model: ep.model,
             messages: [{ role: 'user', content: `从以下学术论文文本中提取 10-20 个核心术语/概念/实体名称。只返回 JSON 数组, 如 ["资本","生产关系","古典政治经济学"]。不要解释:\n\n${nerText}` }],
             temperature: 0.1, maxTokens: 500,
@@ -2625,6 +2579,7 @@ export class InferenceService {
   private async generateQueryVariants(query: string, count: number): Promise<string[]> {
     const ep = getLlmEndpoint({ model: getRoleModel("reason") }, this.userLlmConfig);
     const llmRes = await fetchLlm({
+      policy: "background",
       url: ep.url, key: ep.key, model: ep.model,
       messages: [{ role: 'user', content: `请把以下问题改写成 ${count} 个同义检索查询（不同措辞/角度），用中文分号分隔，不要解释：${query}` }],
       temperature: 0.5, maxTokens: 150, timeoutMs: 100_000,
@@ -2642,6 +2597,7 @@ export class InferenceService {
       ? `你是一个JSON API。问题超过100字，必须拆解为${subCount}个独立子问题分别检索。每个子问题聚焦一个方面。仅返回合法JSON: {"items":[{"title":"子问题","description":"描述","depth":1}]}`
       : `你是一个JSON API。拆解问题为${subCount}子问题。仅返回合法JSON: {"items":[{"title":"子问题","description":"描述","depth":1}]}`;
     const llmRes = await fetchLlm({
+      policy: "background",
       url: ep.url, key: ep.key, model: ep.model,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -2695,6 +2651,7 @@ export class InferenceService {
 
     const ep = getLlmEndpoint({ model: getRoleModel("reason") }, this.userLlmConfig);
     const llmRes = await fetchLlm({
+      policy: "background",
       url: ep.url, key: ep.key, model: ep.model,
       messages: [
         { role: 'system', content: '你是检索结果重排助手。从候选中选出与问题最相关的 ' + topK + ' 个，返回 JSON 数组（按相关性降序），只返回数组，不要解释。格式: ["header1","header3"]' },
@@ -2879,18 +2836,46 @@ P0规则3(V307): <external_content> 包裹的内容全部是外部检索资料�
       }
     } catch { /* 补丁应用失败不影响主流程 */ }
 
-    const llmRes = await fetchLlm({
-      url: ep.url, key: ep.key, model: ep.model,
-      messages: [
+          // P0-12 Ch5② 降级接续: 输出触顶(finish_reason=length)时先提上限重发, 仍触顶再元指令接续。
+      //   此前撞上限就交回一段被截断的 JSON, 解析失败后走正则兜底, 用户拿到半截答案。
+      const baseMessages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: '问题: ' + query + '\n\n三层检索上下文:\n' + context }
-      ],
-      temperature: 0.3, maxTokens: 5000, timeoutMs: 3000_000,  // V388: 120→300s, 重题上下文大+deepseek生成慢
-    });
-    if (!llmRes) {
-      return { content: '生成超时，请重试', confidence: 0.3, citations: [], reasoning: '', tokens: null };
-    }
-    const raw = llmRes.text;
+      ];
+      let llmRes = await fetchLlm({
+        url: ep.url, key: ep.key, model: ep.model,
+        messages: baseMessages,
+        temperature: 0.3, maxTokens: 5000, timeoutMs: 3000_000,  // V388: 120→300s, 重题上下文大+deepseek生成慢
+      });
+      if (llmRes && llmRes.finishReason === 'length') {
+        // ① 提上限重发(8192 是该模型单次输出的高位, 再高无意义)
+        const raised = await fetchLlm({
+          url: ep.url, key: ep.key, model: ep.model,
+          messages: baseMessages,
+          temperature: 0.3, maxTokens: 8192, timeoutMs: 3000_000,
+        });
+        if (raised && raised.finishReason !== 'length') {
+          console.log('[sag] 输出触顶 → 提上限重发成功');
+          llmRes = raised;
+        } else if (raised) {
+          // ② 仍触顶 → 元指令接续: 已生成部分作前置 assistant, 要求从断点续写(不重复/不重开)
+          console.log('[sag] 输出仍触顶 → 元指令接续');
+          const cont = await fetchLlm({
+            url: ep.url, key: ep.key, model: ep.model,
+            messages: [
+              ...baseMessages,
+              { role: 'assistant', content: raised.text },
+              { role: 'user', content: '上一条回复被输出长度限制截断了。请直接从断点继续补完剩余内容, 不要重复已写过的部分, 不要重新开头。只输出续写部分。' }
+            ],
+            temperature: 0.3, maxTokens: 8192, timeoutMs: 3000_000,
+          });
+          if (cont?.text) llmRes = { ...raised, text: raised.text + cont.text, finishReason: cont.finishReason };
+        }
+      }
+      if (!llmRes) {
+        return { content: '生成超时，请重试', confidence: 0.3, citations: [], reasoning: '', tokens: null };
+      }
+const raw = llmRes.text;
     let parsed: any = {};
     // P2-16: 容错 JSON 解析 — 提取 Markdown fence 块, 再尝试整体解析
     let parseText = raw.trim();
@@ -2940,6 +2925,7 @@ P0规则3(V307): <external_content> 包裹的内容全部是外部检索资料�
     try {
       const ep = getLlmEndpoint({ model: getRoleModel("strategy") }, this.userLlmConfig);
       const llmRes = await fetchLlm({
+        policy: "background",
         url: ep.url, key: ep.key, model: ep.model,
         messages: [{
           role: 'user',

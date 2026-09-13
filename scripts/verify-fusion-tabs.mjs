@@ -7,8 +7,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const BASE = "http://localhost:4173";
 const CDP_PORT = 9363;
 const userData = mkdtempSync(path.join(tmpdir(), "edge-fusion-"));
@@ -28,9 +28,12 @@ const ev = async (e) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 科研中心 → 5 个 Vue 完整版 tab(每个对应 FUSION_TABS 里的一条 vueRoute)
+// 注意: want 用**结构性文案**(标题/面板名/稳定标签), 不要用某个版本的按钮字。
+// 2026-09-13 编排画布重写后, 原来的「可视化DAG编排模式|标准工作流|科研 Agent」全被替换,
+// 这条门禁就误报失败 —— 但它要验的是"iframe 里是本子应用而非 React 兜底", 与具体文案无关。
 const TABS = [
   { label: "研途写作舱", route: "/workflow/input", want: /信息录入|科研架构|素材|工作流/ },
-  { label: "课题流程编排", route: "/workbench/quick", want: /可视化DAG编排模式|标准工作流|科研 Agent/ },
+  { label: "课题流程编排", route: "/workbench/quick", want: /课题流程编排|能力节点|可用能力/ },
   { label: "论文质量评审", route: "/review", want: /审稿|评审|期刊|标准/ },
   { label: "成果可视化工坊", route: "/viz", want: /绘图|图表|可视化/ },
   { label: "学术文本工作台", route: "/editor", want: /文档|编辑|正文|保存|写作/ },
@@ -42,7 +45,7 @@ const results = [];
 const check = (n, p, d) => { results.push(p); console.log(`  ${p ? "✅" : "❌"} ${n}${d ? "  — " + d : ""}`); };
 
 async function main() {
-  const edge = spawn(EDGE, [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new",
+  const edge = spawn(resolveBrowser({ label: "scripts/verify-fusion-tabs.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new",
     "--disable-gpu", "--window-size=1500,950", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) {

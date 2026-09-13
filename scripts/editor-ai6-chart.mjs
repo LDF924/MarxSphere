@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const CDP_PORT = 9350;
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-chart"));
 let ws, msgId = 0; const pend = new Map();
@@ -10,7 +10,7 @@ const cdp = (m, p = {}) => new Promise((res, rej) => { const id = ++msgId; pend.
 const ev = async (e, t = 15000) => { const r = await cdp("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true, timeout: t }); if (r.exceptionDetails) return "JSERR:" + (r.exceptionDetails.exception?.description || "").slice(0, 150); return r.result?.value; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function main() {
-  const edge = spawn(EDGE, [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
+  const edge = spawn(resolveBrowser({ label: "scripts/editor-ai6-chart.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) { try { const l = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json(); const pg = l.find((t) => t.type === "page"); if (pg) { ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; }); break; } } catch { } await sleep(500); }
     ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && pend.has(d.id)) { const p = pend.get(d.id); pend.delete(d.id); d.error ? p.rej(new Error(d.error.message)) : p.res(d.result); } };

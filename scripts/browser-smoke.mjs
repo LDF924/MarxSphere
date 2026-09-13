@@ -1,18 +1,22 @@
-// browser-smoke.mjs — 4173 真实浏览器视图冒烟(无头 Edge + CDP)
-// 用法: node scripts/browser-smoke.mjs [--user audit] [--views "科研工作台 DAG,审稿实验室"]
+// browser-smoke.mjs — 4173 真实浏览器视图冒烟(无头 Chromium + CDP)
+// 用法: node scripts/browser-smoke.mjs [--user=audit] [--views "课题流程编排,论文质量评审"]
 // 输出: 每视图首屏正文(从视图特征头截取) + 全部 JS/console error
 // 前置: 4173 服务已起; audit 测试账号存在(无则自动注册)
+// 注意: 视图名要跟导航里的**当前**标签一致(2026-09-13 M1-M6 融合后改过一次名,
+//       旧名"科研工作台 DAG/审稿实验室/科研绘图/学术编辑器/论文写作台"已不存在,
+//       用旧名跑只会整片 entry-not-found)
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const BASE = "http://localhost:4173";
 const CDP_PORT = 9333;
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-"));
 
-const VIEWS = ["科研工作台 DAG", "审稿实验室", "科研绘图", "学术编辑器", "论文写作台", "实证研究"];
+// 科研中心里 6 个代表性视图(含 5 个 Vue 完整版 tab + 实证研究 React 面板)
+const VIEWS = ["课题流程编排", "论文质量评审", "成果可视化工坊", "学术文本工作台", "研途写作舱", "实证研究"];
 
 let ws, msgId = 0;
 const pend = new Map();
@@ -42,7 +46,7 @@ async function main() {
   const password = "audit123456";
   const targets = views.length ? views : VIEWS;
   const errors = [];
-  const edge = spawn(EDGE, [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
+  const edge = spawn(resolveBrowser({ label: "scripts/browser-smoke.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) {
       try {
@@ -81,7 +85,7 @@ async function main() {
         await new Promise(r=>setTimeout(r,400));
         const root = document.querySelector('#root');
         const txt = (root ? root.innerText : '').replace(/\\s+/g, ' ');
-        const markers = ['科研工作台', '审稿实验室', '科研绘图', '学术编辑器', '论文写作台', '实证研究', '写作'];
+        const markers = ${JSON.stringify(VIEWS)};
         let body = txt;
         for (const mk of markers) { const i = txt.lastIndexOf(mk); if (i > 0) { body = txt.slice(i); break; } }
         return body.length > 1000 ? body.slice(0, 1000) : body;

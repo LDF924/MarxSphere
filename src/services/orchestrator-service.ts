@@ -11,6 +11,7 @@
 //
 // 运行状态落 orchestrator_runs 表: 刷新/换设备/进程重启后仍查得到跑到哪一步(旧实现全在前端内存)。
 import { pool } from "../db/pool.js";
+import { persistRunSnapshot } from "./orchestrator-run-store.js";
 import { listCapabilities, graphToMetaSkill, type CapabilityDef } from "./capability-registry.js";
 import { ORCHESTRATOR_TEMPLATES, getTemplate, type OrchestratorTemplate } from "./orchestrator-templates.js";
 import {
@@ -61,45 +62,25 @@ function rowToRecord(r: any): RunRecord {
 }
 
 /**
- * 落库(每个步骤变化调用一次; 失败不阻断执行 —— 记录是辅助, 不能因为写库失败把编排搞崩)。
+ * 落库(每个步骤变化调用一次)。
  *
- * 注意 graph_json 要一并写入: 恢复暂停/进程重启后的续跑全靠它重建执行计划。
+ * graph_json 要一并写入: 恢复暂停/进程重启后的续跑全靠它重建执行计划。
  * 早先的写法只更新状态字段, 而 insert 分支会把 graph_json 写成 NULL —— 后果是第一次进度
  * 落库把图抹掉, 之后 resume 报"缺少图定义"(2026-09-12 实测踩到)。
  *
  * 并发的两代执行(暂停打断的旧任务 + 恢复新建的任务)会同时回调本函数 —— 必须拒绝旧任务的写入,
- * 否则旧进度会把新进度覆盖回去(实测表现为"恢复了但一直卡在 paused")。
+ * 否则旧进度会把新进度覆盖回去。注意: 旧任务自己的"已暂停"收尾不走这里(见 run-store)。
  */
 async function persist(
   runId: string, ctx: MetaRunContext, stepLog: MetaStepRun[],
   extra: { error?: string; finalText?: string; graph?: OrchestratorGraph } = {},
 ): Promise<void> {
   if (!isLiveRun(runId, ctx)) return;
-  const finished = ["done", "failed", "cancelled"].includes(ctx.status);
-  if (process.env.ORCH_DEBUG_PERSIST) console.log(`[orch-dbg] persist ${runId} status=${ctx.status} finished=${finished}`);
-  try {
-    await pool.query(
-      `insert into orchestrator_runs (id, graph_id, graph_name, input, status, graph_json, step_log_json, outputs_json, final_text, error, updated_at, finished_at)
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, now(), case when $11 then now() else null end)
-       on conflict (id) do update set
-         status = excluded.status,
-         step_log_json = excluded.step_log_json,
-         outputs_json = excluded.outputs_json,
-         graph_json = coalesce(excluded.graph_json, orchestrator_runs.graph_json),
-         final_text = coalesce(excluded.final_text, orchestrator_runs.final_text),
-         error = coalesce(excluded.error, orchestrator_runs.error),
-         updated_at = now(),
-         finished_at = coalesce(excluded.finished_at, orchestrator_runs.finished_at)`,
-      [
-        runId, ctx.skillId, ctx.skillId, ctx.input, ctx.status,
-        extra.graph ? JSON.stringify(extra.graph) : null,
-        JSON.stringify(stepLog), JSON.stringify(ctx.outputs),
-        extra.finalText ?? null, extra.error ?? null, finished,
-      ]
-    );
-  } catch (e: any) {
-    console.warn(`[orchestrator] 落库失败(不阻断执行): ${String(e?.message || e).slice(0, 150)}`);
-  }
+  await persistRunSnapshot({
+    runId, skillId: ctx.skillId, input: ctx.input, outputs: ctx.outputs,
+    status: ctx.status, stepLog, graph: extra.graph,
+    error: extra.error, finalText: extra.finalText,
+  });
 }
 
 export interface StartRunOptions {
@@ -111,6 +92,11 @@ export interface StartRunOptions {
   /** 画布会话 id(可复用已有运行记录; 用于"接着上次继续") */
   runId?: string;
   authToken?: string;
+  /**
+   * V415: 调用来源。Agent 触发时受"单次最多节点数"限制, 画布上用户自己点的则不受限
+   *   —— 自己画的图自己跑, 加个上限反而碍事; 但 Agent 可能一句话就排一条 20 节点的长链。
+   */
+  source?: "ui" | "agent";
 }
 
 export interface StartRunResult {
@@ -154,6 +140,15 @@ export async function startOrchestration(opts: StartRunOptions): Promise<StartRu
     name = tpl.name;
   }
   if (!graph || !graph.nodes.length) throw new Error("编排为空: 请选择模板或添加节点");
+
+  // V415: Agent 触发的编排受开关 + 节点数上限约束(画布上用户自己点的不受限)
+  if (opts.source === "agent") {
+    const setting = await getAgentOrchestrationSetting();
+    if (!setting.enabled) throw new Error("Agent 编排当前是关闭的(可在「课题流程编排」页打开)");
+    if (graph.nodes.length > setting.maxNodes) {
+      throw new Error(`编排节点数 ${graph.nodes.length} 超过上限 ${setting.maxNodes}(防止一句话触发超长链; 可在编排设置里调整)`);
+    }
+  }
 
   const def = buildDef(graph, caps, name);
   const runId = opts.runId || `orch-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -226,16 +221,17 @@ async function loadRunSnapshot(runId: string): Promise<{ graph: OrchestratorGrap
 
 /**
  * V415: 恢复暂停的运行。
- * 关键点(实测踩到的): 暂停会用 abort 打断当前步, 那个执行任务已经退出 —— 只把状态拨回
- * "running" 是没人推进的。必须从 DB 快照重建执行, 并跳过已完成的步骤(不重跑, 不重复烧 token)。
+ *
+ * 一律从 DB 快照**重建**执行任务 —— 曾经写过一个"若能就地恢复就只拨状态"的轻量分支, 结果是错的:
+ * 暂停必然 abort 掉当前执行任务(见 pauseMetaSkill), 那个任务回来时只写收尾状态、不再推进循环,
+ * 所以"拨回 running"永远没人干活, 运行会永久卡在 running(实测: 恢复返回 ok 但状态不变)。
+ *
+ * 重建的代价只是重新遍历一遍步骤表; 已完成步骤被替换成回放节点(直接返回快照产物, 不调 LLM),
+ * 所以不会重复烧 token。恢复前把这条运行的旧代任务摘掉, 防止它与新代抢写同一个 runId。
  */
 export async function resumeRun(runId: string): Promise<{ ok: boolean; error?: string; rebuilt?: boolean }> {
-  const live = getLiveRunSnapshot(runId);
-  if (live && live.status === "paused") {
-    // 执行任务仍在(慢步骤尚未被打断) → 拨回状态即可, 它会在步骤边界继续
-    const r = resumeMetaSkill(runId);
-    if (r.ok) return { ok: true, rebuilt: false };
-  }
+  // 先把可能残留的旧代任务标记为被接管(若已经收尾, 这步是空操作)
+  resumeMetaSkill(runId);
   const snap = await loadRunSnapshot(runId);
   if (!snap) return { ok: false, error: `运行快照不存在或缺少图定义: ${runId}` };
   const done = new Set(snap.completed);
@@ -314,6 +310,96 @@ export async function deleteGraph(id: string): Promise<void> {
 // ─── 供 API 层直接用的元数据 ───
 
 export function listTemplates(): OrchestratorTemplate[] { return ORCHESTRATOR_TEMPLATES; }
+
+// ─── V415: Agent 编排开关(前端可见、可切) ───
+//
+// 语义: 打开后, AI 对话里的 Agent 能通过 meta_invoke / 编排工具触发一条完整的多步编排
+//   —— 一次可能串起十几个节点、数十次 LLM 调用。默认关闭。
+//
+// 为什么不做成纯 env 开关: 用户要求"这个开关必须是前端用户看得见的"。只在 .env 里配,
+//   用户不知道它开没开、也不知道对话为什么有时能编排有时不能。所以状态存 DB(用户可切),
+//   env(ORCH_AGENT_ENABLED=1)只作为**初始默认值与总闸**: env 关时前端也不允许打开。
+const SETTING_KEY = "orchestrator:agent_enabled";
+
+export interface AgentOrchestrationSetting {
+  /** 当前是否允许 Agent 触发编排 */
+  enabled: boolean;
+  /** 环境变量是否允许开(env 关 → 前端只能看到"被部署方禁用") */
+  envAllowed: boolean;
+  /** 默认值来源 */
+  source: "env-default" | "user" | "env-locked-off";
+  /** 单次 Agent 触发的编排最多几个节点(防一句"帮我写篇论文"烧掉整月额度) */
+  maxNodes: number;
+  /** 是否要求人工确认后才真跑 */
+  requireConfirm: boolean;
+}
+
+const ENV_AGENT_ENABLED = envBool(process.env.ORCH_AGENT_ENABLED);
+const AGENT_MAX_NODES = Math.max(1, parseInt(process.env.ORCH_AGENT_MAX_NODES || "8", 10));
+
+/**
+ * 宽松布尔解析: 1/true/yes/on 都算开(大小写不敏感, 忽略首尾空白)。
+ *
+ * 为什么不用 `=== "1"`: 一是部署方写 `true` 时会**静默变成永久关闭**(开关在前端灰着、
+ *   原因提示却只说"未设为 1", 没人能想到是自己写成了 true); 二是 cmd 的
+ *   `set X=1 && ...` 会把值带上尾随空格, `=== "1"` 直接判否 —— 这个坑我在验证时真踩到了。
+ * 与本仓既有约定一致(src/config/env.ts 用 z.coerce.boolean())。
+ */
+function envBool(v: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(String(v ?? "").trim().toLowerCase());
+}
+
+/** 用户级设置读取(表不存在/DB 不可用 → 回退 env 默认; 不让设置面成为单点故障) */
+async function readUserSetting(): Promise<{ enabled?: boolean; maxNodes?: number; requireConfirm?: boolean } | null> {
+  try {
+    const r = await pool.query("select value_json from orchestrator_settings where key = $1", [SETTING_KEY]);
+    if (!r.rows[0]) return null;
+    const v = r.rows[0].value_json;
+    return typeof v === "string" ? JSON.parse(v) : v;
+  } catch { return null; }
+}
+
+export async function getAgentOrchestrationSetting(): Promise<AgentOrchestrationSetting> {
+  const user = await readUserSetting();
+  const enabled = ENV_AGENT_ENABLED ? (user?.enabled ?? false) : false;
+  return {
+    enabled,
+    envAllowed: ENV_AGENT_ENABLED,
+    source: !ENV_AGENT_ENABLED ? "env-locked-off" : user?.enabled === undefined ? "env-default" : "user",
+    maxNodes: user?.maxNodes ?? AGENT_MAX_NODES,
+    requireConfirm: user?.requireConfirm ?? true,
+  };
+}
+
+export async function setAgentOrchestrationSetting(patch: { enabled?: boolean; maxNodes?: number; requireConfirm?: boolean }): Promise<AgentOrchestrationSetting> {
+  if (!ENV_AGENT_ENABLED && patch.enabled) {
+    throw new Error("部署方已关闭 Agent 编排: 环境变量 ORCH_AGENT_ENABLED 未开启(支持 1/true/yes/on), 前端无法自行开启");
+  }
+  const cur = (await readUserSetting()) ?? {};
+  const next = { ...cur, ...patch };
+  await pool.query(
+    `insert into orchestrator_settings (key, value_json, updated_at) values ($1, $2::jsonb, now())
+     on conflict (key) do update set value_json = excluded.value_json, updated_at = now()`,
+    [SETTING_KEY, JSON.stringify(next)]
+  );
+  return getAgentOrchestrationSetting();
+}
+
+/** 供 agent 工具/系统提示判断: Agent 能不能走编排(异步: 会读一次 DB, 失败即视为关闭) */
+export async function agentOrchestrationAllowed(): Promise<boolean> {
+  try { return (await getAgentOrchestrationSetting()).enabled; } catch { return false; }
+}
+
+/**
+ * V415: 模板列表(带按能力 cost 算出的成本量级)。
+ * 模板里手写的 cost 是"设计意图", 这里用节点能力的实际 cost 重算一遍 —— 手写值容易与
+ * 节点改动脱节(改了模板忘了改 cost)。重算值优先, 手写值作为兜底。
+ */
+export async function listTemplatesWithCost(): Promise<Array<OrchestratorTemplate & { costEstimated: "light" | "medium" | "heavy" }>> {
+  const caps = await listCapabilities();
+  const { estimateGraphCost } = await import("./capability-registry.js");
+  return ORCHESTRATOR_TEMPLATES.map((t) => ({ ...t, costEstimated: estimateGraphCost(t.graph, caps) }));
+}
 
 export async function capabilityStats(): Promise<{ total: number; byKind: Record<string, number>; byCategory: Record<string, number> }> {
   const caps: CapabilityDef[] = await listCapabilities();

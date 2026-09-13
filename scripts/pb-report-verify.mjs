@@ -1,11 +1,11 @@
 // pb-report-verify.mjs — P-B 报告 UI 验证(独立无头会话): 直达审稿记录→打开 done job→断言报告新元素
 // 用法: node scripts/pb-report-verify.mjs
 import { spawn } from "node:child_process";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const BASE = "http://localhost:4173";
 const CDP_PORT = 9334;
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-pb"));
@@ -24,7 +24,7 @@ const ev = async (e) => {
 };
 
 async function main() {
-  const edge = spawn(EDGE, [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
+  const edge = spawn(resolveBrowser({ label: "scripts/pb-report-verify.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) {
       try {

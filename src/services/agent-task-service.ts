@@ -7,6 +7,7 @@
 //   - 达标或轮次耗尽(MaxLoops=3) → 结束
 //   - 失败步骤不再直接失败整个任务：记录原因进下一轮计划
 import { pool } from "../db/pool.js";
+import { classifyError } from "./error-recovery-map.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
 import { callLlm } from "../ai/llm-common.js";
 import { logAgentExec } from "./agent-exec-log.js";
@@ -177,20 +178,12 @@ const MAX_STEP_RETRIES = parseInt(process.env.AGENT_STEP_RETRIES || "3", 10);
 const RETRY_BASE_MS = parseInt(process.env.AGENT_RETRY_BASE_MS || "1000", 10);
 
 /** V395-5: 重试判定 — 可重试的错误类型（网络/上游/限流/超时, 幂等可安全重跑） */
-const RETRYABLE_ERROR_PATTERNS = [
-  /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i,       // 网络
-  /fetch failed|socket|网络|超时|timeout/i,              // fetch/超时
-  /429|rate limit|限流|quota|Too Many/i,                 // 限流
-  /5\d\d|502|503|504|Bad Gateway|Service Unavailable/i,  // 上游 5xx
-  /unavailable|暂时不可用|宕机|维护/i,                     // 服务不可用
-];
-/** V395-5: 不可重试的错误类型（业务错误重跑无意义） */
-const NON_RETRYABLE_PATTERNS = [/参数错误|invalid.*param|无结果|未找到|not found|404/i];
-
-/** V395-5: 判断错误是否值得重试 */
+/** V395-5: 判断错误是否值得重试
+ * 2026-09-13 合并三份错误分类器: 原先这里有自己的一套正则表(RETRYABLE/NON_RETRYABLE_PATTERNS),
+ *   与 P0-10 的 error-recovery-map 判据重叠但互相漂移(那边漏了 500/502/socket, 这边漏了 401/403)。
+ *   现在统一走 classifyError(超集)。保留函数名与签名, 调用方不用改。 */
 export function isRetryableError(err: string): boolean {
-  if (NON_RETRYABLE_PATTERNS.some((p) => p.test(err))) return false;
-  return RETRYABLE_ERROR_PATTERNS.some((p) => p.test(err));
+  return classifyError(new Error(err)).retryable;
 }
 
 /** 差距L⑤: 重试分类 — 幂等操作可安全重试; 非幂等(写/删/发布类)重试需谨慎

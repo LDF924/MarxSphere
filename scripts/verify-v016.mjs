@@ -1,9 +1,23 @@
 // verify-v016.mjs — 代码级核验 v0.16.0 安装包是否包含当前会话全部修复（V421-V439）
 // 方法：对每个提交取关键代码标记（从 git diff 提取），在安装包 asar/dist 里搜索
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = "C:/Users/HUAWEI/SAG-open-source";
+// 开源仓位置: SAG_OPEN_ROOT 可覆盖; 否则按同级目录里真实存在的那个认(两个仓库并排 checkout)。
+// 原来写死 C:/Users/HUAWEI/SAG-open-source。找不到时显式报错退出 —— 否则会退化成一堆
+// "标记找不到"的假失败, 让人以为是安装包有问题。
+const OPENS = [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "SAG-open-source"),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")];
+const root = process.env.SAG_OPEN_ROOT
+  || OPENS.find((p) => existsSync(path.join(p, "release", "win-unpacked", "resources", "app.asar")))
+  || "";
+if (!root) {
+  console.error("找不到开源仓库的安装包产物。已尝试:\n" + OPENS.map((p) => "  - " + p).join("\n"));
+  console.error("\n解决: SAG_OPEN_ROOT=<开源仓路径> node scripts/verify-v016.mjs   (或先在该仓跑一次 electron-builder)");
+  process.exit(1);
+}
 const asar = readFileSync(root + "/release/win-unpacked/resources/app.asar", "utf8");
 const dist = root + "/release/win-unpacked/resources/sag/dist";
 const readDist = (p) => readFileSync(`${dist}/${p}`, "utf8");

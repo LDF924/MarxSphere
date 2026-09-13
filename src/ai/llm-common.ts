@@ -6,6 +6,7 @@
 import { resolveModelAlias, findModelOption, getProviderEndpoint } from "../services/llm-model-registry.js";
 import { currentUserId, isPointsCovered, noteLlmCall } from "../services/request-context.js";
 import { getModelFallbacks } from "../services/agent-model-router.js";
+import { classifyError } from "../services/error-recovery-map.js";
 
 // ═══ G11: LLM 并发信号量（令牌计数）═══
 // 架构E1: 动态并发 — 按最近平均延迟自适应（快→提并发, 慢→降; 防止限流）
@@ -79,9 +80,12 @@ export async function fetchLlm(input: {
   maxTokens?: number;
   timeoutMs?: number;
   ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
-}): Promise<{ text: string; tokens: { in: number; out: number } | null; cacheHit: number | null } | null> {
+  /** P0-12: 前台(默认, 重试+降级) / 后台(辅助调用, 单次即弃) — 见 CallLlmOptions.policy */
+  policy?: "front" | "background";
+}): Promise<{ text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string } | null> {
   const r = await fetchLlmDetailed({ ...input, ledger: input.ledger ?? { endpoint: "llm" } });
-  return r.ok ? { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit } : null;
+  // finishReason 透出: "length" 表示输出触顶(被 max_tokens 截断) —— 调用方据此做"提上限重发/接续"
+  return r.ok ? { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit, finishReason: r.finishReason } : null;
 }
 
 /**
@@ -91,6 +95,10 @@ export async function fetchLlm(input: {
  *   需要区分失败原因的调用方(编辑器 AI 等)用本函数。
  * 2026-09-11: 采集 usage 后写 llm_usage_ledger(V405 成本账本) —— 此前只有 llm-client 那条链记账,
  *   走本函数的服务(编辑器 AI 等)完全不计费, 账本有缺口。调用方传 ledger 即可归属到用户/任务。
+ * 2026-09-13: 把 P0-10 的 classifyError 接进来 —— 可重试类别(限流/过载/超时)按映射表退避重试,
+ *   不可重试类别(密钥无效/模型不存在/上下文溢出)立刻返回, 不再白白重试。
+ *   策略只作用于**同一次调用**, 不换模型: 换模型是 llm-call-policy 的事(它硬编码端点, 见该文件)。
+ *   retry 默认 0(行为与接线前完全一致), 调用方显式传才启用 —— 38 个调用点不能一次性换掉行为。
  */
 export async function fetchLlmDetailed(input: {
   url: string;
@@ -101,8 +109,47 @@ export async function fetchLlmDetailed(input: {
   maxTokens?: number;
   timeoutMs?: number;
   ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
+  /** 可重试类别的最大重试次数(默认 0 = 不重试, 保持既有行为) */
+  retry?: number;
+  /** P0-12: 后台调用(辅助/有兜底)单次即弃 */
+  policy?: "front" | "background";
 }): Promise<
-  | { ok: true; text: string; tokens: { in: number; out: number } | null; cacheHit: number | null; finishReason: string }
+  | { ok: true; text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string }
+  | { ok: false; status: number | null; message: string; detail: string }
+> {
+  // P0-12: 后台调用单次即弃(不重试) —— 它有兜底, 重试只会挤占并发配额
+  const maxRetry = input.policy === "background" ? 0 : Math.max(0, input.retry ?? 0);
+  let last: { ok: false; status: number | null; message: string; detail: string } | null = null;
+  for (let attempt = 0; attempt <= maxRetry; attempt++) {
+    const r = await attemptOnce(input);
+    if (r.ok) return r;
+    last = r;
+    if (attempt >= maxRetry) break;
+    // 只对"上游抖动"类重试。本地前置校验失败(密钥没配/模型不存在/端点 400)重发多少次都一样,
+    // 用 classifyError 判据会漏 —— 它看的是错误文本, 而这里状态码更准。
+    const netFailure = r.status === null && /网络请求失败|调用异常/.test(r.message);
+    const upstreamFlaky = r.status === 429 || (r.status !== null && r.status >= 500);
+    if (!netFailure && !upstreamFlaky) break;
+    const cls = classifyError(new Error(`${r.message} ${r.detail}`));
+    const s = cls.strategy;
+    // classifyError 认不出这个错误串时退回一个保守的固定退避, 而不是 0 等待空转
+    const waitMs = s.kind === "retry_backoff" ? s.baseMs + Math.random() * s.jitterMs : 1500;
+    await new Promise((res) => setTimeout(res, waitMs));
+  }
+  return last!;
+}
+
+async function attemptOnce(input: {
+  url: string;
+  key: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
+}): Promise<
+  | { ok: true; text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string }
   | { ok: false; status: number | null; message: string; detail: string }
 > {
   try {
@@ -155,7 +202,7 @@ export async function fetchLlmDetailed(input: {
       : (j?.choices?.[0]?.message?.content || '');
     const u = j?.usage;
     const tokens = (u && typeof (isAnthropic ? u.input_tokens : u.prompt_tokens) === 'number')
-      ? { in: isAnthropic ? u.input_tokens : u.prompt_tokens, out: isAnthropic ? u.output_tokens : (u.completion_tokens ?? 0) }
+      ? { in: isAnthropic ? u.input_tokens : u.prompt_tokens, out: isAnthropic ? u.output_tokens : (u.completion_tokens ?? 0), model: input.model }
       : null;
     const cacheHit = (u && typeof u.prompt_cache_hit_tokens === 'number') ? u.prompt_cache_hit_tokens : null;
     const finishReason = String(j?.choices?.[0]?.finish_reason ?? (isAnthropic ? j?.stop_reason : "") ?? "");
@@ -405,6 +452,10 @@ export interface CallLlmOptions {
   maxTokens?: number;
   timeoutMs?: number;
   thinking?: "disabled" | "enabled";   // 默认 disabled（防 deepseek-v4-flash 空 content 坑）
+  /** P0-12 恢复分级: front(默认, 重试+降级) / background(辅助调用, 失败即弃不重试)
+   *  后台调用(查询变体/重排/题型复核这类, 失败有兜底)不该跟着主链路重试 —— 它们挤占的是
+   *  同一份并发配额, 重试放大反而拖慢真正需要的调用。 */
+  policy?: "front" | "background";
   /** V399: 思考强度（DeepSeek reasoning_effort: low/medium/high/max）— 控制思考链充分程度 */
   reasoningEffort?: "low" | "medium" | "high" | "max";
   jsonMode?: boolean;                  // response_format = json_object
@@ -420,7 +471,7 @@ export interface CallLlmOptions {
 
 export interface CallLlmResult {
   text: string;
-  tokens: { in: number; out: number } | null;
+  tokens: { in: number; out: number; model?: string } | null;
   cacheHit: number | null;
   /** JSON 解析结果（jsonMode 时自动解析，失败返回 null） */
   json?: any;
@@ -438,14 +489,38 @@ export interface CallLlmResult {
  */
 export function classifyLlmError(err: unknown, status?: number): { retryable: boolean; errorType: CallLlmResult["errorType"] } {
   const msg = err instanceof Error ? err.message : String(err);
+  // 2026-09-13 合并三份错误分类器: 状态码映射到 P0-10 的类别名, 文本判据直接复用 classifyError(超集)。
+  //   这样三份分类器只剩一套判据表 —— 新增错误类型时不用三处都改(此前就漏了 500/502/socket/中文超时)。
   if (typeof status === "number") {
     if (status === 429) return { retryable: true, errorType: "rate_limit" };
     if (status >= 500) return { retryable: true, errorType: "server_error" };
     if (status === 401 || status === 403) return { retryable: false, errorType: "auth" };
     if (status === 400) return { retryable: false, errorType: "other" };
   }
-  if (/timeout|aborted/i.test(msg)) return { retryable: true, errorType: "timeout" };
-  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|fetch failed|socket|network|网络/i.test(msg)) return { retryable: true, errorType: "network" };
+  // 无状态码(或状态码不在上面几档)时: 交给 P0-10 的 classifyError 判, 再把类别名映射回 errorType
+  {
+    const cls = classifyError(err);
+    if (cls.retryable) {
+      // api_overload 里既有 5xx(上游错)也有 ECONNRESET/socket(网络断) —— 按文本细分,
+      //   因为调用方靠 errorType 区分退避策略, 把网络断当成 server_error 会让日志误导排查方向。
+      const isNetwork = /econnreset|econnrefused|eai_again|socket|hang up|网络|connection reset|fetch failed/i.test(msg);
+      const mapped: Record<string, CallLlmResult["errorType"]> = {
+        api_rate_limit: "rate_limit",
+        api_overload: isNetwork ? "network" : "server_error",
+        api_timeout: "timeout",
+        api_truncation: "server_error",
+      };
+      const t = mapped[cls.category];
+      if (t) return { retryable: true, errorType: t };
+    }
+    if (typeof status === "number" && (status === 401 || status === 403)) return { retryable: false, errorType: "auth" };
+    if (cls.category === "unknown" && /auth|unauthor|forbidden|无效|未授权/i.test(msg)) {
+      return { retryable: false, errorType: "auth" };
+    }
+    if (!cls.retryable) return { retryable: false, errorType: "other" };
+  }
+  // 2026-09-13 合并三份分类器时补中文: 原正则只认英文 timeout, "请求超时" 这类中文报错会落到
+  //   最后的 other/不可重试。项目里服务端错误消息大量是中文, 这条实际会漏判。
   return { retryable: false, errorType: "other" };
 }
 
@@ -466,7 +541,11 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
   const startedAt = Date.now();
   try {
     // G4: fallback 模型链 — 主模型重试耗尽后, 依次换备用模型（相同槽位内串行）
-    const fallbacks = (input.model ? getModelFallbacks(input.model) : []).filter((m) => m !== input.model);
+    // P0-12: 后台调用不换模型 —— 它有兜底(失败就返回空/默认值), 换模型重试只是多烧一份配额,
+    //   还会把并发槽占得更久, 排挤真正需要它的前台调用。
+    const fallbacks = input.policy === "background"
+      ? []
+      : (input.model ? getModelFallbacks(input.model) : []).filter((m) => m !== input.model);
     if (fallbacks.length > 0) {
       const first = await callLlmInner(input);
       if (first && !first.error) {
@@ -601,6 +680,30 @@ export async function callLlmWithRotation(input: CallLlmOptions): Promise<CallLl
   };
 }
 
+/** 剥离发送方私有字段: 跨源降级时不能把 DeepSeek 的 reasoning_content 发给 qwen/glm
+ *  (异源模型收到不认识的字段会 400 或行为异常)。原文见 BOOK-GAP-ROADMAP P0-12 Ch5 ②
+ *  "主模型过载降级备用模型(先剥离旧模型私有格式块)"。
+ *  只删已知的私有键, 其余原样保留 —— 不做通用"只留 role/content", 避免误删未来新增的合法字段。 */
+const PROVIDER_PRIVATE_KEYS = ["reasoning_content", "reasoning", "reasoning_details"];
+function stripProviderPrivateFields(
+  messages: Array<{ role: string; content: string }>
+): Array<{ role: string; content: string }> {
+  return messages.map((m) => {
+    const hasPrivate = PROVIDER_PRIVATE_KEYS.some((k) => k in (m as Record<string, unknown>));
+    if (!hasPrivate) return m;
+    const copy: Record<string, unknown> = { ...(m as Record<string, unknown>) };
+    for (const k of PROVIDER_PRIVATE_KEYS) delete copy[k];
+    return copy as { role: string; content: string };
+  });
+}
+
+/** 当前要用的模型是否与"消息里可能残留的私有字段"不同源 —— 不同源才剥离 */
+function isCrossProviderForMessages(model: string): boolean {
+  const opt = findModelOption(model);
+  if (!opt) return false;              // 未登记的模型不认识任何私有字段, 保守不动
+  return opt.provider !== "deepseek";  // 已知私有字段(reasoning_*)都产自 DeepSeek
+}
+
 /** 实际 LLM 调用（信号量内部执行体） */
 async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null> {
   const ep = getLlmEndpoint(input.model ? { model: input.model } : undefined);
@@ -608,10 +711,16 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
   const key = input.key ?? ep.key;
   const model = input.model ?? ep.model;
   // G1: 最大重试次数（默认 2 次: 初始 + 2 次重试）— LLM_MAX_RETRIES 环境变量覆盖
-  const maxRetries = Math.max(0, parseInt(process.env.LLM_MAX_RETRIES || "2", 10));
+  // P0-12: 后台调用(有兜底的辅助调用)单次即弃, 不参与重试放大
+  const maxRetries = input.policy === "background"
+    ? 0
+    : Math.max(0, parseInt(process.env.LLM_MAX_RETRIES || "2", 10));
+  const crossProviderFallback = isCrossProviderForMessages(model);
   const body: Record<string, unknown> = {
     model,
-    messages: input.messages,
+    // 跨源降级(deepseek→qwen/glm 等)时剥离发送方私有字段(reasoning_content 等) ——
+    //   异源模型收到不认识的字段会被拒或行为异常。同源降级/正常调用原文发送, 不改变现有序列化。
+    messages: crossProviderFallback ? stripProviderPrivateFields(input.messages) : input.messages,
     temperature: input.temperature ?? 0.3,
     ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
   };

@@ -15,6 +15,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Settings2,
   Sparkles,
 } from "lucide-react";
 
@@ -128,6 +129,7 @@ import {
   UniverseScene,
   universeSourceAccent,
 } from "./UniverseScene";
+import { UniverseViewSettingsDrawer } from "./UniverseViewSettingsDrawer";
 import type {
   UniverseSceneData,
   UniverseSceneExplorationView,
@@ -3822,6 +3824,22 @@ export function KnowledgeUniverse({
               </span>
             </Button>
           )}
+          {/* 图谱显示设置: 偏好一直存在(localStorage v7)且组件读取它, 但此前没有任何 UI 能改 —— 接上抽屉 */}
+          <UniverseViewSettingsDrawer
+            trigger={
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="pointer-events-auto size-9 shrink-0 bg-background/72 text-muted-foreground shadow-soft backdrop-blur-md hover:text-foreground"
+                data-universe-settings-control="true"
+                aria-label="图谱显示设置"
+                title="图谱显示设置"
+              >
+                <Settings2 className="size-4" />
+              </Button>
+            }
+          />
           <div
             data-universe-summary="true"
             className={cn(

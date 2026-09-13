@@ -12,7 +12,8 @@ check_and_start() {
   echo "$(date +%H:%M:%S) $name(:$port) 不在线，拉起..." >> "$LOG"
   case "$port" in
     # V388: 改用直接 bash 后台启动（cscript/vbs 静默启动曾被回收导致拉起失败）
-    1933) cd /c/Users/HUAWEI && (cognee/.venv312/Scripts/openviking-server.exe --config C:/Users/HUAWEI/.openviking/ov.conf > /tmp/ov-start.log 2>&1 &) ;;
+    # 路径走环境变量: COGNEE_HOME 指 cognee 目录(默认 ~/cognee), OPENVIKING_HOME 指配置所在目录(默认 ~)
+    1933) bin="${COGNEE_PY:-${COGNEE_HOME:-$HOME/cognee}/.venv312/Scripts/openviking-server.exe}"; cfg="${OPENVIKING_HOME:-$HOME}/.openviking/ov.conf"; (cd "$HOME" && "$bin" --config "$cfg" > /tmp/ov-start.log 2>&1 &) ;;
   esac
   sleep 3
 }
@@ -21,7 +22,8 @@ check_and_start() {
 check_and_start 1933 "OpenViking"
 
 # V381: 记忆层健康探针（配置校验 + 抽取失败扫描）— 只检查不拉起
-if bash C:/Users/HUAWEI/SAG-main/scripts/sag-memory-probe.sh >> "$LOG" 2>&1; then
+# 探针就在本脚本旁边, 用脚本位置取(原来写死 C:/Users/<某台机器>/SAG-main/...)
+if bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sag-memory-probe.sh" >> "$LOG" 2>&1; then
   :
 else
   echo "$(date +%H:%M:%S) [FAIL] 记忆层探针发现故障（详见上方输出）" >> "$LOG"

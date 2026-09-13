@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolvePython } from "./py-path.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -18,9 +19,7 @@ export interface ParsedFile {
 }
 
 function pythonBin(): string {
-  const venvPy = path.resolve(process.cwd(), ".venv-fmtcheck", "Scripts", "python.exe");
-  if (existsSync(venvPy)) return venvPy;
-  return process.env.COGNEE_PYTHON || process.env.EMPIRICAL_PYTHON || "python";
+  return resolvePython({ envKeys: ["COGNEE_PYTHON", "EMPIRICAL_PYTHON"] });
 }
 
 const SUPPORTED = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];

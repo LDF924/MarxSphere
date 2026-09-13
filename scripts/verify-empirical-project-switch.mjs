@@ -8,8 +8,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { resolveBrowser } from "./lib/find-browser.mjs";
 
-const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const BASE = "http://localhost:4173";
 const CDP_PORT = 9345;
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-emp-"));
@@ -56,7 +56,7 @@ function check(name, pass, detail) {
 async function main() {
   const errors = [];
   let tmpProjectId = "";
-  const edge = spawn(EDGE, [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new",
+  const edge = spawn(resolveBrowser({ label: "scripts/verify-empirical-project-switch.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new",
     "--disable-gpu", "--window-size=1440,1000", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) {

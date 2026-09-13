@@ -22,7 +22,9 @@ function isBusinessEntity(name: string): boolean {
 }
 
 const SOURCE_ID = '8ecb4299-1bec-45d5-afef-6da5c3843ef3';
-const PYTHON = 'C:/Users/HUAWEI/cognee/.venv312/Scripts/python.exe';
+// Cognee 侧要用的解释器: 认 .env 里既有的 COGNEE_PYTHON/EMPIRICAL_PYTHON
+// (原来写死 C:/Users/HUAWEI/cognee/.venv312/... —— 换机器/换用户名必挂)
+const PYTHON = process.env.COGNEE_PYTHON || process.env.EMPIRICAL_PYTHON || "python";
 const BATCH_EMBED = 10;
 
 // ─── Cognee: neo4j-driver 直连 Neo4j 11003 ───

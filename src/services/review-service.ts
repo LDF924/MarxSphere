@@ -10,6 +10,7 @@ import { pool } from "../db/pool.js";
 import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 import type { AttachedSse } from "../api/stream-utils.js";
+import { resolvePython } from "./py-path.js";
 
 // ═══ LLM JSON 调用 ═══
 async function llmJson(prompt: string, modelOverride?: string, maxTokens = 6000, temperature = 0.3): Promise<any | null> {
@@ -1396,7 +1397,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 const execFileAsync = promisify(execFile);
-const DOCX_PYTHON = path.resolve(process.cwd(), ".venv-fmtcheck", "Scripts", "python.exe");
 const ANNOT_SCRIPT = path.resolve(process.cwd(), "scripts", "review_annotations.py");
 
 /** 把审稿结果转成 Word 批注 docx(base64 返回, 前端下载) */
@@ -1431,7 +1431,7 @@ export async function exportReportWord(userId: string, jobId: string): Promise<{
   const outPath = path.join(tmpDir, "review.docx");
   fs.writeFileSync(inPath, JSON.stringify({ text, comments, title: `审稿报告 · ${res.paperTitle ?? job.title ?? "未命名"}` }), "utf-8");
   try {
-    const py = fs.existsSync(DOCX_PYTHON) ? DOCX_PYTHON : "python";
+    const py = resolvePython();
     await execFileAsync(py, [ANNOT_SCRIPT, inPath, outPath], { timeout: 120_000, windowsHide: true, cwd: process.cwd() });
     const buf = fs.readFileSync(outPath);
     fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -10,8 +10,10 @@ LOG="/tmp/sag-bootstrap.log"
 log() { echo "[$(date +%H:%M:%S)] $1" | tee -a "$LOG"; }
 
 # 路径定义（ov-start.vbs 设计为由调用方传参，避免在其内部硬编码个人目录）
-SAG_ROOT="/c/Users/HUAWEI/SAG-main"
-OPENVIKING_DIR="C:\\Users\\HUAWEI"
+# 仓库根: 从脚本位置回推(脚本在 <repo>/scripts/ 下), 也可用 SAG_ROOT 环境变量覆盖
+#   (与 src/api/reason-handler.ts 的 SAG_ROOT 约定同名同义)
+SAG_ROOT="${SAG_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+OPENVIKING_DIR="${OPENVIKING_HOME:-$HOME}"
 
 # Neo4j 位置自动探测（2026-09-12 从 C 盘迁至 E 盘后加入，避免再写死个人目录）
 # 依次尝试候选位置，取第一个含 neo4j-community-5.26.27 的目录

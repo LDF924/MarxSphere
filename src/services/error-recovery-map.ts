@@ -42,12 +42,16 @@ export function classifyError(err: unknown): Classification {
   if (msg.includes("429") || msg.includes("rate limit") || msg.includes("too many requests")) {
     return { category: "api_rate_limit", retryable: true, strategy: { kind: "retry_backoff", maxAttempts: 3, baseMs: 2000, jitterMs: 3000 } };
   }
-  if (msg.includes("connection reset") || msg.includes("econnreset") || msg.includes("overloaded") || msg.includes("503")) {
+  // 2026-09-13 合并三份分类器时补全: 原先只认 503, 漏了 500/502/504(上游 5xx 都是可重试类);
+  //   也漏了 socket/hang up("socket hang up" 是最常见的连接中断写法)。三条都实测过原实现判成"不可重试"。
+  if (msg.includes("connection reset") || msg.includes("econnreset") || msg.includes("overloaded")
+      || /(^|[^0-9])5[0-9][0-9]([^0-9]|$)/.test(msg) || msg.includes("bad gateway") || msg.includes("service unavailable")
+      || msg.includes("socket") || msg.includes("hang up") || msg.includes("econnrefused") || msg.includes("eai_again")) {
     return { category: "api_overload", retryable: true, strategy: { kind: "retry_backoff", maxAttempts: 2, baseMs: 3000, jitterMs: 3000 } };
   }
 
   // 超时
-  if (msg.includes("timeout") || msg.includes("etimedout") || msg.includes("abort") || msg.includes("fetch_tim")) {
+  if (msg.includes("timeout") || msg.includes("etimedout") || msg.includes("abort") || msg.includes("fetch_tim") || msg.includes("超时") || msg.includes("timed out")) {
     return { category: "api_timeout", retryable: true, strategy: { kind: "retry_backoff", maxAttempts: 2, baseMs: 5000, jitterMs: 2000 } };
   }
 

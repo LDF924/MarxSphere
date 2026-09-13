@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import os from "node:os";
+import { resolvePython } from "./py-path.js";
 import { runRuleEngine, type FormatIssue } from "./format-eval-engine.js";
 import type { FormatTemplate } from "./format-eval-templates.js";
 
@@ -40,11 +41,9 @@ const VENDOR_CLI = path.resolve(
   "format-check-cli.py",
 );
 
-/** python 可执行: 优先项目 venv, 退回系统 python */
+/** python 可执行: 项目 venv 优先(跨平台布局), 退回系统 python */
 function pythonBin(): string {
-  const venvPy = path.resolve(process.cwd(), ".venv-fmtcheck", "Scripts", "python.exe");
-  if (existsSync(venvPy)) return venvPy;
-  return process.platform === "win32" ? "python" : "python3";
+  return resolvePython();
 }
 
 async function runCli(args: string[], timeoutMs = 120_000): Promise<unknown> {

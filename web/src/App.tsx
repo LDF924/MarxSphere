@@ -125,6 +125,7 @@ import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
 import { ForceGraphPanel } from "./components/ForceGraphPanel";
 import { ExploreUniversePanel } from "./components/ExploreUniversePanel";
 import { KnowledgeUniverse } from "./components/KnowledgeUniverse";
+import { UniverseBackground } from "./components/UniverseBackground";
 import { QuickLinkPanel } from "./components/QuickLinkPanel";
 import { TraversalPanel } from "./components/TraversalPanel";
 import { JobsPanel } from "./components/JobsPanel";
@@ -1733,8 +1734,11 @@ function AppShell() {
       <AlertToast onOpenAlerts={() => navigateView("alerts")} />
       {/* 运行模式徽标（左下角用户菜单上方：收起式小徽标，点击展开切换；不挡内容） */}
       {/* V399: 运行模式/健康状态 — 已移入顶栏（项目按钮左侧） */}
-      {/* 宇宙背景层：紫调深空渐变 + 山峰地平线 + 亮星 + 星尘 + 星环（纯CSS必渲染） */}
+      {/* 宇宙背景层：紫调深空渐变 + 山峰地平线 + 亮星 + 星尘 + 星环（纯CSS必渲染）
+          动态星场(Canvas 星云漂移+鼠标视差)叠在渐变之上、水印之下 —— 组件一直存在但没接过,
+          cosmos.css 里 .universe-canvas 的 z-index:-2 就是照它写的 */}
       <div className="cosmos-bg">
+        <UniverseBackground />
         <div className="cosmos-alpine" />
         <div className="cosmos-ridge" />
         <div className="cosmos-bright-stars" />

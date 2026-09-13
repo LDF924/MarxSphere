@@ -112,7 +112,9 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       const { existsSync, readFileSync, readdirSync, statSync } = await import("node:fs");
       const { join } = await import("node:path");
       const PY = process.env.EMPIRICAL_PYTHON || "python";
-      const skillDir = "/c/Users/HUAWEI/.claude/skills/thu-digitizer";
+      // 技能装在用户目录下(~/.claude/skills); 原来写死 /c/Users/<某台机器>/..., 换机器就找不到
+      const os = await import("node:os");
+      const skillDir = join(os.homedir(), ".claude", "skills", "thu-digitizer");
       const script = `${skillDir}/scripts/thu_digitizer.py`;
       if (!existsSync(script)) return "（thu-digitizer 技能未安装）";
       const img = String(a.imagePath || "");

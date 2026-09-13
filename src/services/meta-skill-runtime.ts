@@ -7,6 +7,26 @@
 // 定义见 src/services/meta-skill-defs.ts; 前端最小 UI 见 AgentPanel 内 MetaSkillRunPanel
 import { callLlm } from "../ai/llm-common.js";
 import { selfBaseUrl } from "./base-urls.js";
+import pLimit from "p-limit";
+
+/**
+ * V415: 编排并发闸。
+ *
+ * 为什么用 p-limit 走中心额度: 每个节点的终点要么是 PG、要么是 MCP 池、要么是 LLM。
+ * 平台已在 db/concurrency.ts 用 pgLimit(2)/cogneeMcpLimit(3)/graphitiMcpLimit(3) 卡住这些出口;
+ * 编排若自己开一套并发, 会绕开这些中心限制 —— 并行分支一起打下去就可能把 PG 连接池打爆,
+ * 而 PG 打爆是**全局**故障(其它 tab 一起挂)。所以这里的上限默认保守,
+ * 且与 LLM 供应商的限流口径对齐(详见 orchestrator-concurrency 的注释)。
+ *
+ * ORCH_CONCURRENCY=1 时行为等价于旧的严格串行(便于回归对照与排障)。
+ */
+const ORCH_CONCURRENCY = Math.max(1, parseInt(process.env.ORCH_CONCURRENCY || "3", 10));
+let sharedLimit: ReturnType<typeof pLimit> | null = null;
+/** 惰性单例: 同一进程内所有编排共用一个额度池(不是每次运行一个新的, 否则多运行叠加会失控) */
+function concurrencyLimit(): ReturnType<typeof pLimit> {
+  if (!sharedLimit) sharedLimit = pLimit(ORCH_CONCURRENCY);
+  return sharedLimit;
+}
 
 /** 默认语料库 sourceId(与 agent-tool-router 对齐) */
 const DEFAULT_SOURCE_ID = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
@@ -256,9 +276,9 @@ interface LiveRun { ctx: MetaRunContext; stepLog: MetaStepRun[]; }
 const liveRuns = new Map<string, LiveRun>();
 export function getLiveRun(runId: string): MetaRunContext | undefined { return liveRuns.get(runId)?.ctx; }
 /**
- * V415: 判断某个执行任务是否仍是该 runId 的"当前负责人"。
- * 被打断的旧任务(暂停/取消后重建续跑)不属于, 它不该再往运行记录里写 ——
- * 否则会用旧进度覆盖新进度(实测表现为"恢复了但一直卡在 paused/running")。
+ * V415: 判断某个执行任务是否仍有权往该 runId 写状态。
+ * 被打断的旧任务(暂停后由快照重建续跑)不在此列 —— 否则会用旧进度覆盖新进度
+ * (实测表现为"恢复了但一直卡在 paused")。
  */
 export function isLiveRun(runId: string, ctx: MetaRunContext): boolean {
   const cur = liveRuns.get(runId)?.ctx;
@@ -299,6 +319,10 @@ export function pauseMetaSkill(runId: string): { ok: boolean; error?: string } {
   if (!lr) return { ok: false, error: `运行不存在: ${runId}(可能已结束, 请刷新运行记录)` };
   if (lr.ctx.status !== "running") return { ok: false, error: `运行不在运行中(当前 ${lr.ctx.status})` };
   lr.ctx.status = "paused";
+  // 必须**同步**打上 pauseAborted: 否则从 pause 返回到旧任务的 catch 跑完之间有一段窗口,
+  // 期间 isLiveRun 会把这条已死的运行当成"还活着"(实测: 恢复接口返回 ok, 但没人推进,
+  // 运行永久卡在 running)。
+  lr.ctx.pauseAborted = true;
   abortForPause();
   return { ok: true };
 }
@@ -510,7 +534,11 @@ export async function runMetaSkill(def: MetaSkillDef, inputText: string, opts: M
   } catch (e: any) {
     // abort 打断不是失败: 交回一份"暂停中"的结果(已完成的步骤产物保留)
     if (e?.name === "PauseAbort") {
-      opts.onStatus?.(ctx, stepLog);
+      // 收尾状态直写 DB —— 不走 opts.onStatus。编排层的 onStatus 会先过 isLiveRun 守卫,
+      // 而被接管的任务正是被该守卫挡住的; 走 onStatus 的话收尾写不进去, DB 会永久卡在 running。
+      // (守卫的本来目的是"别让被接管的任务覆盖新进度", 不该连它自己的收尾也拦掉)
+      const { persistRunSnapshot } = await import("./orchestrator-run-store.js");
+      await persistRunSnapshot({ runId, skillId: ctx.skillId, input: ctx.input, outputs: ctx.outputs, status: "paused", stepLog });
       return { runId, status: "paused", output: "（已暂停, 恢复到下一个未完成步骤继续）", stepLog, outputs: ctx.outputs };
     }
     throw e;
@@ -551,9 +579,11 @@ function abortForPause(): void {
 async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog: MetaStepRun[], opts: MetaSkillExecutor): Promise<MetaSkillRunResult> {
   const onStep = opts.onStep || (() => {});
   const logOf = (id: string) => stepLog.find((r) => r.stepId === id)!;
-  const execStep: (step: MetaStepDef) => Promise<string> = opts.stepExecutor
-    ? (step) => opts.stepExecutor!(step, ctx)
-    : (step) => defaultStepExecutor(step, ctx, opts);
+  // 执行的 ctx 由调用处传入(并发下每步一个 ctxView, 见 DAG 调度器里 stepInput 的说明);
+  // 默认用共享 ctx, 保持单步/测试路径的行为不变。
+  const execStep: (step: MetaStepDef, c?: MetaRunContext) => Promise<string> = opts.stepExecutor
+    ? (step, c) => opts.stepExecutor!(step, c ?? ctx)
+    : (step, c) => defaultStepExecutor(step, c ?? ctx, opts);
   const byId = new Map(def.steps.map((s) => [s.id, s]));
   const fallbackOf = new Map<string, MetaStepDef>();
   for (const s of def.steps) {
@@ -570,32 +600,32 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
   // 标记仅在备胎表里出现的步骤(不主动跑, 由失败触发)
   const fallbackIds = new Set([...fallbackOf.values()].map((f) => f.id));
 
-  for (const stepId of order) {
-    // V415: 步骤边界检查 —— 取消/暂停/被接管只在边界生效
-    //   (正在跑的远端调用无法真正强杀, 只能等它返回; 但绝不再启动新步骤, 也不再往外写)
-    if (ctx.pauseAborted) break;
-    if (ctx.cancelled || ctx.status === "cancelled") break;
-    if (ctx.status === "paused") break;
-    if (done.has(stepId) || failed.has(stepId)) continue;
-    if (fallbackIds.has(stepId) && !fallbackOf.has(stepId)) continue; // 纯备胎: 主序不跑
-    const step = byId.get(stepId)!;
-    const depsFailed = (step.depends_on || []).some((d) => failed.has(d));
-    if (depsFailed) {
-      // 上游失败 → 本步骤跳过
-      logOf(stepId).status = "failed";
-      logOf(stepId).error = "上游步骤失败, 跳过";
-      onStep({ ...logOf(stepId) });
-      failed.add(stepId);
-      continue;
-    }
+  // ─── V415: DAG 调度器(带闸并发) ───
+  // 旧实现是 `for (const stepId of order)` 严格串行 —— 拓扑序对了, 但并联分支也要一条条跑。
+  // 实测: tpl_classical 4 路并联、tpl_academic_map 5 路并联、tpl_retrieval_heavy 4 路并联检索,
+  // 画布上画成并联、跑起来却是串行, 形状与行为不一致。
+  //
+  // 并发闸用平台中心的 p-limit(db/concurrency.ts 的 pgLimit/cogneeMcpLimit/graphitiMcpLimit),
+  // 与其它功能共享额度 —— 不能自己开一套绕过去, 否则并发编排会把 PG 连接与 MCP 池打爆。
+  // 上限 1 时行为等价于原来的串行(便于回归对照)。
+  //
+  // 关于 ctx.stepInput: 它是**单个步骤的输入**(见 MetaRunContext.stepInput 的说明)。
+  // 并发下多个步骤同时在跑, 一个共享字段会互相踩。所以这里给每个 step 造一个轻量视图 ctxView
+  // (Object.create 挂在 ctx 上, 只覆盖 stepInput), 步骤执行器读 ctxView.stepInput 拿到自己的值,
+  // 而 outputs/userValues/status/cancelled 等共享状态仍走原型链落到真正的 ctx —— 无需改动
+  // renderTemplate 与 defaultStepExecutor 的签名。
+  const stepLimit = concurrencyLimit();
+  const runStep = async (stepId: string, step: MetaStepDef): Promise<void> => {
     const log = logOf(stepId);
-    // V415: 上游产物进本步骤的 {{inputs}} —— title/params 里的占位符这才真正生效
     const deps = (step.depends_on ?? []).filter((d) => ctx.outputs[d] !== undefined);
     log.inputsFrom = deps.length ? deps : undefined;
-    ctx.stepInput = deps.length ? deps.map((d) => ctx.outputs[d]).join("\n\n") : ctx.input;
+    const ctxView = Object.create(ctx) as MetaRunContext;
+    ctxView.stepInput = deps.length ? deps.map((d) => ctx.outputs[d]).join("\n\n") : ctx.input;
+
     log.status = "running";
     log.startedAt = Date.now();
     onStep({ ...log });
+
     if (step.kind === "user_input") {
       // 必填字段已齐(预置/上游提供) → 跳过等待直接继续; 否则挂起等前端提交
       const fields = step.clarify?.fields ?? [];
@@ -607,7 +637,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
         onStep({ ...log });
         ctx.outputs[stepId] = outStr;
         done.add(stepId);
-        continue;
+        return;
       }
       log.status = "waiting_input";
       log.waitingFields = fields.map((f) => ({ name: f.name, prompt: f.prompt || f.name, required: !!f.required }));
@@ -626,7 +656,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
           log.status = "failed"; log.error = "用户输入等待超时"; onStep({ ...log });
         }
         failed.add(stepId);
-        break;
+        return;
       }
       ctx.status = "running";
       // 恢复: 直接以提交值落盘(不再走 execStep)
@@ -636,10 +666,11 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
       onStep({ ...log });
       ctx.outputs[stepId] = outStr;
       done.add(stepId);
-      continue;
+      return;
     }
+
     try {
-      let out = await execStep(step);
+      let out = await execStep(step, ctxView);
       // llm_gate 判定不过 → 走失败语义(触发 on_failure 备胎)
       if (step.kind === "llm_gate") {
         const j = extractJson(out) || {};
@@ -655,11 +686,16 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
       log.durationMs = Date.now() - (log.startedAt || Date.now());
       onStep({ ...log });
       done.add(stepId);
-      // 条件路由: 命中 → 提前解除目标步骤的 fallbackIds 限制并排入队尾补跑
+      // 条件路由: 命中 → 立刻补跑目标(它可能是只为路由存在的节点, 被排除在可调度集之外)
       if (step.route) {
         const hit = step.route.find((r) => evalCondition(r.when, ctx));
-        if (hit && !done.has(hit.to) && !failed.has(hit.to)) {
-          fallbackIds.delete(hit.to); // 若目标本是备胎, 路由显式要求 → 解除
+        if (hit && !done.has(hit.to) && !failed.has(hit.to) && !runningIds.has(hit.to)) {
+          const target = byId.get(hit.to);
+          if (target && !isTerminal()) {
+            fallbackIds.delete(hit.to); // 若目标本是备胎, 路由显式要求 → 解除
+            runningIds.add(hit.to);
+            await stepLimit(() => runStep(hit.to, target)).finally(() => runningIds.delete(hit.to));
+          }
         }
       }
     } catch (e: any) {
@@ -668,12 +704,12 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
       failed.add(stepId);
       // on_failure 备胎
       const fb = fallbackOf.get(stepId);
-      if (fb && !done.has(fb.id)) {
+      if (fb && !done.has(fb.id) && !failed.has(fb.id)) {
         const fbLog = logOf(fb.id);
         fbLog.status = "running"; fbLog.startedAt = Date.now();
         onStep({ ...fbLog });
         try {
-          const out = await execStep(fb);
+          const out = await execStep(fb, ctxView);
           ctx.outputs[stepId] = out;
           ctx.outputs[fb.id] = out;
           fbLog.status = "done"; fbLog.output = out;
@@ -687,6 +723,48 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
           onStep({ ...fbLog });
           failed.add(fb.id);
         }
+      }
+    }
+  };
+
+  const runningIds = new Set<string>();
+  /** 该停了么(取消/暂停/被接管) —— 与旧串行循环的边界检查同一语义, 只是现在在调度循环里 */
+  const isTerminal = () => !!ctx.pauseAborted || ctx.cancelled || ctx.status === "cancelled" || ctx.status === "paused";
+
+  /** 某步骤现在能不能启动: 依赖都结束(成功或失败已决), 且没在跑/没结束 */
+  const readyToRun = (step: MetaStepDef): boolean => {
+    if (done.has(step.id) || failed.has(step.id) || runningIds.has(step.id)) return false;
+    return (step.depends_on ?? []).every((d) => done.has(d) || failed.has(d));
+  };
+  /** 依赖里只要有失败的 → 本步骤跳过(旧串行的 depsFailed 分支) */
+  const depFailed = (step: MetaStepDef) => (step.depends_on ?? []).some((d) => failed.has(d));
+
+  // 可调度集排除"纯备胎"节点(只在失败时被调用), 但若它被 route 指到则由 route 分支补跑
+  const schedulable = order.map((id) => byId.get(id)!).filter((s) => !(fallbackIds.has(s.id) && !fallbackOf.has(s.id)));
+
+  let pending = schedulable.length;
+  while (pending > 0) {
+    if (isTerminal()) break;
+    const batch = schedulable.filter((s) => readyToRun(s) && !depFailed(s) && !isTerminal());
+    if (!batch.length) {
+      // 没有可启动的, 也没有在跑的 → 剩下的都卡在未决依赖上(正常不该发生, 拓扑序已保证无环)
+      if (!runningIds.size) break;
+      await new Promise((r) => setTimeout(r, 120));
+      continue;
+    }
+    pending -= batch.length;
+    await Promise.all(batch.map((s) => {
+      runningIds.add(s.id);
+      return stepLimit(() => runStep(s.id, s)).finally(() => runningIds.delete(s.id));
+    }));
+    // 依赖失败而跳过的步骤: 在这里统一记失败(否则它们的下游会永远等不到)
+    for (const s of schedulable) {
+      if (!done.has(s.id) && !failed.has(s.id) && !runningIds.has(s.id) && depFailed(s)) {
+        const l = logOf(s.id);
+        l.status = "failed"; l.error = "上游步骤失败, 跳过";
+        onStep({ ...l });
+        failed.add(s.id);
+        pending--;
       }
     }
   }

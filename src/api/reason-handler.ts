@@ -8,6 +8,7 @@ import { pool } from "../db/pool.js";
 import { RichMcpClient } from "../ai/rich-mcp-client.js";
 import { McpPool } from "../ai/mcp-pool.js";
 import { InferenceService } from "../services/inference-service.js";
+import { stepNoForSearchType, REASON_STEPS } from "../services/reason-steps.js";
 import { cogneeMcpLimit, graphitiMcpLimit } from "../db/concurrency.js";
 import { memoryService } from "../services/memory-service.js";
 
@@ -355,6 +356,7 @@ export async function getReasonTaskDetail(taskId: string): Promise<Record<string
     const tokens = params.tokens;
     return {
       ...r,
+      stepNo: stepNoForSearchType(String(r.search_type ?? "")),
       parameters: params,
       tokens: (tokens && typeof tokens.in === 'number')
         ? { in: tokens.in, out: tokens.out, ...(typeof tokens.cacheHit === 'number' ? { cacheHit: tokens.cacheHit } : {}) }
@@ -366,6 +368,8 @@ export async function getReasonTaskDetail(taskId: string): Promise<Record<string
     task: task.rows[0],
     outlines: outlines.rows,
     retrieveSteps,
+    // 52 步定义随详情下发 —— 前端不再自带一份静态数组(两份定义会漂移, 这正是本次错位的根源)
+    reasonSteps: REASON_STEPS,
     hypotheses: hypotheses.rows,
     evaluations: evaluations.rows,
   };

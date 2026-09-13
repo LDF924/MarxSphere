@@ -1953,11 +1953,12 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         const platform = String(a.platform || "").toLowerCase();
         const url = String(a.url || "");
         if (!/^https?:/.test(url)) return "（链接格式无效, 需 http(s) 开头）";
-        const skillDir = platform === "douyin"
-          ? "/c/Users/HUAWEI/.claude/skills/dy-note"
-          : "/c/Users/HUAWEI/.claude/skills/bili-note";
+        // 技能装在用户目录下(~/.claude/skills); 原来写死 /c/Users/<某台机器>/...
+        const { homedir } = await import("node:os");
+        const { join: joinPath } = await import("node:path");
+        const skillDir = joinPath(homedir(), ".claude", "skills", platform === "douyin" ? "dy-note" : "bili-note");
         const runScript = platform === "douyin" ? "extract_douyin_text.py" : "run_bili_note.py";
-        const runPath = `${skillDir}/scripts/${runScript}`;
+        const runPath = joinPath(skillDir, "scripts", runScript);
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
         try {
@@ -1968,7 +1969,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
         }
         const { execFileAsync } = { execFileAsync: promisify(execFile) as any };
         try {
-          const { stdout, stderr } = await execFileAsync("python", [runPath, url], { timeout: 600_000, maxBuffer: 32 * 1024 * 1024, env: { ...process.env } });
+          const { stdout, stderr } = await execFileAsync(process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python", [runPath, url], { timeout: 600_000, maxBuffer: 32 * 1024 * 1024, env: { ...process.env } });
           const tail = String(stdout || "").slice(-2500);
           const errTail = String(stderr || "").slice(-500);
           const archived = /(?:已归档|archived|保存到|saved to|archive).*/i.exec(tail)?.[0] || "";
@@ -2069,6 +2070,64 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     },
   });
   tools.push({
+    name: "orch_run", label: "触发编排", risk: "safe",
+    description: "触发一条编排(画布 DAG): 多步管道, 上游产出按连线流入下游, 步数较多、成本较高。仅在开关打开且任务确实需要多步编排时使用",
+    params: {
+      templateId: { type: "string", desc: "编排模板 id(如 tpl_five_stage / tpl_lit_review; 先调 orch_list 查)" },
+      input: { type: "string", required: true, desc: "任务输入(研究主题/要解决的问题)" },
+    },
+    run: async (a) => {
+      try {
+        const { agentOrchestrationAllowed, startOrchestration, listTemplates, getRunProgress } = await import("./orchestrator-service.js");
+        // V415: 默认关闭。开关由用户在编排画布上切(前端可见), env 是总闸 —— 关闭时这里直接拒绝
+        // 而不是静默跑一条昂贵的 DAG(否则用户会以为"对话没反应", 实际在烧额度)。
+        if (!(await agentOrchestrationAllowed())) {
+          return "（Agent 编排当前是关闭的。用户可在「课题流程编排」页打开「允许 Agent 触发编排」开关；未打开前请用单步工具完成任务。）";
+        }
+        const templateId = String(a.templateId || "").trim();
+        if (!templateId) {
+          const tpls = listTemplates();
+          return `（templateId 必填。可用: ${tpls.map((t) => `${t.id}(${t.name})`).join(", ")}）`;
+        }
+        const input = String(a.input || "").trim();
+        if (!input) return "（input 必填）";
+        const r = await startOrchestration({ templateId, input, source: "agent" });
+        // 前台等结果(有上限): Agent 工具调用需要同步返回, 不能让编排跑完才回 —— 超时则给出 runId 让用户去画布看
+        const deadline = Date.now() + 8 * 60_000;
+        let p = await getRunProgress(r.runId);
+        while (!["done", "failed", "cancelled"].includes(p.status) && Date.now() < deadline) {
+          if (p.status === "waiting_input" || p.status === "paused") {
+            return `【编排 ${r.runId} 已启动, 当前${p.status === "waiting_input" ? "等待补充信息" : "已暂停"}】请到「课题流程编排」页继续。\n已完成 ${p.stepLog.filter((s) => s.status === "done").length}/${p.stepLog.length} 步`;
+          }
+          await new Promise((res) => setTimeout(res, 3000));
+          p = await getRunProgress(r.runId);
+        }
+        if (p.status === "done") {
+          const last = p.stepLog[p.stepLog.length - 1];
+          return `【编排完成】${p.stepLog.filter((s) => s.status === "done").length}/${p.stepLog.length} 步\n${String(p.outputs?.[last?.stepId] ?? "").slice(0, 3000)}`;
+        }
+        if (p.status === "failed") {
+          const bad = p.stepLog.find((s) => s.status === "failed");
+          return `（编排失败: ${bad?.error ?? "未知原因"}; runId=${r.runId}）`;
+        }
+        return `【编排仍在运行】runId=${r.runId}, 已完成 ${p.stepLog.filter((s) => s.status === "done").length}/${p.stepLog.length} 步; 到「课题流程编排」页查看进度`;
+      } catch (e: any) {
+        return `（orch_run 失败: ${String(e?.message || e).slice(0, 200)}）`;
+      }
+    },
+  });
+  tools.push({
+    name: "orch_list", label: "编排模板列表", risk: "safe",
+    description: "列出可用编排模板(id/名称/用途/成本量级), 供 orch_run 选择",
+    params: {},
+    run: async () => {
+      const { listTemplatesWithCost } = await import("./orchestrator-service.js");
+      const tpls = await listTemplatesWithCost();
+      const costLabel: Record<string, string> = { light: "轻量", medium: "中等", heavy: "较重" };
+      return `【可用编排模板 ${tpls.length} 条】\n` + tpls.map((t) => `- ${t.id}: ${t.name}（${costLabel[t.costEstimated] ?? t.costEstimated}）${t.description}`).join("\n");
+    },
+  });
+  tools.push({
     name: "meta_list", label: "MetaSkill 列表", risk: "safe",
     description: "列出可用 MetaSkill 工作流(id/名称/步骤概览)",
     params: {},
@@ -2153,7 +2212,10 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
   } catch { /* 预设不可用 → 全量工具 */ }
   // V400 C8: 暴露矩阵收敛 (codex finalize_tool_router 对齐) — read-only 模式过滤写/执行类工具(评审会话)
   if (exposure === "read-only") {
-    const WRITE_TOOLS = new Set(["file_write", "run_code", "sag_ingest", "apply_patch", "computer_use", "gongwen_draft", "video_note", "pdf_convert", "agent_subagent", "todo_update", "run_command", "runtime_exec", "code_search", "github_repo"]);
+    const WRITE_TOOLS = new Set(["file_write", "run_code", "sag_ingest", "apply_patch", "computer_use", "gongwen_draft", "video_note", "pdf_convert", "agent_subagent", "todo_update", "run_command", "runtime_exec", "code_search", "github_repo",
+      // V415: 触发编排会产生一堆写/执行副作用(它会继续调 run_code / sag_ingest 等),
+      // 只读会话(评审)不该拿到它。漏加的后果是评审会话能间接触发写操作。
+      "orch_run"]);
     return finalTools.filter((t) => !WRITE_TOOLS.has(t.name));
   }
   return finalTools;
@@ -2208,6 +2270,13 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   run_command: "manager",
   // 差距I: 代码搜索只读放行
   code_search: "reader",
+  // V415: 编排触发 —— 一条编排可能串起十几个节点、数十次 LLM 与沙箱执行, 是"写/执行"级别的影响,
+  //   必须 manager; 只读会话(评审)拿 reader 身份时不得触发。
+  //   漏登记的后果是隐性的: TOOL_MIN_ROLE 缺省 "reader"(见 checkToolRole), 而 TOOL_MIN_ROLE
+  //   是**独立于 tool.risk** 的另一道闸 —— 只写 risk:"safe" 挡不住只读会话。
+  orch_run: "manager",
+  // 列模板是只读查询, 维持 reader
+  orch_list: "reader",
 };
 
 /** 工具白名单配置（环境变量 AGENT_TOOL_WHITELIST="tool1,tool2" 覆盖; 空=全部按角色放行） */

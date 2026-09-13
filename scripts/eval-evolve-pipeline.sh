@@ -11,7 +11,8 @@
 # 依赖: 需先在 scripts/ 下构建好 eval-32-metrics.ts（npm run build 或 npx tsx 直接跑）
 
 set -e
-cd /c/Users/HUAWEI/SAG-main
+# 在仓库根跑(不再写死 /c/Users/<某台机器>/SAG-main); 从脚本位置回推仓库根, SAG_ROOT 可覆盖
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG="/tmp/eval-evolve-pipeline.log"
 TS=$(date +%Y%m%d-%H%M%S)
 ATTRIB_ONLY=""

@@ -8,6 +8,19 @@ import { pool } from "../src/db/pool.ts";
 let pass = 0, fail = 0;
 const t = (name, ok, extra = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${name}${extra ? " — " + extra : ""}`); ok ? pass++ : fail++; };
 
+/** 等运行到终态 —— 与前端一致用轮询。固定 sleep 会假失败: 跑 LLM 的步骤耗时不定 */
+async function waitTerminal(runId, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = await getRunProgress(runId);
+  // 注意: 首次读取只作为初值, 不能直接 return —— 否则运行还在 running 就会被当成终态返回,
+  // 表现为"稳定失败"但实际上只是没等(这个坑我自己踩过一次)。
+  while (!["done", "failed", "cancelled"].includes(last.status) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+    last = await getRunProgress(runId);
+  }
+  return last;
+}
+
 // ── 1. 能力注册表 ──
 const caps = await listCapabilities();
 const stats = await capabilityStats();
@@ -95,11 +108,12 @@ const run3 = await startOrchestration({ graph: longGraph, input: "暂停测试",
 await new Promise((r) => setTimeout(r, 250));
 const pr = pauseRun(run3.runId);
 t("暂停接口返回 ok", !!pr.ok, pr.error ?? "");
-await new Promise((r) => setTimeout(r, 400));   // 等 abort 打断 + 落库
+await new Promise((r) => setTimeout(r, 800));   // 等 abort 打断 + 暂停收尾落库
+const paused = await getRunProgress(run3.runId);
+t("暂停状态已落库(不是内存态)", paused.status === "paused", `实际 ${paused.status}/${paused.source}`);
 const rr = await resumeRun(run3.runId);
 t("恢复接口返回 ok", !!rr.ok, rr.error ?? "");
-await new Promise((r) => setTimeout(r, 6000));
-const p3 = await getRunProgress(run3.runId);
+const p3 = await waitTerminal(run3.runId);
 t("暂停再恢复后能跑到终态", ["done", "failed"].includes(p3.status), `实际 ${p3.status}`);
 t("恢复后未重复执行已完成步骤(a 仍 done)", p3.stepLog.find((s) => s.stepId === "a")?.status === "done");
 const cancelDone = cancelRun(run3.runId);
@@ -115,14 +129,7 @@ const chainGraph = {
   edges: [{ source: "up", target: "down" }],
 };
 const run4 = await startOrchestration({ graph: chainGraph, input: "传递测试" });
-const p4 = await (async () => {
-  for (let i = 0; i < 50; i++) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const p = await getRunProgress(run4.runId);
-    if (["done", "failed", "cancelled"].includes(p.status)) return p;
-  }
-  return getRunProgress(run4.runId);
-})();
+const p4 = await waitTerminal(run4.runId);
 console.log(`\n[7] 传递链 status=${p4.status}`);
 const upOut = p4.outputs?.up ?? "";
 const downOut = p4.outputs?.down ?? "";

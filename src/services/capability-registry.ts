@@ -2,17 +2,16 @@
 // src/services/capability-registry.ts — V415: 编排能力注册表(单一真源)
 //
 // 由来: 此前「课题流程编排」画布把节点写死成 5 个 phrase + 4 个模块(QuickModeView 的
-//   makeNodes/MODULE_DEFS), 而 MarxSphere 实际有 48 个 agent 工具、270+ service、740 条路由。
-//   画布上能看到的 < 能用到的 1%。本注册表把可编排的能力收成一张表:
-//     ① agent 工具(buildAgentTools, 48 项) — 有 params schema 与 risk 分级
+//   makeNodes/MODULE_DEFS), 而 MarxSphere 实际有 75 个 agent 工具(48 静态 + 22 view_* + 插件)、
+//   270+ service、740 条路由。画布上能看到的 < 能用到的 1%。本注册表把可编排的能力收成一张表:
+//     ① agent 工具(buildAgentTools, 动态导出, 含 view_* 与插件工具)
 //     ② 工作台能力(实证/统计/审稿/绘图/编辑器/格式评测/引文核验/经典文本/C刊/语料库…)
 //        —— 这些当前只有 HTTP 端点, 这里用声明式 step(run 端点 / tool_call / llm_chat) 接入
-//     ③ 编排模板(builtin-templates.ts) — 画布起点
+//     ③ 编排模板(orchestrator-templates.ts) — 画布起点
 //   前端 /workbench/quick 从 /api/orchestrator/capabilities 拉节点, 不再写死。
 //
-// 设计约束(重要): 本模块**不做顶层 import 任何业务 service**, 一律动态 import。
-//   原因: agent-tool-router 静态 import 本模块(dagNodeToMetaStep), 而它的 run 实现又会
-//   动态 import 回本模块执行工具 —— 静态 import 会形成循环。
+// 关于 import: 本模块从 agent-tool-router 动态导入 buildAgentTools(见 listToolCapabilities),
+//   因为 tool-router 自己也会动态导入一堆业务 service —— 顶层静态导入会把启动期依赖图拉长。
 import type { MetaStepDef, MetaSkillDef } from "./meta-skill-runtime.js";
 
 /** 能力分类(前端按此分组渲染"可选节点"面板) */
@@ -45,6 +44,14 @@ export interface CapabilityDef {
   outputs: string[];
   /** 危险级别: safe 直接执行 / review 需审批 / deny 默认禁止 */
   risk: "safe" | "review" | "deny";
+  /**
+   * V415: 成本量级 —— 画布上给用户预判"这一条编排要花多少"。
+   *   light  纯检索/规则, 几乎不烧 LLM(知识库/文献库/政策检索、代码搜索…)
+   *   medium 单次 LLM 生成或单次工作台任务(写作/摘要/单张图/一次统计)
+   *   heavy  长文生成、多轮、沙箱执行(综述/五阶段正文/回归跑码)
+   * 这是**量级**不是精确预算: 能力内部还会按输入长度放大, 精确成本看运行结束后的账本。
+   */
+  cost: "light" | "medium" | "heavy";
   /** 升到 agent_tool 时用的工具名 */
   tool?: string;
   /** endpoint 型: 相对路径 + 请求体模板 */
@@ -54,7 +61,7 @@ export interface CapabilityDef {
   /** 生成的 MetaSkill 步骤(运行时解释; 模板里可作为起点被改写) */
   step: MetaStepDef;
   /** 参数提示(画布节点的可编辑字段, 供面板表单渲染) */
-  fields?: Array<{ name: string; label: string; type: "string" | "number" | "boolean"; required?: boolean; placeholder?: string }>;
+  fields?: Array<{ name: string; label: string; type: "string" | "number" | "boolean"; required?: boolean; placeholder?: string; default?: string }>;
 }
 
 // ─── agent 工具 → 编排能力(全部 48 个, 从 buildAgentTools 动态导出) ───
@@ -76,6 +83,27 @@ const TOOL_CATEGORY: Record<string, CapabilityCategory> = {
   b5_ensemble: "推理", meta_invoke: "通用", meta_list: "通用",
 };
 
+/**
+ * V415: 工具名 → 成本量级。未列出的按 medium(大多数工具底层都会打一次 LLM 或端点)。
+ * 判据是"这一步会不会产生 LLM/沙箱开销", 不是耗时。
+ */
+const TOOL_COST: Record<string, "light" | "medium" | "heavy"> = {
+  // 纯检索/读取: 不打 LLM(或只走 embedding), 便宜
+  sag_search: "light", sag_retrieve: "light", sag_get_event: "light", policy_search: "light",
+  wiki_query: "light", wiki_graph: "light", code_search: "light", file_read: "light",
+  attachment_read: "light", retrieve_tool_result: "light", meta_list: "light",
+  view_policy_tree: "light", view_truth_list: "light", view_truth_narrative: "light",
+  view_sciverse_search: "light", view_openalex_search: "light", view_oa_lookup: "light",
+  view_literature_search: "light", view_corpus_recall: "light", view_vault_tree: "light",
+  view_memory_context: "light", view_skill_search: "light", view_graph_query: "light",
+  view_documents_stats: "light", view_alerts: "light", view_traces: "light",
+  view_ingest_status: "light", view_eval_report: "light", provenance_query: "light",
+  // 长文/多轮/沙箱: 重
+  llm_write: "heavy", sag_reason: "heavy", run_code: "heavy", runtime_exec: "heavy",
+  empirical_analysis: "heavy", forensics_scan: "heavy", agent_subagent: "heavy",
+  meta_invoke: "heavy", b5_ensemble: "heavy", doc_edit: "heavy",
+};
+
 /** 工具名 → 产物落点(供前端产物面板跳转; 只列有明确去向的) */
 const TOOL_ARTIFACT: Record<string, { where: string; label: string }> = {
   sag_search: { where: "documents", label: "文献库" },
@@ -93,7 +121,7 @@ const TOOL_ARTIFACT: Record<string, { where: string; label: string }> = {
 let cachedTools: CapabilityDef[] | null = null;
 
 /**
- * 从 agent 工具注册表导出能力(48 项)。
+ * 从 agent 工具注册表导出能力(实测 75 项: 48 静态 + 22 view_* + pdf + 插件)。
  * 工具定义里有 params(JSON Schema 简化版) 与 risk, 直接映射成画布节点与步骤参数。
  * @param refresh 绕过缓存(插件热加载后需要)
  */
@@ -116,6 +144,7 @@ export async function listToolCapabilities(refresh = false): Promise<CapabilityD
       inputs: Object.entries(t.params).filter(([, v]) => v.required).map(([k]) => k),
       outputs: ["text"],
       risk: t.risk,
+      cost: TOOL_COST[t.name] ?? "medium",
       tool: t.name,
       artifact: TOOL_ARTIFACT[t.name],
       step: { id: t.name, kind: "tool_call", label: t.label, with: { tool: t.name, args: argsTemplate } },
@@ -129,8 +158,9 @@ export async function listToolCapabilities(refresh = false): Promise<CapabilityD
 }
 
 // ─── 工作台能力(HTTP 端点型) ───
-// 说明: 这些能力各自已有独立前端面板与 service, 此处只登记"被编排时怎么调"。
-// endpoint 型的执行器在 orchestrator-service 里统一处理(带鉴权转发 + 产物抽取)。
+// 说明: 这些能力各自已有独立前端面板与 service, 此处登记"被编排时怎么调"。
+//   endpoint 型由 meta-skill-runtime 的 callEndpoint 统一执行(带鉴权转发 + 超时 + 错误细节抽取)。
+//   各能力的路径/请求体按 server.ts 里的实际 zod schema 写 —— 字段名错了会直接 400。
 
 function cap(c: CapabilityDef): CapabilityDef { return c; }
 
@@ -140,7 +170,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   //   stat/reliability/regression 需要数据文件: 由上游节点产出 fileId/dataVersionId, 或用画布
   //   节点的 params 手填 —— 这些能力本身不解决"数据从哪来", 那是数据准备环节的事。
   cap({
-    id: "emp:questionnaire-recognize", label: "问卷识别", category: "实证", kind: "endpoint",
+    id: "emp:questionnaire-recognize", label: "问卷识别", category: "实证", kind: "endpoint", cost: "medium",
     description: "题目文本 → 识别题目结构(单选/多选/量表), 落问卷库",
     inputs: ["text"], outputs: ["questionnaire"], risk: "safe",
     endpoint: { path: "/api/empirical/questionnaires/recognize", method: "POST", body: { text: "{{inputs}}" } },
@@ -149,7 +179,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     fields: [{ name: "text", label: "题目文本", type: "string", required: true, placeholder: "粘贴问卷题目" }],
   }),
   cap({
-    id: "emp:reliability", label: "信效度检验", category: "实证", kind: "endpoint",
+    id: "emp:reliability", label: "信效度检验", category: "实证", kind: "endpoint", cost: "heavy",
     description: "Cronbach α / KMO — 需要 dataVersionId 或内联数据({columnOrder, rows})",
     inputs: ["dataVersionId"], outputs: ["result"], risk: "safe",
     endpoint: { path: "/api/empirical/reliability", method: "POST", body: { dataVersionId: "{{dataVersionId}}" } },
@@ -158,7 +188,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     fields: [{ name: "dataVersionId", label: "数据版本 id", type: "string", required: true, placeholder: "实证台里的数据版本 UUID" }],
   }),
   cap({
-    id: "emp:regression", label: "回归分析", category: "实证", kind: "endpoint",
+    id: "emp:regression", label: "回归分析", category: "实证", kind: "endpoint", cost: "heavy",
     description: "跑回归代码(OLS/Logit/面板) — 需 projectId + Python 代码; 结果写证据账本",
     inputs: ["code"], outputs: ["result"], risk: "safe",
     endpoint: { path: "/api/empirical/regression/run", method: "POST", body: { code: "{{code}}" } },
@@ -167,7 +197,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     fields: [{ name: "projectId", label: "课题 id", type: "string", placeholder: "留空则用当前编排的课题" }],
   }),
   cap({
-    id: "emp:imputation", label: "缺失值插补", category: "实证", kind: "endpoint",
+    id: "emp:imputation", label: "缺失值插补", category: "实证", kind: "endpoint", cost: "heavy",
     description: "三分类插补(完全随机/随机/非随机) — 论文复现口径",
     inputs: ["dataVersionId"], outputs: ["result"], risk: "safe",
     endpoint: { path: "/api/empirical/imputation/start", method: "POST", body: { dataVersionId: "{{dataVersionId}}" } },
@@ -177,20 +207,20 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 统计(19 法) ──
   cap({
-    id: "stat:run", label: "统计方法", category: "统计", kind: "endpoint",
+    id: "stat:run", label: "统计方法", category: "统计", kind: "endpoint", cost: "heavy",
     description: "19 种统计方法(描述/交叉表/相关/方差/卡方/聚类/因子/t 检验…) 单次执行",
     inputs: ["fileId"], outputs: ["result", "chart"], risk: "safe",
     endpoint: { path: "/api/statistics-jobs", method: "POST", body: { fileId: "{{fileId}}", tool: "{{tool}}", params: "{{params}}" } },
     artifact: { where: "empirical-research", label: "实证研究·统计" },
     step: { id: "statistics", kind: "tool_call", label: "统计方法", with: { endpoint: "/api/statistics-jobs", body: { fileId: "{{fileId}}", tool: "{{tool}}" } } },
     fields: [
-      { name: "tool", label: "方法", type: "string", required: true, placeholder: "如 crosstab / ologit / describe / ols" },
+      { name: "tool", label: "方法", type: "string", required: true, default: "describe", placeholder: "如 crosstab / ologit / describe / ols" },
       { name: "fileId", label: "数据 fileId", type: "string", placeholder: "实证台上传后的 fileId" },
     ],
   }),
   // ── 绘图 ──
   cap({
-    id: "viz:render", label: "科研绘图", category: "绘图", kind: "endpoint",
+    id: "viz:render", label: "科研绘图", category: "绘图", kind: "endpoint", cost: "heavy",
     description: "数据 + 需求描述 → 出版级图表(Python 沙箱直出 png/svg)",
     inputs: ["message"], outputs: ["chart"], risk: "safe",
     endpoint: { path: "/api/viz/jobs", method: "POST", body: { sessionId: "{{sessionId}}", message: "{{message}}", fileId: "{{fileId}}" } },
@@ -203,7 +233,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 审稿 ──
   cap({
-    id: "review:paper", label: "论文质量评审", category: "审稿", kind: "endpoint",
+    id: "review:paper", label: "论文质量评审", category: "审稿", kind: "endpoint", cost: "heavy",
     description: "按期刊规范多维评分 + 原文批注 + 复核层(异步 job, 返回 jobId)",
     inputs: ["text"], outputs: ["jobId"], risk: "safe",
     endpoint: { path: "/api/review/jobs", method: "POST", body: { text: "{{inputs}}", title: "{{title}}" } },
@@ -213,7 +243,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 格式 ──
   cap({
-    id: "format:eval", label: "格式智能评测", category: "格式", kind: "endpoint",
+    id: "format:eval", label: "格式智能评测", category: "格式", kind: "endpoint", cost: "medium",
     description: "学位论文/期刊/职称格式 — 规则引擎 + LLM 双层审校(文本至少 50 字)",
     inputs: ["text"], outputs: ["report"], risk: "safe",
     endpoint: { path: "/api/format-eval/check", method: "POST", body: { text: "{{inputs}}", llm: true } },
@@ -222,7 +252,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 引文 ──
   cap({
-    id: "citation:verify", label: "引文核验", category: "引文", kind: "endpoint",
+    id: "citation:verify", label: "引文核验", category: "引文", kind: "endpoint", cost: "medium",
     description: "三维核验(存在性/一致性/相关性) — 防幻觉引文; 需给出 claim(5-3000 字)",
     inputs: ["claim"], outputs: ["report"], risk: "safe",
     endpoint: { path: "/api/citations/verify", method: "POST", body: { claim: "{{claim}}" } },
@@ -231,18 +261,55 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     fields: [{ name: "claim", label: "待核论断", type: "string", required: true, placeholder: "一条带引用的论断" }],
   }),
   // ── 经典文本(5 场景) ──
-  ...[
-    ["classical/exegesis", "晦涩阐释", "难句释义 + 语境还原"],
-    ["classical/intertextual", "互文对照", "多文本互文关系与影响链路"],
-    ["classical/collation", "版本校勘", "异文比对与版本谱系"],
-    ["classical/argument-structure", "论证拆解", "还原论证结构(前提/推理/结论)"],
-  ].map(([path, label, desc]) => cap({
-    id: `classical:${path.split("/")[1]}`, label: `经典·${label}`, category: "经典" as CapabilityCategory, kind: "endpoint" as CapabilityKind,
-    description: desc, inputs: ["text"], outputs: ["report"], risk: "safe" as const,
-    endpoint: { path: `/api/${path}`, method: "POST" as const, body: { text: "{{inputs}}" } },
+  // 各场景的入参不同(不是统一的 text): 概念/篇目/多篇文档。按 server.ts 里的实际校验写,
+  // 否则编排一跑就 400(实测: 早先把 argument-structure 当 {text} 传, 直接 "缺少 documentId")。
+  cap({
+    id: "classical:concept-trace", label: "经典·概念溯源", category: "经典", kind: "endpoint", cost: "medium",
+    description: "概念在经典文本中的语义演变与出处",
+    inputs: ["concept"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/classical/concept-trace", method: "POST", body: { concept: "{{concept}}" } },
     artifact: { where: "scenarios", label: "经典文本研究" },
-    step: { id: path.split("/")[1].replace(/-/g, "_"), kind: "tool_call" as const, label: `经典·${label}`, with: { endpoint: `/api/${path}`, body: { text: "{{inputs}}" } } },
-  })),
+    step: { id: "concept_trace", kind: "tool_call", label: "经典·概念溯源", with: { endpoint: "/api/classical/concept-trace", body: { concept: "{{concept}}" } } },
+    fields: [{ name: "concept", label: "概念", type: "string", required: true, placeholder: "如 生产关系" }],
+  }),
+  cap({
+    id: "classical:exegesis", label: "经典·晦涩阐释", category: "经典", kind: "endpoint", cost: "medium",
+    description: "难句释义 + 语境还原",
+    inputs: ["text"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/classical/exegesis", method: "POST", body: { text: "{{inputs}}" } },
+    artifact: { where: "scenarios", label: "经典文本研究" },
+    step: { id: "classical_exegesis", kind: "tool_call", label: "经典·晦涩阐释", with: { endpoint: "/api/classical/exegesis", body: { text: "{{inputs}}" } } },
+  }),
+  cap({
+    id: "classical:argument-structure", label: "经典·论证拆解", category: "经典", kind: "endpoint", cost: "heavy",
+    description: "还原论证结构(前提/推理/结论) — 需已入库文档的 documentId",
+    inputs: ["documentId"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/classical/argument-structure", method: "POST", body: { documentId: "{{documentId}}" } },
+    artifact: { where: "scenarios", label: "经典文本研究" },
+    step: { id: "argument_structure", kind: "tool_call", label: "经典·论证拆解", with: { endpoint: "/api/classical/argument-structure", body: { documentId: "{{documentId}}" } } },
+    fields: [{ name: "documentId", label: "文档 id", type: "string", required: true, placeholder: "文献库里已入库的文档" }],
+  }),
+  cap({
+    id: "classical:intertextual", label: "经典·互文对照", category: "经典", kind: "endpoint", cost: "heavy",
+    description: "多文本互文关系与影响链路 — 需主题 + 至少 2 个 documentId",
+    inputs: ["topic"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/classical/intertextual", method: "POST", body: { topic: "{{topic}}", documentIds: "{{documentIds}}" } },
+    artifact: { where: "scenarios", label: "经典文本研究" },
+    step: { id: "intertextual", kind: "tool_call", label: "经典·互文对照", with: { endpoint: "/api/classical/intertextual", body: { topic: "{{topic}}" } } },
+    fields: [
+      { name: "topic", label: "对照主题", type: "string", required: true },
+      { name: "documentIds", label: "文档 id 列表(≥2)", type: "string", required: true, placeholder: "逗号分隔" },
+    ],
+  }),
+  cap({
+    id: "classical:collation", label: "经典·版本校勘", category: "经典", kind: "endpoint", cost: "heavy",
+    description: "异文比对与版本谱系 — 按 documentGroup 分组",
+    inputs: ["documentGroup"], outputs: ["report"], risk: "safe",
+    endpoint: { path: "/api/classical/collation", method: "POST", body: { documentGroup: "{{documentGroup}}" } },
+    artifact: { where: "scenarios", label: "经典文本研究" },
+    step: { id: "collation", kind: "tool_call", label: "经典·版本校勘", with: { endpoint: "/api/classical/collation", body: { documentGroup: "{{documentGroup}}" } } },
+    fields: [{ name: "documentGroup", label: "版本组", type: "string", required: true, placeholder: "同一文本的多个版本归组名" }],
+  }),
   // ── 学术研究(5 场景) ──
   ...[
     ["academic/school", "学派脉络", "学派谱系与师承共现"],
@@ -251,7 +318,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     ["academic/scholar", "学者谱系", "学者关系网络与产出脉络"],
     ["academic/frontier", "学科前沿", "学科热点与前沿方向"],
   ].map(([path, label, desc]) => cap({
-    id: `academic:${path.split("/")[1]}`, label: `学术·${label}`, category: "推理" as CapabilityCategory, kind: "endpoint" as CapabilityKind,
+    id: `academic:${path.split("/")[1]}`, label: `学术·${label}`, category: "推理" as CapabilityCategory, kind: "endpoint" as CapabilityKind, cost: "medium" as const,
     description: desc, inputs: ["text"], outputs: ["report"], risk: "safe" as const,
     endpoint: { path: `/api/${path}`, method: "POST" as const, body: { text: "{{inputs}}" } },
     artifact: { where: "scenarios", label: "学术研究" },
@@ -259,7 +326,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   })),
   // ── 政经C刊 ──
   cap({
-    id: "cjournal:topic", label: "政经C刊选题", category: "写作", kind: "endpoint",
+    id: "cjournal:topic", label: "政经C刊选题", category: "写作", kind: "endpoint", cost: "medium",
     description: "四步法选题(热点×理论×方法×实践)",
     inputs: ["text"], outputs: ["report"], risk: "safe",
     endpoint: { path: "/api/cjournal/four-step", method: "POST", body: { hotTopic: "{{inputs}}" } },
@@ -268,7 +335,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 语料库 ──
   cap({
-    id: "corpus:recall", label: "写作语料召回", category: "写作", kind: "endpoint",
+    id: "corpus:recall", label: "写作语料召回", category: "写作", kind: "endpoint", cost: "light",
     description: "按写作模块召回高级句式/论证框架/核心概念/段落范例",
     inputs: ["text"], outputs: ["text"], risk: "safe",
     endpoint: { path: "/api/writing-corpus/recall", method: "POST", body: { q: "{{inputs}}", limit: 4 } },
@@ -281,7 +348,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   //   education_service(它内部才真正路由到 120 条教育路由), 这里不再重复登记端点型入口。
   // ── 编排入口自身(可嵌套) ──
   cap({
-    id: "orch:sub-dag", label: "子编排(DAG 套 DAG)", category: "通用", kind: "endpoint",
+    id: "orch:sub-dag", label: "子编排(DAG 套 DAG)", category: "通用", kind: "endpoint", cost: "heavy",
     description: "把另一条编排作为本节点执行 — 复杂课题拆成可复用的子流程",
     inputs: ["text"], outputs: ["text"], risk: "safe",
     endpoint: { path: "/api/orchestrator/run", method: "POST", body: { templateId: "{{templateId}}", input: "{{inputs}}", wait: true } },
@@ -290,7 +357,7 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 澄清节点(人机协同) ──
   cap({
-    id: "io:clarify", label: "澄清追问", category: "通用", kind: "user_input",
+    id: "io:clarify", label: "澄清追问", category: "通用", kind: "user_input", cost: "light",
     description: "暂停流水线收集必要信息(主题/对象/方法/边界) — 缺什么问什么",
     inputs: [], outputs: ["text"], risk: "safe",
     artifact: { where: "dag-workbench", label: "编排画布" },
@@ -310,25 +377,27 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
   }),
   // ── 质量门(通用) ──
   cap({
-    id: "io:quality-gate", label: "质量门", category: "通用", kind: "llm_gate",
+    id: "io:quality-gate", label: "质量门", category: "通用", kind: "llm_gate", cost: "medium",
     description: "按标准判定上游产出是否合格; 不合格触发 on_failure 备胎步骤",
     inputs: ["text"], outputs: ["pass"], risk: "safe",
     step: {
       id: "gate", kind: "llm_gate", label: "质量门",
       with: { criteria: "1) 有明确来源/依据标注(非空泛陈述); 2) 直接回答任务目标而非泛泛而谈; 3) 结构完整可交付。", text: "{{inputs}}" },
     },
-    fields: [{ name: "criteria", label: "判定标准", type: "string", placeholder: "留空用默认三条" }],
+    fields: [{ name: "criteria", label: "判定标准", type: "string", default: "1) 有明确来源/依据标注(非空泛陈述); 2) 直接回答任务目标而非泛泛而谈; 3) 结构完整可交付。" }],
   }),
   // ── LLM 生成(通用) ──
   cap({
-    id: "io:llm-write", label: "LLM 生成", category: "通用", kind: "llm_chat",
+    id: "io:llm-write", label: "LLM 生成", category: "通用", kind: "llm_chat", cost: "heavy",
     description: "按提示词单次生成 — 通用兜底节点(自定义 system/task)",
     inputs: ["text"], outputs: ["text"], risk: "safe",
     artifact: { where: "editor", label: "学术文本工作台" },
     step: { id: "llm", kind: "llm_chat", label: "LLM 生成", with: { system: "你是马克思主义理论研究领域的学术写作专家。", task: "{{inputs}}", maxTokens: 3000 } },
+    // 默认值给"能直接跑"的提示词: 空提示词等于把节点做空, 用户必须先想清楚写什么才能跑。
+    // 有上游依赖时 {{inputs}} 会被换成上游产出(见 MetaRunContext.stepInput)。
     fields: [
-      { name: "system", label: "系统提示", type: "string", placeholder: "角色与要求" },
-      { name: "task", label: "任务提示", type: "string", required: true, placeholder: "含 {{inputs}} 引用上游产出" },
+      { name: "system", label: "系统提示", type: "string", default: "你是马克思主义理论研究领域的学术写作专家。", placeholder: "角色与要求" },
+      { name: "task", label: "任务提示", type: "string", required: true, default: "{{inputs}}", placeholder: "含 {{inputs}} 引用上游产出" },
     ],
   }),
 ];
@@ -342,6 +411,29 @@ export async function listCapabilities(opts: { refresh?: boolean } = {}): Promis
     const d = order.indexOf(a.category) - order.indexOf(b.category);
     return d !== 0 ? d : a.label.localeCompare(b.label, "zh");
   });
+}
+
+/**
+ * V415: 一个编排图的总成本量级 —— 由各节点能力的 cost 推出。
+ * 判据是"有没有重节点": 有 heavy ≥2 个就算 heavy(长文/沙箱, 量级由它主导);
+ * 有 heavy 但只有 1 个、或 ≥3 个 medium 算 medium; 其余 light。
+ * 前端在模板卡与画布顶部显示它, 让用户点"开始执行"前知道大概要花多少。
+ */
+export function estimateGraphCost(
+  graph: { nodes: Array<{ capabilityId?: string }> },
+  caps: CapabilityDef[],
+): "light" | "medium" | "heavy" {
+  let heavy = 0;
+  let medium = 0;
+  for (const n of graph.nodes) {
+    const c = n.capabilityId ? findCapability(n.capabilityId, caps) : undefined;
+    const cost = c?.cost ?? "medium"; // 未登记的自定义节点按 medium(它会退化成一次 LLM 生成)
+    if (cost === "heavy") heavy++;
+    else if (cost === "medium") medium++;
+  }
+  if (heavy >= 2) return "heavy";
+  if (heavy === 1 || medium >= 3) return "medium";
+  return "light";
 }
 
 export function findCapability(id: string, caps: CapabilityDef[]): CapabilityDef | undefined {

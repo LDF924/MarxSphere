@@ -6,15 +6,14 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { resolvePython } from "./py-path.js";
 
 const execFileAsync = promisify(execFile);
 
 const TOOLS_DIR = path.resolve(process.cwd(), "vendor", "integrity-auditor", "forensics_tools");
 
 function pythonBin(): string {
-  const venvPy = path.resolve(process.cwd(), ".venv-fmtcheck", "Scripts", "python.exe");
-  if (existsSync(venvPy)) return venvPy;
-  return process.platform === "win32" ? "python" : "python3";
+  return resolvePython();
 }
 
 async function runTool(script: string, args: string[], timeoutMs = 180_000): Promise<{ ok: boolean; stdout?: string; error?: string }> {
