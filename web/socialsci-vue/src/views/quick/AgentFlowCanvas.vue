@@ -55,7 +55,7 @@ const emit = defineEmits<{
   (e: "node-context-menu", payload: { event: MouseEvent; position: { x: number; y: number }; node: BizNode }): void;
   /** V415: 节点卡片右上角的 ••• 与"待执行"右边的 → (与右键菜单/详情面板同一入口) */
   (e: "node-menu", payload: { event: MouseEvent; position: { x: number; y: number }; node: BizNode }): void;
-  /** V415: 选中小红叉点了 —— 交给上层真正删节点(节点数组的主人在上层) */
+  /** V415: 卡片上的 ✕ 点了 —— 交给上层真正删节点(节点数组的主人在上层) */
   (e: "node-delete", payload: { id: string }): void;
   (e: "nodes-moved", payload: { id: string; position: { x: number; y: number } }): void;
   /** V415: 把能力面板拖进来的节点投放(带画布坐标) */
@@ -187,7 +187,6 @@ provide(ORCH_NODE_ACTIONS, nodeActions);
 function onNodeClick(event: { node: Node }) {
   const biz = (event.node.data ?? {}) as BizNode;
   selectedEdgeKey.value = "";
-  selectedNodeId.value = biz.id;
   emit("node-selected", biz);
 }
 
@@ -347,7 +346,6 @@ function onDragOver(ev: DragEvent) {
 // ── 选中边 / 选中节点(用来自动画布内的删除入口) ──
 // vue-flow 的 selected 状态在它自己的 flowEdges 里, 但选中"得到确认动作"这件事在本组件内联最直接:
 // 选中一条边 → 边上出现小红叉; 选中节点 → 节点上出现小红叉。用户不用记 Backspace。
-const selectedNodeId = ref<string>("");
 const selectedEdgeKey = ref<string>("");
 
 /** 选中边: vue-flow 会同时给出 edge(含 source/target) */
@@ -356,7 +354,6 @@ function onEdgeClick(ev: { edge?: { source?: string; target?: string } }) {
   const s = String(ev.edge?.source ?? "").replace(/^agent-/, "");
   const t = String(ev.edge?.target ?? "").replace(/^agent-/, "");
   selectedEdgeKey.value = s && t ? `${s}->${t}` : "";
-  selectedNodeId.value = "";
 }
 function deleteEdgeAt(sourceId: string, targetId: string) {
   if (!props.editable || props.locked) return;
@@ -366,11 +363,6 @@ function deleteEdgeAt(sourceId: string, targetId: string) {
   emit("graph-changed", {
     edges: props.edges.filter((e) => e !== hit).map((e, i) => ({ id: `e${i}`, source: e.source, target: e.target })),
   });
-}
-function deleteNodeById(id: string) {
-  if (!props.editable || props.locked) return;
-  selectedNodeId.value = "";
-  emit("node-delete", { id });
 }
 function onPaneClick() {
   // 点空白处取消选中(与"点节点打开详情"不冲突: 那个事件先发, 这里只清选中态)
@@ -401,17 +393,6 @@ const edgeMarks = computed(() => {
   }
   return out;
 });
-/** 选中节点的小红叉位置(卡片右上角) */
-const nodeMarks = computed(() => {
-  const host = canvasEl.value;
-  if (!host || !selectedNodeId.value) return [];
-  const el = host.querySelector(`.vue-flow__node[data-id="agent-${selectedNodeId.value}"]`);
-  if (!el) return [];
-  const r = el.getBoundingClientRect();
-  const host_rect = host.getBoundingClientRect();
-  return [{ id: selectedNodeId.value, x: r.right - host_rect.left - 10, y: r.top - host_rect.top + 10 }];
-});
-
 watch(
   () => [props.nodes, props.edges] as const,
   () => buildLayout(),
@@ -467,7 +448,8 @@ const nodeColor = (n: Node) => {
       <span class="flow-zone-chip">标准工作流 · 主流程</span>
     </div>
 
-    <!-- V415: 选中即出删除按钮 —— 用户不该被迫记 Backspace -->
+    <!-- V415: 只剩"边的删除钮" —— 节点卡片自带 ✕, 再挂一个圆形按钮是重复的(用户指出)。
+         边没有别的可见入口(右键/键盘都不直观), 所以这里保留一个。 -->
     <button
       v-for="m in edgeMarks"
       :key="'x-' + m.key"
@@ -475,14 +457,6 @@ const nodeColor = (n: Node) => {
       :style="{ left: m.x + 'px', top: m.y + 'px' }"
       title="删除这条连线"
       @click.stop="deleteEdgeAt(m.source, m.target)"
-    >×</button>
-    <button
-      v-for="m in nodeMarks"
-      :key="'xn-' + m.id"
-      class="canvas-kill is-node"
-      :style="{ left: m.x + 'px', top: m.y + 'px' }"
-      title="删除这个节点"
-      @click.stop="deleteNodeById(m.id)"
     >×</button>
   </div>
 </template>

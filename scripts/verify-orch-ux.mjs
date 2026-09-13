@@ -175,7 +175,8 @@ await open();
   await page.waitForTimeout(700);
   t("点删除后画布节点数 -1", (await page.locator(".vue-flow__node").count()) === nBefore - 1, `${nBefore} → ${await page.locator(".vue-flow__node").count()}`);
 
-  // 4d. 选中连线后出现小红叉, 点了能删
+  // 4d. 选中连线后出现删除按钮, 点了能删
+  // 注意: 只有**边**用这个浮动按钮 —— 节点卡片自带 ✕, 再挂一个圆形钮是重复的(用户指出过)。
   await open();
   const p = await page.evaluate(() => {
     const el = document.querySelector(".vue-flow__edge path");
@@ -186,6 +187,8 @@ await open();
   await clickAt(p.x, p.y);
   const k = await page.locator(".canvas-kill.is-edge").count();
   t("点中连线后出现删除按钮", k > 0, `${k} 个`);
+  t("选中的节点上不再出现重复的圆形删除钮", (await page.locator(".canvas-kill.is-node").count()) === 0,
+    `${await page.locator(".canvas-kill.is-node").count()} 个`);
   const eBefore = await page.locator(".vue-flow__edge").count();
   if (k) {
     await page.locator(".canvas-kill.is-edge").first().click({ force: true });
