@@ -16,6 +16,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import AgentFlowCanvas from "./AgentFlowCanvas.vue";
 import type { BizNode } from "./AgentFlowCanvas.vue";
+import { useDraggablePanel } from "./useDraggablePanel";
 import { toast } from "@/shared/ui";
 import {
   fetchCapabilities, fetchTemplates, startRun, fetchProgress, controlRun, fetchRuns,
@@ -82,6 +83,37 @@ const filteredCaps = computed(() => {
 const openTemplates = ref(false);
 const openRuns = ref(false);
 const openGraphs = ref(false);
+/** V415: 自由创作节点弹层(标题 + 提示词) */
+const openCreate = ref(false);
+const createForm = ref({ title: "", task: "", system: "", maxTokens: "3000" });
+function openCreateNode() {
+  createForm.value = { title: "", task: "", system: "", maxTokens: "3000" };
+  openCreate.value = true;
+}
+function addCustomNode() {
+  const f = createForm.value;
+  const title = f.title.trim();
+  const task = f.task.trim();
+  if (!title) { toast("给节点起个名字", "error"); return; }
+  if (!task) { toast("写清楚这一步要做什么(提示词)", "error"); return; }
+  const id = nextNodeId("custom");
+  nodes.value = [...nodes.value, {
+    id,
+    title,
+    module: "创作",
+    index: String(nodes.value.length + 1).padStart(2, "0"),
+    state: "draft",
+    stateLabel: "待执行",
+    input: "上游产出",
+    output: "text",
+    // 刻意**不设** capabilityId: 后端对没有能力绑定的节点走 llm_chat 兜底,
+    // 提示词就是它的全部语义(见 capability-registry.dagNodeToMetaStep)。
+    params: cleanParams({ task, system: f.system.trim() || undefined, maxTokens: f.maxTokens }) as Record<string, unknown>,
+    canvasPosition: { x: 40 + (nodes.value.length % 5) * 240, y: 50 + Math.floor(nodes.value.length / 5) * 235 },
+  }];
+  openCreate.value = false;
+  toast(`已添加「${title}」`, "success");
+}
 const runs = ref<OrchRunRecord[]>([]);
 const myGraphs = ref<Awaited<ReturnType<typeof listGraphs>>>([]);
 
@@ -238,7 +270,23 @@ function saveNodeParams() {
   if (!n) return;
   nodes.value = nodes.value.map((x) => (x.id === n.id ? { ...x, params: { ...nodeForm.value } } : x));
   selectedNode.value = { ...n, params: { ...nodeForm.value } };
-  toast("节点参数已保存", "success");
+  // V415: 参数只改内存 = 刷新就丢。用户点"保存"的预期是"存下来了", 所以这里顺手落库 ——
+  // 只在已经有图 id 时写(没存过的图没有 id, 那时提示用户去"我的编排"保存一次)。
+  void persistParamsNow();
+}
+/** 把当前画布(含刚改的参数)落库; 失败只提示不阻断编辑 */
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+async function persistParamsNow() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(async () => {
+    if (!graphId.value) { toast("节点参数已保存(草稿在内存里)。要持久化请到「我的编排」保存当前画布", "success"); return; }
+    try {
+      await saveGraph(graphId.value, { ...graphPayload(), id: graphId.value, name: graphName.value });
+      toast("节点参数已保存并落库", "success");
+    } catch (e) {
+      toast(`参数已改但落库失败: ${(e as Error).message}`, "error");
+    }
+  }, 400);
 }
 
 // ── 右键菜单 ──
@@ -252,6 +300,13 @@ function onNodeContextMenu(p: { event: MouseEvent; position: { x: number; y: num
   if (locked.value) return;
   ctxMenu.value = { x: p.position.x, y: p.position.y, nodeId: p.node.id, nodeTitle: p.node.title };
 }
+/** V415: 卡片右上角 ••• —— 与右键同一份菜单(右键那条路在触屏/触控板上不好用) */
+function onNodeMenu(p: { event: MouseEvent; position: { x: number; y: number }; node: BizNode }) {
+  if (locked.value) return;
+  ctxMenu.value = { x: p.position.x, y: p.position.y, nodeId: p.node.id, nodeTitle: p.node.title };
+}
+/** V415: 选中小红叉删节点(画布上的直观入口, 不用记右键) */
+function onNodeDelete(p: { id: string }) { removeNode(p.id); }
 function closeCtxMenu() { ctxMenu.value = null; }
 
 // ── 运行 ──
@@ -413,6 +468,31 @@ function resetCanvas() {
   nodes.value = nodes.value.map((n) => ({ ...n, state: "draft", stateLabel: "待执行", progress: undefined, artifactCount: undefined, outputPreview: undefined, executionDetail: undefined }));
 }
 
+// ── 左右拉伸: 能力面板宽度(记忆到 localStorage) ──
+const PALETTE_MIN = 180;
+const PALETTE_MAX = 560;
+const paletteWidth = ref(Number(localStorage.getItem("orch_palette_w")) || 246);
+const splitting = ref(false);
+function startSplit(ev: PointerEvent) {
+  if (ev.button !== 0) return;
+  splitting.value = true;
+  const startX = ev.clientX;
+  const startW = paletteWidth.value;
+  const move = (e: PointerEvent) => {
+    // 面板在左侧: 向右拖 = 变宽。夹在 [180, 560] 防止拖成 0 宽或吃掉整个画布。
+    paletteWidth.value = Math.min(PALETTE_MAX, Math.max(PALETTE_MIN, startW + (e.clientX - startX)));
+  };
+  const up = () => {
+    splitting.value = false;
+    localStorage.setItem("orch_palette_w", String(paletteWidth.value));
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  ev.preventDefault();
+}
+
 // ── 模板/图/记录 ──
 async function loadRuns() { runs.value = await fetchRuns(30); }
 async function loadMyGraphs() { myGraphs.value = await listGraphs(); }
@@ -489,6 +569,31 @@ onUnmounted(stopPoll);
 const runMeta = computed(() => RUN_STATUS_META[runState.value] ?? { label: runState.value, cls: "" });
 const completedCount = computed(() => nodes.value.filter((n) => n.state === "completed").length);
 const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
+/**
+ * V415: 节点大卡片可拖动 —— 原来钉在画布右上角, 挡着节点也挪不开。
+ *
+ * 坐标系: 面板的 left/top 相对**画布容器**(.workspace-stage, position:relative),
+ * 所以默认位置与拖动边界都按容器算, 不能按视口 —— 踩过: 按视口算时面板在窄窗口里
+ * 直接落到容器右边界之外(实测 1600 宽时跑到 x=1793, 屏幕外), 鼠标够不到, 看着像"拖不动"。
+ */
+const nodePanel = useDraggablePanel(
+  "orch_node_panel_pos",
+  () => {
+    const host = document.querySelector(".workspace-stage") as HTMLElement | null;
+    const w = host?.clientWidth ?? 900;
+    return { x: Math.max(8, w - 356), y: 42 };
+  },
+  () => {
+    const host = document.querySelector(".workspace-stage") as HTMLElement | null;
+    return { w: host?.clientWidth ?? window.innerWidth, h: host?.clientHeight ?? window.innerHeight };
+  },
+);
+/** V415: 运行记录展开后的步骤状态文案(stepLog 用的是步骤状态机, 与运行状态不同名) */
+const openRunId = ref("");
+const STEP_LABEL: Record<string, string> = {
+  done: "完成", running: "执行中", failed: "失败", pending: "待执行", waiting_input: "等待输入",
+};
+const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 </script>
 
 <template>
@@ -615,12 +720,16 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
       </aside>
 
       <!-- 中: 能力面板(拖到画布即建节点) -->
-      <aside v-if="!paletteCollapsed" class="palette-panel">
+      <aside v-if="!paletteCollapsed" class="palette-panel" :style="{ width: paletteWidth + 'px' }">
         <header class="palette-head">
           <strong>能力节点</strong>
           <input v-model="capQuery" class="palette-search" placeholder="搜索能力…" />
           <button class="palette-toggle" title="收起" @click="paletteCollapsed = true">«</button>
         </header>
+        <!-- V415: 自由创作节点 —— 平台里没有现成能力、但用户就是想加一步"按我的提示词做点事"时用。
+             后端把没有 capabilityId 的节点当 llm_chat 执行(见 capability-registry 的 dagNodeToMetaStep),
+             所以这里不需要新端点, 只需要一个能填标题+提示词的入口。 -->
+        <button v-if="!locked" class="palette-create" @click="openCreateNode">＋ 创作能力节点</button>
         <div class="palette-cats">
           <button v-for="c in categories" :key="c" class="palette-cat" :class="{ 'is-on': capCategory === c }" @click="capCategory = c">{{ c || "全部" }}</button>
         </div>
@@ -648,6 +757,15 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
       </aside>
       <button v-else class="palette-expand" title="展开能力面板" @click="paletteCollapsed = false">能力 »</button>
 
+      <!-- V415: 左右拉伸条 —— 能力面板写死 246px 时, 长能力名被截断、画布又空着, 用户没法调 -->
+      <div
+        v-if="!paletteCollapsed"
+        class="pane-splitter"
+        :class="{ 'is-dragging': splitting }"
+        title="拖动调整能力面板宽度"
+        @pointerdown="startSplit"
+      ></div>
+
       <!-- 右: 画布 -->
       <section class="workspace-stage">
         <AgentFlowCanvas
@@ -659,6 +777,8 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
           @graph-changed="onGraphChanged"
           @pane-context-menu="onPaneContextMenu"
           @node-context-menu="onNodeContextMenu"
+          @node-menu="onNodeMenu"
+          @node-delete="onNodeDelete"
           @nodes-moved="onNodesMoved"
           @capability-dropped="onCapabilityDropped"
         />
@@ -707,8 +827,14 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
         <div v-if="ctxMenu" class="ctx-backdrop" @click="closeCtxMenu" @contextmenu.prevent="closeCtxMenu"></div>
 
         <!-- 节点详情 -->
-        <div v-if="selectedNode" class="workspace-panel">
-          <header class="workspace-panel-header">
+        <div
+          v-if="selectedNode"
+          class="workspace-panel"
+          :class="{ 'is-dragging': nodePanel.dragging.value }"
+          :style="{ left: nodePanel.pos.value.x + 'px', top: nodePanel.pos.value.y + 'px' }"
+        >
+          <header class="workspace-panel-header" @pointerdown="nodePanel.startDrag" @dblclick="nodePanel.reset()">
+            <span class="panel-grip" title="按住拖动 · 双击复位">⠿</span>
             <div>
               <span class="workspace-panel-kicker">{{ selectedNode.module }}</span>
               <h2>{{ selectedNode.title }}</h2>
@@ -717,8 +843,7 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
               <span class="workspace-live-state" :class="'is-' + selectedNode.state">{{ selectedNode.stateLabel || selectedNode.state }}</span>
               <button class="workspace-close" @click="selectedNode = null">×</button>
             </div>
-          </header>
-          <div class="node-panel-detail">
+          </header>          <div class="node-panel-detail">
             <p v-if="selectedCap" class="drawer-desc">{{ selectedCap.description }}</p>
             <div class="drawer-row"><label>能力</label><span>{{ selectedNode.capabilityId || "（未绑定, 按通用生成执行）" }}</span></div>
             <div class="drawer-row"><label>输入</label><span>{{ selectedNode.input || "上游产出" }}</span></div>
@@ -753,8 +878,10 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
             </details>
           </div>
           <footer class="workspace-panel-footer">
-            <span>改完点保存即生效</span>
+            <span>改完点保存即落库</span>
             <div>
+              <!-- V415: 删除入口必须在看得见的地方 —— 之前只有右键(而且右键还是坏的), 用户找不到 -->
+              <button class="workspace-secondary danger" :disabled="locked" @click="removeNode(selectedNode!.id); selectedNode = null">删除节点</button>
               <button class="workspace-secondary" @click="selectedNode = null">关闭</button>
               <button class="workspace-primary" :disabled="locked" @click="saveNodeParams">保存参数</button>
             </div>
@@ -785,17 +912,82 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
       </div>
     </div>
 
+    <!-- 创作能力节点(V415: 平台没现成能力时, 用提示词自己定义一个节点) -->
+    <div v-if="openCreate" class="modal-shell" @click.self="openCreate = false">
+      <div class="modal-card">
+        <header class="modal-head">
+          <strong>创作能力节点</strong>
+          <span>用提示词定义一步 —— 执行时按这一步的提示词生成</span>
+          <button class="workspace-close" @click="openCreate = false">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="set-row">
+            <div class="set-label">
+              <strong>节点名称</strong>
+              <small>画布卡片上显示的名字</small>
+            </div>
+            <input v-model="createForm.title" class="palette-search" placeholder="如 交叉验证数据来源" />
+          </div>
+          <div class="set-row">
+            <div class="set-label">
+              <strong>这一步要做什么</strong>
+              <!-- v-pre: 这里要**显示**字面量 {{inputs}}, 不能被 Vue 当插值编译(嵌套花括号会解析失败) -->
+              <small>用 <code v-pre>{{inputs}}</code> 引用上游产出; 不写则上游产出自动作为输入</small>
+            </div>
+            <textarea v-model="createForm.task" class="set-input" rows="5" placeholder="如: 对本段论证中的每个数据点, 列出可能的替代解释, 并标注需要补充的证据。"></textarea>
+          </div>
+          <div class="set-row">
+            <div class="set-label">
+              <strong>角色设定(可选)</strong>
+              <small>不填则用默认的学术写作专家</small>
+            </div>
+            <input v-model="createForm.system" class="palette-search" placeholder="如 你是期刊审稿人, 只指出问题不给建议" />
+          </div>
+        </div>
+        <footer class="workspace-panel-footer">
+          <span>添加后可在节点详情里继续改</span>
+          <div>
+            <button class="workspace-secondary" @click="openCreate = false">取消</button>
+            <button class="workspace-primary" @click="addCustomNode">添加到画布</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
     <!-- 运行记录 -->
     <div v-if="openRuns" class="modal-shell" @click.self="openRuns = false">
       <div class="modal-card wide">
-        <header class="modal-head"><strong>运行记录</strong><span>后端落库, 刷新/换设备可查</span><button class="workspace-close" @click="openRuns = false">×</button></header>
+        <header class="modal-head">
+          <strong>运行记录</strong>
+          <span>后端落库, 刷新/换设备可查 · 点一条看运行过程</span>
+          <button class="workspace-close" @click="openRuns = false">×</button>
+        </header>
         <div class="modal-body">
           <div v-if="!runs.length" class="palette-empty">暂无运行记录</div>
-          <div v-for="r in runs" :key="r.runId" class="run-row">
-            <span class="state-chip" :class="runMetaOf(r.status).cls">{{ runMetaOf(r.status).label }}</span>
-            <strong>{{ r.graphName || r.graphId || r.runId }}</strong>
-            <span class="run-meta">{{ r.stepLog.filter((s) => s.status === "done").length }}/{{ r.stepLog.length }} 节点 · {{ (r.updatedAt || "").slice(5, 16).replace("T", " ") }}</span>
-          </div>
+          <template v-for="r in runs" :key="r.runId">
+            <!-- V415: 记录可点开 —— 之前整行没有任何点击处理, 用户看不到"这步跑了多久/依赖谁/产出什么" -->
+            <div class="run-row" :class="{ 'is-open': openRunId === r.runId }" @click="openRunId = openRunId === r.runId ? '' : r.runId">
+              <span class="state-chip" :class="runMetaOf(r.status).cls">{{ runMetaOf(r.status).label }}</span>
+              <strong>{{ r.graphName || r.graphId || r.runId }}</strong>
+              <span class="run-meta">{{ r.stepLog.filter((s) => s.status === "done").length }}/{{ r.stepLog.length }} 节点 · {{ (r.updatedAt || "").slice(5, 16).replace("T", " ") }}</span>
+              <span class="run-caret">{{ openRunId === r.runId ? "▾" : "▸" }}</span>
+            </div>
+            <div v-if="openRunId === r.runId" class="run-detail">
+              <div v-if="r.error" class="run-detail-error">{{ r.error }}</div>
+              <div v-for="(s, i) in r.stepLog" :key="s.stepId" class="run-step">
+                <span class="run-step-no">{{ String(i + 1).padStart(2, "0") }}</span>
+                <span class="state-chip sm" :class="runMetaOf(s.status === 'done' ? 'done' : s.status).cls">{{ stepLabel(s.status) }}</span>
+                <strong>{{ s.label || s.stepId }}</strong>
+                <span class="run-step-meta">
+                  <span v-if="s.inputsFrom?.length">依赖 {{ s.inputsFrom.join(" + ") }}</span>
+                  <span v-if="s.durationMs !== undefined">{{ (s.durationMs / 1000).toFixed(1) }}s</span>
+                  <span v-if="(s.output ?? '').length">{{ (s.output ?? '').replace(/\s/g, "").length }} 字</span>
+                </span>
+                <div v-if="s.error" class="run-step-err">{{ s.error }}</div>
+                <div v-else-if="s.output" class="run-step-out">{{ s.output.slice(0, 220) }}{{ s.output.length > 220 ? " …" : "" }}</div>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -870,7 +1062,11 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .quick-view {
   --ink: #E8EEF7; --muted: #8B9BB1; --line: #222F44; --soft: #161F33; --blue: #4D84CB;
   height: 100%; min-height: 0; width: 100%; margin: 0; box-sizing: border-box;
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex; flex-direction: column;
+  /* V415: 原来是 overflow:hidden —— 窗口/iframe 一矮, 三个区被压扁且**整页滚不动**,
+     用户报的"该页面不能上下滑动"就是它。改成纵向可滚 + 给主区一个最小高度:
+     空间够时不出现滚动条(内容正好铺满), 空间不够时滚动而不是把面板挤成一条缝。 */
+  overflow-x: hidden; overflow-y: auto;
   background: #0A1120; color: var(--ink);
   font-family: PingFang SC, Microsoft YaHei, sans-serif;
 }
@@ -923,7 +1119,8 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .hdr-btn:hover:not(:disabled) { background: #1A2333; color: #DCE6F2; }
 .hdr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.quick-shell { flex: 1; min-height: 0; display: flex; }
+/* 空间够时铺满(不出现滚动条), 空间不够时由 .quick-view 滚动而不是把面板压扁 */
+.quick-shell { flex: 1; min-height: 420px; display: flex; }
 .agent-panel {
   width: clamp(240px, 28%, 310px); flex-shrink: 0; border-right: 1px solid var(--line);
   display: flex; flex-direction: column; background: #11192C; min-height: 0;
@@ -991,7 +1188,10 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .run-btn.danger { background: #3A2028; color: #F08A8A; border: 1px solid #5A2A34; }
 
 /* 能力面板 */
-.palette-panel { width: 246px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: #0F172A; }
+.palette-panel { flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: #0F172A; }
+/* 拉伸条: 命中区 7px 比视觉线宽(视觉 1px 太难抓), hover / 拖动时高亮 */
+.pane-splitter { flex: 0 0 7px; margin: 0 -3px; cursor: col-resize; background: transparent; position: relative; z-index: 5; }
+.pane-splitter:hover, .pane-splitter.is-dragging { background: rgba(77, 132, 203, 0.35); }
 .palette-head { display: flex; align-items: center; gap: 6px; padding: 9px 11px; border-bottom: 1px solid #1E2A42; }
 .palette-head strong { font-size: 12px; white-space: nowrap; }
 .palette-search { flex: 1; min-width: 0; border: 1px solid #22304A; border-radius: 7px; background: #141D33; color: #E8EEF7; font-size: 11px; padding: 5px 8px; font-family: inherit; outline: none; }
@@ -1061,13 +1261,17 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .input-body { padding: 13px 16px; display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
 .input-card footer { padding: 10px 16px; border-top: 1px solid #222F44; background: #141D33; text-align: right; }
 
+/* V415: 改为 left/top 定位(可由用户拖动); 高度仍随容器, 避免拖出去看不见内容 */
 .workspace-panel {
-  position: absolute; top: 42px; right: 14px; bottom: 14px; width: 340px; z-index: 9;
+  position: absolute; width: 340px; max-height: calc(100% - 24px); z-index: 9;
   display: flex; flex-direction: column;
   background: #11192C; border: 1px solid #2A3A55; border-radius: 12px;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5); overflow: hidden;
 }
-.workspace-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 15px 11px; border-bottom: 1px solid #222F44; }
+.workspace-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 15px 11px; border-bottom: 1px solid #222F44; cursor: grab; }
+.workspace-panel.is-dragging .workspace-panel-header { cursor: grabbing; }
+.panel-grip { color: #5B6B84; font-size: 13px; line-height: 1; flex-shrink: 0; margin-top: 3px; letter-spacing: -1px; }
+.panel-grip:hover { color: #9FC0E8; }
 .workspace-panel-header h2 { margin: 3px 0 0; font-size: 14px; color: #E8EEF7; }
 .workspace-panel-kicker { font-size: 9px; letter-spacing: 0.14em; font-weight: 700; color: #759FD7; text-transform: uppercase; }
 .workspace-panel-actions { display: flex; align-items: center; gap: 8px; }
@@ -1151,6 +1355,20 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .run-meta { margin-left: auto; color: #7A8AA0; font-size: 10.5px; }
 .run-row .state-chip { margin-left: 0; }
 .run-row .workspace-secondary { flex-shrink: 0; }
+/* V415: 运行记录可展开看过程 */
+.run-row { cursor: pointer; }
+.run-row:hover { border-color: #3A5080; }
+.run-row.is-open { border-color: #4D84CB; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.run-caret { color: #7A8AA0; font-size: 10px; flex-shrink: 0; }
+.run-detail { margin: -1px 0 6px; border: 1px solid #4D84CB; border-top: 0; border-radius: 0 0 9px 9px; background: #0E1626; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.run-detail-error { font-size: 10.5px; color: #F08A8A; background: #2A1C1C; border-radius: 7px; padding: 6px 8px; }
+.run-step { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border-radius: 7px; background: #111C30; font-size: 11px; }
+.run-step-no { color: #5B6B84; font-size: 9.5px; font-weight: 700; }
+.run-step strong { color: #DCE6F2; font-size: 11.5px; }
+.run-step-meta { margin-left: auto; display: flex; gap: 10px; color: #7A8AA0; font-size: 10px; }
+.state-chip.sm { margin-left: 0; font-size: 9px; padding: 1px 6px; }
+.run-step-err { flex-basis: 100%; color: #F08A8A; font-size: 10.5px; line-height: 1.55; }
+.run-step-out { flex-basis: 100%; color: #93A5BC; font-size: 10.5px; line-height: 1.55; white-space: pre-wrap; }
 .save-row { display: flex; gap: 8px; }
 .save-row .palette-search { flex: 1; }
 
@@ -1163,6 +1381,19 @@ const runMetaOf = (s: string) => RUN_STATUS_META[s] ?? { label: s, cls: "" };
 .set-warn { font-size: 10.5px; color: #E8B54A; background: #2A2414; border-radius: 8px; padding: 8px 10px; line-height: 1.6; }
 .set-warn code { background: #3A3418; padding: 1px 4px; border-radius: 4px; }
 .set-hint { font-size: 10.5px; color: #8B9BB1; }
+.set-input {
+  width: 190px; flex-shrink: 0; border: 1px solid #22304A; border-radius: 7px;
+  background: #141D33; color: #E8EEF7; font-size: 11.5px; padding: 7px 9px;
+  font-family: inherit; outline: none; resize: vertical; line-height: 1.6;
+}
+.set-input:focus { border-color: #4D84CB; }
+/* V415: 创作能力节点入口 —— 与能力列表区分开(它是"定义一步", 不是"选一个已有能力") */
+.palette-create {
+  margin: 7px 8px 3px; padding: 7px 10px; border: 1px dashed #3A5080; border-radius: 8px;
+  background: transparent; color: #9FC0E8; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; text-align: left; font-family: inherit;
+}
+.palette-create:hover { background: #17203A; border-color: #4D84CB; color: #DCE6F2; }
 .set-hint b { color: #5FD0B4; }
 .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; cursor: pointer; }
 .switch.is-disabled { opacity: 0.45; cursor: not-allowed; }

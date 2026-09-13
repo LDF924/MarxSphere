@@ -5,12 +5,25 @@
 //   ②任务推荐: 聚合 research 流水线任务 + agent 任务, 推荐"继续/恢复"
 //   ③签到卡: P0-8 points 接口就绪后接入(点位已留: loadCheckin + 签到按钮)
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bird, CheckCircle2, ChevronRight, Coffee, Compass, GitBranch, Loader2, Sparkles, X } from "lucide-react";
+import { Bird, CheckCircle2, ChevronRight, Coffee, Compass, GitBranch, GripVertical, Loader2, Sparkles, X } from "lucide-react";
 
 function cn(...xs: Array<string | false | undefined>) { return xs.filter(Boolean).join(" "); }
 
 const HISTORY_KEY = "marx:assistant:viewhistory:v1";
 const TIP_KEY = "marx:assistant:tiptime:v1";
+/** V415: 悬浮助手的位置(用户拖过就记在这里) */
+const POS_KEY = "marx:assistant:pos:v1";
+
+/**
+ * V415(2026-09-13 用户反馈): 助手原来钉死在右下角(fixed bottom-5 right-5), 挡着内容也挪不开。
+ * 改成可拖动 + 位置记忆; 默认仍在右下角(首次使用与旧观感一致)。
+ * 位置按 left/top 存视口坐标, 挂载时算出"贴右下角"的坐标作为默认值。
+ */
+function defaultPos(): { x: number; y: number } {
+  const w = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const h = typeof window === "undefined" ? 800 : window.innerHeight;
+  return { x: Math.max(8, w - 220), y: Math.max(8, h - 120) };
+}
 
 /** 页面观察 → 导航推荐规则表(科研推进主线; 纯前端, 不埋点) */
 const NEXT_STEP_RULES: Array<{ from: string[]; to: string; toLabel: string; reason: string }> = [
@@ -221,13 +234,58 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
   const greeting = hour < 6 ? "夜深了" : hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
   const currentLabel = VIEW_LABELS[workspaceView] ?? "工作台";
 
+  // ── 拖动(见文件头 V415 说明) ──
+  const [pos, setPos] = useState<{ x: number; y: number }>(defaultPos);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as { x: number; y: number };
+      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) setPos(p);
+    } catch { /* 坏数据就当没存过 */ }
+  }, []);
+  const startDrag = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, ox = pos.x, oy = pos.y;
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      // 夹在视口内 —— 拖出去就再也抓不回来了
+      setPos({
+        x: Math.min(Math.max(0, window.innerWidth - 80), Math.max(0, ox + ev.clientX - sx)),
+        y: Math.min(Math.max(0, window.innerHeight - 50), Math.max(0, oy + ev.clientY - sy)),
+      });
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      setPos((cur) => {
+        try { localStorage.setItem(POS_KEY, JSON.stringify(cur)); } catch { /* 忽略 */ }
+        return cur;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+    <div className="fixed z-40 flex flex-col items-end gap-2" style={{ left: pos.x, top: pos.y }}>
       {open && (
         <div className="w-80 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/95 shadow-2xl backdrop-blur">
-          {/* 头 */}
-          <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2.5">
+          {/* 头(拖动把手: 按住空白处移动, 双击复位) */}
+          <div
+            className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2.5"
+            style={{ cursor: dragging ? "grabbing" : "grab" }}
+            onPointerDown={startDrag}
+            onDoubleClick={() => { setPos(defaultPos()); try { localStorage.removeItem(POS_KEY); } catch { /* 忽略 */ } }}
+            title="按住拖动 · 双击复位"
+          >
             <div className="flex items-center gap-2">
+              <GripVertical className="h-3.5 w-3.5 text-slate-600" />
               <Bird className="h-4 w-4 text-cyan-400" />
               <span className="text-xs font-semibold text-slate-200">科研助手 · {greeting}</span>
             </div>
@@ -351,9 +409,13 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
         </div>
       )}
 
-      {/* FAB */}
-      <button onClick={toggle}
-        className="flex items-center gap-1.5 rounded-full border border-slate-600/50 bg-slate-900/90 px-3.5 py-2 text-xs text-slate-200 shadow-xl backdrop-blur transition hover:bg-slate-800">
+      {/* FAB(同样可拖: 展开时从面板头部拖, 收起时直接从这个按钮拖) */}
+      <button
+        onClick={toggle}
+        onPointerDown={(e) => { if (open) return; startDrag(e); }}
+        title={open ? undefined : "点击展开 · 按住可拖动"}
+        className="flex items-center gap-1.5 rounded-full border border-slate-600/50 bg-slate-900/90 px-3.5 py-2 text-xs text-slate-200 shadow-xl backdrop-blur transition hover:bg-slate-800"
+        style={{ cursor: dragging ? "grabbing" : "grab" }}>
         {open ? <X className="h-4 w-4" /> : <Sparkles className="h-4 w-4 text-cyan-400" />}
         {open ? "收起" : "科研助手"}
       </button>

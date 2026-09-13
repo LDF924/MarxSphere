@@ -5,6 +5,14 @@
  * Handle: 连线柄(闭源 hasTarget/hasSource; 缺柄 = 无法拖线)
  */
 import { Handle, Position } from "@vue-flow/core";
+// V415: 卡片上的 ••• 与 → 是闭源里的可点入口, 之前只是两个静态 span(点了没反应)。
+//
+// 为什么走 inject 而不是 emit: 自定义节点由 VueFlow 在**它自己内部**渲染,
+// 节点 emit 的事件只到 VueFlow 的包装器, 到不了画布组件上写的 @node-menu 监听。
+// 实测: 绑定确实在、元素也能命中, 但菜单就是不出现。所以由画布 provide 回调下来。
+import { inject } from "vue";
+import { ORCH_NODE_ACTIONS, type OrchNodeActions } from "./orchNodeActions";
+const actions = inject<OrchNodeActions | null>(ORCH_NODE_ACTIONS, null);
 defineProps<{
   id: string;
   data: {
@@ -50,7 +58,7 @@ defineProps<{
     <div class="node-header">
       <span class="node-index">{{ data.index }}</span>
       <span class="node-module">{{ data.module }}</span>
-      <span class="node-menu">•••</span>
+      <span class="node-menu" role="button" title="节点操作" @click.stop="actions?.menu($event, data as any)">•••</span>
     </div>
 
     <!-- title -->
@@ -79,7 +87,7 @@ defineProps<{
         {{ data.stateLabel || data.state || "" }}
       </span>
       <span v-if="data.artifactCount" class="node-artifacts">□ {{ data.artifactCount }} 产物</span>
-      <span class="node-arrow">→</span>
+      <span class="node-arrow" role="button" title="打开详情" @click.stop="actions?.open($event, data as any)">→</span>
     </div>
 
     <!-- 条件块 -->
@@ -114,7 +122,8 @@ defineProps<{
 .node-header, .node-footer, .node-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .node-index { color: #73809b; font-size: 9px; font-weight: 750; letter-spacing: 0.1em; }
 .node-module { color: #7e8da8; font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-.node-menu { color: #7A8AA0; font-size: 10px; letter-spacing: 0.12em; }
+.node-menu { color: #7A8AA0; font-size: 10px; letter-spacing: 0.12em; cursor: pointer; padding: 0 3px; border-radius: 4px; }
+.node-menu:hover { color: #E8EEF7; background: #1E2A48; }
 .node-title-row { display: flex; align-items: flex-start; gap: 7px; min-height: 34px; margin: 12px 0 10px; }
 .node-title-row strong {
   display: -webkit-box;
@@ -139,7 +148,8 @@ defineProps<{
 .node-value { max-width: 108px; overflow: hidden; color: #66758c; text-overflow: ellipsis; white-space: nowrap; }
 .node-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1A2333; color: #8B9BB1; font-size: 9px; }
 .node-artifacts { margin-left: auto; }
-.node-arrow { color: #7387ec; font-size: 13px; }
+.node-arrow { color: #7387ec; font-size: 13px; cursor: pointer; padding: 0 4px; border-radius: 4px; }
+.node-arrow:hover { background: #1E2A48; color: #9FC0E8; }
 .node-hint { margin-top: 7px; color: #4D84CB; font-size: 9px; line-height: 1.4; }
 .node-execution-detail { margin-top: 6px; color: #4D84CB; font-size: 9px; line-height: 1.35; }
 .node-output-preview {
