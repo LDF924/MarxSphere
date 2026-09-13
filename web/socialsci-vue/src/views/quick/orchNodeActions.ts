@@ -7,8 +7,9 @@
 // 所以改用 provide/inject 把回调递进去。
 export const ORCH_NODE_ACTIONS = Symbol("orch-node-actions");
 
-/** 节点卡片上的两个入口(••• 开菜单 / → 打开详情) */
+/** 节点卡片上的入口: ••• 开菜单 / → 打开详情 / × 直接删除 */
 export interface OrchNodeActions {
   menu: (ev: MouseEvent, node: { id: string; title?: string }) => void;
   open: (ev: MouseEvent, node: { id: string; title?: string }) => void;
+  remove: (ev: MouseEvent, node: { id: string; title?: string }) => void;
 }

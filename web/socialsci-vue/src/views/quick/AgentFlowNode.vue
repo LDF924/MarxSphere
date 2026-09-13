@@ -58,6 +58,9 @@ defineProps<{
     <div class="node-header">
       <span class="node-index">{{ data.index }}</span>
       <span class="node-module">{{ data.module }}</span>
+      <!-- V415: 删除按钮长在卡片上(用户指出"删除按钮怎么是浮动的, 不是在节点上固定的") ——
+           常驻可见, 不再依赖选中态或右键。✕ 用 stop 阻止冒泡, 免得连带选中/拖拽。 -->
+      <span class="node-del" role="button" title="删除这个节点" @click.stop="actions?.remove($event, data as any)">✕</span>
       <span class="node-menu" role="button" title="节点操作" @click.stop="actions?.menu($event, data as any)">•••</span>
     </div>
 
@@ -124,6 +127,10 @@ defineProps<{
 .node-module { color: #7e8da8; font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .node-menu { color: #7A8AA0; font-size: 10px; letter-spacing: 0.12em; cursor: pointer; padding: 0 3px; border-radius: 4px; }
 .node-menu:hover { color: #E8EEF7; background: #1E2A48; }
+/* 卡片自带的删除按钮: 平时低调, hover 卡片时才显眼, 避免误点 */
+.node-del { color: #4E5B72; font-size: 11px; line-height: 1; cursor: pointer; padding: 1px 4px; border-radius: 4px; margin-left: auto; }
+.node-del:hover { color: #F08A8A; background: #2A1C1C; }
+.agent-flow-node:hover .node-del { color: #8B9BB1; }
 .node-title-row { display: flex; align-items: flex-start; gap: 7px; min-height: 34px; margin: 12px 0 10px; }
 .node-title-row strong {
   display: -webkit-box;
