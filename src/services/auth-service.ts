@@ -3,7 +3,7 @@
 // V388+ 多用户商业化
 // 密码: bcrypt 哈希 | 会话: JWT (jsonwebtoken)
 // admin: 持有 admin 角色 → 可远程管理(替代仅本机)
-import { randomUUID, createCipheriv, createDecipheriv, createHash } from "node:crypto";
+import { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/pool.js";
@@ -207,18 +207,56 @@ export async function listTenantMembers(tenantId: string): Promise<any[]> {
   return r.rows;
 }
 
-// ─── BYOK: 用户自带 LLM key 的 AES 加密存储 ───
+// ─── BYOK: 用户自带 LLM key 的加密存储 ───
+//
+// V417 改造(2026-09-14 安全审计):
+//   ① 原先 AES-256-CBC + **固定 IV**(IV = sha256(secret) 的前 16 字节) —— 同一明文永远同一密文,
+//      可做等值判定/字典攻击; 且 CBC 无完整性校验, 密文被改只能靠 padding 报错偶然发现。
+//      现在: AES-256-GCM + 每次随机 IV + 认证标签, 密文带 `v2:` 版本前缀。
+//   ② 密钥未显式配置时由 JWT_SECRET 派生 —— JWT 泄露即 BYOK 全解, 两把钥匙本该分开。
+//      保留派生作为兜底(否则老部署升级后全部解不开), 但**启动时显式告警**, 让人知道该配独立密钥。
+//   ③ 解密兼容旧格式: 无 `v2:` 前缀的仍按 CBC 解, 老数据不会失效(有数据时下次写入自动升级)。
+const BYOK_SECRET_IS_DERIVED = !process.env.BYOK_ENCRYPTION_KEY;
 const BYOK_SECRET = process.env.BYOK_ENCRYPTION_KEY || (JWT_SECRET + "-byok");
-const BYOK_IV = createHash("sha256").update(BYOK_SECRET).digest().subarray(0, 16);
+const BYOK_KEYBUF = createHash("sha256").update(BYOK_SECRET).digest();
+/** 旧格式(无版本前缀)用的固定 IV —— 只用于解密历史数据, 新写入不再使用 */
+const BYOK_LEGACY_IV = createHash("sha256").update(BYOK_SECRET).digest().subarray(0, 16);
+const BYOK_V2_PREFIX = "v2:";
 
-export function encryptByokKey(plain: string): string {
-  const cipher = createCipheriv("aes-256-cbc", createHash("sha256").update(BYOK_SECRET).digest(), BYOK_IV);
-  return cipher.update(plain, "utf8", "hex") + cipher.final("hex");
+if (BYOK_SECRET_IS_DERIVED) {
+  console.warn(
+    "[byok] BYOK_ENCRYPTION_KEY 未配置 —— 用户自带 key 的加密密钥由 JWT_SECRET 派生。" +
+    "这两者应当独立: JWT 泄露会连带解开所有 BYOK 密钥。生产环境请显式配置 BYOK_ENCRYPTION_KEY。"
+  );
 }
+
+/** 加密: AES-256-GCM + 随机 IV(12 字节), 输出 `v2:<iv>:<tag>:<ciphertext>`(全 hex) */
+export function encryptByokKey(plain: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", BYOK_KEYBUF, iv);
+  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${BYOK_V2_PREFIX}${iv.toString("hex")}:${tag.toString("hex")}:${ct.toString("hex")}`;
+}
+
+/**
+ * 解密。新格式走 GCM(带完整性校验), 旧格式(无前缀的 hex)走 CBC 以兼容历史数据。
+ * 解密失败一律返回 null —— 调用方据此回落到平台 key, 不会拿到半截明文。
+ */
 export function decryptByokKey(encrypted: string): string | null {
+  const raw = String(encrypted ?? "");
+  if (!raw) return null;
   try {
-    const decipher = createDecipheriv("aes-256-cbc", createHash("sha256").update(BYOK_SECRET).digest(), BYOK_IV);
-    return decipher.update(encrypted, "hex", "utf8") + decipher.final("utf8");
+    if (raw.startsWith(BYOK_V2_PREFIX)) {
+      const [ivHex, tagHex, ctHex] = raw.slice(BYOK_V2_PREFIX.length).split(":");
+      if (!ivHex || !tagHex || !ctHex) return null;
+      const decipher = createDecipheriv("aes-256-gcm", BYOK_KEYBUF, Buffer.from(ivHex, "hex"));
+      decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+      return Buffer.concat([decipher.update(Buffer.from(ctHex, "hex")), decipher.final()]).toString("utf8");
+    }
+    // 旧格式: 固定 IV 的 CBC(仅解密, 不再用于新写入)
+    const decipher = createDecipheriv("aes-256-cbc", BYOK_KEYBUF, BYOK_LEGACY_IV);
+    return decipher.update(raw, "hex", "utf8") + decipher.final("utf8");
   } catch { return null; }
 }
 

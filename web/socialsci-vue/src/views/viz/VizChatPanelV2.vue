@@ -622,6 +622,28 @@ function artifactSvgUrl(p: Record<string, unknown>): string {
   return rel ? vizArtifactUrl(rel) : "";
 }
 
+/**
+ * V417: 图表 → 研途写作舱素材库。
+ * 本视图在 iframe 里, 目标写作舱在**另一个 iframe** —— 自己发 postMessage 到不了,
+ * 交给 React 外壳中转(forward-to-module)。
+ */
+function sendChartToWorkflow(m: VizMsg) {
+  const title = `${m.chartType ? m.chartType + " · " : ""}图表`;
+  const md = [
+    `## ${title}`,
+    m.content ? String(m.content).slice(0, 800) : "",
+    m.code ? `\n\`\`\`python\n${String(m.code).slice(0, 1200)}\n\`\`\`` : "",
+  ].filter(Boolean).join("\n\n");
+  if (!window.parent || window.parent === window) { toast("请在平台外壳内使用", "warning"); return; }
+  try {
+    window.parent.postMessage(
+      { source: "marxsphere-soc", type: "forward-to-module", route: "workflow", kind: "viz", title, markdown: md },
+      "*",
+    );
+    toast("已送入研途写作舱素材库", "success");
+  } catch { toast("发送失败", "error"); }
+}
+
 /** 后端 chart 事件 payload → 图卡结构(闭源 Ae() L537-556 别名映射) */
 function payloadToChart(p: Record<string, unknown>): VizChart {
   const art = (p.artifact ?? {}) as Record<string, unknown>;
@@ -779,6 +801,10 @@ onUnmounted(() => {
             <div v-if="m.chartPng" class="chart-figure">
               <img :src="m.chartPng" class="chart-img" alt="图表" />
               <div v-if="m.chartType" class="chart-type-chip">{{ m.chartType }}</div>
+              <!-- V417: 图表进写作舱素材库(成果工坊 → 研途写作舱) -->
+              <button class="chart-send-btn" data-control="viz:to-workflow" title="把这张图作为素材送进研途写作舱" @click="sendChartToWorkflow(m)">
+                ⚘ 送写作舱
+              </button>
             </div>
             <!-- 正文 -->
             <div v-if="m.content" class="msg-bubble assistant-bubble" v-html="renderMd(m.content)"></div>
@@ -1047,6 +1073,19 @@ onUnmounted(() => {
   color: #F1F5F9;
   border-radius: 10px;
 }
+.chart-send-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 10px;
+  background: rgba(16, 185, 129, 0.85);
+  color: #F1F5F9;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.chart-send-btn:hover { background: rgba(16, 185, 129, 1); }
 .code-card { border: 1px solid #DCE6F2; border-radius: 8px; overflow: hidden; max-width: 480px; }
 .code-head {
   display: flex;

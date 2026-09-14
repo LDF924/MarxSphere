@@ -12,7 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmS
 import { dataPath } from "./storage-paths.js";
 import path from "node:path";
 import { pool } from "../db/pool.js";
-import { acquireRunLease } from "./singleton-scheduler.js";
+import { acquireRunLease, releaseRunLease } from "./singleton-scheduler.js";
 
 export const DREAM_DIR = path.resolve(process.env.SAG_DREAM_DIR || dataPath("dream"));
 const PROPOSALS_FILE = path.join(DREAM_DIR, "proposals.jsonl");
@@ -201,7 +201,16 @@ export function startDreamDailyScheduler(): void {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const once = async () => {
     // 多副本: 巩固写隔离区文件 + 技能/DAG 提案烧 LLM → 每轮仅一个副本执行
-    if (!(await acquireRunLease("dream-daily", DAY_MS + 300_000))) return;
+    //   V417: TTL 收到 DAY_MS+2min 且**跑完主动归还**。原先只抢不还 + TTL 比周期长,
+    //   形成租约自锁(每两轮才跑一轮, 每日任务实际两天一次)。
+    if (!(await acquireRunLease("dream-daily", DAY_MS + 120_000))) return;
+    try {
+      await dreamOnceBody();
+    } finally {
+      await releaseRunLease("dream-daily");
+    }
+  };
+  const dreamOnceBody = async () => {
     try {
       const proposals = await runDream({ days: 14, useLlm: false });
       console.log(`[dream] V404-7 每日巩固: ${proposals.length} 条新候选进隔离区(人工审: 记忆巩固面板)`);

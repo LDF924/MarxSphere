@@ -37,20 +37,38 @@ const TOOL_RISK: Record<string, RiskLevel> = {
 // V400: 拒绝熔断 (codex guardian/mod.rs L63 对齐) — 连续拒绝 ≥3 次触发熔断(阻止继续尝试)
 const MAX_CONSECUTIVE_DENIES = 3;
 let consecutiveDenies = 0;
+/** V417: 熔断窗口 —— 计数带时间窗, 超时自动归零, 不再靠调用方"复位"来放开 */
+export const GUARDIAN_BREAKER_WINDOW_MS = 10 * 60_000;
+let breakerOpenedAt = 0;
 
 /** 重置熔断计数(每轮开始调用) */
 export function resetGuardianBreaker(): void {
   consecutiveDenies = 0;
+  breakerOpenedAt = 0;
 }
 
-/** 熔断是否打开(连续拒绝过多 → 上层应停止高危尝试) */
+/**
+ * 熔断是否打开(连续拒绝过多 → 上层应停止高危尝试)
+ *
+ * V417 修"熔断自我复位": 原先打开后由 executeAgentTool 立刻调 resetGuardianBreaker() 放行,
+ *   等于熔断永远只挡一次 —— "连续拒绝 3 次就停手"这个语义完全没生效。
+ *   现在熔断打开后**保持** WINDOW_MS; 窗口过后自动归零(给用户重新授权的机会),
+ *   不需要任何调用方来复位。这样既真的挡住了连续越界, 又不会永久锁死。
+ */
 export function guardianBreakerOpen(): boolean {
-  return consecutiveDenies >= MAX_CONSECUTIVE_DENIES;
+  if (consecutiveDenies < MAX_CONSECUTIVE_DENIES) return false;
+  if (!breakerOpenedAt) breakerOpenedAt = Date.now();
+  if (Date.now() - breakerOpenedAt >= GUARDIAN_BREAKER_WINDOW_MS) {
+    consecutiveDenies = 0;
+    breakerOpenedAt = 0;
+    return false;
+  }
+  return true;
 }
 
 /** V400 可视化: 当前熔断详情(计数/上限) */
 export function guardianBreakerDetail(): { open: boolean; count: number; max: number } {
-  return { open: consecutiveDenies >= MAX_CONSECUTIVE_DENIES, count: consecutiveDenies, max: MAX_CONSECUTIVE_DENIES };
+  return { open: guardianBreakerOpen(), count: consecutiveDenies, max: MAX_CONSECUTIVE_DENIES };
 }
 
 /** 判定矩阵（guardian-policy.md）: risk × authorization → verdict */

@@ -373,7 +373,13 @@ export function buildHttpServer() {
     "/api/memory/context",  // V381: 会话上下文清理, 仅本机
   ];
   // V381: 26 个工作台 tab 功能 → 所需令牌权限映射
-  // 规则: 精确前缀匹配(先长后短), 命中即要求对应权限; 未命中的功能默认放行(任意有效令牌)
+  // 规则: 精确前缀匹配(先长后短), 命中即要求对应权限。
+  //
+  // V417 改 fail-closed: 原先"未命中的功能默认放行(任意有效令牌)"。实测后果 —— 只持有
+  //   `search` 权限的令牌, 从局域网(非本机豁免)GET /api/cjournal/journals 返回 200 全量期刊库,
+  //   因为 /api/cjournal 不在表里。全站 99 个路由前缀而表里只有 33 个, 缺口 66 个。
+  //   现在: 未映射 → 按 AGENT 权限(最严的通用权限之一)要求; 确属公开的少量前缀显式列进
+  //   PUBLIC_PREFIXES(见下), 仍然放行。
   // 兼容: reason/search/ingest 旧权限仍作用于旧前缀
   // V388: 场景研究 API(classical/academic/writing/quality/theory等)归入 scenarios 权限 — 商业化多用户下防止只读token烧LLM余额
   const PERMISSION_PREFIX_MAP: Array<[string, string]> = [
@@ -421,7 +427,77 @@ export function buildHttpServer() {
     // V415: 编排器 — 画布 DAG 的执行入口(会调 agent 工具与各工作台端点), 外部令牌需 agent 权限
     ["/api/orchestrator", "agent"],
     ["/api/backup", "admin"],        // P1: 备份/恢复(破坏性全量替换, 仅 admin)
+    ["/api/tokens", "admin"],        // V417: 令牌管理(仅本机或 admin; 缺映射时会被兜底权限挡住)
+    // ── V417 补映射: 原先进不了表就"默认放行"的那些 ──
+    ["/api/cjournal", "literature"],       // 期刊库/往期审稿(writing-corpus 走同一权限)
+    ["/api/writing-corpus", "literature"],
+    ["/api/writing-out", "scenarios"],
+    ["/api/references", "literature"],
+    ["/api/citations", "literature"],
+    ["/api/papers", "literature"],
+    ["/api/cnki", "ingest"],
+    ["/api/zotero", "literature"],
+    ["/api/rss", "literature"],
+    ["/api/external-sources", "sources"],
+    ["/api/review", "scenarios"],          // 论文质量评审
+    ["/api/paper-outline", "scenarios"],   // 写作舱后端
+    ["/api/research", "scenarios"],        // 研途写作舱(项目/节点/素材/执行引擎)
+    ["/api/materials", "scenarios"],
+    ["/api/editor", "documents"],
+    ["/api/viz", "documents"],
+    ["/api/jupyter", "documents"],
+    ["/api/knowledge", "documents"],
+    ["/api/notes", "documents"],
+    ["/api/format-eval", "documents"],
+    ["/api/capabilities", "agent"],
+    ["/api/meta-skill", "skills"],
+    ["/api/prevention-rules", "memory"],
+    ["/api/memory-maintenance", "memory"],
+    ["/api/strategic-memory", "memory"],
+    ["/api/learning-plans", "education"],
+    ["/api/provenance", "trace"],
+    ["/api/forensics", "trace"],
+    ["/api/traces", "trace"],
+    ["/api/model-call-logs", "trace"],
+    ["/api/snapshot", "documents"],
+    ["/api/entities", "graph"],
+    ["/api/neo4j", "graph"],
+    ["/api/projects", "documents"],
+    ["/api/files", "documents"],
+    ["/api/components", "documents"],
+    ["/api/generations", "scenarios"],
+    ["/api/im", "agent"],
+    ["/api/github", "agent"],
+    ["/api/computer-use", "agent"],
+    ["/api/statistics", "empirical"],
+    ["/api/statistics-jobs", "empirical"],
+    ["/api/clarify", "reason"],
+    ["/api/compose-answer", "reason"],
+    ["/api/universes", "truth"],
+    ["/api/ingest-jobs", "ingest"],
+    ["/api/policy-library", "policy"],
+    ["/api/quick-links", "documents"],
+    ["/api/reader", "documents"],
+    ["/api/translate", "documents"],
+    ["/api/settings", "agent"],
+    ["/api/cost", "agent"],
+    ["/api/points", "search"],
+    ["/api/billing", "search"],
+    ["/api/byoa", "search"],
+    ["/api/enterprise", "admin"],
+    ["/api/ssh", "admin"],
+    ["/api/s3", "admin"],
+    // 兜底: 以上都没命中 → 要求 agent 权限(不放进 PUBLIC 前缀的路由, 外部令牌一律 403)
   ];
+
+  /** 未命中 PERMISSION_PREFIX_MAP 时要求的兜底权限(fail-closed) */
+  const FALLBACK_PERMISSION = "agent";
+  /**
+   * 真正的公开前缀 —— 持有效令牌即可访问, 不要求具体权限。
+   * 保持极短: 只放"不泄露任何租户数据"的元信息端点。
+   * (/api/mode 已在外层 WHITELIST 里, 无令牌也放行; 这里列着是为了语义完整)
+   */
+  const PUBLIC_PREFIXES = ["/api/mode"];
 
   /** 请求是否来自本机 (只认 socket 真实地址, 绝不信任可伪造的 XFF 头; V381: 精确匹配防 localhost.evil.com 伪造) */
   const isLocalRequest = (request: { socket?: { remoteAddress?: string }; ip?: string }) => {
@@ -466,16 +542,22 @@ export function buildHttpServer() {
     if (!verified) {
       return reply.code(401).send({ error: { code: "UNAUTHORIZED", message: "API Token 无效或已撤销" } });
     }
+    // V417: 令牌身份在**通过验证后立刻**挂到 request —— 原先放在权限检查通过之后, 于是
+    //   权限被拒(403)的请求根本没有 tokenCtx, 审计 hook 也就记不到它。
+    //   "谁在反复越权尝试"恰恰是最该留痕的一类, 不能只在成功时记。
+    (request as any).tokenCtx = { tokenId: verified.tokenId, tokenName: verified.tokenName, permissions: verified.permissions };
     // 权限检查: 用 tab→权限映射(先长后短匹配)
     let required: string | null = null;
     for (const [prefix, perm] of PERMISSION_PREFIX_MAP) {
       if (url.startsWith(prefix)) { required = perm; break; }
     }
+    // V417: 未命中任何前缀 → 不再"默认放行"。公开前缀显式豁免, 其余按兜底权限(agent)要求。
+    if (!required && !PUBLIC_PREFIXES.some((p) => url.startsWith(p))) {
+      required = FALLBACK_PERMISSION;
+    }
     if (required && !apiTokenService.hasPermission(verified.permissions as any, required as any)) {
       return reply.code(403).send({ error: { code: "FORBIDDEN", message: `Token 缺少 ${required} 权限` } });
     }
-    // 把令牌上下文挂到 request, 供配额/限流/用量记录使用
-    (request as any).tokenCtx = { tokenId: verified.tokenId, permissions: verified.permissions };
   });
 
   // ─── 外部令牌配额 + 限流 hook (仅对持 token 的外部请求生效; 本机/白名单已在上一个 hook 提前 return) ───
@@ -663,6 +745,28 @@ export function buildHttpServer() {
   };
   app.addHook("preHandler", scenarioSourceCheck);
 
+  /**
+   * V417: 提权类设置的第二道门。
+   * 自主级别(auto-edit/full-auto)与沙箱级别(full-access)是**进程全局**状态, 改一下影响所有
+   * 并发会话。原实现只要求"登录", 任何一个普通用户都能 POST 一行把沙箱放到 full-access。
+   * 这里要求本机或 admin —— 多租户下这类开关不该由普通账号拨。
+   */
+  const privilegedSettingsCheck = async (request: any, reply: any) => {
+    const url = String(request.url).split("?")[0];
+    const method = String(request.method).toUpperCase();
+    const isAutonomy = url === "/api/agent/autonomy" && method === "POST";
+    const isAgentSettings = url === "/api/agent/settings" && (method === "PUT" || method === "POST");
+    if (!isAutonomy && !isAgentSettings) return;
+    if (isLocalRequest(request)) return;
+    const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const payload = token ? authService.verifyToken(token) : null;
+    if (payload?.role === "admin") return;
+    const verified = token ? await apiTokenService.validateApiToken(token) : null;
+    if (verified?.permissions.includes("admin" as never)) return;
+    return reply.code(403).send({ error: { code: "FORBIDDEN", message: "自主级别/沙箱级别为全局设置, 需本机或管理员" } });
+  };
+  app.addHook("preHandler", privilegedSettingsCheck);
+
   // V389: 审计日志 — 记录 JWT 用户请求（谁/何时/调了什么/结果）
   // V390: duration_ms 修复 — (reply as any).elapsedTime 非 Fastify 标准字段不可靠, 改为 onRequest 记开始时间 + onResponse 用 Date.now() 差
   app.addHook("onRequest", async (request) => {
@@ -672,14 +776,28 @@ export function buildHttpServer() {
     try {
       const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
       const payload = token && authService.verifyToken(token);
-      if (!payload) return;  // 非 JWT 用户不记审计（本机/API token 已有 token_usage）
       const started = (request as any).auditStartMs as number | undefined;
       const durationMs = started ? Date.now() - started : 0;
-      void opsService.recordAudit({
-        userId: payload.uid, username: payload.username, method: request.method, path: request.url.split("?")[0],
-        statusCode: reply.statusCode, durationMs,
-        ip: request.socket?.remoteAddress || "",
-      });
+      const path = request.url.split("?")[0];
+      const ip = request.socket?.remoteAddress || "";
+      if (payload) {
+        void opsService.recordAudit({
+          userId: payload.uid, username: payload.username, method: request.method, path,
+          statusCode: reply.statusCode, durationMs, ip,
+        });
+        return;
+      }
+      // V417: 外部令牌请求此前**完全不进审计**（"非 JWT 用户不记审计"）—— 而持 sag_ 令牌的
+      //   外部客户端正是最需要审计的一类：它们有行为、有配额、可能出错，却不留任何痕迹。
+      //   这里补记：记到令牌维度（username 用令牌名，便于"哪个集成干了什么"）。
+      const tok = (request as any).tokenCtx as { tokenId: string; tokenName?: string } | undefined;
+      if (tok?.tokenId) {
+        // tokenCtx 由鉴权 hook 写入(tokenName 是 V417 顺手带上的, 免得这里再查库)
+        void opsService.recordAudit({
+          userId: null, username: `token:${tok.tokenName || tok.tokenId.slice(0, 8)}`,
+          method: request.method, path, statusCode: reply.statusCode, durationMs, ip,
+        });
+      }
     } catch { /* 审计失败不阻塞 */ }
   });
 
@@ -744,6 +862,9 @@ export function buildHttpServer() {
       "education","empirical","truth","memory","documents","graphiti","cognee",
       "graph","sources","policy","vault","skills","mcp","docs","jobs","tasks",
       "trace","eval","alerts","inbox",
+      // V417: "admin" 原先被有意排除, 但那样 /api/tokens 就永远拿不到(它要求 admin 权限且仅限本机)
+      //   → 令牌管理在远程连管理员也做不了。放进来: 它只对**本机或已通过 admin 校验**的调用方开放。
+      "admin",
       "p2o","agent"];  // V395-11: 导航对齐 — PDF2Obsidian / Agent控制台+任务
     const perms = (body.permissions ?? ["reason"]).filter((p) => ALLOWED_PERMS.includes(p)) as any[] as Parameters<typeof apiTokenService.createApiToken>[1];
     const { token, record } = await apiTokenService.createApiToken(name, perms);
@@ -890,9 +1011,33 @@ export function buildHttpServer() {
   });
 
   // G19: /health 增强 — DB 连通/队列深度/卡死任务数（守护进程/监控探针用）
+  /**
+   * V417: 依赖服务探测（纯 TCP，1.5s 超时）。
+   * 抽成模块级是因为 /health 与 /api/mode 都要它 —— 两份探测很容易漂移成两套判据。
+   * 只探"推理链路真的会用到"的几个: 图谱两臂 + 记忆层(OpenViking) + PG。
+   * PG 单独由调用方查(它能给出更精确的 up/down, 不只是端口通不通)。
+   */
+  const probeTcp = (port: number, host = "127.0.0.1"): Promise<"up" | "down"> => new Promise((resolve) => {
+    import("node:net").then((net) => {
+      const sock = net.connect({ port, host, timeout: 1500 });
+      sock.once("connect", () => { sock.destroy(); resolve("up"); });
+      sock.once("error", () => resolve("down"));
+      sock.once("timeout", () => { sock.destroy(); resolve("down"); });
+    }).catch(() => resolve("down"));
+  });
+  const probeDependencies = async (): Promise<Record<string, "up" | "down">> => {
+    const [graphiti, cognee, openviking] = await Promise.all([
+      probeTcp(11001), probeTcp(11003), probeTcp(1933),
+    ]);
+    return { graphiti, cognee, openviking };
+  };
+
   app.get("/health", async (): Promise<{
     ok: boolean; service: string; db?: "up" | "down"; queueDepth?: number;
     runningTasks?: number; stuckTasks?: number; agentQueue?: { queued: number; running: number; maxConcurrent: number };
+    /** V417: 依赖服务快照 + 是否降级 —— 原实现只查 PG 一条 select 1, 把 Neo4j/记忆层的死亡盖住了 */
+    dependencies?: Record<string, "up" | "down">;
+    degraded?: boolean;
   }> => {
     let db: "up" | "down" = "down";
     let queueDepth = 0;
@@ -921,7 +1066,15 @@ export function buildHttpServer() {
         agentQueue = { queued: qs.queued, running: qs.running, maxConcurrent: qs.maxConcurrent };
       } catch { /* 队列状态不可用忽略 */ }
     } catch { /* DB 不可达时 db=down 其余保持 0 */ }
-    return { ok: db === "up", service: "marxsphere", db, queueDepth, runningTasks, stuckTasks, agentQueue };
+    // V417: 依赖探测。原先 /health 只看 PG —— 实测本机 Neo4j(11001/11003) 与 OpenViking(1933)
+    //   全都离线, 而 /health 依旧返回 ok:true, 运维看一眼就以为整站健康。
+    //   TCP 探测是廉价的(1.5s 超时)且不依赖被探服务自身实现, 与 /api/mode 的判据保持一致。
+    const dependencies = await probeDependencies();
+    const degraded = db !== "up" || Object.values(dependencies).some((v) => v === "down");
+    return {
+      ok: db === "up", service: "marxsphere", db, queueDepth, runningTasks, stuckTasks, agentQueue,
+      dependencies, degraded,
+    };
   });
 
   // 运行模式（GBrain 模式徽标）：preview=预览（省内存）/ full=完整（推理+MCP池）
@@ -1384,11 +1537,22 @@ export function buildHttpServer() {
     paperTitle: z.string().min(1).max(200),
     nodes: z.array(z.unknown()).max(200),
     fontName: z.string().max(60).optional(),
+    // V417: 参考文献块。缺省时按"没接出可引文献"处理 → 文档里显式提醒人工补录(不伪造)
+    references: z.object({
+      text: z.string().max(200_000).optional(),
+      needsManual: z.boolean().optional(),
+      sources: z.array(z.string().max(40)).max(10).optional(),
+    }).optional(),
   });
   app.post("/api/paper-outline/export", async (request, reply) => {
     const body = outlineExportSchema.parse(request.body);
     const { exportOutlineDocx } = await import("../services/paper-outline-service.js");
-    const result = await exportOutlineDocx({ paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName });
+    const result = await exportOutlineDocx({
+      paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName,
+      references: body.references
+        ? { text: body.references.text ?? "", needsManual: body.references.needsManual ?? false, sources: body.references.sources ?? [] }
+        : undefined,
+    });
     if (!result.ok || !result.base64) {
       return reply.code(502).send({ error: { code: "OUTLINE_EXPORT_FAILED", message: result.error ?? "docx 导出失败" } });
     }
@@ -1986,9 +2150,18 @@ export function buildHttpServer() {
   });
 
   app.get("/api/model-call-logs", async (request) => {
-    const query = request.query as { after?: string };
+    const query = request.query as { after?: string; history?: string; status?: string };
     const after = query.after ? Number(query.after) : 0;
-    return listModelCallLogs(Number.isFinite(after) ? after : 0);
+    const live = listModelCallLogs(Number.isFinite(after) ? after : 0);
+    // V417: 带 history=1 时把库里那份也带上 —— 内存环只有 500 条且重启即丢、多副本只看得到
+    //   自己那一份; 历史读库才能回答"重启前那次为什么失败"。默认不开(热路径轮询别每次都查库)。
+    if (query.history === "1") {
+      const { listModelCallLogsFromDb } = await import("../observability/model-call-log.js");
+      const status = query.status === "FAILED" || query.status === "SUCCEEDED" ? query.status : undefined;
+      const dbLogs = await listModelCallLogsFromDb({ limit: 200, status });
+      return { ...live, history: dbLogs };
+    }
+    return live;
   });
 
   app.get("/sources", async (request) => {
@@ -2211,11 +2384,17 @@ export function buildHttpServer() {
     return { audit: await getRouterAudit(parseInt(q.days || "7", 10)) };
   });
   app.post("/api/admin/user/:id/plan", async (request, reply) => {
-    if (!(await requireAdmin(request, reply))) return;
+    const admin = await requireAdmin(request, reply); if (!admin) return;
     const params = request.params as { id: string };
     const body = request.body as { plan?: string };
     if (!body.plan || !billingService.PLANS[body.plan]) return reply.code(400).send({ error: "未知计划" });
     await pool.query("update users set plan = $2 where id = $1", [params.id, body.plan]);
+    // V417: 原实现连 admin 身份都没取(requireAdmin 的返回值被丢弃), 更没有审计
+    void opsService.recordAdminAction({
+      adminUserId: admin.uid, adminUsername: (admin as { username?: string }).username,
+      action: "user.plan", targetId: params.id, detail: `plan=${body.plan}`,
+      ip: request.socket?.remoteAddress || "",
+    });
     return { ok: true };
   });
 
@@ -2227,6 +2406,11 @@ export function buildHttpServer() {
     if (body.status !== "active" && body.status !== "disabled") return reply.code(400).send({ error: "status 需为 active/disabled" });
     const r = await authService.setUserStatus(admin.uid, params.id, body.status);
     if (!r.ok) return reply.code(400).send({ error: r.error });
+    void opsService.recordAdminAction({
+      adminUserId: admin.uid, adminUsername: (admin as { username?: string }).username,
+      action: "user.status", targetId: params.id, detail: `status=${body.status}`,
+      ip: request.socket?.remoteAddress || "",
+    });
     return { ok: true };
   });
   app.post("/api/admin/user/:id/balance", async (request, reply) => {
@@ -2235,6 +2419,13 @@ export function buildHttpServer() {
     const body = request.body as { deltaCents?: number };
     const r = await authService.adminAdjustBalance(admin.uid, params.id, Number(body.deltaCents) || 0);
     if (!r.ok) return reply.code(400).send({ error: r.error });
+    // 余额变更必须留痕: 改动的是钱, "没记上"本身就是事故
+    await opsService.recordAdminAction({
+      adminUserId: admin.uid, adminUsername: (admin as { username?: string }).username,
+      action: "user.balance", targetId: params.id,
+      detail: `deltaCents=${Number(body.deltaCents) || 0} balanceAfter=${r.balanceCents ?? "?"}`,
+      ip: request.socket?.remoteAddress || "",
+    });
     return { ok: true, balanceCents: r.balanceCents };
   });
   app.post("/api/admin/user/:id/reset-password", async (request, reply) => {
@@ -2243,6 +2434,12 @@ export function buildHttpServer() {
     const body = request.body as { newPassword?: string };
     const r = await authService.adminResetPassword(admin.uid, params.id, body.newPassword || "");
     if (!r.ok) return reply.code(400).send({ error: r.error });
+    // 只记"重置了谁的密码", 绝不记密码本身
+    void opsService.recordAdminAction({
+      adminUserId: admin.uid, adminUsername: (admin as { username?: string }).username,
+      action: "user.reset-password", targetId: params.id,
+      ip: request.socket?.remoteAddress || "",
+    });
     return { ok: true };
   });
 
@@ -7312,9 +7509,9 @@ except Exception as e:
     return { level: getAutonomyLevel(), labels: AUTONOMY_LABELS };
   });
   app.post("/api/agent/autonomy", async (request, reply) => {
-    const body = request.body as { level?: string };
+    const body = z.object({ level: z.enum(["suggest", "auto-edit", "full-auto"]) }).parse(request.body);
     const { setAutonomyLevel, AUTONOMY_LABELS } = await import("../services/agent-autonomy.js");
-    if (!body.level || !setAutonomyLevel(body.level as any)) {
+    if (!setAutonomyLevel(body.level)) {
       return reply.code(400).send({ error: "级别不存在（suggest/auto-edit/full-auto）", code: "AGENT_BAD_REQUEST" });
     }
     // 差距P③: 设置持久化
@@ -8026,7 +8223,12 @@ except Exception as e:
           const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
           const chosen = await chooseToolByLlm(task.goal, step.title, tools);
           if (chosen) {
-            const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools);
+            // V417: 显式传角色。此前不传 → executeAgentTool 兜底 manager, 三级角色闸全失效。
+            //   任务要么记着创建者角色, 要么回落到 analyst(不再有"默认最高权限"这条路径)。
+            const taskRole: "reader" | "analyst" | "manager" =
+              (task as { agent_role?: string }).agent_role === "manager" ? "manager"
+              : (task as { agent_role?: string }).agent_role === "reader" ? "reader" : "analyst";
+            const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: taskRole, taskId: task.id });
             if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
           }
           const res = await fetch(SELF_BASE + "/api/reason/query", {
@@ -8055,7 +8257,11 @@ except Exception as e:
             const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
             const chosen = await chooseToolByLlm(task.goal, step.title, tools);
             if (chosen) {
-              const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools);
+              // V417: 同 8040 处 — 必须显式传角色, 不能靠缺省值
+              const taskRole: "reader" | "analyst" | "manager" =
+                (task as { agent_role?: string }).agent_role === "manager" ? "manager"
+                : (task as { agent_role?: string }).agent_role === "reader" ? "reader" : "analyst";
+              const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: taskRole, taskId: task.id });
               if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
             }
             const res = await fetch(SELF_BASE + "/api/reason/query", {
@@ -9375,9 +9581,34 @@ except Exception as e:
     return { projects: await researchPipeline.listProjects(user.id) };
   });
 
+  // V417: 写作舱「数据源」下拉 —— 文献检索要检索哪些库。
+  //   /api/sources 按**用户租户**过滤, 而本机的知识库都在公共租户下 → 那个接口返回空,
+  //   用户看不出自己其实有 500 篇可检索文献。这里按"能访问到"列出: 公共库 + 本租户库。
+  app.get("/api/research/available-sources", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const PUBLIC_TENANT = "00000000-0000-0000-0000-000000000001";
+    const r = await pool.query(
+      `select s.id, s.name, s.tenant_id,
+              (select count(*) from documents d where d.source_id = s.id) as doc_count
+         from sources s
+        where s.tenant_id = $1 or s.tenant_id = $2
+        order by (s.tenant_id = $2) desc, doc_count desc
+        limit 50`,
+      [user.tenantId, PUBLIC_TENANT]
+    );
+    return {
+      sources: r.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        docCount: Number(row.doc_count ?? 0),
+        isPublic: row.tenant_id === PUBLIC_TENANT,
+      })),
+    };
+  });
+
   app.post("/api/research/projects", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string; template?: string };
+    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string; template?: string; sourceIds?: string[] };
     if (!body?.title?.trim()) return reply.code(400).send({ error: "请填写研究标题" });
     const { id } = await researchPipeline.createProject({
       userId: user.id, title: body.title.trim(),
@@ -9387,7 +9618,28 @@ except Exception as e:
     if (body.template === "five-stage") {
       await researchPipeline.putCanvas(user.id, id, researchPipeline.dagTemplateFiveStage(body.title.trim()));
     }
+    // V417: 建项目时绑定检索数据源(写作舱文献检索用; 空 = 回退默认公共库)
+    if (Array.isArray(body.sourceIds)) {
+      const ids = body.sourceIds.map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 10);
+      await pool.query(`update research_projects set source_ids = $2::uuid[] where id = $1 and user_id = $3`,
+        [id, ids, user.id]);
+    }
     return { id };
+  });
+
+  // V417: 改项目绑定的数据源(写作舱"信息录入"页可改)
+  app.put("/api/research/projects/:projectId/sources", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { sourceIds?: string[] };
+    if (!Array.isArray(body?.sourceIds)) return reply.code(400).send({ error: "缺少 sourceIds" });
+    const ids = body.sourceIds.map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 10);
+    const r = await pool.query(
+      `update research_projects set source_ids = $2::uuid[], updated_at = now() where id = $1 and user_id = $3 returning id`,
+      [projectId, ids, user.id]
+    );
+    if (!r.rows.length) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, sourceIds: ids };
   });
 
   app.get("/api/research/projects/:projectId", async (request, reply) => {
@@ -9724,7 +9976,8 @@ except Exception as e:
   app.post("/api/research/jobs/run", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { projectId?: string };
-    const r = await researchExec.runSchedulingRound(body?.projectId);
+    // 同上: 归属必须是登录者本人的任务
+    const r = await researchExec.runSchedulingRound(body?.projectId, user.id);
     return { executed: r.executed, results: r.results };
   });
 
@@ -9867,13 +10120,34 @@ except Exception as e:
     const body = request.body as {
       projectId?: string; kind?: string; title?: string; contentMd?: string;
       tags?: string[]; sourceRef?: string; producedByDagNode?: string; meta?: Record<string, unknown>;
+      // V417: 以下扩展列 service 层早就支持(write 到对应列), 但路由没转发 → 中间层丢字段,
+      //   导致这些列在前端看永远是空的(素材挂章、引用池、图表数据、附件说明…)。
+      sectionId?: string | string[]; sectionIds?: string[]; references?: unknown[];
+      summary?: string; caption?: string; sourceType?: string; sourceUrl?: string;
+      imagePath?: string; tableData?: unknown; analysisMethod?: string; notes?: string; sortOrder?: number;
     };
     if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
     const kind = ["note", "citation", "data_result", "figure", "file", "theory", "table"].includes(body.kind ?? "") ? body.kind : "note";
+    // 挂章: 前端发的是 sectionIds 数组(snake 列 section_ids 是 text[]), 兼容单值 sectionId
+    const sectionIds = Array.isArray(body.sectionIds)
+      ? body.sectionIds.map(String)
+      : Array.isArray(body.sectionId) ? body.sectionId.map(String)
+      : typeof body.sectionId === "string" && body.sectionId ? [body.sectionId] : [];
     const { id } = await researchMaterials.createMaterial({
       projectId: body.projectId, userId: user.id, kind: kind as never,
       title: body.title, contentMd: body.contentMd, tags: body.tags,
       sourceRef: body.sourceRef, producedByDagNode: body.producedByDagNode, meta: body.meta,
+      ...(sectionIds.length ? { sectionIds } : {}),
+      ...(Array.isArray(body.references) ? { references: body.references } : {}),
+      ...(body.summary !== undefined ? { summary: body.summary } : {}),
+      ...(body.caption !== undefined ? { caption: body.caption } : {}),
+      ...(body.sourceType !== undefined ? { sourceType: body.sourceType } : {}),
+      ...(body.sourceUrl !== undefined ? { sourceUrl: body.sourceUrl } : {}),
+      ...(body.imagePath !== undefined ? { imagePath: body.imagePath } : {}),
+      ...(body.tableData !== undefined ? { tableData: body.tableData } : {}),
+      ...(body.analysisMethod !== undefined ? { analysisMethod: body.analysisMethod } : {}),
+      ...(body.notes !== undefined ? { notes: body.notes } : {}),
+      ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
     });
     return { id };
   });
@@ -9918,6 +10192,44 @@ except Exception as e:
   });
 
   // 体验厚度: AI素材审视
+  // V417: 项目级素材审视 —— 前端 MaterialsView 的「审视素材」一直调这个路径, 但后端
+  //   只有单条路由 /materials/:materialId/review, 于是 POST /materials/review 会命中
+  //   那条路由、materialId="review" → 404「接口不存在」。按钮 100% 失败(实测确认)。
+  //   这里补上: 取项目全部素材, 逐条审阅后汇总一份报告, 并落进 workbench 快照供回读。
+  app.post("/api/research/materials/review", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { projectId?: string; topic?: string };
+    if (!body?.projectId) return reply.code(400).send({ error: "缺少 projectId" });
+    const list = await researchMaterials.listMaterials(user.id, body.projectId);
+    const items = (Array.isArray(list) ? list : []) as Array<{ id: string; title?: string; kind?: string }>;
+    if (!items.length) return reply.code(422).send({ error: "该项目暂无素材可审视" });
+    // 逐条审(上限 12 条, 免得素材多时把请求拖死); 失败的跳过不阻断整体
+    const parts: string[] = [];
+    let okCount = 0;
+    for (const m of items.slice(0, 12)) {
+      try {
+        const r = await researchMaterials.reviewMaterial(user.id, m.id, body.topic ?? undefined);
+        if (r.ok && r.review) {
+          okCount += 1;
+          const rv = r.review as Record<string, unknown>;
+          const line = Object.entries(rv).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
+          parts.push(`### ${m.title ?? "(未命名素材)"}\n${line}`);
+        }
+      } catch { /* 单条失败不阻断 */ }
+    }
+    if (!okCount) return reply.code(422).send({ error: "素材审视全部失败(模型不可用或素材为空)" });
+    const report = `素材审视报告(${okCount}/${items.length} 条)\n\n${parts.join("\n\n")}`;
+    // 落进快照: store.materialReviewReport 走 saveProject, 但后端也应留一份, 供刷新后回读
+    try {
+      const cur = await chapterSkill.getWorkbenchSnapshot(user.id, body.projectId);
+      await chapterSkill.saveWorkbenchSnapshot(user.id, body.projectId, {
+        ...((cur?.snapshot as Record<string, unknown>) ?? {}),
+        materialReviewReport: report,
+      });
+    } catch { /* 快照写失败不影响返回 */ }
+    return { report, okCount, total: items.length };
+  });
+
   app.post("/api/research/materials/:materialId/review", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { materialId } = request.params as { materialId: string };
@@ -9976,7 +10288,8 @@ except Exception as e:
   app.post("/api/research/engine/run", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { projectId?: string };
-    const r = await researchExec.runSchedulingRound(body?.projectId);
+    // user.id 必须传: 否则这条链能跑他人项目下 queued 的任务(以他人素材烧 LLM)
+    const r = await researchExec.runSchedulingRound(body?.projectId, user.id);
     return { executed: r.executed, results: r.results };
   });
 
@@ -11466,6 +11779,12 @@ export async function startHttpServer(): Promise<void> {
 
   // T4-1: research 流水线任务调度泵 — queued→执行(章节批量/merge/review/revise 等)
   // 此前只在前端手动 POST /run-scheduling-round 触发, 任务建后无人消费卡 queued
+  //
+  // V417 关于"多副本要不要加 leader 租约"的结论: **不加**。判据是 —— 这里的正确性靠
+  //   `markRunning` 的原子抢占(update ... where status='queued' returning id)保证, 每个任务
+  //   只会被一个执行者拿到, 多副本同时泵也不会双跑、不会重复烧 LLM。而租约会让"只有一个副本
+  //   在消费队列", 吞吐反而从 N 倍降到 1 倍。leader 门只适用于"重复执行有副作用"的任务
+  //   (期刊抓取会被风控、Dream 会重复写隔离区、自愈会重复修复同一条告警) —— 那些都加了。
   let execPumping = false;
   setInterval(async () => {
     if (execPumping) return; // 防止上一轮未完成时重入

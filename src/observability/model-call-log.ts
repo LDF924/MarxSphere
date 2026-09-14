@@ -119,5 +119,88 @@ function appendModelCallLog(input: Omit<ModelCallLogRecord, "sequence" | "id" | 
   for (const listener of listeners) {
     listener(log);
   }
+  persistModelCallLog(log);
   return log;
+}
+
+/**
+ * V417: 落库(迁移 151)。
+ *
+ * 内存环保留 —— 它服务的是同实例的 SSE 订阅与 `after` 增量轮询, 延迟最低。
+ * 落库补的是内存环补不上的三件事: 重启后仍可查、多副本下能看到全部、以及按时间/状态筛历史。
+ * 失败只 warn 一次量级的问题不逐条刷屏: 日志本身是观测设施, 它自己写不进去不该拖垮调用方。
+ */
+let persistWarned = false;
+function persistModelCallLog(log: ModelCallLogRecord): void {
+  void import("../db/pool.js")
+    .then(({ pool }) =>
+      pool.query(
+        `insert into model_call_logs (id, kind, operation, status, duration_ms, error, request, response, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
+         on conflict (id) do nothing`,
+        [
+          log.id, log.kind, log.operation, log.status, log.durationMs, log.error ?? null,
+          safeJson(log.request), safeJson(log.response), log.createdAt,
+        ],
+      ),
+    )
+    .catch((e) => {
+      if (!persistWarned) {
+        persistWarned = true;
+        console.warn("[model-call-log] 落库失败(后续同类失败不再刷屏):", String(e).slice(0, 140));
+      }
+    });
+}
+
+/** 请求/响应里有循环引用或 BigInt 时 JSON.stringify 会抛 —— 观测数据不该因此丢掉整条记录 */
+function safeJson(v: unknown, maxLen = 8000): string | null {
+  if (v === undefined || v === null) return null;
+  try {
+    const s = JSON.stringify(v);
+    return s.length > maxLen ? JSON.stringify({ _truncated: true, head: s.slice(0, maxLen) }) : s;
+  } catch {
+    return JSON.stringify({ _unserializable: true, type: typeof v });
+  }
+}
+
+/**
+ * V417: 从库里读历史(重启后 / 跨副本)。
+ * 内存环里没有的(比如上一个实例写的)由这里补齐 —— 端点把两者合并返回。
+ */
+export async function listModelCallLogsFromDb(opts: { limit?: number; status?: ModelCallStatus } = {}): Promise<ModelCallLogRecord[]> {
+  const limit = Math.min(Math.max(1, opts.limit ?? 100), 500);
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = opts.status
+      ? await pool.query(
+          `select id, kind, operation, status, duration_ms, error, request, response, created_at
+             from model_call_logs where status=$1 order by created_at desc limit $2`, [opts.status, limit])
+      : await pool.query(
+          `select id, kind, operation, status, duration_ms, error, request, response, created_at
+             from model_call_logs order by created_at desc limit $1`, [limit]);
+    return r.rows.map((row, i) => ({
+      sequence: -(i + 1),   // 负数 = 历史(内存环用正数), 端点合并时不会与实时流撞号
+      id: String(row.id),
+      kind: row.kind as ModelCallKind,
+      operation: String(row.operation),
+      status: row.status as ModelCallStatus,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      durationMs: Number(row.duration_ms ?? 0),
+      request: row.request,
+      response: row.response,
+      error: row.error ?? undefined,
+    }));
+  } catch { return []; }
+}
+
+/** V417: 清理过期日志(启动时调用一次即可, 不必占一个定时器) */
+export async function pruneModelCallLogs(keepDays = 7): Promise<number> {
+  try {
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      `delete from model_call_logs where created_at < now() - ($1::int || ' days')::interval`,
+      [Math.max(1, keepDays)],
+    );
+    return r.rowCount ?? 0;
+  } catch { return 0; }
 }

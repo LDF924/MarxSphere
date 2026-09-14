@@ -105,32 +105,55 @@ export async function setScheduledAgentTaskEnabled(id: string, enabled: boolean)
   return r.rows.length > 0 ? mapRow(r.rows[0]) : null;
 }
 
-/** 调度器一次 tick: 找出到期(enabled + next_run <= now)的定时任务 → 创建 agent 任务 */
+/** 调度器一次 tick: 找出到期(enabled + next_run <= now)的定时任务 → 创建 agent 任务
+ *
+ *  多副本原子性(V417): 原先"select 到期 → 逐个 createAgentTask → update next_run"三步非原子,
+ *  两个副本同时 tick 会把同一个定时任务**创建两次**(若 goal 是每日研究类, 就是双倍 LLM 消耗)。
+ *  现在先用 `for update skip locked` 在事务里把到期的行锁住, 再创建 —— 同一行只有一个副本能碰到。
+ *  跨副本只跑一次这件事**不能**交给进程内标志位。
+ */
 async function tickOnce(): Promise<Array<{ scheduledId: string; taskId: string; goal: string }>> {
-  const r = await pool.query(
-    `select * from agent_scheduled_tasks
-     where enabled = true and (next_run is null or next_run <= now())
-     order by next_run asc nulls first limit 10`
-  );
+  const client = await pool.connect();
+  let rows: any[] = [];
+  try {
+    await client.query("begin");
+    const r = await client.query(
+      `select * from agent_scheduled_tasks
+       where enabled = true and (next_run is null or next_run <= now())
+       order by next_run asc nulls first limit 10
+       for update skip locked`
+    );
+    rows = r.rows;
+    // 立刻把 next_run 推进到下一轮并提交 —— 锁在事务结束即释放, 但 next_run 已不再是"到期",
+    //   别的副本即使随后读到也看不到它了。创建任务放在提交之后(创建可能慢/可能抛, 不该占着锁)。
+    for (const row of r.rows) {
+      const sched = mapRow(row);
+      const next = nextCronRun(sched.cron);
+      await client.query(`update agent_scheduled_tasks set next_run = $2 where id = $1`, [sched.id, next]);
+    }
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+
   const triggered: Array<{ scheduledId: string; taskId: string; goal: string }> = [];
-  for (const row of r.rows) {
+  for (const row of rows) {
     const sched = mapRow(row);
     try {
       // 触发 → 创建 agent 任务（状态 planning, 不自动 run — 由用户从任务面板启动, 避免后台消耗）
       const task = await agentTaskService.createAgentTask({ goal: sched.goal });
-      // 更新 next_run/last_run/last_task_id
-      const next = nextCronRun(sched.cron);
       await pool.query(
-        `update agent_scheduled_tasks set next_run = $2, last_run_at = now(), last_task_id = $3 where id = $1`,
-        [sched.id, next, task.id]
+        `update agent_scheduled_tasks set last_run_at = now(), last_task_id = $2 where id = $1`,
+        [sched.id, task.id]
       );
       triggered.push({ scheduledId: sched.id, taskId: task.id, goal: sched.goal });
       console.log(`[agent-scheduler] 触发定时任务 ${sched.id} → agent 任务 ${task.id.slice(0, 8)}（${sched.goal.slice(0, 40)}）`);
     } catch (e: any) {
+      // next_run 已在上面的原子段推进过, 这里不再重复推进(原先失败分支再推一次, 反而会双重跳跃)
       console.warn(`[agent-scheduler] 定时任务 ${sched.id} 触发失败: ${String(e?.message || e).slice(0, 120)}`);
-      // 失败也推进 next_run（防每次 tick 重复尝试）
-      const next = nextCronRun(sched.cron);
-      await pool.query(`update agent_scheduled_tasks set next_run = $2 where id = $1`, [sched.id, next]).catch(() => {});
     }
   }
   return triggered;

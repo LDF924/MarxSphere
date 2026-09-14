@@ -9,9 +9,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { resolveBrowser } from "./lib/find-browser.mjs";
+import { resolveCdpPort } from "./lib/cdp-port.mjs";
 
 const BASE = "http://localhost:4173";
-const CDP_PORT = 9345;
+let CDP_PORT = 31006; // 起点值; 真实端口由 resolveCdpPort 探测(见下)
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-emp-"));
 
 let ws, msgId = 0;
@@ -56,6 +57,7 @@ function check(name, pass, detail) {
 async function main() {
   const errors = [];
   let tmpProjectId = "";
+  CDP_PORT = await resolveCdpPort(CDP_PORT);
   const edge = spawn(resolveBrowser({ label: "scripts/verify-empirical-project-switch.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new",
     "--disable-gpu", "--window-size=1440,1000", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {

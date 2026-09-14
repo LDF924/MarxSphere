@@ -1007,6 +1007,8 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
                       className="rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">⤓ 导出 md</button>
                     <button type="button" onClick={() => sendResultToEditor(statsMethod?.name ?? "统计分析结果", mdFromResult(statsResult, statsMethod?.name ?? "统计"))}
                       className="rounded border border-violet-500/30 bg-violet-500/5 px-1.5 py-0.5 text-[9px] text-violet-600 hover:bg-violet-500/10">✎ 写入论文</button>
+                    <button type="button" data-control="empirical:stats-to-workflow" onClick={() => sendResultToWorkflow(statsMethod?.name ?? "统计分析结果", mdFromResult(statsResult, statsMethod?.name ?? "统计"))}
+                      className="rounded border border-emerald-500/30 bg-emerald-500/5 px-1.5 py-0.5 text-[9px] text-emerald-600 hover:bg-emerald-500/10">⚘ 送写作舱</button>
                     <button type="button" onClick={() => void sendToWorkshop("stats", statsMethod?.name ?? "统计")}
                       className="rounded border border-sky-500/30 bg-sky-500/5 px-1.5 py-0.5 text-[9px] text-sky-600 hover:bg-sky-500/10">◱ 送工坊精修</button>
                   </>
@@ -1043,6 +1045,8 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
                     className="rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">⤓ 导出 md</button>}
                   {ecoResult && <button type="button" onClick={() => sendResultToEditor(ecoMethod?.label ?? "计量分析结果", mdFromResult(ecoResult, ecoMethod?.label ?? "计量"))}
                     className="rounded border border-violet-500/30 bg-violet-500/5 px-1.5 py-0.5 text-[9px] text-violet-600 hover:bg-violet-500/10">✎ 写入论文</button>}
+                  {ecoResult && <button type="button" data-control="empirical:eco-to-workflow" onClick={() => sendResultToWorkflow(ecoMethod?.label ?? "计量分析结果", mdFromResult(ecoResult, ecoMethod?.label ?? "计量"))}
+                    className="rounded border border-emerald-500/30 bg-emerald-500/5 px-1.5 py-0.5 text-[9px] text-emerald-600 hover:bg-emerald-500/10">⚘ 送写作舱</button>}
                   {ecoResult && <button type="button" onClick={() => void sendToWorkshop("eco", ecoMethod?.label ?? "计量")}
                     className="rounded border border-sky-500/30 bg-sky-500/5 px-1.5 py-0.5 text-[9px] text-sky-600 hover:bg-sky-500/10">◱ 送工坊精修</button>}
                   {ecoResult && <button type="button" onClick={() => setEcoResult(null)} className="rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent">清空</button>}
@@ -1135,6 +1139,13 @@ function useGroupedStats() {
 function sendResultToEditor(title: string, md: string) {
   try {
     window.dispatchEvent(new CustomEvent("empirical:open-editor-with-doc", { detail: { title, markdown: md } }));
+  } catch { /* 忽略 */ }
+}
+
+/** V417: 结果 markdown → 研途写作舱素材库(实证结果作为论文章节的证据素材) */
+function sendResultToWorkflow(title: string, md: string) {
+  try {
+    window.dispatchEvent(new CustomEvent("empirical:write-to-workflow", { detail: { kind: "stats", title, markdown: md } }));
   } catch { /* 忽略 */ }
 }
 

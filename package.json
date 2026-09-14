@@ -37,7 +37,9 @@
     "dev:socialsci-vue": "vite --config web/socialsci-vue/vite.config.ts",
     "build:socialsci-vue": "vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit && vite build --config web/socialsci-vue/vite.config.ts",
     "typecheck:socialsci-vue": "vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit",
-    "reconcile": "tsx scripts/reconcile-accounts.ts"
+    "reconcile": "tsx scripts/reconcile-accounts.ts",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "verify:ui:all": "node scripts/verify-ui.mjs --all"
   },
   "dependencies": {
     "@embedpdf/core": "2.14.4",

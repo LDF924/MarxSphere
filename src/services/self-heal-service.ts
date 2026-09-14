@@ -147,7 +147,12 @@ export const selfHealService = { healAlert, healPendingAlerts, startSelfHealPatr
 export function startSelfHealPatrol(intervalMs = 60_000): void {
   const timer = setInterval(async () => {
     try {
-      const results = await healPendingAlerts(3);
+      // V417: 加跨副本租约。巡检会把告警标记已读并执行修复动作(端口拉起等), 多副本各跑一遍
+      //   会重复执行 —— 同一告警被两个副本同时取到就会修两次。
+      //   TTL 用 2× 周期: 单轮最多处理 3 条, 跑得久也够; 持有者崩了下一轮就能接手。
+      const { withRunLease } = await import("./singleton-scheduler.js");
+      const guarded = withRunLease("self-heal-patrol", async () => healPendingAlerts(3), intervalMs * 2);
+      const results = (await guarded()) ?? [];
       if (results.length > 0) {
         console.log(`[self-heal] 处理 ${results.length} 条告警:`, results.map((r) => `${r.result.action}:${r.result.success ? "✓" : "✗"}`).join(", "));
       }
@@ -156,5 +161,5 @@ export function startSelfHealPatrol(intervalMs = 60_000): void {
     }
   }, intervalMs);
   timer.unref?.();
-  console.log(`[self-heal] 自愈巡检已启动（每 ${intervalMs / 1000}s）`);
+  console.log(`[self-heal] 自愈巡检已启动（每 ${intervalMs / 1000}s，多副本下每轮仅一个副本执行）`);
 }

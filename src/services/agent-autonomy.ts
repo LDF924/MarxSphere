@@ -10,7 +10,16 @@ export const AUTONOMY_LABELS: Record<AutonomyLevel, string> = {
   "full-auto": "全自动 — 全部自动执行, 只审计（高风险操作仍受 guardian 拦截）",
 };
 
-let autonomyLevel: AutonomyLevel = (process.env.AGENT_AUTONOMY as AutonomyLevel) || "auto-edit";
+/**
+ * V417 缺省从 "auto-edit" 改为 "suggest"。
+ *
+ * 缘由(2026-09-14 安全审计): auto-edit 下 `risk==="safe"` 的工具**全部自动执行、无需审批**,
+ *   而当时 runtime_exec / run_code 这类"任意代码执行"的能力都标着 risk:"safe" ——
+ *   等于开箱即用地无审批执行任意 Python。suggest 是"只读放行、其余走审批",
+ *   对首次部署与多租户是安全的那一侧。
+ *   需要自动执行的部署显式设 AGENT_AUTONOMY=auto-edit(或 full-auto)即可, 行为可预期。
+ */
+let autonomyLevel: AutonomyLevel = (process.env.AGENT_AUTONOMY as AutonomyLevel) || "suggest";
 
 export function getAutonomyLevel(): AutonomyLevel {
   return autonomyLevel;

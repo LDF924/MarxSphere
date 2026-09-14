@@ -1,83 +1,83 @@
-// pb-report-verify.mjs — P-B 报告 UI 验证(独立无头会话): 直达审稿记录→打开 done job→断言报告新元素
-// 用法: node scripts/pb-report-verify.mjs
-import { spawn } from "node:child_process";
-import { resolveBrowser } from "./lib/find-browser.mjs";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import * as path from "node:path";
+// pb-report-verify.mjs — P-B 审稿报告 UI 验证: 往期审稿 → 打开一条 → 断言报告结构
+//
+// 验什么: ①「往期审稿」列表能渲染出记录卡; ②点一条能打开报告;
+//   ③报告页渲染出综合评分块 / 评级徽标 / 维度评分 / 速览指标 / 原文对照入口。
+//
+// 2026-09-14 重写。三处过时(全是"断言与实际实现不符", 脚本一直红着没人管):
+//   ① 卡片选择器 `div[class*=cursor]` —— 实际类名是 `.history-item`(ReviewView.vue:1421),
+//      页面里 cursor 类名的 div 数为 0, 所以恒返回 NO-CARD。
+//   ② 在**顶层 document** 里找 —— 真界面是 Vue 版、渲染在 /soc/ iframe 里。
+//   ③ 断言的文案串(总分/核心问题/7 个维度审查/权重 4)在代码里**根本不存在**;
+//      实际是「综合评分」+ 评级徽标 + 「评审维度」等速览指标。断言已按真实结构重写。
+//
+// 用法: node scripts/pb-report-verify.mjs  (前置: 4173 已起; admin 账号存在; 至少有 1 条历史审稿)
+import { startCdp, loginToken, findSocFrame, evalInFrame, verdict, sleep } from "./lib/cdp-editor.mjs";
 
-const BASE = "http://localhost:4173";
-const CDP_PORT = 9334;
-const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-pb"));
-
-let ws, msgId = 0;
-const pend = new Map();
-const cdp = (m, p = {}) => new Promise((res, rej) => {
-  const id = ++msgId; pend.set(id, { res, rej });
-  ws.send(JSON.stringify({ id, method: m, params: p }));
-  setTimeout(() => { if (pend.has(id)) { pend.delete(id); rej(new Error("timeout " + m)); } }, 30000);
-});
-const ev = async (e) => {
-  const r = await cdp("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true });
-  if (r.exceptionDetails) return "JSERR:" + (r.exceptionDetails.exception?.description || "").slice(0, 300);
-  return r.result?.value;
-};
+const BASE = "http://127.0.0.1:4173";
 
 async function main() {
-  const edge = spawn(resolveBrowser({ label: "scripts/pb-report-verify.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
+  const { ev, cdp, close } = await startCdp({ preferredPort: 31005, label: "scripts/pb-report-verify.mjs", tmpPrefix: "edge-cdp-pb" });
   try {
-    for (let i = 0; i < 30; i++) {
-      try {
-        const l = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json();
-        const pg = l.find((t) => t.type === "page");
-        if (pg) { ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; }); break; }
-      } catch { }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && pend.has(d.id)) { const p = pend.get(d.id); pend.delete(d.id); d.error ? p.rej(new Error(d.error.message)) : p.res(d.result); } };
+    const token = await loginToken();
+    if (!token) { console.error("ERR 登录失败(admin/admin123)"); process.exit(1); }
 
-    await cdp("Page.enable"); await cdp("Runtime.enable");
-    // login admin
-    const r = await fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "admin123" }) });
-    const token = (await r.json()).token;
-    await cdp("Page.navigate", { url: BASE }); await new Promise((r2) => setTimeout(r2, 2500));
-    if (token) { await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)}); location.href='http://localhost:4173/#review-lab';`); await new Promise((r2) => setTimeout(r2, 4000)); }
+    // 先落在同源页面上把 token 写进 localStorage, 再直达审稿页(它会带出往期记录)
+    await cdp("Page.navigate", { url: `${BASE}/` });
+    await sleep(3000);
+    await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)}); true;`);
+    await cdp("Page.navigate", { url: `${BASE}/#review-lab` });
+    await sleep(10000);
 
-    const res = await ev(`(async () => {
-      const vis = (el) => !!(el && (el.offsetWidth || el.offsetHeight));
-      const clickByText = async (txt, partial=false) => {
-        const els = Array.from(document.querySelectorAll('button,[role=button],a,div'));
-        const el = els.find(b => { const t=(b.innerText||'').trim(); return partial ? t.includes(txt)&&t.length<80 : t===txt; });
-        if (el && vis(el)) { el.click(); await new Promise(r=>setTimeout(r,600)); return true; }
-        return false;
-      };
-      // 1) 点'审稿记录' tab
-      await clickByText('审稿记录');
-      await new Promise(r=>setTimeout(r,1200));
-      // 2) 点第一张 job 卡(卡片区含 '· ' 或 done)
-      const card = Array.from(document.querySelectorAll('div.cursor-pointer,div[class*=cursor]')).find(el => { const t=(el.textContent||''); return t.includes('字') && t.includes('2026'); });
-      if (!card) return 'NO-CARD';
-      card.click();
-      await new Promise(r=>setTimeout(r,4000));
-      const body = (document.querySelector('#root')||document.body).innerText;
-      const checks = {
-        total: body.includes('总分'),
-        grade: body.includes('及格') || body.includes('良好') || body.includes('优秀') || body.includes('不及格'),
-        core: body.includes('核心问题'),
-        weight: body.includes('权重 4') || body.includes('权重 5'),
-        dims7: body.includes('7 个维度审查'),
-        original: body.includes('原文对照'),
-      };
-      // 抽报告段文本
-      let seg = '';
-      for (const mk of ['审稿报告','维度评分卡','核心问题']) { const i = body.indexOf(mk); if (i >= 0) { seg = body.slice(i, i + 500); break; } }
-      return JSON.stringify({ checks, seg }, null, 1);
+    const frameId = await findSocFrame(cdp);
+    if (!frameId) { console.error("ERR 审稿 iframe 未挂载(/soc/)"); process.exit(1); }
+
+    // ① 往期列表有卡片 → 点第一条
+    const opened = await evalInFrame(cdp, frameId, `(async () => {
+      const items = Array.from(document.querySelectorAll('.history-item'));
+      if (!items.length) return { err: 'no-history-item', hint: (document.body.innerText||'').replace(/\\s+/g,' ').slice(0, 150) };
+      const first = items[0];
+      const title = (first.querySelector('.h-title')?.textContent || '').trim();
+      first.click();
+      await new Promise(r => setTimeout(r, 5000));
+      return { itemCount: items.length, title };
     })()`);
-    console.log(res);
-  } finally {
-    try { ws?.close(); } catch { }
-    edge.kill();
-    setTimeout(() => rmSync(userData, { recursive: true, force: true }), 800);
-  }
+    if (opened?.err) {
+      console.error(`ERR ${opened.err} — ${opened.hint ?? ""}`);
+      console.error("  (前置: 该账号至少要有一条历史审稿记录; 没有就先跑一次审稿)");
+      process.exit(1);
+    }
+
+    // ② 报告结构断言(按真实类名, 不赌文案)
+    const st = await evalInFrame(cdp, frameId, `(() => {
+      const txt = (document.body.innerText || '');
+      const dims = Array.from(document.querySelectorAll('.dim-score'));
+      const metrics = Array.from(document.querySelectorAll('.ov-metric'));
+      return {
+        historyCount: document.querySelectorAll('.history-item').length,
+        hasScoreBlock: !!document.querySelector('.score-block'),
+        bigScore: (document.querySelector('.big-score')?.textContent || '').trim(),
+        grade: (document.querySelector('.grade-badge')?.textContent || '').trim(),
+        hasScoreLabel: txt.includes('综合评分'),
+        dimCount: dims.length,
+        dimScores: dims.slice(0, 8).map(d => (d.textContent||'').trim()),
+        metricCount: metrics.length,
+        metricLabels: metrics.map(m => (m.textContent||'').replace(/\\s+/g,' ').trim().slice(0, 18)),
+        hasDetailBtn: Array.from(document.querySelectorAll('button')).some(b => (b.textContent||'').includes('原文对照')),
+      };
+    })()`);
+
+    const score = st?.bigScore ?? "";
+    const grade = st?.grade ?? "";
+    const results = [
+      { name: "往期审稿列表有记录卡", pass: (opened?.itemCount ?? 0) > 0, detail: `共 ${opened?.itemCount} 条, 打开「${opened?.title}」` },
+      { name: "报告页出现综合评分块", pass: st?.hasScoreBlock === true && st?.hasScoreLabel === true, detail: `评分=${score} 标签含"综合评分"=${st?.hasScoreLabel}` },
+      { name: "评级徽标非空", pass: !!grade && grade !== "—", detail: `评级=${grade}` },
+      { name: "维度评分已渲染", pass: (st?.dimCount ?? 0) > 0, detail: `${st?.dimCount} 个维度: ${(st?.dimScores ?? []).join(" ")}` },
+      { name: "速览指标已渲染", pass: (st?.metricCount ?? 0) >= 3, detail: (st?.metricLabels ?? []).join(" | ") },
+      { name: "有「原文对照与批注」入口", pass: st?.hasDetailBtn === true, detail: "" },
+    ];
+    process.exit(verdict(results) ? 0 : 1);
+  } finally { close(); }
 }
+
 main().catch((e) => { console.error("ERR", e.message); process.exit(1); });

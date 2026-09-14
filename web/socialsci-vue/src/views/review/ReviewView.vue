@@ -624,8 +624,37 @@ function sendToEditor(markdown: string, title: string) {
   toast(`已发送到编辑器, 将新建文档「${title}」`, "success");
 }
 
-/** 选中的批注 → markdown 修改清单 */
-function annotationsToMarkdown(): { md: string; title: string } {
+/**
+ * V417: 把审稿意见送进「研途写作舱」当素材（评审 → 写作的闭环）。
+ *
+ * 信道与 sendToEditor 不同: 目标是**另一个 iframe**（外壳里的 paper-outline），
+ * 本视图改不动它。由 React 外壳中转 —— 发 marxsphere-soc/forward-to-module，
+ * 外壳收到后导航到写作舱并把 markdown 投给它的 MaterialsView。
+ */
+function sendToWorkflow(markdown: string, title: string) {
+  if (!markdown.trim()) { toast("没有可发送的内容", "warning"); return; }
+  if (!window.parent || window.parent === window) {
+    toast("请在平台外壳内使用(当前不在 iframe 中)", "warning");
+    return;
+  }
+  try {
+    window.parent.postMessage(
+      { source: "marxsphere-soc", type: "forward-to-module", route: "workflow", kind: "review", title, markdown },
+      "*",
+    );
+    toast(`已送入研途写作舱素材库「${title}」`, "success");
+  } catch {
+    toast("发送失败", "error");
+  }
+}
+
+async function sendAllToWorkflow() {
+  if (!annotationsFlat.value.length) { toast("本次审稿没有批注可发送", "warning"); return; }
+  const { md, title } = annotationsToMarkdown();
+  sendToWorkflow(md, title);
+}
+
+/** 选中的批注 → markdown 修改清单 */function annotationsToMarkdown(): { md: string; title: string } {
   const chosen = annotationsFlat.value.filter((a) => verdictOf(a.id) === "agree" || verdictOf(a.id) === "fixed");
   const list = chosen.length ? chosen : annotationsFlat.value;
   const title = `${store.result?.paperTitle || "审稿报告"}-修改清单`;
@@ -1469,6 +1498,9 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
               <button class="secondary-btn" @click="store.showDetail()">原文对照与批注</button>
               <button class="secondary-btn" :disabled="!annotationsFlat.length" title="把批注整理成修改清单, 在编辑器中新建文档打开" @click="sendAllToEditor">
                 发到编辑器
+              </button>
+              <button class="secondary-btn" data-control="review:send-to-workflow" :disabled="!annotationsFlat.length" title="把审稿意见作为素材送进研途写作舱, 供文献综述/修改章节引用" @click="sendAllToWorkflow">
+                送写作舱
               </button>
               <button class="secondary-btn" data-control="review:export-html" :disabled="exporting === 'html'" @click="exportHtml">
                 {{ exporting === "html" ? "导出中…" : "导出 HTML" }}

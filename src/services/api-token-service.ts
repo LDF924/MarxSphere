@@ -118,19 +118,20 @@ export async function deleteApiToken(id: string): Promise<boolean> {
 /** 校验 Bearer token: 返回权限列表; 无效返回 null */
 export async function validateApiToken(
   bearer: string
-): Promise<{ tokenId: string; permissions: TokenPermission[] } | null> {
+): Promise<{ tokenId: string; tokenName: string; permissions: TokenPermission[] } | null> {
   const token = bearer.replace(/^Bearer\s+/i, "").trim();
   if (!token.startsWith("sag_")) return null;
   const hash = sha256(token);
   const r = await pool.query(
-    `select id, permissions, revoked from api_tokens where token_hash = $1`,
+    `select id, name, permissions, revoked from api_tokens where token_hash = $1`,
     [hash]
   );
   const row = r.rows[0];
   if (!row || row.revoked) return null;
   // 更新 last_used_at（失败不阻塞）
   pool.query(`update api_tokens set last_used_at = now() where id = $1`, [row.id]).catch(() => {});
-  return { tokenId: String(row.id), permissions: row.permissions ?? [] };
+  // tokenName 供审计记录用(V417): 审计里写"哪个令牌干的", 只给 uuid 等于没线索
+  return { tokenId: String(row.id), tokenName: String(row.name ?? ""), permissions: row.permissions ?? [] };
 }
 
 /** 检查是否有指定权限 */

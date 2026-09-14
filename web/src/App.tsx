@@ -87,6 +87,9 @@ import { AgentConsole } from "./components/AgentConsole";
 import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream 巩固
 
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开闭源原名, 单一完整形态) ──
+// 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
+const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
+
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
     title: "研途写作舱",
@@ -238,6 +241,8 @@ function AppShell() {
   const latestDatasetRef = useRef<{ csv: string; columnOrder: string[]; fileName: string } | null>(null);
   // 统一分析台「送工坊精修」待处理的作图种子
   const pendingVizSeedRef = useRef<{ title: string; csv: string; columnOrder: string[]; message: string } | null>(null);
+  // V417: 各模块「送入研途写作舱」待投递的素材(落到写作舱的 research_materials)
+  const pendingWorkflowMaterialRef = useRef<{ kind: string; title: string; markdown: string } | null>(null);
 
   // V414: 判断 iframe 内的子应用**监听器是否已就绪**。
   //   这里踩过两级坑, 记下来免得后人重犯:
@@ -251,7 +256,7 @@ function AppShell() {
   //   现在由**真正就绪的一方打标**: 两个 Vue 视图在 onMounted 注册完 message 监听后写
   //   `window.__socReady[viz|editor] = true`, 父级只读这个标。时序确定, 不靠猜。
   //   跨域(dev React 4174 / Vue 5174)读不到 → 返回 false 继续轮询, 保守但不误投。
-  const subAppReady = (iframe: HTMLIFrameElement | null, app: "viz" | "editor"): boolean => {
+  const subAppReady = (iframe: HTMLIFrameElement | null, app: "viz" | "editor" | "workflow"): boolean => {
     if (!iframe?.contentWindow) return false;
     try {
       const ready = (iframe.contentWindow as unknown as { __socReady?: Record<string, boolean> }).__socReady;
@@ -608,7 +613,6 @@ function AppShell() {
   useEffect(() => {
     // 初始从 hash 恢复（刷新后保持）
     const initialHash = window.location.hash.replace(/^#/, "");
-    const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
     if (initialHash && validViews.includes(initialHash as WorkspaceView)) {
       setWorkspaceView(initialHash as WorkspaceView);
     }
@@ -624,6 +628,53 @@ function AppShell() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // ── 子应用请求切换外壳视图（V417 补上接收端）──
+  //   QuickModeView:882 从 V395 起就在发 {type:"navigate"}, 但 React 侧一直没有监听者 ——
+  //   点"查看产物"只弹 toast, 人停在原地(悬空协议)。写作舱要"送编辑器"也得靠它。
+  useEffect(() => {
+    const onNavigate = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string; view?: string } | null;
+      if (d?.source !== "marxsphere-soc" || d.type !== "navigate") return;
+      const view = String(d.view ?? "");
+      if (!validViews.includes(view as WorkspaceView)) return;
+      // 必须走 navigateView: 它同时更新 hash。只 setWorkspaceView 会切了视图但地址栏不动,
+      // 刷新后弹回原页(实测)。
+      navigateView(view as WorkspaceView);
+    };
+    window.addEventListener("message", onNavigate);
+    return () => window.removeEventListener("message", onNavigate);
+  }, [navigateView]);
+
+  // V417: 子应用(iframe 里的 soc 视图, 如评审页)请求把内容送给别的模块 —— soc 不能直接投递给另一个 iframe,
+  //   由外壳中转。`route` 决定送写作舱(素材)还是送编辑器(文档)。
+  //   注意 source 是 marxsphere-soc(子应用上行), 与外壳下行用的 marxsphere-app 不同。
+  useEffect(() => {
+    const onForward = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string; route?: string; kind?: string; title?: string; markdown?: string } | null;
+      if (d?.source !== "marxsphere-soc" || d.type !== "forward-to-module") return;
+      if (!d.markdown?.trim()) return;
+      if (d.route === "editor") {
+        // 复用既有的 empirical-insert-doc 通道: 下面的 effect 会等 editor iframe 的
+        // `__socReady.editor` 打标后再投递。别用 localStorage 交接 —— EditorView 只在
+        // ?new=1 时读它(实测), 而 postMessage 给不了 query, 交接会被永远搁置。
+        pendingEditorDocRef.current = { title: d.title ?? "未命名", markdown: d.markdown };
+        navigateView("editor");
+        return;
+      }
+      if (d.route === "workflow") {
+        pendingWorkflowMaterialRef.current = {
+          kind: d.kind ?? "note",
+          title: d.title ?? "外部素材",
+          markdown: d.markdown,
+        };
+        navigateView("paper-outline");
+      }
+    };
+    window.addEventListener("message", onForward);
+    return () => window.removeEventListener("message", onForward);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── 统一分析台「✎ 写入论文」: 导航 editor 视图, 待 iframe 挂载后把 markdown 注入编辑器 ──
@@ -730,11 +781,51 @@ function AppShell() {
     return () => clearInterval(timer);
   }, [workspaceView]);
 
+  // V417: 各模块「送入研途写作舱」—— 目标 iframe 与 418 的 soc 路由不同, 走同一套轮询投递
+  useEffect(() => {
+    const onWriteToWorkflow = (e: Event) => {
+      const d = (e as CustomEvent).detail as { kind?: string; title?: string; markdown?: string } | undefined;
+      if (!d?.markdown?.trim()) return;
+      pendingWorkflowMaterialRef.current = {
+        kind: d.kind ?? "note",
+        title: d.title ?? "外部素材",
+        markdown: d.markdown,
+      };
+      navigateView("paper-outline");
+    };
+    window.addEventListener("empirical:write-to-workflow", onWriteToWorkflow);
+    return () => window.removeEventListener("empirical:write-to-workflow", onWriteToWorkflow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (workspaceView !== "paper-outline" || !pendingWorkflowMaterialRef.current) return;
+    const payload = pendingWorkflowMaterialRef.current;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const iframe = document.querySelector('iframe[title="研途写作舱"], iframe[src*="/workflow"]') as HTMLIFrameElement | null;
+      if (subAppReady(iframe, "workflow")) {
+        try {
+          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "workflow-material", ...payload }, "*");
+          pendingWorkflowMaterialRef.current = null;
+          clearInterval(timer);
+          return;
+        } catch { /* 跨域忽略 */ }
+      }
+      // 保留 pending(切走再切回可重投), 但明确告知, 不让用户以为点了没反应
+      if (tries > 200) {
+        clearInterval(timer);
+        setError("未能把素材送入研途写作舱(子应用加载超时), 请重新点击");
+      }
+    }, 50);
+    return () => clearInterval(timer);
+  }, [workspaceView]);
+
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId]
   );
-
   const visibleDocuments = useMemo(
     () => documents.filter((document) => showArchivedDocuments || !document.archivedAt),
     [documents, showArchivedDocuments]

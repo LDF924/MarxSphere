@@ -9,6 +9,7 @@ import {
 } from "../src/services/agent-task-service.js";
 import {
   checkNetworkAccess, checkPathAccess, maskCredentials, checkToolPolicy,
+  checkToolRole, minRoleOf, WRITE_TOOLS, TOOL_MIN_ROLE_KEYS,
 } from "../src/services/agent-tool-router.js";
 
 // ═══ planBudget / trimStepsByBudget ═══
@@ -198,5 +199,64 @@ describe("checkToolPolicy", () => {
   it("角色不足拦截(analyst 工具 + reader)", () => {
     const r = checkToolPolicy("llm_write", "reader", undefined);
     expect(r.allowed).toBe(false);
+  });
+});
+
+// ═══ V417: 工具角色闸 + 只读暴露闸 ═══
+// 背景: 2026-09-14 审计发现三道闸全是空的 ——
+//   ① executeAgentTool 缺省 role="manager" → 没传 role 的调用方(Agent 对话链两处)拿到最高权限
+//   ② TOOL_MIN_ROLE 只登记了 26/77 个工具, 其余走缺省("reader") → 写类工具对只读会话开放
+//   ③ buildAgentTools 支持 exposure 参数但 17 处调用无一传 → 只读过滤是死代码
+
+describe("checkToolRole", () => {
+  it("未登记工具: 缺省按最高权限要求(不再缺省 reader)", () => {
+    expect(minRoleOf("this_tool_is_not_registered")).toBe("manager");
+    expect(checkToolRole("this_tool_is_not_registered", "reader")).toBe(false);
+    expect(checkToolRole("this_tool_is_not_registered", "analyst")).toBe(false);
+    expect(checkToolRole("this_tool_is_not_registered", "manager")).toBe(true);
+  });
+
+  it("已登记的只读工具: reader 可用", () => {
+    expect(checkToolRole("sag_retrieve", "reader")).toBe(true);
+    expect(checkToolRole("file_read", "reader")).toBe(true);
+  });
+
+  it("写类工具: reader/analyst 都不行, 只有 manager", () => {
+    for (const t of ["run_code", "file_write", "apply_patch", "run_command", "sag_ingest"]) {
+      expect(checkToolRole(t, "reader")).toBe(false);
+      expect(checkToolRole(t, "analyst")).toBe(false);
+      expect(checkToolRole(t, "manager")).toBe(true);
+    }
+  });
+
+  it("V417 补登的工具: doc_edit 等写类必须 manager", () => {
+    for (const t of ["doc_edit", "view_skill_run", "view_task_create", "meta_invoke",
+                     "patch_learner_profile", "record_learning_event", "education_service"]) {
+      expect(checkToolRole(t, "reader")).toBe(false);
+      expect(checkToolRole(t, "manager")).toBe(true);
+    }
+  });
+});
+
+describe("只读暴露闸(WRITE_TOOLS)", () => {
+  it("写/执行类都在名单里", () => {
+    for (const t of ["run_code", "file_write", "run_command", "runtime_exec", "apply_patch",
+                     "orch_run", "doc_edit", "view_task_create", "meta_invoke"]) {
+      expect(WRITE_TOOLS.has(t)).toBe(true);
+    }
+  });
+  it("纯只读工具不在名单里(否则只读会话会被误伤)", () => {
+    for (const t of ["sag_retrieve", "sag_reason", "file_read", "web_search", "code_search_view"]) {
+      expect(WRITE_TOOLS.has(t)).toBe(false);
+    }
+  });
+});
+
+describe("TOOL_MIN_ROLE 登记完整性", () => {
+  it("WRITE_TOOLS 里的工具必须全部显式登记(否则只读闸与角色闸不一致)", () => {
+    for (const t of WRITE_TOOLS) {
+      // 已登记的不会落到"未登记→manager"分支; 这里靠显式键集合断言
+      expect(TOOL_MIN_ROLE_KEYS).toContain(t);
+    }
   });
 });

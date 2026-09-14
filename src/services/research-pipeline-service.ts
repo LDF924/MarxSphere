@@ -548,6 +548,7 @@ export async function generateClarify(input: {
 ${input.researchMethod ? `【方法】${input.researchMethod}` : ""}
 ${input.requirements ? `【已有要求】${input.requirements.slice(0, 500)}` : ""}
 ${input.totalWordCount ? `【目标字数】${input.totalWordCount}` : ""}
+${input.sampleContent ? `【参考样例片段(用户上传, 用于判断其写作取向与规范)】\n${input.sampleContent.slice(0, 4000)}` : ""}
 ${answersBlock ? `\n【第一轮问答记录】\n${answersBlock}` : ""}
 
 ${roundPrompt}`, undefined, 4000);
@@ -578,13 +579,55 @@ export async function runMainAgentAnalysis(userId: string, projectId: string, op
 研究主题: ${project.topic || project.title}
 研究方法: ${project.style || "mixed"}
 【目标字数】10000 字(社会科学论文默认, 按此分配每章 wordCount; 若主题明显偏长/偏短可自行微调)`);
+  // V417: putNode 是**整包替换**, 两步分析各写各的键, 于是互相抹对方:
+  //   · 这条路径(架构确认)不产 stepAnalysisTexts, 却硬编码空串 → 点一次就把 P1 分析产出的
+  //     step2/step3 文本抹成 ""; 而 SectionsView 的假设解析以 stepAnalysisTexts["2"] 为
+  //     第一优先级 → 已解析出的假设静默清空。
+  //   · 反向也一样: 只有分析链产出逻辑主线时, 上面那几个键会被清掉。
+  //   而 getWorkbenchSnapshot / loadProject 都不回读 hypotheses 与 logicChain
+  //   (analysis 节点读的只有 variables / stepAnalysisTexts / logicFlow) —— 一旦被清,
+  //   前端刷新后永久丢失。所以两边都改成"只覆盖本次真正产出的键"。
+  const prevAnalysis = await (async (): Promise<Record<string, unknown>> => {
+    try {
+      const r = await pool.query(
+        `select payload from research_nodes where project_id=$1 and node_key='analysis'`, [projectId]);
+      return ((r.rows[0]?.payload ?? {}) as Record<string, unknown>) ?? {};
+    } catch { return {}; }
+  })();
+  const prevSteps = (prevAnalysis.stepAnalysisTexts ?? {}) as Record<string, string>;
+  // 本章真正产出的章节计划; 模型偶尔只给标题 → 兜底成可用的 plan 条目
+  const chapterPlan = (Array.isArray(ans?.chapterPlan) ? ans.chapterPlan : []).map((c: Record<string, unknown>, i: number) => ({
+    title: String(c?.title ?? `第${i + 1}节`),
+    level: Number(c?.level ?? 1),
+    requirements: String(c?.requirements ?? ""),
+    skillType: String(c?.skillType ?? "literature"),
+    wordCount: Number(c?.wordCount ?? 0),
+  }));
+  // 三段分析文本: 本次产出的键用新值, 没产出的键沿用旧值 —— 逐键判定, 不做"整体留/整体换"
+  const newSteps = {
+    "1": String(ans?.step1Text ?? ""),
+    "2": String(ans?.step2Text ?? ""),
+    "3": String(ans?.step3Text ?? ""),
+  };
+  const stepAnalysisTexts: Record<string, string> = {};
+  for (const k of new Set([...Object.keys(prevSteps), ...Object.keys(newSteps)])) {
+    const fresh = String(newSteps[k as "1" | "2" | "3"] ?? "");
+    stepAnalysisTexts[k] = fresh.trim() ? fresh : String(prevSteps[k] ?? "");
+  }
+  const newVars = ans?.variables as unknown;
+  const varsProduced = Array.isArray(newVars) ? newVars.length > 0
+    : Boolean(newVars && typeof newVars === "object" && Array.isArray((newVars as { list?: unknown }).list) && (newVars as { list: unknown[] }).list.length);
   const nodePayload = {
-    variables: ans?.variables ?? { kind: "unknown", list: [] },
-    hypotheses: ans?.hypotheses ?? [],
-    chapterPlan: ans?.chapterPlan ?? [],
-    logicChain: ans?.logicChain ?? "",
-    clarifyQuestions: ans?.clarifyQuestions ?? [],
-    stepAnalysisTexts: { "1": "", "2": "", "3": "" },
+    ...prevAnalysis,
+    variables: varsProduced ? newVars : (prevAnalysis.variables ?? { kind: "unknown", list: [] }),
+    // 本次没产出就用旧值 —— 清空对用户是纯损失, 没有任何路径依赖"被清空"
+    hypotheses: (ans?.hypotheses as unknown[] | undefined)?.length ? ans.hypotheses : (prevAnalysis.hypotheses ?? []),
+    // 首次分析若结构为空, 拿 previously 的变量/章节规划兜底, 否则"确认进入"的门禁会突然变红
+    chapterPlan: chapterPlan.length ? chapterPlan : (prevAnalysis.chapterPlan ?? []),
+    logicChain: String(ans?.logicChain ?? "").trim() ? ans.logicChain : (prevAnalysis.logicChain ?? ""),
+    clarifyQuestions: (ans?.clarifyQuestions as unknown[] | undefined)?.length ? ans.clarifyQuestions : (prevAnalysis.clarifyQuestions ?? []),
+    // 这条路径产的是上面三段; 键在 prevSteps 里有而这里没覆盖到的(如历史键)也原样留着
+    stepAnalysisTexts: Object.keys(stepAnalysisTexts).length ? stepAnalysisTexts : { "1": "", "2": "", "3": "" },
     generatedAt: new Date().toISOString(),
   };
   await putNode(userId, projectId, "analysis", nodePayload, { taskId: opts.taskId, sourceRole: "main_agent" });

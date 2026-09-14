@@ -22,6 +22,9 @@ export interface Section {
   wordCount?: number;
   requirements?: string;
   summary?: string;
+  /** 后端批量生成时正则抽取的结论/数据/论点/遗留清单(research-exec-engine.buildStructuredSummary)
+   *  实际是 `【关键结论】…\n\n【关键数据】…` 形式的 markdown 文本, 不是对象 */
+  structuredSummary?: string;
 }
 
 export interface WfInput {
@@ -189,6 +192,14 @@ export const useWorkflowStore = defineStore("workflow", () => {
       if (Array.isArray(snap.variables)) variables.value = snap.variables as typeof variables.value;
       if (Array.isArray(snap.hypotheses)) hypotheses.value = snap.hypotheses as string[];
       if (snap.project) project.value = { ...project.value, ...(snap.project as Record<string, string>) };
+      // V417: 后端 getWorkbenchSnapshot 专门把 analysis 节点的 logicFlow/stepAnalysisTexts 合并进
+      //   snapshot(chapter-skill-service.ts), 但这里两个键都没回读 ——
+      //   · project.logicFlow 恒空 → SectionsView 的「研究逻辑」卡不渲染、WorkspaceView 的 aiDone 少一个判据
+      //   · stepAnalysisTexts 是假设解析的第一优先级输入, 刷新后假设列表静默丢失
+      if (snap.logicFlow) project.value = { ...project.value, logicFlow: String(snap.logicFlow) };
+      if (snap.stepAnalysisTexts && typeof snap.stepAnalysisTexts === "object") {
+        stepAnalysisTexts.value = snap.stepAnalysisTexts as Record<string, string>;
+      }
       if (snap.inputVersionId) inputVersionId.value = String(snap.inputVersionId);
       if (snap.phase2VersionId) phase2VersionId.value = String(snap.phase2VersionId);
       if (snap.phase3VersionId) phase3VersionId.value = String(snap.phase3VersionId);

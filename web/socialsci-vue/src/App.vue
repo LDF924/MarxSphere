@@ -1,16 +1,34 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from "vue";
-import { RouterView, useRoute } from "vue-router";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import { ToastHost, ConfirmHost } from "./shared/ui";
 import { collectDomActions, onActionInvoked, reportActions } from "./shared/actions-bridge";
+import { HANDOFF_KEY } from "./shared/workflow-bridge";
 
 // ── 当前页可执行动作 → 上报 React 外壳的科研助手(V416) ──
 // 全站一处接线: 只要按钮带 data-control 就会被自动收集上报, 各视图不用各自写桥接代码。
 // 用 MutationObserver 而不是只在路由变化时报: 页面内部切 tab / 弹层打开都会让按钮增删,
 // 路由没变但动作变了, 只看路由会漏。
 const route = useRoute();
+const router = useRouter();
 let timer: number | undefined;
 let mo: MutationObserver | undefined;
+
+// ── V417: 外部模块投递的素材 —— 收在 soc 外壳层, 不放在 MaterialsView ──
+// 教训(实测): 监听器放 MaterialsView 时, 外壳把素材投过来那一刻 iframe 还停在
+// #/workflow/input → 监听器尚未注册 → 消息静默丢弃。"先 postMessage 再等接收方挂载"
+// 必丢(与 ReviewView 的那条结论同源)。外壳是常驻的, 收下后再引导到素材页。
+const onExternalMaterial = (e: MessageEvent) => {
+  const d = e.data as { source?: string; type?: string; kind?: string; title?: string; markdown?: string } | null;
+  if (d?.source !== "marxsphere-app" || d.type !== "workflow-material" || !d.markdown?.trim()) return;
+  try {
+    localStorage.setItem(HANDOFF_KEY, JSON.stringify({
+      kind: d.kind ?? "note", title: d.title ?? "外部素材", markdown: d.markdown, at: Date.now(),
+    }));
+  } catch { /* localStorage 不可用时只能丢 */ }
+  // 交完再引导到素材页(读方主动取, 与编辑器交接同一套约定)
+  if (!route.path.startsWith("/workflow/materials")) void router.push("/workflow/materials");
+};
 
 const push = () => {
   window.clearTimeout(timer);
@@ -39,8 +57,14 @@ onMounted(() => {
   // disabled 属性翻掉, 没有增删节点 → 不触发 → 动作表一直是旧的(「▶ 运行」永远不出现)。
   // 只过滤 disabled 而不是全属性: class/style 变动太频繁, 全监听会一直重扫。
   mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+  window.addEventListener("message", onExternalMaterial as unknown as EventListener);
   push();
-  onBeforeUnmount(() => { stop(); mo?.disconnect(); window.clearTimeout(timer); });
+  onBeforeUnmount(() => {
+    stop();
+    mo?.disconnect();
+    window.clearTimeout(timer);
+    window.removeEventListener("message", onExternalMaterial as unknown as EventListener);
+  });
 });
 </script>
 

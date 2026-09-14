@@ -223,7 +223,15 @@ export async function listJournalUpdates(journalId?: string, limit = 50): Promis
 /** 自动同步定时器（模块级自启动: 立即跑一次 + 每 6 小时） */
 export function startJournalSyncScheduler(): void {
   // 多副本: 期刊同步会抓外部站点, 每个副本各跑一遍 = N 倍请求(会被风控限流) → 加跨副本租约
-  const guarded = withRunLease("journal-sync", syncAllJournals, SYNC_INTERVAL_MS + 60_000);
+  //
+  // V417 修租约自锁: 原先 TTL = SYNC_INTERVAL_MS + 60s, 即**租约比周期还长** ——
+  //   下一轮(6h 后)来抢时上一轮的租约还没过期, 于是每两轮只能跑一轮。
+  //   缩比实测: 周期 2s / TTL 2.3s 时, 5 轮只执行 3 次, 有效周期翻倍。
+  //   换算到线上: 6h 的同步实际变成 ~12h。
+  //   现在 TTL = 周期 + 2 分钟(留出让"跑得久"的那一轮不被别人抢走, 但短于周期,
+  //   正常节奏下每轮都能抢到; 持有者真崩溃时, 2 分钟后别人即可接手)。
+  const LEASE_TTL = SYNC_INTERVAL_MS + 120_000;
+  const guarded = withRunLease("journal-sync", syncAllJournals, LEASE_TTL);
   void guarded();  // 启动即同步一次
   setInterval(() => { void guarded(); }, SYNC_INTERVAL_MS);
   console.log("[journal-sync] 期刊同步管道已启动 (每6小时自动同步, 多副本下每轮仅一个副本执行)");

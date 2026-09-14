@@ -4,6 +4,7 @@
  * 大纲 markdown ↔ 树双向(7 类标题正则, 只收 1/2 级); 中文数序号; 加/删/移/折叠/插入模板/清除
  */
 import { ref, watch, computed } from "vue";
+import { confirmDialog } from "@/shared/ui";
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ (e: "update:modelValue", v: string): void; (e: "change", v: string): void }>();
@@ -190,7 +191,16 @@ function insertTemplate() {
   ];
   pushOut();
 }
-function clearOutline() {
+async function clearOutline() {
+  // V417: 一键清空整份大纲且无确认(对比: 删单条素材都有 confirmDialog)。加确认。
+  const ok = await confirmDialog({
+    title: "清空目录?",
+    message: "将删除当前全部章节与子节(只保留一个空骨架), 此操作不可撤销。",
+    okText: "清空",
+    cancelText: "取消",
+    danger: true,
+  });
+  if (!ok) return;
   tree.value = emptySkeleton();
   pushOut();
 }
@@ -279,7 +289,9 @@ const counter = computed(() => {
   border: 1px solid #46587A;
   border-radius: 6px;
   background: #11192C;
-  color: #374151;
+  /* V417: 原为 #374151(近黑)压深蓝黑底, 对比度 ≈1.7:1, 文字几乎不可见 —— 深色化时漏改。
+     取 #C7D2E0 与同目录 .oe-count(#8B9BB1) 同一色系但更亮, 对比度 ≈11:1(WCAG AA 要求 4.5:1)。 */
+  color: #C7D2E0;
   cursor: pointer;
 }
 .oe-btn.primary {

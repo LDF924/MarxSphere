@@ -12,6 +12,7 @@ import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 import * as materials from "./research-materials-service.js";
 import { generateChapter, generateComponent } from "./paper-outline-service.js";
+import { retrieveLiterature, buildCitationMaterialBody, type LiteratureHit } from "./research-literature-retrieval.js";
 
 export interface ExecCtx {
   taskId: string;
@@ -25,11 +26,19 @@ export interface ExecCtx {
   inputSnapshot: Record<string, unknown>;
 }
 
-/** 找出所有依赖已就绪(前置全 done)的 queued 任务 */
-export async function findReadyTasks(projectId?: string): Promise<any[]> {
+/**
+ * 找出所有依赖已就绪(前置全 done)的 queued 任务。
+ *
+ * userId 是**越权边界**: 手动调度入口(/api/research/jobs/run、/engine/run)原先只调
+ * requireUser 拿身份、却从不把它传进来 —— 拿到别人的 projectId 就能以他人素材(任务行上的
+ * user_id)为上下文烧 LLM 跑任务, 并把结果读回去。系统级的 2 秒调度泵跑所有人的任务,
+ * 不传 userId(它本来就是全量扫)。传了就必须命中 user_id。
+ */
+export async function findReadyTasks(projectId?: string, userId?: string): Promise<any[]> {
   const clauses = ["t.status='queued'"];
   const vals: unknown[] = [];
   if (projectId) { vals.push(projectId); clauses.push(`t.project_id=$${vals.length}`); }
+  if (userId) { vals.push(userId); clauses.push(`t.user_id=$${vals.length}`); }
   const r = await pool.query(
     `select t.* from research_tasks t
       where ${clauses.join(" and ")} and (
@@ -164,8 +173,8 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
 }
 
 /** 一轮调度: 找出全部就绪任务并逐个执行(供手动触发或定时巡检) */
-export async function runSchedulingRound(projectId?: string): Promise<{ executed: number; results: Array<{ taskId: string; ok: boolean; error?: string }> }> {
-  const ready = await findReadyTasks(projectId);
+export async function runSchedulingRound(projectId?: string, userId?: string): Promise<{ executed: number; results: Array<{ taskId: string; ok: boolean; error?: string }> }> {
+  const ready = await findReadyTasks(projectId, userId);
   const results: Array<{ taskId: string; ok: boolean; error?: string }> = [];
   for (const t of ready) {
     const r = await executeReadyTask(t.id);
@@ -304,13 +313,35 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
     logicFlow = String(j.logicFlow ?? "");
     stepTexts = { "2": String(j.step2Text ?? ""), "3": String(j.step3Text ?? "") };
   } catch { /* LLM 不可用 → 仅结构 */ }
-  // ③ 落库: sections 节点(status=pending, 含 title/level) + analysis 节点(变量/逻辑/文本)
+  // ③ 落库: sections 节点 + analysis 节点(变量/逻辑/文本)
   const client = await pool.connect();
   try {
     await client.query("begin");
     const node = await client.query(
-      `select id from research_nodes where project_id=$1 and node_key='sections' for update`, [projectId]);
-    const payload = JSON.stringify({ sections: sections.map((s) => ({ ...s, status: "pending" })) });
+      `select id, payload from research_nodes where project_id=$1 and node_key='sections' for update`, [projectId]);
+    // V417: **合并**而不是覆盖。sections 里的 s 只来自 input_snapshot(id/title/level),
+    //   直接 `{...s, status:"pending"}` 会把节点里已有的 content/aiSkill 全部抹掉 ——
+    //   实测: 用户在「科研架构」点任一个「重新分析」(该页有 4 个入口且都无确认),
+    //   已生成的一整批正文与写作指导就没了, status 还退回 pending。
+    //   结构以新的为准(id/title/level), 正文与写作指导按 id 从旧节点继承。
+    const prevList = Array.isArray((node.rows[0]?.payload as { sections?: unknown } | undefined)?.sections)
+      ? ((node.rows[0].payload as { sections: Array<Record<string, unknown>> }).sections)
+      : [];
+    const prevById = new Map(prevList.map((p) => [String(p.id ?? ""), p]));
+    const merged = sections.map((s) => {
+      const prev = prevById.get(String(s.id));
+      return {
+        ...s,
+        // 继承既有产物; 没有才置 pending
+        content: (prev?.content as string | undefined) ?? "",
+        status: (prev?.content ? (prev.status as string | undefined) ?? "done" : "pending"),
+        ...(prev?.aiSkill ? { aiSkill: prev.aiSkill } : {}),
+        ...(prev?.skill_prompt ? { skill_prompt: prev.skill_prompt } : {}),
+        ...(prev?.structuredSummary ? { structuredSummary: prev.structuredSummary } : {}),
+        ...(prev?.wordCount ? { wordCount: prev.wordCount } : {}),
+      };
+    });
+    const payload = JSON.stringify({ sections: merged });
     if (node.rows.length) {
       await client.query(
         `update research_nodes set payload=$2::jsonb, version=version+1, updated_at=now() where project_id=$1 and node_key='sections'`,
@@ -321,9 +352,29 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
         [projectId, ctx.taskId, payload]);
     }
     const an = await client.query(
-      `select id from research_nodes where project_id=$1 and node_key='analysis' for update`, [projectId]);
+      `select id, payload from research_nodes where project_id=$1 and node_key='analysis' for update`, [projectId]);
+    // V417: 同上, analysis 节点也是两步写、键不同 —— 只覆盖本次真正产出的键。
+    //   实测(2026-09-14): P1 分析链先写 step2/step3 分析文本, 再点「架构确认」
+    //   (runMainAgentAnalysis) 那次整包替换把两段文本抹成 "" →
+    //   SectionsView 的假设解析以 stepAnalysisTexts["2"] 为第一优先级, 刷新后假设列表清空。
+    //   反向同样成立: 本路径不产 hypotheses/chapterPlan 之外的东西, 不能顺手清掉 P1 的产物。
+    const prevA = ((an.rows[0]?.payload ?? {}) as Record<string, unknown>) ?? {};
+    const baseTexts = (prevA.stepAnalysisTexts ?? {}) as Record<string, string>;
+    const stepAnalysisTexts: Record<string, string> = {};
+    const keys = new Set([...Object.keys(baseTexts), ...Object.keys(stepTexts)]);
+    for (const k of keys) {
+      const fresh = String(stepTexts[k] ?? "");
+      const old = String(baseTexts[k] ?? "");
+      // 新值优先, 为空才回落到旧值
+      stepAnalysisTexts[k] = fresh.trim() ? fresh : old;
+    }
+    // 结构化结果(下面的 return)用的也是"合并后"的那份 —— 前端拿它解析假设, 不能只给本次新值
+    stepTexts = stepAnalysisTexts;
     const apayload = JSON.stringify({
-      variables, logicFlow, stepAnalysisTexts: stepTexts,
+      ...prevA,
+      variables: variables.length ? variables : (prevA.variables ?? []),
+      logicFlow: logicFlow.trim() ? logicFlow : (prevA.logicFlow ?? ""),
+      stepAnalysisTexts,
       generatedAt: new Date().toISOString(), sectionsCount: sections.length,
     });
     if (an.rows.length) {
@@ -355,33 +406,87 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   };
 }
 
-/** P3 文献检索子任务(per section): sectionTitle+keywords → citation 素材 */
+/**
+ * P3 文献检索子任务(per section): sectionTitle+keywords → citation 素材
+ *
+ * V417 改造（2026-09-14 实测"参考文献永远是空的"）：
+ *   原实现只让 LLM 编检索词，素材内容是"检索词列表 + (实际检索需接知识库/CNKI)"，
+ *   从不碰任何库；而下游 buildCitationPool / buildMergedReferences 靠 `^\[\d+\] 条目` 抠引文
+ *   → 参考文献恒为空，正文里 25 处 `[N]（待补引文）` 无人认领。
+ *   现在：检索词仍由 LLM 规划（合理，模型知道该查什么），但**条目必须来自真实检索**
+ *   （PG 向量库 / 本地 md 文献库 / 图谱臂）。搜不到就留空并在素材里注明"需人工补录"，
+ *   绝不用 LLM 编造文献（那是学术不端）。
+ */
 async function runLiteratureSearch(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   const sectionTitle = snapshot.sectionTitle ?? ctx.goal;
   const keywords = Array.isArray(snapshot.keywords) ? snapshot.keywords : [];
+  const wantCount = Number(snapshot.count) > 0 ? Math.min(Number(snapshot.count), 20) : 8;
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
   const res = await fetchLlm({
     url: ep.url, key: ep.key, model: ep.model,
-    messages: [{ role: "user", content: `你是社科文献检索规划助手。为章节规划检索, 输出 JSON:
-{"queries":["检索词1","检索词2"],"expected":["文献主题(勿编造, 标注[待检索])"]}
+    messages: [{ role: "user", content: `你是社科文献检索规划助手。为章节规划检索式, 输出 JSON:
+{"queries":["检索式1","检索式2","检索式3"]}
 
 【目标章节】${sectionTitle}
 【关键词】${keywords.join("、") || "未提供"}
-【研究主题】${ctx.goal}` }],
+【研究主题】${ctx.goal}
+
+检索式要求: 3-5 条, 每条是可直接喂给学术检索引擎的中文词组(例: "数字技术 县域 共同富裕 机制"),
+不要写布尔语法/作者名/年份限定, 不要编造具体文献标题。` }],
     temperature: 0.3, maxTokens: 2000, timeoutMs: 180_000,
   });
   let queries: string[] = [];
-  try { queries = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim())?.queries ?? []; } catch { /* 忽略 */ }
+  try {
+    const parsed = JSON.parse(String(res?.text ?? "{}").replace(/```json|```/g, "").trim());
+    queries = (Array.isArray(parsed?.queries) ? parsed.queries : []).map((q: unknown) => String(q)).filter(Boolean);
+  } catch { /* 忽略 */ }
+  // LLM 没给出可用检索式时, 用章节名 + 关键词兜底(不引入编造内容)
+  if (!queries.length) {
+    queries = [String(sectionTitle), ...keywords.map(String)].filter(Boolean).slice(0, 3);
+  }
+
+  // ── 真实检索（PG 向量库 / 本地 md 文献库 / 图谱臂；全程无 LLM 编造） ──
+  let hits: LiteratureHit[] = [];
+  let usedSources: string[] = [];
+  try {
+    const r = await retrieveLiterature({ projectId: ctx.projectId, queries, topK: wantCount });
+    hits = r.hits;
+    usedSources = r.sources;
+  } catch (e) {
+    console.warn(`[literature-search] 检索失败(降级为空素材): ${String(e).slice(0, 160)}`);
+  }
+
+  const body = buildCitationMaterialBody(hits);
+  const header = `检索式: ${queries.join(" / ")}\n命中 ${hits.length} 条 (来源: ${usedSources.join("+") || "无"})`;
+  const contentMd = body
+    ? `${header}\n\n${body}`
+    : `${header}\n\n(内部库未命中相关文献 —— 本段需人工补录参考文献; 切勿编造)`;
+
   await materials.createMaterial({
     projectId: ctx.projectId, userId: ctx.userId, kind: "citation",
-    title: `检索方案 · ${String(sectionTitle).slice(0, 30)}`,
-    contentMd: `检索词:\n${queries.join("\n")}\n\n(实际检索需接知识库/CNKI, 命中后追加来源)`,
+    title: hits.length ? `文献 ${hits.length} 条 · ${String(sectionTitle).slice(0, 24)}` : `检索式 · ${String(sectionTitle).slice(0, 24)}`,
+    contentMd,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
-    // B5 来源徽章: platformType=literature(文献库检索); 检索器未实际命中 → status empty
-    meta: { platformType: "literature", source: { sourceStatus: { wanfang: queries.length ? "empty" : "failed" } } },
-  });
-  return { text: `已生成 ${queries.length} 组检索词`, structured: { queries } };
+    references: hits.map((h) => ({ title: h.title, authors: h.authors, year: h.year, source: h.source })),
+    // B5 来源徽章: platformType=literature; sourceStatus 反映**真实**命中情况(不再恒 empty)
+    meta: {
+      platformType: "literature",
+      queries,
+      retrievalSources: usedSources,
+      // 前端 MaterialsView 的徽章读 source.sourceStatus.{wanfang|ncpssd|internal}, 且认
+      // completed/empty/failed 三态。这里写 internal 键 + 三态之一, 两边就能对上。
+      source: { sourceStatus: { internal: usedSources.length ? "completed" : "empty" } },
+    },
+    // V417: 同时写进**真列** retrieval_sources —— 该列在迁移 149 里专门建了, 但此前只有
+    //   meta 里那份、这一列从来没人写(死列)。列上存结构化来源, 便于按源统计/筛选。
+    retrievalSources: usedSources,
+  } as Parameters<typeof materials.createMaterial>[0]);
+
+  return {
+    text: `检索式 ${queries.length} 条, 命中 ${hits.length} 条真实文献${usedSources.length ? ` (${usedSources.join("/")})` : ""}`,
+    structured: { queries, hitCount: hits.length, sources: usedSources, hits: hits.slice(0, 10) },
+  };
 }
 
 /** P3 理论框架生成(per section): 理论梳理 → theory 素材 */
@@ -504,6 +609,31 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
   if (!sections.length) throw new Error("批量生成缺少章节清单(snapshot.sections)");
   // SocialSci R3: 从素材库收集引用池(citation 素材的 content 是 [N] 条目清单 → 编号引用)
   const citationPool = await buildCitationPool(ctx.userId, ctx.projectId);
+  // V417: 把用户填的「字数预估」按章配额传下去。
+  //   此前 input.totalWordCount 只存在 input 节点里, 到 generateChapter 就断了 ——
+  //   界面写着"AI 智能体将按此字数进行科研分配"(InputView 字数预估卡), prompt 却写死
+  //   800-1500 字, 也就是**承诺了没做的事**。现在按一级章均分当配额。
+  // 一次查齐: 章节配额 / 全文大纲树 / 项目语体
+  const planCtx = await (async (): Promise<{ quota?: number; outlineTree?: string; style?: string }> => {
+    try {
+      const n = await pool.query(`select payload from research_nodes where project_id=$1 and node_key='input'`, [ctx.projectId]);
+      const payload = (n.rows[0]?.payload ?? {}) as { totalWordCount?: unknown; outline?: unknown };
+      const total = Number(payload.totalWordCount);
+      const l1 = sections.filter((s) => (s.level ?? 1) === 1).length || sections.length;
+      const pr = await pool.query(`select style from research_projects where id=$1`, [ctx.projectId]).catch(() => ({ rows: [] as unknown[] }));
+      const style = String((pr.rows[0] as { style?: unknown } | undefined)?.style ?? "").trim();
+      return {
+        ...(Number.isFinite(total) && total > 0 && l1 > 0 ? { quota: Math.max(300, Math.round(total / l1)) } : {}),
+        // V417: outlineTree 此前被 sec.requirements 挪用(语义不符), 这里传**真正的**全文大纲,
+        //   让模型知道本章在整体结构中的位置。
+        ...(typeof payload.outline === "string" && payload.outline.trim()
+          ? { outlineTree: payload.outline.slice(0, 2000) } : {}),
+        // V417: project.style 有列、有写、澄清也用, 但从来没传到章节生成 → 语体参数恒空。
+        ...(style ? { style } : {}),
+      };
+    } catch { return {}; }
+  })();
+  const quota = planCtx.quota;
   const results: Array<{ id?: string; title?: string; ok: boolean; wordCount?: number; content?: string; error?: string }> = [];
   for (const sec of sections) {
     try {
@@ -516,8 +646,13 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
         title: sec.title ?? "未命名章节",
         level: sec.level ?? 1,
         topic: ctx.goal,
+        ...(quota ? { targetWordCount: quota } : {}),
+        ...(planCtx.style ? { style: planCtx.style } : {}),
         ...(sec.skill_prompt ? { prevContext: `【本章写作指令】${sec.skill_prompt.slice(0, 2000)}` } : {}),
-        ...(sec.requirements ? { outlineTree: sec.requirements.slice(0, 1000) } : {}),
+        // 优先用真正的全文大纲; 没有才退回 requirements(旧行为)
+        ...(planCtx.outlineTree
+          ? { outlineTree: planCtx.outlineTree }
+          : sec.requirements ? { outlineTree: sec.requirements.slice(0, 1000) } : {}),
         ...(citationPool ? { citationPool } : {}),
       });
       results.push({ id: sec.id, title: sec.title, ok: !!ch.content, wordCount: ch.wordCount, content: ch.content });
@@ -632,12 +767,19 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     ? snapshot.chapterContents as string[]
     : nodeSections.map((s) => s.content ?? "").filter((c) => c && c.trim().length > 20));
   if (kind === "merge") {
+    // V417: 用户在「合稿定稿」勾的「降 AIGC」此前写到 input_snapshot 就断了(没人读),
+    //   等于开关是摆设。现在把它透到摘要/关键词生成, 真正影响产出。
+    const deAITone = Boolean(snapshot.enableDeAIFyMerge);
     const abstract = await generateComponent({
       kind: "abstract", topic: ctx.goal,
       sections: sections.map((s) => s.title ?? ""),
       chapterContents: bodies,
+      ...(deAITone ? { deAITone: true } : {}),
     }).catch(() => ({ content: "" }));
-    const keywords = await generateComponent({ kind: "keywords", topic: ctx.goal, sections: [] }).catch(() => ({ content: "" }));
+    const keywords = await generateComponent({
+      kind: "keywords", topic: ctx.goal, sections: [],
+      ...(deAITone ? { deAITone: true } : {}),
+    }).catch(() => ({ content: "" }));
     // SocialSci R3: 合并结果落 finalize 字段(mergedTitle/Abstract/Keywords/FullText/References + merge_generated)
     const fulltext = (bodies ?? []).join("\n\n");
     const references = await buildMergedReferences(ctx.userId, ctx.projectId);

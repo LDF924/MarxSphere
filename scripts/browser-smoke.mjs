@@ -10,9 +10,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { resolveBrowser } from "./lib/find-browser.mjs";
+import { resolveCdpPort } from "./lib/cdp-port.mjs";
 
 const BASE = "http://localhost:4173";
-const CDP_PORT = 9333;
+let CDP_PORT = 31001; // 起点值; 真实端口由 resolveCdpPort 探测(见下)
 const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-"));
 
 // 科研中心里 6 个代表性视图(含 5 个 Vue 完整版 tab + 实证研究 React 面板)
@@ -46,6 +47,7 @@ async function main() {
   const password = "audit123456";
   const targets = views.length ? views : VIEWS;
   const errors = [];
+  CDP_PORT = await resolveCdpPort(CDP_PORT);
   const edge = spawn(resolveBrowser({ label: "scripts/browser-smoke.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
   try {
     for (let i = 0; i < 30; i++) {

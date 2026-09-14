@@ -13,16 +13,19 @@ vi.mock("../src/services/llm-model-registry.js", () => ({
 }));
 vi.mock("../src/ai/llm-common.js", () => ({
   getLlmEndpoint: () => ({ url: "http://mock", key: "k", model: "m" }),
-  fetchLlm: async () => ({ text: "{}" }),
+  // 必须是 vi.fn: 下面的用例要按需改返回(默认 {} = 模型什么都没分析出来)
+  fetchLlm: vi.fn(async () => ({ text: "{}" })),
   parseLlmJson: (t: string) => { try { return JSON.parse(t); } catch { return null; } },
 }));
 
 import { pool } from "../src/db/pool.js";
+import * as llmCommon from "../src/ai/llm-common.js";
 import {
   dagTemplateFiveStage,
   nlToDag,
   controlTask,
   putNode,
+  runMainAgentAnalysis,
 } from "../src/services/research-pipeline-service.js";
 
 function mockTask(status: string, extra: Record<string, unknown> = {}) {
@@ -149,5 +152,122 @@ describe("putNode 乐观覆盖", () => {
     const r = await putNode("u2", "p1", "analysis", {});
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("NOT_FOUND");
+  });
+});
+
+describe("runMainAgentAnalysis 键级合并(V417)", () => {
+  // putNode 是整包替换, 而 analysis 节点有两条写入路径(本函数 / exec-engine 的 analyze 链)。
+  // 实测两次踩坑: 本函数硬编码 stepAnalysisTexts 空串, 点一次「架构确认」就把 P1 产出的
+  // step2/step3 抹掉 → 前端假设解析(以 step2 为第一优先级)静默清空; 反向也会把 hypotheses
+  // 清掉。这里锁住"本次没产出的键不许动"。
+  const prevPayload = {
+    variables: [{ name: "数字资本", role: "influence", description: "既有变量" }],
+    hypotheses: ["H1: 既有假设"],
+    chapterPlan: [{ title: "既有章节", level: 1, requirements: "r", skillType: "intro", wordCount: 2000 }],
+    logicChain: "既有逻辑主线",
+    clarifyQuestions: ["既有澄清问题"],
+    stepAnalysisTexts: { "1": "既有一", "2": "既有二(P1 产出)", "3": "既有三" },
+  };
+  const OWNED = { rows: [{ id: "p1" }] };
+
+  /** 从 client.query 调用里抠出 update payload(交给 putNode 落库的那份) */
+  function writtenPayload(client: { query: ReturnType<typeof vi.fn> }): Record<string, unknown> {
+    const call = client.query.mock.calls.find((c) => String(c[0]).includes("update research_nodes set payload"));
+    if (!call) throw new Error("没找到 update research_nodes 调用");
+    return JSON.parse(String((call[1] as unknown[])[0])) as Record<string, unknown>;
+  }
+  /** putNode 的固定事务序列(owned → for update → 旧 payload → history → update → commit) */
+  function putNodeClient() {
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({})                     // begin
+        .mockResolvedValueOnce(OWNED)                  // owned
+        .mockResolvedValueOnce({ rows: [{ id: "n1", version: 1 }] }) // for update
+        .mockResolvedValueOnce({ rows: [{ payload: prevPayload }] }) // 旧 payload 进历史
+        .mockResolvedValueOnce({})                     // insert history
+        .mockResolvedValueOnce({})                     // update
+        .mockResolvedValueOnce({}),                    // commit
+      release: vi.fn(),
+    };
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+    return client;
+  }
+  beforeEach(() => { vi.mocked(pool.query).mockReset(); vi.mocked(pool.connect).mockReset(); vi.mocked(llmCommon.fetchLlm).mockReset(); });
+
+  it("模型给了 step2Text/: 新值覆盖, 未产的键原样保住", async () => {
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ id: "p1" }] } as never)            // getProject
+      .mockResolvedValueOnce({ rows: [{ payload: prevPayload }] } as never); // 旧 analysis 节点
+    vi.mocked(llmCommon.fetchLlm).mockResolvedValueOnce({
+      text: JSON.stringify({
+        variables: [{ name: "新变量", role: "dependent", description: "本次" }],
+        logicChain: "本次新逻辑",
+        step2Text: "本次新的第二段",
+        chapterPlan: [],
+      }),
+    } as never);
+    const c = putNodeClient();
+
+    const r = await runMainAgentAnalysis("u1", "p1", { taskId: "t1" });
+    expect(r.ok).toBe(true);
+    const p = writtenPayload(c);
+    const sats = p.stepAnalysisTexts as Record<string, string>;
+    // 本次产出的 → 新值
+    expect(sats["2"]).toBe("本次新的第二段");
+    expect(p.logicChain).toBe("本次新逻辑");
+    expect(JSON.stringify(p.variables)).toContain("新变量");
+    // 本次没产出的 → 旧值不动
+    expect(sats["1"]).toBe("既有一");
+    expect(sats["3"]).toBe("既有三");
+    expect(p.hypotheses).toEqual(["H1: 既有假设"]);
+    expect(p.clarifyQuestions).toEqual(["既有澄清问题"]);
+    expect(JSON.stringify(p.chapterPlan)).toContain("既有章节");
+    // 没有凭空多出来的键
+    expect(Object.keys(p).sort()).toEqual(
+      ["chapterPlan", "clarifyQuestions", "generatedAt", "hypotheses", "logicChain", "stepAnalysisTexts", "variables"]);
+  });
+
+  it("模型返回空({}): 旧值一个都不许被清掉", async () => {
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ id: "p1" }] } as never)
+      .mockResolvedValueOnce({ rows: [{ payload: prevPayload }] } as never);
+    vi.mocked(llmCommon.fetchLlm).mockResolvedValueOnce({ text: "{}" } as never);
+    const c = putNodeClient();
+
+    await runMainAgentAnalysis("u1", "p1", {});
+    const p = writtenPayload(c);
+    expect(p.stepAnalysisTexts).toEqual({ "1": "既有一", "2": "既有二(P1 产出)", "3": "既有三" });
+    expect(p.logicChain).toBe("既有逻辑主线");
+    expect(JSON.stringify(p.variables)).toContain("数字资本");
+  });
+
+  it("模型给空串/空数组: 同样不覆盖旧值(新值优先, 为空才回落)", async () => {
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ id: "p1" }] } as never)
+      .mockResolvedValueOnce({ rows: [{ payload: prevPayload }] } as never);
+    vi.mocked(llmCommon.fetchLlm).mockResolvedValueOnce({
+      text: JSON.stringify({ variables: [], logicChain: "", step2Text: "", hypotheses: [] }),
+    } as never);
+    const c = putNodeClient();
+
+    await runMainAgentAnalysis("u1", "p1", {});
+    const p = writtenPayload(c);
+    expect((p.stepAnalysisTexts as Record<string, string>)["2"]).toBe("既有二(P1 产出)");
+    expect(p.logicChain).toBe("既有逻辑主线");
+    expect(JSON.stringify(p.variables)).toContain("数字资本");
+  });
+
+  it("首次分析(无旧节点): 章节计划为空也不炸, 键齐全", async () => {
+    vi.mocked(pool.query)
+      .mockResolvedValueOnce({ rows: [{ id: "p1" }] } as never)
+      .mockResolvedValueOnce({ rows: [] } as never); // 还没 analysis 节点
+    vi.mocked(llmCommon.fetchLlm).mockResolvedValueOnce({ text: "{}" } as never);
+    const c = putNodeClient();
+    const r = await runMainAgentAnalysis("u1", "p1", {});
+    expect(r.ok).toBe(true);
+    const p = writtenPayload(c);
+    expect(p.stepAnalysisTexts).toEqual({ "1": "", "2": "", "3": "" });
+    expect(p.hypotheses).toEqual([]);
+    expect(p.logicChain).toBe("");
   });
 });
