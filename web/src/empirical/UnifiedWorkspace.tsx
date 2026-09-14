@@ -651,7 +651,7 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
         <span className="text-[10px] font-medium text-foreground/80">研究数据</span>
         <input ref={fileInputRef} type="file" accept=".csv,.txt,.tsv,.json,.xlsx,.xls" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ""; }} />
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}
+        <button type="button" data-control="empirical:upload" onClick={() => fileInputRef.current?.click()} disabled={uploading}
           className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-500/20 disabled:opacity-40">
           {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} 上传 CSV
         </button>
@@ -676,7 +676,7 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
           {showPaste ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           粘贴 CSV
         </button>
-        <button type="button" onClick={() => void loadDemoData()}
+        <button type="button" data-control="empirical:demo-data" onClick={() => void loadDemoData()}
           className="rounded-md border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-accent"
           title="载入问卷仿真演示数据(269 列作答, 来自实证面板)">载入问卷演示数据</button>
         <button type="button" onClick={() => void registerVersion()}
@@ -824,7 +824,7 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
                 <StatsParamForm methodId={statsMethod.id} fields={statsMethod.fields ?? []} values={params} onChange={(k, v) => setParams((p) => ({ ...p, [k]: v }))} vars={variables} />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button type="button" disabled={running} onClick={() => void runStats()}
+                <button type="button" data-control="empirical:run-stats" disabled={running} onClick={() => void runStats()}
                   className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
                   {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />} {running ? "分析中…" : "运行分析"}
                 </button>

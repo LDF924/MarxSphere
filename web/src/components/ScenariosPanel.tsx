@@ -854,6 +854,7 @@ export const ScenariosPanel: FC<ScenariosPanelProps> = ({ onChangeView }) => {
                     <button
                       key={scenario.id}
                       type="button"
+                      data-control="scenarios:open"
                       onClick={() => hasGuide ? openWorkbench(scenario.id) : onChangeView(scenario.key)}
                       className="group glass rounded-lg p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-lg"
                     >

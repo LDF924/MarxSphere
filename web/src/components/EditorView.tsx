@@ -483,7 +483,7 @@ export function EditorView() {
               </button>
             ))}
           </div>
-          <button data-control="editor_check" onClick={() => setShowCheck((v) => !v)} disabled={checking}
+          <button data-control="editor:check" onClick={() => setShowCheck((v) => !v)} disabled={checking}
             className="flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs text-white hover:bg-amber-500 disabled:opacity-50">
             {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}全文检查
           </button>
@@ -495,7 +495,7 @@ export function EditorView() {
             className={cn("flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs", showAiPanel ? "bg-slate-600 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700")}>
             <Sparkles className="h-3.5 w-3.5" /> AI面板
           </button>
-          <button data-control="editor_import" onClick={() => fileRef.current?.click()} disabled={impBusy}
+          <button data-control="editor:import-word" onClick={() => fileRef.current?.click()} disabled={impBusy}
             className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50" title="导入 Word/TXT 即看">
             {impBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}导入 Word
           </button>
@@ -506,7 +506,7 @@ export function EditorView() {
               {expBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}导出 Word
             </button>
           )}
-          <button data-control="editor_new" onClick={() => setShowNewDoc(true)} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
+          <button data-control="editor:new" onClick={() => setShowNewDoc(true)} className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs text-white hover:bg-cyan-500">
             <Plus className="h-3.5 w-3.5" />新建文档
           </button>
           {curId && (
@@ -578,7 +578,7 @@ export function EditorView() {
             <p className="mt-3 text-sm text-slate-500">选择或新建一个文档开始写作</p>
             {/* 空态双按钮(闭源: 新建文档 + 上传 Word) */}
             <div className="mt-3 flex gap-2">
-              <button onClick={() => setShowNewDoc(true)} data-control="editor_empty_new" className="rounded-lg bg-cyan-600 px-4 py-2 text-xs text-white hover:bg-cyan-500">新建文档</button>
+              <button onClick={() => setShowNewDoc(true)} data-control="editor:new" className="rounded-lg bg-cyan-600 px-4 py-2 text-xs text-white hover:bg-cyan-500">新建文档</button>
               <button onClick={() => fileRef.current?.click()} disabled={impBusy} className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs text-slate-300 hover:bg-slate-700 disabled:opacity-50">
                 {impBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Upload className="mr-1 inline h-3 w-3" />}上传 Word
               </button>

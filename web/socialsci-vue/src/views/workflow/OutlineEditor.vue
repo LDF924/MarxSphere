@@ -207,7 +207,7 @@ const counter = computed(() => {
     <!-- 工具栏 -->
     <div class="oe-toolbar">
       <button class="oe-btn primary" type="button" @click="addLevel1">+ 一级章节</button>
-      <button class="oe-btn" type="button" @click="insertTemplate" data-assistant-control="workflow_outline_insert_template">插入模板</button>
+      <button class="oe-btn" type="button" @click="insertTemplate" data-control="workflow:insert-template">插入模板</button>
       <button class="oe-btn" type="button" @click="clearOutline">清除目录</button>
       <span class="oe-count">{{ counter }}</span>
     </div>
@@ -215,7 +215,7 @@ const counter = computed(() => {
     <!-- 空态 -->
     <div v-if="!tree.length" class="oe-empty">
       <p>目录为空, 请添加章节或插入模板</p>
-      <button type="button" class="oe-empty-link" data-assistant-control="workflow_outline_insert_template_empty" @click="insertTemplate">插入模板</button>
+      <button type="button" class="oe-empty-link" data-control="workflow:insert-template-empty" @click="insertTemplate">插入模板</button>
     </div>
 
     <!-- 树 -->

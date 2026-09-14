@@ -146,7 +146,7 @@ export function VaultPanel() {
           <BookMarked className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">资料库</h2>
           <span className="text-xs text-muted-foreground">Obsidian 资料库（课题研究 / 课题文献库 / AI科研指令包）</span>
-          <ButtonSmall onClick={() => void loadTree()}><RefreshCw className="h-3.5 w-3.5" /> 刷新</ButtonSmall>
+          <ButtonSmall control="vault:refresh" onClick={() => void loadTree()}><RefreshCw className="h-3.5 w-3.5" /> 刷新</ButtonSmall>
         </div>
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
@@ -264,10 +264,11 @@ export function VaultPanel() {
   );
 }
 
-function ButtonSmall(props: { children: ReactNode; onClick: () => void }) {
+function ButtonSmall(props: { children: ReactNode; onClick: () => void; control?: string }) {
   return (
     <button
       type="button"
+      data-control={props.control}
       onClick={props.onClick}
       className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
     >

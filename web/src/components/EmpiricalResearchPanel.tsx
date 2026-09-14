@@ -405,7 +405,7 @@ export const EmpiricalResearchPanel: FC = () => {
         <div className="ml-auto flex items-center gap-2">
           {/* 课题选择 */}
           <div className="relative">
-            <button className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[10px] hover:bg-accent" onClick={() => setProjectMenu((v) => !v)}>
+            <button data-control="empirical:project" className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[10px] hover:bg-accent" onClick={() => setProjectMenu((v) => !v)}>
               <BookOpen className="h-3 w-3 text-emerald-600" />
               {projects.find((p) => p.id === projectId)?.title ?? "选择课题"}
               <span className="text-muted-foreground">▾</span>

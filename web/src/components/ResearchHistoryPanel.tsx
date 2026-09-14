@@ -202,7 +202,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
                     {list.map((t) => {
                       const dot = statusDot(t.status);
                       return (
-                        <button key={`${meta.key}:${t.id}`} onClick={() => resume(meta.key, t)}
+                        <button key={`${meta.key}:${t.id}`} data-control="research-history:resume" onClick={() => resume(meta.key, t)}
                           className="flex w-full items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-2.5 py-2 text-left transition hover:border-slate-600 hover:bg-slate-800"
                           title={t.active ? "运行中 — 点击前往该任务工作台" : "点击恢复该条目"}>
                           <span className={`h-2 w-2 shrink-0 rounded-full ${dot.cls}`} title={dot.title} />

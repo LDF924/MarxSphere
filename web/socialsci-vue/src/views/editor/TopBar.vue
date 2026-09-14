@@ -104,13 +104,13 @@ async function handleDelete() {
         <span class="ade-topbar__status" :class="statusMeta.cls">{{ statusMeta.text }}</span>
       </div>
       <div class="ade-topbar__right">
-        <button class="ade-topbar__new-btn" @click="showNewDialog = true">＋ 新建文档</button>
+        <button class="ade-topbar__new-btn" data-control="editor:new" @click="showNewDialog = true">＋ 新建文档</button>
         <label class="ade-topbar__action-btn" style="cursor: pointer">
           导入 Word
           <input type="file" accept=".docx,.doc" style="display: none" @change="handleImportWord" />
         </label>
-        <button v-if="store.currentDocument" class="ade-topbar__action-btn" @click="handleSave">保存</button>
-        <button class="ade-topbar__action-btn" @click="emit('toggle-version-history')">版本历史</button>
+        <button v-if="store.currentDocument" class="ade-topbar__action-btn" data-control="editor:save" @click="handleSave">保存</button>
+        <button class="ade-topbar__action-btn" data-control="editor:versions" @click="emit('toggle-version-history')">版本历史</button>
         <button v-if="store.currentDocument" class="ade-topbar__action-btn" style="color: #E06B6B" @click="handleDelete">删除</button>
       </div>
     </div>

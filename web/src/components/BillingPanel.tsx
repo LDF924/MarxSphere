@@ -169,7 +169,7 @@ export const BillingPanel: FC = () => {
           </div>
           <div className="flex items-center gap-1.5">
             {demoOn && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-700">演示数据</span>}
-            <button type="button" onClick={playDemo} disabled={demoPlaying}
+            <button type="button" data-control="billing:demo" onClick={playDemo} disabled={demoPlaying}
               className="flex items-center gap-1 rounded-md border border-dashed border-primary/40 px-2.5 py-1 text-[11px] text-primary hover:bg-primary/5 disabled:opacity-50"
               title="播放演示：余额/账单/用量（沙箱 · 不消耗 API）">
               <Sparkles className="h-3 w-3" />
@@ -435,7 +435,7 @@ function PointsCard() {
 
       <div className="mt-2.5 flex items-center gap-2">
         {!data?.signedToday ? (
-          <button onClick={doCheckin} disabled={busy}
+          <button onClick={doCheckin} data-control="billing:checkin" disabled={busy}
             className="flex items-center gap-1 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/30 disabled:opacity-50">
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Coffee className="h-3 w-3" />} 每日签到 +{data?.rewardPoints ?? 20}
           </button>

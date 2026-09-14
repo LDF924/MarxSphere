@@ -788,9 +788,9 @@ onMounted(async () => {
     <div class="wf-actions">
       <button class="btn-back" @click="router.push('/workflow/sections')">返回章节清单</button>
       <button class="btn-ghost-red" @click="reviewAll">审视素材</button>
-      <button class="btn-alloc-cta" data-assistant-control="materials_allocate" :disabled="publishing || !materials.length" @click="runAllocate">编排素材</button>
-      <button class="btn-smart" data-assistant-control="materials_smart_generate" @click="generatePlan">⚡ 智能生成素材</button>
-      <button class="btn-primary" data-assistant-control="workflow_confirm_materials" :disabled="publishing" @click="publishAndEnter">
+      <button class="btn-alloc-cta" data-control="workflow:allocate" :disabled="publishing || !materials.length" @click="runAllocate">编排素材</button>
+      <button class="btn-smart" data-control="workflow:smart-generate" @click="generatePlan">⚡ 智能生成素材</button>
+      <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
         {{ publishing ? "发布中…" : "确认并进入创作" }}
       </button>
     </div>
@@ -861,7 +861,7 @@ onMounted(async () => {
           </div>
           <div v-if="planDialog.state === 'ready'" class="modal-foot">
             <button class="btn-back" @click="closePlanDialog">取消</button>
-            <button class="btn-primary" data-assistant-control="materials_confirm_plan" @click="executePlan">开始执行</button>
+            <button class="btn-primary" data-control="workflow:confirm-plan" @click="executePlan">开始执行</button>
           </div>
         </div>
       </div>
@@ -979,7 +979,7 @@ onMounted(async () => {
           </div>
           <div class="modal-foot">
             <button class="btn-back" :disabled="allocBusy" @click="closeAllocate">取消</button>
-            <button class="btn-primary" :disabled="allocBusy || allocDialog.loading" data-assistant-control="materials_confirm_plan" @click="confirmAllocate">
+            <button class="btn-primary" :disabled="allocBusy || allocDialog.loading" data-control="workflow:confirm-plan" @click="confirmAllocate">
               {{ allocBusy ? "关联中…" : `确认关联（${allocSelected} 个）` }}
             </button>
           </div>

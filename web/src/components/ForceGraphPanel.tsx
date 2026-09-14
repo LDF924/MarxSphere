@@ -228,7 +228,7 @@ function ForceGraphCanvas(props: { graph: ProjectGraphRecord; language: "zh" | "
               </div>
             )}
           </div>
-          <Button type="button" variant={fullMode ? "default" : "outline"} size="sm" onClick={() => { fitDoneRef.current = false; setFullMode((v) => !v); }}>
+          <Button type="button" variant={fullMode ? "default" : "outline"} size="sm" data-control="graph:toggle-full" onClick={() => { fitDoneRef.current = false; setFullMode((v) => !v); }}>
             {fullMode ? t("概览", "Overview") : t("全量", "Full")}
           </Button>
           <span className="text-muted-foreground">{subNodes.length} {t("节点", "nodes")} / {subEdges.length} {t("边", "edges")}</span>

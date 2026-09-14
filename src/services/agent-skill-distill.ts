@@ -54,11 +54,37 @@ export async function proposeSkill(taskId: string, goal: string, result: string,
     if (start === -1 || end <= start) return null;
     const parsed = JSON.parse(text.slice(start, end + 1));
     if (!parsed.name || !parsed.when_to_apply || !parsed.skill_md) return null;
+    const name = String(parsed.name).slice(0, 30);
+
+    // V417: **同名即强化, 不再克隆**。
+    // 原来是无条件 insert, 同一个技能被反复蒸馏就多一行 —— 实测 skill 库 144 行只有 15 个不同名字,
+    // 其中两个技能占了 134 行(93%)。"天天在更新"是真的, 但方向反了: 越用越冗余, 不是越用越熟。
+    // 命中同名的正确动作是把它**用厚**: 追加来源任务(于是 source_tasks 不再是单元素),
+    // 并保留原有内容与校验结论, 不重复走一遍 EDV。
+    const dup = await pool.query(
+      `select * from agent_skills where name = $1 order by (status = 'approved') desc, consensus desc, id limit 1`,
+      [name]
+    );
+    if (dup.rows.length > 0) {
+      const cur = mapRow(dup.rows[0]);
+      const tasks = Array.isArray(cur.sourceTasks) ? cur.sourceTasks : [];
+      await pool.query(
+        `update agent_skills
+            set source_tasks = case when $2 = any(source_tasks) then source_tasks else array_append(source_tasks, $2) end
+          where id = $1`,
+        [cur.id, taskId]
+      );
+      return { ...cur, sourceTasks: [...new Set([...tasks, taskId])] };
+    }
+
     const ins = await pool.query(
       `insert into agent_skills (name, when_to_apply, skill_md, source_tasks, distilled_by, status)
        values ($1,$2,$3,$4::text[],'agent','pending') returning *`,
-      [String(parsed.name).slice(0, 30), String(parsed.when_to_apply).slice(0, 100), String(parsed.skill_md).slice(0, 500), [taskId]]
+      [name, String(parsed.when_to_apply).slice(0, 100), String(parsed.skill_md).slice(0, 500), [taskId]]
     );
+    // V417: 立刻建向量索引 —— 否则新技能只进 agent_skills 不进 skill_embeddings,
+    // 语义召回永远捞不到它(实测历史 144 条蒸馏技能与 189 条向量**零交集**, 就是这么来的)。
+    void indexSkillEmbedding(String(ins.rows[0].name), String(ins.rows[0].when_to_apply || ""), String(ins.rows[0].skill_md || ""));
     return mapRow(ins.rows[0]);
   } catch { return null; }
 }
@@ -155,6 +181,87 @@ export async function listSkills(status?: string): Promise<DistilledSkill[]> {
 const skillInjectionCache = new Map<string, number>();
 const SKILL_INJECT_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * V417: 把一条蒸馏技能写进 skill_embeddings, 让语义召回能捞到它。
+ *
+ * 为什么必须做: 实测 agent_skills(144 条) 与 skill_embeddings(189 条)**交集为 0** ——
+ * 蒸馏出来的技能从来没有向量。而关键词召回又在中文上失效(见 recallSkills 注释),
+ * 于是两条路同时断掉, 技能库事实上不会被任何任务用上。
+ * 失败不抛: 向量只是加速器, 技能本身已入库。
+ */
+export async function indexSkillEmbedding(name: string, whenToApply: string, skillMd: string): Promise<boolean> {
+  try {
+    const { embeddingClient } = await import("../ai/embedding-client.js");
+    // 用 when_to_apply + skill_md 头部做向量 —— 召回时匹配的是"什么时候用得上", 不是名字
+    const text = `${whenToApply}\n${skillMd}`.slice(0, 2000);
+    const [vec] = await embeddingClient.batchGenerate([text]);
+    if (!vec?.length) return false;
+    await pool.query(
+      `insert into skill_embeddings (skill_name, embedding, source, updated_at)
+       values ($1, $2::vector, 'distilled', now())
+       on conflict (skill_name) do update set embedding = excluded.embedding, updated_at = now()`,
+      [name, JSON.stringify(vec)]
+    );
+    return true;
+  } catch (e: unknown) {
+    console.warn(`[skill-distill] 向量索引失败(不影响技能入库): ${String((e as Error)?.message || e).slice(0, 120)}`);
+    return false;
+  }
+}
+
+/**
+ * 取一段中文文本里"像关键词"的片段。
+ *
+ * 为什么不用原来那套 `split(/[\s,，、]+/)`: **中文目标句通常整句没有一个空格**,
+ * 切出来就是"从劳动过程理论概念中提炼交叉接口并生成研究选题"这样一个 22 字的"关键词",
+ * 拿去做 `ilike '%…%'` 永远匹配不上 —— 实测中文目标下召回率恒为 0。
+ * 这里改成抽 2-3 字的连续汉字片段(近似 bigram), 让 ilike 至少有命中的可能。
+ */
+export function extractSearchTerms(query: string, max = 8): string[] {
+  const out: string[] = [];
+  const STOP = new Set(["什么", "怎么", "如何", "能否", "可以", "研究", "分析", "问题", "理论", "一个", "以及", "并且", "进行", "方法", "基于"]);
+  // 连续 2-3 个汉字
+  for (const m of query.matchAll(/[一-龥]{2,3}/g)) {
+    const t = m[0];
+    if (!STOP.has(t) && !out.includes(t)) out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * V417: 语义召回蒸馏技能 —— 中文目标真正能用的那条路。
+ * 走 skill_embeddings 余弦相似度, 只保留 status='approved' 的蒸馏技能。
+ * 任何一步失败都返回空数组(调用方会退回关键词路径), 绝不抛。
+ */
+export async function recallSkillsSemantic(query: string, limit = 3, minSimilarity = 0.45): Promise<DistilledSkill[]> {
+  try {
+    const { embeddingClient } = await import("../ai/embedding-client.js");
+    const [qvec] = await embeddingClient.batchGenerate([query.slice(0, 500)]);
+    if (!qvec?.length) return [];
+    // 距离算在 SQL 里: pgvector 的 <=> 是余弦距离(1-相似度)。只比"蒸馏技能"这个名字空间。
+    // V417: **按名字去重** —— agent_skills 里有重名(144 行 / 139 个不同名字),
+    // 一个名字只映射一条向量, join 回来就会把同一技能返回多次(实测: 三条一样的"多跳归因推理"),
+    // 注入时等于把同一段技能内容重复塞给模型。
+    const r = await pool.query(
+      `select distinct on (a.name) a.*, 1 - (e.embedding <=> $1::vector) as similarity
+         from skill_embeddings e
+         join agent_skills a on a.name = e.skill_name
+        where a.status = 'approved'
+        order by a.name, e.embedding <=> $1::vector`,
+      [JSON.stringify(qvec)]
+    );
+    return (r.rows as Array<Record<string, unknown>>)
+      .filter((x) => Number(x.similarity) >= minSimilarity)
+      .sort((a, b) => Number(b.similarity) - Number(a.similarity))   // distinct on 已按名字分组, 需再按相似度排
+      .slice(0, limit)
+      .map(mapRow);
+  } catch (e: unknown) {
+    console.warn(`[skill-distill] 语义召回失败(退回关键词): ${String((e as Error)?.message || e).slice(0, 120)}`);
+    return [];
+  }
+}
+
 /** 检索技能: 按适用条件/名称匹配（任务规划时注入; V4: 同 goal 短期去重） */
 export async function recallSkills(query: string, limit = 3): Promise<DistilledSkill[]> {
   // V4: 频控 — 同 goal 5 分钟内已注入过 → 跳过
@@ -163,12 +270,27 @@ export async function recallSkills(query: string, limit = 3): Promise<DistilledS
   if (lastInjected && Date.now() - lastInjected < SKILL_INJECT_TTL_MS) {
     return [];
   }
-  const keywords = query.split(/[\s,，、]+/).filter((k) => k.length >= 2).slice(0, 3);
+
+  // V417: **先走语义召回** —— 这是中文目标唯一能命中的路。
+  // 原来只有关键词路径, 而它按空格/标点分词: 中文目标句整句没空格, 切出来是一个 22 字的"词",
+  // ilike 恒不命中(实测召回率 0, 144 条技能因此从未被任何任务用上)。
+  const sem = await recallSkillsSemantic(query, limit);
+  if (sem.length > 0) {
+    skillInjectionCache.set(cacheKey, Date.now());
+    return sem;
+  }
+
+  // 退回关键词路径: 用 extractSearchTerms 抽 2-3 字片段(原来那套切法对中文无效)
+  const keywords = extractSearchTerms(query, 8).slice(0, 3);
   if (keywords.length === 0) return [];
   const conds = keywords.map((_, i) => `(name ilike $${i + 1} or when_to_apply ilike $${i + 1} or skill_md ilike $${i + 1})`).join(" or ");
   const params = keywords.map((k) => `%${k}%`);
+  // V417: 排序在 consensus 之前先看**实际用过几次、成功了没有** —— 技能库要"越用越熟",
+  // 召回就得优先给验证过效果的, 而不是只看入库时的校验票数。
+  // 注: use_count/success_count 由 skill-usage-tracker 回写(迁移 148)。
   const r = await pool.query(
-    `select * from agent_skills where status = 'approved' and (${conds}) order by consensus desc limit $${params.length + 1}`,
+    `select * from agent_skills where status = 'approved' and (${conds})
+      order by success_count desc, use_count desc, consensus desc limit $${params.length + 1}`,
     [...params, limit]
   );
   const skills = r.rows.map(mapRow);

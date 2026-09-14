@@ -136,7 +136,7 @@ export function SourcesPanel() {
                 {f === "all" ? `全部 ${sources.length}` : `${STATUS_LABELS[f]} ${counts[f as keyof typeof counts] ?? 0}`}
               </button>
             ))}
-            <ButtonSmall onClick={() => void loadSources()}><RefreshCw className="h-3.5 w-3.5" /></ButtonSmall>
+            <ButtonSmall control="sources:refresh" onClick={() => void loadSources()}><RefreshCw className="h-3.5 w-3.5" /></ButtonSmall>
           </div>
         </div>
 
@@ -156,7 +156,7 @@ export function SourcesPanel() {
               placeholder="粘贴网页链接，如 https://www.qstheory.cn/...（自动抓取 → 切片 → 向量化入库）"
               className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-emerald-400"
             />
-            <Button onClick={() => void importUrl()} disabled={urlLoading}>
+            <Button data-control="sources:import-url" onClick={() => void importUrl()} disabled={urlLoading}>
               {urlLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />} 一键导入
             </Button>
           </div>
@@ -189,7 +189,7 @@ export function SourcesPanel() {
               placeholder="输入关键词（网页源可留空抓取最新文章）"
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
-            <Button onClick={() => void runOpenAlex()} disabled={oaLoading}>
+            <Button data-control="sources:search" onClick={() => void runOpenAlex()} disabled={oaLoading}>
               {oaLoading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />} 检索
             </Button>
           </div>
@@ -249,9 +249,9 @@ export function SourcesPanel() {
   );
 }
 
-function ButtonSmall(props: { children: React.ReactNode; onClick: () => void }) {
+function ButtonSmall(props: { children: React.ReactNode; onClick: () => void; control?: string }) {
   return (
-    <button type="button" onClick={props.onClick} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">
+    <button type="button" data-control={props.control} onClick={props.onClick} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">
       {props.children}
     </button>
   );

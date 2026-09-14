@@ -28,6 +28,7 @@ export function EducationWorkspacePanel() {
         </div>
         <div className="flex items-center gap-1 rounded-md bg-muted p-1 text-xs">
           <button
+            data-control="education:switch-student"
             onClick={() => setRole("student")}
             className={`flex items-center gap-1 rounded px-3 py-1 transition-colors ${
               role === "student" ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -36,6 +37,7 @@ export function EducationWorkspacePanel() {
             <GraduationCap className="h-3.5 w-3.5" /> 学生端 · 我的学习
           </button>
           <button
+            data-control="education:switch-teacher"
             onClick={() => setRole("teacher")}
             className={`flex items-center gap-1 rounded px-3 py-1 transition-colors ${
               role === "teacher" ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"
@@ -44,6 +46,7 @@ export function EducationWorkspacePanel() {
             <Presentation className="h-3.5 w-3.5" /> 教师端 · 教师工作台
           </button>
           <button
+            data-control="education:switch-learner"
             onClick={() => setRole("learner")}
             className={`flex items-center gap-1 rounded px-3 py-1 transition-colors ${
               role === "learner" ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground"

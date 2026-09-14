@@ -2078,6 +2078,7 @@ export const EducationPanel: FC<{ role?: "student" | "teacher" | "all" }> = ({ r
               </div>
             ))}
             <button
+              data-control="education:run"
               onClick={() => void run(active)}
               disabled={running === active.id}
               className="flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"

@@ -161,6 +161,7 @@ export const MemoryPanel: FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => void saveInjectSettings()} disabled={settingsSaving}
+                  data-control="memory:save-settings"
                   className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
                   {settingsSaving ? "保存中…" : "保存设置"}
                 </button>
@@ -193,7 +194,7 @@ export const MemoryPanel: FC = () => {
           {displayMemories.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">
               暂无记忆 — 系统运行推理后自动沉淀
-              <button type="button" onClick={() => { void api.getMemoryStats().then(setStats); void api.getRecentMemories(10).then(m => setMemories(m.items)); }}
+              <button type="button" data-control="memory:refresh" onClick={() => { void api.getMemoryStats().then(setStats); void api.getRecentMemories(10).then(m => setMemories(m.items)); }}
                 className="ml-2 rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground">刷新</button>
             </div>
           ) : (
