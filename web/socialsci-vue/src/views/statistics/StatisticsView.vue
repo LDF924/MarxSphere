@@ -645,11 +645,11 @@ watch(() => props.taskId, () => {
 
         <!-- 运行按钮 -->
         <div class="run-row">
-          <button class="btn-run-mb" :disabled="loadingRun" @click="runAnalysis">
+          <button class="btn-run-mb" data-control="statistics:run" :disabled="loadingRun" @click="runAnalysis">
             {{ loadingRun ? "分析中…" : "运行分析" }}
           </button>
-          <button class="btn-reset-mb" @click="resetAll">重置</button>
-          <button v-if="jobStatus === 'running' || jobStatus === 'queued'" class="btn-cancel-mb" @click="cancelCurrent">取消任务</button>
+          <button class="btn-reset-mb" data-control="statistics:reset" @click="resetAll">重置</button>
+          <button v-if="jobStatus === 'running' || jobStatus === 'queued'" class="btn-cancel-mb" data-control="statistics:cancel" @click="cancelCurrent">取消任务</button>
           <button v-else-if="jobStatus === 'failed'" class="btn-retry-mb" @click="retryFailed">从失败任务重试</button>
         </div>
       </div>

@@ -196,6 +196,7 @@ export function LiteraturePanel() {
             <div className="flex rounded-full border border-border p-0.5">
               <button
                 type="button"
+                data-control="literature:mode-md"
                 onClick={() => switchMode("md")}
                 className={cn("rounded-full px-3 py-1 text-xs transition-colors", mode === "md" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
               >
@@ -203,6 +204,7 @@ export function LiteraturePanel() {
               </button>
               <button
                 type="button"
+                data-control="literature:mode-pdf"
                 onClick={() => switchMode("pdf")}
                 className={cn("rounded-full px-3 py-1 text-xs transition-colors", mode === "pdf" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
               >

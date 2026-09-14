@@ -234,6 +234,7 @@ export const EngineIngestPanel: FC<EngineIngestPanelProps> = ({ engine }) => {
           <p className="mb-3 text-[10px] text-muted-foreground">{info.desc}</p>
           <div className="flex flex-wrap gap-2">
             <button
+              data-control="ingest:run"
               onClick={() => void start()}
               disabled={running}
               className="flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"

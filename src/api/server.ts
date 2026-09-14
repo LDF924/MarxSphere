@@ -8661,6 +8661,31 @@ except Exception as e:
     }
   });
 
+  // V417: 技能热度榜 —— "越用越熟"的可视化依据。
+  // 用**单独的路径** /api/skills/usage, 避免与下面的 /api/skills/:name/detail 抢路由。
+  app.get("/api/skills/usage", async (request) => {
+    const params = request.query as { limit?: string };
+    try {
+      const { listSkillUsage } = await import("../services/skill-usage-tracker.js");
+      return await listSkillUsage(Math.min(parseInt(params.limit ?? "50", 10) || 50, 200));
+    } catch (e: any) {
+      return { total: 0, used: 0, rows: [], error: String(e).substring(0, 100) };
+    }
+  });
+
+  // 某技能用在了哪些任务上（面板展开看明细）
+  app.get("/api/skills/:id/usage-events", async (request) => {
+    const params = request.params as { id: string };
+    const id = parseInt(params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return { events: [] };
+    try {
+      const { listSkillUsageEvents } = await import("../services/skill-usage-tracker.js");
+      return { events: await listSkillUsageEvents(id) };
+    } catch {
+      return { events: [] };
+    }
+  });
+
   // V331(P1-3): 技能语义搜索（找技能）— query → searchSkill 返回候选
   app.get("/api/skills/search", async (request) => {
     const params = request.query as { q?: string; top?: string };

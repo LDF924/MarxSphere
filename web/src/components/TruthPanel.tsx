@@ -249,7 +249,7 @@ export function TruthPanel() {
           <h2 className="text-lg font-semibold">知识页面（Compiled Truth + 时间线）</h2>
           <div className="ml-auto flex gap-2">
             <ButtonSmall onClick={() => void loadPages()}><RefreshCw className="h-3.5 w-3.5" /> 刷新</ButtonSmall>
-            <ButtonSmall onClick={() => setShowCreate((current) => !current)}><Plus className="h-3.5 w-3.5" /> 新建页面</ButtonSmall>
+            <ButtonSmall dataControl="truth:create" onClick={() => setShowCreate((current) => !current)}><Plus className="h-3.5 w-3.5" /> 新建页面</ButtonSmall>
           </div>
         </div>
 
@@ -530,10 +530,11 @@ export function TruthPanel() {
   );
 }
 
-function ButtonSmall(props: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+function ButtonSmall(props: { children: React.ReactNode; onClick: () => void; disabled?: boolean; dataControl?: string }) {
   return (
     <button
       type="button"
+      data-control={props.dataControl}
       onClick={props.onClick}
       disabled={props.disabled}
       className={cn(

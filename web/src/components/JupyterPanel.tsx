@@ -437,12 +437,12 @@ export function JupyterPanel() {
         <div className="h-4 w-px bg-border/60" />
         <input ref={fileRef} type="file" accept=".csv,.txt,.json" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.target.value = ""; }} />
-        <button type="button" onClick={() => fileRef.current?.click()} disabled={runningAll}
+        <button type="button" data-control="jupyter:upload" onClick={() => fileRef.current?.click()} disabled={runningAll}
           className="flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
           title="上传 CSV/JSON 数据文件，pandas 可读">
           <Upload className="h-3 w-3" /> 上传数据
         </button>
-        <button type="button" onClick={() => void loadDemo()} disabled={runningAll}
+        <button type="button" data-control="jupyter:demo" onClick={() => void loadDemo()} disabled={runningAll}
           className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-medium text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:opacity-40"
           title="载入资本下乡调研数据探索演示（自动运行）">
           <Wand2 className="h-3 w-3" /> 载入演示

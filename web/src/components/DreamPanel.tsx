@@ -130,7 +130,7 @@ export function DreamPanel() {
           人工审阅后提升为战略记忆(注入未来会话); 错误可回滚。与纯向量灌入不同: 每条可审计、可纠正。
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={run} disabled={busy}
+          <button type="button" data-control="dream:scan" onClick={run} disabled={busy}
             className="inline-flex items-center gap-1 rounded-md bg-purple-500 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-purple-400 disabled:opacity-40">
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             扫描并生成候选
@@ -139,7 +139,7 @@ export function DreamPanel() {
             <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} className="h-3 w-3" />
             LLM 打磨(否则确定性摘要)
           </label>
-          <button type="button" onClick={() => { setDemoOn((v) => !v); }} className="rounded-md border border-amber-400/40 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-400/10">
+          <button type="button" data-control="dream:demo" onClick={() => { setDemoOn((v) => !v); }} className="rounded-md border border-amber-400/40 px-2 py-1 text-[10px] text-amber-300 hover:bg-amber-400/10">
             {demoOn ? "退出演示" : "🎬 演示数据"}
           </button>
           <button type="button" onClick={() => void load()} className="rounded-md px-2 py-1 text-[10px] text-muted-foreground/60 hover:text-foreground">

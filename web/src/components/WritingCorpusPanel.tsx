@@ -143,7 +143,7 @@ export const WritingCorpusPanel: FC = () => {
             <input value={q} onChange={(e) => { setQ(e.target.value); void load(kind, e.target.value, filter); }}
               placeholder="检索语料…" className="w-40 bg-transparent text-xs outline-none placeholder:text-muted-foreground" />
           </div>
-          <button type="button" aria-label="新增语料" onClick={() => setShowAdd((v) => !v)}
+          <button type="button" aria-label="新增语料" data-control="corpus:new" onClick={() => setShowAdd((v) => !v)}
             className="flex items-center gap-1 rounded-md bg-primary/10 px-3 py-1.5 text-xs text-primary hover:bg-primary/20">
             <Plus className="h-3.5 w-3.5" /> 录入语料
           </button>

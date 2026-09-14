@@ -85,7 +85,7 @@ export function StructurePanel() {
           placeholder={"粘贴论文全文文本…\n\n例如：\nFigure 1: 实验流程图…\nTable 2: 各模型性能对比…\n如公式 (3) 所示…\nAlgorithm 1: 训练流程…"}
           className="h-36 w-full resize-y rounded-lg border bg-background/60 p-3 font-mono text-[11px] leading-relaxed outline-none focus:border-violet-500/50" />
         <div className="mt-2 flex items-center gap-2">
-          <button type="button" onClick={() => void parse()} disabled={busy}
+          <button type="button" data-control="structure:parse" onClick={() => void parse()} disabled={busy}
             className="flex items-center gap-1 rounded-lg bg-violet-600 px-4 py-2 text-[11px] font-medium text-white transition-all hover:bg-violet-700 disabled:opacity-40">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             {busy ? "解析中…" : "解析结构"}

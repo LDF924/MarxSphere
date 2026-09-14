@@ -102,7 +102,11 @@ const RULES: Array<{ file: string; rules: Rule[] }> = [
   ]},
   { file: "docs/ARCHITECTURE.md", rules: [
     { re: /(\d+) 服务文件/g, to: `${STATS.services} 服务文件`, label: "服务文件" },
-    { re: /(\d+) 迁移/g, to: `${STATS.migrations} 迁移`, label: "迁移数" },
+    // V417: 原来这里是 /(\d+) 迁移/g —— **太宽**: 表格里 `router_audit`(106 迁移) 这类
+    //   "某张表建在第几号迁移" 也被一起改掉, 于是每次同步都把正确的历史编号改错
+    //   (实测: 105/106/107 被改成 148), 且改完 docs:check 仍报"过时" → 永远收敛不了。
+    //   仅统计"规模"行: 那个数字后面紧跟 ` · `, 表格里的后面是 `)`。
+    { re: /(\d+) 迁移(?= ·)/g, to: `${STATS.migrations} 迁移`, label: "迁移数" },
     { re: /(\d+) 前端视图/g, to: `${STATS.views} 前端视图`, label: "视图数" },
     { re: /(\d+) 测试/g, to: `${STATS.tests} 测试`, label: "测试数" },
     { re: /(\d+) 教育路由/g, to: `${STATS.eduRoutes} 教育路由`, label: "教育路由" },

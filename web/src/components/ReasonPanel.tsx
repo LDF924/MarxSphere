@@ -823,6 +823,7 @@ export const ReasonPanel: FC<{ onReasonStart?: () => void }> = ({ onReasonStart 
             {/* 2026-08-07 LLM 模型选择：推理页在左，提交推理在右 */}
             <LlmModelSelector />
             <Button
+              data-control="reason:run"
               onClick={runReason}
               disabled={running || !sourceId || !query}
             >

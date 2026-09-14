@@ -1451,6 +1451,7 @@ function ModelUsageBanner() {
         <span className="text-muted-foreground">评测回归 / 主动巡检启动后不再自动运行，需手动确认：</span>
         <button
           type="button"
+          data-control="eval:run"
           onClick={() => void confirmRun("eval")}
           disabled={evalPending}
           className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"

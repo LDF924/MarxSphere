@@ -241,9 +241,9 @@ export function TracePanel() {
           <h2 className="text-lg font-semibold">Trace Waterfall</h2>
           <span className="text-xs text-muted-foreground">Ask 步骤 + Jobs 流水 · OTEL 风格 span</span>
           <div className="ml-auto flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => void loadTraces()}><RefreshCw className="mr-1 h-3.5 w-3.5" /> 刷新</Button>
+            <Button size="sm" variant="outline" data-control="trace:refresh" onClick={() => void loadTraces()}><RefreshCw className="mr-1 h-3.5 w-3.5" /> 刷新</Button>
             {traces.length > 0 && (
-              <Button size="sm" variant={confirmingClear ? "destructive" : "outline"} onClick={() => void clearAll()}>
+              <Button size="sm" variant={confirmingClear ? "destructive" : "outline"} data-control="trace:clear" onClick={() => void clearAll()}>
                 <Trash2 className="mr-1 h-3.5 w-3.5" /> {confirmingClear ? "确认清空？" : "清空"}
               </Button>
             )}

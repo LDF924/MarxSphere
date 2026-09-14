@@ -43,6 +43,7 @@ export function DocsPanel() {
             {index.filter((d) => d.group === group).map((d) => (
               <button
                 key={d.id}
+                data-control="docs:nav"
                 onClick={() => setCurrentId(d.id)}
                 className={cn(
                   "mb-0.5 flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs transition-colors",

@@ -613,7 +613,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
       </div>
       <div class="rail-footer">
         <button class="btn-back-sm" @click="router.push('/workflow/materials')">← 返回素材准备</button>
-        <button class="btn-primary-sm" data-assistant-control="workflow_phase4_enter_finalize" @click="enterFinalize">进入合稿 →</button>
+        <button class="btn-primary-sm" data-control="workflow:enter-finalize" @click="enterFinalize">进入合稿 →</button>
       </div>
     </aside>
 
@@ -755,7 +755,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         </div>
       </div>
       <div class="rail-footer-col">
-        <button class="btn-batch" data-assistant-control="workflow_phase4_generate_all" :disabled="generating" @click="generateAll">批量生成全部章节</button>
+        <button class="btn-batch" data-control="workflow:generate-all" :disabled="generating" @click="generateAll">批量生成全部章节</button>
         <button v-if="generating && generateMode === 'batch'" class="btn-rollback" @click="rollbackBatch">回滚本次批量</button>
       </div>
     </aside>

@@ -299,7 +299,7 @@ export function SkillsPanel() {
             ) : (
               <span className="text-muted-foreground">审计报告未生成（运行 scripts/audit-skill-descriptions.ts）</span>
             )}
-            <button type="button" onClick={loadAudit} className="ml-auto flex items-center gap-1 rounded bg-muted px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted/70">
+            <button type="button" data-control="skills:refresh-audit" onClick={loadAudit} className="ml-auto flex items-center gap-1 rounded bg-muted px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted/70">
               <RefreshCw className="h-3 w-3" /> 刷新
             </button>
           </div>
@@ -316,7 +316,7 @@ export function SkillsPanel() {
               placeholder="输入需求找技能，如「用 R 做面板数据回归」「写学术论文」…"
               className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground/50 focus:border-primary"
             />
-            <button type="button" onClick={() => void doSearch()} disabled={searching}
+            <button type="button" data-control="skills:find" onClick={() => void doSearch()} disabled={searching}
               className="flex items-center gap-1 rounded bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
               {searching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />} 找技能
             </button>
@@ -372,7 +372,7 @@ export function SkillsPanel() {
                 <GitBranch className="h-4 w-4 text-accent" />
                 {updates.baselineEstablished ? `技能基线已建立（${updates.stats.total} 项）· 扫描 ${updates.stats.scannedMs}ms` : `技能更新检测（扫描 ${updates.stats.total} 项 · ${updates.stats.scannedMs}ms）`}
                 <div className="ml-auto flex items-center gap-2">
-                  <Button size="sm" variant="outline" disabled={upstreamChecking} onClick={() => void checkUpstream()}>
+                  <Button size="sm" variant="outline" data-control="skills:check-upstream" disabled={upstreamChecking} onClick={() => void checkUpstream()}>
                     {upstreamChecking ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
                     检查上游更新
                   </Button>
@@ -384,7 +384,7 @@ export function SkillsPanel() {
                 </div>
               </div>
               <div className="mb-2 flex items-center gap-2">
-                <Button size="sm" variant="outline" disabled={updateLoading} onClick={() => void runScan()}>
+                <Button size="sm" variant="outline" data-control="skills:rescan" disabled={updateLoading} onClick={() => void runScan()}>
                   {updateLoading ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
                   重新扫描
                 </Button>
@@ -648,7 +648,7 @@ export function SkillsPanel() {
               className="mt-2"
             />
             <div className="mt-3 flex items-center gap-2">
-              <Button onClick={() => void doSkillify()} disabled={skillifying || !skName.trim() || !skSteps.trim()}>
+              <Button data-control="skills:skillify" onClick={() => void doSkillify()} disabled={skillifying || !skName.trim() || !skSteps.trim()}>
                 {skillifying ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
                 固化生成
               </Button>

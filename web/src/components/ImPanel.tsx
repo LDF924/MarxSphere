@@ -209,7 +209,7 @@ export const ImPanel: FC = () => {
           </div>
         </div>
         <div className="mt-4 flex gap-2">
-          <button type="button" onClick={save} disabled={busy} className={btnPrimary}><Save className="h-3.5 w-3.5" /> 保存配置</button>
+          <button type="button" data-control="im:save" onClick={save} disabled={busy} className={btnPrimary}><Save className="h-3.5 w-3.5" /> 保存配置</button>
           <button type="button" onClick={() => void load()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-border/60 px-3 py-1.5 text-xs hover:bg-muted"><RefreshCw className="h-3 w-3" /> 刷新</button>
           <button type="button" onClick={async () => { setBusy(true); setMsg(""); try { const r = await fetch("/api/im/wecom/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "webhook", content: testText }) }); const d = await r.json(); setMsg(d.ok ? "✅ 企业微信群机器人已发送" : `⚠️ ${d?.error || "发送失败"}`); } catch (e) { setMsg(String(e)); } finally { setBusy(false); } }} disabled={busy}
             className="inline-flex items-center gap-1 rounded-md border border-emerald-400/40 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-400/10">测试群机器人</button>

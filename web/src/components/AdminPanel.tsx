@@ -354,9 +354,9 @@ export const AdminPanel: FC = () => {
                   className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-white hover:border-white/20 focus:border-primary/50 focus:outline-none">
                   <option value="free" className="bg-slate-800 text-white">free</option><option value="pro" className="bg-slate-800 text-white">pro</option><option value="enterprise" className="bg-slate-800 text-white">enterprise</option>
                 </select>
-                <button type="button" onClick={() => { setTarget(u); setModal("balance"); setInputVal(""); }}
+                <button type="button" data-control="admin:adjust-balance" onClick={() => { setTarget(u); setModal("balance"); setInputVal(""); }}
                   className="rounded bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20">调余额</button>
-                <button type="button" onClick={() => { setTarget(u); setModal("password"); setInputVal(""); }}
+                <button type="button" data-control="admin:reset-password" onClick={() => { setTarget(u); setModal("password"); setInputVal(""); }}
                   className="rounded bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20">重置密码</button>
                 {u.status === "disabled" ? (
                   <button type="button" onClick={() => void setStatus(u.id, "active")}
@@ -572,7 +572,7 @@ function ConfigBlock({ h, onMsg }: { h: () => Record<string, string>; onMsg: (m:
       </p>
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} spellCheck={false}
         className="w-full resize-none rounded-md border border-white/10 bg-slate-900 p-2 font-mono text-[10px] text-emerald-300/90" />
-      <button onClick={save} className="mt-1.5 rounded-md bg-primary px-3 py-1.5 text-xs text-white">原子保存</button>
+      <button data-control="admin:save-config" onClick={save} className="mt-1.5 rounded-md bg-primary px-3 py-1.5 text-xs text-white">原子保存</button>
     </div>
   );
 }

@@ -223,11 +223,11 @@ export function ImportsPanel() {
           </div>
           {/* tab 切换: 导入/同步 | 笔记/翻译/参考文献 */}
           <div className="flex overflow-hidden rounded-lg border border-border/60">
-            <button type="button" onClick={() => setTab("imports")}
+            <button type="button" data-control="imports:tab-imports" onClick={() => setTab("imports")}
               className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "imports" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
               <Database className="h-3 w-3" /> 导入/同步
             </button>
-            <button type="button" onClick={() => setTab("notes")}
+            <button type="button" data-control="imports:tab-notes" onClick={() => setTab("notes")}
               className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "notes" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
               <NotebookPen className="h-3 w-3" /> 笔记/翻译/参考文献
             </button>

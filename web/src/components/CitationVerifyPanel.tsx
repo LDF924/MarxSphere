@@ -159,6 +159,7 @@ export const CitationVerifyPanel: FC = () => {
 
         <div className="mt-4 flex justify-end">
           <button
+            data-control="citation-verify:run"
             onClick={run}
             disabled={loading || claim.trim().length < 5}
             className="flex items-center gap-1.5 rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40"

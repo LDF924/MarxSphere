@@ -71,7 +71,7 @@ export function InboxPanel() {
             placeholder="记录待办事项（如：图谱数据入库方案待选）…"
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
-          <Button size="sm" onClick={addTodo} disabled={!newText.trim()}>
+          <Button size="sm" data-control="inbox:add" onClick={addTodo} disabled={!newText.trim()}>
             <Plus className="mr-1 h-3.5 w-3.5" /> 添加
           </Button>
         </div>

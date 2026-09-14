@@ -274,7 +274,11 @@ export async function createAgentTask(input: {
     }
   }
   // LLM 规划器：目标 → 子任务列表（V395-3: 注入历史会话上下文）
-  let steps = await planWithLlm(input.goal, [], input.contextHint, input.userId ? undefined : undefined);
+  // V417: 规划发生在任务落库**之前**, 此刻还没有 taskId, 所以规划器只能把命中的技能 id 返回出来,
+  // 由这里在 insert 拿到 id 后再写使用痕迹(详见 planWithLlm 内的注释)。
+  const planned = await planWithLlm(input.goal, [], input.contextHint);
+  let steps = planned as AgentTaskStep[];
+  const planSkillIds = (planned as AgentTaskStepList).skillIds ?? [];
   // V391(P1-2): 预算声明 + 超预算降级（裁剪步骤）
   const budget = planBudget(steps, input.budgetCents ?? DEFAULT_BUDGET_CENTS);
   if (budget.degraded === "reduce_steps") {
@@ -286,6 +290,13 @@ export async function createAgentTask(input: {
     [input.projectId ?? null, input.goal, JSON.stringify(steps), input.parentTaskId ?? null, budget.estimatedCents, input.userId ?? null, input.dependsOn ?? []]
   );
   const task = mapRow(r.rows[0]);
+  // V417: 现在有 taskId 了 —— 补记技能使用痕迹, 任务跑完时 recordSkillOutcome(taskId) 才能按它回写成败
+  if (planSkillIds.length > 0) {
+    try {
+      const { recordSkillUsage } = await import("./skill-usage-tracker.js");
+      void recordSkillUsage(planSkillIds, { taskId: task.id, goal: input.goal, source: "recall" });
+    } catch { /* 埋点失败不影响任务 */ }
+  }
   if (budget.degraded !== "none") {
     // 降级信息写入 progress 提示
     await pool.query(`update agent_tasks set progress = $2 where id = $1`, [task.id, `[预算降级] ${budget.reason}`]);
@@ -639,6 +650,12 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
           detail: { status: "completed", loopCount: loop + 1, reflectScore: reflect.score },
         });
       } catch { /* 通知失败不阻塞 */ }
+      // V417: 技能效果回写 —— 这次任务成功的算到它用过的技能头上。
+      // 按 taskId 从流水表反查(不靠内存传 id), 任务跨进程/重启也不丢。失败不阻塞。
+      try {
+        const { recordSkillOutcome } = await import("./skill-usage-tracker.js");
+        await recordSkillOutcome(taskId, true);
+      } catch { /* 技能效果回写失败不阻塞 */ }
       void clearTaskTerminalState(taskId);  // G10: 终态清理
       try {
         const t = await getAgentTask(taskId);
@@ -1190,8 +1207,14 @@ async function summarizeResult(goal: string, verifiedSteps: AgentTaskStep[]): Pr
   return `# 任务完成汇总\n目标: ${goal}\n\n${body}`;
 }
 
+/** V417: planWithLlm 命中的技能 id —— 挂在步骤数组上返回给调用方(规划时还没有 taskId, 无法直接写库) */
+export interface AgentTaskStepList extends Array<AgentTaskStep> {
+  skillIds?: number[];
+}
+
 /** LLM 目标拆解（V381: 收敛到统一 LLM 入口; V391: 支持注入上轮问题修订计划 + 工具链路由提示; V394-1: 注入预防规则+战略记忆; V395-3: 注入会话上下文） */
 async function planWithLlm(goal: string, previousIssues: string[], contextHint?: string, taskId?: string): Promise<AgentTaskStep[]> {
+  let planSkillIds: number[] = [];
   // 2026-08-07 模型注册表：任务规划用 plan 角色（用户选择生效）
   const model = resolveModelAlias(getRoleModel("plan"));
   // V404-6: 登记规划档位(plan=standard/strong) — 任务起点即锁定档位下限, 后续工具步骤不降档保 cache
@@ -1211,8 +1234,7 @@ async function planWithLlm(goal: string, previousIssues: string[], contextHint?:
     ? `\n【会话上下文(用户之前的指令与产出, 当前目标是其延续)】\n${guardUserInput(contextHint, "历史会话", 1500)}\n请将当前目标与前文关联, 避免重复已覆盖内容, 聚焦新指令要求。`
     : "";
   // V394-1: 规划记忆注入 — 预防规则（历史踩坑防复发）+ 战略记忆（项目目标约束）
-  let memoryHint = "";
-  // 差距J④(DSH identity): Agent 身份注入 — 名称/角色/会话身份（系统提示一致性）
+  let memoryHint = "";  // 差距J④(DSH identity): Agent 身份注入 — 名称/角色/会话身份（系统提示一致性）
   try {
     const identity = process.env.AGENT_IDENTITY
       || "SAG 学术研究助理（MarxSphere）— 马理论+社会科学研究助手";
@@ -1269,8 +1291,14 @@ async function planWithLlm(goal: string, previousIssues: string[], contextHint?:
     const skills = await recallSkills(goal, 2);
     if (skills.length > 0) {
       memoryHint += `\n【可复用技能(when-to-apply 守卫已匹配, 规划时优先采用)】\n${skills.map((s) => `- ${s.name}: ${s.skillMd}`).join("\n")}`;
+      // V417: 记下这次规划命中了哪几条技能。
+      // **不在这里写库**: 规划发生在任务 insert **之前**(见 createAgentTask 第 277 行),
+      // 此刻还没有 taskId, 硬传 null 会让"任务完成时按 taskId 回写成败"永远匹配不上
+      // (实测: 流水进了库但 task_id 是 null)。改为把结果返回给调用方, 由它拿到 taskId 后再关联。
+      planSkillIds = skills.map((s) => s.id);
     }
   } catch { /* 技能不可用静默 */ }
+  // V417: 把本次命中的技能 id 挂到返回数组上, 由调用方在拿到 taskId 后写使用痕迹
   try {
     const r = await callLlm({
       model,
@@ -1315,6 +1343,8 @@ ${memoryHint}`,
       mapped.unshift({ id: "s1", title: "检索相关资料", type: "retrieve", query: goal, status: "pending" as const });
       console.log("[agent] 差距M③ 计划验证: 缺 retrieve 步骤, 已补齐");
     }
+    // V417: 把命中的技能 id 挂在返回数组上 —— 调用方拿到 taskId 后再写使用痕迹
+    (mapped as AgentTaskStepList).skillIds = planSkillIds;
     return mapped;
   } catch {
     // 兜底计划

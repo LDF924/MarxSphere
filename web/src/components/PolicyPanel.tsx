@@ -172,7 +172,7 @@ export function PolicyPanel() {
           <Landmark className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">政策资料库</h2>
           <span className="text-xs text-muted-foreground">课题研究·著作政策会议</span>
-          <ButtonSmall onClick={() => void loadTree()}><RefreshCw className="h-3.5 w-3.5" /></ButtonSmall>
+          <ButtonSmall control="policy:refresh" onClick={() => void loadTree()}><RefreshCw className="h-3.5 w-3.5" /></ButtonSmall>
         </div>
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
@@ -190,7 +190,7 @@ export function PolicyPanel() {
               placeholder="如：土地流转 / 社会资本投资农业农村 / 农村集体经济"
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
-            <Button onClick={() => void runSearch()} disabled={searching || !query.trim()}>
+            <Button data-control="policy:search" onClick={() => void runSearch()} disabled={searching || !query.trim()}>
               {searching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />} 检索
             </Button>
           </div>
@@ -205,7 +205,7 @@ export function PolicyPanel() {
                   {hit.summary && <p className="mt-1 text-xs text-muted-foreground">{hit.summary.slice(0, 120)}</p>}
                   <div className="mt-1 flex items-center gap-3">
                     {hit.url && <a href={hit.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><ExternalLink className="h-3 w-3" />原文</a>}
-                    <Button size="sm" variant="outline" disabled={saving === hit.url || savedMap[hit.url]} onClick={() => void savePolicy(hit)}>
+                    <Button size="sm" variant="outline" data-control="policy:save" disabled={saving === hit.url || savedMap[hit.url]} onClick={() => void savePolicy(hit)}>
                       {saving === hit.url ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : savedMap[hit.url] ? <CheckCircle2 className="mr-1 h-3 w-3" /> : <Save className="mr-1 h-3 w-3" />}
                       {savedMap[hit.url] ? "已存入" : "存入政策库"}
                     </Button>
@@ -332,9 +332,9 @@ export function PolicyPanel() {
   );
 }
 
-function ButtonSmall(props: { children: ReactNode; onClick: () => void }) {
+function ButtonSmall(props: { children: ReactNode; onClick: () => void; control?: string }) {
   return (
-    <button type="button" onClick={props.onClick} className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">
+    <button type="button" data-control={props.control} onClick={props.onClick} className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">
       {props.children}
     </button>
   );

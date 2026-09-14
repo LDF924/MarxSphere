@@ -515,8 +515,8 @@ const chartTabList = computed(() => figures.value.map((f, i) => ({ i, label: f.l
             <button class="viz-tab" :class="{ active: viewTab === 'windows' }" @click="viewTab = 'windows'">任务视图</button>
           </div>
           <div class="viz-actions">
-            <button class="viz-btn" @click="newChart">＋ 新建图表</button>
-            <button class="viz-btn" :disabled="!selectedFigure?.png" @click="exportPng">导出为图片</button>
+            <button class="viz-btn" data-control="viz:new" @click="newChart">＋ 新建图表</button>
+            <button class="viz-btn" data-control="viz:export-png" :disabled="!selectedFigure?.png" @click="exportPng">导出为图片</button>
             <button class="viz-btn danger" :class="{ armed: delArmed }" @click="deleteCurrent">{{ delArmed ? "确认删除" : "删除" }}</button>
           </div>
         </div>

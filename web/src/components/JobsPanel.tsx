@@ -393,7 +393,7 @@ export function JobsPanel() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             {JOB_TYPES.map((type) => (
-              <Button key={type.key} size="sm" variant="outline" onClick={() => void enqueue(type.key)} className="flex h-auto cursor-pointer flex-col gap-0.5 px-3 py-1.5">
+              <Button key={type.key} size="sm" variant="outline" onClick={() => void enqueue(type.key)} data-control={type.key === "lint" ? "jobs:lint" : undefined} className="flex h-auto cursor-pointer flex-col gap-0.5 px-3 py-1.5">
                 <span className="text-[11px] font-medium leading-tight">{type.cn}</span>
                 <span className="text-[9px] font-normal leading-tight text-muted-foreground">{type.en}</span>
               </Button>

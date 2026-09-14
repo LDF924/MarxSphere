@@ -264,7 +264,7 @@ onMounted(async () => {
         v-model="store.input.title"
         class="wf-input"
         placeholder="例如:数字经济背景下中小企业融资困境与对策研究"
-        data-assistant-control="workflow_research_title"
+        data-control="workflow:research-title"
       />
     </section>
 
@@ -278,7 +278,7 @@ onMounted(async () => {
         max="50000"
         step="1000"
         class="wf-input"
-        data-assistant-control="workflow_total_word_count"
+        data-control="workflow:total-word-count"
       />
       <p class="wf-note">字数估算仅计算正文整体工作量(不含摘要、关键词、参考文献等内容),AI 智能体将按此字数进行科研分配。</p>
     </section>
@@ -291,7 +291,7 @@ onMounted(async () => {
       </label>
       <OutlineEditor v-model="store.input.outline" />
       <!-- sr-only 同步真源(DOM 自动化/爬虫可见) -->
-      <textarea class="sr-only" :value="store.input.outline" data-assistant-control="workflow_outline" tabindex="-1" aria-hidden="true" style="position: absolute; width: 1px; height: 1px; opacity: 0"></textarea>
+      <textarea class="sr-only" :value="store.input.outline" data-control="workflow:outline" tabindex="-1" aria-hidden="true" style="position: absolute; width: 1px; height: 1px; opacity: 0"></textarea>
     </section>
 
     <!-- 额外要求 -->
@@ -301,7 +301,7 @@ onMounted(async () => {
         v-model="store.input.requirements"
         class="wf-input"
         placeholder="例如: 近3年文献 / 实证方法 / 8000-10000字 / 江苏省中小企业"
-        data-assistant-control="workflow_requirements"
+        data-control="workflow:requirements"
       />
     </section>
 
@@ -316,7 +316,7 @@ onMounted(async () => {
           class="method-card"
           :class="{ selected: store.input.researchMethod === m.id }"
           :aria-pressed="store.input.researchMethod === m.id"
-          :data-assistant-control="'workflow_method_' + m.id"
+          :data-control="'workflow_method_' + m.id"
           @click="pickMethod(m.id)"
         >
           <strong>{{ m.label }}</strong>
@@ -394,7 +394,7 @@ onMounted(async () => {
         type="button"
         class="btn-primary"
         :disabled="!canSubmit"
-        data-assistant-control="workflow_submit_analysis"
+        data-control="workflow:submit-analysis"
         @click="submitAnalysis"
       >开始思考科研架构</button>
     </div>

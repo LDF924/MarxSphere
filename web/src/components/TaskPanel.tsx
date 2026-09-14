@@ -778,6 +778,7 @@ export const TaskPanel: FC = () => {
             />
             <button
               type="button"
+              data-control="tasks:new"
               onClick={() => void createTask()}
               disabled={creating || !goal.trim()}
               className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
@@ -824,6 +825,7 @@ export const TaskPanel: FC = () => {
             {/* 2026-08-07 演示：模拟任务逐步执行（沙箱，不消耗 API） */}
             <button
               type="button"
+              data-control="tasks:demo"
               onClick={playDemo}
               disabled={demoPlaying}
               className="flex shrink-0 items-center gap-1 rounded-md border border-dashed border-primary/40 px-3 py-2 text-xs text-primary hover:bg-primary/5 disabled:opacity-50"

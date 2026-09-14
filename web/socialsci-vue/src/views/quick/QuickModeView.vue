@@ -1171,8 +1171,8 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
               <span class="run-meta">{{ m.steps }} 步</span>
               <button class="workspace-secondary" :disabled="dagBusy || locked" @click="openMetaSkill(m.id)">打开到画布</button>
               <!-- V415: 直接从这跑这条 DAG(不用先打开到画布 —— 那是"改"的路径, 这是"用"的路径) -->
-              <button class="workspace-secondary" :disabled="msBusy || !msTopic.trim()" @click="msRun(m.id)">▶ 运行</button>
-              <button class="workspace-secondary" :disabled="msBusy" title="零成本演示: 不调 LLM, 只把步骤按序点亮" @click="msPlayDemo(m)">🎬 演示</button>
+              <button class="workspace-secondary" data-control="quick:ms-run" :disabled="msBusy || !msTopic.trim()" @click="msRun(m.id)">▶ 运行</button>
+              <button class="workspace-secondary" data-control="quick:ms-demo" :disabled="msBusy" title="零成本演示: 不调 LLM, 只把步骤按序点亮" @click="msPlayDemo(m)">🎬 演示</button>
             </div>
           </div>
 

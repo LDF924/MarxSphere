@@ -399,7 +399,7 @@ export function AskPanel({ pendingDemo }: { pendingDemo?: string | null }) {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={() => void runAsk()} disabled={running || !query.trim() || !selectedProjectId}>
+            <Button data-control="ask:run" onClick={() => void runAsk()} disabled={running || !query.trim() || !selectedProjectId}>
               {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />}
               {running ? "检索中…" : "开始检索"}
             </Button>

@@ -302,7 +302,7 @@ export const P2OView: FC = () => {
           {/* 上传区 */}
           <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3">
             <input ref={fileRef} type="file" accept=".pdf" onChange={() => void uploadFile()} className="hidden" id="p2o-file-input" />
-            <label htmlFor="p2o-file-input" className={cn("flex cursor-pointer flex-col items-center gap-1 rounded-md border border-primary/30 py-4 text-center hover:bg-primary/10", busy && "pointer-events-none opacity-50")}>
+            <label htmlFor="p2o-file-input" data-control="p2o:upload" className={cn("flex cursor-pointer flex-col items-center gap-1 rounded-md border border-primary/30 py-4 text-center hover:bg-primary/10", busy && "pointer-events-none opacity-50")}>
               <FileUp className="h-5 w-5 text-primary" />
               <span className="text-xs font-medium text-primary">{busy ? "上传中…" : "上传或拖入 PDF"}</span>
               <span className="text-[10px] text-muted-foreground">选择文件后立即进入处理队列</span>
@@ -395,7 +395,7 @@ export const P2OView: FC = () => {
               </div>
             )}
             {!batchJob && batchScan && batchScan.length > 0 && (
-              <button type="button" onClick={() => void startBatch()} disabled={batchBusy}
+              <button type="button" data-control="p2o:batch-import" onClick={() => void startBatch()} disabled={batchBusy}
                 className="mt-1.5 flex w-full items-center justify-center gap-1 rounded bg-primary px-2 py-1.5 text-[10px] text-primary-foreground hover:opacity-90 disabled:opacity-40">
                 <Play className="h-3 w-3" /> 开始批量导入（{batchScan.length} 篇）
               </button>

@@ -7,6 +7,14 @@ import { BookOpen, ChevronRight, ExternalLink, FileText, HelpCircle, Info, Landm
 
 type TabId = "announce" | "help" | "legal" | "resources";
 
+// 科研助手 [data-control] 埋点: tab id → <view>:<key>
+const TAB_CONTROLS: Record<TabId, string> = {
+  announce: "site-content:announce",
+  help: "site-content:help",
+  legal: "site-content:legal",
+  resources: "site-content:resources",
+};
+
 // ═══ 静态内容数据 ═══
 const ANNOUNCEMENTS = [
   { date: "2026-09-06", title: "科研工作台 DAG 编排上线", body: "可视化 DAG 科研编排已上线: 支持五阶段论文模板一键铺开 / 自然语言转研究框架 / 节点级工作界面与素材闭环。" },
@@ -63,7 +71,7 @@ export function SiteContentPanel() {
   const [tab, setTab] = useState<TabId>("announce");
 
   const tabBtn = (id: TabId, label: string, icon: React.ReactNode) => (
-    <button key={id} onClick={() => setTab(id)}
+    <button key={id} data-control={TAB_CONTROLS[id]} onClick={() => setTab(id)}
       className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${tab === id ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}>
       {icon}{label}
     </button>

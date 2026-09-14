@@ -1372,7 +1372,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
           </div>
 
           <div class="submit-row">
-            <button class="primary-btn" :disabled="!canSubmit || submitting" @click="submitReview">
+            <button class="primary-btn" data-control="review:submit" :disabled="!canSubmit || submitting" @click="submitReview">
               {{ submitting ? "提交中…" : "开始审稿" }}
             </button>
           </div>
@@ -1470,13 +1470,13 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
               <button class="secondary-btn" :disabled="!annotationsFlat.length" title="把批注整理成修改清单, 在编辑器中新建文档打开" @click="sendAllToEditor">
                 发到编辑器
               </button>
-              <button class="secondary-btn" :disabled="exporting === 'html'" @click="exportHtml">
+              <button class="secondary-btn" data-control="review:export-html" :disabled="exporting === 'html'" @click="exportHtml">
                 {{ exporting === "html" ? "导出中…" : "导出 HTML" }}
               </button>
-              <button class="secondary-btn" :disabled="exporting === 'word'" @click="exportWord">
+              <button class="secondary-btn" data-control="review:export-word" :disabled="exporting === 'word'" @click="exportWord">
                 {{ exporting === "word" ? "导出中…" : "导出 Word 批注" }}
               </button>
-              <button class="secondary-btn" @click="retryJob">重新审稿</button>
+              <button class="secondary-btn" data-control="review:retry" @click="retryJob">重新审稿</button>
               <button class="secondary-btn" @click="store.backToInput()">返回输入</button>
             </div>
           </div>

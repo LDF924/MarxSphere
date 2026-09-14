@@ -292,7 +292,7 @@ export const CJournalPanel: FC = () => {
         {/* ═══ 工具 Tab（统一金色系: 未激活=琥珀描边浅底, 激活=金色渐变实底）═══ */}
         <div className="flex flex-wrap gap-1.5 rounded-xl border border-border/50 bg-background/40 p-1.5 backdrop-blur">
           {TABS.map((t) => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)} title={t.desc}
+            <button data-control={`cjournal:tool-${t.id}`} key={t.id} type="button" onClick={() => setTab(t.id)} title={t.desc}
               className={cn("flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all",
                 tab === t.id
                   ? "border-amber-300/70 bg-gradient-to-r from-amber-400 to-orange-400 text-amber-950 shadow-[0_0_12px_hsl(40_90%_55%/0.45)]"

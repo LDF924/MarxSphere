@@ -422,7 +422,7 @@ export function SciversePanel() {
             />
           )}
           <div className="flex items-center gap-2">
-            <Button onClick={() => void runSearch()} disabled={loading || (!query.trim() && tool !== "search_papers")}>
+            <Button data-control="sciverse:search" onClick={() => void runSearch()} disabled={loading || (!query.trim() && tool !== "search_papers")}>
               {loading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />}
               检索
             </Button>
@@ -518,7 +518,7 @@ export function SciversePanel() {
               placeholder="输入论文标题在知网检索（如：资本下乡对农村集体经济的双重效应）"
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
-            <Button onClick={() => void searchCnki(cnkiQuery)} disabled={cnkiSearching || !cnkiQuery.trim()}>
+            <Button data-control="sciverse:cnki-search" onClick={() => void searchCnki(cnkiQuery)} disabled={cnkiSearching || !cnkiQuery.trim()}>
               {cnkiSearching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Search className="mr-1 h-4 w-4" />}
               知网检索
             </Button>

@@ -492,7 +492,7 @@ onUnmounted(() => {
     <!-- 底部操作 -->
     <div class="wf-actions">
       <button class="btn-back" @click="router.push('/workflow/input')">返回修改</button>
-      <button class="btn-primary" :disabled="!canConfirm" data-assistant-control="workflow_sections_confirm" @click="confirmSections">
+      <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
         确认科研架构, 进入素材准备
       </button>
     </div>
