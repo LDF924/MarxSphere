@@ -9,6 +9,7 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import type { Section } from "./stores/workflow";
 import { listSkillCards, batchGenerateSkillCards, createTask, getTask } from "@/shared/tasks";
+import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q } from "@/shared/api";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
@@ -58,6 +59,9 @@ const analyzeFailed = ref(false);
 const analyzeError = ref("");
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null);
 const activeJobId = ref("");
+// 写作指导单独重试: analyze 失败/取消时正文不会跑到 generateWritingGuides, 此前该章指导永久缺失
+// → skillComplete 恒 false → "确认进入"永久置灰, 且界面不说原因(实测: 只能删库重来)
+const guidesBusy = ref(false);
 
 // ── 步骤(闭源 Q 表: 定性词表切换) ──
 const isQual = computed(() => store.input.researchMethod === "qualitative" || (store.input.researchMethod || "").includes("qual"));
@@ -189,7 +193,9 @@ function pollJob() {
         stopPoll();
         analyzing.value = false;
         analyzeFailed.value = true;
-        analyzeError.value = "科研架构生成失败, 请重试";
+        analyzeError.value = t.status === "cancelled"
+          ? "科研架构分析已取消。可直接重试生成写作指导, 或用「重新分析」重跑全流程。"
+          : `科研架构生成失败${describeJobError(t)}。章节结构已保留, 可直接重试生成写作指导。`;
       } else {
         // progress {stage,current,total} → 步骤推进
         const progress = (t as { progress?: { stage?: string; current?: number; total?: number } }).progress;
@@ -238,13 +244,55 @@ async function extractAnalysisResult(t: { result?: unknown }) {
   } catch { /* 容忍 */ }
 }
 
+/** analyze 失败原因兜底(后端 error 是 {code,userMessage} JSON 串) */
+function describeJobError(t: unknown): string {
+  const raw = (t as { error?: unknown } | null)?.error;
+  if (!raw) return "";
+  try {
+    const e = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const msg = String((e as Record<string, unknown>)?.userMessage ?? "");
+    return msg ? `: ${msg.slice(0, 120)}` : "";
+  } catch {
+    return `: ${String(raw).slice(0, 120)}`;
+  }
+}
+
+/** 只生成写作指导(不动章节结构) — analyze 失败/取消后仍可补齐, 否则 skillComplete 永久为假 */
+async function retryGuides() {
+  if (guidesBusy.value) return;
+  if (!store.taskId) { toast("请先完成信息录入", "warning"); return; }
+  if (!store.level1Sections.length) { toast("暂无章节, 请先重新分析生成章节结构", "warning"); return; }
+  guidesBusy.value = true;
+  try {
+    await generateWritingGuides();
+    await store.loadProject();
+    if (skillComplete.value) {
+      analyzeFailed.value = false;
+      toast("写作指导已补齐, 可以进入素材准备了", "success");
+    } else if (guidesResult.value.ok === 0) {
+      // V417: 一条都没生成成功 → 说清原因, 别让用户反复点"重试"却不知道是模型/余额的问题
+      toast(`写作指导生成失败${guidesResult.value.error ? `: ${guidesResult.value.error}` : "(模型不可用或余额不足)"}`, "error");
+    } else {
+      toast(`仍缺 ${missingCount.value} 章写作指导(本轮成功 ${guidesResult.value.ok}/${guidesResult.value.total}), 可再次重试`, "warning");
+    }
+  } finally {
+    guidesBusy.value = false;
+  }
+}
+
+/** V417: 上次写作指导批量生成的结果 —— 用于如实报告(此前全失败也弹绿色成功) */
+const guidesResult = ref<{ ok: number; total: number; error?: string }>({ ok: 0, total: 0 });
+
 /** 生成各一级章节写作指导(闭源 generateSkillsForSections: 后端逐章 LLM 生成 aiSkill) */
 async function generateWritingGuides() {
   const l1 = store.level1Sections;
   if (!l1.length || !store.taskId) return;
   try {
-    await batchGenerateSkillCards(store.taskId, l1.map((s) => ({ id: s.id, title: s.title, level: 1 })));
-  } catch { /* 后端容忍 */ }
+    const r = await batchGenerateSkillCards(store.taskId, l1.map((s) => ({ id: s.id, title: s.title, level: 1 })));
+    guidesResult.value = { ok: r.okCount ?? 0, total: l1.length };
+  } catch (e) {
+    guidesResult.value = { ok: 0, total: l1.length, error: String((e as Error).message ?? e).slice(0, 120) };
+  }
   await loadSkillCards();
 }
 
@@ -252,6 +300,10 @@ async function loadSkillCards() {
   if (!store.taskId) return;
   try {
     const cards = await listSkillCards(store.taskId);
+    // V417: 原来这里 `if (!cards.length) return;` —— 卡片表可能为空(生成卡需 writingGoal,
+    //   模型少给一个字段就整条不落库), 而节点里的 aiSkill 是独立分支、照样有值。
+    //   直接 return 会让「节点有指导、界面空着」这种不一致永远修不回来。
+    //   为空时交给上层 store.loadProject() 从节点回填, 这里不早退。
     if (!cards.length) return;
     const map = new Map<string, Record<string, unknown>>();
     for (const c of cards) {
@@ -352,6 +404,7 @@ function wordCountBadge(s: Section): string | null {
 }
 
 onMounted(async () => {
+  markWorkflowReady();
   await store.loadProject().catch(() => null);
   // 活动 analyze job 恢复(取消/刷新后回来续显, 防重复建任务并发写)
   const recent = await (await import("@/shared/tasks")).listTasks({ module: "workflow", limit: 5 }).catch(() => []);
@@ -391,13 +444,18 @@ onUnmounted(() => {
         <strong>科研架构生成失败</strong>
       </div>
       <p class="banner-body">{{ analyzeError }}</p>
-      <button class="btn-red-sm" @click="startAnalysis(true)">重新生成</button>
+      <div class="banner-actions">
+        <button class="btn-red-sm" data-control="workflow:retry-guides" :disabled="guidesBusy" @click="retryGuides">
+          {{ guidesBusy ? "正在生成写作指导…" : "只重试生成写作指导" }}
+        </button>
+        <button class="btn-red-sm" @click="startAnalysis(true)" data-control="workflow:regen-sections">重新生成</button>
+      </div>
     </div>
 
     <div v-else-if="analyzing" class="banner banner-thinking">
       <div class="banner-head">
         <strong>AI 正在分析中</strong>
-        <button class="banner-cancel" @click="stopPoll(); analyzing = false">取消</button>
+        <button class="banner-cancel" data-control="workflow:cancel-analysis" @click="cancelAnalysis">取消</button>
       </div>
       <div class="step-progress">
         <div v-for="(s, i) in steps" :key="s.key" class="step-item" :class="{ active: analyzeStep >= s.key, done: analyzeStep > s.key }">
@@ -419,14 +477,29 @@ onUnmounted(() => {
 
     <div v-else class="banner banner-idle">
       <div class="banner-head"><strong>AI 分析</strong></div>
-      <p class="banner-body">AI 将识别研究变量/因素、分析框架并生成每章写作指导。</p>
-      <button class="btn-red" @click="startAnalysis()">开始科研架构分析</button>
+      <!-- 有章节但指导不全: 这是刷新/重进后最常见的状态(analyzeFailed 已被重置为 false),
+           此时只给"开始分析"会把已经落库的章节结构重跑一遍。直接给补齐入口。 -->
+      <p class="banner-body">
+        {{ l1Count && !skillComplete ? `已有 ${l1Count} 章结构, 还差 ${missingCount} 章写作指导。` : "AI 将识别研究变量/因素、分析框架并生成每章写作指导。" }}
+      </p>
+      <div class="banner-actions">
+        <button
+          v-if="l1Count && !skillComplete"
+          class="btn-red"
+          data-control="workflow:retry-guides"
+          :disabled="guidesBusy"
+          @click="retryGuides"
+        >
+          {{ guidesBusy ? "正在生成写作指导…" : `只生成写作指导(缺 ${missingCount} 章)` }}
+        </button>
+        <button class="btn-red" @click="startAnalysis()" data-control="workflow:start-analysis-2">{{ l1Count && !skillComplete ? "重新分析(含章节结构)" : "开始科研架构分析" }}</button>
+      </div>
     </div>
 
     <!-- 缺失警告 -->
     <div v-if="missingCount > 0 && !analyzing" class="warn-bar">
       ⚠ 还有 {{ missingCount }} 章缺少写作指导, 当前科研架构尚未生成完整。
-      <button class="btn-warn" @click="startAnalysis(true)">重新分析</button>
+      <button class="btn-warn" @click="startAnalysis(true)" data-control="workflow:reanalyze">重新分析</button>
     </div>
 
     <!-- 变量卡网格 -->
@@ -516,6 +589,7 @@ onUnmounted(() => {
 .banner-thinking .banner-head strong { color: #DCE6F2; }
 .banner-done .banner-head strong { color: #5FD0B4; }
 .banner-body { font-size: 13px; color: #8B9BB1; margin: 6px 0; line-height: 1.6; }
+.banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .banner-cancel { border: 0; background: #212C45; color: #8B9BB1; padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .btn-red { padding: 7px 18px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-red-sm { padding: 4px 14px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 7px; font-size: 12px; cursor: pointer; }

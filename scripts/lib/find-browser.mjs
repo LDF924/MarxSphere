@@ -93,6 +93,11 @@ function alsoConsidered(candidates) {
  * 探测并返回第一个存在的可执行文件路径。
  * 全不可用时打印每条失败原因 + 两条可操作办法, 以退出码 1 退出。
  * label 用于错误提示里指回是哪个脚本(调用方传自己的文件名)。
+ *
+ * 与 CDP 的关系(2026-09-14 更正): 这里曾有个 `cdp` 参数, 一度把 Playwright 缓存的
+ *   Chromium 排除在候选外, 理由是"它不吃 --remote-debugging-port"。**那个结论是错的** ——
+ *   失败的真因是端口撞了 Windows 保留区间(见 cdp-port.mjs)。换到空闲端口后同一个
+ *   Chromium 的 /json/version 正常返回。既然能力没有差别, 这个参数就是死接口, 已删。
  */
 export function resolveBrowser({ envVar = "UI_VERIFY_BROWSER", includeSystem = true, label = "node <脚本>" } = {}) {
   const candidates = browserCandidates({ envVar, includeSystem });

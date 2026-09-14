@@ -150,7 +150,9 @@ export function startProactiveResearchScheduler(): void {
   }
   const INTERVAL_MS = parseInt(process.env.AGENT_PROACTIVE_INTERVAL_MS || "86400000", 10);  // 默认 24h
   // 多副本: 主动研究会创建真实任务(烧 LLM) → 加跨副本租约, 每轮仅一个副本执行
-  const guarded = withRunLease("proactive-research", runProactiveResearch, INTERVAL_MS + 300_000);
+  //   V417: TTL 从 INTERVAL+5min 收到 INTERVAL+2min —— 原值比周期还长会让任务每两轮才跑一次
+  //   (租约自锁, 见 journal-sync-service 里的缩比实测), 24h 实际变 ~48h。
+  const guarded = withRunLease("proactive-research", runProactiveResearch, INTERVAL_MS + 120_000);
   void guarded();
   setInterval(() => { void guarded(); }, INTERVAL_MS);
   console.log(`[agent-proactive] P2 主动研究已启动 (每 ${Math.round(INTERVAL_MS / 3600000)}h 自动巡检, 多副本下每轮仅一个副本执行)`);

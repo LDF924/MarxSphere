@@ -89,62 +89,103 @@ if (config.AGENT_EVAL_AUTO_ENABLED) {
 // V396-5: Agent 队列恢复 — 启动后把 running 卡死任务置 failed(可重试), 清空遗留队列条目
 // G9: 同时处理 planning 卡死(>24h) + awaiting_approval 超时(60分钟)
 import { agentTaskQueue } from "./services/agent-task-queue.js";
-setTimeout(() => { void agentTaskQueue.recoverAfterRestart(); }, 3000);
+startupTask("agent-queue-recover", () => agentTaskQueue.recoverAfterRestart(), { delayMs: 3000 });
+
+
+/**
+ * V417: 启动钩子统一入口 —— 带退避重试。
+ * 由来(2026-09-14 安全审计): 原先这一串 setTimeout 都是"启动窗口一次性"的, 依赖在那一刻
+ *   不可用(DB 还没起/表还没建/外部服务在重连)就**永久错过** —— 表现为"某些功能开机后就是
+ *   不工作", 日志里只有一行 error, 没人会去重放。现在失败按 5s/15s/45s 退避重试, 最多 3 次;
+ *   最终仍失败则明确打一条"该功能本轮不可用", 不留静默缺口。
+ */
+function startupTask(
+  name: string,
+  fn: () => unknown | Promise<unknown>,
+  opts: { delayMs: number; maxAttempts?: number },
+): void {
+  const maxAttempts = opts.maxAttempts ?? 3;
+  const backoffMs = [5_000, 15_000, 45_000];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const run = async (attempt: number): Promise<void> => {
+    try {
+      await fn();
+      if (attempt > 1) console.log(`[startup] ${name} 第 ${attempt} 次尝试成功`);
+    } catch (e) {
+      if (attempt >= maxAttempts) {
+        console.error(`[startup] ${name} 重试 ${maxAttempts} 次仍失败, 放弃本轮(该功能暂不可用):`, String(e).slice(0, 140));
+        return;
+      }
+      const wait = backoffMs[attempt - 1] ?? 5_000;
+      console.warn(`[startup] ${name} 第 ${attempt} 次失败, ${wait / 1000}s 后重试:`, String(e).slice(0, 120));
+      await sleep(wait);
+      await run(attempt + 1);
+    }
+  };
+  setTimeout(() => { void run(1); }, opts.delayMs);
+}
 
 // 多副本: DB 领取扫描 — 队列表里"没人领"的条目由空闲实例接手, 副本缩容时任务不会蒸发。
 // 执行方式由队列条目的 runner 名重建(见 server.ts 的 registerAgentQueueRunners)。
 // 关闭: AGENT_QUEUE_DB_DRAIN=0
 if (process.env.AGENT_QUEUE_DB_DRAIN !== "0") {
+  // V417: 首次领取也走 startupTask —— 原来第一轮失败(表/连接尚未就绪)会被 .catch 静默吞掉,
+  //   要等下一个 5s 才会重来; 现在的差别是"连续失败"会在日志里明确暴露而不是沉默。
+  startupTask("agent-queue-first-drain", async () => {
+    const claimed = await agentTaskQueue.drainDbQueueOnce();
+    if (claimed > 0) console.log(`[agent-queue] 启动首轮领取 ${claimed} 条`);
+  }, { delayMs: 1000, maxAttempts: 2 });
   setInterval(() => { void agentTaskQueue.drainDbQueueOnce().catch(() => { /* 单轮失败不打断 */ }); }, 5000);
   console.log("[agent-queue] DB 领取扫描已启动(5s)");
 }
 
 // V404-25(H6): 文档变更集崩溃恢复 — 启动时把 reserved/ambiguous 残留置 failed(客户端幂等重试)
 import { reconcileMutationAttempts } from "./services/doc-session-service.js";
-setTimeout(() => { void reconcileMutationAttempts(); }, 4000);
+startupTask("doc-mutation-reconcile", () => reconcileMutationAttempts(), { delayMs: 4000 });
 
 // G6: 审批超时自动处理 — 每 30 分钟把超时未响应的 awaiting_approval 任务置 failed(按拒绝处理)
 import { agentTaskService } from "./services/agent-task-service.js";
-setTimeout(() => { agentTaskService.startApprovalTimeoutScheduler(); }, 8000);
+startupTask("approval-timeout-scheduler", () => agentTaskService.startApprovalTimeoutScheduler(), { delayMs: 8000 });
 
 // P2: 主动研究 — 每日自主巡检（失败任务/评测回退/热点 → 生成研究假设 → 发起任务）
 // 关闭: AGENT_PROACTIVE_RESEARCH=0
 import { startProactiveResearchScheduler } from "./services/agent-proactive-research.js";
-setTimeout(() => { startProactiveResearchScheduler(); }, 15000);
+startupTask("proactive-research", () => startProactiveResearchScheduler(), { delayMs: 15000 });
 
 // 差距P③: Agent 设置持久化恢复（预设/自主级别/沙箱级别, DB 覆盖环境变量默认）
 import { restoreAgentSettings } from "./services/agent-settings.js";
-setTimeout(() => { void restoreAgentSettings(); }, 20000);
+startupTask("agent-settings-restore", () => restoreAgentSettings(), { delayMs: 20000 });
 
 // viz: 卡死绘图任务自愈 — 重启后遗留的 running/queued 没有执行者, 会让观察流永久挂住
 import { reapStaleVizJobs } from "./services/viz-job-service.js";
-setTimeout(() => { void reapStaleVizJobs(); }, 22000);
+startupTask("viz-stale-reap", () => reapStaleVizJobs(), { delayMs: 22000 });
 
 // review: 集群并发槽位补齐(多实例部署时各实例都调, 幂等) + 卡死任务自愈
 // 自愈必要: 审稿没有事件回放, 一个 running 卡死的任务, 用户点开只会永久空转
 import { ensureReviewSlots, reapStaleReviewJobs } from "./services/review-service.js";
-setTimeout(() => { void ensureReviewSlots(); }, 8000);
-setTimeout(() => { void reapStaleReviewJobs(); }, 24000);
+startupTask("review-ensure-slots", () => ensureReviewSlots(), { delayMs: 8000 });
+startupTask("review-stale-reap", () => reapStaleReviewJobs(), { delayMs: 24000 });
 
 // V404-7: 记忆 Dream 巩固 — 每日确定性扫描一次(零 LLM 成本, 候选隔离区人工审)
 // 开关: SAG_DREAM_DAILY=0 关闭(默认开); 与 Agent 定时器同款模式
 import { startDreamDailyScheduler } from "./services/dream-consolidation-service.js";
-setTimeout(() => { startDreamDailyScheduler(); }, 120000); // 启动 2 分钟后首跑, 之后每 24h
+startupTask("dream-daily-scheduler", () => startDreamDailyScheduler(), { delayMs: 120000 }); // 启动 2 分钟后首跑, 之后每 24h
+
+// V417: 模型调用日志落库(迁移 151) — 启动时裁一次过期, 不用额外定时器
+startupTask("model-call-log-prune", async () => {
+  const { pruneModelCallLogs } = await import("./observability/model-call-log.js");
+  const removed = await pruneModelCallLogs(7);
+  if (removed > 0) console.log(`[observability] 模型调用日志裁剪: 移除 ${removed} 条(>7天)`);
+}, { delayMs: 30000 });
 
 // 差距T④(Codex session_startup_prewarm): Agent 组件预热 — 注册内置钩子/工具注册表预热
-setTimeout(() => {
-  void (async () => {
-    try {
-      const { registerBuiltinHooks } = await import("./services/agent-hooks.js");
-      registerBuiltinHooks();
-      // 架构A1: 插件热加载监听（plugins/ 目录, 新增插件无需重启）
-      const { startPluginWatcher } = await import("./services/agent-file-plugins.js");
-      startPluginWatcher();
-      const { buildAgentTools } = await import("./services/agent-tool-router.js");
-      const tools = await buildAgentTools({});
-      console.log(`[agent] 差距T④ 预热完成: 内置钩子已注册, ${tools.length} 个工具已加载`);
-    } catch (e: any) {
-      console.error("[agent] 预热失败:", String(e?.message || e).slice(0, 100));
-    }
-  })();
-}, 25000);
+startupTask("agent-prewarm", async () => {
+  const { registerBuiltinHooks } = await import("./services/agent-hooks.js");
+  registerBuiltinHooks();
+  // 架构A1: 插件热加载监听（plugins/ 目录, 新增插件无需重启）
+  const { startPluginWatcher } = await import("./services/agent-file-plugins.js");
+  startPluginWatcher();
+  const { buildAgentTools } = await import("./services/agent-tool-router.js");
+  const tools = await buildAgentTools({});
+  console.log(`[agent] 差距T④ 预热完成: 内置钩子已注册, ${tools.length} 个工具已加载`);
+}, { delayMs: 25000 });

@@ -1,41 +1,63 @@
-// editor-ai6-verify.mjs — AI 编辑助手 6 页签对齐验证(闭源辅助工具页签序: 全文检查/选区修改/题名摘要/引用格式/格式模板/图表)
-import { spawn } from "node:child_process";
-import { resolveBrowser } from "./lib/find-browser.mjs";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import * as path from "node:path";
-const CDP_PORT = 9348;
-const userData = mkdtempSync(path.join(tmpdir(), "edge-cdp-ai6"));
-let ws, msgId = 0; const pend = new Map();
-const cdp = (m, p = {}) => new Promise((res, rej) => { const id = ++msgId; pend.set(id, { res, rej }); ws.send(JSON.stringify({ id, method: m, params: p })); setTimeout(() => { if (pend.has(id)) { pend.delete(id); rej(new Error("timeout " + m)); } }, 20000); });
-const ev = async (e, t = 15000) => { const r = await cdp("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true, timeout: t }); if (r.exceptionDetails) return "JSERR:" + (r.exceptionDetails.exception?.description || "").slice(0, 150); return r.result?.value; };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// editor-ai6-verify.mjs — AI 编辑助手页签对齐验证
+//
+// 验什么: 编辑器「辅助工具」面板的 6 个页签存在、顺序与闭源一致, 且能真实切换。
+//
+// 2026-09-14 重写。原版在**顶层 document** 找 React 组件、用 `__reactProps` 触发点击 ——
+//   但真编辑器是 Vue 版(web/socialsci-vue/src/views/editor/), 渲染在 /soc/ 的 iframe 里。
+//   顶层既没有那些节点也没有 __reactProps, 该脚本**永远不可能通过**, 一直红着也没人发现。
+//   现在统一走 scripts/lib/cdp-editor.mjs 的 iframe 路径 + 真实 DOM 点击。
+//
+// 用法: node scripts/editor-ai6-verify.mjs  (前置: 4173 已起, admin 账号存在)
+import { startCdp, loginToken, openEditorWithAiPanel, evalInFrame, verdict } from "./lib/cdp-editor.mjs";
+
+const EXPECTED = ["全文检查", "选区修改", "题名摘要", "引用格式", "格式模板", "图表"];
+
 async function main() {
-  const edge = spawn(resolveBrowser({ label: "scripts/editor-ai6-verify.mjs" }), [`--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${userData}`, "--headless=new", "--disable-gpu", "--window-size=1440,900", "--no-first-run", "about:blank"], { stdio: "ignore" });
+  const { ev, cdp, close } = await startCdp({ preferredPort: 31003, label: "scripts/editor-ai6-verify.mjs", tmpPrefix: "edge-cdp-ai6" });
   try {
-    for (let i = 0; i < 30; i++) { try { const l = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)).json(); const pg = l.find((t) => t.type === "page"); if (pg) { ws = new WebSocket(pg.webSocketDebuggerUrl); await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; }); break; } } catch { } await sleep(500); }
-    ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && pend.has(d.id)) { const p = pend.get(d.id); pend.delete(d.id); d.error ? p.rej(new Error(d.error.message)) : p.res(d.result); } };
-    await cdp("Page.enable"); await cdp("Runtime.enable");
-    const r = await fetch(`http://localhost:4173/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "admin123" }) });
-    const token = (await r.json()).token;
-    await cdp("Page.navigate", { url: "http://localhost:4173/" }); await sleep(3000);
-    await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)}); location.hash='#editor';`); await sleep(7000);
-    const out = await ev(`(async () => {
-      // 开文档
-      const ps = Array.from(document.querySelectorAll('p.truncate')).filter(p => (p.textContent||'').trim().length > 0 && (p.textContent||'').trim().length < 40);
-      if (ps.length) { const k = Object.keys(ps[0]).find(x => x.startsWith('__reactProps')); ps[0][k]?.onClick?.(); }
-      await new Promise(r2=>setTimeout(r2,3500));
-      // 开 AI面板
-      const ab = Array.from(document.querySelectorAll('button')).find(b => (b.innerText||'').includes('AI面板'));
-      if (ab) { const k = Object.keys(ab).find(x => x.startsWith('__reactProps')); ab[k]?.onClick?.(); }
-      await new Promise(r2=>setTimeout(r2,1200));
-      const body = (document.querySelector('#root')||document.body).innerText;
-      // 页签顺序: 全文检查/选区修改/题名摘要/引用格式/格式模板/图表
-      const order = ['全文检查','选区修改','题名摘要','引用格式','格式模板','图表'];
-      const pos = order.map(t => body.indexOf(t));
-      return JSON.stringify({ tabs: order.map((t,i)=>({t, at: pos[i]})), ordered: pos.every((p,i)=>i===0||pos[i-1]<p), hasPanel: body.includes('AI 编辑助手') });
+    const token = await loginToken();
+    if (!token) { console.error("ERR 登录失败(admin/admin123) —— 无法验证"); process.exit(1); }
+    const frameId = await openEditorWithAiPanel(ev, cdp, token);
+    if (!frameId) { console.error("ERR 编辑器 iframe 未挂载(/soc/)"); process.exit(1); }
+
+    const state = await evalInFrame(cdp, frameId, `(() => {
+      const tabs = Array.from(document.querySelectorAll('.ade-ai-panel__tab'));
+      return {
+        labels: tabs.map(b => (b.textContent||'').trim()),
+        panelOpen: !!document.querySelector('.ade-ai-panel'),
+      };
     })()`);
-    console.log(out);
-  } finally { try { ws?.close(); } catch {} edge.kill(); setTimeout(() => rmSync(userData, { recursive: true, force: true }), 800); }
+
+    const labels = state?.labels ?? [];
+    const results = [];
+    results.push({ name: "AI 面板已展开", pass: state?.panelOpen === true, detail: state?.panelOpen ? "" : "未找到 .ade-ai-panel" });
+    results.push({ name: `6 个页签齐全`, pass: labels.length === 6, detail: `实际 ${labels.length} 个: ${labels.join("/")}` });
+    results.push({
+      name: "页签顺序与闭源一致",
+      pass: JSON.stringify(labels) === JSON.stringify(EXPECTED),
+      detail: labels.join(" → "),
+    });
+
+    // 真点一遍每个页签, 确认能切且面板有内容(不是空壳)
+    const switched = await evalInFrame(cdp, frameId, `(async () => {
+      const tabs = Array.from(document.querySelectorAll('.ade-ai-panel__tab'));
+      const seen = [];
+      for (const t of tabs) {
+        t.click();
+        await new Promise(r => setTimeout(r, 700));
+        const body = document.querySelector('.ade-ai-panel__body');
+        seen.push({ label: (t.textContent||'').trim(), active: t.classList.contains('ade-ai-panel__tab--active'), bodyLen: (body?.innerText||'').length });
+      }
+      return seen;
+    })()`);
+    const arr = Array.isArray(switched) ? switched : [];
+    results.push({
+      name: "每个页签可切换且有内容",
+      pass: arr.length === 6 && arr.every((s) => s.active && s.bodyLen > 10),
+      detail: arr.map((s) => `${s.label}:${s.active ? "✓" : "✗"}/${s.bodyLen}字`).join(" "),
+    });
+
+    process.exit(verdict(results) ? 0 : 1);
+  } finally { close(); }
 }
 main().catch((e) => { console.error("ERR", e.message); process.exit(1); });

@@ -399,7 +399,7 @@ export const VIEW_TOOLS: AgentToolDef[] = [
         const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
         const chosen = await chooseToolByLlm(task.goal, step.title, tools);
         if (chosen) {
-          const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools);
+          const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: "analyst", taskId: task.id });
           if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
         }
         const SELF_BASE = selfBaseUrl();

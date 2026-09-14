@@ -32,9 +32,13 @@ export interface MaterialInput {
   tableData?: unknown;
   analysisMethod?: string;
   sectionId?: string;
+  /** V417: 挂章数组(section_ids jsonb)。前端读 sectionIds 判断"已关联", 此前只有单数 sectionId 被写 */
+  sectionIds?: string[];
   references?: unknown[];
   notes?: string;
   sortOrder?: number;
+  /** V417: 本素材条目实际来自哪些检索源(pg/mdlibrary/graphiti/cognee) —— 迁移 149 建的 retrieval_sources 列 */
+  retrievalSources?: string[];
 }
 
 export async function createMaterial(input: MaterialInput) {
@@ -42,9 +46,10 @@ export async function createMaterial(input: MaterialInput) {
   await pool.query(
     `insert into research_materials
        (id, project_id, user_id, kind, title, content_md, tags, source_ref, produced_by_dag_node, meta, created_by,
-        summary, caption, source_type, source_url, image_path, table_data, analysis_method, section_id, references_json, notes, sort_order)
+        summary, caption, source_type, source_url, image_path, table_data, analysis_method, section_id, references_json, notes, sort_order,
+        section_ids, retrieval_sources)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$3,
-        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
     [
       id, input.projectId, input.userId, input.kind,
       input.title ?? "", input.contentMd ?? "",
@@ -55,6 +60,11 @@ export async function createMaterial(input: MaterialInput) {
       input.sourceUrl ?? "", input.imagePath ?? "", JSON.stringify(input.tableData ?? {}),
       input.analysisMethod ?? "", input.sectionId ?? "",
       JSON.stringify(input.references ?? []), input.notes ?? "", input.sortOrder ?? 0,
+      // section_ids 是 jsonb 数组 —— 前端读的就是 sectionIds(/已关联角标、发布门禁都靠它),
+      //   此前只有 section_id(单数, text) 这一列被写, 所以那个角标几乎从不出现。
+      JSON.stringify(input.sectionIds ?? []),
+      // retrieval_sources 是 text[]: 同样用数组字面量
+      toPgArray(input.retrievalSources ?? []),
     ]
   );
   return { id };

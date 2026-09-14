@@ -8,6 +8,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { createTask, getTask } from "@/shared/tasks";
+import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q } from "@/shared/api";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
@@ -25,6 +26,29 @@ const streamContent = ref("");
 const reviewStream = ref("");
 const reviewReport = ref<Record<string, unknown> | null>(null);
 const pendingRevision = ref<{ title: string; abstract: string; body: string } | null>(null);
+// V417: 修订前的正文/摘要 —— viewDiff 要用真旧版对比(原来取的是修订后的值, 两版永远相同)
+const preRevisionFullText = ref("");
+const preRevisionAbstract = ref("");
+
+// V417: 审查报告的 highlights / checks —— 后端产出(见 research-exec-engine 的 review 执行器),
+//   但在界面上原来一个都没渲染, 用户只看到总分和一句评语。
+const reviewHighlights = computed(() => {
+  const h = (reviewReport.value as Record<string, unknown> | null)?.highlights;
+  return Array.isArray(h) ? h.map((x) => String(x)).filter(Boolean) : [];
+});
+const reviewChecks = computed(() => {
+  const c = (reviewReport.value as Record<string, unknown> | null)?.checks;
+  if (!c || typeof c !== "object") return [];
+  const label: Record<string, string> = {
+    requirements: "结构与体例", references: "引文规范", aiTone: "AI 痕迹",
+    logic: "论证逻辑", dataAccuracy: "数据可信度",
+  };
+  return Object.entries(c as Record<string, Record<string, unknown>>).map(([k, v]) => ({
+    name: label[k] ?? k,
+    pass: v?.pass !== false,
+    detail: String(v?.detail ?? ""),
+  }));
+});
 const showDiff = ref(false);
 const diffText = ref("");
 const exportStatus = ref<"idle" | "running" | "completed" | "failed">("idle");
@@ -107,7 +131,7 @@ async function exportDocx() {
   try {
     const r = await q<{ ok: boolean; base64?: string }>("/paper-outline/export", {
       method: "POST",
-      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes },
+      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock() },
     });
     if (!r.base64) throw new Error("后端未返回文档内容");
     downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -383,10 +407,28 @@ onUnmounted(() => {
 
 // ── 查看差异(修订前/后) ──
 function viewDiff() {
-  const oldText = store.mergedFullText;
+  // V417: 原来拿 store.mergedFullText 当"修订前", 但取值发生在 refreshMerged() **之后**,
+  //   那时它已经是修订后的文本 → 两个字数永远相同、正文只贴修订后开头, 用户拿不到
+  //   任何可比信息就得决定要不要「采用修订稿」。现在用 doRevise 里预存的真旧版, 并做段落级对比。
+  const oldText = preRevisionFullText.value || "";
   const newText = pendingRevision.value?.body ?? "";
-  // 简化 diff: 仅显示两版字数差与头 800 字
-  diffText.value = `修订前 ${oldText.replace(/\s/g, "").length} 字 → 修订后 ${newText.replace(/\s/g, "").length} 字\n\n=== 修订后开头 ===\n${newText.slice(0, 800)}`;
+  const oldN = oldText.replace(/\s/g, "").length;
+  const newN = newText.replace(/\s/g, "").length;
+  const paras = (t: string) => t.split(/\n\s*\n/).map((x) => x.trim()).filter((x) => x.length > 10);
+  const oldSet = new Set(paras(oldText));
+  const newSet = new Set(paras(newText));
+  const added = paras(newText).filter((x) => !oldSet.has(x));
+  const removed = paras(oldText).filter((x) => !newSet.has(x));
+  const unchanged = paras(newText).length - added.length;
+  const head = (arr: string[], n: number) => arr.slice(0, n).map((x) => `  · ${x.slice(0, 160)}`).join("\n");
+  diffText.value = [
+    `字数: 修订前 ${oldN} → 修订后 ${newN} (${newN - oldN >= 0 ? "+" : ""}${newN - oldN})`,
+    `段落: 新增 ${added.length} 段 / 删除 ${removed.length} 段 / 未变 ${Math.max(0, unchanged)} 段`,
+    "",
+    added.length ? `=== 新增段落(最多 5 段) ===\n${head(added, 5)}` : "=== 新增段落 === 无",
+    "",
+    removed.length ? `=== 删除段落(最多 5 段) ===\n${head(removed, 5)}` : "=== 删除段落 === 无",
+  ].join("\n");
   showDiff.value = true;
 }
 
@@ -426,16 +468,30 @@ async function rebuildCitationsAndRefs(fulltext: string, refsProvided: string) {
   const raw = String(fulltext ?? "");
   // 无占位符 → 干净文本原样保留(不重排已有正文/参考文献)
   if (!/§REF_(\d+)_(\d+)§/.test(raw)) return { body: raw, references: refsProvided };
-  // 素材池: literature/citation 素材的 references[].gbRef 依素材序铺开(a 位 = 池位置 1-based)
+  // 素材池: literature/citation 素材的 references[] 依素材序铺开(a 位 = 池位置 1-based)
+  // V417: 原来只认 `gbRef` 字段, 但**后端从不产这个字段**(全仓零写入方) → 池恒空 →
+  //   引用表永远拼不出来。后端实际写的是 {title, authors, year, source}(见 research-exec-engine
+  //   的文献检索素材)。这里两种都认, 缺 gbRef 就用 title/authors/year 现拼一条著录。
   const pool: Array<{ gbRef: string }> = [];
   const seenGb = new Set<string>();
+  const gbOf = (rf: Record<string, unknown>): string => {
+    const explicit = String(rf.gbRef ?? "").trim();
+    if (explicit) return explicit;
+    const title = String(rf.title ?? "").trim();
+    if (!title) return "";
+    const authors = String(rf.author ?? rf.authors ?? "").trim();
+    const year = String(rf.year ?? "").trim();
+    const source = String(rf.source ?? "").trim();
+    return [authors ? `${authors}.` : "", `${title}.`, year ? `${year}.` : "", source ? `${source}.` : ""]
+      .filter(Boolean).join(" ");
+  };
   try {
     const r = await q<{ materials?: Array<Record<string, unknown>> }>(`/research/materials?projectId=${store.taskId}`);
     for (const m of r.materials ?? []) {
       if (m.kind !== "literature" && m.kind !== "citation") continue;
       const refs = Array.isArray(m.references) ? (m.references as Array<Record<string, unknown>>) : [];
       for (const rf of refs) {
-        const g = String(rf.gbRef ?? "").trim();
+        const g = gbOf(rf);
         if (g && !seenGb.has(g)) { seenGb.add(g); pool.push({ gbRef: g }); }
       }
     }
@@ -469,6 +525,15 @@ function renumberTables(text: string): string {
   });
 }
 
+/** V417 出站: 终稿 → 学术文本工作台(复用评审侧已验证的 skf_doc_handoff 交接, 不用 postMessage) */
+function sendToEditor() {
+  const md = [mergedBody.value, "", mdRefs()].filter(Boolean).join("\n\n");
+  if (!md.trim()) { toast("终稿为空, 请先合稿", "warning"); return; }
+  const title = store.mergedTitle || store.title || "未命名论文";
+  if (sendMarkdownToEditor(md, title)) toast("已送往学术文本工作台, 将新建文档", "success");
+  else toast("发送失败(localStorage 不可用或已满)", "error");
+}
+
 // ── 导出(闭源 _e(); md/html 拼装; docx 提示走 Word) ──
 function mdRefs(): string {
   return store.mergedReferences
@@ -476,6 +541,19 @@ function mdRefs(): string {
     .map((l) => l.trim())
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * V417: 导出时的参考文献块 —— 后端不猜，由前端把"有没有真实条目/著录全不全"一并传下去。
+ * 没接出条目时后端会在文档里显式打印"需人工补录"，而不是给一个空标题。
+ */
+function referenceBlock(): { text: string; needsManual: boolean } {
+  const text = mdRefs();
+  if (!text) return { text: "", needsManual: true };
+  // `[N] 标题. 年份.` 这种只有标题的（无作者）算著录不全 —— 实测内部库多数条目拿不到作者
+  const lines = text.split("\n").filter(Boolean);
+  const needsManual = lines.some((l) => /^\[\d+\]\s*[^.。]*[.。]\s*\d{0,4}\s*[.。]?\s*$/.test(l)) || lines.length < 3;
+  return { text, needsManual };
 }
 /** HTML 转义 */
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -562,9 +640,25 @@ ${bodyToHtml(store.mergedFullText)}
 <div class="refs">${mdRefs().split("\n").map((l) => `<div class="ref-item">${esc(l)}</div>`).join("")}</div>
 </body></html>`;
       downloadText(`${safeName}.html`, html);
+    } else if (exportFmt.value === "docx" || exportFmt.value === "pdf") {
+      // V417: 原实现这里只弹一句"请使用「下载 Word」功能导出后另存" —— 而界面上根本没有那个
+      //   按钮(实际叫「Word(大纲版)」), 下拉里的 PDF 选项更是**永远拿不到文件**。死控件 + 指错路。
+      //   改成真调后端导出: docx / pdf 都出同一个 Word 产物(平台没有 PDF 转换通道),
+      //   PDF 时额外**说实话**告知需自行另存, 不假装导出了 PDF。
+      const nodes = buildOutlineTree();
+      if (!nodes.length) { toast("大纲为空, 无法导出", "error"); exportStatus.value = "idle"; return; }
+      const r = await q<{ ok: boolean; base64?: string }>("/paper-outline/export", {
+        method: "POST",
+        body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock() },
+      });
+      if (!r.base64) throw new Error("后端未返回文档内容");
+      downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      if (exportFmt.value === "pdf") {
+        toast("已导出 Word 文件。平台没有 PDF 转换通道, 请用 Word/WPS 另存为 PDF", "info", 6000);
+      }
     } else {
-      // docx/pdf: 提示走 Word 导出(前端 docx 构建需额外依赖链, 先用 Word 下载提示语义)
-      toast("请使用「下载 Word」功能导出后另存", "info");
+      toast(`不支持的导出格式: ${exportFmt.value}`, "error");
       exportStatus.value = "idle";
       return;
     }
@@ -592,6 +686,7 @@ function downloadText(name: string, content: string) {
 
 // ── 恢复(挂载: loadProject + refreshMerged 双保险) ──
 onMounted(async () => {
+  markWorkflowReady();
   await store.loadProject().catch(() => null);
   await refreshMerged().catch(() => null);
 });
@@ -614,8 +709,8 @@ onMounted(async () => {
             <span>将全部章节合并为完整论文(自动生成摘要/关键词/参考文献)</span>
           </div>
           <div class="round-actions">
-            <button class="btn-round" :disabled="mergeRunning" @click="doMerge(false)">{{ mergeRunning ? "合并中…" : store.mergeGenerated ? "重新合稿" : "开始合稿" }}</button>
-            <button v-if="store.mergeGenerated" class="btn-round ghost" :disabled="mergeRunning" @click="doMerge(true)">降 AIGC 合稿</button>
+            <button class="btn-round" :disabled="mergeRunning" @click="doMerge(false)" data-control="workflow:merge">{{ mergeRunning ? "合并中…" : store.mergeGenerated ? "重新合稿" : "开始合稿" }}</button>
+            <button v-if="store.mergeGenerated" class="btn-round ghost" :disabled="mergeRunning" @click="doMerge(true)" data-control="workflow:deai-merge">降 AIGC 合稿</button>
           </div>
         </div>
         <!-- 时间轴 -->
@@ -637,7 +732,7 @@ onMounted(async () => {
             <strong>全文审查</strong>
             <span>AI 对全文进行深度润色与质量提升, 输出结构化审查报告</span>
           </div>
-          <button class="btn-round" :disabled="reviewRunning || !store.mergedFullText" @click="doReview">
+          <button class="btn-round" :disabled="reviewRunning || !store.mergedFullText" @click="doReview" data-control="workflow:review">
             {{ reviewRunning ? "审查中…" : store.reviewResult ? "重新审查" : "开始全文审查" }}
           </button>
         </div>
@@ -649,6 +744,20 @@ onMounted(async () => {
             <span class="rr-grade">{{ String((reviewReport as Record<string, unknown>).grade ?? "") }}</span>
           </div>
           <p class="rr-comment">{{ String((reviewReport as Record<string, unknown>).overallComment ?? (reviewReport as Record<string, unknown>).overall ?? "") }}</p>
+          <!-- V417: 后端产了 highlights(亮点) 与 checks(五维 pass/detail), 原来前端全丢 ——
+               那正是"全文审查"最有价值的部分(哪几维没过、具体什么问题)。 -->
+          <div v-if="reviewHighlights.length" class="rr-block">
+            <strong>亮点</strong>
+            <ul><li v-for="(h, i) in reviewHighlights" :key="i">{{ h }}</li></ul>
+          </div>
+          <div v-if="reviewChecks.length" class="rr-block">
+            <strong>五维审查</strong>
+            <div v-for="c in reviewChecks" :key="c.name" class="rr-check" :class="{ fail: !c.pass }">
+              <span class="rr-check-name">{{ c.name }}</span>
+              <span class="rr-check-flag">{{ c.pass ? "通过" : "未通过" }}</span>
+              <p class="rr-check-detail">{{ c.detail }}</p>
+            </div>
+          </div>
           <div v-if="(reviewReport as Record<string, unknown>).topSuggestions" class="rr-suggestions">
             <strong>首要建议:</strong>
             <ul>
@@ -666,7 +775,7 @@ onMounted(async () => {
             <strong>修订定稿</strong>
             <span>根据审查报告生成修订稿(当前合稿不会被替换, 确认后采用)</span>
           </div>
-          <button class="btn-round" :disabled="reviseRunning || !store.reviewResult" @click="doRevise">
+          <button class="btn-round" :disabled="reviseRunning || !store.reviewResult" @click="doRevise" data-control="workflow:revise">
             {{ reviseRunning ? "修订中…" : "生成修订稿" }}
           </button>
         </div>
@@ -674,7 +783,7 @@ onMounted(async () => {
           <p>修订稿已生成, 正文 {{ pendingRevision.body.replace(/\s/g, "").length }} 字。当前合稿未被替换。</p>
           <div class="rev-actions">
             <button class="btn-view-diff" @click="viewDiff">查看差异</button>
-            <button class="btn-adopt" @click="adoptRevision">采用修订稿</button>
+            <button class="btn-adopt" @click="adoptRevision" data-control="workflow:adopt-revision">采用修订稿</button>
           </div>
         </div>
         <div v-if="showDiff" class="diff-block">
@@ -724,7 +833,7 @@ onMounted(async () => {
           <option value="docx">Word(.docx)</option>
           <option value="pdf">PDF(先导出 Word)</option>
         </select>
-        <button class="btn-export" :disabled="exportStatus === 'running'" @click="doExport">
+        <button class="btn-export" :disabled="exportStatus === 'running'" @click="doExport" data-control="workflow:export">
           {{ exportStatus === "running" ? "导出中…" : "导出论文" }}
         </button>
         <button class="btn-preview" @click="store.exportFormat = 'preview'">预览全文</button>
@@ -734,11 +843,18 @@ onMounted(async () => {
            这两个能力原先只有被弃用的 React 大纲面板在用, 搬到这里才有界面入口。 -->
       <div class="export-row">
         <span>按大纲导出</span>
-        <button class="btn-preview" :disabled="docxBusy" @click="exportDocx">
+        <button class="btn-preview" :disabled="docxBusy" @click="exportDocx" data-control="workflow:export-docx">
           {{ docxBusy ? "生成中…" : "Word(大纲版)" }}
         </button>
-        <button class="btn-preview" :disabled="pptxBusy" @click="exportPptx">
+        <button class="btn-preview" :disabled="pptxBusy" @click="exportPptx" data-control="workflow:export-pptx">
           {{ pptxBusy ? "生成中…" : "PPT 汇报稿" }}
+        </button>
+      </div>
+      <!-- V417 出站: 终稿送学术文本工作台继续精修(写作舱↔编辑器的连接) -->
+      <div class="export-row">
+        <span>继续加工</span>
+        <button class="btn-preview" data-control="workflow:send-to-editor" @click="sendToEditor">
+          送学术文本工作台
         </button>
       </div>
     </div>
@@ -747,13 +863,13 @@ onMounted(async () => {
     <div v-if="store.sections?.length" class="export-card">
       <div class="export-row">
         <span>论文要件</span>
-        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('abstract')">
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('abstract')" data-control="workflow:gen-abstract">
           {{ componentBusy === "abstract" ? "生成中…" : "生成摘要" }}
         </button>
-        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('keywords')">
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('keywords')" data-control="workflow:gen-keywords">
           {{ componentBusy === "keywords" ? "生成中…" : "生成关键词" }}
         </button>
-        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('conclusion')">
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('conclusion')" data-control="workflow:gen-conclusion">
           {{ componentBusy === "conclusion" ? "生成中…" : "生成结论" }}
         </button>
       </div>
@@ -837,6 +953,15 @@ onMounted(async () => {
   font-size: 11px; background: #5FD0B4; color: #F1F5F9; padding: 2px 9px; border-radius: 8px; font-weight: 600;
 }
 .rr-comment { font-size: 12.5px; color: #DCE6F2; line-height: 1.7; margin: 6px 0; }
+.rr-block { margin-top: 8px; }
+.rr-block strong { font-size: 12px; color: #8B9BB1; }
+.rr-block ul { margin: 4px 0 0; padding-left: 18px; }
+.rr-block li { font-size: 12.5px; line-height: 1.7; color: #C7D2E0; }
+.rr-check { margin-top: 6px; padding: 6px 9px; border-radius: 6px; background: #14281F; border: 1px solid #2E5C46; }
+.rr-check.fail { background: #2a1416; border-color: #7f1d1d; }
+.rr-check-name { font-size: 12px; font-weight: 600; color: #E8EEF7; }
+.rr-check-flag { margin-left: 8px; font-size: 11px; color: #8B9BB1; }
+.rr-check-detail { margin: 3px 0 0; font-size: 12px; line-height: 1.65; color: #C7D2E0; }
 .rr-suggestions { font-size: 12px; color: #DCE6F2; }
 .rr-suggestions ul { margin: 4px 0 0; padding-left: 18px; }
 .rr-suggestions li { margin-bottom: 2px; line-height: 1.6; }

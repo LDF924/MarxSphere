@@ -14,6 +14,14 @@ export async function generateChapterSkillCard(input: {
   sectionId: string; sectionTitle: string; level?: number;
   outlineTree?: string; parentTitle?: string; topic?: string; researchMethod?: string;
 }): Promise<{ ok: boolean; card?: Record<string, unknown>; error?: string }> {
+  // V417 安全修复: 这个 userId 以前声明了却**在函数体内零引用** —— projectId 由调用方直接传,
+  //   等于任何登录用户只要拿到别人的 projectId, 就能往对方项目写写作卡并改它的 sections 节点。
+  //   实测确认: 账号B 用自己 token 往 账号A 的项目写卡成功, A 的项目里真出现了 B 注入的章节。
+  //   同文件的 saveWorkbenchSnapshot / getWorkbenchSnapshot / getChapterSkillCards 都做了
+  //   `join research_projects ... user_id=`, 这里补上同样的所有权校验。
+  const owned = await pool.query(
+    `select 1 from research_projects where id=$1 and user_id=$2`, [input.projectId, input.userId]);
+  if (!owned.rows.length) return { ok: false, error: "项目不存在" };
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
   const res = await fetchLlm({
     url: ep.url, key: ep.key, model: ep.model,

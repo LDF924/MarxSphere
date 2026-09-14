@@ -7,14 +7,42 @@ import { pool } from "../db/pool.js";
 export async function recordAudit(entry: {
   userId?: string | null; username?: string | null; method: string; path: string;
   statusCode: number; durationMs: number; tokensUsed?: number; ip?: string;
+  /** V417: 操作对象(用户 id / 令牌 id / 资源 id)。POST 的目标通常只在 body 里, 只记 path 等于没线索 */
+  targetId?: string | null;
+  /** V417: 操作详情(变更前后/原因等自由文本, 调用方给, 已脱敏) */
+  detail?: string | null;
 }): Promise<void> {
   try {
     await pool.query(
-      `insert into audit_logs (user_id, username, method, path, status_code, duration_ms, tokens_used, ip)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [entry.userId || null, entry.username || null, entry.method, entry.path, entry.statusCode, entry.durationMs, entry.tokensUsed || 0, entry.ip || null]
+      `insert into audit_logs (user_id, username, method, path, status_code, duration_ms, tokens_used, ip, target_id, detail)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [entry.userId || null, entry.username || null, entry.method, entry.path, entry.statusCode, entry.durationMs, entry.tokensUsed || 0, entry.ip || null, entry.targetId || null, entry.detail || null]
     );
   } catch { /* 审计失败不阻塞 */ }
+}
+
+/**
+ * V417: admin 高危操作的审计 —— 与 recordAudit 分开因为语义不同:
+ *   · recordAudit 是"请求级"的(每个响应记一条, 记的是 HTTP 事实)
+ *   · 本函数是"操作级"的(记的是"谁对谁做了什么"), 失败也**不吞**: 返回 false
+ *     让调用方能决定是否回滚/报错 —— 改余额、重置密码这类操作"没记上"本身就是事故。
+ */
+export async function recordAdminAction(input: {
+  adminUserId: string; adminUsername?: string | null; action: string;
+  targetId: string; detail?: string; ip?: string;
+}): Promise<boolean> {
+  try {
+    await pool.query(
+      `insert into audit_logs (user_id, username, method, path, status_code, duration_ms, ip, target_id, detail)
+       values ($1,$2,'ADMIN',$3,200,0,$4,$5,$6)`,
+      [input.adminUserId, input.adminUsername ?? null, `/admin/${input.action}`,
+       input.ip ?? null, input.targetId, input.detail ?? null]
+    );
+    return true;
+  } catch (e) {
+    console.error("[audit] admin 操作审计写入失败(操作已执行, 需人工补记):", String(e).slice(0, 140));
+    return false;
+  }
 }
 
 // ─── 差异化限流（按 plan） ───

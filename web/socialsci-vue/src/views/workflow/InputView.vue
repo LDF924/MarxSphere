@@ -9,6 +9,7 @@ import { useRouter } from "vue-router";
 import OutlineEditor from "./OutlineEditor.vue";
 import { useWorkflowStore } from "./stores/workflow";
 import { toast } from "@/shared/ui";
+import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { putNode, createTask } from "@/shared/tasks";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
@@ -18,6 +19,8 @@ const store = useWorkflowStore();
 // ── 拖拽文件 ──
 const fileDragover = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+// V417: 正在读取的文件名(读 PDF/docx 要几秒, 给用户反馈并防重复点)
+const fileBusy = ref("");
 
 const canSubmit = computed(() => {
   const title = store.input.title.trim();
@@ -97,6 +100,11 @@ async function readFileAsText(file: File): Promise<string> {
     const r = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
     return r.value ?? "";
   }
+  // V417: 老式 .doc 是二进制复合文档, 按 UTF-8 当纯文本读出来是乱码 —— 而且会被当成读取成功
+  //   塞进样例文件里, 用户看到一堆方块字还以为是模型的问题。这里明确拒绝并给出可操作建议。
+  if (lower.endsWith(".doc")) {
+    throw new Error("不支持老式 .doc(二进制格式)。请在 Word/WPS 里另存为 .docx 后再上传");
+  }
   return await file.text();
 }
 
@@ -106,6 +114,8 @@ async function handleFile(file: File) {
     toast(`不支持的文件格式: .${ext}(支持 .txt/.docx/.pdf)`, "error");
     return;
   }
+  // V417: 读 20 页 PDF / 大 docx 要好几秒, 此前界面毫无反馈且可重复点。加个忙碌提示。
+  fileBusy.value = file.name;
   try {
     const content = await readFileAsText(file);
     store.input.sampleFiles.push({ name: file.name, size: file.size, content: content.slice(0, 200_000) });
@@ -113,6 +123,8 @@ async function handleFile(file: File) {
     autoSave();
   } catch (e) {
     toast(`读取失败: ${(e as Error).message}`, "error");
+  } finally {
+    fileBusy.value = "";
   }
 }
 function onDrop(ev: DragEvent) {
@@ -122,6 +134,49 @@ function onDrop(ev: DragEvent) {
 function removeFile(i: number) {
   store.input.sampleFiles.splice(i, 1);
   autoSave();
+}
+
+/**
+ * V417: 检索数据源绑定 —— 文献检索要从哪个库里搜。
+ *
+ * 没有它, `research_projects.source_ids` 永远是空 → 检索回退到默认公共库,
+ * 用户换个选题(比如"数字普惠金融")就搜出一堆不相干文献。本机实测: 公共库是"资本下乡"(504 篇)。
+ */
+const availableSources = ref<Array<{ id: string; name: string; docCount: number; isPublic: boolean }>>([]);
+const pickedSourceIds = ref<string[]>([]);
+const sourcesLoading = ref(false);
+
+async function loadAvailableSources() {
+  sourcesLoading.value = true;
+  try {
+    const { q } = await import("@/shared/api");
+    const r = await q<{ sources?: typeof availableSources.value }>("/research/available-sources");
+    availableSources.value = r.sources ?? [];
+    // 未选过则默认勾上文档最多的那个(通常就是用户自己的库)
+    if (!pickedSourceIds.value.length && availableSources.value.length) {
+      pickedSourceIds.value = [availableSources.value[0].id];
+    }
+  } catch {
+    availableSources.value = [];
+  } finally {
+    sourcesLoading.value = false;
+  }
+}
+
+function toggleSource(id: string) {
+  const next = new Set(pickedSourceIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  pickedSourceIds.value = Array.from(next);
+}
+
+/** 项目未建 → 提交时随建项目带上; 已建 → 直接改绑 */
+async function persistSources(projectId: string): Promise<void> {
+  if (!projectId) return;
+  try {
+    const { q } = await import("@/shared/api");
+    await q(`/research/projects/${projectId}/sources`, { method: "PUT", body: { sourceIds: pickedSourceIds.value } });
+  } catch { /* 不阻断提交(检索时回退默认库) */ }
 }
 
 // ── 澄清问答(闭源 4 态手风琴; POST /api/clarify/generate) ──
@@ -227,6 +282,8 @@ async function submitAnalysis() {
     store.phase = 2;
     store.phaseLabel = "科研架构";
     await store.saveProject();
+    // V417: 把选了的数据源绑定到项目(没有它, 文献检索回退到默认公共库 → 搜出不相干文献)
+    await persistSources(pid);
     localStorage.removeItem("skf_draft");
     toast("提交成功, 进入科研架构分析", "success");
     void router.push("/workflow/sections");
@@ -241,7 +298,20 @@ watch(() => store.input.title, () => autoSave());
 watch(() => store.input.outline, () => autoSave());
 
 onMounted(async () => {
+  markWorkflowReady();
   await store.loadProject().catch(() => null);
+  void loadAvailableSources();
+  // 已建项目 → 回读它绑定的数据源
+  if (store.taskId) {
+    void (async () => {
+      try {
+        const { q } = await import("@/shared/api");
+        const r = await q<{ project?: { source_ids?: string[] } }>(`/research/projects/${store.taskId}`);
+        const ids = r.project?.source_ids;
+        if (Array.isArray(ids) && ids.length) pickedSourceIds.value = ids.map(String);
+      } catch { /* 容忍 */ }
+    })();
+  }
   // 草稿仅在「无已存项目输入」时恢复(否则旧草稿会覆盖服务端快照的项目内容)
   const hasSaved = !!store.taskId && !!(store.input.title || store.input.outline);
   if (!hasSaved) loadDraft();
@@ -327,6 +397,35 @@ onMounted(async () => {
       <p v-if="researchMethodAuto" class="auto-detect-note">📎 已根据标题和目录自动识别: {{ methodAutoLabel }}</p>
     </section>
 
+    <!-- V417 检索数据源: 素材准备阶段的文献检索从这里选库 -->
+    <section class="wf-card">
+      <label class="wf-label">检索数据源</label>
+      <p v-if="sourcesLoading" class="wf-note">正在读取可用数据源…</p>
+      <p v-else-if="!availableSources.length" class="wf-note">
+        暂无可用数据源。文献检索会自动回退到平台公共库; 也可稍后在「文献管理」里导入后重建项目。
+      </p>
+      <div v-else class="src-list">
+        <button
+          v-for="s in availableSources"
+          :key="s.id"
+          type="button"
+          class="src-item"
+          :class="{ selected: pickedSourceIds.includes(s.id) }"
+          :aria-pressed="pickedSourceIds.includes(s.id)"
+          :data-control="'workflow_source_' + s.id"
+          @click="toggleSource(s.id)"
+        >
+          <span class="src-check">{{ pickedSourceIds.includes(s.id) ? "✓" : "" }}</span>
+          <span class="src-name">{{ s.name }}</span>
+          <span class="src-count">{{ s.docCount }} 篇{{ s.isPublic ? " · 公共库" : "" }}</span>
+        </button>
+      </div>
+      <p class="wf-note">
+        文献检索阶段会在这几个库里搜真实文献并生成可引用的参考文献。
+        <template v-if="!pickedSourceIds.length">不选则用平台公共库。</template>
+      </p>
+    </section>
+
     <!-- 参考文件 -->
     <section class="wf-card">
       <label class="wf-label">参考文件(可选)</label>
@@ -338,8 +437,8 @@ onMounted(async () => {
         @dragleave="fileDragover = false"
         @drop.prevent="onDrop"
       >
-        <p>点击或拖拽上传参考文件(.pdf/.doc/.docx/.txt/.md)</p>
-        <input ref="fileInput" type="file" multiple accept=".pdf,.doc,.docx,.txt,.md" style="display: none" @change="(ev) => { for (const f of (ev.target as HTMLInputElement).files ?? []) void handleFile(f); (ev.target as HTMLInputElement).value = ''; }" />
+        <p>{{ fileBusy ? `正在读取 ${fileBusy}…` : "点击或拖拽上传参考文件(.pdf/.docx/.txt/.md)" }}</p>
+        <input ref="fileInput" type="file" multiple accept=".pdf,.docx,.txt,.md" style="display: none" @change="(ev) => { for (const f of (ev.target as HTMLInputElement).files ?? []) void handleFile(f); (ev.target as HTMLInputElement).value = ''; }" />
       </div>
       <div v-if="store.input.sampleFiles.length" class="file-list">
         <div v-for="(f, i) in store.input.sampleFiles" :key="i" class="file-row">
@@ -359,7 +458,7 @@ onMounted(async () => {
         <span class="rec-badge">推荐</span>
       </div>
       <div v-if="clarify.state === 'idle'" class="clarify-idle">
-        <button type="button" class="btn-secondary" @click="runClarify">AI 分析我的研究</button>
+        <button type="button" class="btn-secondary" @click="runClarify" data-control="workflow:clarify">AI 分析我的研究</button>
         <p>大模型理解内容并生成针对性问题, 最长约 3 分钟</p>
       </div>
       <div v-else-if="clarify.state === 'loading'" class="clarify-loading">
@@ -368,11 +467,11 @@ onMounted(async () => {
       </div>
       <div v-else-if="clarify.state === 'error'" class="clarify-error">
         <p>⚠ 引导问题生成失败: {{ clarify.error }}</p>
-        <button type="button" class="btn-secondary" @click="runClarify">重新生成引导问题</button>
+        <button type="button" class="btn-secondary" @click="runClarify" data-control="workflow:clarify-regen">重新生成引导问题</button>
       </div>
       <div v-else-if="!clarify.questions.length" class="clarify-done-empty">
         <p>AI 未发现需要补充的引导问题。</p>
-        <button type="button" class="btn-secondary" @click="runClarify">重新分析</button>
+        <button type="button" class="btn-secondary" @click="runClarify" data-control="workflow:clarify-retry">重新分析</button>
       </div>
       <div v-else class="clarify-list">
         <div v-for="q in clarify.questions" :key="q.id" class="clarify-item">
@@ -428,6 +527,16 @@ onMounted(async () => {
 .wf-input:focus { border-color: #E67E7E; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12); }
 .wf-note { margin: 6px 0 0; font-size: 11.5px; color: #8B9BB1; line-height: 1.5; }
 .method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.src-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.src-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  background: #11192C; border: 1px solid #222F44; border-radius: 8px;
+  color: #DCE6F2; font-size: 13px; cursor: pointer; text-align: left;
+}
+.src-item.selected { border-color: #2563eb; background: #14213D; }
+.src-check { width: 14px; color: #5FD0B4; font-weight: 700; }
+.src-name { flex: 1; }
+.src-count { font-size: 11.5px; color: #8B9BB1; }
 /* E2 自动识别提示 */
 .auto-detect-note {
   margin: 6px 0 0; font-size: 12px; color: #E8B54A; background: #11192Cbeb;

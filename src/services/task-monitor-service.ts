@@ -109,9 +109,18 @@ export function startTaskPatrol(intervalMs = 120_000): void {
   });
   if (patrolTimer) return;
   patrolTimer = setInterval(() => {
-    void patrolOnce().then((r) => {
-      if (r.stuck > 0) console.log(`[task-monitor] 巡检: ${r.stuck} 个卡死任务已标记失败`);
-    });
+    // V417: 加跨副本租约 —— 巡检会"标记卡死任务失败 + 发告警", 多副本各跑一遍就是把同一任务
+    //   反复判死、重复发告警。TTL 2× 周期: 单轮很轻, 够用; 崩了下一轮接手。
+    void (async () => {
+      try {
+        const { withRunLease } = await import("./singleton-scheduler.js");
+        const guarded = withRunLease("task-patrol", async () => patrolOnce(), intervalMs * 2);
+        const r = await guarded();
+        if (r && r.stuck > 0) console.log(`[task-monitor] 巡检: ${r.stuck} 个卡死任务已标记失败`);
+      } catch (e: any) {
+        console.warn("[task-monitor] 巡检异常:", String(e?.message || e).slice(0, 100));
+      }
+    })();
   }, intervalMs);
   patrolTimer.unref?.();
   console.log(`[task-monitor] 巡检已启动（每 ${intervalMs / 1000}s，卡死阈值 ${STUCK_THRESHOLD_MS / 60000} 分钟）`);

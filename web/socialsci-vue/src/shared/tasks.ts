@@ -167,9 +167,16 @@ export async function createSkillCard(projectId: string, body: Record<string, un
   return q(`/research/projects/${projectId}/skill-card`, { method: "POST", body });
 }
 
-/** 章节技能卡批量生成(闭源 generateSkillsForSections: analyze done 后触发, 后端逐章 LLM) */
+/**
+ * 章节技能卡批量生成(闭源 generateSkillsForSections: analyze done 后触发, 后端逐章 LLM)
+ *
+ * V417: **不再吞错**。原来 `.catch(() => ({ okCount: 0 }))` 把 HTTP 层的失败
+ * (网络/401/500) 与"确实 0 条成功"合并成同一个返回值, 调用方据此无从判断 ——
+ * 模型全挂时用户看到的仍是绿色成功提示, 只是指导卡空白。
+ * 现在失败原样抛出, 由调用方决定怎么报。
+ */
 export async function batchGenerateSkillCards(projectId: string, sections: Array<{ id: string; title: string; level?: number }>): Promise<{ results?: Array<{ sectionId: string; ok: boolean; error?: string }>; okCount?: number }> {
-  return q<{ results?: Array<{ sectionId: string; ok: boolean; error?: string }>; okCount?: number }>(`/research/projects/${projectId}/skill-cards/batch`, { method: "POST", body: { sections } }).catch(() => ({ okCount: 0 }));
+  return q<{ results?: Array<{ sectionId: string; ok: boolean; error?: string }>; okCount?: number }>(`/research/projects/${projectId}/skill-cards/batch`, { method: "POST", body: { sections } });
 }
 
 /** 节点 KV(闭源 /tasks/:id/nodes/:key {nodeData}) — 我方 /research/projects/:pid/nodes/:key */

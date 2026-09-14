@@ -9,7 +9,8 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import type { Section } from "./stores/workflow";
 import { createTask, getTask, getNode, putNode } from "@/shared/tasks";
-import { toast } from "@/shared/ui";
+import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
+import { toast, confirmDialog } from "@/shared/ui";
 import { q } from "@/shared/api";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
@@ -28,12 +29,22 @@ function toggleExpand(id: string) {
   else next.add(id);
   expandedIds.value = next;
 }
-function selectSection(s: Section) {
-  // 切章节前退出编辑态(防草稿跨章节误写; 未保存草稿丢弃)
-  if (editing.value) {
-    editing.value = false;
-    editText.value = "";
+async function selectSection(s: Section) {
+  // V417: 切章前若正在编辑且内容有改动 → 先问, 别静默丢弃。
+  //   原实现直接 `editing=false; editText=""`(注释自己都写了"未保存草稿丢弃"),
+  //   用户点一下别的章节, 整章改动就没了 —— 不可逆, 必须拦。
+  if (editing.value && editText.value !== (activeSection.value?.content ?? "")) {
+    const ok = await confirmDialog({
+      title: "放弃未保存的修改?",
+      message: `「${activeSection.value?.title ?? "当前章节"}」的正文有未保存的修改, 切换章节会丢弃它们。`,
+      okText: "放弃并切换",
+      cancelText: "留下继续编辑",
+      danger: true,
+    });
+    if (!ok) return;
   }
+  editing.value = false;
+  editText.value = "";
   activeSecId.value = s.id;
 }
 // 非空安全访问(模板闭包内 TS 收窄失效)
@@ -72,6 +83,12 @@ const l1List = computed(() => store.level1Sections);
 const genCount = computed(() => l1List.value.filter((s) => s.content && s.content.length > 50).length);
 const pendingCount = computed(() => l1List.value.filter((s) => !(s.content && s.content.length > 50)).length);
 const progressPct = computed(() => (l1List.value.length ? Math.round((genCount.value / l1List.value.length) * 100) : 0));
+
+// V417: 写作指导批量生成的结果(成功数/总数/错误) —— 用于如实报告, 不再无条件报成功
+const skillCardResult = ref<{ ok: number; total: number; error?: string }>({ ok: 0, total: 0 });
+// V417: 当前正在跑章的生成任务 id —— 后端 /tasks/:id/control 早支持 cancel, 但前端一直没有入口,
+//   章节生成可能要几分钟, 用户只能干等。
+const activeGenTaskId = ref("");
 
 // ── 生成状态 ──
 const generating = ref(false);
@@ -184,14 +201,39 @@ async function generateAll() {
   } catch (e) {
     // 整批还原(闭源失败路径)
     const snapRaw = localStorage.getItem("wf_batch_snapshot");
+    let restored = false;
     if (snapRaw) {
       try {
         store.sections = JSON.parse(snapRaw);
+        // V417: 必须**写回服务端**。原来只改本地内存, 服务端还是生成后的内容,
+        //   下一次 refreshSections 就把"恢复"覆盖掉 —— 界面上那句"已恢复"是假的。
+        await putNode(store.taskId, "sections", { sections: store.sections });
+        restored = true;
       } catch { /* 忽略 */ }
     }
     localStorage.removeItem("wf_batch_snapshot");
     generating.value = false;
-    toast(`批量生成失败: ${(e as Error).message}, 已恢复生成前的章节和内容`, "error");
+    toast(
+      restored
+        ? `批量生成失败: ${(e as Error).message}, 已恢复生成前的章节和内容`
+        : `批量生成失败: ${(e as Error).message}(未能恢复生成前内容)`,
+      "error");
+  }
+}
+
+/** 停止当前章节生成: 调后端 cancel(任务真的停下, 不再回写节点) */
+async function stopGeneration() {
+  const id = activeGenTaskId.value;
+  stopPoll();
+  generating.value = false;
+  activeGenTaskId.value = "";
+  for (const s of store.sections) if (s.status === "generating") s.status = s.content ? "generated" : "pending";
+  if (!id) { toast("已停止等待(任务可能已结束)", "info"); return; }
+  try {
+    await q(`/research/tasks/${id}/control`, { method: "POST", body: { action: "cancel" } });
+    toast("已停止生成", "info");
+  } catch {
+    toast("已停止等待, 但后端取消失败(任务可能仍在跑)", "warning");
   }
 }
 
@@ -199,18 +241,24 @@ async function generateAll() {
 async function rollbackBatch() {
   const ok = window.confirm("回滚到批量生成前的内容? 当前全部章节正文将被覆盖。");
   if (!ok) return;
+  // V417: 原实现 `.catch(() => null)` 把 404 吞掉后**无条件**弹"已回滚" ——
+  //   而后端只在"上一次批量生成"留了 batch:pre 锚点, 单章生成没有锚点 → 404。
+  //   用户以为回滚成功, 实际服务端一个字都没动。必须如实报告。
   try {
-    await q(`/research/projects/${store.taskId}/nodes/sections/undo-batch`, { method: "POST" }).catch(() => null);
-    await refreshSections();
-    toast("已回滚到批量生成前的内容", "success");
-  } catch {
-    toast("回滚失败", "error");
+    await q(`/research/projects/${store.taskId}/nodes/sections/undo-batch`, { method: "POST" });
+  } catch (e) {
+    const msg = String((e as Error).message ?? e);
+    toast(/没有可回滚|404/.test(msg) ? "没有可回滚的批量记录(单章生成不留锚点)" : `回滚失败: ${msg}`, "error");
+    return;
   }
+  await refreshSections();
+  toast("已回滚到批量生成前的内容", "success");
 }
 
 // ── 任务轮询(泵执行; 成功回读 sections) ──
 function pollTask(taskId: string, onDone: () => Promise<void>, isBatch = false) {
   stopPoll();
+  activeGenTaskId.value = taskId;
   poll = setInterval(async () => {
     try {
       const t = await getTask(taskId);
@@ -220,14 +268,30 @@ function pollTask(taskId: string, onDone: () => Promise<void>, isBatch = false) 
       genProgress.value = { current: prog.current ?? genProgress.value.current, total: prog.total ?? genProgress.value.total };
       if (t.status === "done" || t.status === "completed") {
         stopPoll();
+        activeGenTaskId.value = "";
         await onDone();
+        // V417: 清掉残留的 generating 标记。phase4_batch 是"逐章 try/catch 后整体成功"
+        //   (research-exec-engine.runChapterBatch), 某章失败时任务照样 done →
+        //   onDone 只把当前这一章标成 generated, 其余 targets 永久停在 generating,
+        //   左栏黄点一直闪、pendingCount 算错、按钮文案也错。
+        for (const s of store.sections) {
+          if (s.status === "generating") s.status = s.content ? "generated" : "pending";
+        }
         if (!isBatch) generating.value = false;
         await store.saveProject();
       } else if (t.status === "failed" || t.status === "cancelled") {
         stopPoll();
+        activeGenTaskId.value = "";
         generating.value = false;
         for (const s of store.sections) if (s.status === "generating") s.status = "pending";
-        toast("章节生成失败, 请重试", "error");
+        // 带上后端 error(原来只说"请重试", 用户不知道为什么失败, 重试还是失败)
+        const raw = (t as unknown as { error?: unknown }).error;
+        let why = "";
+        try {
+          const e2 = typeof raw === "string" ? JSON.parse(raw) : raw;
+          why = String((e2 as { userMessage?: string })?.userMessage ?? "").slice(0, 120);
+        } catch { why = String(raw ?? "").slice(0, 120); }
+        toast(why ? `章节生成失败: ${why}` : "章节生成失败, 请重试", "error");
       }
     } catch { /* 容忍 */ }
   }, 800);
@@ -240,6 +304,31 @@ function stopPoll() {
 }
 
 // ── sections 回读(nodes/sections payload.sections[]) ──
+// 注意: 后端把 aiSkill 写作指导也写在同一个节点里(见 chapter-skill-service.generateChapterSkillCard),
+// 原实现只搬 content → 刷新/切页/store 重建后 aiSkill 丢失 → generateAll 的 skill_prompt 传空
+// → 正文变成裸生成, 写作指导静默失效。这里必须一并回填。
+function mergeFreshSection(current: Section, fresh: Section): Section {
+  const next: Section = { ...current };
+  if (fresh.content) {
+    next.content = fresh.content;
+    next.status = "generated" as const;
+  }
+  if (fresh.aiSkill) {
+    next.aiSkill = fresh.aiSkill;
+    // skill_prompt 优先用显式值, 否则和后端同规则(JSON.stringify(aiSkill))还原
+    next.skill_prompt = fresh.skill_prompt && fresh.skill_prompt.trim()
+      ? fresh.skill_prompt
+      : current.skill_prompt && current.skill_prompt.trim()
+        ? current.skill_prompt
+        : JSON.stringify(fresh.aiSkill);
+  } else if (fresh.skill_prompt) {
+    next.skill_prompt = fresh.skill_prompt;
+  }
+  if (fresh.structuredSummary) next.structuredSummary = fresh.structuredSummary;
+  if (fresh.wordCount) next.wordCount = fresh.wordCount;
+  return next;
+}
+
 async function refreshSections() {
   if (!store.taskId) return;
   try {
@@ -248,10 +337,7 @@ async function refreshSections() {
     if (Array.isArray(list)) {
       const merged = store.sections.map((s) => {
         const fresh = (list as Section[]).find((x) => x.id === s.id);
-        if (fresh?.content) {
-          return { ...s, content: fresh.content, status: "generated" as const };
-        }
-        return s;
+        return fresh ? mergeFreshSection(s, fresh) : s;
       });
       // 新出现但本地没有的(后端生成的)
       for (const f of list as Section[]) {
@@ -262,7 +348,25 @@ async function refreshSections() {
   } catch { /* 空容忍 */ }
 }
 
+/** V417: structuredSummary 是 `【关键结论】…\n\n【关键数据】…` 文本(非对象), 拆成块渲染 */
+const summaryBlocks = computed(() => {
+  const raw = String(activeSection.value?.structuredSummary ?? "").trim();
+  if (!raw) return [];
+  return raw.split(/\n\s*\n(?=【)/).map((chunk) => {
+    const m = /^【(.+?)】\s*([\s\S]*)$/.exec(chunk.trim());
+    return m ? { title: m[1], body: m[2].trim() } : { title: "要点", body: chunk.trim() };
+  }).filter((b) => b.body);
+});
+
 // ── 正文编辑(本地预览; 保存到 store) ──
+/** V417 出站: 本章正文 → 学术文本工作台(复用评审侧已验证的 skf_doc_handoff 交接) */
+function sendSectionToEditor() {
+  const sec = activeSection.value;
+  if (!sec?.content || sec.content.length < 50) { toast("本章正文为空, 请先生成", "warning"); return; }
+  const title = `${store.title || "未命名论文"} · ${sec.title}`;
+  if (sendMarkdownToEditor(sec.content, title)) toast("已送往学术文本工作台, 将新建文档", "success");
+  else toast("发送失败(localStorage 不可用或已满)", "error");
+}
 const editing = ref(false);
 const editText = ref("");
 function startEdit() {
@@ -271,13 +375,23 @@ function startEdit() {
   editText.value = sec.content ?? "";
   editing.value = true;
 }
-function saveEdit() {
+async function saveEdit() {
   const sec = activeSection.value;
   if (!sec) return;
   sec.content = editText.value;
   sec.status = "generated";
   editing.value = false;
-  void store.saveProject();
+  // V417: 必须**落 sections 节点**, 不能只写 workbench 快照。
+  //   原来只 saveProject() → 之后任何一次生成都会 refreshSections(),
+  //   而它用节点里的旧 content 无条件覆盖本地 → 用户手改的正文静默回退(实测路径:
+  //   mergeFreshSection 的 `if (fresh.content) next.content = fresh.content`)。
+  //   节点是章节正文的真源, 编辑就得写节点。
+  try {
+    await putNode(store.taskId, "sections", { sections: store.sections });
+  } catch {
+    toast("保存到服务端失败, 仅本地生效(刷新可能丢失)", "error");
+  }
+  await store.saveProject();
 }
 
 // ── 素材卡(右栏; 绑当前节/全部) ──
@@ -507,14 +621,25 @@ async function finishStructuredAnalysis(t: { result?: unknown }) {
     if (st.logicFlow) store.project.logicFlow = String(st.logicFlow);
     await store.saveProject();
   } catch { /* 容忍 */ }
-  // 逐章写作指导(skill-cards 批量; 失败容忍)
+  // 逐章写作指导(skill-cards 批量; V417: 不再无条件谎报成功)
   try {
     const { batchGenerateSkillCards } = await import("@/shared/tasks");
-    await batchGenerateSkillCards(store.taskId, store.level1Sections.map((s) => ({ id: s.id, title: s.title, level: 1 })));
-  } catch { /* 后端容忍 */ }
+    const r = await batchGenerateSkillCards(store.taskId, store.level1Sections.map((s) => ({ id: s.id, title: s.title, level: 1 })));
+    skillCardResult.value = { ok: r.okCount ?? 0, total: store.level1Sections.length };
+  } catch (e) {
+    skillCardResult.value = { ok: 0, total: store.level1Sections.length, error: String((e as Error).message ?? e).slice(0, 120) };
+  }
   await reloadSkillCards();
   await store.saveProject();
-  toast("结构化分析完成, 各章节写作指导已生成", "success");
+  // 只有真生成了才报成功; 全失败/部分失败都如实说, 别让用户对着空白指导卡以为是自己的问题
+  const sc = skillCardResult.value;
+  if (sc.ok > 0 && sc.ok >= sc.total) {
+    toast("结构化分析完成, 各章节写作指导已生成", "success");
+  } else if (sc.ok > 0) {
+    toast(`结构化分析完成, 但只生成了 ${sc.ok}/${sc.total} 章写作指导${sc.error ? `(${sc.error})` : ""}`, "warning");
+  } else {
+    toast(`结构化分析完成, 但写作指导全部生成失败${sc.error ? `: ${sc.error}` : "(模型不可用或余额不足)"}`, "error");
+  }
 }
 async function reloadSkillCards() {
   try {
@@ -552,13 +677,21 @@ async function reloadSkillCards() {
 }
 
 onMounted(async () => {
+  markWorkflowReady();
   await store.loadProject().catch(() => null);
   await loadMaterials();
+  // 直进本页(硬刷新后 URL 落在 #/workflow/workspace)时 store 是空的 —— 没有 keep-alive,
+  // 而 SectionsView 才是平时填 store.sections 的那一环。不回读的话左栏显示"暂无章节"。
+  if (!store.sections.length && store.taskId) await refreshSections();
   if (store.sections.length) {
     // 默认展开全部一级
     expandedIds.value = new Set(store.level1Sections.map((s) => s.id));
     const first = store.level1Sections[0];
     if (first) activeSecId.value = first.id;
+  }
+  // 写作指导也只在 SectionsView 拉过。直进本页会漏 → 批量生成时 skill_prompt 传空(裸生成)
+  if (store.taskId && !store.level1Sections.some((s) => s.aiSkill || s.skill_prompt)) {
+    void reloadSkillCards();
   }
   // 分析中的 job 恢复(活动 analyze 任务 → 面板续显)
   const recent = await (await import("@/shared/tasks")).listTasks({ module: "workflow", limit: 5 }).catch(() => []);
@@ -624,7 +757,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <div class="ai-panel-head">
           <span class="ai-panel-title">主控 AI — 结构化分析</span>
           <div class="ai-panel-actions">
-            <button v-if="!aiThinking" class="ai-reanalyze" :disabled="generating" @click="runStructuredAnalysis">重新分析</button>
+            <button v-if="!aiThinking" class="ai-reanalyze" :disabled="generating" @click="runStructuredAnalysis" data-control="workflow:reanalyze">重新分析</button>
             <button class="ai-close" @click="closeAiPanel">关闭</button>
           </div>
         </div>
@@ -682,7 +815,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <div v-else class="ai-idle">
             <svg class="ai-bulb" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
             <p class="ai-idle-text">尚未进行结构化分析</p>
-            <button class="ai-start" :disabled="generating" @click="runStructuredAnalysis">开始分析（变量、框架、写作指导）</button>
+            <button class="ai-start" :disabled="generating" @click="runStructuredAnalysis" data-control="workflow:start-analysis">开始分析（变量、框架、写作指导）</button>
           </div>
         </div>
       </div>
@@ -698,8 +831,17 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <div class="sec-actions">
             <span v-if="secWordBadge" class="sec-words">{{ secWordBadge }}</span>
             <button v-if="!editing" class="btn-edit" @click="startEdit">编辑</button>
-            <button v-if="editing" class="btn-save" @click="saveEdit">保存修改</button>
-            <button class="btn-gen" :disabled="generating" @click="generateSection">
+            <button v-if="editing" class="btn-save" @click="saveEdit" data-control="workflow:save-section">保存修改</button>
+            <!-- V417 出站: 本章正文送学术文本工作台精修 -->
+            <button
+              v-if="activeSection.content && activeSection.content.length > 50"
+              class="btn-edit"
+              data-control="workflow:section-to-editor"
+              @click="sendSectionToEditor"
+            >
+              送编辑器
+            </button>
+            <button class="btn-gen" :disabled="generating" @click="generateSection" data-control="workflow:generate-section">
               {{ generating && generateMode === 'single' ? "正在思考…" : secStatusDot(activeSection).title === '已生成' ? "重新思考" : "执行智能体开始思考" }}
             </button>
           </div>
@@ -707,6 +849,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <div class="gen-bar" :class="{ on: generating }">
           <span class="gen-dot" :class="{ pulse: generating }"></span>
           <span>{{ statusText() }}</span>
+          <button v-if="generating" class="btn-stop-gen" data-control="workflow:stop-generation" @click="stopGeneration">■ 停止</button>
         </div>
         <!-- 正文 -->
         <div class="editor-area">
@@ -717,6 +860,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             </p>
             <pre v-else class="content-pre">{{ activeSection.content }}</pre>
           </div>
+          <!-- V417: 生成时后端正则抽取的结论/数据/论点/遗留 —— 原先存了但从没显示过 -->
+          <details v-if="summaryBlocks.length" class="summary-box">
+            <summary>写作要点速览（自动抽取）</summary>
+            <div v-for="b in summaryBlocks" :key="b.title" class="summary-block">
+              <strong>{{ b.title }}</strong>
+              <p>{{ b.body }}</p>
+            </div>
+          </details>
         </div>
       </template>
       <div v-else class="center-empty">
@@ -729,7 +880,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <strong>素材库</strong>
         <div class="rail-head-right">
           <span class="rail-count">{{ materials.length }}</span>
-          <button class="mat-gen-btn" :disabled="generating" @click="openGenDlg">＋ 生成</button>
+          <button class="mat-gen-btn" :disabled="generating" @click="openGenDlg" data-control="workflow:open-gen-dialog">＋ 生成</button>
         </div>
       </div>
       <select v-model="materialFilter" class="mat-filter">
@@ -756,7 +907,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
       </div>
       <div class="rail-footer-col">
         <button class="btn-batch" data-control="workflow:generate-all" :disabled="generating" @click="generateAll">批量生成全部章节</button>
-        <button v-if="generating && generateMode === 'batch'" class="btn-rollback" @click="rollbackBatch">回滚本次批量</button>
+        <button v-if="generating && generateMode === 'batch'" class="btn-rollback" @click="rollbackBatch" data-control="workflow:rollback-batch">回滚本次批量</button>
       </div>
     </aside>
 
@@ -778,7 +929,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             </div>
             <p v-if="genDlg.err" class="gen-err">⚠ {{ genDlg.err }}</p>
             <div class="gen-actions">
-              <button class="gen-run" :disabled="genDlg.busy || !genDlg.prompt.trim()" @click="runMaterialGen">
+              <button class="gen-run" :disabled="genDlg.busy || !genDlg.prompt.trim()" @click="runMaterialGen" data-control="workflow:run-material-gen">
                 {{ genDlg.busy ? "思考中..." : "执行智能体开始思考" }}
               </button>
               <button class="gen-cancel" @click="closeGenDlg">取消</button>
@@ -786,7 +937,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             <!-- 流式结果预览 -->
             <div v-if="genDlg.preview" class="gen-result">
               <pre class="gen-result-body">{{ genDlg.preview }}</pre>
-              <button class="gen-save" @click="saveGenMaterial">保存到素材库</button>
+              <button class="gen-save" @click="saveGenMaterial" data-control="workflow:save-material">保存到素材库</button>
             </div>
           </div>
         </div>
@@ -858,6 +1009,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   color: #F1F5F9; font-size: 12px; cursor: pointer;
 }
 .btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-stop-gen {
+  margin-left: auto; padding: 2px 10px; border: 1px solid #7f1d1d; border-radius: 6px;
+  background: #2a1416; color: #f0a3a3; font-size: 11px; cursor: pointer;
+}
+.btn-stop-gen:hover { background: #3a1a1d; }
 .gen-bar {
   display: flex; align-items: center; gap: 7px; padding: 6px 11px; margin-bottom: 10px;
   background: #1A2333; border-radius: 7px; font-size: 12px; color: #7A8AA0;
@@ -877,6 +1033,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   color: #E8EEF7; white-space: pre-wrap; word-break: break-word;
 }
 .center-empty { display: grid; place-items: center; height: 100%; color: #7A8AA0; font-size: 14px; }
+.summary-box {
+  margin: 10px 0 0; border: 1px solid #222F44; border-radius: 8px;
+  background: #11192C; padding: 8px 12px;
+}
+.summary-box summary { cursor: pointer; font-size: 12.5px; color: #8B9BB1; }
+.summary-block { margin-top: 8px; }
+.summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
+.summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
 .right-rail {
   width: 240px; flex-shrink: 0; border-left: 1px solid #222F44;
   display: flex; flex-direction: column; background: #141E33;

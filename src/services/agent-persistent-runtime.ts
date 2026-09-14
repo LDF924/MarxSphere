@@ -32,6 +32,16 @@ const BLACKLIST = [
   /os\.system|subprocess\.(run|Popen)|exec\(|eval\(/i,
   /\.env|password|secret|api[_-]?key/i,
   /socket|listen\(|bind\(/i,
+  // V417: 补齐与 code-sandbox 的差距 —— 这份名单原先比 code-sandbox-service 的还少 4 类,
+  //   而它是"持久 Python"(有状态、变量跨调用), 逃逸面只大不小。
+  //   注意: 黑名单是**补充**, 不是主防线 —— runtime_exec 已提级为 risk:"review" +
+  //   TOOL_MIN_ROLE manager, 走审批; 这里挡的是"审批放行后仍然明显不该跑的"。
+  /subprocess|spawn\(|__import__\(/i,
+  /chmod|chown|mkfs|fdisk/i,
+  /\bimport\s+(socket|subprocess|ctypes|pty|multiprocessing)\b/i,
+  /globals\(\)|locals\(\)|getattr\(.*__/i,
+  /open\s*\(|readFileSync|writeFileSync/i,
+  /(urllib|requests|http\.client|ftplib|telnetlib)/i,
 ];
 
 /** Python 解释器（复用 code-sandbox 探测逻辑; 保持一致的 venv）

@@ -49,10 +49,36 @@ export async function acquireRunLease(name: string, ttlMs = LEASE_TTL_MS): Promi
   }
 }
 
-/** 包装一个定时任务体: 抢到租约才执行 */
+/**
+ * 主动释放租约(正常跑完时调用)。
+ *
+ * V417 修租约自锁: 原先 withRunLease 只抢不还, 租约全靠 TTL 过期, 而调用方习惯写
+ *   `ttl = interval + slack` —— TTL 一旦 ≥ 周期, **下一轮来抢时上一轮还没过期**,
+ *   于是每两轮才跑一轮。缩比实测(周期 2s / TTL 2.3s): 5 轮只执行 3 次, 有效周期翻倍;
+ *   换算到线上, 6h 的期刊同步实际变成 ~12h, 24h 的任务变成 ~48h。
+ *
+ * 正确的模型是: 抢租约 → 跑 → **还**。TTL 只负责"持有者崩了怎么办", 不参与正常节奏。
+ * 释放用 holder 条件更新, 避免误删别人的租约(自己超时被接管后再释放的情况)。
+ */
+export async function releaseRunLease(name: string): Promise<void> {
+  const holder = `${process.env.HOSTNAME || "node"}#${process.pid}`;
+  try {
+    await pool.query(`delete from scheduler_leases where name=$1 and holder=$2`, [name, holder]);
+  } catch (e) {
+    // 释放失败不致命: 租约会在 TTL 后自然过期, 只是下一轮可能被跳过
+    console.warn(`[scheduler] ${name} 租约释放失败(TTL 后会自然过期):`, String((e as Error)?.message || e).slice(0, 120));
+  }
+}
+
+/** 包装一个定时任务体: 抢到租约才执行, 执行完立刻归还 */
 export function withRunLease<T>(name: string, fn: () => Promise<T>, ttlMs = LEASE_TTL_MS): () => Promise<T | undefined> {
   return async () => {
     if (!(await acquireRunLease(name, ttlMs))) return undefined;
-    return fn();
+    try {
+      return await fn();
+    } finally {
+      // 正常退出与抛错都还 —— 抛错时更需要还, 否则后面几轮全被自己的租约挡住
+      await releaseRunLease(name);
+    }
   };
 }

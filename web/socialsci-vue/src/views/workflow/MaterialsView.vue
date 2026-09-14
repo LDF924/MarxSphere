@@ -10,6 +10,7 @@ import { useWorkflowStore } from "./stores/workflow";
 import { q } from "@/shared/api";
 import { toast, confirmDialog } from "@/shared/ui";
 import { putNode } from "@/shared/tasks";
+import { claimHandoff } from "@/shared/workflow-bridge";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
@@ -26,7 +27,7 @@ interface Material {
   createdAt?: string;
   tableData?: { columns: string[]; rows: unknown[][] };
   references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string }>;
-  source?: { sourceStatus?: { wanfang?: string; ncpssd?: string } };
+  source?: { sourceStatus?: { wanfang?: string; ncpssd?: string; internal?: string } };
 }
 
 const materials = ref<Material[]>([]);
@@ -51,7 +52,9 @@ const catOf = (kind: string): string => {
 /** B5: 文献来源徽章(闭源: platformType wanfang/ncpssd=文献库检索 / internal_knowledge_base=内部资料; source.sourceStatus completed/empty/failed) */
 function mKindBadge(m: Material): { text: string; cls: string } | null {
   const ss = (m.source?.sourceStatus ?? {}) as Record<string, string>;
-  const st = ss.ncpssd || ss.wanfang || "";
+  // V417: 后端写的是 internal 键(实测), 前端原来只认 ncpssd/wanfang → 状态位永远读不到,
+  //   「已用/无结果/失败」三态从不显示。补上 internal。
+  const st = ss.ncpssd || ss.wanfang || ss.internal || "";
   const pt = String((m as { platformType?: string }).platformType ?? (m as { sourceType?: string }).sourceType ?? "").toLowerCase();
   // 无平台亦无检索状态 → 不显示徽章(闭源仅对真实检索/导入素材打标)
   if (!pt && !st) return null;
@@ -97,6 +100,43 @@ async function loadMaterials() {
   } catch {
     materials.value = [];
   }
+}
+
+/**
+ * V417 入站连接：外部模块（文献库/论文评审/统计台/成果工坊）投递的素材落到本项目素材库。
+ *
+ * 消息由 **soc 外壳**(App.vue)接收并写入 localStorage 交接 —— 这里只负责读取。
+ * 为什么不在本视图收: 外壳投递时 iframe 可能还停在别的路由(如 input), 那时本视图
+ * 的监听器还没注册, 消息会被静默丢弃(实测踩到)。外壳常驻, 收下后再把人带到这里。
+ * 写端见 workflow-bridge.ts / App.vue 的 onExternalMaterial。
+ */
+async function importExternalMaterials() {
+  const h = claimHandoff();
+  if (!h || !store.taskId) return;
+  try {
+    await q("/research/materials", {
+      method: "POST",
+      body: {
+        projectId: store.taskId,
+        kind: mapExternalKind(h.kind),
+        title: h.title,
+        contentMd: h.markdown,
+        sourceType: h.kind,
+        meta: { platformType: h.kind, importedAt: new Date().toISOString() },
+      },
+    });
+    await loadMaterials();
+    toast(`已从外部模块导入素材「${h.title}」`, "success");
+  } catch { /* 单条失败不阻断 */ }
+}
+
+/** 外部来源 → research_materials.kind（后端只认这 7 个值） */
+function mapExternalKind(kind: string): string {
+  if (kind === "literature") return "citation";
+  if (kind === "review") return "note";
+  if (kind === "stats") return "data_result";
+  if (kind === "viz") return "figure";
+  return "note";
 }
 function normalizeKind(k: string): string {
   if (["literature", "citation"].includes(k)) return "literature";
@@ -381,6 +421,48 @@ async function saveManual() {
 }
 
 // ── 素材文件上传(闭源上传语义; 图→data-url 素材; 附件→extract-text 抽文本入 contentMd) ──
+/**
+ * V417: 上传「数据文件」—— 写作舱原先**没有任何数据上传入口**, 于是 store.statisticsFileId
+ *   永远是空 → 素材计划里的 hasDataFile 恒为 false → dataAnalysis 段恒空 → 那整块 UI 从不渲染。
+ *   这里补上: 走统计台同款 /api/files/upload 拿 fileId, 记进 store, 并落一条 file 素材。
+ */
+const dataBusy = ref(false);
+async function uploadDataFile(file: File | undefined) {
+  if (!file || !store.taskId) return;
+  dataBusy.value = true;
+  try {
+    const b64 = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result ?? "").split(",")[1] ?? "");
+      r.onerror = () => reject(new Error("文件读取失败"));
+      r.readAsDataURL(file);
+    });
+    const res = await fetch("/api/files/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}`,
+      },
+      body: JSON.stringify({ filename: file.name, base64: b64, mime: file.type || "text/csv" }),
+    }).then((x) => x.json()).catch(() => null);
+    if (!res?.fileId) throw new Error("后端未返回 fileId");
+    store.statisticsFileId = String(res.fileId);
+    await createMaterial({
+      kind: "file", title: `数据文件 · ${file.name}`,
+      contentMd: `原始数据文件 ${file.name}(${Math.round(file.size / 1024)} KB)`,
+      sourceType: "data_file", notes: `fileId=${res.fileId}`,
+      ...(store.level1Sections[0] ? { sectionIds: [store.level1Sections[0].id] } : {}),
+    });
+    await store.saveProject();
+    await loadMaterials();
+    toast(`数据文件已登记(${file.name}), 素材计划将包含数据分析项`, "success");
+  } catch (e) {
+    toast(`数据文件登记失败: ${(e as Error).message}`, "error");
+  } finally {
+    dataBusy.value = false;
+  }
+}
+
 async function uploadMaterialFile(catKey: string, file: File | undefined) {
   if (!file) return;
   const isImg = catKey === "dataAnalysis";
@@ -653,6 +735,23 @@ async function confirmAllocate() {
   }
 }
 
+/** V417: 素材来源 —— 端点 /materials/:id/sources 一直存在但没有界面入口(能力有、看不见) */
+const srcDialog = ref<{ open: boolean; materialId: string; title: string; loading: boolean; sources: Array<Record<string, unknown>>; sourceRef: string; error: string }>(
+  { open: false, materialId: "", title: "", loading: false, sources: [], sourceRef: "", error: "" });
+async function openSources(m: Material) {
+  srcDialog.value = { open: true, materialId: m.id, title: m.title ?? "", loading: true, sources: [], sourceRef: "", error: "" };
+  try {
+    const r = await q<{ sources?: Array<Record<string, unknown>>; sourceRef?: string }>(`/research/materials/${m.id}/sources`);
+    srcDialog.value.sources = r.sources ?? [];
+    srcDialog.value.sourceRef = String(r.sourceRef ?? "");
+  } catch (e) {
+    srcDialog.value.error = String((e as Error).message ?? e);
+  } finally {
+    srcDialog.value.loading = false;
+  }
+}
+function closeSrcDialog() { srcDialog.value = { ...srcDialog.value, open: false }; }
+
 // ── 审查/编排 ──
 async function reviewAll() {
   try {
@@ -698,6 +797,8 @@ async function publishAndEnter() {
 onMounted(async () => {
   await store.loadProject().catch(() => null);
   await loadMaterials();
+  // V417: 接外部模块投递的素材(文献库检索结果/论文评审意见/统计结果/图表), 落 research_materials
+  await importExternalMaterials();
   // 默认展开非空分类(闭源默认)
   const nonEmpty = Object.entries(grouped.value).filter(([, list]) => list.length).map(([k]) => k);
   if (nonEmpty.length) expandedCats.value = new Set(nonEmpty);
@@ -722,9 +823,19 @@ onMounted(async () => {
         </div>
         <div v-if="expandedCats.has(cat.key)" class="cat-body">
           <div class="cat-actions">
-            <button v-if="cat.aiAction && cat.key !== 'dataAnalysis' && cat.key !== 'document'" class="btn-ai" :disabled="genDialog.open" @click="aiGenerate(cat.key)">
+            <button v-if="cat.aiAction && cat.key !== 'dataAnalysis' && cat.key !== 'document'" class="btn-ai" :disabled="genDialog.open" @click="aiGenerate(cat.key)" data-control="workflow:ai-generate">
               {{ cat.aiAction }}
             </button>
+            <label v-if="cat.key === 'dataAnalysis'" class="btn-manual" style="cursor: pointer" data-control="workflow:upload-data">
+              {{ dataBusy ? "上传中…" : "上传数据文件" }}
+              <input
+                type="file"
+                accept=".csv,.tsv,.xlsx,.xls,.json"
+                style="display: none"
+                :disabled="dataBusy"
+                @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }"
+              />
+            </label>
             <label v-if="cat.key === 'dataAnalysis' || cat.key === 'document'" class="btn-ai" style="cursor: pointer">
               {{ cat.aiAction }}
               <input
@@ -742,6 +853,7 @@ onMounted(async () => {
               <div class="mat-head">
                 <strong>{{ m.title || "未命名素材" }}</strong>
                 <span class="mat-kind">{{ cat.label }}</span>
+                <button class="mat-src-btn" data-control="workflow:open-sources" title="查看该素材的来源文献/出处" @click.stop="openSources(m)">来源</button>
               </div>
               <div v-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData" class="mat-content">{{ String(m.contentMd).slice(0, 120) }}</div>
               <div v-if="m.content && !m.contentMd && !(m as any).imageDataUrl" class="mat-content">{{ String(m.content).slice(0, 120) }}</div>
@@ -787,7 +899,7 @@ onMounted(async () => {
     <!-- 底部操作 -->
     <div class="wf-actions">
       <button class="btn-back" @click="router.push('/workflow/sections')">返回章节清单</button>
-      <button class="btn-ghost-red" @click="reviewAll">审视素材</button>
+      <button class="btn-ghost-red" @click="reviewAll" data-control="workflow:review-materials">审视素材</button>
       <button class="btn-alloc-cta" data-control="workflow:allocate" :disabled="publishing || !materials.length" @click="runAllocate">编排素材</button>
       <button class="btn-smart" data-control="workflow:smart-generate" @click="generatePlan">⚡ 智能生成素材</button>
       <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
@@ -812,7 +924,7 @@ onMounted(async () => {
             <!-- 执行失败 -->
             <div v-else-if="planDialog.state === 'failed'" class="plan-state failed">
               <p>⚠ {{ planDialog.msg || "执行计划生成失败" }}</p>
-              <button class="btn-smart" @click="generatePlan">重新生成</button>
+              <button class="btn-smart" @click="generatePlan" data-control="workflow:regenerate-plan">重新生成</button>
             </div>
             <!-- 就绪: 三段 checkbox -->
             <div v-else-if="planDialog.state === 'ready' && planDialog.plan" class="plan-ready">
@@ -915,11 +1027,11 @@ onMounted(async () => {
           </div>
           <div class="modal-foot gen-foot">
             <!-- 未预览: 开始生成 -->
-            <button v-if="!genDialog.preview" class="btn-primary gen-start" :disabled="genDialog.generating || !genDialog.prompt.trim() || !genDialog.sectionId" @click="runGenStart">
+            <button v-if="!genDialog.preview" class="btn-primary gen-start" :disabled="genDialog.generating || !genDialog.prompt.trim() || !genDialog.sectionId" @click="runGenStart" data-control="workflow:run-gen">
               {{ genDialog.generating ? "生成中..." : "开始生成" }}
             </button>
             <!-- 已预览: 保存到素材库 / 完成 -->
-            <button v-else class="btn-primary gen-start" @click="finishGenSave">保存到素材库</button>
+            <button v-else class="btn-primary gen-start" @click="finishGenSave" data-control="workflow:finish-gen-save">保存到素材库</button>
             <button class="btn-back" :disabled="genDialog.generating" @click="closeGenDialog">{{ genDialog.generating ? "取消" : genDialog.preview ? "放弃" : "取消" }}</button>
           </div>
         </div>
@@ -1011,8 +1123,8 @@ onMounted(async () => {
                 <div class="bulk-body">
                   <textarea v-model="bulkRefText" class="f-textarea" rows="4" placeholder="郭峰,王靖一.测度中国数字普惠金融发展[J].经济学(季刊),2020,19(4).&#10;Stiglitz J E, Weiss A. Credit Rationing in Markets with Imperfect Information[J]. AER, 1981, 71(3): 393-410."></textarea>
                   <div class="bulk-actions">
-                    <button type="button" class="btn-manual" @click="runBulkParse">解析</button>
-                    <button type="button" v-if="parsedRefs.length" class="btn-manual" @click="applyParsedRefs">应用 {{ parsedRefs.length }} 条到内容</button>
+                    <button type="button" class="btn-manual" @click="runBulkParse" data-control="workflow:bulk-parse">解析</button>
+                    <button type="button" v-if="parsedRefs.length" class="btn-manual" @click="applyParsedRefs" data-control="workflow:apply-parsed-recs">应用 {{ parsedRefs.length }} 条到内容</button>
                   </div>
                   <div v-if="parsedRefs.length" class="parsed-list">
                     <div v-for="(r, ri) in parsedRefs.slice(0, 6)" :key="ri" class="parsed-item">
@@ -1030,7 +1142,7 @@ onMounted(async () => {
           </div>
           <div class="modal-foot">
             <button class="btn-back" @click="closeAdd">取消</button>
-            <button class="btn-primary" @click="saveManual">保存</button>
+            <button class="btn-primary" @click="saveManual" data-control="workflow:save-manual">保存</button>
           </div>
         </div>
       </div>
@@ -1082,6 +1194,15 @@ onMounted(async () => {
   display: flex; flex-direction: column; gap: 6px;
 }
 .mat-card:hover { border-color: #B06A6A; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.06); }
+.mat-src-btn {
+  margin-left: 6px; padding: 1px 7px; border: 1px solid #46587A; border-radius: 5px;
+  background: #11192C; color: #C7D2E0; font-size: 10px; cursor: pointer;
+}
+.src-row { padding: 6px 0; border-bottom: 1px solid #222F44; }
+.src-row strong { font-size: 12.5px; color: #E8EEF7; }
+.src-meta { margin-left: 8px; font-size: 11px; color: #8B9BB1; }
+.src-excerpt { margin: 3px 0 0; font-size: 11.5px; line-height: 1.6; color: #C7D2E0; }
+.f-hint { font-size: 12px; color: #8B9BB1; margin: 4px 0; }
 .mat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .mat-head strong { font-size: 13.5px; color: #E8EEF7; }
 .mat-kind { font-size: 10px; color: #dc2626; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }

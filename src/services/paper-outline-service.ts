@@ -79,8 +79,19 @@ export async function generateChapter(input: {
   style?: string;         // 语体(默认哲社科学术语体)
   model?: string;
   citationPool?: string;  // SocialSci R3: 真实引用池(素材引文编号清单, 供正文[ N ]引用)
+  /**
+   * V417: 本章的目标字数。来自用户填的「字数预估」按章分配的配额。
+   * 此前这个参数不存在 —— 用户在「信息录入」填的 totalWordCount 一路到此断掉,
+   * 而界面却写着"AI 智能体将按此字数进行科研分配"(InputView 的字数预估卡),
+   * prompt 里还写死 800-1500 字。现在由 runChapterBatch 按章均分后传进来。
+   */
+  targetWordCount?: number;
 }): Promise<ChapterResult> {
   const isRoot = input.level === 0;
+  // 目标字数 → 提示词里的区间(±20%); 没给就用原来的兜底区间
+  const wcHint = input.targetWordCount && input.targetWordCount > 0
+    ? `${Math.round(input.targetWordCount * 0.8)}-${Math.round(input.targetWordCount * 1.2)}字(本章配额约 ${input.targetWordCount} 字)`
+    : "800-1500字";
   const prompt = `你是人文社科学术写作专家。请撰写论文章节正文(非标题)。
 
 【论文主题】${input.topic}
@@ -95,7 +106,7 @@ ${input.citationPool ? `【可引文献池(引用时用编号 [N], 须从下列�
 要求:
 1. 围绕本章标题展开论证: 提出观点 → 理论依据 → 证据/例证 → 小结
 2. 学术引文用 [1] 式占位(勿编造具体文献, 标注"待补引文"处)${input.citationPool ? " — 但已有引用池时必须用池内条目编号" : ""}
-3. 输出 JSON: {"content":"本章正文(中文, 自然分段, 800-1500字; 若有小节用 Markdown 二级/三级标题)"}`;
+3. 输出 JSON: {"content":"本章正文(中文, 自然分段, ${wcHint}; 若有小节用 Markdown 二级/三级标题)"}`;
 
   const answer = await llmJson(prompt, input.model, 6000);
   const content = String(answer?.content ?? "").trim();
@@ -117,10 +128,19 @@ export async function generateComponent(input: {
   sections: string[];     // 正文各章标题
   chapterContents?: string[]; // 各章正文(摘要需要全貌)
   model?: string;
+  /**
+   * V417: 降 AI 痕迹。用户在「合稿定稿」勾了「降 AIGC」后, 这条开关此前一路写到
+   * input_snapshot 就断了 —— runPhase5 从不读它, 用户选的档位对产出零影响。
+   * 打开时在提示词里加反模板化要求。
+   */
+  deAITone?: boolean;
 }): Promise<ChapterResult> {
   const kindCn = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[input.kind];
   const chapters = input.sections.map((s, i) => `第${i + 1}章 ${s}`).join("；");
   const bodies = (input.chapterContents ?? []).map((c) => c.slice(0, 500)).join("\n");
+  const deAI = input.deAITone
+    ? `\n3. **降低 AI 痕迹**: 避免"首先/其次/最后""综上所述""随着…的发展"这类模板化套话; 避免机械的并列排比与空洞修饰; 句式长短交替, 用具体信息代替概括性表述。`
+    : "";
   const prompt = `你是人文社科学术写作专家。请为论文生成「${kindCn}」。
 
 【论文主题】${input.topic}
@@ -130,7 +150,7 @@ ${bodies ? `【各章要点(摘要用)】\n${bodies}` : ""}
 
 要求:
 1. ${input.kind === "abstract" ? "摘要 200-400 字, 涵盖目的/方法/结果/结论四要素" : input.kind === "keywords" ? "3-5 个关键词, 用「；」分隔" : "结论 300-600 字, 总结全文论点+研究贡献+展望"}
-2. 输出 JSON: {"content":"${input.kind === "keywords" ? "关键词:…" : "内容"}"}`;
+2. 输出 JSON: {"content":"${input.kind === "keywords" ? "关键词:…" : "内容"}"}${deAI}`;
 
   const answer = await llmJson(prompt, input.model, 3000);
   const content = String(answer?.content ?? "").trim();
@@ -144,6 +164,15 @@ import { existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolvePython } from "./py-path.js";
+
+/** V417: 导出的参考文献块 —— text 为空即"没接出可引文献"，需在文档里显式提醒人工补录 */
+export interface ReferenceListInfo {
+  text: string;
+  /** 有条目但著录不全(缺作者/年份) */
+  needsManual: boolean;
+  /** 条目实际来自哪些检索源 */
+  sources?: string[];
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -169,9 +198,11 @@ export async function exportOutlineDocx(input: {
   paperTitle: string;
   nodes: OutlineNode[];
   fontName?: string; // R7(闭源 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
+  references?: ReferenceListInfo; // V417: 参考文献 + 著录完整性(补录提醒)
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
   const fontName = input.fontName || "SimSun";
+  const refs = input.references ?? { text: "", needsManual: false, sources: [] };
   const script = `
 import sys, json, base64, io
 from docx import Document
@@ -181,6 +212,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 items = ${JSON.stringify(items)}
 paper_title = ${JSON.stringify(input.paperTitle)}
 font_name = ${JSON.stringify(fontName)}
+references_text = ${JSON.stringify(refs.text ?? "")}
+refs_needs_manual = ${refs.needsManual ? "True" : "False"}
+refs_sources = ${JSON.stringify(refs.sources ?? [])}
 
 def set_run(r, size=None):
     r.font.name = font_name
@@ -237,6 +271,33 @@ for it in items:
             pp = doc.add_paragraph(p)
             for run in pp.runs:
                 set_run(run)
+
+# ── 参考文献(V417): 有真实条目就落列表; 没有就显式标注"需人工补录", 不伪造 ──
+refh = doc.add_heading("参考文献", level=1)
+for run in refh.runs:
+    set_run(run)
+if references_text.strip():
+    for line in references_text.split("\\n"):
+        line = line.strip()
+        if not line:
+            continue
+        p = doc.add_paragraph(line)
+        for run in p.runs:
+            set_run(run)
+    if refs_needs_manual:
+        note = doc.add_paragraph("（部分条目仅有标题、缺作者/年份等著录信息，请按投稿要求人工补全。）")
+        for run in note.runs:
+            set_run(run, 10)
+else:
+    empty = doc.add_paragraph("【本文未接出可引文献：正文中的引用编号为占位符，请人工补录参考文献后再投稿。】")
+    for run in empty.runs:
+        set_run(run, 10)
+# V417: refs_sources 此前是**死变量**(赋值后全文再没引用) —— 条目到底来自哪些库,
+#   应该让读者/审稿人看得到, 而不是只留在接口里。
+if references_text.strip() and refs_sources:
+    src_note = doc.add_paragraph("（内部检索来源：" + "、".join(str(x) for x in refs_sources) + "）")
+    for run in src_note.runs:
+        set_run(run, 10)
 
 buf = io.BytesIO()
 doc.save(buf)
