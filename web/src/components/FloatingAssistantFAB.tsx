@@ -19,11 +19,55 @@ const POS_KEY = "marx:assistant:pos:v1";
  * V415(2026-09-13 用户反馈): 助手原来钉死在右下角(fixed bottom-5 right-5), 挡着内容也挪不开。
  * 改成可拖动 + 位置记忆; 默认仍在右下角(首次使用与旧观感一致)。
  * 位置按视口坐标存, 挂载时算出"贴右下角"的坐标作为默认值。
+ *
+ * 2026-09-15 修"删除按钮点击后无法删除"时走了弯路, 这里记一笔免得再犯:
+ *   当时的做法是把 x 的**可移动范围**按面板宽度收紧(上界 vw-PANEL_WIDTH-GAP),
+ *   结果右侧凭空多出 235px 拖不过去的死区, 用户随即反馈"不能随意挪移了, 往右侧移有边界"。
+ *   根因是面板只有**展开时**才占 320 宽, 而拖动发生在收起态 —— 用展开态的尺寸去限制
+ *   收起态的移动范围, 等于长期牺牲自由度去规避一个只在展开瞬间出现的问题。
+ *
+ * 正确做法: **不限制移动**, 让面板朝空闲的一侧展开。x 只按 FAB 自身宽度钳制
+ * (保证按钮本身不出屏), 面板的左/右对齐在渲染时按 pos 现算(见 panelSide)。
  */
+const PANEL_WIDTH = 320;   // 面板 w-80
+const EDGE_GAP = 16;
+const FAB_WIDTH = 101;     // 收起态按钮实测宽度(约 101×34), 用于位置钳制
+const FAB_HEIGHT = 34;
+const PANEL_GAP = 8;       // 面板与 FAB 之间的间距(原 mb-2)
+// 面板高度上限: 内容区 max-h-96(384) + 头部(约 41) + 内边距。仅用于"翻上还是翻下"的判断。
+const PANEL_MAX_HEIGHT = 450;
+/** 拖拽判定阈值: 位移超过它才算"要拖动", 否则视为点击/滚动/选择文本 */
+const DRAG_THRESHOLD = 8;
+
+/**
+ * 面板锚定哪一侧(FAB 可拖到任意位置, 面板自己找放得下的那一边):
+ *   true  → 锚 FAB **右缘**(面板从 FAB 右缘往左铺): 面板左缘 = x + FAB_WIDTH - PANEL_WIDTH
+ *   false → 锚 FAB **左缘**(面板往右铺):            面板左缘 = x
+ * 判据: 锚右缘是否放得下。默认位置(贴屏幕右下角)走 true, 观感是"面板在按钮正上方左对齐"。
+ */
+function anchorPanelToFabRight(x: number): boolean {
+  return x + FAB_WIDTH - PANEL_WIDTH >= EDGE_GAP;
+}
+
 function defaultPos(): { x: number; y: number } {
   const w = typeof window === "undefined" ? 1200 : window.innerWidth;
   const h = typeof window === "undefined" ? 800 : window.innerHeight;
-  return { x: Math.max(8, w - 220), y: Math.max(8, h - 120) };
+  // 默认贴右下角: FAB 右缘留 EDGE_GAP。此位置下面板右对齐正好放得下。
+  return {
+    x: Math.max(EDGE_GAP, w - FAB_WIDTH - EDGE_GAP),
+    y: Math.max(EDGE_GAP, h - 120),
+  };
+}
+
+/** 位置钳制(拖动/恢复/resize 共用): 只保证**按钮本身**不出屏, 不替展开态预留空间 */
+function clampPos(p: { x: number; y: number }): { x: number; y: number } {
+  const w = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const h = typeof window === "undefined" ? 800 : window.innerHeight;
+  return {
+    // 左界 0 / 右界 = 视口宽 - FAB 宽(即按钮右缘贴屏) —— 与 V415 以来的手感一致
+    x: Math.min(Math.max(0, w - FAB_WIDTH), Math.max(0, p.x)),
+    y: Math.min(Math.max(0, h - 50), Math.max(0, p.y)),
+  };
 }
 
 /** 页面观察 → 导航推荐规则表(科研推进主线; 纯前端, 不埋点) */
@@ -227,12 +271,13 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
   // 两处改:
   //   ① 事件先攒着, 用 rAF 合并成**每帧最多一次** setState;
   //   ② 定位从 left/top 换成 transform: translate3d —— 只走合成层, 不触发布局。
-  // 拖动期间仍然以 state 为准(不直接写 DOM), 避免别处的重渲染把面板拉回旧位置。
+    // 拖动期间仍然以 state 为准(不直接写 DOM), 避免别处的重渲染把面板拉回旧位置。
   const [pos, setPos] = useState<{ x: number; y: number }>(defaultPos);
   const posRef = useRef(pos);
   const [dragging, setDragging] = useState(false);
-  // 拖完那一下 pointerup 之后浏览器还会补一个 click。位移超阈值就吞掉它,
-  // 否则"拖到别处"会顺带把面板开/关一次(实测: 拖完按钮文案变成"收起")。
+  // 拖完那一下 pointerup 之后浏览器还会补一个 click, 落在被拖的元素上。
+  // 收起态 FAB 也是 button → 补的 click 会触发 toggle, "拖到别处"顺带把面板打开一次。
+  // 位移超阈值就把这一次 click 吞掉。(头部 ✕ 的失效是另一个原因, 见 startDrag 里的说明。)
   const suppressClickRef = useRef(false);
 
   useEffect(() => { posRef.current = pos; }, [pos]);
@@ -242,53 +287,77 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
       const raw = localStorage.getItem(POS_KEY);
       if (!raw) return;
       const p = JSON.parse(raw) as { x: number; y: number };
-      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) setPos(p);
+      // 按当前视口钳一次(转屏/缩窗后存的坐标可能已出界)
+      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) setPos(clampPos(p));
     } catch { /* 坏数据就当没存过 */ }
   }, []);
 
-  // 缩窗/转屏后把助手拉回视口内, 否则它会停在外面再也抓不着
+  // 缩窗/转屏后把助手拉回视口内, 否则它会停在外面再也抓不着。
+  // 口径与拖动一致(只保证按钮不出屏); 面板对齐方向由 panelAlignsRight 现算。
   useEffect(() => {
     const onResize = () => {
       const cur = posRef.current;
-      const x = Math.min(Math.max(0, window.innerWidth - 80), Math.max(0, cur.x));
-      const y = Math.min(Math.max(0, window.innerHeight - 50), Math.max(0, cur.y));
-      if (x !== cur.x || y !== cur.y) setPos({ x, y });
+      const next = clampPos(cur);
+      if (next.x !== cur.x || next.y !== cur.y) setPos(next);
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  /**
+   * 拖拽起手 —— 头部整条 + 卡片空白处都挂这个(用户反馈"只能抓顶部, 不能整个卡片抓")。
+   *
+   * 2026-09-15 两次踩坑后定下的规矩:
+   * ① 不 preventDefault / 不 setPointerCapture 到**越过阈值那一刻**才做。
+   *    早先把这两件事写在 pointerdown 里, 指针被立即捕获 → click 被重定向到宿主,
+   *    内部的 ✕/签到/动作按钮全部失灵(用户报"删除按钮点击后无法删除")。
+   *    现在按下阶段按兵不动, 只有"意图明确移动了"才接管指针。
+   * ② 阈值要够大(8px): 内容区是可滚动的(max-h-96 overflow-y-auto), 手指/滚轮的小幅抖动
+   *    不该被当成拖拽; 拖动中同时 setDragging 关掉内容区滚动, 避免两个滚动打架。
+   * ③ 从内嵌按钮/链接/输入框起手时永不拖拽, 让点击与滚动正常发生。
+   *    (FAB 自己就是 button, 靠 e.target === e.currentTarget 区分, 不能一并跳过。)
+   */
   const startDrag = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    e.preventDefault();
-    const target = e.currentTarget as HTMLElement;
-    // 触摸有隐式指针捕获: 不显式捕获的话后续 pointermove 收不到
-    try { target.setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
+    const target = e.target as HTMLElement;
+    if (target !== e.currentTarget && target.closest("button, a, input, textarea, select, [role='menuitem']")) return;
+    const host = e.currentTarget as HTMLElement;
     const sx = e.clientX, sy = e.clientY;
     const from = { ...posRef.current };
-    setDragging(true);
 
     let last = { x: from.x, y: from.y };
     let raf = 0;
     let moved = false;
+    let active = false;
+
     const flush = () => {
       raf = 0;
       if (last.x !== posRef.current.x || last.y !== posRef.current.y) setPos(last);
     };
     const move = (ev: PointerEvent) => {
-      if (Math.abs(ev.clientX - sx) > 3 || Math.abs(ev.clientY - sy) > 3) moved = true;
-      // 夹在视口内 —— 拖出去就再也抓不回来了
-      last = {
-        x: Math.min(Math.max(0, window.innerWidth - 80), Math.max(0, from.x + ev.clientX - sx)),
-        y: Math.min(Math.max(0, window.innerHeight - 50), Math.max(0, from.y + ev.clientY - sy)),
-      };
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (!active) {
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;   // 还没明确意图 → 不动
+        active = true;
+        moved = true;
+        setDragging(true);
+        // 越过阈值才接管: 接管后 click 会被重定向到这里, 由 up() 里的 moved 吞掉那一下补发的 click
+        try { host.setPointerCapture(ev.pointerId); } catch { /* 忽略 */ }
+      }
+      // 夹在视口内 —— 拖出去就再也抓不回来了。
+      // 只按 FAB 自身宽度钳制(与 V415 以来的手感一致): 不为展开态预留空间,
+      // 面板的出屏问题由 panelAlignsRight 现算对齐方向解决。
+      last = clampPos({ x: from.x + dx, y: from.y + dy });
       if (!raf) raf = requestAnimationFrame(flush);
     };
     const up = () => {
       if (raf) { cancelAnimationFrame(raf); flush(); }
-      setDragging(false);
-      suppressClickRef.current = moved;
-      try { localStorage.setItem(POS_KEY, JSON.stringify(last)); } catch { /* 忽略 */ }
+      if (active) {
+        setDragging(false);
+        suppressClickRef.current = true;   // 吞掉本次拖拽末尾补发的 click
+        try { localStorage.setItem(POS_KEY, JSON.stringify(last)); } catch { /* 忽略 */ }
+      }
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
@@ -298,28 +367,52 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
     window.addEventListener("pointercancel", up);
   };
 
+  // 面板定位: 在 FAB 上方优先, 放不下就翻到下方; 并整体夹进视口。
+  // "放不下"必须**翻方向 + 夹住**一起做 —— 只翻方向的话拖到视口中间仍然会顶出去
+  // (实测 FAB 在 y=180 时面板向上 423px 高, 头部含 ✕ 直接出屏)。
+  const anchorRight = anchorPanelToFabRight(pos.x);
+  const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+  const panelAbove = pos.y >= PANEL_MAX_HEIGHT + PANEL_GAP + EDGE_GAP;
+  const panelTop = panelAbove
+    ? Math.max(EDGE_GAP, pos.y - PANEL_GAP - PANEL_MAX_HEIGHT)
+    : Math.min(Math.max(EDGE_GAP, pos.y + FAB_HEIGHT + PANEL_GAP), Math.max(EDGE_GAP, vh - PANEL_MAX_HEIGHT - EDGE_GAP));
+  const panelLeft = anchorRight
+    ? Math.max(EDGE_GAP, pos.x + FAB_WIDTH - PANEL_WIDTH)
+    : Math.min(pos.x, Math.max(EDGE_GAP, vw - PANEL_WIDTH - EDGE_GAP));
+
   return (
-    <div className="fixed z-40 flex flex-col items-end gap-2"
-      style={{ left: 0, top: 0, transform: `translate3d(${pos.x}px, ${pos.y}px, 0)` }}>
+    <div className="fixed z-40"
+      style={{ left: 0, top: 0, width: FAB_WIDTH, transform: `translate3d(${pos.x}px, ${pos.y}px, 0)` }}>
       {open && (
-        <div className="w-80 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/95 shadow-2xl backdrop-blur">
-          {/* 头(拖动把手: 按住空白处移动, 双击复位) */}
+        <div
+          data-assistant-panel
+          className="absolute w-80 overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/95 shadow-2xl backdrop-blur"
+          style={{ left: panelLeft - pos.x, top: panelTop - pos.y, cursor: dragging ? "grabbing" : "grab" }}
+          // 整卡可拖(用户反馈"抓手只能抓顶部, 不能整个卡片抓"):
+          //   空白处 = 拖动把手; 卡片内的按钮/链接各自照常工作(startDrag 里按 target 判定)。
+          onPointerDown={startDrag}
+          onDoubleClick={() => { const d = clampPos(defaultPos()); setPos(d); try { localStorage.removeItem(POS_KEY); } catch { /* 忽略 */ } }}
+          title="按住空白处拖动 · 双击复位">
+          {/* 头(拖动把手的显式抓点 + ✕) */}
           <div
             className="flex items-center justify-between border-b border-slate-700/50 px-3 py-2.5"
-            style={{ cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
-            onPointerDown={startDrag}
-            onDoubleClick={() => { const d = defaultPos(); setPos(d); try { localStorage.removeItem(POS_KEY); } catch { /* 忽略 */ } }}
-            title="按住拖动 · 双击复位"
+            style={{ touchAction: "none" }}
           >
             <div className="flex items-center gap-2">
               <GripVertical className="h-3.5 w-3.5 text-slate-600" />
               <Bird className="h-4 w-4 text-cyan-400" />
               <span className="text-xs font-semibold text-slate-200">科研助手 · {greeting}</span>
             </div>
-            <button onClick={() => setOpen(false)} className="text-slate-500 hover:text-slate-300"><X className="h-4 w-4" /></button>
+            <button
+              onClick={() => setOpen(false)}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label="关闭科研助手"
+              title="关闭"
+              className="text-slate-500 hover:text-slate-300"><X className="h-4 w-4" /></button>
           </div>
 
-          <div className="max-h-96 space-y-2 overflow-y-auto p-3">
+          <div className={cn("max-h-96 space-y-2 overflow-y-auto p-3", dragging && "pointer-events-none overflow-hidden")}>
             {/* 当前页: 名称 + 这页是干什么的(V416 起说明来自共享表, 全站 48 个视图都有) */}
             <div className="rounded-lg bg-slate-800/60 px-2.5 py-2">
               <p className="text-[11px] text-slate-300">
@@ -455,17 +548,23 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
         </div>
       )}
 
-      {/* FAB(同样可拖: 展开时从面板头部拖, 收起时直接从这个按钮拖) */}
-      <button
-        onClick={() => { if (suppressClickRef.current) { suppressClickRef.current = false; return; } posRef.current = pos; toggle(); }}
-        onPointerDown={(e) => { if (open) return; startDrag(e); }}
-        onDragStart={(e) => e.preventDefault()}
-        title={open ? undefined : "点击展开 · 按住可拖动"}
-        className="flex items-center gap-1.5 rounded-full border border-slate-600/50 bg-slate-900/90 px-3.5 py-2 text-xs text-slate-200 shadow-xl backdrop-blur transition hover:bg-slate-800"
-        style={{ cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}>
-        {open ? <X className="h-4 w-4" /> : <Sparkles className="h-4 w-4 text-cyan-400" />}
-        {open ? "收起" : "科研助手"}
-      </button>
+      {/* FAB(同样可拖: 展开时从面板头部拖, 收起时直接从这个按钮拖)
+          2026-09-15 用户反馈"怎么有两个删除按钮, 保留一个, 收起可以去掉了":
+          原先展开时这个按钮变成「✕ 收起」, 与面板头部的 ✕ 重复。
+          现在展开期间隐藏按钮 —— 关闭只留头部那一个 ✕, 入口不再分叉;
+          收起态仍是「科研助手」, 点开/拖动的手感不变。 */}
+      {!open && (
+        <button
+          onClick={() => { if (suppressClickRef.current) { suppressClickRef.current = false; return; } posRef.current = pos; toggle(); }}
+          onPointerDown={startDrag}
+          onDragStart={(e) => e.preventDefault()}
+          title="点击展开 · 按住可拖动"
+          className="flex items-center gap-1.5 rounded-full border border-slate-600/50 bg-slate-900/90 px-3.5 py-2 text-xs text-slate-200 shadow-xl backdrop-blur transition hover:bg-slate-800"
+          style={{ cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}>
+          <Sparkles className="h-4 w-4 text-cyan-400" />
+          科研助手
+        </button>
+      )}
     </div>
   );
 }
