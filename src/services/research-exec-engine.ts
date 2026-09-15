@@ -11,7 +11,7 @@ import { pool } from "../db/pool.js";
 import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 import * as materials from "./research-materials-service.js";
-import { generateChapter, generateComponent } from "./paper-outline-service.js";
+import { generateChapter, generateComponent, applyDeAITier } from "./paper-outline-service.js";
 import { retrieveLiterature, buildCitationMaterialBody, type LiteratureHit } from "./research-literature-retrieval.js";
 
 export interface ExecCtx {
@@ -223,7 +223,7 @@ export async function syncTaskDependenciesFromCanvas(projectId: string) {
 // ═══ SocialSci 补漏组4: P3/P4/P5 专用执行器(HAR 实测语义: phase3 literature-search/theory-generate/table-generate; phase4 batch; phase5 merge/revise) ═══
 
 /** 章节结构解析(闭源 goal→outline 规则): ①引号/"研究X"/主题句 → 段 ②数字/汉字/章节头 → 层级 ③兜底 5 段默认模板 */
-export function parseGoalToSections(goal: string): Array<{ id: string; title: string; level: number }> {
+export function parseGoalToSections(goal: string): Array<{ id: string; title: string; level: number; parentId?: string }> {
   const src = String(goal ?? "").trim();
   const topic = ((): string => {
     if (!src) return "";
@@ -236,8 +236,9 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
   const CN: Record<string, number> = {};
   "一二三四五六七八九十".split("").forEach((c, i) => (CN[c] = i));
   const lines = src.split(/\n/);
-  const out: Array<{ id: string; title: string; level: number }> = [];
+  const out: Array<{ id: string; title: string; level: number; parentId?: string }> = [];
   let order = 0;
+  let parent: { id: string } | null = null;
   for (const raw of lines) {
     const t = raw.trim();
     if (!t) continue;
@@ -255,7 +256,12 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
         CN[title.slice(0, 1)] !== undefined) {
       // 汉字序号文本且非递增/孤立 → 仍按一级(标题语义优先)
     }
-    out.push({ id: `sec_${order}`, title: title.slice(0, 60), level });
+    // 2026-09-15: 原先只存 {id,title,level}, 父子关系完全丢失 —— 前端章节树只能渲染一级,
+    //   二级子节再也显示不出来(页脚统计却还写着"N 个子节")。这里显式落 parentId。
+    const sec: { id: string; title: string; level: number; parentId?: string } = { id: `sec_${order}`, title: title.slice(0, 60), level };
+    if (level === 1) parent = sec;
+    else if (parent) sec.parentId = parent.id;
+    out.push(sec);
     order += 1;
   }
   if (!out.length && topic) out.push({ id: "sec_0", title: topic.slice(0, 60), level: 1 });
@@ -478,6 +484,12 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
       // completed/empty/failed 三态。这里写 internal 键 + 三态之一, 两边就能对上。
       source: { sourceStatus: { internal: usedSources.length ? "completed" : "empty" } },
     },
+    // 2026-09-15: source_docs 此前**零写入方** —— 「素材来源」弹层(端点早就在)点开永远空白。
+    //   检索已经拿到了真命中, 顺手存结构化条目, 弹层才有东西可展示。
+    sourceDocs: hits.map((h) => ({
+      title: h.title, authors: h.authors, year: h.year, source: h.source,
+      excerpt: String(h.excerpt ?? "").slice(0, 300),
+    })),
     // V417: 同时写进**真列** retrieval_sources —— 该列在迁移 149 里专门建了, 但此前只有
     //   meta 里那份、这一列从来没人写(死列)。列上存结构化来源, 便于按源统计/筛选。
     retrievalSources: usedSources,
@@ -769,19 +781,46 @@ async function runPhase5(task: any, ctx: ExecCtx) {
   if (kind === "merge") {
     // V417: 用户在「合稿定稿」勾的「降 AIGC」此前写到 input_snapshot 就断了(没人读),
     //   等于开关是摆设。现在把它透到摘要/关键词生成, 真正影响产出。
-    const deAITone = Boolean(snapshot.enableDeAIFyMerge);
+    // 2026-09-15: 扩成三档; 且档位现在**也作用于正文**(此前只影响摘要/关键词,
+    //   用户勾了"降AIGC合稿"拿到的还是同一份章节原文)
+    const rawDeAI = snapshot.enableDeAIFyMerge ?? snapshot.deAITier;
+    const deAITier: "light" | "medium" | "heavy" | null =
+      !rawDeAI ? null
+        : ["light", "medium", "heavy"].includes(String(rawDeAI)) ? (String(rawDeAI) as "light" | "medium" | "heavy")
+          : "medium";
+    // 闭源时间轴 5 步(合并正文/语言润色/整理参考文献/生成元信息/完成)由后端 step 驱动。
+    //   此前前端拿 progress.current 硬映射, 与真实阶段无关 —— 这里把 step 真报出去。
+    const setMergeStep = async (step: number, text: string) => {
+      await pool.query(
+        `update research_tasks set progress=jsonb_set(jsonb_set(coalesce(progress,'{}'::jsonb),'{step}',to_jsonb($2::int)),'{stage}',to_jsonb($3::text)) where id=$1`,
+        [ctx.taskId, step, text]
+      ).catch(() => null);
+    };
+    await setMergeStep(0, "合并正文");
     const abstract = await generateComponent({
       kind: "abstract", topic: ctx.goal,
       sections: sections.map((s) => s.title ?? ""),
       chapterContents: bodies,
-      ...(deAITone ? { deAITone: true } : {}),
+      ...(deAITier ? { deAITone: deAITier } : {}),
     }).catch(() => ({ content: "" }));
+    await setMergeStep(3, "生成元信息");
     const keywords = await generateComponent({
       kind: "keywords", topic: ctx.goal, sections: [],
-      ...(deAITone ? { deAITone: true } : {}),
+      ...(deAITier ? { deAITone: deAITier } : {}),
     }).catch(() => ({ content: "" }));
     // SocialSci R3: 合并结果落 finalize 字段(mergedTitle/Abstract/Keywords/FullText/References + merge_generated)
-    const fulltext = (bodies ?? []).join("\n\n");
+    let mergedBodies = bodies ?? [];
+    if (deAITier && mergedBodies.some((b) => b && b.trim().length > 20)) {
+      // 逐章降重: 单章失败即回退该章原文(applyDeAITier 内部已兜底), 不影响其它章
+      await setMergeStep(1, "语言润色");
+      for (let i = 0; i < mergedBodies.length; i++) {
+        const b = mergedBodies[i];
+        if (!b || b.trim().length <= 20) continue;
+        mergedBodies[i] = await applyDeAITier(b, deAITier).catch(() => b);
+      }
+    }
+    const fulltext = (mergedBodies ?? []).join("\n\n");
+    await setMergeStep(2, "整理参考文献");
     const references = await buildMergedReferences(ctx.userId, ctx.projectId);
     // 空正文保护: 无可用章节正文时仅回写摘要/关键词, 不清空既有全文(0 字节覆盖即"产物为空"根因)
     if (fulltext.trim().length < 20) {

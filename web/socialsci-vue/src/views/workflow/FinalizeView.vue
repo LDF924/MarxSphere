@@ -9,11 +9,38 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { createTask, getTask } from "@/shared/tasks";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
-import { toast } from "@/shared/ui";
+import { toast, confirmDialog } from "@/shared/ui";
 import { q } from "@/shared/api";
+import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
+
+/** 终稿预览: 原先按空行切段塞 <p>, 正文里的表格/公式/小标题全被压成纯段落 */
+const mergedHtml = computed(() => renderMdWithLatex(String(store.mergedFullText ?? "")));
+const refsHtml = computed(() => renderMdWithLatex(String(store.mergedReferences ?? "")));
+
+/** 合稿模式与降 AIGC 档位(2026-09-15 补: 原先只有布尔开关, 档位能力整个缺失) */
+const mergeMode = ref<"normal" | "deAIGC">("normal");
+const mergeTier = ref<"light" | "medium" | "heavy">("medium");
+const MERGE_MODES = [
+  { value: "normal" as const, label: "直接合稿", control: "workflow:merge-mode-direct" },
+  { value: "deAIGC" as const, label: "降AIGC合稿", control: "workflow:merge-mode-aigc" },
+];
+const DEAI_TIERS = [
+  { value: "light" as const, label: "轻度降重", hint: "只替换套话与空泛修饰，句子结构不动" },
+  { value: "medium" as const, label: "中度降重", hint: "调整句式节奏，拆并列排比，删过渡水句" },
+  { value: "heavy" as const, label: "重度降重", hint: "重组表达路径与段落切分，事实数据引文冻结" },
+];
+
+/** 合稿五步(闭源固定文案, 每步带说明) */
+const MERGE_STEPS = [
+  { title: "合并正文", desc: "将各章节合并为连贯的全文" },
+  { title: "语言润色", desc: "优化表达，消除 AI 痕迹" },
+  { title: "整理参考文献", desc: "去重并统一格式" },
+  { title: "生成元信息", desc: "标题、摘要、关键词" },
+  { title: "完成", desc: "论文合并完成" },
+];
 const store = useWorkflowStore();
 
 // ── 三轮状态 ──
@@ -218,7 +245,7 @@ async function genChapter(sectionId: string) {
 let poll: ReturnType<typeof setInterval> | null = null;
 
 // ── 合稿门禁(闭源 ge()) ──
-async function doMerge(deAIGC = false) {
+async function doMerge() {
   const l1 = store.level1Sections;
   if (!store.taskId) {
     toast("请先创建并保存工作流任务", "warning");
@@ -233,9 +260,25 @@ async function doMerge(deAIGC = false) {
     toast(`还有 ${l1.length - withContent.length} 个一级章节未完成, 不能合稿`, "warning");
     return;
   }
+  // 闭源第 ④ 条: 正文节点比已发布的 Phase 4 版本新 → 版本已过期, 先重新发布再合稿。
+  //   2026-09-15 接通 —— 此前 phase4Version/Stale 是后端写死的 null/false, 这条门禁等于不存在,
+  //   用户改了正文后直接合稿会拿到与当前内容不符的版本快照。
+  try {
+    const st = await q<{ state?: { phase4Version?: unknown; phase4Stale?: boolean } }>(
+      `/research/versions/current?projectId=${store.taskId}`);
+    if (st.state?.phase4Version && st.state.phase4Stale) {
+      const ok = await confirmDialog({
+        title: "Phase 4 正文已变更",
+        message: "当前正文比已发布的 Phase 4 版本新。直接合稿会以最新正文为准，但版本凭证会落后于内容。是否继续？",
+        okText: "仍然合稿", cancelText: "先去重新生成",
+      });
+      if (!ok) return;
+    }
+  } catch { /* 版本服务不可用不阻断合稿 */ }
   mergeRunning.value = true;
   mergeStep.value = 0;
-  mergeMessage.value = "正在合并正文…";
+  const deAIGC = mergeMode.value === "deAIGC";
+  mergeMessage.value = deAIGC ? `正在合并正文并执行${DEAI_TIERS.find((t) => t.value === mergeTier.value)?.label}…` : "正在合并正文…";
   streamContent.value = "";
   try {
     const t = await createTask({
@@ -249,15 +292,20 @@ async function doMerge(deAIGC = false) {
       inputSnapshot: {
         sections: l1.map((s) => ({ title: s.title })),
         chapterContents: l1.map((s) => s.content ?? ""),
-        enableDeAIFyMerge: deAIGC
+        enableDeAIFyMerge: deAIGC,
+        ...(deAIGC ? { deAITier: mergeTier.value } : {})
       }
     });
     pollTask(t.id, "merge", async () => {
+      // 2026-09-15: 先放开 mergeRunning 再回读。
+      //   refreshMerged() 会把 store.mergeGenerated 置真 → 模式 tab 立刻渲染出来,
+      //   但它带着 `:disabled="mergeRunning"`, 而 mergeRunning 要到这两个 await 之后才置 false
+      //   —— 结果合稿完成后的短暂窗口里, tab 看得见却点不动(实测: click() 无反应, 状态不翻)。
+      mergeRunning.value = false;
+      mergeStep.value = 5;
       await refreshMerged();
       // D1/D2 后处理(闭源 Z(): fe 重建引用 → xe 表格重编号 → 落 store)
       await postProcessMerged();
-      mergeRunning.value = false;
-      mergeStep.value = 5;
       mergeMessage.value = "论文合并完成";
       toast("论文合并完成", "success");
     });
@@ -340,9 +388,11 @@ function pollTask(taskId: string, kind: "merge" | "review" | "revise", onDone: (
     try {
       const t = await getTask(taskId);
       if (!t) return;
-      const prog = (t.progress ?? {}) as { stage?: string; current?: number; total?: number };
+      const prog = (t.progress ?? {}) as { stage?: string; current?: number; total?: number; step?: number };
       mergeMessage.value = prog.stage ?? "";
-      mergeStep.value = Math.min(4, Math.max(0, (prog.current ?? 1) - 1));
+      // 闭源用后端的 phase5.merge_status.step 驱动时间轴(H(Math.min(I,4))), 不是由 current 反推。
+      //   后端没报 step 的旧任务回落到 current-1, 免得时间轴卡在第 1 步。
+      mergeStep.value = typeof prog.step === "number" ? Math.min(4, Math.max(0, prog.step)) : Math.min(4, Math.max(0, (prog.current ?? 1) - 1));
       if (t.status === "done" || t.status === "completed") {
         stopPollSlot(kind);
         await onDone();
@@ -687,6 +737,7 @@ function downloadText(name: string, content: string) {
 // ── 恢复(挂载: loadProject + refreshMerged 双保险) ──
 onMounted(async () => {
   markWorkflowReady();
+  void loadKatex();
   await store.loadProject().catch(() => null);
   await refreshMerged().catch(() => null);
 });
@@ -698,8 +749,20 @@ onMounted(async () => {
     <h1 class="wf-h1">合稿定稿</h1>
     <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
 
+    <!-- 未合稿空态(闭源: 大图标 + 「准备合并定稿」 + 说明 + 开始合并) -->
+    <div v-if="!store.mergeGenerated && !mergeRunning" class="finalize-empty">
+      <div class="fe-icon">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <h3>准备合并定稿</h3>
+      <p>前面各章正文已就绪。合稿会把它们合并为完整论文, 并自动生成摘要、关键词与参考文献。</p>
+      <button class="btn-round" data-control="workflow:phase5-merge" @click="doMerge()">开始合并</button>
+    </div>
+
     <!-- ═══ 三轮主流程 ═══ -->
-    <div class="rounds-card">
+    <div v-else class="rounds-card">
       <!-- 合并轮 -->
       <div class="round-row">
         <div class="round-head">
@@ -709,16 +772,46 @@ onMounted(async () => {
             <span>将全部章节合并为完整论文(自动生成摘要/关键词/参考文献)</span>
           </div>
           <div class="round-actions">
-            <button class="btn-round" :disabled="mergeRunning" @click="doMerge(false)" data-control="workflow:merge">{{ mergeRunning ? "合并中…" : store.mergeGenerated ? "重新合稿" : "开始合稿" }}</button>
-            <button v-if="store.mergeGenerated" class="btn-round ghost" :disabled="mergeRunning" @click="doMerge(true)" data-control="workflow:deai-merge">降 AIGC 合稿</button>
+            <!-- 2026-09-15: 原先只有「开始合稿 + 降AIGC合稿」两个按钮, 强度(轻/中/重)整个不存在。
+                 现在改成模式 tab + 档位选择, 且档位背后有真实实现(正文逐章降重, 不只是摘要)。 -->
+            <div class="merge-mode" role="tablist">
+              <!-- 模式/档位是**纯本地选择**, 不起任务 —— 不跟着 mergeRunning 禁用。
+                   原先它们带 :disabled="mergeRunning", 合稿完成后 store.mergeGenerated
+                   先被置真而 mergeRunning 还没放开, 于是 tab 看得见却点不动。 -->
+              <button
+                v-for="m in MERGE_MODES" :key="m.value"
+                class="mm-tab" :class="{ on: mergeMode === m.value }" role="tab"
+                :aria-pressed="mergeMode === m.value"
+                :data-control="m.control"
+                @click="mergeMode = m.value; if (m.value === 'deAIGC') mergeTier = 'medium'"
+              >{{ m.label }}</button>
+            </div>
+            <button class="btn-round" :disabled="mergeRunning" data-control="workflow:phase5-merge" @click="doMerge()">
+              {{ mergeRunning ? "合并中…" : store.mergeGenerated ? "重新合稿" : "开始合稿" }}
+            </button>
           </div>
         </div>
-        <!-- 时间轴 -->
+        <!-- 强度档: 只在降 AIGC 模式下出现 -->
+        <div v-if="mergeMode === 'deAIGC'" class="tier-row">
+          <span class="tier-label">强度：</span>
+          <button
+            v-for="t in DEAI_TIERS" :key="t.value"
+            class="tier-btn" :class="{ on: mergeTier === t.value }"
+            :title="t.hint"
+            :data-control="`workflow:aigc-tier-${t.value}`"
+            @click="mergeTier = t.value"
+          >{{ t.label }}</button>
+          <span class="tier-hint">{{ DEAI_TIERS.find((t) => t.value === mergeTier)?.hint }}</span>
+        </div>
+        <!-- 时间轴(闭源每步带 desc 副文案) -->
         <div v-if="mergeRunning || mergeStep >= 5" class="merge-timeline">
           <div class="mt-track"><div class="mt-fill" :style="{ height: mergeStep >= 5 ? '100%' : mergeStep * 20 + '%' }"></div></div>
-          <div v-for="(label, i) in ['合并正文', '语言润色', '整理参考文献', '生成元信息', '完成']" :key="label" class="mt-item" :class="{ done: mergeStep > i, active: mergeStep === i }">
+          <div v-for="(st, i) in MERGE_STEPS" :key="st.title" class="mt-item" :class="{ done: mergeStep > i, active: mergeStep === i }">
             <span class="mt-dot">{{ mergeStep > i ? "✓" : mergeStep === i ? "◌" : "" }}</span>
-            <span class="mt-label">{{ label }}</span>
+            <span class="mt-text">
+              <span class="mt-label">{{ st.title }}</span>
+              <span class="mt-desc">{{ st.desc }}</span>
+            </span>
           </div>
         </div>
         <div v-if="mergeRunning" class="merge-msg">{{ mergeMessage || "正在合并正文…" }}</div>
@@ -797,7 +890,7 @@ onMounted(async () => {
     <div v-if="store.mergeGenerated" class="finale-card">
       <div class="finale-head">
         <span class="done-badge">合并完成</span>
-        <button class="btn-redo" @click="doMerge(false)">重新合稿</button>
+        <button class="btn-redo" @click="doMerge()">重新合稿</button>
       </div>
       <div class="finale-fields">
         <div class="f-row">
@@ -891,12 +984,10 @@ onMounted(async () => {
         <h1>{{ store.mergedTitle }}</h1>
         <div class="preview-abstract"><strong>摘要</strong> {{ store.mergedAbstract }}</div>
         <p><strong>关键词：</strong>{{ store.mergedKeywords }}</p>
-        <div class="preview-body">
-          <p v-for="(p, i) in store.mergedFullText.split(/\n\s*\n/)" :key="i">{{ p }}</p>
-        </div>
+        <div class="preview-body markdown-body" v-html="mergedHtml"></div>
         <div class="preview-refs">
           <strong>参考文献</strong>
-          <pre>{{ store.mergedReferences }}</pre>
+          <div class="markdown-body" v-html="refsHtml"></div>
         </div>
       </div>
     </div>
@@ -909,6 +1000,17 @@ onMounted(async () => {
 .wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
 .wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
 .rounds-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+/* 未合稿空态 */
+.finalize-empty {
+  text-align: center; padding: 40px 24px; margin-bottom: 16px;
+  background: #11192C; border: 1px solid #222F44; border-radius: 12px;
+}
+.fe-icon {
+  width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 14px;
+  background: #33240F; color: #E8B54A; display: grid; place-items: center;
+}
+.finalize-empty h3 { margin: 0 0 8px; font-size: 16px; color: #E8EEF7; }
+.finalize-empty p { margin: 0 auto 18px; max-width: 420px; font-size: 13px; color: #8B9BB1; line-height: 1.7; }
 .round-row {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
   padding: 16px 18px;
@@ -918,7 +1020,25 @@ onMounted(async () => {
 .round-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .round-info strong { font-size: 15px; color: #E8EEF7; }
 .round-info span { font-size: 12px; color: #8B9BB1; }
-.round-actions { display: flex; gap: 7px; }
+.round-actions { display: flex; gap: 7px; align-items: center; }
+/* 合稿模式 tab + 降 AIGC 档位(2026-09-15) */
+.merge-mode { display: flex; border: 1px solid #222F44; border-radius: 8px; overflow: hidden; }
+.mm-tab {
+  padding: 7px 14px; border: 0; background: #0E1729; color: #8B9BB1;
+  font-size: 13px; cursor: pointer;
+}
+.mm-tab + .mm-tab { border-left: 1px solid #222F44; }
+.mm-tab.on { background: #1E2A48; color: #E8EEF7; font-weight: 600; }
+.mm-tab:disabled { opacity: 0.55; cursor: not-allowed; }
+.tier-row { display: flex; align-items: center; gap: 6px; margin: 12px 0 0 22px; flex-wrap: wrap; }
+.tier-label { font-size: 12.5px; color: #8B9BB1; }
+.tier-btn {
+  padding: 4px 12px; border: 1px solid #222F44; border-radius: 14px;
+  background: #0E1729; color: #8B9BB1; font-size: 12.5px; cursor: pointer;
+}
+.tier-btn.on { background: #1E2A48; color: #E8B54A; border-color: #C9A23C; font-weight: 600; }
+.tier-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.tier-hint { font-size: 11.5px; color: #7A8AA0; margin-left: 4px; }
 .btn-round {
   padding: 7px 18px; border: 0; border-radius: 8px; background: #E8B54A;
   color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -937,6 +1057,9 @@ onMounted(async () => {
 .mt-item.active .mt-dot { background: #11192C; border: 2px solid #E8B54A; color: #E8B54A; animation: spin-dot 1.2s linear infinite; }
 @keyframes spin-dot { 50% { border-color: #fbbf24; } }
 .mt-label { font-size: 12.5px; color: #8B9BB1; }
+.mt-text { display: flex; flex-direction: column; gap: 1px; }
+.mt-desc { font-size: 11px; color: #7A8AA0; }
+.mt-item.done .mt-desc { color: #5F7288; }
 .mt-item.done .mt-label { color: #E8EEF7; font-weight: 500; }
 .merge-msg { margin-top: 8px; font-size: 12.5px; color: #E8B54A; }
 .stream-block {

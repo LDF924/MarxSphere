@@ -21,7 +21,7 @@ vi.mock("../src/services/research-materials-service.js", async (importOriginal) 
 import { pool } from "../src/db/pool.js";
 import * as llmCommon from "../src/ai/llm-common.js";
 import {
-  findReadyTasks, executeReadyTask, markFailed, runSchedulingRound,
+  findReadyTasks, executeReadyTask, markFailed, runSchedulingRound, parseGoalToSections,
 } from "../src/services/research-exec-engine.js";
 import { createMaterial, listMaterials, updateMaterial, deleteMaterial, buildMaterialsContext } from "../src/services/research-materials-service.js";
 
@@ -231,5 +231,40 @@ describe("SocialSci 补漏组4: 专用执行器分派", () => {
     expect(r.ok).toBe(false);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
     expect(sqls.some((s) => s.includes("status='failed'"))).toBe(true);
+  });
+});
+
+// 2026-09-15: parseGoalToSections 原先只落 {id,title,level}, 父子关系完全丢失 ——
+//   前端章节树只能渲染一级, 二级子节再也不显示(页脚统计却还写着"N 个子节")。
+describe("parseGoalToSections 层级结构", () => {
+  it("二级行挂到它前面最近的一级行下(parentId)", () => {
+    // 少于 5 节会触发默认模板补足, 所以这里给足 5 行
+    const outline = [
+      "1. 引言",
+      "1.1 研究背景",
+      "1.2 研究意义",
+      "2. 文献综述",
+      "2.1 国内研究",
+      "2.2 国外研究",
+    ].join("\n");
+    const out = parseGoalToSections(outline);
+    const l1 = out.filter((s) => s.level === 1);
+    const l2 = out.filter((s) => s.level === 2);
+    expect(l1.length).toBe(2);
+    expect(l2.length).toBe(4);
+    // 每个二级都有 parentId, 且指向真实存在的一级
+    for (const s of l2) {
+      expect(s.parentId).toBeTruthy();
+      expect(l1.some((p) => p.id === s.parentId)).toBe(true);
+    }
+    // 1.1/1.2 归第一章; 2.1/2.2 归第二章 —— 不能全挂到同一章
+    const byParent = new Map<string, number>();
+    for (const s of l2) byParent.set(String(s.parentId), (byParent.get(String(s.parentId)) ?? 0) + 1);
+    expect([...byParent.values()].sort()).toEqual([2, 2]);
+  });
+
+  it("一级行本身没有 parentId", () => {
+    const out = parseGoalToSections("1. 引言\n2. 方法\n3. 结果\n4. 讨论\n5. 结论");
+    for (const s of out.filter((x) => x.level === 1)) expect(s.parentId).toBeUndefined();
   });
 });

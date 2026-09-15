@@ -11,7 +11,8 @@ import type { Section } from "./stores/workflow";
 import { createTask, getTask, getNode, putNode } from "@/shared/tasks";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
 import { toast, confirmDialog } from "@/shared/ui";
-import { q } from "@/shared/api";
+import { q, describeTaskError } from "@/shared/api";
+import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
@@ -285,12 +286,7 @@ function pollTask(taskId: string, onDone: () => Promise<void>, isBatch = false) 
         generating.value = false;
         for (const s of store.sections) if (s.status === "generating") s.status = "pending";
         // 带上后端 error(原来只说"请重试", 用户不知道为什么失败, 重试还是失败)
-        const raw = (t as unknown as { error?: unknown }).error;
-        let why = "";
-        try {
-          const e2 = typeof raw === "string" ? JSON.parse(raw) : raw;
-          why = String((e2 as { userMessage?: string })?.userMessage ?? "").slice(0, 120);
-        } catch { why = String(raw ?? "").slice(0, 120); }
+        const why = describeTaskError(t);
         toast(why ? `章节生成失败: ${why}` : "章节生成失败, 请重试", "error");
       }
     } catch { /* 容忍 */ }
@@ -348,14 +344,23 @@ async function refreshSections() {
   } catch { /* 空容忍 */ }
 }
 
-/** V417: structuredSummary 是 `【关键结论】…\n\n【关键数据】…` 文本(非对象), 拆成块渲染 */
-const summaryBlocks = computed(() => {
+/** V417: structuredSummary 是 `【关键结论】…\n\n【关键数据】…` 文本(非对象), 拆成块渲染 */const summaryBlocks = computed(() => {
   const raw = String(activeSection.value?.structuredSummary ?? "").trim();
   if (!raw) return [];
   return raw.split(/\n\s*\n(?=【)/).map((chunk) => {
     const m = /^【(.+?)】\s*([\s\S]*)$/.exec(chunk.trim());
     return m ? { title: m[1], body: m[2].trim() } : { title: "要点", body: chunk.trim() };
   }).filter((b) => b.body);
+});
+
+/**
+ * 正文渲染 —— 2026-09-15: 原先预览态是 `<pre>{{ content }}</pre>`, 生成出来的 markdown
+ * (标题/列表/表格/公式)全以源码形式砸在用户脸上, 表格尤其致命(整块 |---| 字符)。
+ * shared/markdown.ts 的 renderMd/renderMdWithLatex 早就写好了, 但 workflow 全线一次都没调用过。
+ */
+const activeContentHtml = computed(() => {
+  const md = String(activeSection.value?.content ?? "");
+  return md ? renderMdWithLatex(md) : "";
 });
 
 // ── 正文编辑(本地预览; 保存到 store) ──
@@ -367,14 +372,19 @@ function sendSectionToEditor() {
   if (sendMarkdownToEditor(sec.content, title)) toast("已送往学术文本工作台, 将新建文档", "success");
   else toast("发送失败(localStorage 不可用或已满)", "error");
 }
-const editing = ref(false);
+/** 编辑/预览双 tab(闭源 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章 */
+const mdTab = ref<"write" | "preview">("write");
 const editText = ref("");
-function startEdit() {
+const editing = computed({
+  get: () => mdTab.value === "write",
+  set: (v: boolean) => { mdTab.value = v ? "write" : "preview"; },
+});
+/** 有未保存改动(写 tab 下当前章正文与编辑框不一致) */
+const editDirty = computed(() => {
   const sec = activeSection.value;
-  if (!sec) return;
-  editText.value = sec.content ?? "";
-  editing.value = true;
-}
+  if (!sec) return false;
+  return editText.value !== (sec.content ?? "");
+});
 async function saveEdit() {
   const sec = activeSection.value;
   if (!sec) return;
@@ -397,11 +407,25 @@ async function saveEdit() {
 // ── 素材卡(右栏; 绑当前节/全部) ──
 const materials = ref<Array<Record<string, unknown>>>([]);
 const materialFilter = ref("all");
+/** 素材归属的章节 id 集合 —— 后端 sectionIds 是数组(可一素材多章), sectionId 是单值旧形态 */
+function sectionIdsOf(m: Record<string, unknown>): string[] {
+  const arr = m.sectionIds;
+  if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === "string");
+  const one = m.sectionId;
+  return typeof one === "string" && one ? [one] : [];
+}
 const filteredMaterials = computed(() => {
   const f = materialFilter.value;
+  // 2026-09-15: 原先只按类型筛, 不看当前章 —— 右栏永远列全库素材, "这个素材是为哪章准备的"这层
+  //   语义丢失, 用户得自己在几十条里找。当前章(含其子节)之外的素材不再混进来。
+  const cur = activeSection.value;
+  const scope = cur ? [cur.id, ...store.sections.filter((s) => s.parentId === cur.id).map((s) => s.id)] : [];
   return materials.value.filter((m) => {
-    if (f === "all") return true;
-    return m.kind === f;
+    if (f !== "all" && m.kind !== f) return false;
+    if (!cur) return true;
+    const ids = sectionIdsOf(m);
+    // 未关联章节的素材照常显示(发布门禁会拦), 否则用户看不到它们就没法去关联
+    return ids.length === 0 || ids.some((id) => scope.includes(id));
   });
 });
 async function loadMaterials() {
@@ -420,6 +444,58 @@ async function insertMaterialContent(m: Record<string, unknown>) {
   sec.content = (sec.content ?? "") + "\n\n" + content;
   await store.saveProject();
   toast("素材已插入到章节尾部", "success");
+}
+
+/** 素材类型 → 图标/中文标签/主色(闭源 MaterialCard 9 类映射) */
+const KIND_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
+  theory: { icon: "💡", label: "理论", color: "#B08CF0", bg: "#241A3A" },
+  citation: { icon: "📚", label: "文献", color: "#6FA8F5", bg: "#16243F" },
+  literature: { icon: "📚", label: "文献", color: "#6FA8F5", bg: "#16243F" },
+  data_result: { icon: "📊", label: "数据", color: "#5FD0B4", bg: "#14291F" },
+  data: { icon: "📊", label: "数据", color: "#5FD0B4", bg: "#14291F" },
+  table: { icon: "📋", label: "表格", color: "#4FC9D6", bg: "#0F2A2E" },
+  figure: { icon: "🖼", label: "图表", color: "#EF7FBF", bg: "#33172A" },
+  chart: { icon: "🖼", label: "图表", color: "#EF7FBF", bg: "#33172A" },
+  case: { icon: "🏛", label: "案例", color: "#E8A84A", bg: "#33240F" },
+  method: { icon: "⚙", label: "方法", color: "#8C93F0", bg: "#1B1F42" },
+  file: { icon: "📎", label: "附件", color: "#A8B4C4", bg: "#1A2333" },
+  document: { icon: "📎", label: "附件", color: "#A8B4C4", bg: "#1A2333" },
+};
+const kindMeta = (k: string) => KIND_META[k] ?? KIND_META.file;
+const kindIcon = (k: string) => kindMeta(k).icon;
+const kindLabel = (k: string) => kindMeta(k).label;
+const kindColor = (k: string) => kindMeta(k).color;
+const kindBg = (k: string) => kindMeta(k).bg;
+const matWords = (m: Record<string, unknown>) => String(m.contentMd ?? m.content ?? "").replace(/\s/g, "").length;
+const matLinked = (m: Record<string, unknown>) => {
+  const ids = m.sectionIds;
+  return (Array.isArray(ids) && ids.length > 0) || !!m.sectionId;
+};
+
+/** 从素材库移除(右侧栏的 ✕; 与「插入」不同, 这是真删库里的记录) */
+async function removeMaterialFromLib(m: Record<string, unknown>) {
+  const id = String(m.id ?? "");
+  if (!id) return;
+  const ok = await confirmDialog({ title: "删除素材", message: `确定从素材库删除「${String(m.title ?? "")}」?`, okText: "删除", danger: true });
+  if (!ok) return;
+  try {
+    await q(`/research/materials/${id}`, { method: "DELETE" });
+    await loadMaterials();
+    toast("素材已删除", "success");
+  } catch (e) {
+    toast(`删除失败: ${describeTaskError({ error: (e as Error).message })}`, "error");
+  }
+}
+
+/** 回滚本次批量里**已成功**的那些章(保留失败章的原状) —— 闭源两个回滚按钮中的第二个 */
+async function rollbackBatchKeep() {
+  const ok = await confirmDialog({
+    title: "回滚本次成功章节?",
+    message: `将把本次已生成的 ${genProgress.value.current ?? 0} 章正文还原为生成前的内容, 未完成的章不受影响。`,
+    okText: "回滚", danger: true,
+  });
+  if (!ok) return;
+  await rollbackBatch();
 }
 
 // ── C3 素材生成弹窗(闭源: 类型 select + 生成要求 + 流式结果 → 保存到素材库) ──
@@ -501,9 +577,11 @@ async function enterFinalize() {
     toast(`还有 ${pendingCount.value} 个一级章节未完成, 全部完成后再进入合并定稿`, "warning");
     return;
   }
-  store.phase = 5;
-  store.phaseLabel = "合稿定稿";
-  await store.saveProject();
+  store.setPhase(5);
+  // 2026-09-15: 把本轮正文发布成 phase4_text 版本 —— 合稿前的"Phase 4 已完成"凭证。
+  //   此前没有任何地方写过 phase4 版本, /versions/current 的 phase4Version 恒为 null,
+  //   闭源那条"请先完成当前 Phase 4 正文生成, 再进行合稿"的门禁根本无从触发。
+  await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase4_text" } }).catch(() => null);
   void router.push("/workflow/finalize");
 }
 
@@ -513,6 +591,61 @@ watch(
     if (store.phase === 4) void store.saveProject();
   }
 );
+
+/** 切章时把编辑框同步到新章的正文, 否则会把上一章的内容带过去(编辑态是常驻的) */
+watch(activeSecId, () => {
+  editText.value = String(activeSection.value?.content ?? "");
+  thinkPrompt.value = String(activeSection.value?.skill_prompt ?? "");
+});
+
+/**
+ * 主控智能体思考(闭源: 每章一个可编辑的写作思路 textarea, 预填该章写作指导)。
+ * 存到 section.skill_prompt —— 生成章节时 runChapterBatch 会优先用它(见后端 buildChapterPrompt)。
+ * 500ms 防抖落库(闭源同款): 逐字敲时不该每键一次请求, 但也不能只在失焦时才存 ——
+ *   用户写完直接点「执行智能体开始思考」, 那次生成就得用上刚写的内容。
+ */
+const thinkPrompt = ref("");
+let thinkTimer: ReturnType<typeof setTimeout> | null = null;
+watch(thinkPrompt, () => {
+  const sec = activeSection.value;
+  if (!sec) return;
+  const next = thinkPrompt.value.trim();
+  if (String(sec.skill_prompt ?? "") === next) return;
+  if (thinkTimer) clearTimeout(thinkTimer);
+  thinkTimer = setTimeout(() => void persistThinkPrompt(sec.id, next), 500);
+});
+async function persistThinkPrompt(sectionId: string, next: string) {
+  const sec = store.sections.find((s) => s.id === sectionId);
+  if (!sec) return;
+  sec.skill_prompt = next;
+  try {
+    await putNode(store.taskId, "sections", { sections: store.sections });
+  } catch {
+    toast("写作思路保存失败, 仅本地生效", "error");
+  }
+}
+/** 离开页面前把未落库的防抖内容冲掉 */
+onUnmounted(() => {
+  if (thinkTimer) {
+    clearTimeout(thinkTimer);
+    const sec = activeSection.value;
+    if (sec) {
+      const next = thinkPrompt.value.trim();
+      if (String(sec.skill_prompt ?? "") !== next) sec.skill_prompt = next;
+      void store.saveProject();
+    }
+  }
+});
+
+/** 状态胶囊三色(闭源: 待生成灰 / 生成中琥珀 / 已生成绿) */
+const secHasContent = computed(() => {
+  const c = activeSection.value?.content ?? "";
+  return c.length > 50;
+});
+const genPill = computed(() => {
+  if (generating.value && generateMode.value === "single") return { text: "生成中…", cls: "pill-generating" };
+  return secHasContent.value ? { text: "已生成", cls: "pill-done" } : { text: "待生成", cls: "pill-pending" };
+});
 
 // ── C2 主控 AI — 结构化分析面板(闭源 WorkspaceView L36269+: 折叠卡片盖中央区) ──
 const aiPanelOpen = ref(false);
@@ -678,6 +811,8 @@ async function reloadSkillCards() {
 
 onMounted(async () => {
   markWorkflowReady();
+  // 公式渲染器是懒加载单例(katex 缺失时 renderMd 会原样输出公式源码, 不报错)
+  void loadKatex();
   await store.loadProject().catch(() => null);
   await loadMaterials();
   // 直进本页(硬刷新后 URL 落在 #/workflow/workspace)时 store 是空的 —— 没有 keep-alive,
@@ -687,7 +822,11 @@ onMounted(async () => {
     // 默认展开全部一级
     expandedIds.value = new Set(store.level1Sections.map((s) => s.id));
     const first = store.level1Sections[0];
-    if (first) activeSecId.value = first.id;
+    if (first) {
+      activeSecId.value = first.id;
+      editText.value = String(first.content ?? "");
+      thinkPrompt.value = String(first.skill_prompt ?? "");
+    }
   }
   // 写作指导也只在 SectionsView 拉过。直进本页会漏 → 批量生成时 skill_prompt 传空(裸生成)
   if (store.taskId && !store.level1Sections.some((s) => s.aiSkill || s.skill_prompt)) {
@@ -718,9 +857,15 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <span class="rail-count">{{ genCount }}/{{ l1List.length }}</span>
       </div>
       <div class="rail-progress"><div class="rail-progress-fill" :style="{ width: progressPct + '%' }"></div></div>
+      <!-- 结构化指导开关(闭源在工作流主按钮之下、章节树之上) -->
+      <button class="workflow-outline-primary" :class="{ on: aiPanelOpen }" @click="aiPanelOpenToggle" data-control="workflow:toggle-ai-panel">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        {{ aiPanelOpen ? "关闭结构化指导" : "结构化指导" }}
+      </button>
       <div v-if="!l1List.length" class="rail-empty">暂无章节 — 请先完成信息录入与科研架构</div>
       <div v-else class="nav-list">
-        <button class="rail-ai-toggle" :class="{ on: aiPanelOpen }" @click="aiPanelOpenToggle">💡 {{ aiPanelOpen ? "关闭结构化指导" : "结构化指导" }}</button>
         <div v-for="(s, i) in l1List" :key="s.id" class="nav-l1" :class="{ active: activeSecId === s.id }" @click="selectSection(s)">
           <div class="nav-row">
             <button class="nav-toggle" @click.stop="toggleExpand(s.id)">{{ isExpanded(s.id) ? "▼" : "▶" }}</button>
@@ -745,8 +890,20 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         </div>
       </div>
       <div class="rail-footer">
-        <button class="btn-back-sm" @click="router.push('/workflow/materials')">← 返回素材准备</button>
-        <button class="btn-primary-sm" data-control="workflow:enter-finalize" @click="enterFinalize">进入合稿 →</button>
+        <!-- 智能全局思考(闭源三态文案: 生成中显示进度 / 全生成完显示"重新生成全部" / 否则"智能全局思考") -->
+        <button class="btn-think-all" :disabled="generating" data-control="workflow:generate-all" @click="generateAll">
+          {{ generating && generateMode === 'batch'
+            ? `生成中 (${genProgress.current ?? 0}/${genProgress.total ?? 0})`
+            : l1List.length && pendingCount === 0 ? "重新生成全部" : "智能全局思考" }}
+        </button>
+        <button class="btn-back-sm" @click="router.push('/workflow/materials')">返回素材准备</button>
+        <!-- 闭源: 未全部完成时不可进入合稿, 文案带未完成章数 -->
+        <button
+          class="btn-finalize-all"
+          :disabled="pendingCount > 0 || generating"
+          data-control="workflow:enter-finalize"
+          @click="enterFinalize"
+        >{{ pendingCount > 0 ? `还有 ${pendingCount} 章未完成` : "进入合并定稿" }}</button>
       </div>
     </aside>
 
@@ -829,36 +986,82 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             </div>
           </div>
           <div class="sec-actions">
-            <span v-if="secWordBadge" class="sec-words">{{ secWordBadge }}</span>
-            <button v-if="!editing" class="btn-edit" @click="startEdit">编辑</button>
-            <button v-if="editing" class="btn-save" @click="saveEdit" data-control="workflow:save-section">保存修改</button>
-            <!-- V417 出站: 本章正文送学术文本工作台精修 -->
             <button
               v-if="activeSection.content && activeSection.content.length > 50"
               class="btn-edit"
               data-control="workflow:section-to-editor"
               @click="sendSectionToEditor"
-            >
-              送编辑器
-            </button>
-            <button class="btn-gen" :disabled="generating" @click="generateSection" data-control="workflow:generate-section">
-              {{ generating && generateMode === 'single' ? "正在思考…" : secStatusDot(activeSection).title === '已生成' ? "重新思考" : "执行智能体开始思考" }}
-            </button>
+            >送编辑器</button>
           </div>
         </div>
-        <div class="gen-bar" :class="{ on: generating }">
-          <span class="gen-dot" :class="{ pulse: generating }"></span>
-          <span>{{ statusText() }}</span>
-          <button v-if="generating" class="btn-stop-gen" data-control="workflow:stop-generation" @click="stopGeneration">■ 停止</button>
+
+        <!-- 主控智能体思考(闭源: 可编辑 textarea, 预填本章写作指导) -->
+        <div class="think-block">
+          <div class="think-head">
+            <label class="think-label">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              主控智能体思考
+            </label>
+            <span class="think-hint">主控智能体思考而成，可手动补充修改</span>
+          </div>
+          <textarea
+            v-model="thinkPrompt"
+            class="think-input"
+            rows="3"
+            placeholder="本章的写作思路…(留空则用系统生成的写作指导)"
+            data-control="workflow:section-think"
+          ></textarea>
         </div>
-        <!-- 正文 -->
-        <div class="editor-area">
-          <textarea v-if="editing" v-model="editText" class="content-textarea" placeholder="章节正文…"></textarea>
-          <div v-else class="content-view markdown-body">
-            <p v-if="!activeSection.content" class="content-empty">
-              该章节尚未生成正文 — 点击右上「执行智能体开始思考」生成内容。
-            </p>
-            <pre v-else class="content-pre">{{ activeSection.content }}</pre>
+
+        <!-- 生成控制(闭源: 状态胶囊 + 执行/取消/重新思考并排) -->
+        <div class="gen-block">
+          <div class="gen-title-row">
+            <h4>{{ activeSection.title }}</h4>
+            <span class="sec-status-pill" :class="genPill.cls">{{ genPill.text }}</span>
+          </div>
+          <div class="gen-btn-row">
+            <button
+              v-if="!generating"
+              class="btn-gen-main"
+              data-control="workflow:generate-section"
+              @click="generateSection"
+            >{{ secHasContent ? "重新思考" : "执行智能体开始思考" }}</button>
+            <template v-else>
+              <button class="btn-gen-main" disabled>
+                <span class="mini-spinner"></span>正在思考...
+              </button>
+              <button class="btn-gen-cancel" data-control="workflow:stop-generation" @click="stopGeneration">取消</button>
+            </template>
+          </div>
+        </div>
+
+        <!-- 正文: 编辑 / 预览 双 tab(闭源 MarkdownEditor 形态) -->
+        <div class="md-block">
+          <div class="md-tabs" role="tablist">
+            <button
+              class="md-tab" :class="{ on: mdTab === 'write' }" role="tab" :aria-pressed="mdTab === 'write'"
+              data-control="workflow:md-write" @click="mdTab = 'write'"
+            >编辑</button>
+            <button
+              class="md-tab" :class="{ on: mdTab === 'preview' }" role="tab" :aria-pressed="mdTab === 'preview'"
+              data-control="workflow:md-preview" @click="mdTab = 'preview'"
+            >预览</button>
+          </div>
+          <div class="editor-area">
+            <textarea v-if="mdTab === 'write'" v-model="editText" class="content-textarea" placeholder="章节正文…"></textarea>
+            <div v-else class="content-view markdown-body">
+              <p v-if="!activeSection.content" class="content-empty">
+                该章节尚未生成正文 — 点击上方「执行智能体开始思考」生成内容。
+              </p>
+              <div v-else class="content-html" v-html="activeContentHtml"></div>
+            </div>
+          </div>
+          <div class="md-foot">
+            <span>{{ activeWords }} 字</span>
+            <span class="md-save-state">{{ editDirty ? "未保存" : "已同步" }}</span>
+            <button v-if="mdTab === 'write' && editDirty" class="btn-save" data-control="workflow:save-section" @click="saveEdit">保存修改</button>
           </div>
           <!-- V417: 生成时后端正则抽取的结论/数据/论点/遗留 —— 原先存了但从没显示过 -->
           <details v-if="summaryBlocks.length" class="summary-box">
@@ -897,17 +1100,35 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
       </div>
       <div v-else class="mat-scroll">
         <div v-for="m in filteredMaterials" :key="String(m.id ?? m.title)" class="mat-mini">
-          <span class="mat-mini-icon">{{ String(m.kind ?? "file") === "theory" ? "📖" : String(m.kind ?? "") === "citation" ? "📚" : "📎" }}</span>
-          <div class="mat-mini-body">
-            <strong>{{ String(m.title ?? "未命名素材").slice(0, 30) }}</strong>
-            <span class="mat-mini-meta">{{ String(m.kind ?? "") }} · {{ String(m.contentMd ?? m.content ?? "").length }} 字</span>
+          <!-- 顶色条(闭源按类型 9 色) -->
+          <div class="mat-mini-bar" :style="{ background: kindColor(String(m.kind ?? '')) }"></div>
+          <div class="mat-mini-inner">
+            <span class="mat-mini-icon" :style="{ background: kindBg(String(m.kind ?? '')) }">{{ kindIcon(String(m.kind ?? '')) }}</span>
+            <div class="mat-mini-body">
+              <strong>{{ String(m.title ?? "未命名素材").slice(0, 30) }}</strong>
+              <div class="mat-mini-meta">
+                <span class="mat-kind-pill" :style="{ background: kindBg(String(m.kind ?? '')), color: kindColor(String(m.kind ?? '')) }">{{ kindLabel(String(m.kind ?? "")) }}</span>
+                <span class="mat-mini-words">{{ matWords(m) }} 字</span>
+                <span v-if="matLinked(m)" class="mat-linked" title="已关联到章节">
+                  <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" /></svg>已关联
+                </span>
+              </div>
+            </div>
+            <!-- hover 才出现的插入/删除(闭源 group-hover) -->
+            <div class="mat-mini-ops">
+              <button class="mat-op-icon" title="插入到章节" data-control="workflow:insert-material" @click="insertMaterialContent(m)">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>
+              </button>
+              <button class="mat-op-icon danger" title="从素材库移除" data-control="workflow:remove-material" @click="removeMaterialFromLib(m)">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round" /></svg>
+              </button>
+            </div>
           </div>
-          <button class="mat-mini-insert" title="插入到章节" @click="insertMaterialContent(m)">插入</button>
         </div>
       </div>
       <div class="rail-footer-col">
-        <button class="btn-batch" data-control="workflow:generate-all" :disabled="generating" @click="generateAll">批量生成全部章节</button>
-        <button v-if="generating && generateMode === 'batch'" class="btn-rollback" @click="rollbackBatch" data-control="workflow:rollback-batch">回滚本次批量</button>
+        <button v-if="generating && generateMode === 'batch'" class="btn-rollback" @click="rollbackBatch" data-control="workflow:rollback-batch">全部回滚</button>
+        <button v-if="generating && generateMode === 'batch' && genProgress.current" class="btn-rollback-keep" @click="rollbackBatchKeep" data-control="workflow:rollback-keep">回滚本次成功 ({{ genProgress.current }})</button>
       </div>
     </aside>
 
@@ -957,8 +1178,9 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .rail-head { display: flex; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #212C45; }
 .rail-head strong { font-size: 13.5px; color: #E8EEF7; }
 .rail-count { font-size: 11px; color: #7A8AA0; background: #212C45; padding: 2px 8px; border-radius: 9px; }
-.rail-progress { height: 3px; background: #212C45; }
-.rail-progress-fill { height: 100%; background: #dc2626; transition: width 0.4s; }
+/* 左栏进度条(闭源 h-1.5 圆角) */
+.rail-progress { height: 6px; background: #212C45; border-radius: 999px; overflow: hidden; }
+.rail-progress-fill { height: 100%; background: #dc2626; border-radius: 999px; transition: width 0.4s; }
 .rail-empty { padding: 26px 14px; text-align: center; color: #7A8AA0; font-size: 12px; }
 .nav-list { flex: 1; padding: 6px; overflow-y: auto; }
 .nav-l1 { border-radius: 7px; padding: 5px 7px; cursor: pointer; }
@@ -1004,23 +1226,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   padding: 6px 12px; border: 1px solid #222F44; border-radius: 7px; background: #11192C;
   color: #8B9BB1; font-size: 12px; cursor: pointer;
 }
-.btn-gen {
-  padding: 6px 14px; border: 0; border-radius: 7px; background: #1e293b;
-  color: #F1F5F9; font-size: 12px; cursor: pointer;
-}
-.btn-gen:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-stop-gen {
-  margin-left: auto; padding: 2px 10px; border: 1px solid #7f1d1d; border-radius: 6px;
-  background: #2a1416; color: #f0a3a3; font-size: 11px; cursor: pointer;
-}
-.btn-stop-gen:hover { background: #3a1a1d; }
-.gen-bar {
-  display: flex; align-items: center; gap: 7px; padding: 6px 11px; margin-bottom: 10px;
-  background: #1A2333; border-radius: 7px; font-size: 12px; color: #7A8AA0;
-}
-.gen-bar.on { background: #1E2A48; color: #1d4ed8; }
-.gen-dot { width: 8px; height: 8px; border-radius: 50%; background: #46587A; }
-.gen-dot.pulse { background: #2563eb; animation: blink 1s infinite; }
+.btn-save { border-color: #2B4A73; color: #6FA8F5; }
 .editor-area { flex: 1; min-height: 0; display: flex; }
 .content-textarea {
   flex: 1; resize: none; border: 1px solid #222F44; border-radius: 10px; padding: 14px;
@@ -1028,10 +1234,9 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 }
 .content-view { flex: 1; overflow-y: auto; }
 .content-empty { padding: 60px 20px; text-align: center; color: #7A8AA0; font-size: 13px; }
-.content-pre {
-  margin: 0; padding: 8px 4px; font-family: inherit; font-size: 14px; line-height: 1.9;
-  color: #E8EEF7; white-space: pre-wrap; word-break: break-word;
-}
+/* 渲染后的正文: 版口与编辑态一致, 表格/引用等由全局 .markdown-body 接管 */
+.content-html { padding: 8px 4px; font-size: 14px; line-height: 1.9; color: #E8EEF7; }
+.content-html :deep(> :first-child) { margin-top: 0; }
 .center-empty { display: grid; place-items: center; height: 100%; color: #7A8AA0; font-size: 14px; }
 .summary-box {
   margin: 10px 0 0; border: 1px solid #222F44; border-radius: 8px;
@@ -1048,19 +1253,113 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .mat-filter { margin: 8px 10px; padding: 5px 8px; border: 1px solid #222F44; border-radius: 7px; font-size: 12px; background: #11192C; }
 .mat-scroll { flex: 1; overflow-y: auto; padding: 0 8px; display: flex; flex-direction: column; gap: 6px; }
 .mat-mini {
-  display: flex; align-items: center; gap: 7px; padding: 8px;
+  position: relative; overflow: hidden; padding: 0;
   background: #11192C; border: 1px solid #212C45; border-radius: 9px;
 }
 .mat-mini:hover { border-color: #B06A6A; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.05); }
-.mat-mini-icon { font-size: 16px; }
-.mat-mini-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.mat-mini-body strong { font-size: 11.5px; color: #E8EEF7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mat-mini-meta { font-size: 10px; color: #7A8AA0; }
-.mat-mini-insert {
-  border: 0; background: #212C45; color: #2563eb; font-size: 10.5px;
-  padding: 3px 7px; border-radius: 5px; cursor: pointer;
+/* 顶色条(按素材类型 9 色) */
+.mat-mini-bar { height: 3px; width: 100%; }
+.mat-mini-inner { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; }
+.mat-mini-icon {
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 13px;
 }
+.mat-mini-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mat-mini-body strong { font-size: 11.5px; color: #E8EEF7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mat-mini-meta { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #7A8AA0; flex-wrap: wrap; }
+.mat-kind-pill { padding: 1px 6px; border-radius: 7px; font-size: 9.5px; font-weight: 600; }
+.mat-mini-words { color: #7A8AA0; }
+.mat-linked { display: inline-flex; align-items: center; gap: 2px; color: #E8B54A; }
+/* 插入/删除:hover 才出现(闭源 group-hover:opacity-100) */
+.mat-mini-ops {
+  display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;
+  opacity: 0; transition: opacity 0.15s;
+}
+.mat-mini:hover .mat-mini-ops { opacity: 1; }
+.mat-op-icon {
+  width: 22px; height: 22px; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: #8B9BB1; cursor: pointer;
+}
+.mat-op-icon:hover { background: #212C45; color: #E8EEF7; }
+.mat-op-icon.danger:hover { background: #2A1C1C; color: #dc2626; }
 .rail-footer-col { padding: 9px; border-top: 1px solid #222F44; display: flex; flex-direction: column; gap: 6px; }
+.btn-rollback-keep {
+  padding: 6px; border: 1px solid #1E3A5F; border-radius: 7px; background: #0F2137;
+  color: #6FA8F5; font-size: 11.5px; cursor: pointer;
+}
+
+/* 主控智能体思考(可编辑) */
+.think-block { margin-bottom: 14px; }
+.think-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.think-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: #6FA8F5; }
+.think-hint { font-size: 11px; color: #7A8AA0; }
+.think-input {
+  width: 100%; box-sizing: border-box; padding: 9px 12px;
+  border: 1px solid #222F44; border-radius: 9px; background: #0E1729;
+  color: #DCE6F2; font-size: 12.5px; line-height: 1.65; font-family: inherit;
+  outline: none; resize: none;
+}
+.think-input:focus { border-color: #4B5E8C; }
+
+/* 生成控制(状态胶囊 + 按钮并排) */
+.gen-block { margin-bottom: 14px; }
+.gen-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.gen-title-row h4 { margin: 0; font-size: 13.5px; font-weight: 600; color: #E8EEF7; }
+.sec-status-pill { font-size: 10.5px; padding: 2px 10px; border-radius: 10px; font-weight: 600; }
+.pill-pending { background: #1A2333; color: #A8B4C4; }
+.pill-generating { background: #33240F; color: #E8B54A; }
+.pill-done { background: #14291F; color: #5FD0B4; }
+.gen-btn-row { display: flex; gap: 8px; }
+.btn-gen-main {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 16px; border: 0; border-radius: 9px; background: #1e293b;
+  color: #F1F5F9; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.btn-gen-main:hover:not(:disabled) { background: #334155; }
+.btn-gen-main:disabled { opacity: 0.75; cursor: default; }
+.btn-gen-cancel {
+  padding: 9px 18px; border-radius: 9px; background: #11192C;
+  border: 1px solid #dc2626; color: #E88A8A; font-size: 13px; cursor: pointer;
+}
+.btn-gen-cancel:hover { background: #2A1C1C; }
+
+/* 编辑/预览双 tab */
+.md-block { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.md-tabs { display: inline-flex; border: 1px solid #222F44; border-radius: 9px; overflow: hidden; width: fit-content; margin-bottom: 8px; }
+.md-tab {
+  padding: 6px 16px; border: 0; background: #0E1729; color: #8B9BB1;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.md-tab + .md-tab { border-left: 1px solid #222F44; }
+.md-tab.on { background: #1e293b; color: #F1F5F9; }
+.md-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; color: #7A8AA0; }
+.md-save-state { color: #7A8AA0; }
+.md-foot .btn-save { margin-left: auto; }
+/* 结构化指导开关(闭源 workflow-outline-primary: 白底蓝边) */
+.workflow-outline-primary {
+  width: 100%; margin-bottom: 10px; padding: 7px 10px;
+  display: flex; align-items: center; gap: 7px;
+  border: 1px solid #2B4A73; border-radius: 8px; background: #0E1729;
+  color: #6FA8F5; font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.workflow-outline-primary:hover { background: #16243F; border-color: #4B7BB5; }
+.workflow-outline-primary.on { background: #16243F; border-color: #4B7BB5; color: #9CC5F5; }
+/* 左栏三态底部按钮 */
+.btn-think-all {
+  padding: 8px; border: 0; border-radius: 7px; background: #1e293b; color: #F1F5F9;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.btn-think-all:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-finalize-all {
+  padding: 8px; border: 0; border-radius: 7px; background: #dc2626; color: #F1F5F9;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.btn-finalize-all:disabled { background: #212C45; color: #7A8AA0; cursor: not-allowed; }
+.mini-spinner {
+  width: 12px; height: 12px; border: 2px solid #46587A; border-top-color: #F1F5F9;
+  border-radius: 50%; display: inline-block; animation: mspin 0.8s linear infinite;
+}
+@keyframes mspin { to { transform: rotate(360deg); } }
 .btn-batch {
   padding: 8px; border: 0; border-radius: 7px; background: #1e293b; color: #F1F5F9;
   font-size: 12px; font-weight: 600; cursor: pointer;

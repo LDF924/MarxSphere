@@ -7,6 +7,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { listTasks, getNode, putNode, saveWorkbench, getWorkbench } from "@/shared/tasks";
+import { q } from "@/shared/api";
 import { K } from "@/shared/constants";
 
 export interface Section {
@@ -239,10 +240,59 @@ export const useWorkflowStore = defineStore("workflow", () => {
     await putNode(taskId.value, "materials", { materials: materials.value }).catch(() => null);
   }
 
-  function goto(ph: number): void {
+  /**
+   * 阶段推进 —— 2026-09-15 补: 此前只写 workbench 快照, research_projects.phase 全仓
+   * **零写入方**(唯一动 phase_label 的是 publishVersion, 写进去的是版本标签不是阶段名)。
+   * 后果: 项目列表、/versions/current、历史中心读到的阶段恒为 0/空, "项目进行到哪一步"对外不可见。
+   * 这里补一次 PATCH —— 失败不阻断(快照仍能恢复), 所以静默吞掉。
+   */
+  async function syncPhaseToProject(): Promise<void> {
+    if (!taskId.value) return;
+    try {
+      await q(`/research/projects/${taskId.value}`, {
+        method: "PATCH",
+        body: { phase: phase.value, phaseLabel: phaseLabel.value },
+      });
+    } catch { /* 旧后端不认这两个字段时跳过, 快照路径不受影响 */ }
+  }
+
+  /** 阶段推进的唯一入口 —— phase 与 phaseLabel 必须成对更新, 否则会出现"第 4 步 · 素材准备"这种错配 */
+  function setPhase(ph: number): void {
     phase.value = ph;
     phaseLabel.value = ph === 1 ? "信息录入" : ph === 2 ? "科研架构" : ph === 3 ? "素材准备" : ph === 4 ? "文本创作" : "合稿定稿";
     void saveProject();
+    void syncPhaseToProject();
+  }
+
+  function goto(ph: number): void {
+    setPhase(ph);
+  }
+
+  /**
+   * 清空本地工作台状态(不动服务器数据) —— 供「新项目」用。
+   * pinia 的 setup 风格 store **没有** $reset(那是 options 风格才有的), 所以显式写一个:
+   * 漏掉任何一个字段, 下一个项目就会带着上一个项目的残留(实测最容易漏的是 sections 与 merged*)。
+   */
+  function resetLocal(): void {
+    taskId.value = "";
+    phase.value = 0;
+    phaseLabel.value = "";
+    input.value = { title: "", outline: "", totalWordCount: 0, researchMethod: "", requirements: "", sampleFiles: [], clarifyAnswers: {} };
+    sections.value = [];
+    variables.value = [];
+    hypotheses.value = [];
+    materials.value = [];
+    materialAllocation.value = {};
+    materialReviewReport.value = "";
+    stepAnalysisTexts.value = { 1: "", 2: "", 3: "" };
+    project.value = { title: "" };
+    mergedFullText.value = ""; mergedTitle.value = ""; mergedAbstract.value = "";
+    mergedKeywords.value = ""; mergedReferences.value = "";
+    mergeGenerated.value = false; isFinalized.value = false;
+    reviewResult.value = null;
+    activeSectionId.value = "";
+    textFlow.value = { status: "" };
+    localStorage.removeItem(K.lastTaskWorkflow);
   }
 
   return {
@@ -255,6 +305,6 @@ export const useWorkflowStore = defineStore("workflow", () => {
     mergedFullText, mergedTitle, mergedAbstract, mergedKeywords, mergedReferences,
     mergeGenerated, isFinalized, reviewResult, exportStatus, exportFormat, exportedAt,
     title, level1Sections, activeSection, totalWordCount,
-    ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto
+    ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto, setPhase, resetLocal
   };
 });

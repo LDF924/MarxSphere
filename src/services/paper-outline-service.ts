@@ -21,6 +21,113 @@ export interface ChapterResult {
   wordCount: number;
 }
 
+/**
+ * 降 AIGC 强度档 —— 2026-09-15。
+ * 此前只有布尔开关(enableDeAIFyMerge), 且**只作用于摘要/关键词**, 正文一字未动:
+ * 用户勾"降AIGC合稿", 拿到的是同样的章节原文, 开关接近摆设。
+ * 现在分三档, 且作用于**正文**, 每档都有硬约束(改写幅度上限 + 事实冻结),
+ * 免得"降 AI 痕迹"变成"重写一篇"(学术稿改内容比留 AI 味更严重)。
+ */
+export type DeAITier = "light" | "medium" | "heavy";
+
+const DEAI_TIER_PROMPT: Record<DeAITier, { label: string; spec: string; temp: number; maxTokens: number }> = {
+  light: {
+    label: "轻度降重",
+    spec: `只做**表层替换**, 不动句子结构: 替换模板化连接词("首先/其次/最后/综上所述/随着…的发展"等)、
+合并显而易见的空泛修饰、把重复出现的同义表达换掉。段落划分与句序保持不变。`,
+    temp: 0.35,
+    maxTokens: 8192,
+  },
+  medium: {
+    label: "中度降重",
+    spec: `在轻度基础上**调整句式节奏**: 长短句交替, 拆开过于整齐的并列排比, 把被动堆砌改为主动表述,
+删掉无信息量的过渡句。段落主旨与论点顺序不变, 句子可以重排或合并。`,
+    temp: 0.5,
+    maxTokens: 12288,
+  },
+  heavy: {
+    label: "重度降重",
+    spec: `在轻度、中度基础上**重组表达路径**: 按论证需要重新安排句序与段落切分, 用具体信息替代概括性表述,
+把"总-分"套路改成更自然的学术叙述。允许大幅改写语言, **但每一个事实、数据、引文、术语、结论都必须原样保留**。`,
+    temp: 0.7,
+    maxTokens: 16384,
+  },
+};
+
+const DEAI_FROZEN = `【冻结项 — 三档都不得改动】
+· 数据与数字: 所有数值、年份、比例、单位、表格内容
+· 引文与出处: 直接引语、人名、文献、机构名、专有名词、术语
+· 论证内容: 每一个论点、结论、因果关系的方向
+· 标记: markdown 标题层级、表格、公式、[N] 引用标记一律原样保留`;
+
+/** 单次降重的输入上限(按档位不同): 超长正文分块处理, 否则模型会截断导致丢正文 */
+const DEAI_CHUNK_CHARS: Record<DeAITier, number> = { light: 6000, medium: 4000, heavy: 2600 };
+/** 每档允许的最大字数增幅(保险丝: 模型跑偏成"扩写"时截回) */
+const DEAI_MAX_GROWTH = 1.6;
+
+/**
+ * 正文降 AIGC。按空行切块 → 逐块改写 → 拼回。
+ * 分块是必须的: 一次丢 8000 字进去, 模型只回 4000 字就是静默丢正文(实测同类任务的常见失败)。
+ * 单块失败回退原文 —— 降重失败不该毁掉用户已有的稿子。
+ */
+export async function applyDeAITier(text: string, tier: DeAITier, opts: { model?: string; onProgress?: (done: number, total: number) => void } = {}): Promise<string> {
+  const src = String(text ?? "");
+  if (!src.trim()) return src;
+  const spec = DEAI_TIER_PROMPT[tier] ?? DEAI_TIER_PROMPT.medium;
+  const limit = DEAI_CHUNK_CHARS[tier] ?? 4000;
+  // 按空行切段后装箱, 不硬切句子
+  const paras = src.split(/\n{2,}/);
+  const chunks: string[] = [];
+  let buf: string[] = [];
+  let size = 0;
+  for (const p of paras) {
+    if (size + p.length > limit && buf.length) { chunks.push(buf.join("\n\n")); buf = []; size = 0; }
+    buf.push(p); size += p.length + 2;
+  }
+  if (buf.length) chunks.push(buf.join("\n\n"));
+  if (chunks.length <= 1) {
+    const one = await deAIChunk(chunks[0] ?? src, spec, tier, opts.model);
+    opts.onProgress?.(1, 1);
+    return one;
+  }
+  const out: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    out.push(await deAIChunk(chunks[i], spec, tier, opts.model));
+    opts.onProgress?.(i + 1, chunks.length);
+  }
+  return out.join("\n\n");
+}
+
+async function deAIChunk(text: string, spec: { label: string; spec: string; temp: number }, tier: DeAITier, model?: string): Promise<string> {
+  if (!text.trim()) return text;
+  const prompt = `你是中文学术写作编辑。请对下面这段论文正文执行「${spec.label}」, 目标是降低 AI 生成痕迹。
+
+【${spec.label}的处理方式】
+${spec.spec}
+
+${DEAI_FROZEN}
+
+【输出要求】
+· 直接输出改写后的正文, 不要任何解释、前后缀或代码围栏
+· 字数控制在原文的 0.9~1.3 倍之间
+· 保持 markdown 格式
+
+【原文】
+${text}`;
+  const ep = getLlmEndpoint({ model: model || getRoleModel("reason") });
+  const res = await fetchLlm({
+    url: ep.url, key: ep.key, model: ep.model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: spec.temp,
+    maxTokens: DEAI_TIER_PROMPT[tier]?.maxTokens ?? 8192,
+    timeoutMs: 300_000,
+  });
+  const got = String(res?.text ?? "").trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/, "");
+  // 失败 / 空 / 膨胀失控 → 回退原文(宁可留着 AI 味, 不能丢正文)
+  if (!got || got.length < text.length * 0.5 || got.length > text.length * DEAI_MAX_GROWTH) return text;
+  return got;
+}
+
 async function llmJson(prompt: string, modelOverride?: string, maxTokens = 4000): Promise<any | null> {
   const ep = getLlmEndpoint({ model: modelOverride || getRoleModel("reason") });
   const res = await fetchLlm({
@@ -132,15 +239,18 @@ export async function generateComponent(input: {
    * V417: 降 AI 痕迹。用户在「合稿定稿」勾了「降 AIGC」后, 这条开关此前一路写到
    * input_snapshot 就断了 —— runPhase5 从不读它, 用户选的档位对产出零影响。
    * 打开时在提示词里加反模板化要求。
+   * 2026-09-15: 扩成三档(轻/中/重), 摘要/关键词按档位给不同强度的指令; 正文的降重
+   * 由调用方用 applyDeAITier() 做(那条路要分块, 不适合塞在这个单次 JSON 调用里)。
    */
-  deAITone?: boolean;
+  deAITone?: boolean | DeAITier;
 }): Promise<ChapterResult> {
   const kindCn = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[input.kind];
   const chapters = input.sections.map((s, i) => `第${i + 1}章 ${s}`).join("；");
   const bodies = (input.chapterContents ?? []).map((c) => c.slice(0, 500)).join("\n");
-  const deAI = input.deAITone
-    ? `\n3. **降低 AI 痕迹**: 避免"首先/其次/最后""综上所述""随着…的发展"这类模板化套话; 避免机械的并列排比与空洞修饰; 句式长短交替, 用具体信息代替概括性表述。`
-    : "";
+  const tier: DeAITier | null = !input.deAITone ? null : input.deAITone === true ? "medium" : input.deAITone;
+  const tierSpec = tier ? DEAI_TIER_PROMPT[tier] : null;
+  // 摘要/关键词本来就是新写的, 没有"原文"可冻结 —— 只传处理方式, 不传冻结清单(那是给改写正文用的)
+  const deAI = tierSpec ? `\n3. **${tierSpec.label}(降 AI 痕迹)**: ${tierSpec.spec}` : "";
   const prompt = `你是人文社科学术写作专家。请为论文生成「${kindCn}」。
 
 【论文主题】${input.topic}

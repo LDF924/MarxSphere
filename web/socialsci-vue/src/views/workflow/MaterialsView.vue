@@ -7,14 +7,18 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
-import { q } from "@/shared/api";
+import { q, describeTaskError } from "@/shared/api";
 import { toast, confirmDialog } from "@/shared/ui";
 import { putNode } from "@/shared/tasks";
 import { claimHandoff } from "@/shared/workflow-bridge";
+import { renderMd } from "@/shared/markdown";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
+
+/** 素材审视报告: 后端返回的是 markdown, 原先用 <pre> 直出源码 */
+const reviewReportHtml = computed(() => renderMd(String(store.materialReviewReport ?? "")));
 
 interface Material {
   id: string;
@@ -24,6 +28,8 @@ interface Material {
   contentMd?: string;
   caption?: string;
   sectionId?: string;
+  /** 挂章数组(后端 section_ids jsonb → camelCase 映射); 发布门禁与"已关联"角标都读它 */
+  sectionIds?: string[];
   createdAt?: string;
   tableData?: { columns: string[]; rows: unknown[][] };
   references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string }>;
@@ -289,7 +295,7 @@ function pollGenTask(taskId: string) {
         stopGenDialogPoll();
         d.generating = false;
         d.streaming = false;
-        const msg = String((t as { error?: { message?: string } }).error?.message ?? (t as { result?: { error?: string } }).result?.error ?? "生成失败");
+        const msg = describeTaskError(t) || "生成失败";
         toast(msg, "error");
       }
     } catch { /* 容忍 */ }
@@ -392,6 +398,49 @@ function applyParsedRefs() {
 function openAdd(kind: string) {
   editDialog.value = { open: true, kind, material: { id: "", kind, title: "", content: "" } };
 }
+
+/** 变量角色色(SectionsView/WorkspaceView 同款 5 色) —— 文献弹层的「研究变量参考」chips 用 */
+function roleColor(role: string): string {
+  const qn: Record<string, string> = {
+    "自变量": "#2563eb", "因变量": "#dc2626", "中介": "#E8B54A", "调节": "#7c3aed", "控制": "#6b7280",
+    x: "#2563eb", y: "#dc2626", mediator: "#E8B54A", moderator: "#7c3aed", control: "#6b7280",
+    "影响因素": "#2563eb", "结果表现": "#dc2626", "中间机制": "#E8B54A", "情境条件": "#7c3aed", "背景因素": "#6b7280",
+  };
+  return qn[String(role ?? "")] ?? "#2563eb";
+}
+
+/** 编辑已有素材(闭源素材卡 hover 出现的「编辑」; 与新建共用同一弹层, 靠 material.id 区分) */
+function openEdit(m: Material) {
+  editDialog.value = { open: true, kind: catOf(String(m.kind ?? "")), material: { ...m } };
+}
+
+/** 素材卡上的章节徽标(闭源: 灰色小徽标, 显示挂到的章/子节名, 最多 80px 截断) */
+function sectionBadgeOf(m: Material): string {
+  const ids = Array.isArray(m.sectionIds) ? m.sectionIds : [];
+  const all = ids.length ? ids : m.sectionId ? [m.sectionId] : [];
+  if (!all.length) return "";
+  const title = store.sections.find((s) => s.id === all[0])?.title ?? "";
+  if (!title) return "";
+  return all.length > 1 ? `${title.slice(0, 6)}… +${all.length - 1}` : title.slice(0, 10);
+}
+
+/** 素材字数(闭源「N 字」) */
+function wordCountOf(m: Material): number {
+  const t = String(m.contentMd ?? m.content ?? "");
+  return t.replace(/\s/g, "").length;
+}
+
+/** 前往其它模块 —— 走外壳既有的 navigate 协议(不带 markdown, 是纯导航) */
+function gotoModule(mod: "statistics" | "viz") {
+  const view = mod === "statistics" ? "empirical-research" : "plot-agent";
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ source: "marxsphere-soc", type: "navigate", view }, "*");
+      return;
+    }
+  } catch { /* 跨源拿不到 parent */ }
+  toast("请从左侧导航进入对应模块", "warning");
+}
 function closeAdd() {
   editDialog.value.open = false;
 }
@@ -405,6 +454,19 @@ async function saveManual() {
   // 表格素材 → table(后端白名单外仍可存; normalizeKind 归 data/表格素材),
   // 数据分析素材(上传图/实证产物) → figure/data_result 归 dataAnalysis
   const kindMap: Record<string, string> = { literature: "citation", data: "table", theory: "theory", dataAnalysis: "figure", document: "file" };
+  // 编辑已有素材(有 id): 走 PUT 只改标题与内容 —— 不要重新建一条,
+  //   否则"编辑"会变成"复制一份"(闭源素材卡的编辑是就地改)。
+  if (m.id) {
+    try {
+      await q(`/research/materials/${m.id}`, { method: "PUT", body: { title: m.title, contentMd: m.content ?? "" } });
+      toast("素材已更新", "success");
+      closeAdd();
+      await loadMaterials();
+    } catch (e) {
+      toast(`更新失败: ${describeTaskError({ error: (e as Error).message })}`, "error");
+    }
+    return;
+  }
   const created = await createMaterial({
     kind: kindMap[editDialog.value.kind] ?? editDialog.value.kind,
     title: m.title,
@@ -781,10 +843,11 @@ async function publishAndEnter() {
   publishing.value = true;
   try {
     // publish 版本(POST publish → research_versions 指针快照)
-    await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: `素材版本` } }).catch(() => null);
-    store.phase = 4;
-    store.phaseLabel = "文本创作";
-    await store.saveProject();
+    // 2026-09-15: 标签改成阶段语义的 phase3_materials —— /versions/current 靠标签找各阶段
+    //   最新版本(合稿门禁"请先完成当前 Phase 4"要读它)。原先写的是中文「素材版本」,
+    //   后端认不出, phase3Version 永远是 null。
+    await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase3_materials" } }).catch(() => null);
+    store.setPhase(4);
     toast("素材版本已发布, 进入文本创作", "success");
     void router.push("/workflow/workspace");
   } catch {
@@ -809,51 +872,117 @@ onMounted(async () => {
   <div class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16" data-assistant-material-count="0">
     <PhaseProgressBar />
     <h1 class="wf-h1">素材准备</h1>
-    <p class="wf-sub">{{ store.title }} — 汇总文献、表格、数据与附件素材, 绑定到对应章节。</p>
+    <!-- 页头三行状态区(闭源: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
+    <div class="mat-stats">
+      <span><span class="ms-num">{{ materials.length }}</span></span>
+      <span class="ms-sep"></span>
+      <span>按流程完成素材整理后即可进入创作</span>
+      <span class="ms-sep"></span>
+      <span>{{ store.phase >= 4 ? "素材版本已发布" : "素材版本待发布" }}</span>
+    </div>
 
-    <!-- 素材标题条(单类生成进行中状态在 B4 弹层内呈现) -->
+    <!-- ═══ 补充素材来源(闭源整卡: 三主按钮 + 手动添加四格 + 从其他模块导入两格) ═══ -->
+    <section class="source-card">
+      <h2 class="sc-title">补充素材来源</h2>
+      <div class="sc-actions">
+        <button class="sc-btn-primary" data-control="workflow:smart-generate" @click="generatePlan">智能生成素材</button>
+        <button class="sc-btn-outline" data-control="workflow:review-materials" @click="reviewAll">审视素材</button>
+        <button class="sc-btn-outline" data-control="workflow:allocate" :disabled="!materials.length" @click="runAllocate">编排素材</button>
+      </div>
+
+      <h3 class="sc-group">手动添加</h3>
+      <div class="sc-grid-4">
+        <button class="sc-tile" data-control="workflow:manual-literature" @click="openAdd('literature')">
+          <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5.5A2.5 2.5 0 016.5 3H19v16H6.5A2.5 2.5 0 004 21.5V5.5zM8 8h7M8 12h7" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+          <span class="sc-tile-text">检索文献</span>
+        </button>
+        <button class="sc-tile" data-control="workflow:manual-table" @click="openAdd('data')">
+          <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 5h18v14H3zM3 10h18M9 10v9" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+          <span class="sc-tile-text">添加表格</span>
+        </button>
+        <button class="sc-tile" data-control="workflow:manual-theory" @click="openAdd('theory')">
+          <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 012-2h12v18H6a2 2 0 01-2-2V5zM8 7h8M8 11h8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+          <span class="sc-tile-text">添加理论</span>
+        </button>
+        <label class="sc-tile" data-control="workflow:upload-attachment">
+          <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.5V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h9M16 3v4M8 3v4M3 9h18" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+          <span class="sc-tile-text">上传附件</span>
+          <input type="file" accept=".pdf,.docx,.txt,.md,.csv,.tsv" style="display: none" @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; if (f) void uploadMaterialFile('document', f); }" />
+        </label>
+      </div>
+
+      <h3 class="sc-group">从其他模块导入</h3>
+      <div class="sc-grid-2">
+        <button class="sc-tile wide" data-control="workflow:goto-statistics" @click="gotoModule('statistics')">
+          <span class="sc-tile-left">
+            <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke-linecap="round" /></svg></span>
+            <span class="sc-tile-text">前往数据分析模块进行分析</span>
+          </span>
+          <span class="sc-arrow">›</span>
+        </button>
+        <button class="sc-tile wide" data-control="workflow:goto-viz" @click="gotoModule('viz')">
+          <span class="sc-tile-left">
+            <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+            <span class="sc-tile-text">前往科研绘图模块进行分析</span>
+          </span>
+          <span class="sc-arrow">›</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 设计思路(闭源: 研究逻辑全文卡) -->
+    <div v-if="store.project.logicFlow" class="design-card">
+      <div class="dc-head">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <span>设计思路</span>
+      </div>
+      <p class="dc-body">{{ store.project.logicFlow }}</p>
+    </div>
+
+    <h2 class="mat-section-title">已整理素材</h2>
+
     <!-- 分类手风琴 -->
     <div class="cat-list">
       <section v-for="cat in CATS" :key="cat.key" class="cat-card">
-        <div class="cat-head" @click="toggleCat(cat.key)">
-          <span class="cat-icon">{{ cat.icon }}</span>
-          <strong>{{ cat.label }}</strong>
-          <span class="cat-count">{{ catCount(cat.key) }} 项</span>
-          <span class="cat-caret">{{ expandedCats.has(cat.key) ? "▼" : "▶" }}</span>
+        <!-- 头行: 图标块 + 标题 + 计数 + **行内操作按钮**(折叠态也可见) + caret -->
+        <div class="cat-head">
+          <span class="cat-icon-box" @click="toggleCat(cat.key)">
+            <span class="cat-icon">{{ cat.icon }}</span>
+          </span>
+          <div class="cat-title-wrap" @click="toggleCat(cat.key)">
+            <span class="cat-name">{{ cat.label }}</span>
+            <span class="cat-count">{{ catCount(cat.key) }} 项</span>
+          </div>
+          <div class="cat-head-actions">
+            <button
+              v-if="cat.aiAction && cat.key !== 'dataAnalysis'"
+              class="cat-inline-btn" :disabled="genDialog.open"
+              data-control="workflow:cat-generate"
+              @click.stop="cat.key === 'document' ? undefined : aiGenerate(cat.key)"
+            >{{ cat.key === 'document' ? cat.aiAction : cat.aiAction }}</button>
+            <button v-if="cat.manualAction" class="cat-inline-btn" data-control="workflow:cat-add" @click.stop="openAdd(cat.key)">{{ cat.manualAction }}</button>
+            <span class="cat-caret" :class="{ open: expandedCats.has(cat.key) }" @click="toggleCat(cat.key)">▼</span>
+          </div>
         </div>
         <div v-if="expandedCats.has(cat.key)" class="cat-body">
-          <div class="cat-actions">
-            <button v-if="cat.aiAction && cat.key !== 'dataAnalysis' && cat.key !== 'document'" class="btn-ai" :disabled="genDialog.open" @click="aiGenerate(cat.key)" data-control="workflow:ai-generate">
-              {{ cat.aiAction }}
-            </button>
-            <label v-if="cat.key === 'dataAnalysis'" class="btn-manual" style="cursor: pointer" data-control="workflow:upload-data">
+          <div v-if="cat.key === 'dataAnalysis'" class="cat-actions">
+            <label class="btn-manual" style="cursor: pointer" data-control="workflow:upload-data">
               {{ dataBusy ? "上传中…" : "上传数据文件" }}
-              <input
-                type="file"
-                accept=".csv,.tsv,.xlsx,.xls,.json"
-                style="display: none"
-                :disabled="dataBusy"
-                @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }"
-              />
+              <input type="file" accept=".csv,.tsv,.xlsx,.xls,.json" style="display: none" :disabled="dataBusy"
+                @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }" />
             </label>
-            <label v-if="cat.key === 'dataAnalysis' || cat.key === 'document'" class="btn-ai" style="cursor: pointer">
-              {{ cat.aiAction }}
-              <input
-                type="file"
-                :accept="cat.key === 'dataAnalysis' ? '.png,.jpg,.jpeg,.webp' : '.pdf,.docx,.txt,.md,.csv,.tsv'"
-                style="display: none"
-                @change="(ev) => uploadMaterialFile(cat.key, (ev.target as HTMLInputElement).files?.[0])"
-              />
-            </label>
-            <button v-if="cat.manualAction" class="btn-manual" @click="openAdd(cat.key)">{{ cat.manualAction }}</button>
           </div>
           <div v-if="!catCount(cat.key)" class="cat-empty">暂无{{ cat.label }}素材</div>
           <div v-else class="mat-list">
             <div v-for="m in grouped[cat.key]" :key="m.id" class="mat-card">
+              <!-- 卡头: 章节徽标 + 标题 + hover 出现的编辑/删除 -->
               <div class="mat-head">
-                <strong>{{ m.title || "未命名素材" }}</strong>
-                <span class="mat-kind">{{ cat.label }}</span>
-                <button class="mat-src-btn" data-control="workflow:open-sources" title="查看该素材的来源文献/出处" @click.stop="openSources(m)">来源</button>
+                <span v-if="sectionBadgeOf(m)" class="mat-sec-chip">{{ sectionBadgeOf(m) }}</span>
+                <strong class="mat-title">{{ m.title || "未命名素材" }}</strong>
+                <span class="mat-head-ops">
+                  <button class="mat-op" data-control="workflow:edit-material" @click.stop="openEdit(m)">编辑</button>
+                  <button class="mat-op danger" data-control="workflow:delete-material" @click.stop="removeMaterial(m)">删除</button>
+                </span>
               </div>
               <div v-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData" class="mat-content">{{ String(m.contentMd).slice(0, 120) }}</div>
               <div v-if="m.content && !m.contentMd && !(m as any).imageDataUrl" class="mat-content">{{ String(m.content).slice(0, 120) }}</div>
@@ -864,11 +993,12 @@ onMounted(async () => {
               <div v-else-if="m.contentMd && /^!\[[^\]]*\]\((\/api\/[^)]+|data:image\/[^)]+)\)/.test(m.contentMd)" class="mat-img">
                 <img :src="String(m.contentMd).match(/^!\[[^\]]*\]\(([^)]+)\)/)?.[1] ?? ''" :alt="m.title" class="mat-img-src" @click="openImagePreview(String(m.contentMd).match(/^!\[[^\]]*\]\(([^)]+)\)/)?.[1] ?? '')" />
               </div>
+              <!-- 表格预览(闭源 max-h-20 可滚动的真三线表, 不截断行) -->
               <div v-if="m.tableData && Array.isArray((m as any).tableData?.columns) && Array.isArray((m as any).tableData?.rows)" class="mat-table">
                 <table class="three-line-table">
                   <thead><tr><th v-for="c in m.tableData.columns" :key="c">{{ c }}</th></tr></thead>
                   <tbody>
-                    <tr v-for="(r, ri) in m.tableData.rows.slice(0, 3)" :key="ri">
+                    <tr v-for="(r, ri) in m.tableData.rows" :key="ri">
                       <td v-for="(cell, ci) in r" :key="ci">{{ cell }}</td>
                     </tr>
                   </tbody>
@@ -878,12 +1008,17 @@ onMounted(async () => {
                 <span v-if="m.sectionId || (m as any).sectionIds?.length" class="sec-chip">📎 已关联</span>
                 <!-- B5: 文献来源徽章(闭源: 文献库检索/内部资料 + sourceStatus completed/empty/failed) -->
                 <span v-if="mKindBadge(m)" class="src-badge" :class="mKindBadge(m)!.cls">{{ mKindBadge(m)!.text }}</span>
-                <span class="mat-date">{{ m.createdAt ? m.createdAt.slice(5, 10).replace("-", "/") : "" }}</span>
-                <button v-if="!(m.sectionId || (m as any).sectionIds?.length)" class="mat-alloc" @click="runAllocate">编排</button>
-                <button class="mat-del" @click="removeMaterial(m)">删除</button>
+                <span class="mat-words">{{ wordCountOf(m) }} 字</span>
+                <span class="mat-date">{{ m.createdAt ? m.createdAt.slice(0, 10).replace(/-/g, "/") : "" }}</span>
+                <button class="mat-src-btn" data-control="workflow:open-sources" title="查看该素材的来源文献/出处" @click.stop="openSources(m)">来源</button>
+                <button v-if="!(m.sectionId || (m as any).sectionIds?.length)" class="mat-alloc" @click.stop="runAllocate">编排</button>
               </div>
             </div>
           </div>
+          <!-- 继续搜集(闭源每类底部一行) -->
+          <button v-if="cat.aiAction" class="cat-more" data-control="workflow:cat-more" @click.stop="aiGenerate(cat.key)">
+            ＋ 继续搜集{{ cat.label.replace("素材", "") }}素材
+          </button>
         </div>
       </section>
     </div>
@@ -892,16 +1027,13 @@ onMounted(async () => {
     <div v-if="store.materialReviewReport" class="review-report">
       <details>
         <summary class="report-head">素材审视报告</summary>
-        <pre class="report-body markdown-body">{{ store.materialReviewReport }}</pre>
+        <div class="report-body markdown-body" v-html="reviewReportHtml"></div>
       </details>
     </div>
 
-    <!-- 底部操作 -->
+    <!-- 底部操作(闭源只有两个: 描边返回 + flex-1 主按钮; 审视/编排/智能生成已移到上方「补充素材来源」卡) -->
     <div class="wf-actions">
       <button class="btn-back" @click="router.push('/workflow/sections')">返回章节清单</button>
-      <button class="btn-ghost-red" @click="reviewAll" data-control="workflow:review-materials">审视素材</button>
-      <button class="btn-alloc-cta" data-control="workflow:allocate" :disabled="publishing || !materials.length" @click="runAllocate">编排素材</button>
-      <button class="btn-smart" data-control="workflow:smart-generate" @click="generatePlan">⚡ 智能生成素材</button>
       <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
         {{ publishing ? "发布中…" : "确认并进入创作" }}
       </button>
@@ -990,6 +1122,15 @@ onMounted(async () => {
           <div class="modal-body gen-body">
             <!-- 提示 -->
             <p v-if="genPromptHint" class="gen-hint">{{ genPromptHint }}</p>
+            <!-- 研究变量参考(闭源仅文献类展示: 角色圆点 + 中文角色 + 变量名) -->
+            <div v-if="genDialog.catKey === 'literature' && store.variables.length" class="gen-vars">
+              <p class="gv-title">研究变量参考（可据此查询）</p>
+              <div class="gv-chips">
+                <span v-for="v in store.variables" :key="v.name" class="gv-chip">
+                  <i class="gv-dot" :style="{ background: roleColor(v.role) }"></i>{{ v.role }}　{{ v.name }}
+                </span>
+              </div>
+            </div>
             <!-- 生成要求 -->
             <div class="f-row">
               <label>{{ genDialog.catKey === "literature" ? "文献查询" : "生成要求" }} *</label>
@@ -1155,6 +1296,62 @@ onMounted(async () => {
 .workflow-page { width: 100%; box-sizing: border-box; }
 .wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
 .wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
+/* 页头三行状态区(闭源: N | 说明 | 版本状态, 中间夹竖线) */
+.mat-stats { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: #8B9BB1; margin: 10px 0 18px; flex-wrap: wrap; }
+.ms-num { color: #E8EEF7; font-weight: 600; font-size: 13.5px; }
+.ms-sep { width: 1px; height: 12px; background: #46587A; display: inline-block; }
+
+/* 补充素材来源整卡 */
+.source-card {
+  background: #11192C; border: 1px solid #222F44; border-radius: 12px;
+  padding: 18px 20px; margin-bottom: 18px;
+}
+.sc-title { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
+.sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.sc-btn-primary {
+  padding: 8px 18px; border: 0; border-radius: 9px; background: #dc2626;
+  color: #F1F5F9; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.sc-btn-primary:hover { background: #b91c1c; }
+.sc-btn-outline {
+  padding: 8px 18px; border-radius: 9px; background: #11192C;
+  border: 1px solid #dc2626; color: #E88A8A; font-size: 13px; cursor: pointer;
+}
+.sc-btn-outline:hover { background: #2A1C1C; }
+.sc-btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
+.sc-group { margin: 0 0 10px; font-size: 11px; font-weight: 500; color: #7A8AA0; letter-spacing: 0.06em; }
+.sc-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+.sc-grid-2 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 768px) {
+  .sc-grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .sc-grid-2 { grid-template-columns: repeat(2, 1fr); }
+}
+.sc-tile {
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px;
+  background: #0E1729; border: 1px solid #222F44; border-radius: 9px;
+  color: #DCE6F2; font-size: 13px; cursor: pointer; text-align: left;
+}
+.sc-tile:hover { border-color: #B06A6A; }
+.sc-tile.wide { justify-content: space-between; }
+.sc-tile-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sc-tile-text { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-icon {
+  width: 30px; height: 30px; border-radius: 8px; background: #2A1C1C; color: #E88A8A;
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.sc-arrow { color: #7A8AA0; font-size: 18px; flex-shrink: 0; }
+.sc-tile:hover .sc-arrow { color: #dc2626; }
+
+/* 设计思路卡 */
+.design-card {
+  background: #11192C; border: 1px solid #222F44; border-radius: 10px;
+  padding: 12px 16px; margin-bottom: 18px;
+}
+.dc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: #8B9BB1; }
+.dc-head span { font-size: 13px; font-weight: 500; color: #DCE6F2; }
+.dc-body { margin: 0; font-size: 12.5px; color: #B9C6D8; line-height: 1.7; overflow-wrap: break-word; }
+.mat-section-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
+
 .job-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 9px; margin-bottom: 12px; font-size: 13px; }
 .job-bar.running { background: #1E2A48; border: 1px solid #bfdbfe; color: #1d4ed8; }
 .job-bar.failed { background: #2A1C1C; border: 1px solid #3A2323; color: #dc2626; }
@@ -1165,19 +1362,39 @@ onMounted(async () => {
 @keyframes jspin { to { transform: rotate(360deg); } }
 .cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .cat-card { background: #11192C; border: 1px solid #222F44; border-radius: 12px; overflow: hidden; }
+/* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(闭源如此) */
 .cat-head {
-  display: flex; align-items: center; gap: 10px; padding: 13px 16px;
-  background: #1A2333; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 12px; padding: 13px 18px;
+  background: #1A2333; user-select: none;
 }
+.cat-icon-box { cursor: pointer; }
 .cat-icon {
   width: 30px; height: 30px; border-radius: 8px;
-  background: #dc2626; display: grid; place-items: center; font-size: 15px;
+  background: #2A1C1C; color: #E88A8A; display: grid; place-items: center; font-size: 15px;
 }
-.cat-head strong { font-size: 15px; color: #E8EEF7; }
-.cat-count { font-size: 11px; color: #7A8AA0; background: #212C45; padding: 2px 9px; border-radius: 10px; }
-.cat-caret { margin-left: auto; color: #7A8AA0; font-size: 10px; }
-.cat-body { padding: 12px 16px; border-top: 1px solid #212C45; }
+.cat-title-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; }
+.cat-name { font-size: 14.5px; font-weight: 600; color: #E8EEF7; }
+.cat-count {
+  font-size: 11px; color: #7A8AA0; background: #0E1729;
+  padding: 2px 9px; border-radius: 10px; flex-shrink: 0;
+}
+.cat-head-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.cat-inline-btn {
+  font-size: 11.5px; padding: 4px 10px; border-radius: 6px;
+  background: #0E1729; border: 1px solid #222F44; color: #B9C6D8; cursor: pointer;
+}
+.cat-inline-btn:hover { background: #1E2A48; color: #E8EEF7; }
+.cat-inline-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cat-caret { color: #7A8AA0; font-size: 10px; cursor: pointer; transition: transform 0.16s; }
+.cat-caret.open { transform: rotate(180deg); }
+.cat-body { padding: 12px 18px 14px; border-top: 1px solid #212C45; }
 .cat-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.cat-more {
+  margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px;
+  background: transparent; border: 1px dashed #46587A; color: #8B9BB1;
+  font-size: 12px; cursor: pointer;
+}
+.cat-more:hover { border-color: #B06A6A; color: #E8EEF7; }
 .btn-ai {
   padding: 6px 14px; background: #dc2626; color: #F1F5F9; border: 0;
   border-radius: 7px; font-size: 12.5px; font-weight: 500; cursor: pointer;
@@ -1203,15 +1420,33 @@ onMounted(async () => {
 .src-meta { margin-left: 8px; font-size: 11px; color: #8B9BB1; }
 .src-excerpt { margin: 3px 0 0; font-size: 11.5px; line-height: 1.6; color: #C7D2E0; }
 .f-hint { font-size: 12px; color: #8B9BB1; margin: 4px 0; }
-.mat-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.mat-head strong { font-size: 13.5px; color: #E8EEF7; }
+.mat-head { display: flex; align-items: center; gap: 8px; }
+.mat-title { font-size: 13.5px; font-weight: 500; color: #E8EEF7; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 章节徽标(闭源 text-gray-500 小徽标, max-w-[80px] 截断) */
+.mat-sec-chip {
+  font-size: 10.5px; color: #8B9BB1; background: #1A2333;
+  padding: 2px 7px; border-radius: 6px; max-width: 80px; flex-shrink: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 卡头操作(闭源 hover 才出现) */
+.mat-head-ops { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+.mat-card:hover .mat-head-ops { opacity: 1; }
+.mat-op {
+  border: 0; background: none; color: #8B9BB1; font-size: 11.5px; cursor: pointer; padding: 1px 4px;
+}
+.mat-op:hover { color: #E8EEF7; }
+.mat-op.danger:hover { color: #dc2626; }
 .mat-kind { font-size: 10px; color: #dc2626; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
 .mat-content { font-size: 12px; color: #8B9BB1; line-height: 1.55; white-space: pre-wrap; }
-.mat-foot { display: flex; align-items: center; gap: 8px; }
+.mat-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sec-chip { font-size: 10.5px; background: #11192Cbeb; color: #E8B54A; padding: 2px 8px; border-radius: 7px; }
+.mat-words { font-size: 10.5px; color: #7A8AA0; }
 .mat-date { font-size: 10.5px; color: #7A8AA0; }
-.mat-del { margin-left: auto; border: 0; background: none; color: #8B9BB1; font-size: 11.5px; cursor: pointer; }
+.mat-foot .mat-src-btn { margin-left: auto; }
+.mat-del { border: 0; background: none; color: #8B9BB1; font-size: 11.5px; cursor: pointer; }
 .mat-del:hover { color: #dc2626; }
+/* 表格预览: 闭源 max-h-20 可滚动, 不截断行(原先 slice(0,3) 会把长表截成"只有表头") */
+.mat-table { max-height: 80px; overflow-y: auto; }
 .three-line-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
 .three-line-table th {
   border-top: 2px solid #1e293b; border-bottom: 1px solid #475569;
@@ -1226,7 +1461,8 @@ onMounted(async () => {
   border: 1px solid #3A3020; border-top: 0; border-radius: 0 0 9px 9px;
   font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; color: #DCE6F2;
 }
-.wf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.wf-actions { display: flex; gap: 10px; margin-top: 6px; }
+.wf-actions .btn-primary { flex: 1; }
 .btn-back {
   padding: 10px 22px; border: 1px solid #222F44; border-radius: 9px;
   background: #11192C; color: #8B9BB1; font-size: 14px; cursor: pointer;
@@ -1249,7 +1485,18 @@ onMounted(async () => {
 .f-row { display: flex; flex-direction: column; gap: 5px; }
 .f-row label { font-size: 13px; font-weight: 600; color: #DCE6F2; }
 .f-input { padding: 8px 12px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; }
-.f-textarea { padding: 8px 12px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; }
+/* 生成要求文本域(闭源 resize-none —— 让弹层高度稳定, 不被用户拖成两屏) */
+.f-textarea { padding: 8px 12px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; font-family: inherit; resize: none; }
+/* 研究变量参考 chips */
+.gen-vars { margin-bottom: 12px; }
+.gv-title { margin: 0 0 7px; font-size: 12px; color: #8B9BB1; }
+.gv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gv-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: #C6D2E4; background: #0E1729;
+  border: 1px solid #222F44; border-radius: 8px; padding: 3px 9px;
+}
+.gv-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid #222F44; }
 
 .btn-smart {

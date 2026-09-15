@@ -9706,7 +9706,9 @@ except Exception as e:
   app.patch("/api/research/projects/:projectId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId } = request.params as { projectId: string };
-    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string };
+    // 2026-09-15: 补 phase/phaseLabel —— 写作舱推进阶段时前端只写了 workbench 快照,
+    //   research_projects.phase 全仓零写入方, 项目列表/版本门禁读到的阶段恒为 0。
+    const body = request.body as { title?: string; topic?: string; thesis?: string; style?: string; phase?: number; phaseLabel?: string };
     const updated = await researchPipeline.updateProjectMeta(user.id, projectId, body);
     if (!updated) return reply.code(404).send({ error: "项目不存在" });
     return { ok: true };
@@ -11750,14 +11752,52 @@ ${dataBlock}
       `select version, label, status, created_at from research_versions where project_id=$1 order by version desc limit 1`,
       [q.projectId]);
     const last = r.rows[0] ?? null;
+    // 2026-09-15: 此前 phase2/3/4 的版本与 stale 全是**硬编码常量**(phase2Version: null,
+    //   phase2Stale: false…), 只有 phase5Version 是真查的 —— 这个端点是合稿门禁
+    //   ("请先完成当前 Phase 4 正文生成")的底座, 假数据等于门禁永不触发。
+    //   真实来源: 该阶段发布过的最近一个版本(research_versions.label = phaseN_*),
+    //   戳点取版本创建时间; 节点在该时间点之后又更新过 → 该阶段产物已过期(stale)。
+    const st = await pool.query(
+      `select distinct on (label) label, version, id, created_at
+         from research_versions
+        where project_id=$1 and label in ('phase2_architecture','phase3_materials','phase4_text','phase5_final')
+        order by label, version desc`,
+      [q.projectId]);
+    const byLabel = new Map<string, { id: string; version: number; label: string; status: string | null; created_at: string }>();
+    for (const row of st.rows as Array<{ label: string; version: number; id: string; created_at: string }>) {
+      byLabel.set(row.label, { id: row.id, version: row.version, label: row.label, status: null, created_at: row.created_at });
+    }
+    // 阶段 → (版本标签, 该阶段的节点键)
+    const stageNodeKeys: Array<[string, string, string[]]> = [
+      ["phase2", "phase2_architecture", ["sections"]],
+      ["phase3", "phase3_materials", ["materials"]],
+      ["phase4", "phase4_text", ["sections"]],
+    ];
+    const nodes = await pool.query(
+      `select node_key, updated_at from research_nodes where project_id=$1`,
+      [q.projectId]);
+    const nodeUpdated = new Map<string, string>();
+    for (const n of nodes.rows as Array<{ node_key: string; updated_at: string }>) nodeUpdated.set(n.node_key, n.updated_at);
+    const phaseState: Record<string, { version: unknown; stale: boolean }> = {};
+    for (const [name, label, keys] of stageNodeKeys) {
+      const v = byLabel.get(label);
+      if (!v) { phaseState[name] = { version: null, stale: false }; continue; }
+      const pubAt = new Date(v.created_at).getTime();
+      // 该阶段的节点在这个版本之后又被写过 → 版本落后于内容
+      const stale = keys.some((k) => {
+        const u = nodeUpdated.get(k);
+        return !!u && new Date(u).getTime() > pubAt + 1000;
+      });
+      phaseState[name] = { version: { id: v.id, version: v.version, label: v.label }, stale };
+    }
     return {
       success: true,
       state: {
         taskId: q.projectId,
         inputVersion: project.workbench_snapshot?.phase2VersionId ? { id: project.workbench_snapshot.phase2VersionId } : null,
-        phase2Version: null, phase2Stale: false,
-        phase3Version: null, phase3Stale: false,
-        phase4Version: null, phase4Stale: false,
+        phase2Version: phaseState.phase2.version, phase2Stale: phaseState.phase2.stale,
+        phase3Version: phaseState.phase3.version, phase3Stale: phaseState.phase3.stale,
+        phase4Version: phaseState.phase4.version, phase4Stale: phaseState.phase4.stale,
         phase5Version: last ? { id: last.id, version: last.version, label: last.label, status: last.status } : null,
         phase5Stale: false,
         publishedVersion: project.published_version ?? 0,
