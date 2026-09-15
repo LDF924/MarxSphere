@@ -89,7 +89,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │           DeepSeek API (api.deepseek.com)                     │
-│           model: deepseek-v4-flash, temperature=0.1           │
+│           model: deepseek-flash, temperature=0.1           │
 │           并发信号量: CONCURRENCY_LIMIT=3                     │
 ├──────────────────────────────────────────────────────────────┤
 │                                                              │

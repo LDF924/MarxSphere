@@ -4,6 +4,7 @@
 // 任务完成后重生成 摘要/术语表/问答 三产物 → 覆盖 vendor 通用产物
 // 引擎: DeepSeek/MAAS（与 skill 同源: LLM_BASE_URL=dashscope, LLM_MODEL=qwen-plus 或 DEEPSEEK_API_KEY）
 import fs from "node:fs/promises";
+import { toChatCompletionsUrl } from "./ai-settings-service.js";
 import path from "node:path";
 
 /** 研究领域上下文（移植自 skill scripts/generate.py FIELD_CONTEXT — 资本规范与治理全领域） */
@@ -77,8 +78,8 @@ export function domainQaPrompt(): string {
 async function callLlm(system: string, excerpt: string, maxTokens = 4096): Promise<string> {
   const dsKey = process.env.DEEPSEEK_API_KEY || "";
   const endpoint = dsKey
-    ? { url: process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions", model: process.env.P2O_DOMAIN_MODEL || "deepseek-flash", key: dsKey }
-    : { url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: process.env.P2O_DOMAIN_MODEL || "qwen-plus", key: process.env.LLM_API_KEY || "" };
+    ? { url: toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions"), model: process.env.P2O_DOMAIN_MODEL || "deepseek-flash", key: dsKey }
+    : { url: toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"), model: process.env.P2O_DOMAIN_MODEL || "qwen-plus", key: process.env.LLM_API_KEY || "" };
   const res = await fetch(endpoint.url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${endpoint.key}` },

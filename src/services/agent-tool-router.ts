@@ -3,6 +3,7 @@
 // 规划时不再定死工具类型: 每步执行时 LLM 从工具清单选工具+参数, 运行时调度
 // 工具清单: SAG 现有能力注册表（推理/检索/写作/实证/政策等）
 import { callLlm } from "../ai/llm-common.js";
+import { toChatCompletionsUrl } from "./ai-settings-service.js";
 import { dataPath } from "./storage-paths.js";
 import { selfBaseUrl } from "./base-urls.js";
 import { edgePath as edgeBrowserPath, edgePathHint } from "./browser-path.js";
@@ -839,7 +840,7 @@ export async function buildAgentTools(opts?: {
               if (process.env.SENSENOVA_API_KEY) {
                 const senseBase = process.env.SENSENOVA_BASE_URL ?? "https://token.sensenova.cn/v1";
                 const senseModel = process.env.SENSENOVA_MODEL ?? "sensenova-6.8-flash-lite";
-                const res = await fetch(`${senseBase}/chat/completions`, {
+                const res = await fetch(toChatCompletionsUrl(senseBase), {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.SENSENOVA_API_KEY}` },
                   body: JSON.stringify({
@@ -1907,7 +1908,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
       run: async (a) => {
         const dsKey = process.env.DEEPSEEK_API_KEY || "";
         const llmRes = await fetch(
-          dsKey ? (process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+          dsKey ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"),
           {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${dsKey || process.env.LLM_API_KEY}` },
@@ -2576,7 +2577,7 @@ export async function analyzeImageAtPath(relPath: string, mode = "describe"): Pr
     if (process.env.SENSENOVA_API_KEY) {
       const senseBase = process.env.SENSENOVA_BASE_URL ?? "https://token.sensenova.cn/v1";
       const senseModel = process.env.SENSENOVA_MODEL ?? "sensenova-6.8-flash-lite";
-      const res = await fetch(`${senseBase}/chat/completions`, {
+      const res = await fetch(toChatCompletionsUrl(senseBase), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.SENSENOVA_API_KEY}` },
         body: JSON.stringify({

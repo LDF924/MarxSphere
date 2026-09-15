@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-import { aiSettingsService, type AiRuntimeSettings } from "../services/ai-settings-service.js";
+import { aiSettingsService, toChatCompletionsUrl, type AiRuntimeSettings } from "../services/ai-settings-service.js";
 import type { ExtractedEntity, ExtractedEvent, EventRecord } from "../types.js";
 import { createModelCallLogger } from "../observability/model-call-log.js";
 import { breakers } from "../services/circuit-breaker.js";
@@ -321,7 +321,7 @@ export class OpenAICompatibleLlmClient implements LlmClient {
     messages?: ChatMessage[];
     operation?: string;
   }): Promise<Record<string, any>> {
-    const url = `${settings.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+    const url = toChatCompletionsUrl(settings.llmBaseUrl);
     const messages = input.messages ?? [
       { role: "system" as const, content: input.system ?? "" },
       { role: "user" as const, content: input.user ?? "" }
@@ -419,7 +419,7 @@ export class OpenAICompatibleLlmClient implements LlmClient {
     user?: string;
     operation?: string;
   }): Promise<string> {
-    const url = `${settings.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+    const url = toChatCompletionsUrl(settings.llmBaseUrl);
     const messages: ChatMessage[] = [
       { role: "system", content: input.system ?? "" },
       { role: "user", content: input.user ?? "" }

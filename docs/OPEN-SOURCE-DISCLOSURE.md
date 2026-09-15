@@ -16,7 +16,7 @@
 | MCP 服务 | `npm run mcp` | 标准 I/O MCP Server（10 个工具：检索/入库/执行/grep/大纲/文档/chunk 等） |
 | OpenAI 兼容 | `POST /api/openai/chat/completions` | 外部 OpenAI 客户端把本地知识库当"模型"调用（含 citations） |
 | 备份 | `npx tsx scripts/backup-now.ts` | 知识库轻量备份 .sagbak（PG + Graphiti/Cognee 图谱 + 清单校验） |
-| 测试 | `npm test` | 332 项单元测试 |
+| 测试 | `npm test` | 1017 项单元测试 |
 | 数据库 | `npm run db:setup` | 迁移 + 种子数据 |
 
 ### 依赖说明
@@ -111,7 +111,7 @@
 
 | 模型 | 类型 | 使用范围 | 原因 |
 |---|---|---|---|
-| qwen-plus / deepseek-v4-flash | 闭源 | 推理/实体抽取/综合回答 | 中文领域效果、成本、速度平衡 |
+| deepseek-flash / qwen-plus | 闭源 | 推理/实体抽取/综合回答 | 中文领域效果、成本、速度平衡 |
 | qwen3-rerank | 闭源 | 检索重排 | 与检索流水线配合的领域效果 |
 | text-embedding-v4 | 闭源 | 向量化 | 中文语义理解效果好 |
 
@@ -129,7 +129,7 @@
 
 - **框架选择**：自研轻量编排（非 LangChain 类框架），基于任务队列 + 工具注册表 + 状态机
 - **任务规划**：LLM 拆解子任务 → 任务 DAG 依赖 → 队列并发执行（详见 `docs/AGENT-CAPABILITIES.md`）
-- **工具调用**：87 工具（65 Agent + 22 视图）经注册表统一管理（输入 schema 校验 → 白名单审批 → 超时熔断 → 重试退避）
+- **工具调用**：72 工具（50 Agent + 22 视图）经注册表统一管理（输入 schema 校验 → 白名单审批 → 超时熔断 → 重试退避）
 - **状态管理**：任务状态持久化到 PostgreSQL（重启恢复），轨迹 span 树完整记录
 
 ## 7. 工具与平台接入
@@ -258,7 +258,7 @@
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义
 - `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
-- 332 项单元测试（`npm test`）
+- 1017 项单元测试（`npm test`）
 - 53 题双轨评测（规则评分 + LLM judge）overall 0.884（`scripts/eval-32-metrics.ts`）
 
 ---

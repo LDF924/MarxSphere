@@ -161,7 +161,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -2262,7 +2262,7 @@ function AppShell() {
             ) : workspaceView === "editor" ? (
               <ErrorBoundary><FusionPanel panelKey="editor" tab={{ ...FUSION_TABS.editor, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "site-content" ? (
-              <ErrorBoundary><SiteContentPanel /></ErrorBoundary>
+              <ErrorBoundary><SiteContentPanel onNavigate={(v) => navigateView(v)} /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
               <ErrorBoundary><ResearchHistoryPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
             ) : workspaceView === "billing" ? (

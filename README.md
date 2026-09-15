@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1012%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1017%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -454,9 +454,9 @@ npm run dev:desktop       # 开发态启动 Electron
 
 ```env
 DATABASE_URL=postgres://user:pass@localhost:5432/sag_lite
-LLM_API_KEY=sk-xxx            # OpenAI 兼容接口
+LLM_API_KEY=sk-xxx            # 与下面的 LLM_BASE_URL 必须同源
 LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=qwen-plus
+LLM_MODEL=deepseek-flash      # DeepSeek 端点只认 deepseek-flash / deepseek-v4-pro
 EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_BASE_URL=https://api.302ai.cn/v1
 EMBEDDING_MODEL=text-embedding-3-large
@@ -526,7 +526,7 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明）
 migrations/          PostgreSQL schema（80+ 迁移）
 plugins/             Agent 插件目录
-test/                单元测试（1012 项）
+test/                单元测试（1017 项）
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选等）
 ```
@@ -534,13 +534,13 @@ data/                运行时数据（金标候选等）
 ## 测试
 
 ```bash
-npm test                # 1012 项单元测试
+npm test                # 1017 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1012 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1017 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 

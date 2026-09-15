@@ -123,7 +123,7 @@ PDF(10,237篇) → pdf2obsidian(1化6) → Obsidian(Vault)
 
 ## 关键配置
 
-- LLM：DeepSeek 原生 API（deepseek-chat/v4-flash），数据库 ai_provider_settings 优先于 .env
+- LLM：DeepSeek 原生 API（deepseek-flash），数据库 ai_provider_settings 优先于 .env
 - Embedding：阿里 MAAS text-embedding-v4（1024d）
 - 运行模式：preview(省内存无MCP池) / full(推理+MCP池10实例)
 - 超时：LLM 300s

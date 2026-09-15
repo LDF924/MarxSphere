@@ -24,6 +24,12 @@ const runtimeSettings = vi.hoisted(() => ({
 vi.mock("../src/services/ai-settings-service.js", () => ({
   aiSettingsService: {
     getRuntimeSettings: vi.fn(async () => runtimeSettings.current)
+  },
+  // llm-client 现在用这个统一拼端点(原先各处无条件追加后缀会重复拼接)。
+  // 这里保留真实实现 —— 它没有副作用, mock 成 stub 反而会让本文件测不到拼接行为。
+  toChatCompletionsUrl: (baseUrl: string) => {
+    const t = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+    return /\/chat\/completions$/.test(t) ? t : `${t}/chat/completions`;
   }
 }));
 

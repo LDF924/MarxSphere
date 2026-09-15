@@ -52,6 +52,8 @@ const STATS = {
   topRoutes: countIn([path.join(ROOT, "src/api/server.ts")], /app\.(get|post|put|delete|patch)\("\/api\/(learning-plans|materials|generations|memory|components|llm\/circuit)/g),
   agentTools: countIn([path.join(ROOT, "src/services/agent-tool-router.ts")], /name: "/g),
   viewTools: countIn([path.join(ROOT, "src/services/agent-view-tools.ts")], /name: "/g),
+  // 教育服务文件(教育专属 Agent 的服务层)
+  eduServices: readdirSync(path.join(ROOT, "src/services")).filter((f) => f.startsWith("education-") && f.endsWith(".ts")).length,
   views: countIn([path.join(ROOT, "web/src/App.tsx")], /workspaceView === "[a-z-]+"/g, true),
   scenarios: countIn([path.join(ROOT, "web/src/components/ScenariosPanel.tsx")], /"S\d{2}"/g, true),
   services: readdirSync(path.join(ROOT, "src/services")).filter((f) => f.endsWith(".ts") && !/\.v\d+/.test(f)).length,
@@ -123,6 +125,47 @@ const RULES: Array<{ file: string; rules: Rule[] }> = [
   { file: "CLAUDE.md", rules: [
     { re: /npm test\s+# \d+ 项单元测试/g, to: `npm test            # ${STATS.tests} 项单元测试`, label: "测试数(命令)" },
     { re: /(\d+) 项单元测试/g, to: `${STATS.tests} 项单元测试`, label: "测试数" },
+  ]},
+  // V418(2026-09-15 补): 下面这批文件原来**不在同步列表**里, 于是数字常年停在几代之前,
+  //   而 docs:check 一直报绿(它只检查列表里的文件)。这与 V415 修 CLAUDE.md 是同一个病:
+  //   漏的原因是"文件没进列表", 不是规则写错。
+  //   实测过时值: PROJECT-OVERVIEW「87 工具/112 教育路由/44 通用工具/13 教育服务/43 视图/
+  //   deepseek-v4-flash」· FEATURES-DETAILED「43 视图/48+22 工具/112 路由/32 学习引擎」·
+  //   OPEN-SOURCE-DISCLOSURE「332 测试/87 工具(65+22)」· FAQ「154 测试」· ARCHITECTURE「736 测试」
+  { file: "docs/PROJECT-OVERVIEW.md", rules: [
+    // 模型名: deepseek-v4-flash / deepseek-chat 是退役名(服务端返回 200 头但正文挂起)
+    { re: /deepseek-v4-flash|deepseek-chat/g, to: "deepseek-flash", label: "模型名" },
+    { re: /(\d+) 工具统一调度/g, to: `${totals.tools} 工具统一调度`, label: "工具统一调度" },
+    { re: /(\d+) 通用工具（(\d+) Agent \+ (\d+) 视图）/g, to: `${totals.tools} 通用工具（${STATS.agentTools} Agent + ${STATS.viewTools} 视图）`, label: "通用工具数" },
+    { re: /(\d+) 教育路由/g, to: `${STATS.eduRoutes} 教育路由`, label: "教育路由" },
+    { re: /（(\d+) 服务文件、(\d+) 教育路由）/g, to: `（${STATS.eduServices} 服务文件、${STATS.eduRoutes} 教育路由）`, label: "教育服务数" },
+    { re: /工具层\(\d+ 通用\)/g, to: `工具层(${totals.tools} 通用)`, label: "工具层" },
+    { re: /教育专属层\(\d+ 路由\)/g, to: `教育专属层(${STATS.eduRoutes} 路由)`, label: "教育层" },
+    { re: /(\d+) 通用工具 \+ (\d+) 教育路由，(\d+) 测试/g, to: `${totals.tools} 通用工具 + ${STATS.eduRoutes} 教育路由，${STATS.tests} 测试`, label: "能力行" },
+    { re: /，(\d+) 教育路由，教育评测/g, to: `，${STATS.eduRoutes} 教育路由，教育评测`, label: "教育评测行" },
+    { re: /(\d+) 视图 · Mega Menu/g, to: `${STATS.views} 视图 · Mega Menu`, label: "视图数" },
+  ]},
+  { file: "docs/FEATURES-DETAILED.md", rules: [
+    { re: /Web 界面（\d+ 视图）/g, to: `Web 界面（${STATS.views} 视图）`, label: "视图数" },
+    { re: /## 一、导航与工作区（\d+ 视图 · \d+ 大分类）/g, to: `## 一、导航与工作区（${STATS.views} 视图 · 7 大分类）`, label: "视图数(章节)" },
+    { re: /（(\d+) 通用工具 \+ (\d+) 视图工具 · (\d+) 教育路由 \+ (\d+) 学习引擎顶层）/g, to: `（${STATS.agentTools} 通用工具 + ${STATS.viewTools} 视图工具 · ${STATS.eduRoutes} 教育路由 + ${STATS.topRoutes} 学习引擎顶层）`, label: "Agent 子系统" },
+    { re: /（\d+ 工具 = \d+ Agent 工具 \+ \d+ 视图；教育工具经 \/api\/education\/\* \d+ 路由 \+ 学习引擎顶层 \d+ 路由接入）/g, to: `（${totals.tools} 工具 = ${STATS.agentTools} Agent 工具 + ${STATS.viewTools} 视图；教育工具经 /api/education/* ${STATS.eduRoutes} 路由 + 学习引擎顶层 ${STATS.topRoutes} 路由接入）`, label: "工具矩阵" },
+  ]},
+  { file: "docs/OPEN-SOURCE-DISCLOSURE.md", rules: [
+    { re: /deepseek-v4-flash|deepseek-chat/g, to: "deepseek-flash", label: "模型名" },
+    { re: /(\d+) 项单元测试/g, to: `${STATS.tests} 项单元测试`, label: "测试数" },
+    { re: /(\d+) 工具（(\d+) Agent \+ (\d+) 视图）/g, to: `${totals.tools} 工具（${STATS.agentTools} Agent + ${STATS.viewTools} 视图）`, label: "工具数" },
+  ]},
+  { file: "docs/FAQ.md", rules: [
+    { re: /类型检查 → \d+ 单元测试/g, to: `类型检查 → ${STATS.tests} 单元测试`, label: "测试数" },
+  ]},
+  { file: ".github/PULL_REQUEST_TEMPLATE.md", rules: [
+    { re: /`npm test`（\d+ 项）/g, to: "`npm test`（" + STATS.tests + " 项）", label: "测试数" },
+  ]},
+  // docs/index.md 是文档中心(DocsPanel)的首页, 数字同样会漂
+  { file: "docs/index.md", rules: [
+    { re: /(\d+) 工具矩阵/g, to: `${totals.tools} 工具矩阵`, label: "工具矩阵" },
+    { re: /单元测试 \d+ 项/g, to: `单元测试 ${STATS.tests} 项`, label: "测试数" },
   ]},
 ];
 

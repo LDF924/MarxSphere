@@ -13,7 +13,7 @@
 | 文档 | 内容 |
 |---|---|
 | [项目概述](PROJECT-OVERVIEW.md) | 目标用户 / 痛点 / 功能 / 技术路线 / 创新 |
-| [功能规格详解](FEATURES-DETAILED.md) | 52 步推理逐步表 / 66 场景 / 87 工具矩阵 / 17 实证功能 |
+| [功能规格详解](FEATURES-DETAILED.md) | 52 步推理逐步表 / 66 场景 / 72 工具矩阵 / 17 实证功能 |
 | [技术架构](ARCHITECTURE.md) | 四层检索管道 / 融合引擎 / 评测体系 |
 | [架构总览（2026-08）](ARCHITECTURE-20260806.md) | 三库知识图谱 + 双引擎检索全景 |
 | [Agent 能力档案](AGENT-CAPABILITIES.md) | 50+ 能力项 / 5 层安全 / 5 层记忆 |
@@ -27,7 +27,7 @@
 
 ## 📊 评测与基准
 
-- [Benchmarks](https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 154 项
+- [Benchmarks](https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 1017 项
 - [合规披露](OPEN-SOURCE-DISCLOSURE.md) — 数据治理 / 商业 API / 风险提示
 
 ## 🖥 桌面端

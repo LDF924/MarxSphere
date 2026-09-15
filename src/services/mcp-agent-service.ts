@@ -17,7 +17,7 @@ import {
 } from "../db/repositories.js";
 import type { McpMessageImage, McpSessionRecord, McpToolCallRecord } from "../types.js";
 import type { SearchProgressEvent } from "../types.js";
-import { aiSettingsService, type AiRuntimeSettings } from "./ai-settings-service.js";
+import { aiSettingsService, toChatCompletionsUrl, type AiRuntimeSettings } from "./ai-settings-service.js";
 import { createModelCallLogger, importModelCallLog, type ModelCallLogRecord } from "../observability/model-call-log.js";
 import { defaultMcpSessionTitle, summarizeConversationTitle } from "./mcp-title.js";
 import { compressContext, estimateContextChars } from "./context-compressor.js";
@@ -1078,7 +1078,7 @@ async function planToolAction(input: {
   const abortFromParent = () => controller.abort(input.signal?.reason);
   input.signal?.addEventListener("abort", abortFromParent, { once: true });
   const timeout = setTimeout(() => controller.abort(), input.settings.llmTimeoutMs);
-  const url = `${input.settings.llmBaseUrl.replace(/\/$/, "")}/chat/completions`;
+  const url = toChatCompletionsUrl(input.settings.llmBaseUrl);
   const body = {
     model: input.settings.llmModel,
     messages: [

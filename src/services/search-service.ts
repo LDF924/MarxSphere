@@ -6,7 +6,7 @@ import { config } from "../config/env.js";
 import { embeddingClient, type EmbeddingClient } from "../ai/embedding-client.js";
 import { llmClient, type LlmClient } from "../ai/llm-client.js";
 import { rerankClient, type RerankClient } from "../ai/rerank-client.js";
-import { MAX_SEARCH_TOP_K, aiSettingsService } from "./ai-settings-service.js";
+import { MAX_SEARCH_TOP_K, aiSettingsService, toChatCompletionsUrl } from "./ai-settings-service.js";
 import {
   assertSourcesAccessible,
   coarseRankEventsByContent,
@@ -990,8 +990,8 @@ export class SearchService {
       const dsKey = process.env.DEEPSEEK_API_KEY || '';
       const llmKey = dsKey || (process.env.LLM_API_KEY || '');
       const llmUrl = dsKey
-        ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-        : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+        ? toChatCompletionsUrl(process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
+        : toChatCompletionsUrl(process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
       // 2026-08-07 模型注册表：Ask 改写用 reason 角色（用户可选）
       const llmModel = getRoleModel("reason");
       const resp = await fetch(llmUrl, {
