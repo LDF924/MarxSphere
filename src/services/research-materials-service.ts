@@ -39,6 +39,12 @@ export interface MaterialInput {
   sortOrder?: number;
   /** V417: 本素材条目实际来自哪些检索源(pg/mdlibrary/graphiti/cognee) —— 迁移 149 建的 retrieval_sources 列 */
   retrievalSources?: string[];
+  /**
+   * 2026-09-15: 建素材时一并落结构化来源文献(检索命中)。此前 source_docs 只有
+   * addMaterialSource(挂在 POST /materials/:id/sources 上)能写, 而那个端点前端零调用 ——
+   * 「素材来源」弹层点开永远空白。检索结果本来就在手上, 建素材时顺手写掉。
+   */
+  sourceDocs?: Array<Record<string, unknown>>;
 }
 
 export async function createMaterial(input: MaterialInput) {
@@ -47,9 +53,9 @@ export async function createMaterial(input: MaterialInput) {
     `insert into research_materials
        (id, project_id, user_id, kind, title, content_md, tags, source_ref, produced_by_dag_node, meta, created_by,
         summary, caption, source_type, source_url, image_path, table_data, analysis_method, section_id, references_json, notes, sort_order,
-        section_ids, retrieval_sources)
+        section_ids, retrieval_sources, source_docs)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$3,
-        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       id, input.projectId, input.userId, input.kind,
       input.title ?? "", input.contentMd ?? "",
@@ -65,6 +71,8 @@ export async function createMaterial(input: MaterialInput) {
       JSON.stringify(input.sectionIds ?? []),
       // retrieval_sources 是 text[]: 同样用数组字面量
       toPgArray(input.retrievalSources ?? []),
+      // source_docs 是 jsonb
+      JSON.stringify(input.sourceDocs ?? []),
     ]
   );
   return { id };

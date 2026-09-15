@@ -11,7 +11,7 @@ import type { Section } from "./stores/workflow";
 import { listSkillCards, batchGenerateSkillCards, createTask, getTask } from "@/shared/tasks";
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
-import { q } from "@/shared/api";
+import { q, describeTaskError } from "@/shared/api";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
@@ -78,6 +78,8 @@ const withSkill = computed(() => store.level1Sections.filter((s) => s.aiSkill ||
 const skillComplete = computed(() => withSkill.value > 0 && withSkill.value >= l1Count.value);
 const missingCount = computed(() => Math.max(0, l1Count.value - withSkill.value));
 const canConfirm = computed(() => !analyzing.value && l1Count.value > 0 && withSkill.value >= l1Count.value);
+/** 完成态的三步骤(闭源固定三项: 变量识别 / 框架分析 / Skill 生成) */
+const DONE_STEPS = ["变量识别", "框架分析", "Skill 生成"];
 
 // ── 变量角色色(闭源 K L355-368 定量 5 色/定性词表) ──
 const roleColor = (role: string): string => {
@@ -246,15 +248,8 @@ async function extractAnalysisResult(t: { result?: unknown }) {
 
 /** analyze 失败原因兜底(后端 error 是 {code,userMessage} JSON 串) */
 function describeJobError(t: unknown): string {
-  const raw = (t as { error?: unknown } | null)?.error;
-  if (!raw) return "";
-  try {
-    const e = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const msg = String((e as Record<string, unknown>)?.userMessage ?? "");
-    return msg ? `: ${msg.slice(0, 120)}` : "";
-  } catch {
-    return `: ${String(raw).slice(0, 120)}`;
-  }
+  const msg = describeTaskError(t);
+  return msg ? `: ${msg.slice(0, 120)}` : "";
 }
 
 /** 只生成写作指导(不动章节结构) — analyze 失败/取消后仍可补齐, 否则 skillComplete 永久为假 */
@@ -343,9 +338,7 @@ async function confirmSections() {
     toast("科研架构尚未生成完整, 请先重新分析", "warning");
     return;
   }
-  store.phase = 3;
-  store.phaseLabel = "素材准备";
-  await store.saveProject();
+  store.setPhase(3);
   void router.push("/workflow/materials");
 }
 
@@ -393,10 +386,29 @@ const methodPill = computed(() => {
   return { label: chosen || "研究方法未选择", auto: !manual && !!chosen };
 });
 
+/** 概览卡是否有内容 —— 三个分块全空时不渲染一张空卡 */
+const hasOverview = computed(() =>
+  store.variables.length > 0
+  || (store.hypotheses.length > 0 && !isQual.value)
+  || !!store.project.logicFlow
+  || methodPill.value.label !== "研究方法未选择"
+);
+
 // ── 章节树展示辅助 ──
 function sectionNumber(i: number): string {
   const cn = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五"];
   return cn[i] ?? String(i + 1);
+}
+/** 直接子节。优先 parentId; 后端 parseGoalToSections 落库时不写 parentId, 故按"顺序区间"兜底分组 */
+function childrenOf(l1Id: string): Section[] {
+  const all = store.sections;
+  const idx = all.findIndex((x) => x.id === l1Id);
+  if (idx < 0) return [];
+  const end = all.findIndex((x, i) => i > idx && (x.level ?? 1) === 1);
+  const slice = all.slice(idx + 1, end < 0 ? undefined : end);
+  const direct = slice.filter((x) => x.parentId === l1Id);
+  // 有显式 parentId 就信它(用户手改过的结构), 否则整段算本章子节
+  return direct.length ? direct : slice.filter((x) => (x.level ?? 1) > 1);
 }
 function wordCountBadge(s: Section): string | null {
   const wc = s.aiSkill?.wordCount ?? (s as { wordCount?: number }).wordCount;
@@ -436,14 +448,16 @@ onUnmounted(() => {
     <PhaseProgressBar />
     <h1 class="wf-h1">科研架构</h1>
     <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
-    <p class="wf-stats">共 {{ l1Count }} 章 · {{ childCount }} 个子节</p>
+    <!-- 闭源措辞: 「3、6 个子节」(顿号), 不加药丸底色 -->
+    <p class="wf-stats"><span class="stats-num">{{ l1Count }}</span>、{{ childCount }} 个子节</p>
 
     <!-- AI 分析横幅(3 态) -->
     <div v-if="analyzeFailed" class="banner banner-fail">
       <div class="banner-head">
         <strong>科研架构生成失败</strong>
       </div>
-      <p class="banner-body">{{ analyzeError }}</p>
+      <!-- 闭源: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步 -->
+      <p class="banner-body"><span class="fail-step">Step {{ Math.max(1, analyzeStep) }} 执行失败</span>{{ analyzeError ? `：${analyzeError}` : "" }}</p>
       <div class="banner-actions">
         <button class="btn-red-sm" data-control="workflow:retry-guides" :disabled="guidesBusy" @click="retryGuides">
           {{ guidesBusy ? "正在生成写作指导…" : "只重试生成写作指导" }}
@@ -471,8 +485,24 @@ onUnmounted(() => {
     </div>
 
     <div v-else-if="skillComplete" class="banner banner-done">
-      <div class="banner-head"><strong>AI 分析完成</strong></div>
-      <p class="banner-body">分析完成, 章节写作指导已生成</p>
+      <!-- 2026-09-15: 完成态原先只有一句"分析完成", 三步骤进度条做完就消失。
+           闭源源: 绿头横幅 + 一行三个带 ✓ 的步骤(变量识别/框架分析/Skill 生成) + 「章节分析完成」。 -->
+      <div class="banner-head">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6">
+          <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <strong>AI 分析完成</strong>
+      </div>
+      <div class="done-steps">
+        <template v-for="(st, si) in DONE_STEPS" :key="st">
+          <span v-if="si > 0" class="ds-sep">›</span>
+          <span class="ds-item">
+            <span class="ds-dot"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+            {{ st }}
+          </span>
+        </template>
+      </div>
+      <p class="banner-body">章节分析完成</p>
     </div>
 
     <div v-else class="banner banner-idle">
@@ -502,34 +532,64 @@ onUnmounted(() => {
       <button class="btn-warn" @click="startAnalysis(true)" data-control="workflow:reanalyze">重新分析</button>
     </div>
 
-    <!-- 变量卡网格 -->
-    <section v-if="store.variables.length" class="var-grid">
-      <div v-for="v in store.variables" :key="v.name" class="var-card">
-        <span class="var-role" :style="{ background: roleColor(v.role) }">{{ v.role }}</span>
-        <strong>{{ v.name }}</strong>
-        <p v-if="v.description">{{ v.description }}</p>
-        <p v-if="v.measurement" class="var-measure">{{ v.measurement }}</p>
+    <!-- 科研框架概览(闭源: 一张卡收拢 ①变量识别 ②研究假设 ③研究逻辑+方法, 各带编号圆徽与「共 N 个」计数)
+         2026-09-15 前这里是三个互不相干的平级 section, 没有卡头、没有编号、没有计数。 -->
+    <section v-if="hasOverview" class="overview-card">
+      <div class="ov-head">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9">
+          <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3>科研框架概览</h3>
       </div>
-    </section>
 
-    <!-- 研究逻辑 + 方法 pill(闭源 L1112-1116) -->
-    <section v-if="store.project.logicFlow || methodPill.label !== '研究方法未选择'" class="logic-card">
-      <div class="logic-row">
-        <span class="logic-label">研究逻辑</span>
-        <span v-if="store.project.logicFlow" class="logic-flow">{{ store.project.logicFlow }}</span>
-        <span v-else class="logic-empty">待分析完成后展示</span>
-        <span class="method-pill">{{ methodPill.label }}</span>
-        <span v-if="methodPill.auto" class="auto-tag">已根据标题和目录自动识别</span>
-        <span v-else-if="methodPill.label !== '研究方法未选择'" class="auto-tag">已由你选择</span>
+      <!-- ① 变量识别 -->
+      <div v-if="store.variables.length" class="ov-block">
+        <div class="ov-block-head">
+          <span class="ov-num blue">1</span>
+          <strong>变量识别</strong>
+          <span class="ov-count">共 {{ store.variables.length }} 个</span>
+        </div>
+        <div class="var-grid">
+          <div v-for="v in store.variables" :key="v.name" class="var-card">
+            <div class="var-top">
+              <span class="var-role" :style="{ background: roleColor(v.role) }">{{ v.role }}</span>
+              <strong class="var-name">{{ v.name }}</strong>
+            </div>
+            <p v-if="v.description" class="var-desc">{{ v.description }}</p>
+            <p v-if="v.measurement" class="var-measure">{{ v.measurement }}</p>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <!-- 研究假设 -->
-    <section v-if="store.hypotheses.length && !isQual" class="hypo-card">
-      <h3 class="sec-title">研究假设</h3>
-      <div v-for="(h, i) in store.hypotheses" :key="i" class="hypo-item">
-        <span class="hypo-badge">H{{ i + 1 }}</span>
-        <span>{{ h }}</span>
+      <!-- ② 研究假设 -->
+      <div v-if="store.hypotheses.length && !isQual" class="ov-block">
+        <div class="ov-block-head">
+          <span class="ov-num purple">2</span>
+          <strong>研究假设</strong>
+          <span class="ov-count">共 {{ store.hypotheses.length }} 条</span>
+        </div>
+        <ul class="hypo-list">
+          <li v-for="(h, i) in store.hypotheses" :key="i" class="hypo-item">
+            <span class="hypo-badge">H{{ i + 1 }}</span>
+            <span class="hypo-text">{{ h }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- ③ 研究逻辑 + 研究方法 -->
+      <div v-if="store.project.logicFlow || methodPill.label !== '研究方法未选择'" class="ov-block">
+        <div class="ov-block-head">
+          <span class="ov-num blue">3</span>
+          <strong>研究逻辑</strong>
+        </div>
+        <p v-if="store.project.logicFlow" class="logic-flow">{{ store.project.logicFlow }}</p>
+        <p v-else class="logic-empty">待分析完成后展示</p>
+        <div class="method-line">
+          <span class="logic-label">研究方法</span>
+          <span class="method-pill">{{ methodPill.label }}</span>
+          <span v-if="methodPill.auto" class="auto-tag">已根据标题和目录自动识别</span>
+          <span v-else-if="methodPill.label !== '研究方法未选择'" class="auto-tag">已由你选择</span>
+        </div>
       </div>
     </section>
 
@@ -544,6 +604,15 @@ onUnmounted(() => {
           <span v-if="s.aiSkill || s.skill_prompt" class="skill-badge">{{ store.input.sampleFiles.length ? "参考框架" : "AI 写作指导" }}</span>
           <span v-if="wordCountBadge(s)" class="wc-badge">{{ wordCountBadge(s) }}</span>
         </div>
+        <!-- 二级子节: 原先完全不渲染, 而页脚统计还写着"N 个子节" —— 用户看不到自己录进去的子节 -->
+        <ul v-if="childrenOf(s.id).length" class="l2-list">
+          <li v-for="(c, ci) in childrenOf(s.id)" :key="c.id" class="l2-row">
+            <span class="l2-num">{{ sectionNumber(i) }}.{{ ci + 1 }}</span>
+            <span class="l2-title">{{ c.title || "未命名子节" }}</span>
+            <span v-if="c.aiSkill || c.skill_prompt" class="skill-badge sm">写作指导</span>
+            <span v-if="wordCountBadge(c)" class="wc-badge">{{ wordCountBadge(c) }}</span>
+          </li>
+        </ul>
         <!-- 写作指导详情 -->
         <div v-if="s.aiSkill" class="skill-detail">
           <template v-if="s.aiSkill.frameworkSource">
@@ -577,7 +646,9 @@ onUnmounted(() => {
 .workflow-page { width: 100%; box-sizing: border-box; }
 .wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
 .wf-sub { margin: 0; font-size: 13px; color: #8B9BB1; }
-.wf-stats { margin: 8px 0 16px; font-size: 12.5px; color: #E8EEF7; background: #212C45; display: inline-block; padding: 3px 12px; border-radius: 12px; }
+.wf-stats { margin: 8px 0 16px; font-size: 12.5px; color: #8B9BB1; }
+.stats-num { color: #E8EEF7; font-weight: 600; }
+.fail-step { color: #E88A8A; font-weight: 600; margin-right: 2px; }
 .banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; }
 .banner-fail { background: #2A1C1C; border: 1px solid #3A2323; }
 .banner-thinking { background: #1A2333; border: 1px solid #46587A; }
@@ -618,39 +689,92 @@ onUnmounted(() => {
   display: flex; align-items: center; gap: 10px;
 }
 .btn-warn { border: 0; background: #E8B54A; color: #F1F5F9; padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
-.var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 16px; }
+/* 完成态: 绿头 + 三步骤进度条(闭源 ppb 语义: ✓ 圆 + 步骤名 + › 分隔) */
+.banner-done .banner-head { gap: 8px; justify-content: flex-start; }
+.done-steps {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px 0 6px; padding: 8px 12px;
+  background: #0F1F1A; border: 1px solid #2E5C46; border-radius: 9px;
+}
+.ds-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #7FE3BD; font-weight: 500; }
+.ds-dot {
+  width: 18px; height: 18px; border-radius: 50%; background: #16a34a; color: #F1F5F9;
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.ds-sep { color: #2E5C46; font-size: 14px; }
+
+/* 科研框架概览卡(闭源: 一张卡收 ①变量 ②假设 ③逻辑+方法) */
+.overview-card {
+  background: #11192C; border: 1px solid #2B2F52; border-radius: 12px;
+  overflow: hidden; margin-bottom: 14px;
+}
+.ov-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 18px; background: #1A1E3A; border-bottom: 1px solid #2B2F52;
+  color: #A5B4FC;
+}
+.ov-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: #C7D2FE; }
+.ov-block { padding: 14px 18px; border-bottom: 1px solid #1E2438; }
+.ov-block:last-child { border-bottom: 0; }
+.ov-block-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ov-block-head strong { font-size: 12.5px; font-weight: 600; color: #DCE6F2; }
+.ov-num {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.ov-num.blue { background: #16243F; color: #6FA8F5; }
+.ov-num.purple { background: #241A3A; color: #B08CF0; }
+.ov-count { font-size: 11.5px; color: #7A8AA0; }
+.var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .var-card {
-  background: #11192C; border: 1px solid #222F44; border-radius: 10px; padding: 12px;
+  background: #0E1729; border: 1px solid #222F44; border-radius: 10px; padding: 11px;
   display: flex; flex-direction: column; gap: 6px;
 }
-.var-card:hover { border-color: #a5b4fc; }
-.var-role { align-self: flex-start; color: #F1F5F9; font-size: 10.5px; padding: 2px 9px; border-radius: 8px; }
-.var-card strong { font-size: 14px; color: #E8EEF7; }
+.var-card:hover { border-color: #4B5E8C; box-shadow: 0 1px 4px rgba(99, 102, 241, 0.12); }
+.var-top { display: flex; align-items: center; gap: 8px; }
+.var-role { color: #F1F5F9; font-size: 10.5px; padding: 2px 9px; border-radius: 8px; flex-shrink: 0; font-weight: 600; }
+.var-name { font-size: 13.5px; color: #E8EEF7; }
 .var-card p { margin: 0; font-size: 12px; color: #8B9BB1; line-height: 1.5; }
+/* 描述两行截断(闭源 line-clamp-2) —— 全量展开会把卡片撑成高矮不齐的一片 */
+.var-desc {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .var-measure { color: #7A8AA0 !important; font-size: 11.5px !important; }
-.hypo-card, .tree-card {
+.hypo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.hypo-item { display: flex; gap: 8px; font-size: 12.5px; color: #C6D2E4; align-items: flex-start; line-height: 1.55; }
+.hypo-badge {
+  background: #241A3A; color: #B08CF0; font-size: 10.5px;
+  padding: 1px 7px; border-radius: 7px; flex-shrink: 0; font-weight: 700;
+  width: 20px; height: 20px; display: grid; place-items: center; box-sizing: border-box;
+}
+.hypo-text { padding-top: 1px; }
+.logic-flow { margin: 0 0 10px; font-size: 12.5px; color: #8BA4F0; line-height: 1.65; overflow-wrap: break-word; }
+.method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
+.tree-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
   padding: 16px 18px; margin-bottom: 14px;
 }
 .sec-title { margin: 0 0 10px; font-size: 15px; color: #E8EEF7; }
-.hypo-item { display: flex; gap: 8px; font-size: 13px; color: #DCE6F2; padding: 4px 0; align-items: baseline; }
-.hypo-badge {
-  background: #ede9fe; color: #7c3aed; font-size: 11px;
-  padding: 1px 7px; border-radius: 7px; flex-shrink: 0; font-weight: 600;
-}
 .tree-empty { padding: 24px; text-align: center; color: #7A8AA0; font-size: 13px; }
 .level1-row { border-bottom: 1px solid #212C45; padding: 10px 0; }
 .level1-row:last-child { border-bottom: 0; }
 .l1-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 一级编号块(闭源 w-10 h-8 rounded-lg); 二级是更小的灰块(w-10 h-8 text-xs 灰字) */
 .l1-num {
-  width: 24px; height: 24px; border-radius: 6px;
+  width: 40px; height: 32px; border-radius: 8px;
   background: #dc2626; color: #F1F5F9;
-  display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700;
   flex-shrink: 0;
 }
 .l1-head strong { font-size: 14px; color: #E8EEF7; }
 .skill-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border-radius: 8px; }
+.skill-badge.sm { font-size: 10px; padding: 1px 6px; }
 .wc-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; }
+.l2-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 6px; border-left: 2px solid #212C45; }
+.l2-row { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 10px; flex-wrap: wrap; }
+.l2-num { font-size: 11.5px; color: #8B9BB1; min-width: 30px; font-variant-numeric: tabular-nums; }
+.l2-title { font-size: 13px; color: #C6D2E4; }
 .skill-detail { margin: 8px 0 0 34px; display: flex; flex-direction: column; gap: 6px; }
 .fs-row.amber { background: #11192Cbeb; border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }
 .skill-block { font-size: 12.5px; color: #DCE6F2; line-height: 1.6; }
@@ -658,7 +782,8 @@ onUnmounted(() => {
 .skill-block ul { margin: 4px 0 0; padding-left: 18px; }
 .skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: #8B9BB1; }
 .skill-pending.dim { color: #7A8AA0; }
-.wf-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.wf-actions { display: flex; gap: 10px; margin-top: 6px; }
+.wf-actions .btn-primary { flex: 1; }
 .btn-back {
   padding: 10px 22px; border: 1px solid #222F44; border-radius: 9px;
   background: #11192C; color: #8B9BB1; font-size: 14px; cursor: pointer;

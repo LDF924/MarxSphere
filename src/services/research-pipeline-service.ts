@@ -79,11 +79,14 @@ export async function getProject(userId: string, projectId: string) {
   return r.rows[0] ?? null;
 }
 
-export async function updateProjectMeta(userId: string, projectId: string, patch: { title?: string; topic?: string; thesis?: string; style?: string }) {
+export async function updateProjectMeta(userId: string, projectId: string, patch: { title?: string; topic?: string; thesis?: string; style?: string; phase?: number; phaseLabel?: string }) {
+  // 列名白名单: patch 来自请求体, 直接拼 `${k}=$n` 等于把 SQL 语句结构交给调用方
+  const COLS: Record<string, string> = { title: "title", topic: "topic", thesis: "thesis", style: "style", phase: "phase", phaseLabel: "phase_label" };
   const sets: string[] = [];
   const vals: unknown[] = [projectId, userId];
   for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) { sets.push(`${k}=$${vals.length + 1}`); vals.push(v); }
+    const col = COLS[k];
+    if (col && v !== undefined) { sets.push(`${col}=$${vals.length + 1}`); vals.push(v); }
   }
   if (!sets.length) return null;
   sets.push(`updated_at=now()`);

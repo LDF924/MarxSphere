@@ -27,6 +27,8 @@ export interface SocTask {
   snapshot?: Record<string, unknown>;
   dagNodeId?: string | null;
   jobKind?: string | null;
+  /** 后端失败详情 {code,userMessage,canRetry} —— 不透传的话失败原因在界面上恒为空 */
+  error?: unknown;
 }
 
 export interface SocTaskListOptions {
@@ -113,6 +115,9 @@ function normTask(raw: Record<string, unknown>): SocTask {
     result: m.result,
     progress: m.progress as SocTask["progress"]
   };
+  // 2026-09-15: error 原先没进这个键列表 —— 后端 markFailed 写的 {code,userMessage,canRetry}
+  //   一直躺在响应里, 界面上的失败原因却恒为 undefined(三处消费点白读)。
+  if (m.error) st.error = m.error;
   if (m.snapshot) st.snapshot = m.snapshot;
   return st;
 }

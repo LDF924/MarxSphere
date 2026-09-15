@@ -172,9 +172,9 @@ function insertTemplate() {
       { id: newId(), title: "核心概念界定", level: 2, children: [] }
     ]},
     { id: newId(), title: "文献综述与分析框架", level: 1, children: [
-      { id: newId(), title: "国内外研究现状", level: 2, children: [] },
-      { id: newId(), title: "理论基础与分析框架", level: 2, children: [] },
-      { id: newId(), title: "研究述评", level: 2, children: [] }
+      { id: newId(), title: "相关领域研究进展", level: 2, children: [] },
+      { id: newId(), title: "现有研究的不足与本研究的切入点", level: 2, children: [] },
+      { id: newId(), title: "本文的分析框架", level: 2, children: [] }
     ]},
     { id: newId(), title: "现状描述或案例呈现", level: 1, children: [
       { id: newId(), title: "数据来源与研究对象", level: 2, children: [] },
@@ -208,17 +208,20 @@ async function clearOutline() {
 const counter = computed(() => {
   const l1 = tree.value.length;
   const l2 = tree.value.reduce((s, n) => s + n.children.length, 0);
-  return `${l1} 个一级 · ${l2} 个二级`;
+  // 无二级时退化成「N 个章节」(闭源如此) —— "3 个一级 · 0 个二级"读起来像出错了
+  return l2 === 0 ? `${l1} 个章节` : `${l1} 个一级 · ${l2} 个二级`;
 });
 </script>
 
 <template>
   <div class="outline-editor">
-    <!-- 工具栏 -->
+    <!-- 工具栏(闭源: 三个同款白底描边小按钮, 之间用 | 分隔; 清除目录文字更淡) -->
     <div class="oe-toolbar">
-      <button class="oe-btn primary" type="button" @click="addLevel1">+ 一级章节</button>
+      <button class="oe-btn" type="button" @click="addLevel1">+ 一级章节</button>
+      <span class="oe-sep">|</span>
       <button class="oe-btn" type="button" @click="insertTemplate" data-control="workflow:insert-template">插入模板</button>
-      <button class="oe-btn" type="button" @click="clearOutline">清除目录</button>
+      <span class="oe-sep">|</span>
+      <button class="oe-btn dim" type="button" @click="clearOutline">清除目录</button>
       <span class="oe-count">{{ counter }}</span>
     </div>
 
@@ -247,9 +250,9 @@ const counter = computed(() => {
             <button type="button" class="op-btn op-btn-danger" title="删除" @click="delLevel1(i)">✕</button>
           </div>
         </div>
-        <!-- 子节 -->
-        <div v-if="!n.collapsed" class="oe-children">
-          <div v-for="(c, j) in n.children" :key="c.id" class="oe-row l2">
+        <!-- 子节(闭源树形缩进: 竖线 + 缩进块) -->
+        <div v-if="!n.collapsed" class="oe-children tree-branch">
+          <div v-for="(c, j) in n.children" :key="c.id" class="oe-row l2 tree-child">
             <span class="oe-index sub">{{ i + 1 }}.{{ j + 1 }}</span>
             <input
               class="oe-title-input sub"
@@ -294,11 +297,9 @@ const counter = computed(() => {
   color: #C7D2E0;
   cursor: pointer;
 }
-.oe-btn.primary {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #F1F5F9;
-}
+/* 闭源三个工具按钮同款白底描边; 「清除目录」文字更淡(破坏性操作用弱视觉) */
+.oe-btn.dim { color: #7A8AA0; }
+.oe-sep { color: #46587A; font-size: 11px; }
 .oe-btn:hover { filter: brightness(0.97); }
 .oe-count { margin-left: auto; font-size: 11px; color: #8B9BB1; }
 .oe-empty { padding: 34px 16px; text-align: center; }
@@ -327,16 +328,27 @@ const counter = computed(() => {
   text-align: center;
   padding: 2px 6px;
   border-radius: 5px;
-  background: #dc2626;
-  color: #F1F5F9;
-  font-size: 11px;
-  font-weight: 600;
+  /* 闭源一级序号是**纯红字无底块**(text-sm font-bold text-red-500 w-8), 不是红底药丸 */
+  background: transparent;
+  color: #E88A8A;
+  font-size: 13px;
+  font-weight: 700;
 }
 .oe-index.sub {
-  background: #9ca3af;
-  font-size: 10px;
+  background: transparent;
+  color: #8B9BB1;
+  font-size: 11px;
+  font-weight: 600;
   min-width: 34px;
 }
+/* 子节树形缩进(闭源 tree-branch/tree-child: 左侧竖线 + 缩进) */
+.oe-children.tree-branch {
+  position: relative;
+  margin-left: 20px;
+  padding-left: 12px;
+  border-left: 1px solid #1A2333;
+}
+.oe-row.l2.tree-child { padding-top: 6px; padding-bottom: 6px; }
 .oe-collapse {
   flex-shrink: 0;
   width: 20px;

@@ -94,6 +94,31 @@ export interface SseHandle {
   controller: AbortController;
 }
 
+/**
+ * 任务失败原因的**唯一**解析入口 —— 后端失败详情有两条通道, 形状还不一样:
+ *   · research_tasks.error = {code,userMessage,canRetry}(对象)
+ *   · 部分端点把同一份 JSON 当**字符串**塞进 result.error(执行器 catch 后原样带上)
+ * 2026-09-15 前各消费点各写各的: SectionsView/WorkspaceView 走 error, MaterialsView 走
+ * result.error —— 于是同一类失败, 有的页面说得出原因, 有的只说"生成失败"。这里统一。
+ */
+export function describeTaskError(t: unknown): string {
+  if (!t || typeof t !== "object") return "";
+  const o = t as { error?: unknown; result?: { error?: unknown } };
+  const raw = o.error ?? o.result?.error;
+  if (raw === undefined || raw === null || raw === "") return "";
+  let e: unknown = raw;
+  if (typeof raw === "string") {
+    try { e = JSON.parse(raw); } catch { return raw.slice(0, 160); }
+  }
+  if (e && typeof e === "object") {
+    const r = e as Record<string, unknown>;
+    const msg = r.userMessage ?? r.message ?? r.error ?? r.code;
+    if (typeof msg === "string" && msg.trim()) return msg.slice(0, 160);
+  }
+  const s = String(e ?? "").trim();
+  return s && s !== "[object Object]" ? s.slice(0, 160) : "";
+}
+
 /** SSE 帧解析: event: X + data: JSON 两行式(兼容纯 data 行=无事件名增量) */
 export function parseSseFrame(text: string): Array<{ event: string | null; data: string }> {
   const out: Array<{ event: string | null; data: string }> = [];
