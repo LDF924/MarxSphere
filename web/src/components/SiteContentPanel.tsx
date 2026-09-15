@@ -51,7 +51,6 @@ const RESOURCE_GROUPS = [
     { name: "CNKI 海外开放学术", url: "https://oversea.cnki.net", desc: "开放学术搜索" },
     { name: "OpenAlex", url: "https://openalex.org", desc: "全球开放学术元数据" },
     { name: "arXiv", url: "https://arxiv.org", desc: "预印本(计算机/交叉学科)" },
-    { name: "PubMed", url: "https://pubmed.ncbi.nlm.nih.gov", desc: "生物医学文献" },
   ]},
   { category: "统计与数据", color: "#3b82f6", sites: [
     { name: "国家统计局", url: "https://www.stats.gov.cn", desc: "宏观统计年鉴" },

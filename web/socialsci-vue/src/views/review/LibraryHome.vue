@@ -373,7 +373,7 @@ const stdParseOn = ref(false);
 const importOn = ref(false);
 const stdParseSrc = ref("");
 const stdEditId = ref<string | null>(null);
-const SCOPE_OPTIONS = ["全部学科", "社科", "理工", "医学", "自定义"];
+const SCOPE_OPTIONS = ["全部学科", "社科", "理工", "自定义"];
 const stdSearch = ref("");
 const stdExpandedId = ref<string | null>(null);
 

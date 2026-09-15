@@ -54,7 +54,6 @@ const DOMAINS: Array<{ id: string; label: string; desc: string }> = [
   { id: "marxism", label: "马克思主义理论", desc: "政经/哲社" },
   { id: "cs", label: "计算机科学", desc: "软件/网络" },
   { id: "engineering", label: "工程学", desc: "机械/电子/土木" },
-  { id: "medicine", label: "医学", desc: "临床/基础" },
   { id: "general", label: "通用社会科学", desc: "不限方向" },
 ];
 // 二级领域(selectedField 语义, 闭源 domain→field 双选对齐)
@@ -67,7 +66,6 @@ const DOMAIN_FIELDS: Record<string, string[]> = {
   marxism: ["政治经济学", "哲学", "科学社会主义", "中共党史"],
   cs: ["软件工程", "计算机网络", "人工智能", "数据科学"],
   engineering: ["机械工程", "电子工程", "土木工程", "材料"],
-  medicine: ["临床医学", "基础医学", "公共卫生"],
   general: [],
 };
 function tokenOf() { return localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""; }
