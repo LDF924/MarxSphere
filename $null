@@ -1,0 +1,9 @@
+New-BurntToastNotification : The term 'New-BurntToastNotification' is not recognized as the name of a cmdlet, function,
+ script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is c
+orrect and try again.
+At line:1 char:1
++ New-BurntToastNotification -Text 'MarxSphere 同步检查','发现 1 处仓库差异，请运行 sy ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (New-BurntToastNotification:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
