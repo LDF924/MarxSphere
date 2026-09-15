@@ -40,7 +40,7 @@ export function buildP2OConfig(overrides?: Record<string, unknown>): any {
       enabled: false,  // 默认不翻译（马理论原文保留）
       provider: "openai-compatible",
       preset: "deepseek",
-      model: process.env.P2O_TRANSLATE_MODEL || "deepseek-chat",
+      model: process.env.P2O_TRANSLATE_MODEL || "deepseek-flash",
       baseUrl: process.env.P2O_TRANSLATE_BASE_URL || "https://api.deepseek.com",
       apiKeyEnv: "DEEPSEEK_API_KEY",
       systemPrompt: "将学术论文翻译为中文，保持术语准确。",
@@ -70,7 +70,7 @@ export function buildP2OConfig(overrides?: Record<string, unknown>): any {
         "输出必须是简体中文 Markdown。",
         "保留必要的英文术语、论文名、方法名和缩写。",
       ].join("\n"),
-      model: "deepseek-chat",
+      model: "deepseek-flash",
       baseUrl: "https://api.deepseek.com",
       apiKeyEnv: "DEEPSEEK_API_KEY",
       maxTokens: 1500,

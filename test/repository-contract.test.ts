@@ -108,7 +108,7 @@ describe("V405 新增 SQL 契约 (租约/成本账本)", () => {
   it("recordLedger INSERT 语句含三态来源与按模型单价表查询路径", async () => {
     db.query.mockResolvedValueOnce({ rows: [{ price_cny_per_m_in: "2.16", price_cny_per_m_out: "8.64" }] });
     const { getModelPrice } = await import("../src/services/cost-ledger-service.js");
-    const p = await getModelPrice("deepseek-v4-flash");
+    const p = await getModelPrice("deepseek-flash");
     const sql = normalizeSql(db.query.mock.calls[0][0] as string);
     expect(sql).toContain("from llm_model_prices");
     expect(sql).toContain("where model = $1");

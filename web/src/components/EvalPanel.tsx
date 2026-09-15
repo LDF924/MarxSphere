@@ -389,7 +389,7 @@ export const EvalPanel: FC = () => {
   const [eduEvalBusy, setEduEvalBusy] = useState(false);
   const [eduOpen, setEduOpen] = useState<number | null>(null);
   // V381: 评测配置（模型/模式/机制）— 智能默认 + 用户可选
-  const [judgeModel, setJudgeModel] = useState("deepseek-v4-flash");
+  const [judgeModel, setJudgeModel] = useState("deepseek-flash");
   const [evalPreset, setEvalPreset] = useState<"smart" | "fast" | "rigorous" | "cross">("smart");
   const [crossJudge, setCrossJudge] = useState(false);
   const [mergePolicy, setMergePolicy] = useState("max");
@@ -614,7 +614,7 @@ export const EvalPanel: FC = () => {
       if (evalPreset === "cross") {
         // 交叉复评模式：小样本 + 双模型
         evalEnv.EVAL_LIMIT = "10";
-        evalEnv.EVAL_JUDGE_MODEL = "deepseek-v4-flash";
+        evalEnv.EVAL_JUDGE_MODEL = "deepseek-flash";
       }
       await api.streamEvalRun({
         script: script as "eval-32-metrics" | "run-eval-dual" | "ablation-eval",
@@ -861,7 +861,7 @@ export const EvalPanel: FC = () => {
               title="评测 Judge 模型"
               className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
             >
-              <option value="deepseek-v4-flash">Judge: DeepSeek V4 Flash（默认）</option>
+              <option value="deepseek-flash">Judge: DeepSeek Flash（默认）</option>
               <option value="deepseek-v4-pro">Judge: DeepSeek V4 Pro（严谨）</option>
               <option value="qwen3.7-max">Judge: 通义千问 3.7 Max（异源）</option>
             </select>

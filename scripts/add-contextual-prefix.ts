@@ -22,7 +22,7 @@ async function generatePrefix(docTitle: string, heading: string, contentPreview:
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
-      model: "deepseek-v4-flash",
+      model: "deepseek-flash",
       messages: [
         { role: "system", content: system },
         { role: "user", content: `论文标题: ${docTitle}\n章节: ${heading}\n片段开头: ${contentPreview}` }

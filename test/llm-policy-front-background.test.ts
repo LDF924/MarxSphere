@@ -24,7 +24,7 @@ describe("P0-12 恢复分级: 后台调用失败即弃", () => {
   it("policy=background 时只打一次, 不重试", async () => {
     const ep = await flaky();
     try {
-      const r = await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-v4-flash", policy: "background" });
+      const r = await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-flash", policy: "background" });
       expect(r).toBeTruthy();            // 仍返回结果对象(带 error), 由调用方兜底
       expect(ep.hits()).toBe(1);         // 关键: 没有任何重试
     } finally { ep.close(); }
@@ -33,8 +33,8 @@ describe("P0-12 恢复分级: 后台调用失败即弃", () => {
   it("policy=background 时不换模型降级(命中次数不随备用模型增加)", async () => {
     const ep = await flaky();
     try {
-      await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-v4-flash", policy: "background" });
-      // deepseek-v4-flash 的降级链有 3 个备用模型; 若走了降级链这里会 > 1
+      await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-flash", policy: "background" });
+      // deepseek-flash 的降级链有 3 个备用模型; 若走了降级链这里会 > 1
       expect(ep.hits()).toBe(1);
     } finally { ep.close(); }
   }, 40000);
@@ -42,7 +42,7 @@ describe("P0-12 恢复分级: 后台调用失败即弃", () => {
   it("前台(默认)仍然重试 —— 行为没被这次改动动到", async () => {
     const ep = await flaky();
     try {
-      await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-v4-flash" });
+      await callLlm({ messages: [{ role: "user", content: "hi" }], url: ep.url, key: "k", model: "deepseek-flash" });
       expect(ep.hits()).toBeGreaterThan(1);   // 默认 2 次重试
     } finally { ep.close(); }
   }, 60000);

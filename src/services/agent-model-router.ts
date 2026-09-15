@@ -136,7 +136,7 @@ export const MODEL_TIER_LABELS: Record<ModelTier, string> = {
 
 /**
  * G4: fallback 模型链 — 主模型失败后依次换备用模型重试
- * 配置: AGENT_MODEL_FALLBACKS="deepseek-v4-flash,qwen3.7-max"（逗号分隔, 按序尝试）
+ * 配置: AGENT_MODEL_FALLBACKS="deepseek-flash,qwen3.7-max"（逗号分隔, 按序尝试）
  * 未配置: 按 provider 默认互备（deepseek→qwen, qwen→deepseek; pro→flash 同源降级优先）
  */
 export function getModelFallbacks(model: string): string[] {
@@ -147,11 +147,11 @@ export function getModelFallbacks(model: string): string[] {
   if (base.startsWith("deepseek")) {
     // 同源降级优先 pro→flash, 跨源兜底 qwen3.7-max
     return base === "deepseek-v4-pro"
-      ? ["deepseek-v4-flash", "qwen3.7-max", "qwen-plus"]
+      ? ["deepseek-flash", "qwen3.7-max", "qwen-plus"]
       : ["deepseek-v4-pro", "qwen3.7-max", "qwen-plus"];
   }
   if (base.startsWith("qwen")) {
-    return ["deepseek-v4-flash", "deepseek-v4-pro"];
+    return ["deepseek-flash", "deepseek-v4-pro"];
   }
   return [];
 }

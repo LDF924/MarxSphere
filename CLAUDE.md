@@ -6,7 +6,7 @@
 
 ```bash
 npm run typecheck   # 前后端类型检查（改代码后必跑）
-npm test            # 1005 项单元测试
+npm test            # 1012 项单元测试
 npx tsx src/index.ts  # 单跑后端(仅 4173; 无 5173/dev server)
 ```
 

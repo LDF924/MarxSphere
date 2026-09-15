@@ -30,17 +30,17 @@ describe("推理计费: 按真实模型定价", () => {
     // 一条链里 plan 用 pro、其余用 flash —— 取 min(model) 会只按其中一个单价算
     q().mockResolvedValueOnce({ rows: [
       { model: "deepseek-v4-pro", tin: "1000", tout: "500" },
-      { model: "deepseek-v4-flash", tin: "2000", tout: "800" },
+      { model: "deepseek-flash", tin: "2000", tout: "800" },
     ] });
     await chargeUserForReasonTask("u1", "task-1");
     expect(charge()).toHaveBeenCalledTimes(2);
     const calls = charge().mock.calls.map((c) => [c[1], c[2], c[3]]);
     expect(calls).toContainEqual(["deepseek-v4-pro", 1000, 500]);
-    expect(calls).toContainEqual(["deepseek-v4-flash", 2000, 800]);
+    expect(calls).toContainEqual(["deepseek-flash", 2000, 800]);
   });
 
   it("按 taskId 聚合, 且 SQL 从 parameters->>'model' 取模型名", async () => {
-    q().mockResolvedValueOnce({ rows: [{ model: "deepseek-v4-flash", tin: "10", tout: "5" }] });
+    q().mockResolvedValueOnce({ rows: [{ model: "deepseek-flash", tin: "10", tout: "5" }] });
     await chargeUserForReasonTask("u1", "task-1");
     const [sql, params] = q().mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("from retrieve_steps");
@@ -76,7 +76,7 @@ describe("推理计费: 老数据没有 model 字段", () => {
     llmCfg().mockResolvedValue({ provider: "platform" });
     await chargeUserForReasonTask("u1", "task-1");
     expect(charge()).toHaveBeenCalledTimes(1);
-    expect(charge().mock.calls[0][1]).toBe("deepseek-v4-flash");
+    expect(charge().mock.calls[0][1]).toBe("deepseek-flash");
   });
 
   it("有 model 的行走真实模型, 不受推断影响", async () => {
@@ -88,7 +88,7 @@ describe("推理计费: 老数据没有 model 字段", () => {
     await chargeUserForReasonTask("u1", "task-1");
     const models = charge().mock.calls.map((c) => c[1]);
     expect(models).toContain("qwen3.7-max");       // 有 model 的按真实模型(60 元/百万, 别降级成 flash)
-    expect(models).toContain("deepseek-v4-flash"); // 缺 model 的那行才用推断值
+    expect(models).toContain("deepseek-flash"); // 缺 model 的那行才用推断值
   });
 });
 

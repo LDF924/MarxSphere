@@ -19,9 +19,10 @@ export interface LlmModelOption {
   roles: LlmRole[];
 }
 
-/** 可用模型注册表（前端展示 + 后端校验）——2026-08-07 按官方接口文档更新
- * DeepSeek: /models 实测返回 deepseek-v4-flash, deepseek-v4-pro（均原生 1M 上下文；
- *   [1M] 只是显示标注——API 不接受带 [1M] 的 ID，实测报 "supported API model names"）
+/** 可用模型注册表（前端展示 + 后端校验）——2026-09-15 按官方接口文档更新
+ * DeepSeek: /models 实测返回 deepseek-flash, deepseek-v4-pro（官方定价页已用新名；
+ *   旧名 deepseek-v4-flash 与 deepseek-chat 已退役 —— 服务端对旧名返回 200 头但正文挂起,
+ *   是"静默失败"不是 404, 详见 llm-common 的挂起熔断）
  * 阿里: qwen3.7-max（2026-05-20 发布，1M 上下文，旗舰）+ qwen-plus（历史默认）
  * Claude（2026-08-27 模型中立 ScienceX）: Anthropic 官方端点自动识别(/messages),
  *   需配置 LLM_BASE_URL=https://api.anthropic.com/v1 + LLM_API_KEY=sk-ant-...
@@ -32,7 +33,7 @@ export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
     desc: "旗舰推理（1.6T 参数 · 原生 1M 上下文 · 384K 输出）", roles: [...ALL_ROLES],
   },
   {
-    id: "deepseek-v4-flash", label: "DeepSeek V4 Flash（1M 上下文）", provider: "deepseek",
+    id: "deepseek-flash", label: "DeepSeek Flash（1M 上下文）", provider: "deepseek",
     desc: "快速推理（284B 参数 · 原生 1M 上下文 · 性价比高）", roles: [...ALL_ROLES],
   },
   {
@@ -59,15 +60,15 @@ export const LLM_MODEL_REGISTRY: LlmModelOption[] = [
 
 /** 角色 → 模型映射（用户选择覆盖；默认按注册表 roles 第一个） */
 const roleModelMap: Record<LlmRole, string> = {
-  reason: "deepseek-v4-flash",
-  judge: "deepseek-v4-flash",
-  review: "deepseek-v4-flash",
+  reason: "deepseek-flash",
+  judge: "deepseek-flash",
+  review: "deepseek-flash",
   plan: "deepseek-v4-pro",
-  verify: "deepseek-v4-flash",
-  strategy: "deepseek-v4-flash",
-  viz: "deepseek-v4-flash",
+  verify: "deepseek-flash",
+  strategy: "deepseek-flash",
+  viz: "deepseek-flash",
   // 学术写作: 与 reason 同源起步, 但独立存储 —— 切换它不影响推理链
-  editor: "deepseek-v4-flash",
+  editor: "deepseek-flash",
 };
 
 /** 学术写作(editor)角色是否被用户显式选择过 — 未选择时跟随 reason */
@@ -101,11 +102,13 @@ export function getRoleModel(role: LlmRole): string {
 
 /** 模型别名解析（所有直连 fetch 处共用）：
  * - "xxx[1M]" → "xxx"（官方无独立 [1M] ID，原生即 1M 上下文）
- * - "deepseek-chat"（2026-07-24 已退役）→ "deepseek-v4-flash"
+ * - 退役旧名 → 新名（2026-09-15 统一）:
+ *     "deepseek-chat"（2026-07-24 已退役）
+ *     "deepseek-v4-flash"（官方已改名 deepseek-flash, 旧名服务端静默挂起）
  */
 export function resolveModelAlias(model: string): string {
   const base = model.replace(/\[1M\]$/, "");
-  if (base === "deepseek-chat") return "deepseek-v4-flash";
+  if (base === "deepseek-chat" || base === "deepseek-v4-flash") return "deepseek-flash";
   return base;
 }
 
@@ -164,7 +167,7 @@ export function getProviderEndpoint(provider: LlmModelOption["provider"]): Provi
   return { provider, url, key, keyEnv: "DEEPSEEK_API_KEY" };
 }
 
-/** 模型 id → 注册项; 别名先解析(deepseek-chat → deepseek-v4-flash) */
+/** 模型 id → 注册项; 别名先解析(deepseek-chat/v4-flash → deepseek-flash) */
 export function findModelOption(model: string): LlmModelOption | null {
   const id = resolveModelAlias(model);
   return LLM_MODEL_REGISTRY.find((m) => m.id === id) ?? null;

@@ -20,11 +20,11 @@ export const B5_MIN_DRAFTS = parseInt(process.env.B5_MIN_DRAFTS || "2", 10);
 /** 预设阵容(与 OpenSquilla 对齐: 静态 lineup 两套 + 自定义) */
 const PRESETS: Record<string, string[]> = {
   // 静态 OpenRouter B5 风格: 2 强 + 1 cheap 锚点(默认)
-  default: ["deepseek-v4-pro", "qwen3.7-max", "deepseek-v4-flash"],
+  default: ["deepseek-v4-pro", "qwen3.7-max", "deepseek-flash"],
   // OpenRouter B5(若经 openrouter 兼容层可用)
-  openrouter: ["deepseek-v4-pro", "glm-5.2", "kimi-k2.7-code", "qwen3.7-max", "deepseek-v4-flash"],
+  openrouter: ["deepseek-v4-pro", "glm-5.2", "kimi-k2.7-code", "qwen3.7-max", "deepseek-flash"],
   // TokenRhythm B5
-  tokenrhythm: ["deepseek-v4-pro-0813", "qwen3.7-max", "kimi-k2.7-code", "deepseek-v4-flash"],
+  tokenrhythm: ["deepseek-v4-pro-0813", "qwen3.7-max", "kimi-k2.7-code", "deepseek-flash"],
 };
 export function b5Squad(): string[] {
   const preset = (process.env.B5_PRESET || "default").trim().toLowerCase();

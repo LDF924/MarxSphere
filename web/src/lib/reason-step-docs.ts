@@ -217,7 +217,7 @@ const boost = source === 'compiled_truth' ? 2.0 : 1.0;`
   },
   "多查询变体": {
     what: "LLM 生成查询变体",
-    code: `// generateQueryVariants（deepseek-v4-flash）
+    code: `// generateQueryVariants（deepseek-flash）
 // 主搜索用 2 个变体补充（避免 9 路×N 爆炸）`
   },
   "HyDE扩展": {

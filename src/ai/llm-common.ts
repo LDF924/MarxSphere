@@ -82,10 +82,26 @@ export async function fetchLlm(input: {
   ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
   /** P0-12: 前台(默认, 重试+降级) / 后台(辅助调用, 单次即弃) — 见 CallLlmOptions.policy */
   policy?: "front" | "background";
+  /** V417: 挂起熔断 —— flash 挂起(8s 无首字节)时自动用 v4-pro 重试一次 */
+  hangGuard?: boolean;
 }): Promise<{ text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string } | null> {
-  const r = await fetchLlmDetailed({ ...input, ledger: input.ledger ?? { endpoint: "llm" } });
+  const r = await fetchLlmDetailed({ ...input, ledger: input.ledger ?? { endpoint: "llm" }, hangGuard: input.hangGuard });
   // finishReason 透出: "length" 表示输出触顶(被 max_tokens 截断) —— 调用方据此做"提上限重发/接续"
-  return r.ok ? { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit, finishReason: r.finishReason } : null;
+  if (r.ok) return { text: r.text, tokens: r.tokens, cacheHit: r.cacheHit, finishReason: r.finishReason };
+  // V417: 挂起兜底 —— flash 挂起(8s 无首字节)且尚未兜底时, 用 v4-pro 重试**一次**。
+  //   只有 hang 且目标模型在清单里才触发, 网络失败/401 等按原样返回 null。
+  if (!r.ok && r.hang && input.hangGuard !== false && HANG_PRONE_MODELS.has(input.model) && input.model !== FALLBACK_FOR_HANG) {
+    console.warn(`[llm] ${input.model} 挂起(8s 无首字节), 自动切换 ${FALLBACK_FOR_HANG} 重试一次`);
+    const fb = await fetchLlmDetailed({
+      ...input,
+      model: FALLBACK_FOR_HANG,
+      ledger: input.ledger ?? { endpoint: "llm" },
+      hangGuard: false,   // 兜底模型不再挂起检测, 避免二次降级
+      policy: "background",  // 兜底调用不重复重试链
+    });
+    if (fb.ok) return { text: fb.text, tokens: fb.tokens, cacheHit: fb.cacheHit, finishReason: fb.finishReason };
+  }
+  return null;
 }
 
 /**
@@ -111,15 +127,17 @@ export async function fetchLlmDetailed(input: {
   ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
   /** 可重试类别的最大重试次数(默认 0 = 不重试, 保持既有行为) */
   retry?: number;
+  /** V417: 挂起熔断 —— flash 挂起(8s 无首字节)时自动用 v4-pro 重试一次 */
+  hangGuard?: boolean;
   /** P0-12: 后台调用(辅助/有兜底)单次即弃 */
   policy?: "front" | "background";
 }): Promise<
   | { ok: true; text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string }
-  | { ok: false; status: number | null; message: string; detail: string }
+  | { ok: false; status: number | null; message: string; detail: string; hang?: boolean }
 > {
   // P0-12: 后台调用单次即弃(不重试) —— 它有兜底, 重试只会挤占并发配额
   const maxRetry = input.policy === "background" ? 0 : Math.max(0, input.retry ?? 0);
-  let last: { ok: false; status: number | null; message: string; detail: string } | null = null;
+  let last: { ok: false; status: number | null; message: string; detail: string; hang?: boolean } | null = null;
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     const r = await attemptOnce(input);
     if (r.ok) return r;
@@ -139,6 +157,50 @@ export async function fetchLlmDetailed(input: {
   return last!;
 }
 
+/**
+ * V417: 带首字节挂起检测的 fetch —— 对挂起的模型(实测 deepseek-flash 服务端返回 200 头后
+ *   正文永远不来), 8 秒内收不到响应头就放弃并抛 __hang, 不再傻等 timeoutMs。
+ *   只对 HANG_PRONE_MODELS 启用 —— 其他 provider 走原路径, 行为不变。
+ */
+async function fetchWithFirstByteGuard(
+  url: string,
+  init: RequestInit & { firstByteMs?: number },
+): Promise<Response> {
+  const { firstByteMs, ...rest } = init;
+  const controller = new AbortController();
+  const outer = rest.signal as AbortSignal | undefined;
+  const onOuterAbort = () => controller.abort();
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  const timer = setTimeout(() => controller.abort(), firstByteMs ?? 8000);
+  try {
+    const resp = await fetch(url, { ...rest, signal: controller.signal });
+    return resp;
+  } catch (e) {
+    const msg = String((e as Error)?.message || e);
+    if (outer?.aborted || msg.includes("AbortError") || msg.includes("aborted")) {
+      // 区分"外部超时"与"首字节挂起": 外部 signal 已中止 → 正常超时; 否则是首字节检测触发的
+      if (!outer?.aborted) {
+        // 必须把标记放在**抛出的那个** Error 上(旧版标在原始 e 上, 新 Error 丢了标记 → 兜底不触发)
+        const hangErr = new Error("first-byte hang timeout (8s, 服务端返回了响应头但正文不来)") as Error & { __hang?: boolean };
+        hangErr.__hang = true;
+        throw hangErr;
+      }
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener("abort", onOuterAbort);
+  }
+}
+
+/** V417: 挂起风险模型清单 —— 命中才启用首字节检测 */
+const HANG_PRONE_MODELS = new Set(["deepseek-flash", "deepseek-v4-flash", "deepseek-chat"]);
+/** V417: 挂起时的兜底模型(实测稳定) */
+const FALLBACK_FOR_HANG = "deepseek-v4-pro";
+
 async function attemptOnce(input: {
   url: string;
   key: string;
@@ -148,9 +210,11 @@ async function attemptOnce(input: {
   maxTokens?: number;
   timeoutMs?: number;
   ledger?: { endpoint: string; userId?: string | null; taskId?: string | null; context?: string | null };
+  /** V417: 挂起熔断开关(默认 undefined = 按 HANG_PRONE_MODELS 自动判定) */
+  hangGuard?: boolean;
 }): Promise<
   | { ok: true; text: string; tokens: { in: number; out: number; model?: string } | null; cacheHit: number | null; finishReason: string }
-  | { ok: false; status: number | null; message: string; detail: string }
+  | { ok: false; status: number | null; message: string; detail: string; hang?: boolean }
 > {
   try {
     if (!input.key) return { ok: false, status: null, message: "模型密钥未配置", detail: input.url };
@@ -170,16 +234,28 @@ async function attemptOnce(input: {
           messages: input.messages,
           temperature: input.temperature ?? 0.3,
           ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
-          // 关键坑（P0 记忆）: deepseek-v4-flash 默认 thinking 消耗全部输出配额 → content 为空
+          // 关键坑（P0 记忆）: deepseek-flash 默认 thinking 消耗全部输出配额 → content 为空
           // 所有结构化输出调用必须禁用 thinking，否则 finish_reason=length 且 content=""
           thinking: { type: "disabled" },
         };
-    const resp = await fetch(input.url, {
+    const useGuard = input.hangGuard !== false && HANG_PRONE_MODELS.has(input.model);
+    const fetchFn = useGuard
+      ? (u: string, init: RequestInit) => fetchWithFirstByteGuard(u, { ...init, firstByteMs: 8000 })
+      : fetch;
+    const resp = await fetchFn(input.url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       signal: (AbortSignal as any).timeout(input.timeoutMs ?? 180_000),
-    }).catch((e: unknown) => ({ __netError: String((e as Error)?.message ?? e) }) as unknown as Response);
+    }).catch((e: unknown) => {
+      if ((e as Error & { __hang?: boolean })?.__hang) {
+        return { __hang: true, __netError: "first-byte hang" } as unknown as Response;
+      }
+      return { __netError: String((e as Error)?.message ?? e) } as unknown as Response;
+    });
+    if ((resp as unknown as { __hang?: boolean }).__hang) {
+      return { ok: false, status: null, message: "模型挂起(8s 无首字节)", detail: "hang", hang: true };
+    }
     if ((resp as unknown as { __netError?: string }).__netError) {
       return { ok: false, status: null, message: "网络请求失败", detail: String((resp as unknown as { __netError: string }).__netError) };
     }
@@ -274,7 +350,7 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
     : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
   const model = resolveModelAlias(overrides?.model
-    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
+    ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   return { url, key, model };
 }
 
@@ -451,7 +527,7 @@ export interface CallLlmOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
-  thinking?: "disabled" | "enabled";   // 默认 disabled（防 deepseek-v4-flash 空 content 坑）
+  thinking?: "disabled" | "enabled";   // 默认 disabled（防 deepseek-flash 空 content 坑）
   /** P0-12 恢复分级: front(默认, 重试+降级) / background(辅助调用, 失败即弃不重试)
    *  后台调用(查询变体/重排/题型复核这类, 失败有兜底)不该跟着主链路重试 —— 它们挤占的是
    *  同一份并发配额, 重试放大反而拖慢真正需要的调用。 */
@@ -575,7 +651,7 @@ export async function callLlm(input: CallLlmOptions): Promise<CallLlmResult | nu
 
 // ═══ V389: Quota Rotation(借鉴 TraitTutor gateway/quota_rotation.py) ═══
 // per-model 路由熔断: 连续失败 ≥ MODEL_CIRCUIT_FAILURES(3) 次 → OPEN 60s(期间跳过该模型)
-// 与全局 breakers 区分: 这里按具体模型名(deepseek-v4-flash/qwen3.7-max...)独立熔断, 失败不拖累其他路由
+// 与全局 breakers 区分: 这里按具体模型名(deepseek-flash/qwen3.7-max...)独立熔断, 失败不拖累其他路由
 const MODEL_CIRCUIT_FAILURES = Math.max(1, parseInt(process.env.LLM_MODEL_CIRCUIT_FAILURES || "3", 10));
 const MODEL_CIRCUIT_COOLDOWN_MS = Math.max(5_000, parseInt(process.env.LLM_MODEL_CIRCUIT_COOLDOWN_MS || "60000", 10));
 const modelCircuitState = new Map<string, { failures: number; openedAt: number }>();
@@ -724,7 +800,7 @@ async function callLlmInner(input: CallLlmOptions): Promise<CallLlmResult | null
     temperature: input.temperature ?? 0.3,
     ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
   };
-  // 关键坑（P0 记忆）: deepseek-v4-flash 默认 thinking 消耗全部输出配额 → content 为空
+  // 关键坑（P0 记忆）: deepseek-flash 默认 thinking 消耗全部输出配额 → content 为空
   // 结构化输出必须禁用 thinking；仅需要长思考推理时开启
   if (input.thinking !== "enabled") body.thinking = { type: "disabled" };
   // V399: 思考强度（DeepSeek reasoning_effort）— low/medium/high/max

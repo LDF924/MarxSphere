@@ -74,6 +74,26 @@ setInterval(() => { void refreshClusterSize(); }, 30000);
 // V395-38: 期刊实时同步管道（启动即同步一次 + 每6小时自动）
 startJournalSyncScheduler();
 
+/**
+ * V417: RSS 订阅刷新 —— 补上"订阅写完即死"缺的那个消费者。
+ * 6 小时一次(与期刊同步同频, 都是外网抓取, 不必更密); 跨副本租约保证只跑一遍。
+ * 关闭: SAG_RSS_REFRESH=0
+ */
+if (process.env.SAG_RSS_REFRESH !== "0") {
+  const RSS_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const runRss = async () => {
+    const { withRunLease } = await import("./services/singleton-scheduler.js");
+    const { refreshAllRssSubscriptions } = await import("./services/rss-service.js");
+    // TTL 短于周期 —— 跑完即归还(见 singleton-scheduler 的租约自锁说明)
+    const guarded = withRunLease("rss-refresh", async () => refreshAllRssSubscriptions(), 10 * 60_000);
+    const r = await guarded();
+    if (r && r.newItems > 0) console.log(`[rss] 刷新 ${r.feeds} 个订阅, 新条目 ${r.newItems} 条已进告警中心`);
+  };
+  startupTask("rss-refresh-first", runRss, { delayMs: 45_000, maxAttempts: 2 });
+  setInterval(() => { void runRss().catch((e) => console.warn("[rss] 刷新异常:", String(e).slice(0, 120))); }, RSS_INTERVAL_MS);
+  console.log("[rss] 订阅刷新已启动 (每 6 小时, 多副本下每轮仅一个副本执行)");
+}
+
 // V6: Agent 评测集自动回归(启动即跑一次 + 每24小时, 通过率<50%告警)
 // 2026-09-03: 加 AGENT_EVAL_AUTO_ENABLED 开关(默认关) — 自动评测消耗真实
 // LLM token 且后端每次重启都会触发, 需用时在 .env 设 AGENT_EVAL_AUTO_ENABLED=true

@@ -38,7 +38,7 @@ export const FAILURE_BUFFER = 0.05;           // 失败调用摊销
 
 /** 模型真实成本(元/百万 token, 进/出分离) — 取自 llm_model_prices 表 */
 export const MODEL_COGS: Record<string, { in: number; out: number }> = {
-  "deepseek-v4-flash": { in: 0.27, out: 1.10 },
+  "deepseek-flash": { in: 0.27, out: 1.10 },
   "deepseek-v4-pro": { in: 2.16, out: 8.64 },
   "qwen-plus": { in: 3.60, out: 12.60 },
   "qwen3.7-max": { in: 10.80, out: 36.00 },
@@ -66,23 +66,23 @@ export interface FeatureCostModel {
 /** 实测成本模型(2026-09-11 取自 llm_usage_ledger 的 in/out 拆分) */
 export const FEATURE_COST_MODEL: FeatureCostModel[] = [
   // 编辑器 AI 助手(实测 in≈200 / out≈128)
-  { key: "editor:title",    tokensIn: 200, tokensOut: 128, model: "deepseek-v4-flash" },
-  { key: "editor:rewrite",  tokensIn: 200, tokensOut: 128, model: "deepseek-v4-flash" },
-  { key: "editor:refs",     tokensIn: 150, tokensOut: 100, model: "deepseek-v4-flash" },
-  { key: "editor:check",    tokensIn: 430, tokensOut: 270, model: "deepseek-v4-flash" },
+  { key: "editor:title",    tokensIn: 200, tokensOut: 128, model: "deepseek-flash" },
+  { key: "editor:rewrite",  tokensIn: 200, tokensOut: 128, model: "deepseek-flash" },
+  { key: "editor:refs",     tokensIn: 150, tokensOut: 100, model: "deepseek-flash" },
+  { key: "editor:check",    tokensIn: 430, tokensOut: 270, model: "deepseek-flash" },
   // 图表: LLM 生成代码 + Python 沙箱渲染
-  { key: "viz:chart",       tokensIn: 300, tokensOut: 200, model: "deepseek-v4-flash", extraCny: 0.002 },
+  { key: "viz:chart",       tokensIn: 300, tokensOut: 200, model: "deepseek-flash", extraCny: 0.002 },
   // 场景类同步端点(实测 716 tok/次)
-  { key: "writing:research", tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
-  { key: "writing:output",   tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
-  { key: "quality:check",    tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
-  { key: "classical:study",  tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
-  { key: "theory:reflect",   tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
-  { key: "academic:research", tokensIn: 437, tokensOut: 279, model: "deepseek-v4-flash" },
+  { key: "writing:research", tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
+  { key: "writing:output",   tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
+  { key: "quality:check",    tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
+  { key: "classical:study",  tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
+  { key: "theory:reflect",   tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
+  { key: "academic:research", tokensIn: 437, tokensOut: 279, model: "deepseek-flash" },
   // 论文评审(整篇分片 + 多维评审, 单次消耗显著更高, 按 4 片估)
-  { key: "review:paper",    tokensIn: 1950, tokensOut: 1250, model: "deepseek-v4-flash" },
+  { key: "review:paper",    tokensIn: 1950, tokensOut: 1250, model: "deepseek-flash" },
   // 实证分析(含 Python 计算 + LLM 解读)
-  { key: "empirical:analyze", tokensIn: 550, tokensOut: 350, model: "deepseek-v4-flash", extraCny: 0.002 },
+  { key: "empirical:analyze", tokensIn: 550, tokensOut: 350, model: "deepseek-flash", extraCny: 0.002 },
 ];
 
 /** 单次调用的成本(人民币) — 按进/出分别计价(输出通常更贵) */

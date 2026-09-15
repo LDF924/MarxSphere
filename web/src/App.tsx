@@ -5144,7 +5144,7 @@ function ModelRoleSettings() {
         <div key={role} className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-xs text-muted-foreground">{label}</span>
           <select
-            value={roleMap[role] || "deepseek-chat"}
+            value={roleMap[role] || "deepseek-flash"}
             onChange={(e) => void setRole(role, e.target.value)}
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
           >

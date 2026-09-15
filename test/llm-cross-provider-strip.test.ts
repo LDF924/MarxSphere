@@ -51,7 +51,7 @@ describe("跨源降级: 剥离发送方私有字段", () => {
   it("同源(DeepSeek)调用保持原样, 不改变现有序列化", async () => {
     const ep = await captureLlm();
     try {
-      await callLlm({ messages: MSGS, url: ep.url, key: "k", model: "deepseek-v4-flash" });
+      await callLlm({ messages: MSGS, url: ep.url, key: "k", model: "deepseek-flash" });
       expect(ep.bodies()[0]).toContain("reasoning_content");
     } finally { ep.close(); }
   }, 30000);
