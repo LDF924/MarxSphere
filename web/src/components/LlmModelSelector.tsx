@@ -104,7 +104,7 @@ export function LlmModelSelector({ roles = TASK_ROLES.full, compact = false }: {
         <span className="font-mono text-[10px]">
           {(() => {
             const visible = roles.length > 0 ? roles : (["reason"] as readonly string[]);
-            const models = [...new Set(visible.map((r) => roleMap[r] || "deepseek-chat"))];
+            const models = [...new Set(visible.map((r) => roleMap[r] || "deepseek-flash"))];
             return models.join(" · ");
           })()}
         </span>
@@ -149,7 +149,7 @@ export function LlmModelSelector({ roles = TASK_ROLES.full, compact = false }: {
                 <div key={role} className="flex items-center gap-1.5">
                   <span className="w-16 shrink-0 text-[10px] text-muted-foreground">{ROLE_LABELS[role] || role}</span>
                   <select
-                    value={roleMap[role] || "deepseek-chat"}
+                    value={roleMap[role] || "deepseek-flash"}
                     onChange={(e) => void setRole(role, e.target.value)}
                     className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px] text-foreground"
                   >

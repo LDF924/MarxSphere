@@ -54,7 +54,7 @@ where ent.search_text @@ q.tsq
   {
     key: "step1ExtractEntities",
     title: "抽取查询实体（LLM）",
-    what: "用 LLM 识别用户问题中的关键实体（deepseek-v4-flash）。",
+    what: "用 LLM 识别用户问题中的关键实体（deepseek-flash）。",
     code: `// llm-client.extractNamedEntities
 const result = await this.chatJson(settings, {
   system: "Extract named entities important for answering the question. Return JSON only.",
@@ -123,7 +123,7 @@ limit $3`,
     key: "step3MultiQuery",
     title: "多查询变体召回",
     what: "LLM 生成多个等价改写（如\"资本下乡对集体经济的影响\"→\"资本如何影响农村集体经济\"），每路独立召回补充。",
-    code: `// llm-client generateQueryVariants（deepseek-v4-flash）
+    code: `// llm-client generateQueryVariants（deepseek-flash）
 // 提示词：把用户问题改写为 3 个等价问题（不同表达、更口语/更书面/更具体）
 const variants = await this.generateQueryVariants(query, 3);
 // 每路跑 title 向量召回 → 合并去重`,

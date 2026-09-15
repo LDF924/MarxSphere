@@ -11,7 +11,7 @@ import { RoutingDiagPanel } from "./RoutingDiagPanel";  // V404-31: 路由诊断
 import { ProvenanceTab } from "./ProvenanceTab";
 
 // ─── 防错规则 ───
-interface Rule { id: number; category: string; pattern: string; rule: string; source: string; hitCount: number; enabled: boolean; createdAt: string; }
+interface Rule { id: number; category: string; pattern: string; rule: string; source: string; hitCount: number; usedCount?: number; enabled: boolean; createdAt: string; }
 // ─── 战略记忆 ───
 interface StrategicMem { id: number; kind: string; content: string; source: string; createdAt: string; }
 // ─── 执行日志 ───
@@ -337,8 +337,8 @@ function RulesTab({ demoOn }: { demoOn: boolean }) {
           <div className="mt-1 text-2xl font-bold">{rules.filter((r) => r.enabled).length}</div>
         </div>
         <div className="rounded-lg border p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md">
-          <div className="text-xs text-muted-foreground">累计拦截/命中</div>
-          <div className="mt-1 text-2xl font-bold">{rules.reduce((a, r) => a + r.hitCount, 0)}</div>
+          <div className="text-xs text-muted-foreground">复现次数 / 规则被采用</div>
+          <div className="mt-1 text-2xl font-bold">{rules.reduce((a, r) => a + r.hitCount, 0)}<span className="ml-1 text-sm font-normal text-muted-foreground">/ {rules.reduce((a, r) => a + (r.usedCount || 0), 0)}</span></div>
         </div>
       </div>
       {msg && <div className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-sm">{msg}</div>}
@@ -363,7 +363,7 @@ function RulesTab({ demoOn }: { demoOn: boolean }) {
             <div className="flex items-center gap-2">
               <span className={cn("rounded px-1.5 py-0.5 text-[10px]", CATEGORY_COLORS[r.category] || CATEGORY_COLORS.unknown)}>{r.category}</span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.pattern}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">命中 {r.hitCount} 次 · {SOURCE_LABELS[r.source] || r.source}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">复现 {r.hitCount} 次 · 采用 {r.usedCount || 0} 次 · {SOURCE_LABELS[r.source] || r.source}</span>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{r.rule}</div>
             <div className="mt-2 flex items-center gap-2">

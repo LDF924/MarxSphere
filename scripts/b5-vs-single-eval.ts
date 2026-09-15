@@ -51,7 +51,7 @@ async function judge(q: string, answer: string, label: string): Promise<number> 
 }
 
 const S1 = "deepseek-v4-pro";   // 强单模型基线
-const S2 = "deepseek-v4-flash"; // 弱单模型基线(便宜锚点 — B5 融合应显著胜出)
+const S2 = "deepseek-flash"; // 弱单模型基线(便宜锚点 — B5 融合应显著胜出)
 
 const results: JudgeScore[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

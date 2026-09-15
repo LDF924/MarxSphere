@@ -16,7 +16,7 @@ describe("cost-ledger SQL 契约", () => {
 
   it("calcLedgerCostCny: in/out 分价(默认 ¥2.16/8.64 每 1M)", () => {
     // 1M in × 2.16 + 500K out × 8.64 = 2.16 + 4.32 = 6.48
-    expect(calcLedgerCostCny("deepseek-v4-flash", 1_000_000, 500_000)).toBeCloseTo(6.48, 4);
+    expect(calcLedgerCostCny("deepseek-flash", 1_000_000, 500_000)).toBeCloseTo(6.48, 4);
     expect(calcLedgerCostCny("x", 0, 0)).toBe(0);
   });
 
@@ -36,7 +36,7 @@ describe("cost-ledger SQL 契约", () => {
   });
 
   it("recordLedger byok: 平台零成本(cost_source=byok, cost=0)", () => {
-    recordLedger({ endpoint: "reason", model: "deepseek-v4-flash", tokensIn: 1_000_000, tokensOut: 1_000_000, costSource: "byok" });
+    recordLedger({ endpoint: "reason", model: "deepseek-flash", tokensIn: 1_000_000, tokensOut: 1_000_000, costSource: "byok" });
     const [sql, params] = db.query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("cost_source");
     expect(params).toContain("byok");
@@ -51,13 +51,13 @@ describe("cost-ledger SQL 契约", () => {
   });
 
   it("getLedgerSummary: 聚合 SQL 含按模型分组(审计视图数据源)", async () => {
-    db.query.mockResolvedValueOnce({ rows: [{ model: "deepseek-v4-flash", calls: 3, tin: "100", tout: "50", cache: "10", cost: "0.5" }] });
+    db.query.mockResolvedValueOnce({ rows: [{ model: "deepseek-flash", calls: 3, tin: "100", tout: "50", cache: "10", cost: "0.5" }] });
     db.query.mockResolvedValue({ rows: [], rowCount: 0 });
     const s = await getLedgerSummary(7);
     const firstSql = db.query.mock.calls[0][0] as string;
     expect(firstSql).toContain("from llm_usage_ledger");
     expect(firstSql).toContain("group by model");
-    expect(s.byModel[0]?.model).toBe("deepseek-v4-flash");
+    expect(s.byModel[0]?.model).toBe("deepseek-flash");
     expect(s.byModel[0]?.costCny).toBeCloseTo(0.5, 4);
   });
 

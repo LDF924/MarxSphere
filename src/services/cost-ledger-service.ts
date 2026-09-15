@@ -47,9 +47,9 @@ export async function getModelPrice(model: string): Promise<{ in: number; out: n
 /** 首次启动 seed 平台默认单价(仅插缺省行, 不覆盖已有) */
 export async function seedDefaultPrices(): Promise<void> {
   const defaults: Array<[string, number, number]> = [
-    ["deepseek-v4-flash", 0.27, 1.1],       // USD×7.2 近似: 0.3/1.2 为别家; flash 官方价更低
+    ["deepseek-flash", 0.27, 1.1],       // USD×7.2 近似: 0.3/1.2 为别家; flash 官方价更低
     ["deepseek-v4-pro", 2.16, 8.64],
-    ["deepseek-chat", 2.16, 8.64],
+    ["deepseek-flash", 2.16, 8.64],
     ["deepseek-reasoner", 2.16, 8.64],
     ["qwen-plus", 3.6, 12.6],
     ["qwen3.7-max", 10.8, 36.0],

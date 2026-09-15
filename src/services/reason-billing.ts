@@ -28,7 +28,7 @@ export async function chargeUserForReasonTask(userId: string, taskId: string | u
     let guess = "";
     if (needGuess) {
       const llmCfg = await authService.getUserLlmConfig(userId);
-      guess = llmCfg.provider === "byok" ? "byok" : "deepseek-v4-flash";
+      guess = llmCfg.provider === "byok" ? "byok" : "deepseek-flash";
     }
     for (const row of byModel) {
       const model = String((row as { model?: string }).model || "") || guess;

@@ -6,6 +6,13 @@
 import { pool } from "../db/pool.js";
 import { agentTaskService } from "./agent-task-service.js";
 
+/**
+ * V417: 定时任务是否自动执行(默认**关**)。
+ *   关: 触发只创建 planning 任务, 等用户从面板启动(原行为, 防后台烧钱)。
+ *   开: 触发即执行完整步骤(角色 analyst, 走全套安全策略闸 —— 定时任务不是特权路径)。
+ */
+const AUTO_RUN_ENABLED = process.env.AGENT_SCHEDULE_AUTO_RUN === "1";
+
 export interface ScheduledAgentTask {
   id: string;
   goal: string;
@@ -151,6 +158,20 @@ async function tickOnce(): Promise<Array<{ scheduledId: string; taskId: string; 
       );
       triggered.push({ scheduledId: sched.id, taskId: task.id, goal: sched.goal });
       console.log(`[agent-scheduler] 触发定时任务 ${sched.id} → agent 任务 ${task.id.slice(0, 8)}（${sched.goal.slice(0, 40)}）`);
+      // V417: 可选自动执行 —— 默认**关**。
+      //   原设计是"只建 planning 任务, 由用户从任务面板启动"(避免后台消耗 LLM)。
+      //   但那样定时任务实际上只是个待办生成器, 对"每天自动跑一次研究"这类诉求没用。
+      //   两侧都要: 开关打开才自动跑, 关着维持原行为。判定与执行都在这里, 免得散到调用方。
+      if (AUTO_RUN_ENABLED) {
+        void (async () => {
+          try {
+            const { runScheduledTask } = await import("./agent-scheduled-runner.js");
+            await runScheduledTask(task.id, sched.goal);
+          } catch (e: any) {
+            console.warn(`[agent-scheduler] 自动执行失败 ${sched.id}: ${String(e?.message || e).slice(0, 120)}`);
+          }
+        })();
+      }
     } catch (e: any) {
       // next_run 已在上面的原子段推进过, 这里不再重复推进(原先失败分支再推一次, 反而会双重跳跃)
       console.warn(`[agent-scheduler] 定时任务 ${sched.id} 触发失败: ${String(e?.message || e).slice(0, 120)}`);
@@ -178,4 +199,6 @@ export const agentScheduler = {
   validateCron,
   nextCronRun,
   startScheduler,
+  /** V417: 暴露单次 tick —— 定时行为要能被测试直接驱动, 不然只能等真到点 */
+  tickNow: tickOnce,
 };

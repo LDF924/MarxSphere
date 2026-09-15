@@ -36,7 +36,17 @@ const WITH_ACTIONS = ["ask", "literature", "paper-outline", "dag-workbench", "pl
 const browser = await chromium.launch({ headless: true, executablePath: resolveBrowser({ envVar: "UI_VERIFY_BROWSER", label: "node scripts/verify-assistant-coverage.mjs" }) });
 const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
 const errors = [];
-page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 140)));
+page.on("pageerror", (e) => {
+  const msg = String(e.message).slice(0, 140);
+  // V417: 过滤**第三方内嵌页**的错误 —— MemoryPanel 会内嵌 OpenViking Studio
+  //   (http://127.0.0.1:1933/studio)。OpenViking 在线时, 它的 Studio 在非 https 的
+  //   localhost 上注册 ServiceWorker 失败, 报 "Failed to register a ServiceWorker for
+  //   scope ('http://127.0.0.1:1933/studio')" —— 这是**它的**前端错误, 不是 SAG 页面的。
+  //   本门禁验的是 SAG 外壳无 JS 错误, 第三方 iframe 内部的错误不在此列。
+  //   只过滤带 1933 的错误: 其余照旧收, 不借这个口子放宽任何真实断言。
+  if (msg.includes("127.0.0.1:1933") || msg.includes(":1933/studio")) return;
+  errors.push(msg);
+});
 
 /** 打开视图并读助手面板内容 */
 async function read(view) {

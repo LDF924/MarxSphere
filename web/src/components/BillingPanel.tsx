@@ -46,8 +46,8 @@ export const BillingPanel: FC = () => {
     setRecords([
       { id: "d1", type: "subscription", amount_cents: "-3900", tokens_used: null, description: "订阅 pro 月费", created_at: new Date().toISOString() },
       { id: "d2", type: "recharge", amount_cents: "-20000", tokens_used: null, description: "充值 200.00 元", created_at: new Date().toISOString() },
-      { id: "d3", type: "usage", amount_cents: "86", tokens_used: "21500", description: "LLM超额扣费(deepseek-v4-flash) 21500 tokens", created_at: new Date().toISOString() },
-      { id: "d4", type: "usage", amount_cents: "42", tokens_used: "10500", description: "LLM超额扣费(deepseek-v4-flash) 10500 tokens", created_at: new Date().toISOString() },
+      { id: "d3", type: "usage", amount_cents: "86", tokens_used: "21500", description: "LLM超额扣费(deepseek-flash) 21500 tokens", created_at: new Date().toISOString() },
+      { id: "d4", type: "usage", amount_cents: "42", tokens_used: "10500", description: "LLM超额扣费(deepseek-flash) 10500 tokens", created_at: new Date().toISOString() },
     ]);
     setUsage([
       { endpoint: "/api/reason/query", tin: "8200", tout: "3100", cost: "42", day: "08-15" },

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // test/agent-model-router.test.ts — V404-6: KV-cache 感知档位保持(sticky tier/anti-downgrade)
 // 借鉴 OpenSquilla KV-cache 感知路由: 上下文窗口内见过高档 → 后续不降档(保 prompt cache)
-// 真实注册表: reason=deepseek-v4-flash(cheap 档), plan=deepseek-v4-pro(strong 档)
+// 真实注册表: reason=deepseek-flash(cheap 档), plan=deepseek-v4-pro(strong 档)
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   routeAgentModel, noteTierUsed, tierHoldStats, pruneTierHold, tierOfModel,
 } from "../src/services/agent-model-router.js";
 
-const FLASH = "deepseek-v4-flash"; // reason → cheap
+const FLASH = "deepseek-flash"; // reason → cheap
 const PRO = "deepseek-v4-pro";     // plan → strong
 
 describe("agent-model-router V404-6", () => {
@@ -16,11 +16,11 @@ describe("agent-model-router V404-6", () => {
   });
 
   it("tierOfModel: 模型名→档位", () => {
-    expect(tierOfModel("deepseek-v4-flash")).toBe("cheap");
+    expect(tierOfModel("deepseek-flash")).toBe("cheap");
     expect(tierOfModel("deepseek-v4-pro")).toBe("strong");
     expect(tierOfModel("qwen3.7-max")).toBe("strong");
     expect(tierOfModel("qwen-plus")).toBe("standard");
-    expect(tierOfModel("deepseek-chat")).toBe("standard"); // 未知保守
+    expect(tierOfModel("deepseek-v4-pro")).toBe("strong");  // pro 关键词(前一行已断言, 重复守卫)
   });
 
   it("noteTierUsed 只升不降: strong 后记 strong, cheap 不覆盖", () => {

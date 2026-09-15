@@ -12,6 +12,8 @@ export interface PreventionRule {
   rule: string;
   source: string;
   hitCount: number;
+  /** V417: 规则被注入给模型的次数(与 hitCount=复现频次 分开, 见迁移 152) */
+  usedCount: number;
   enabled: boolean;
   createdAt: Date;
 }
@@ -110,19 +112,38 @@ export async function recordAndAttribute(input: {
   return createPreventionRule({ ...attr, pattern: qFp, source: input.source });
 }
 
-/** 加载生效预防规则（注入 Agent 执行上下文） */
+/**
+ * 加载生效预防规则（注入 Agent 执行上下文）
+ *
+ * V417: 注入的同时**累计 used_count** —— 此前这个动作没有任何记录, "规则到底起没起作用"
+ *   无从判断。排序仍按 hit_count(复现频次): 反复踩同一个坑的问题最该先防。
+ *   used_count 是"被注入给模型的次数", 与复现次数是两件事(见迁移 152)。
+ */
 export async function loadActiveRules(limit = 20): Promise<string> {
   const r = await pool.query(
-    "select category, pattern, rule, hit_count from prevention_rules where enabled order by hit_count desc, created_at desc limit $1",
+    "select id, category, pattern, rule, hit_count from prevention_rules where enabled order by hit_count desc, created_at desc limit $1",
     [limit]
   );
   if (r.rows.length === 0) return "";
+  // 命中计数(尽力而为, 失败不影响注入)
+  try {
+    await pool.query(
+      "update prevention_rules set used_count = used_count + 1 where id = any($1::bigint[])",
+      [r.rows.map((x: { id: unknown }) => Number(x.id))]
+    );
+  } catch { /* 计数失败不阻断 */ }
   return "【防错规则(历史踩坑)】\n" + r.rows.map((x) => `- [${x.category}] ${x.pattern}: ${x.rule}（命中${x.hit_count}次）`).join("\n");
 }
 
-/** 命中计数（Agent 按规则执行后调用） */
+/**
+ * 规则被采用计数(Agent 按规则执行后调用)。
+ *
+ * V417: 从"复现 +1"改成"采用 +1"。原先它写 hit_count, 与 recordAndAttribute 的语义
+ *   撞在同一列上(一个记复现、一个记采用), UI 只显示一个"命中N次"无法区分。
+ *   现在 hit_count 专表复现频次, used_count 专表规则被采用次数。
+ */
 export async function hitRule(ruleId: number): Promise<void> {
-  await pool.query("update prevention_rules set hit_count = hit_count + 1 where id = $1", [ruleId]);
+  await pool.query("update prevention_rules set used_count = used_count + 1 where id = $1", [ruleId]);
 }
 
 export async function listRules(): Promise<PreventionRule[]> {
@@ -147,6 +168,9 @@ function mapRow(row: any): PreventionRule {
     rule: row.rule,
     source: row.source,
     hitCount: Number(row.hit_count),
+    // V417: 与 hitCount 分开 —— 前者是"这个问题复现了几次"(踩坑频次),
+    //   后者是"这条规则被注入给模型几次"(真正在用)。混为一谈会让 UI 说不清。
+    usedCount: Number(row.used_count ?? 0),
     enabled: row.enabled,
     createdAt: row.created_at,
   };

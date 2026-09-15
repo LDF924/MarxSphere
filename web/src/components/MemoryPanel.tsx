@@ -39,6 +39,40 @@ export const MemoryPanel: FC = () => {
   const [ovOpen, setOvOpen] = useState(true);
   // V371: iframe 高度（跨域不可读内容，用固定大高度 800px 保证完整显示）
   const [ovHeight, setOvHeight] = useState(800);
+  // V417: OpenViking 状态轮询 + 一键激活。
+  //   原先靠 schtasks 每 5 分钟探活拉起(用户无感), 改为: 面板轮询状态, 离线时显示激活按钮,
+  //   点击 POST /api/memory/openviking/start 由后端拉起(处理残留进程占 LOCK 的坑)。
+  const [ovStatus, setOvStatus] = useState<{ listening: boolean; healthy?: boolean; version?: string } | null>(null);
+  const [ovStarting, setOvStarting] = useState(false);
+  const [ovStartError, setOvStartError] = useState<string | null>(null);
+  const checkOvStatus = async () => {
+    try {
+      const r = await fetch("/api/memory/openviking/status");
+      if (r.ok) setOvStatus(await r.json());
+    } catch { /* 后端不可达时保持上次状态 */ }
+  };
+  useEffect(() => {
+    void checkOvStatus();
+    const t = setInterval(() => { void checkOvStatus(); }, 15_000);  // 15s 轮询, 轻量无负担
+    return () => clearInterval(t);
+  }, []);
+  const activateOpenviking = async () => {
+    setOvStarting(true);
+    setOvStartError(null);
+    try {
+      const r = await fetch("/api/memory/openviking/start", { method: "POST" });
+      const body = await r.json();
+      if (r.ok && body.ok) {
+        await checkOvStatus();
+      } else {
+        setOvStartError(body.error || `启动失败(HTTP ${r.status})`);
+      }
+    } catch (e) {
+      setOvStartError(String((e as Error)?.message || e).slice(0, 120));
+    } finally {
+      setOvStarting(false);
+    }
+  };
   useEffect(() => {
     if (!ovOpen) return;
     // 视口大时再拉高一点（最大 900）
@@ -96,6 +130,33 @@ export const MemoryPanel: FC = () => {
           <Brain className="h-3.5 w-3.5 text-violet-500" />
           <span className="text-xs font-semibold">OpenViking 长期记忆</span>
           <span className="text-[10px] text-muted-foreground">外部记忆层 · 用户偏好/会话经验/历史交互 · 独立存储</span>
+          {/* V417: 状态徽章 —— 在线绿/健康问题黄/离线红 */}
+          {ovStatus ? (
+            !ovStatus.listening ? (
+              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">离线</span>
+            ) : ovStatus.healthy === false ? (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">端口在但健康检查失败</span>
+            ) : (
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                在线{ovStatus.version ? ` · v${ovStatus.version}` : ""}
+              </span>
+            )
+          ) : (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">检测中…</span>
+          )}
+          {/* V417: 离线时的"一键激活" —— 替换原先每 5 分钟的 schtasks 探活 */}
+          {ovStatus && !ovStatus.listening && (
+            <button
+              onClick={() => void activateOpenviking()}
+              disabled={ovStarting}
+              className="rounded bg-violet-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-violet-500 disabled:opacity-60"
+            >
+              {ovStarting ? "拉起中…(最长40s)" : "一键激活"}
+            </button>
+          )}
+          {ovStartError && (
+            <span className="max-w-[320px] truncate text-[10px] text-red-600" title={ovStartError}>{ovStartError}</span>
+          )}
           <button
             onClick={() => setOvOpen((v) => !v)}
             className="ml-auto rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
@@ -104,12 +165,18 @@ export const MemoryPanel: FC = () => {
           </button>
         </div>
         {ovOpen && (
-          <iframe
-            src="http://127.0.0.1:1933/studio"
-            className="w-full border-0"
-            style={{ height: ovHeight }}
-            title="OpenViking Studio"
-          />
+          ovStatus && !ovStatus.listening ? (
+            <div className="flex items-center justify-center rounded border border-dashed border-red-200 bg-red-50/50 py-6 text-xs text-muted-foreground" style={{ minHeight: 120 }}>
+              OpenViking 未运行 —— 点击上方「一键激活」拉起后, 管理界面会出现在这里
+            </div>
+          ) : (
+            <iframe
+              src="http://127.0.0.1:1933/studio"
+              className="w-full border-0"
+              style={{ height: ovHeight }}
+              title="OpenViking Studio"
+            />
+          )
         )}
       </div>
       {/* SAG 记忆概览——全宽（与上方 OpenViking 一致，消除两侧空白） */}

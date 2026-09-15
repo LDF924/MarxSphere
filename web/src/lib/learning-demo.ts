@@ -157,13 +157,13 @@ export const LEARNING_TOOLS: ToolDemo[] = [
     desc: "固定 Harness 只换 reason 模型，判断'模型不行' vs 'Harness 不行'",
     steps: [
       "MODEL_SWAP_ROLE 环境变量切换 reason 角色模型…",
-      "配置 1：baseline（deepseek-v4-flash）— 当前基准…",
+      "配置 1：baseline（deepseek-flash）— 当前基准…",
       "配置 2：强模型（deepseek-v4-pro）— 涨→模型有提升空间；不涨→Harness 瓶颈…",
       "配置 3：异源（qwen3.7-max）— 涨→偏见/能力互补；不涨→链路本身…",
       "三配置对照跑同一 50 题，用 significance.ts 做配对检验",
     ],
     rows: [
-      { cells: ["基线", "deepseek-v4-flash", "当前基准分 0.870", "—"] },
+      { cells: ["基线", "deepseek-flash", "当前基准分 0.870", "—"] },
       { cells: ["强模型", "deepseek-v4-pro", "涨 → 模型有提升空间", "待数据"] },
       { cells: ["异源", "qwen3.7-max", "涨 → 偏见/能力互补", "待数据"] },
     ],

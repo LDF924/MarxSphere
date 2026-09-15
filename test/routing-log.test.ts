@@ -31,14 +31,14 @@ describe("routing-log", () => {
   });
   it("inferTier: 模型名 → 档位", () => {
     const { inferTier } = mod!;
-    expect(inferTier("deepseek-v4-flash")).toBe("cheap");
+    expect(inferTier("deepseek-flash")).toBe("cheap");
     expect(inferTier("deepseek-r1-mini")).toBe("cheap");
     expect(inferTier("qwen-plus")).toBe("standard");
     expect(inferTier("deepseek-v4")).toBe("standard");
     expect(inferTier("qwen3.7-max")).toBe("strong");
     expect(inferTier("deepseek-pro")).toBe("strong");
     expect(inferTier("gpt-4o")).toBe("other");
-    expect(inferTier("deepseek-chat")).toBe("other"); // 无档关键词 → other
+    expect(inferTier("deepseek-flash")).toBe("cheap"); // 新名带 flash 关键词 → cheap
   });
 
   it("estimateContextTokens: 中文粗估", () => {
@@ -49,12 +49,12 @@ describe("routing-log", () => {
   });
 
   it("logRoutingDecision: 记录决策 → 文件含完整字段(cache 命中也在内)", () => {
-    logRoutingDecision({ model: "deepseek-v4-flash", role: "plan", contextTokens: 3000, attempts: ["deepseek-v4-flash", "qwen-plus"], retried: true, ok: true, ms: 850, purpose: "plan_steps", cacheHitTokens: 1200, promptTokens: 4000 });
-    logRoutingDecision({ model: "deepseek-v4-flash", role: "reflect", ok: false, errorType: "timeout", ms: 1200 });
+    logRoutingDecision({ model: "deepseek-flash", role: "plan", contextTokens: 3000, attempts: ["deepseek-flash", "qwen-plus"], retried: true, ok: true, ms: 850, purpose: "plan_steps", cacheHitTokens: 1200, promptTokens: 4000 });
+    logRoutingDecision({ model: "deepseek-flash", role: "reflect", ok: false, errorType: "timeout", ms: 1200 });
     const lines = readLines();
     expect(lines).toHaveLength(2);
     expect(lines[0].event).toBe("decision");
-    expect(lines[0].model).toBe("deepseek-v4-flash");
+    expect(lines[0].model).toBe("deepseek-flash");
     expect(lines[0].tier).toBe("cheap");
     expect(lines[0].role).toBe("plan");
     expect(lines[0].contextTokens).toBe(3000);
@@ -69,14 +69,14 @@ describe("routing-log", () => {
     // 清空重写
     rmSync(TEST_LOG, { force: true });
     // 6 次决策(便宜档), 2 次低估 → 率 1/3 > 0.15 → flagged
-    for (let i = 0; i < 6; i++) logRoutingDecision({ model: "deepseek-v4-flash", role: "write", ok: true, ms: 500 });
+    for (let i = 0; i < 6; i++) logRoutingDecision({ model: "deepseek-flash", role: "write", ok: true, ms: 500 });
     for (let i = 0; i < 2; i++) logRoutingDecision({ model: "qwen-plus", role: "write", ok: true, ms: 500 });
     // 手动写 underestimate 样本(模拟用户负评对齐)
     const { appendFileSync } = await import("node:fs");
-    appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "x", model: "deepseek-v4-flash", tier: "cheap" }) + "\n");
-    appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "y", model: "deepseek-v4-flash", tier: "cheap" }) + "\n");
+    appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "x", model: "deepseek-flash", tier: "cheap" }) + "\n");
+    appendFileSync(TEST_LOG, JSON.stringify({ event: "underestimate", ts: new Date().toISOString(), taskId: "y", model: "deepseek-flash", tier: "cheap" }) + "\n");
     const stats = routingUnderestimateStats();
-    const flash = stats.byModel.find((m: any) => m.model === "deepseek-v4-flash");
+    const flash = stats.byModel.find((m: any) => m.model === "deepseek-flash");
     expect(flash).toBeDefined();
     expect(flash!.decisions).toBe(6);
     expect(flash!.underestimates).toBe(2);
@@ -84,7 +84,7 @@ describe("routing-log", () => {
     expect(flash!.flagged).toBe(true);
     const qwen = stats.byModel.find((m: any) => m.model === "qwen-plus");
     expect(qwen!.flagged).toBe(false);
-    expect(stats.flagged).toContain("deepseek-v4-flash");
+    expect(stats.flagged).toContain("deepseek-flash");
   });
 
   it("trimRoutingLog: 小文件不裁剪, 无副作用", () => {

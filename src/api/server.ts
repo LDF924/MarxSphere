@@ -3987,9 +3987,25 @@ export function buildHttpServer() {
   });
 
   // ───── 评测学习引擎 API（2026-08-08 V290：P0-2 归因数据 + P0-1/3/4 报告文件）─────
+  // V417: bad case → gold 候选提名（一键触发）。
+  //   背景: 回流此前只有命令行脚本, 产物停在 2026-08-07 —— 材料(30 条已归因失败)现成, 缺的是入口。
+  //   限 admin: 评测集的构成不该由普通账号改动。
+  //   红线: 只产 draft 候选, **不改 gold_dataset.json**。
+  app.post("/api/eval/failures/promote", async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return;
+    const body = (request.body ?? {}) as { minConfidence?: number; maxItems?: number; evalRunId?: string };
+    const { proposeGoldCandidates } = await import("../services/eval-failure-promotion.js");
+    const r = await proposeGoldCandidates({
+      minConfidence: typeof body.minConfidence === "number" ? body.minConfidence : undefined,
+      maxItems: typeof body.maxItems === "number" ? body.maxItems : undefined,
+      evalRunId: typeof body.evalRunId === "string" ? body.evalRunId : undefined,
+    });
+    if (!r.ok) return reply.code(500).send({ error: r.error, code: "PROMOTE_FAILED" });
+    return r;
+  });
+
   // GET /api/eval/failures — 查 eval_failures 表（类别统计 + 逐题归因列表）
-  app.get("/api/eval/failures", async () => {
-    try {
+  app.get("/api/eval/failures", async () => {    try {
       const { pool } = await import("../db/pool.js");
       const [cats, items, layerCounts] = await Promise.all([
         pool.query("select failure_category, count(*)::int as n from eval_failures group by failure_category order by n desc"),
@@ -4232,6 +4248,37 @@ export function buildHttpServer() {
       return { total: 0, archived: 0, conflicts: 0, vectorized: 0 };
     }
   });
+  // V417: OpenViking 状态与一键拉起。
+  //   原先靠 schtasks 每 5 分钟探活 —— 太频繁。改为: 前端记忆面板轮询状态, 离线时显示
+  //   "一键激活"按钮, 点击调 start(由 SAG 进程拉起, 处理残留进程占 LOCK 的坑)。
+  //   权限: 状态读不限(健康信息无敏感); 拉起限本机或 admin(启动进程是机器级动作)。
+  app.get("/api/memory/openviking/status", async () => {
+    try {
+      const { isOpenvikingListening } = await import("../services/openviking-process.js");
+      const listening = await isOpenvikingListening();
+      if (!listening) return { listening: false };
+      try {
+        const r = await fetch("http://127.0.0.1:1933/health", { signal: (AbortSignal as any).timeout(3000) });
+        const body = await r.json().catch(() => ({}));
+        return { listening: true, healthy: r.ok, version: (body as any)?.version };
+      } catch {
+        return { listening: true, healthy: false };
+      }
+    } catch {
+      return { listening: false };
+    }
+  });
+  app.post("/api/memory/openviking/start", async (request, reply) => {
+    if (isLocalRequest(request)) { /* 本机放行 */ }
+    else {
+      const admin = await requireAdmin(request, reply); if (!admin) return;
+    }
+    const { startOpenviking } = await import("../services/openviking-process.js");
+    const r = await startOpenviking();
+    if (!r.ok) return reply.code(500).send({ error: r.error, code: "OV_START_FAILED", ...r });
+    return r;
+  });
+
   // GET /api/memory/recent?limit=10 — 最近记忆（供前端展示）
   app.get("/api/memory/recent", async (request) => {
     const params = request.query as { limit?: string };
@@ -6769,7 +6816,7 @@ except Exception as e:
           );
           const data: any = await llmRes.json();
           const text = data?.choices?.[0]?.message?.content || "（写作失败）";
-          return { result: text.substring(0, 120), detail: `【写作结果】\n${text}`, source: "LLM 写作（deepseek-chat）" };
+          return { result: text.substring(0, 120), detail: `【写作结果】\n${text}`, source: "LLM 写作（deepseek-flash）" };
         }
         if (step.type === "review") {
           // 评审步骤：对前序产出做质量检查（真实 LLM 评审）
@@ -6788,7 +6835,7 @@ except Exception as e:
           );
           const data: any = await llmRes.json();
           const text = data?.choices?.[0]?.message?.content || "（评审失败）";
-          return { result: `评审完成: ${text.substring(0, 100)}`, detail: `【评审意见】\n${text}`, source: "评审 Agent（deepseek-chat）" };
+          return { result: `评审完成: ${text.substring(0, 100)}`, detail: `【评审意见】\n${text}`, source: "评审 Agent（deepseek-flash）" };
         }
         return { result: `（未知步骤类型: ${step.type}）` };
       } catch (e: any) {

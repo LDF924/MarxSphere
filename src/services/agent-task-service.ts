@@ -81,7 +81,7 @@ const HIGH_RISK_TYPES = new Set(["write", "review"]);  // 默认: 写作(可能�
 const HIGH_RISK_KEYWORDS = ["删除", "清空", "发布", "发送", "导入", "批量", "覆盖", "替换", "提现", "转账", "付款"];
 
 // ═══ V391(P1-2): Agent 预算声明 + 超预算降级 ═══
-/** 步骤类型 → 预估成本（分/步, 按 deepseek-v4-flash 单价估算: 输入$0.3/M 输出$1.2/M 折算） */
+/** 步骤类型 → 预估成本（分/步, 按 deepseek-flash 单价估算: 输入$0.3/M 输出$1.2/M 折算） */
 const STEP_COST_CENTS: Record<string, number> = {
   retrieve: 2,   // 检索: 嵌入+小LLM
   reason: 15,    // 推理: 52步全链路

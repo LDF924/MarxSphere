@@ -8,9 +8,8 @@ import { pool } from "../db/pool.js";
 
 // 价格表: 模型 → 每 1M token 成本(人民币, 平台定价含利润)
 const PRICE_PER_MTOKEN: Record<string, number> = {
-  "deepseek-v4-flash": 4.0,   // 输入+输出混合估算
+  "deepseek-flash": 4.0,   // 输入+输出混合估算(旧 deepseek-chat 的 2.0 已并入, 统一新名)
   "deepseek-v4-pro": 16.0,
-  "deepseek-chat": 2.0,
   "qwen-plus": 8.0,
   "qwen3.7-max": 60.0,
   "text-embedding-v4": 0.5,

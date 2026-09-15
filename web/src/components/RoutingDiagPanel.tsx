@@ -25,13 +25,13 @@ const DEMO_DIAG = {
   ],
   byModel: [
     { model: "deepseek-v4-pro", tier: "strong", decisions: 14, ok: 12, fail: 2, avgMs: 950, underestimates: 0, flagged: false, cacheHitSum: 6200, promptSum: 9800, cacheRate: 63.3 },
-    { model: "deepseek-v4-flash", tier: "cheap", decisions: 12, ok: 9, fail: 3, avgMs: 430, underestimates: 2, flagged: true, cacheHitSum: 3100, promptSum: 6600, cacheRate: 47 },
+    { model: "deepseek-flash", tier: "cheap", decisions: 12, ok: 9, fail: 3, avgMs: 430, underestimates: 2, flagged: true, cacheHitSum: 3100, promptSum: 6600, cacheRate: 47 },
     { model: "qwen3.7-max", tier: "strong", decisions: 3, ok: 1, fail: 2, avgMs: 1400, underestimates: 0, flagged: false, cacheHitSum: 0, promptSum: 400, cacheRate: 0 },
     { model: "qwen-plus", tier: "standard", decisions: 5, ok: 4, fail: 1, avgMs: 700, underestimates: 0, flagged: false, cacheHitSum: 900, promptSum: 2200, cacheRate: 40.9 },
   ],
   recent: [
     { ts: new Date(Date.now() - 60000).toISOString(), model: "deepseek-v4-pro", tier: "strong", role: "plan", ok: true, errorType: null, ms: 1100, purpose: "plan_steps" },
-    { ts: new Date(Date.now() - 180000).toISOString(), model: "deepseek-v4-flash", tier: "cheap", role: "retrieve", ok: true, errorType: null, ms: 380, purpose: "agent_tool_retrieve" },
+    { ts: new Date(Date.now() - 180000).toISOString(), model: "deepseek-flash", tier: "cheap", role: "retrieve", ok: true, errorType: null, ms: 380, purpose: "agent_tool_retrieve" },
     { ts: new Date(Date.now() - 300000).toISOString(), model: "deepseek-v4-pro", tier: "strong", role: "reflect", ok: true, errorType: null, ms: 890, purpose: "agent_reflect" },
     { ts: new Date(Date.now() - 600000).toISOString(), model: "qwen3.7-max", tier: "strong", role: "write", ok: false, errorType: "timeout", ms: 180000, purpose: "agent_tool_llm_write" },
   ],
@@ -39,7 +39,7 @@ const DEMO_DIAG = {
   savingsHint: "成功决策 31 次; 非 strong 档 13 次(≈42%); KV-cache 命中率 55.2%(sticky 档位保持的有效性指标); flagged 模型 1 个",
   sizeBytes: 18432,
 };
-const DEMO_CIRCUITS = { "qwen3.7-max": { failures: 3, open: true, openedAt: Date.now() - 25000 }, "deepseek-v4-flash": { failures: 1, open: false, openedAt: 0 } };
+const DEMO_CIRCUITS = { "qwen3.7-max": { failures: 3, open: true, openedAt: Date.now() - 25000 }, "deepseek-flash": { failures: 1, open: false, openedAt: 0 } };
 
 export function RoutingDiagPanel() {
   const [diag, setDiag] = useState<Diag | null>(null);

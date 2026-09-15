@@ -42,12 +42,12 @@ export interface StepTokens {
   cacheHit?: number;
   /** 2026-09-11: 产生这些 token 的模型名 — 供 retrieve_steps 落库, 计费按真实模型定价。
    *  此前该字段缺失, 导致 chargeUserForReasonTask 查 parameters->>'model' 恒空,
-   *  整条推理链一律按 deepseek-v4-flash 定价(用 pro 时单价差 4 倍)。 */
+   *  整条推理链一律按 deepseek-flash 定价(用 pro 时单价差 4 倍)。 */
   model?: string;
 }
 
 /** V249: 取 LLM 端点配置（DeepSeek 原生优先，MAAS/DashScope 兼容兜底）
- * 模型别名解析在 llm-model-registry.resolveModelAlias（[1M] 移除 + deepseek-chat 退役映射）
+ * 模型别名解析在 llm-model-registry.resolveModelAlias（[1M] 移除 + deepseek-flash 退役映射）
  * V389: BYOK — this.userLlmConfig 存在时用用户 key（用户自带 LLM key, 平台不承担成本） */
 function getLlmEndpoint(overrides?: { model?: string }, userLlmConfig?: { provider: "byok"; apiKey: string }): { url: string; key: string; model: string } {
   if (userLlmConfig?.provider === "byok" && userLlmConfig.apiKey) {
@@ -56,7 +56,7 @@ function getLlmEndpoint(overrides?: { model?: string }, userLlmConfig?: { provid
       ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
       : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
     const model = resolveModelAlias(overrides?.model
-      ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
+      ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
     return { url, key: userLlmConfig.apiKey, model };
   }
   const ds = process.env.DEEPSEEK_API_KEY || '';
@@ -65,7 +65,7 @@ function getLlmEndpoint(overrides?: { model?: string }, userLlmConfig?: { provid
     ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
     : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
   const model = resolveModelAlias(overrides?.model
-    ?? (ds ? 'deepseek-v4-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
+    ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   return { url, key, model };
 }
 
@@ -2749,10 +2749,10 @@ export class InferenceService {
   }
 
   private async generateHypothesis(query: string, outline: any[], context: string, profile?: QuestionProfile): Promise<{ content: string; confidence: number; citations: any[]; reasoning: string; tokens: StepTokens | null; completionVerified?: boolean; missingRefs?: string[] }> {
-    // 2026-08-07 模型注册表：推理合成用 reason 角色（用户可选，默认 deepseek-v4-flash 或 deepseek-chat）
+    // 2026-08-07 模型注册表：推理合成用 reason 角色（用户可选，默认 deepseek-flash 或 deepseek-flash）
     // V389修复: BYOK 用户推理生成用用户 key（原漏接）
     const reasonModel = getRoleModel("reason");
-    const ep = getLlmEndpoint(process.env.DEEPSEEK_API_KEY ? { model: reasonModel === "deepseek-chat" ? "deepseek-chat" : reasonModel } : undefined, this.userLlmConfig);
+    const ep = getLlmEndpoint(process.env.DEEPSEEK_API_KEY ? { model: reasonModel === "deepseek-flash" ? "deepseek-flash" : reasonModel } : undefined, this.userLlmConfig);
     this.lastUsedModel = { role: "reason", model: ep.model };
     let systemPrompt = `你是学术知识检索助手。基于三层检索链(Cognee粗检索→Graphiti精炼→SAG融合)提供的上下文回答问题。
 P0规则: 如果上下文中没有相关检索结果（以"[SAG 系统提示]"开头），请直接回复"抱歉，当前知识库中未找到与该问题相关的信息"，不要尝试从训练数据中推测答案。
@@ -3007,7 +3007,7 @@ AI回答: ${hypothesis.substring(0, 2000)}
   }
 
   private async evaluateHypothesis(query: string, hypothesis: string, allResults: any[]): Promise<{ dimensions: Record<string, number>; overallScore: number; passed: boolean; notes: string; tokens: StepTokens | null }> {
-    // V24: 交叉校验 — 用 deepseek-chat (非 v4-flash) 评 hypothesis, 避免同模型自评偏差
+    // V24: 交叉校验 — 用 deepseek-flash (非 v4-flash) 评 hypothesis, 避免同模型自评偏差
     const ep = getLlmEndpoint({ model: getRoleModel("judge") }, this.userLlmConfig);
     const systemPrompt = `你是RAG学术评测专家。请对AI回答与上下文进行事实一致性校验(0-1分，仅返回JSON)。
 

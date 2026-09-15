@@ -11,8 +11,8 @@ describe("b5-ensemble (V404-9)", () => {
 
   it("b5Squad 默认 3 模型阵容: 2 strong + 1 cheap 锚点", () => {
     const squad = b5Squad();
-    expect(squad).toEqual(["deepseek-v4-pro", "qwen3.7-max", "deepseek-v4-flash"]);
-    expect(squad).toContain("deepseek-v4-flash"); // cheap 锚点控成本
+    expect(squad).toEqual(["deepseek-v4-pro", "qwen3.7-max", "deepseek-flash"]);
+    expect(squad).toContain("deepseek-flash"); // cheap 锚点控成本
     expect(squad.length).toBe(3);
   });
 
@@ -28,7 +28,7 @@ describe("b5 preset & direct (V405-B5)", () => {
     expect(b5PresetName()).toBe("default");
     const squad = b5Squad();
     expect(squad.length).toBeGreaterThanOrEqual(3);
-    expect(squad).toContain("deepseek-v4-flash");
+    expect(squad).toContain("deepseek-flash");
   });
 
   it("B5_SQUAD 自定义阵容优先", () => {

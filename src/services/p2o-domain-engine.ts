@@ -77,7 +77,7 @@ export function domainQaPrompt(): string {
 async function callLlm(system: string, excerpt: string, maxTokens = 4096): Promise<string> {
   const dsKey = process.env.DEEPSEEK_API_KEY || "";
   const endpoint = dsKey
-    ? { url: process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions", model: process.env.P2O_DOMAIN_MODEL || "deepseek-chat", key: dsKey }
+    ? { url: process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions", model: process.env.P2O_DOMAIN_MODEL || "deepseek-flash", key: dsKey }
     : { url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", model: process.env.P2O_DOMAIN_MODEL || "qwen-plus", key: process.env.LLM_API_KEY || "" };
   const res = await fetch(endpoint.url, {
     method: "POST",

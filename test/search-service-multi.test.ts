@@ -1,7 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type { EmbeddingClient } from "../src/ai/embedding-client.js";
 import type { LlmClient } from "../src/ai/llm-client.js";
 import type { RerankClient } from "../src/ai/rerank-client.js";
+
+// V417(2026-09-15): 单元测试**不得依赖外网**。
+//   SearchService 默认 multi 路径会调 generateQueryVariants → fetch 打 api.deepseek.com,
+//   而该测试只 mock 了 embedding/llm client, 没 mock 全局 fetch —— 这台机器直连 DeepSeek
+//   官方端点从某时起超时(实测 15s), 于是 4 个用例各挂满 10s 超时(测试代码与仓库都没改过)。
+//   这里 stub 掉 fetch: 单元测试要验的是检索逻辑, 不是"这台机器能不能连 DeepSeek"。
+const realFetch = globalThis.fetch;
 
 const repositories = vi.hoisted(() => ({
   assertSourcesAccessible: vi.fn(),
@@ -32,6 +39,14 @@ vi.mock("../src/ai/rerank-client.js", () => ({ rerankClient: rerank, QwenRerankC
 import { SearchService } from "../src/services/search-service.js";
 
 describe("SearchService multi search", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    globalThis.fetch = realFetch;
+  });
+
   beforeEach(() => {
     for (const mock of Object.values(repositories)) {
       mock.mockReset();
