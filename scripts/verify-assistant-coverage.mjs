@@ -57,9 +57,11 @@ async function read(view) {
     const fab = [...document.querySelectorAll("button")].find((b) => /科研助手/.test(b.textContent || ""));
     if (fab) fab.click();
     return new Promise((res) => setTimeout(() => {
-      const btn = [...document.querySelectorAll("button")].find((b) => /科研助手|收起/.test(b.textContent || ""));
-      let host = btn; while (host && getComputedStyle(host).position !== "fixed") host = host.parentElement;
-      const panel = host?.querySelector('div[class*="w-80"]');
+      // 2026-09-15: 展开时 FAB 已隐藏(用户要求去掉重复的「收起」按钮), 不能再靠按钮文案
+      //   反查容器 —— 直接从面板本身往上找 fixed 宿主。
+      const panelEl = document.querySelector('[data-assistant-panel]');
+      let host = panelEl; while (host && getComputedStyle(host).position !== "fixed") host = host.parentElement;
+      const panel = host?.querySelector('[data-assistant-panel]');
       if (!panel) { res({ ok: false }); return; }
       const txt = (e) => (e?.textContent || "").trim();
       const box = panel.querySelector('div[class*="bg-slate-800/60"]');
@@ -113,6 +115,140 @@ console.log("\n═══ ②b 禁用/隐藏的按钮不该出现在列表里 ═
   t("同名动作按 id 去重(编排页 7 行只出 1 条演示)", demo === 1, `实际 ${demo} 条`);
 }
 
+console.log("\n═══ ②·5 展开态只有一个关闭入口 ═══");
+{
+  // 2026-09-15 用户反馈"怎么有两个删除按钮, 保留一个即可, 收起可以去掉了":
+  //   修复前 FAB 展开时会变成「✕ 收起」, 与面板头部的 ✕ 重复。
+  //   这里钉住"展开期间 FAB 隐藏", 免得以后又把第二个关闭入口加回来。
+  await page.goto("about:blank");
+  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(3200);
+  const closedFab = await page.evaluate(() => [...document.querySelectorAll("button")].some((b) => /科研助手/.test(b.textContent || "")));
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
+  await page.waitForTimeout(1500);
+  const r = await page.evaluate(() => {
+    const all = [...document.querySelectorAll("button")];
+    return {
+      panel: !!document.querySelector('[data-assistant-panel]'),
+      fab: all.filter((b) => /科研助手|收起/.test(b.textContent || "")).map((b) => (b.textContent || "").trim()),
+    };
+  });
+  t("收起态: FAB 可见(入口在)", closedFab);
+  t("展开态: 面板在", r.panel);
+  t("展开态: FAB 不出现(关闭只留头部 ✕)", r.panel && r.fab.length === 0, `实际 ${JSON.stringify(r.fab)}`);
+
+  // 2026-09-15 用户反馈"删除按钮点击后无法删除":
+  //   头部整条挂了 onPointerDown={startDrag}, 而 startDrag 会 setPointerCapture ——
+  //   指针被头部捕获后, 后续 click 被重定向到头部 DIV, ✕ 的 onClick 永不触发。
+  //   用真实鼠标事件(mousedown/up)而非 el.click() 才复现得出 —— el.click() 不带指针捕获。
+  const xPt = await page.evaluate(() => {
+    const pn = document.querySelector('[data-assistant-panel]');
+    const b = pn?.querySelector("button");
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  });
+  if (!xPt) { t("点 ✕ 能关闭面板", false, "找不到头部按钮"); }
+  else {
+    await page.mouse.move(xPt.x, xPt.y);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+    await page.mouse.up();
+    await page.waitForTimeout(1000);
+    t("点 ✕ 能关闭面板(需真实指针事件)", !(await page.evaluate(() => !!document.querySelector('[data-assistant-panel]'))));
+  }
+}
+
+console.log("\n═══ ②-6 拖动自由度(不能被「给面板预留空间」吃掉) ═══");
+{
+  // 2026-09-15 用户反馈"不能随意挪移了, 往右侧移有边界":
+  //   修"✕ 在屏外"时曾把 x 上界按**面板宽度**收紧, 结果右侧凭空多出 235px 拖不过去的死区。
+  //   根因是拿展开态的尺寸去限制收起态的移动范围。现在改为"不限制移动, 面板自己找放得下的一侧",
+  //   这里钉住: 必须能拖到屏幕最右(按钮右缘贴屏)。
+  await page.goto("about:blank");
+  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(3200);
+  await page.evaluate(() => localStorage.removeItem("marx:assistant:pos:v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3200);
+  const vw = await page.evaluate(() => window.innerWidth);
+  const fab = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || ""));
+    const r = b.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  });
+  await page.mouse.move(fab.x, fab.y);
+  await page.mouse.down();
+  await page.mouse.move(fab.x + 1400, fab.y, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(900);
+  const right = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || ""));
+    return Math.round(b.getBoundingClientRect().right);
+  });
+  t("能拖到屏幕最右侧(无右侧死区)", right >= vw - 8, `FAB 右缘 ${right} / 视口 ${vw}, 剩余 ${vw - right}px`);
+}
+
+console.log("\n═══ ②-7 整卡可拖 + 内部元素不受影响 ═══");
+{
+  // 2026-09-15 用户反馈"抓手只能抓顶部, 不能整个卡片抓":
+  //   原先只有头部那条挂 onPointerDown, 卡片其余部分(含大量空白)拖不动。
+  //   改为整卡可拖时必须用"阈值延迟启动"—— 头部整条 preventDefault + setPointerCapture 的老写法
+  //   会让内部按钮全部失灵(正是前一版"✕ 点不动"的成因), 而卡片里全是按钮/链接。
+  //   这里同时钉住两件相反的事: 空白处能拖, 按钮仍能点。
+  await page.goto("about:blank");
+  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(3200);
+  await page.evaluate(() => {
+    localStorage.setItem("marx:assistant:pos:v1", JSON.stringify({ x: 320, y: 200 }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(3600);
+  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
+  await page.waitForTimeout(1400);
+
+  const readPos = () => page.evaluate(() => JSON.parse(localStorage.getItem("marx:assistant:pos:v1") || "null"));
+  const dragFrom = async (pt, dx, dy) => {
+    await page.mouse.move(pt.x, pt.y);
+    await page.mouse.down();
+    await page.mouse.move(pt.x + dx, pt.y + dy, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+  };
+
+  const p0 = await readPos();
+  // 头部之外 —— 面板左上角的卡片边框内侧空白
+  const blank = await page.evaluate(() => {
+    const pn = document.querySelector("[data-assistant-panel]");
+    const r = pn.getBoundingClientRect();
+    return { x: Math.round(r.left + 6), y: Math.round(r.top + 6) };
+  });
+  await dragFrom(blank, 60, 50);
+  const p1 = await readPos();
+  t("卡片空白处可拖(不止顶部抓手)", p1 && p0 && (p1.x !== p0.x || p1.y !== p0.y), `${JSON.stringify(p0)} → ${JSON.stringify(p1)}`);
+
+  // 内部动作按钮仍需可点(先滚进可视区, 否则中心点可能落在滚动容器可见区之外)
+  const act = await page.evaluate(() => {
+    const pn = document.querySelector("[data-assistant-panel]");
+    if (!pn) return null;
+    const b = [...pn.querySelectorAll("button")].find((x) => /▶/.test(x.textContent || ""));
+    if (!b) return null;
+    b.scrollIntoView({ block: "center" });
+    const r = b.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), label: (b.textContent || "").trim().slice(0, 16) };
+  });
+  if (!act) { t("内部动作按钮仍可点", false, "没找到动作按钮(面板可能已关)"); }
+  else {
+    await page.waitForTimeout(400);
+    await page.mouse.move(act.x, act.y);
+    await page.mouse.down();
+    await page.waitForTimeout(110);
+    await page.mouse.up();
+    await page.waitForTimeout(1400);
+    t("内部动作按钮仍可点", !(await page.evaluate(() => !!document.querySelector("[data-assistant-panel]"))), `点了「${act.label}」`);
+  }
+}
+
 console.log("\n═══ ③ 点助手动作真的驱动页面 ═══");
 {
   const posts = [];
@@ -123,9 +259,9 @@ console.log("\n═══ ③ 点助手动作真的驱动页面 ═══");
   await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
   await page.waitForTimeout(1200);
   const clicked = await page.evaluate(() => {
-    const btn = [...document.querySelectorAll("button")].find((b) => /科研助手|收起/.test(b.textContent || ""));
-    let host = btn; while (host && getComputedStyle(host).position !== "fixed") host = host.parentElement;
-    const panel = host?.querySelector('div[class*="w-80"]');
+    const panelEl = document.querySelector('[data-assistant-panel]');
+    let host = panelEl; while (host && getComputedStyle(host).position !== "fixed") host = host.parentElement;
+    const panel = host?.querySelector('[data-assistant-panel]');
     let target = null;
     for (const b of panel.querySelectorAll("button")) { if (/▶/.test(b.textContent || "")) { target = b; break; } }
     if (!target) return null;
@@ -135,7 +271,7 @@ console.log("\n═══ ③ 点助手动作真的驱动页面 ═══");
   });
   await page.waitForTimeout(2500);
   t("助手列出的动作可点击", clicked !== null, clicked ? `点了「${clicked}」` : "没有可点的动作");
-  t("点击后助手自动收起(不挡页面)", await page.evaluate(() => !document.querySelector('div[class*="w-80"][class*="rounded-2xl"]')));
+  t("点击后助手自动收起(不挡页面)", await page.evaluate(() => !document.querySelector('[data-assistant-panel]')));
 }
 
 console.log("\n═══ ④ 页面无 JS 错误 ═══");
