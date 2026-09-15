@@ -12,6 +12,25 @@ export const DEFAULT_CHUNKING_MODE: ChunkingMode = "heading_strict";
 export const DEFAULT_CHUNK_TOKEN_LIMIT = 512;
 export const DEFAULT_CHUNK_OVERLAP_TOKENS = 100;
 
+/**
+ * 把 settings.llmBaseUrl 规范成 chat/completions 完整端点。
+ *
+ * 2026-09-15 修: 原先 5 处调用点(llm-client×2 / MCP agent / 方向 / 发现)各自无条件写
+ *   `${settings.llmBaseUrl}/chat/completions` —— 同一个后缀没人去重。
+ *
+ * 这个字段是**用户在设置页手填**的, 而仓库里同时存在两种写法约定:
+ *   .env.example:17  LLM_BASE_URL=https://api.302ai.cn/v1                      (base, 不带后缀)
+ *   .env.example:25  DS_BASE_URL=https://api.deepseek.com/v1/chat/completions  (完整 URL)
+ * 用户照第二种填进设置页, 旧代码就拼成 .../chat/completions/chat/completions。
+ * 实测该地址对 DeepSeek 返回 **404**(而单个 /chat/completions 是 200), 即静默失败。
+ * 同仓库 llm-common.getLlmEndpoint 早就做了这个判断, 这几处是漏网的。
+ * 顺带对空串/尾斜杠容错。
+ */
+export function toChatCompletionsUrl(baseUrl: string): string {
+  const trimmed = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  return /\/chat\/completions$/.test(trimmed) ? trimmed : `${trimmed}/chat/completions`;
+}
+
 export interface AiRuntimeSettings {
   embeddingBaseUrl: string;
   embeddingModel: string;

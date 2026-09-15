@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1012%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1017%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -402,9 +402,9 @@ Key `.env` entries (full list in `.env.example`):
 
 ```env
 DATABASE_URL=postgres://user:pass@localhost:5432/sag_lite
-LLM_API_KEY=sk-xxx            # OpenAI-compatible endpoint
+LLM_API_KEY=sk-xxx            # must match the provider behind LLM_BASE_URL
 LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_MODEL=qwen-plus
+LLM_MODEL=deepseek-flash      # this endpoint only accepts deepseek-flash / deepseek-v4-pro
 EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_BASE_URL=https://api.302ai.cn/v1
 EMBEDDING_MODEL=text-embedding-3-large

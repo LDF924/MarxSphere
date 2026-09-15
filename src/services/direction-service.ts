@@ -3,7 +3,7 @@
 // LLM 从事件标题+摘要推断 subject/object 实体，结果存 event_directions 表
 // 图查询时：out = 起点作为 subject 的事件 → 事件其它实体；in = 起点作为 object 的事件 → 事件其它实体
 import { pool } from "../db/pool.js";
-import { aiSettingsService } from "./ai-settings-service.js";
+import { aiSettingsService, toChatCompletionsUrl } from "./ai-settings-service.js";
 import { callLlm } from "../ai/llm-common.js";
 
 interface EventWithEntities {
@@ -73,7 +73,7 @@ export async function inferEventDirections(sourceId: string): Promise<{
       const timeout = setTimeout(() => controller.abort(), 30_000);
       // V381: 收敛到统一 LLM 入口（原裸 fetch + settings 端点）
       const r = await callLlm({
-        url: `${settings.llmBaseUrl.replace(/\/$/, "")}/chat/completions`,
+        url: toChatCompletionsUrl(settings.llmBaseUrl),
         key: settings.llmApiKey,
         model: settings.llmModel,
         temperature: 0.1,

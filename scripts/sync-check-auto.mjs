@@ -30,16 +30,15 @@ function log(msg) {
  *   实测该文件已被 sync-open 同步进开源仓(提交 b371647)。
  *   现在: 重定向交给 PowerShell 自己处理(写进 -Command 的字符串里), 或干脆让它失败被 catch。
  */
+// 计划任务可能在登录前启动 node，进而把 PowerShell 的输出静默丢进空文件名为 `$null` 的坑；
+// 这里统一走 -NoProfile -NonInteractive + -ErrorAction SilentlyContinue，并向脚本显式传入参数。
 function notify(title, msg) {
+  const q = (s) => String(s ?? "").replace(/'/g, "''");
   try {
-    // 标题/消息可能含单引号 → 转义后再拼(PowerShell 单引号串里 '' 表示一个 ')
-    const q = (s) => String(s ?? "").replace(/'/g, "''");
-    execSync(`powershell -NoProfile -Command "New-BurntToastNotification -Text '${q(title)}','${q(msg)}' -ErrorAction SilentlyContinue"`, { timeout: 15000, stdio: "ignore" });
+    execSync(`powershell -NoProfile -NonInteractive -Command "New-BurntToastNotification -Text '${q(title)}','${q(msg)}' -ErrorAction SilentlyContinue"`, { timeout: 15000, stdio: "ignore" });
   } catch {
-    // BurntToast 可能未安装, 降级 msg 弹窗
     try {
-      const q = (s) => String(s ?? "").replace(/'/g, "''");
-      execSync(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('${q(msg)}','${q(title)}')"`, { timeout: 15000, stdio: "ignore" });
+      execSync(`powershell -NoProfile -NonInteractive -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('${q(msg)}','${q(title)}')"`, { timeout: 15000, stdio: "ignore" });
     } catch { /* 通知失败不影响检查 */ }
   }
 }

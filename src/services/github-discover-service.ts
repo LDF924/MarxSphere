@@ -2,7 +2,7 @@
 // github-discover-service.ts — GitHub 需求直通检索
 // 自然语言需求 → 意图判断（LLM 优先/正则兜底）→ 多词×多scope 并行检索 → 汇总去重排序
 // 可选 Claude Code 智能筛选（noTools 模式，复用 ai-execute-service）
-import { aiSettingsService } from "./ai-settings-service.js";
+import { aiSettingsService, toChatCompletionsUrl } from "./ai-settings-service.js";
 import { externalSourcesService } from "./external-sources-service.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";
 import { callLlm } from "../ai/llm-common.js";
@@ -105,7 +105,7 @@ async function llmInterpret(need: string): Promise<DiscoverIntent | null> {
     if (!settings.hasRemoteLlm) return null;
     // V381: 收敛到统一 LLM 入口（原裸 fetch + settings 端点）
     const r = await callLlm({
-      url: `${settings.llmBaseUrl.replace(/\/$/, "")}/chat/completions`,
+      url: toChatCompletionsUrl(settings.llmBaseUrl),
       key: settings.llmApiKey,
       model: settings.llmModel,
       temperature: 0.1,

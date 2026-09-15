@@ -3,6 +3,7 @@
 // inference-service.ts — 三层检索链: Cognee粗检索 → Graphiti精炼 → SAG融合
 // V41 — 2026-07-26 Cognee MCP 扁平化 + 实体名规范化 + 上下文置信度标签
 import { join as pathJoin } from "node:path";
+import { toChatCompletionsUrl } from "./ai-settings-service.js";
 import { pool } from "../db/pool.js";
 import { llmClient } from "../ai/llm-client.js";
 import { fetchLlm } from "../ai/llm-common.js";
@@ -53,8 +54,8 @@ function getLlmEndpoint(overrides?: { model?: string }, userLlmConfig?: { provid
   if (userLlmConfig?.provider === "byok" && userLlmConfig.apiKey) {
     const ds = process.env.DEEPSEEK_API_KEY || '';
     const url = ds
-      ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-      : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+      ? toChatCompletionsUrl(process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
+      : toChatCompletionsUrl(process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
     const model = resolveModelAlias(overrides?.model
       ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
     return { url, key: userLlmConfig.apiKey, model };
@@ -62,8 +63,8 @@ function getLlmEndpoint(overrides?: { model?: string }, userLlmConfig?: { provid
   const ds = process.env.DEEPSEEK_API_KEY || '';
   const key = ds || (process.env.LLM_API_KEY || '');
   const url = ds
-    ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-    : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+    ? toChatCompletionsUrl(process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
+    : toChatCompletionsUrl(process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
   const model = resolveModelAlias(overrides?.model
     ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   return { url, key, model };
@@ -2646,8 +2647,8 @@ export class InferenceService {
     const dsKey = process.env.DEEPSEEK_API_KEY || '';
     const llmKey = dsKey || (process.env.LLM_API_KEY || '');
     const llmUrl = dsKey
-      ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-      : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+      ? toChatCompletionsUrl(process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
+      : toChatCompletionsUrl(process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
     // 2026-08-07 模型注册表：重排用 reason 角色（用户选择生效）
     const llmModel = getRoleModel("reason");
 

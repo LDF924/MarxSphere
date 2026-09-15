@@ -61,7 +61,7 @@ node scripts/deploy.mjs   # 检测到无 Docker → 自动装本地 PG（initdb 
 | `DATABASE_URL` | PG 连接串（`postgres://user:pass@host:5432/sag_lite`） |
 | `LLM_API_KEY` | LLM 推理密钥（OpenAI 兼容，DeepSeek/Qwen 均可） |
 | `LLM_BASE_URL` | LLM 端点（如 `https://api.deepseek.com/v1`） |
-| `LLM_MODEL` | 模型名（如 `qwen-plus`） |
+| `LLM_MODEL` | 模型名，**须与 `LLM_BASE_URL` 同源**（如端点填 `https://api.deepseek.com/v1` 则模型用 `deepseek-flash`；填 302AI 等聚合端点才用 `qwen-plus`）。选错端点会 400 |
 | `EMBEDDING_API_KEY` | Embedding 密钥（向量检索必需） |
 | `EMBEDDING_BASE_URL` | Embedding 端点 |
 | `EMBEDDING_MODEL` | Embedding 模型（如 `text-embedding-v4`） |

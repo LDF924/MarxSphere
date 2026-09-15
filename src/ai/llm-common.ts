@@ -4,6 +4,7 @@
 // G11: 全局 LLM 并发信号量 — 简单令牌计数, 最大 8 路并发(AGENT_LLM_CONCURRENCY 覆盖), 超出排队等待
 // G4: fallback 模型链 — 主模型失败换备用（见 callLlm 包装）
 import { resolveModelAlias, findModelOption, getProviderEndpoint } from "../services/llm-model-registry.js";
+import { toChatCompletionsUrl } from "../services/ai-settings-service.js";
 import { currentUserId, isPointsCovered, noteLlmCall } from "../services/request-context.js";
 import { getModelFallbacks } from "../services/agent-model-router.js";
 import { classifyError } from "../services/error-recovery-map.js";
@@ -338,7 +339,7 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
       const relayKey = process.env.LLM_API_KEY || "";
       const relayUrl = process.env.LLM_BASE_URL || "";
       if (relayKey && relayUrl) {
-        return { url: relayUrl.endsWith("/chat/completions") ? relayUrl : `${relayUrl.replace(/\/$/, "")}/chat/completions`,
+        return { url: toChatCompletionsUrl(relayUrl),
                  key: relayKey, model: wanted };
       }
       return { url: ep.url, key: "", model: wanted };   // 两端都没有 → 交给 fetchLlm 明确报错
@@ -347,8 +348,8 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
   const ds = process.env.DEEPSEEK_API_KEY || '';
   const key = ds || (process.env.LLM_API_KEY || '');
   const url = ds
-    ? (process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
-    : (process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1') + '/chat/completions';
+    ? toChatCompletionsUrl(process.env.DS_BASE_URL || 'https://api.deepseek.com/v1/chat/completions')
+    : toChatCompletionsUrl(process.env.LLM_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
   const model = resolveModelAlias(overrides?.model
     ?? (ds ? 'deepseek-flash' : (process.env.LLM_MODEL || 'qwen-plus')));
   return { url, key, model };

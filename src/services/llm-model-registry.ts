@@ -5,6 +5,8 @@
 //       viz(科研绘图: 规划/出图代码/自审 — 用户可在绘图面板单独切换)
 //       editor(学术写作: 编辑器 AI 助手 — 与推理链解耦, 用户可在编辑器面板单独切换)
 
+import { toChatCompletionsUrl } from "./ai-settings-service.js";
+
 export type LlmRole = "reason" | "judge" | "review" | "plan" | "verify" | "strategy" | "viz" | "editor";
 
 /** 全部角色(注册表里"支持所有角色"的模型直接展开它, 免得每加一个角色就要改 N 处) */
@@ -160,10 +162,10 @@ export function getProviderEndpoint(provider: LlmModelOption["provider"]): Provi
   if (provider === "dashscope") {
     const key = process.env.DASHSCOPE_API_KEY || "";
     const base = (process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
-    return { provider, url: `${base}/chat/completions`, key, keyEnv: "DASHSCOPE_API_KEY" };
+    return { provider, url: toChatCompletionsUrl(base), key, keyEnv: "DASHSCOPE_API_KEY" };
   }
   const key = process.env.DEEPSEEK_API_KEY || "";
-  const url = process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions";
+  const url = toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions");
   return { provider, url, key, keyEnv: "DEEPSEEK_API_KEY" };
 }
 

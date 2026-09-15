@@ -28,6 +28,8 @@ const BASE = "http://127.0.0.1:4173";
 const SUITES = [
   { key: "fusion-tabs", file: "verify-fusion-tabs.mjs", desc: "5 个 FusionPanel tab 真的挂的是 Vue 子应用" },
   { key: "assistant-coverage", file: "verify-assistant-coverage.mjs", desc: "45 视图上下文 + 动作埋点 + 点击驱动" },
+  // 站点内容页是**纯静态数据**, 不接后端也不进单测 —— 内容腐烂没有信号, 只能靠这个回归顶住
+  { key: "site-content", file: "verify-site-content.mjs", desc: "四个 tab 真渲染 + 帮助条目跳转真生效" },
   { key: "editor-ai6", file: "editor-ai6-verify.mjs", desc: "编辑器 AI 面板 6 页签与顺序" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },

@@ -54,7 +54,7 @@ async function assertTaskOwnership(request: any, reply: any, taskId: string): Pr
 import { directionService } from "../services/direction-service.js";
 import { computeDataFingerprint } from "../services/eval-fingerprint.js";
 import { mcpAgentService } from "../services/mcp-agent-service.js";
-import { aiSettingsService } from "../services/ai-settings-service.js";
+import { aiSettingsService, toChatCompletionsUrl } from "../services/ai-settings-service.js";
 import { getPublicMcpSettings } from "../services/mcp-settings-service.js";
 import { listModelCallLogs } from "../observability/model-call-log.js";
 import { reasonSchema, getReasonTaskSchema, startReasonFlow, getReasonTaskDetail, initMcpClients } from "./reason-handler.js";
@@ -1033,7 +1033,7 @@ export function buildHttpServer() {
   };
 
   app.get("/health", async (): Promise<{
-    ok: boolean; service: string; db?: "up" | "down"; queueDepth?: number;
+    ok: boolean; service: string; version?: string; db?: "up" | "down"; queueDepth?: number;
     runningTasks?: number; stuckTasks?: number; agentQueue?: { queued: number; running: number; maxConcurrent: number };
     /** V417: 依赖服务快照 + 是否降级 —— 原实现只查 PG 一条 select 1, 把 Neo4j/记忆层的死亡盖住了 */
     dependencies?: Record<string, "up" | "down">;
@@ -1069,10 +1069,16 @@ export function buildHttpServer() {
     // V417: 依赖探测。原先 /health 只看 PG —— 实测本机 Neo4j(11001/11003) 与 OpenViking(1933)
     //   全都离线, 而 /health 依旧返回 ok:true, 运维看一眼就以为整站健康。
     //   TCP 探测是廉价的(1.5s 超时)且不依赖被探服务自身实现, 与 /api/mode 的判据保持一致。
+    // V418: 版本号。站点内容页此前**没有任何**部署版本信息, 用户提"某功能坏了"时无从判断
+    //   跑的是哪一版。从 package.json 读, 读不到就不给字段(不编造)。
+    let version: string | undefined;
+    try {
+      version = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8")).version;
+    } catch { /* 读不到就不报版本 */ }
     const dependencies = await probeDependencies();
     const degraded = db !== "up" || Object.values(dependencies).some((v) => v === "down");
     return {
-      ok: db === "up", service: "marxsphere", db, queueDepth, runningTasks, stuckTasks, agentQueue,
+      ok: db === "up", service: "marxsphere", version, db, queueDepth, runningTasks, stuckTasks, agentQueue,
       dependencies, degraded,
     };
   });
@@ -3604,8 +3610,8 @@ export function buildHttpServer() {
       const dsKey = process.env.DEEPSEEK_API_KEY || "";
       const key = dsKey || (process.env.LLM_API_KEY || "");
       const url = dsKey
-        ? (process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions")
-        : (process.env.LLM_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1") + "/chat/completions";
+        ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions")
+        : toChatCompletionsUrl(process.env.LLM_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1");
       // 模型：优先显式指定，否则用注册表 reason 角色（用户选择）
       const model = input.model ?? getRoleModel("reason");
       const startedAt = Date.now();
@@ -6803,7 +6809,7 @@ except Exception as e:
           // 写作步骤：基于检索结果生成（真实 LLM 调用）
           const dsKey = process.env.DEEPSEEK_API_KEY || "";
           const llmRes = await fetch(
-            dsKey ? (process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            dsKey ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"),
             {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${dsKey || process.env.LLM_API_KEY}` },
@@ -6822,7 +6828,7 @@ except Exception as e:
           // 评审步骤：对前序产出做质量检查（真实 LLM 评审）
           const dsKey = process.env.DEEPSEEK_API_KEY || "";
           const llmRes = await fetch(
-            dsKey ? (process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            dsKey ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"),
             {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${dsKey || process.env.LLM_API_KEY}` },
@@ -7809,7 +7815,7 @@ except Exception as e:
         if (worker.assignee === "writer") {
           const dsKey = process.env.DEEPSEEK_API_KEY || "";
           const llmRes = await fetch(
-            dsKey ? (process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            dsKey ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"),
             {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${dsKey || process.env.LLM_API_KEY}` },
