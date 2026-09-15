@@ -21,14 +21,25 @@ function log(msg) {
   } catch { /* 日志失败不阻塞 */ }
 }
 
+/**
+ * Windows 通知气泡（PowerShell 弹 Toast, 免依赖）。
+ *
+ * V417 修: 原来写成 `powershell -Command "..." 2>$null; echo done` 配 `shell: "cmd"` ——
+ *   `2>$null` 是 **PowerShell** 的重定向语法, 交给 cmd 执行时被当成**文件名**,
+ *   于是每次跑都在仓库根目录创建一个叫 `$null` 的文件, 内容是一条 BurntToast 安装失败报错。
+ *   实测该文件已被 sync-open 同步进开源仓(提交 b371647)。
+ *   现在: 重定向交给 PowerShell 自己处理(写进 -Command 的字符串里), 或干脆让它失败被 catch。
+ */
 function notify(title, msg) {
-  // Windows 通知气泡（PowerShell 弹 Toast, 免依赖）
   try {
-    execSync(`powershell -Command "New-BurntToastNotification -Text '${title}','${msg}'" 2>$null; echo done`, { shell: "cmd", timeout: 15000, stdio: "ignore" });
+    // 标题/消息可能含单引号 → 转义后再拼(PowerShell 单引号串里 '' 表示一个 ')
+    const q = (s) => String(s ?? "").replace(/'/g, "''");
+    execSync(`powershell -NoProfile -Command "New-BurntToastNotification -Text '${q(title)}','${q(msg)}' -ErrorAction SilentlyContinue"`, { timeout: 15000, stdio: "ignore" });
   } catch {
     // BurntToast 可能未安装, 降级 msg 弹窗
     try {
-      execSync(`powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('${msg}','${title}')"`, { timeout: 15000, stdio: "ignore" });
+      const q = (s) => String(s ?? "").replace(/'/g, "''");
+      execSync(`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('${q(msg)}','${q(title)}')"`, { timeout: 15000, stdio: "ignore" });
     } catch { /* 通知失败不影响检查 */ }
   }
 }
