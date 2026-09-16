@@ -51,7 +51,20 @@ const MAIN = process.env.SAG_MAIN_ROOT
 
 // ─── 方向规则：目录 → 源端 ───
 // 开源 → 主仓库（代码方向，开源领先）
-const DIR_TO_MAIN = new Set(["src", "web/src", "test", "migrations", "electron", "docs", "scripts"]);
+//
+// ⚠ 2026-09-16 补 5 个目录: 之前这里只有 7 项, 而 sync-open.mjs 的 DIRS 有 13 项 ——
+//   两个脚本对"哪些目录要同步"的口径不一致, 后果是 --check **静默漏报**:
+//   实测这 5 个目录下有 245 个文件是 sync-open 覆盖、sync-repos 覆盖不到的,
+//   其中 web/socialsci-vue(55 个)就是 Vue 子应用本身 —— 改了那边的文件,
+//   --check 会报"完全一致", 但 sync-open 跑起来才发现有差异。
+//   补全后两者口径一致(仅 config/ 两边都无、不必列)。
+//   注: vendor/ 下多为第三方镜像, 但 sync-open 本来就会同步它们,
+//       这里补上是为了让 --check 与 sync-open 说同一件事。
+const DIR_TO_MAIN = new Set([
+  "src", "web/src", "web/public", "web/socialsci-vue",
+  "test", "migrations", "electron", "docs", "scripts",
+  "plugins", "vendor", "script-archive",
+]);
 // 根级文件：开源 → 主仓库（README/发布脚本等）
 const ROOT_TO_MAIN = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "package.json", "package-lock.json", "docker-compose.yml", "codex-config.toml.example", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vite.preview.config.ts", "vitest.config.ts", "release.mjs", "sync-repos.mjs", ".github"];
 
