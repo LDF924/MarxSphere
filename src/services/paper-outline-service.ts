@@ -193,6 +193,13 @@ export async function generateChapter(input: {
    * prompt 里还写死 800-1500 字。现在由 runChapterBatch 按章均分后传进来。
    */
   targetWordCount?: number;
+  /**
+   * 用户上传的参考样例(闭源 `buildSampleContent()`: 把每个文件拼成 `=== 文件名 ===\n内容`, 截 8000 字)。
+   *
+   * 2026-09-16: 此前这个参数**不存在**, 于是「信息录入」页上传的参考文件只喂给了澄清提问那一处,
+   * **从不进入章节生成** —— 用户在界面上传了 3 个 PDF 当写作范式, 生成的正文跟它们毫无关系。
+   */
+  sampleContent?: string;
 }): Promise<ChapterResult> {
   const isRoot = input.level === 0;
   // 目标字数 → 提示词里的区间(±20%); 没给就用原来的兜底区间
@@ -209,6 +216,7 @@ ${input.outlineTree ? `【全文大纲】\n${input.outlineTree}` : ""}
 ${input.prevContext ? `【前文已写内容(摘要)】\n${input.prevContext}\n请延续前文的术语、论点与证据风格, 保持前后文连贯, 不重复已述内容。` : ""}
 【语体要求】${input.style ?? "严谨的哲社科学术语体(客观/规范, 禁用口语化、绝对化)"}
 ${input.citationPool ? `【可引文献池(引用时用编号 [N], 须从下列真实条目中选择, 不得虚构)】\n${input.citationPool}\n请在本章论述中自然引用 1-5 条, 格式如 李海波[1]… 或 …提出测度框架[2]。` : ""}
+${input.sampleContent ? `【参考样例(用户上传的文献/范文, 用来判断其写作取向与规范)】\n${input.sampleContent.slice(0, 4000)}\n注意: 只借鉴其**语体、结构与论证密度**, 不要照抄其观点与结论。` : ""}
 
 要求:
 1. 围绕本章标题展开论证: 提出观点 → 理论依据 → 证据/例证 → 小结

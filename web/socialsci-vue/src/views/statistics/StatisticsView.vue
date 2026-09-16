@@ -1070,7 +1070,7 @@ watch(() => props.taskId, () => {
   font-size: 12px;
   border: 1px solid #3A3020;
   border-radius: 7px;
-  background: #11192Cbeb;
+  background: #11192C;
   color: #E8B54A;
   cursor: pointer;
 }

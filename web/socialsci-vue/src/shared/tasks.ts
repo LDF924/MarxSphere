@@ -200,6 +200,18 @@ export async function putNode(projectId: string, nodeKey: string, payload: Recor
   await q(`/research/projects/${projectId}/nodes/${nodeKey}`, { method: "PUT", body: { payload } }).catch(() => { /* 409 静默跳过(闭源语义) */ });
 }
 
+/**
+ * 只改节点里的几个字段, 其它键原样保留。
+ *
+ * 为什么不直接用 putNode: PUT 是**整块替换**。前端做部分更新只有两条路 ——
+ *   ① 先 GET 再把字段并进去(PUT): 读改写, 与后台任务并发时后写覆盖先写, 漏并一个键就抹掉一个;
+ *   ② 直接 PUT 部分 payload: 把节点里没提到的键全部删掉。
+ * 后端的 merge 端点用一条 `payload || $1` 完成合并, 两个坑都没有。
+ */
+export async function mergeNode(projectId: string, nodeKey: string, patch: Record<string, unknown>): Promise<void> {
+  await q(`/research/projects/${projectId}/nodes/${nodeKey}/merge`, { method: "PATCH", body: { patch } }).catch(() => { /* 失败不阻塞本地状态 */ });
+}
+
 export async function listNodes(projectId: string): Promise<Array<{ node_key: string; payload: unknown; version: number }>> {
   const r = await q<{ nodes?: Array<{ node_key: string; payload: unknown; version: number }> }>(`/research/projects/${projectId}/nodes`);
   return r.nodes ?? [];

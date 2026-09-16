@@ -10082,6 +10082,24 @@ except Exception as e:
     return { ok: true, version: r.version };
   });
 
+  // ═══ 节点字段级合并(浅合并, 保留未列出的键) ═══
+  // 由来(2026-09-16): 合稿页手改标题/摘要/正文后, 之前只能走 PUT 整块替换 ——
+  //   前端得先 GET 再把几个字段并进去, 是**读改写**, 并发下(比如后台 merge 任务同时写)
+  //   后写覆盖先写; 而且一旦漏并某个键(reviewReport 等), 就被静默抹掉。
+  //   这里用 jsonb `||` 在**一条语句里**合并, 调用方只需给出要改的键。
+  //   注: 顶层浅合并 —— 传 `{mergedTitle:"x"}` 只改这一个字段。
+  app.patch("/api/research/projects/:projectId/nodes/:nodeKey/merge", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
+    const body = request.body as { patch?: Record<string, unknown>; sourceRole?: string; note?: string };
+    if (!body?.patch || typeof body.patch !== "object") return reply.code(400).send({ error: "缺少 patch" });
+    const r = await researchPipeline.mergeNode(user.id, projectId, nodeKey, body.patch, {
+      sourceRole: body.sourceRole ?? "user", note: body.note ?? "",
+    });
+    if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, version: r.version };
+  });
+
   // UI审计T8: 批量回滚(最近一次 batch:pre 锚点 → 恢复批量前状态)
   app.post("/api/research/projects/:projectId/nodes/sections/undo-batch", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -10218,7 +10236,7 @@ except Exception as e:
   app.put("/api/research/materials/:materialId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { materialId } = request.params as { materialId: string };
-    const body = request.body as { title?: string; contentMd?: string; tags?: string[]; kind?: string };
+    const body = request.body as { title?: string; contentMd?: string; tags?: string[]; kind?: string; references?: unknown[] };
     const r = await researchMaterials.updateMaterial(user.id, materialId, body);
     if (!r) return reply.code(404).send({ error: "素材不存在" });
     return { ok: true };

@@ -143,3 +143,23 @@ export function zhCount(n: number | undefined | null): string {
 export function sanitizeFileName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim() || "未命名";
 }
+
+/**
+ * 深链恢复指针 —— 消费外壳「历史记录」写入的 `sag:resume:<module>`。
+ *
+ * 写入方是 `web/src/components/ResearchHistoryPanel.tsx` 的 `writeResume()`
+ * (点历史卡片 → 写指针 → 跳对应工作台 → 工作台挂载时消费)。协议两边必须一致:
+ *   key   = `sag:resume:<module>`; value = { id, projectId, at }
+ *   `at` 是写入时刻, 超过 10s 视为陈旧指针丢弃 —— 否则下次冷启动会被一个
+ *   很久以前点过的卡片劫持到别的项目上。
+ * 读到即删除(一次性消费), 与外壳 `readResume()` 同语义。
+ */
+export function readResume(module: string): Record<string, unknown> | null {
+  try {
+    const raw = localStorage.getItem(`sag:resume:${module}`);
+    if (!raw) return null;
+    localStorage.removeItem(`sag:resume:${module}`);
+    const p = JSON.parse(raw) as Record<string, unknown>;
+    return typeof p.at === "number" && Date.now() - p.at < 10_000 ? p : null;
+  } catch { return null; }
+}

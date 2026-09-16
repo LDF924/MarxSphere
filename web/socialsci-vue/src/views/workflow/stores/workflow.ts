@@ -8,7 +8,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { listTasks, getNode, putNode, saveWorkbench, getWorkbench } from "@/shared/tasks";
 import { q } from "@/shared/api";
-import { K } from "@/shared/constants";
+import { K, readResume } from "@/shared/constants";
 
 export interface Section {
   id: string;
@@ -170,10 +170,23 @@ export const useWorkflowStore = defineStore("workflow", () => {
 
   async function loadProject(): Promise<void> {
     // 只恢复已有项目(绝不创建 — 创建发生在用户提交时)
+    //
+    // 2026-09-16: 先消费「历史记录」写入的深链恢复指针。
+    //   外壳的 ResearchHistoryPanel 点卡片时写 `sag:resume:<module> = {id, projectId, at}`
+    //   (writeResume), 各工作台面板挂载时消费(readResume)。soc 子应用这边**一直没有消费方** ——
+    //   实测: 从历史点「科研工作流」进写作舱, 打开的还是上一次那个项目, 用户以为点错了。
+    const resumed = readResume("workflow");
+    if (resumed) {
+      const rid = String(resumed.projectId ?? resumed.id ?? "");
+      if (rid) {
+        taskId.value = rid;
+        localStorage.setItem("lastTask_workflow", rid);
+      }
+    }
     const saved = localStorage.getItem("lastTask_workflow");
-    if (saved) {
+    if (saved && !resumed) {
       taskId.value = saved;
-    } else {
+    } else if (!resumed) {
       const { listTasks: list } = await import("@/shared/tasks");
       const hits = await list({ module: "workflow", limit: 10 }).catch(() => []);
       const hit = hits.find((t) => ["in-progress", "queued", "running"].includes(t.status) && t.projectId);
@@ -277,7 +290,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
     taskId.value = "";
     phase.value = 0;
     phaseLabel.value = "";
-    input.value = { title: "", outline: "", totalWordCount: 0, researchMethod: "", requirements: "", sampleFiles: [], clarifyAnswers: {} };
+    // totalWordCount 重置回 8000 而不是 0 —— 闭源的 store 重置用的是**初值**(1e4),
+    //   置 0 会让「字数预估」输入框在清空项目后变成空格子, 用户还得自己想填多少(2026-09-16 修)。
+    input.value = { title: "", outline: "", totalWordCount: 8000, researchMethod: "", requirements: "", sampleFiles: [], clarifyAnswers: {} };
     sections.value = [];
     variables.value = [];
     hypotheses.value = [];

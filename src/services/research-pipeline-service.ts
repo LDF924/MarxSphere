@@ -310,6 +310,65 @@ export async function putNode(
   }
 }
 
+/**
+ * 节点**字段级浅合并**(保留未列出的键)。
+ *
+ * 与 putNode 的区别: putNode 是整块替换(适合"我就是这份完整 payload");
+ * 这里适合"我只知道要改哪几个字段"的场景 —— 尤其是前端。
+ * 前端拿 PUT 做部分更新必须 GET→并→PUT, 那是读改写, 与后台任务并发时后写覆盖先写,
+ * 且一旦漏并某个键(reviewReport 之类)就被静默抹掉。
+ * 这条语句在**一条 SQL 里**完成合并, 没有读改写窗口。
+ */
+export async function mergeNode(
+  userId: string, projectId: string, nodeKey: string,
+  patch: Record<string, unknown>, opts: { sourceRole?: string; note?: string } = {}
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const owned = await client.query(
+      `select 1 from research_projects where id=$1 and user_id=$2`,
+      [projectId, userId]
+    );
+    if (!owned.rows.length) { await client.query("rollback"); return { ok: false as const, code: "NOT_FOUND" as const }; }
+    const cur = await client.query(
+      `select id, version, payload from research_nodes where project_id=$1 and node_key=$2 for update`,
+      [projectId, nodeKey]
+    );
+    if (!cur.rows.length) {
+      // 节点不存在 → 以 patch 为初始 payload 建一条(与 putNode 的"新建"语义一致)
+      const ins = await client.query(
+        `insert into research_nodes (project_id, node_key, payload, version, source_role)
+         values ($1,$2,$3,1,$4) returning version`,
+        [projectId, nodeKey, JSON.stringify(patch), opts.sourceRole ?? "user"]
+      );
+      await client.query("commit");
+      return { ok: true as const, version: ins.rows[0].version, created: true };
+    }
+    const node = cur.rows[0];
+    await client.query(
+      `insert into research_node_history (node_id, version, payload, parent_version, by_role, note)
+       values ($1,$2,$3,$2,$4,$5)`,
+      [node.id, node.version, node.payload, opts.sourceRole ?? "user", opts.note ?? ""]
+    );
+    const upd = await client.query(
+      `update research_nodes
+          set payload = coalesce(payload,'{}'::jsonb) || $1::jsonb,
+              version = version + 1, source_role = $2, updated_at = now()
+        where id = $3
+        returning version`,
+      [JSON.stringify(patch), opts.sourceRole ?? "user", node.id]
+    );
+    await client.query("commit");
+    return { ok: true as const, version: upd.rows[0].version };
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 /** 节点历史(回滚数据源) */
 export async function listNodeHistory(userId: string, projectId: string, nodeKey: string, limit = 50) {
   const r = await pool.query(

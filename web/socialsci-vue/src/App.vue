@@ -41,12 +41,29 @@ const push = () => {
   }, 250);
 };
 
-/** 外壳点了某个动作 → 按 id 找回那个 DOM 元素并点击(元素可能已不在, 找不到就静默) */
+/**
+ * 外壳点了某个动作 → 按 id 找回那个 DOM 元素并点击。
+ *
+ * 2026-09-16: 原先是 `querySelector` 取**第一个**匹配, 且 `el.disabled` 就静默放弃。
+ * 两个坑:
+ *   ① 上报侧虽然按 id 去重, 页面里同一个 id 仍可能有多个实例; 第一个恰好禁用时,
+ *      动作会**静默失效** —— 用户点了助手里的按钮, 页面毫无反应, 也没有任何提示。
+ *   ② 元素可能已不在(路由/弹层变化)。
+ * 现在: 优先挑**可点的那个实例**; 全都点不了就给一句可见反馈(总比静默好)。
+ */
 function invokeFromShell(id: string) {
   if (!id.startsWith(`${route.path}:`)) return;
   const key = id.slice(route.path.length + 1);
-  const el = document.querySelector<HTMLElement>(`[data-control="${key}"]`);
-  if (el && !(el as HTMLButtonElement).disabled) el.click();
+  const els = Array.from(document.querySelectorAll<HTMLElement>(`[data-control="${key}"]`));
+  if (!els.length) return;
+  const usable = els.find((e) => !(e as HTMLButtonElement).disabled && e.getClientRects().length);
+  if (usable) { usable.click(); return; }
+  // 全不可点: 区分"隐藏"与"禁用", 给出可操作的说法
+  const disabled = els.some((e) => (e as HTMLButtonElement).disabled);
+  window.parent?.postMessage(
+    { source: "marxsphere-soc", type: "action-blocked", id, reason: disabled ? "disabled" : "hidden" },
+    "*"
+  );
 }
 
 onMounted(() => {

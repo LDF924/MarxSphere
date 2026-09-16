@@ -78,6 +78,40 @@ export async function createMaterial(input: MaterialInput) {
   return { id };
 }
 
+/**
+ * 素材行 → camelCase(列表与单条**共用**, 保证同一份资源两处字段名一致)。
+ *
+ * 2026-09-16: 单条 `getMaterial` 此前返回**原始蛇形行**(`references_json`/`content_md`/`section_ids`),
+ * 而列表返回 camelCase(`references`/`contentMd`/`sectionIds`) —— 同一资源两套命名。
+ * 后果是"列表里读得到的字段, 单条读回来叫另一个名字": 前端把单条结果塞回编辑表单时
+ * `references` 是 undefined, 一保存就把结构化文献抹掉。
+ * 旧蛇形键**原样保留**(React 侧 MaterialsDrawer 在直接读 `content_md`)。
+ */
+function mapMaterialRow<T extends Record<string, unknown>>(m: T) {
+  const meta = (m.meta ?? {}) as Record<string, unknown>;
+  const source = (meta.source ?? {}) as Record<string, unknown>;
+  return {
+    ...m,
+    projectId: m.project_id,
+    sourceRef: m.source_ref ?? "",
+    producedByDagNode: m.produced_by_dag_node ?? "",
+    sectionIds: m.section_ids ?? [],
+    usageStatus: m.usage_status ?? "candidate",
+    contentMd: m.content_md ?? "",
+    sourceType: m.source_type ?? "",
+    sourceUrl: m.source_url ?? "",
+    imagePath: m.image_path ?? "",
+    tableData: m.table_data ?? {},
+    analysisMethod: m.analysis_method ?? "",
+    sectionId: m.section_id ?? "",
+    references: m.references_json ?? [],
+    platformType: String(meta.platformType ?? m.source_type ?? ""),
+    source: { sourceStatus: (meta.sourceStatus ?? source ?? {}) as Record<string, string> },
+    createdAt: m.created_at ?? null,
+    updatedAt: m.updated_at ?? null,
+  };
+}
+
 export async function listMaterials(userId: string, projectId?: string, kind?: string) {
   const clauses = ["user_id=$1"];
   const vals: unknown[] = [userId];
@@ -91,37 +125,8 @@ export async function listMaterials(userId: string, projectId?: string, kind?: s
       order by created_at desc limit 200`,
     vals
   );
-  // 富列 camelCase 映射(前端素材卡/编排/预览直接消费; snake 列与老调用方 getMaterial 兼容)
-  return r.rows.map((m) => {
-    const meta = (m.meta ?? {}) as Record<string, unknown>;
-    const source = (meta.source ?? {}) as Record<string, unknown>;
-    return {
-      id: m.id,
-      projectId: m.project_id,
-      kind: m.kind,
-      title: m.title ?? "",
-      tags: m.tags ?? [],
-      sourceRef: m.source_ref ?? "",
-      producedByDagNode: m.produced_by_dag_node ?? "",
-      sectionIds: m.section_ids ?? [],
-      usageStatus: m.usage_status ?? "candidate",
-      contentMd: m.content_md ?? "",
-      caption: m.caption ?? "",
-      summary: m.summary ?? "",
-      sourceType: m.source_type ?? "",
-      sourceUrl: m.source_url ?? "",
-      imagePath: m.image_path ?? "",
-      tableData: m.table_data ?? {},
-      analysisMethod: m.analysis_method ?? "",
-      sectionId: m.section_id ?? "",
-      references: m.references_json ?? [],
-      // B5 来源徽章: platformType(闭源键)+ source.sourceStatus 展开(meta 兜底)
-      platformType: String(meta.platformType ?? m.source_type ?? ""),
-      source: { sourceStatus: (meta.sourceStatus ?? source ?? {}) as Record<string, string> },
-      createdAt: m.created_at ?? null,
-      updatedAt: m.updated_at ?? null
-    };
-  });
+  // 富列 camelCase 映射(与单条 getMaterial 共用同一个 mapMaterialRow, 避免两处漂移)
+  return r.rows.map(mapMaterialRow);
 }
 
 export async function getMaterial(userId: string, materialId: string) {
@@ -129,18 +134,48 @@ export async function getMaterial(userId: string, materialId: string) {
     `select * from research_materials where id=$1 and user_id=$2`,
     [materialId, userId]
   );
-  return r.rows[0] ?? null;
+  // 与列表同一个形状(见 mapMaterialRow 注释: 两处字段名不一致会让编辑表单丢 references)
+  return r.rows[0] ? mapMaterialRow(r.rows[0]) : null;
 }
 
-export async function updateMaterial(userId: string, materialId: string, patch: { title?: string; contentMd?: string; tags?: string[]; kind?: string }) {
+/**
+ * 局部更新素材。
+ *
+ * `references` 是**结构化文献数组**(jsonb 列 references_json), 2026-09-16 补上 ——
+ * 此前只有 createMaterial 能写它, PUT 写不了, 于是「编辑」一条文献素材会把它已有的
+ * 结构化条目抹掉(PUT 只带 title/contentMd)。前端文献卡、GB/T 7714 引用、参考文献池
+ * 都依赖这个字段, 不能是"创建时才有、一编辑就没"。
+ */
+export async function updateMaterial(userId: string, materialId: string, patch: { title?: string; contentMd?: string; tags?: string[]; kind?: string; references?: unknown[] }) {
   const sets: string[] = ["updated_at=now()"];
   const vals: unknown[] = [materialId, userId];
+  /**
+   * 入参是 **camelCase**(前端/接口层口径), 列是 snake_case —— 必须显式映射。
+   *
+   * 2026-09-16 修: 这里原先把键名**直接当列名**拼进 SQL(`contentMd=$3`)。PG 的标识符会被
+   * 折叠成小写, 于是变成 `contentmd = $3` → `column "contentmd" does not exist`。
+   * 后果: 编辑**任何**素材都会失败(前端 toast「更新失败」), 因为保存链必带 contentMd。
+   * 只对 key 做白名单映射, 未列出的键一律忽略 —— 免得又是"把请求体当列名用"。
+   */
+  const COL: Record<string, string> = {
+    title: "title",
+    contentMd: "content_md",
+    tags: "tags",
+    kind: "kind",
+    references: "references_json",
+  };
   for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) {
-      sets.push(`${k}=$${vals.length + 1}`);
-      // tags 是 PG text[]: 数组字面量; 其余原样
-      vals.push(k === "tags" && Array.isArray(v) ? toPgArray(v) : v);
+    if (v === undefined) continue;
+    const col = COL[k];
+    if (!col) continue;
+    if (k === "references") {
+      sets.push(`${col}=$${vals.length + 1}::jsonb`);
+      vals.push(JSON.stringify(v ?? []));
+      continue;
     }
+    sets.push(`${col}=$${vals.length + 1}`);
+    // tags 是 PG text[]: 数组字面量; 其余原样
+    vals.push(k === "tags" && Array.isArray(v) ? toPgArray(v as string[]) : v);
   }
   const r = await pool.query(
     `update research_materials set ${sets.join(",")} where id=$1 and user_id=$2 returning id`,

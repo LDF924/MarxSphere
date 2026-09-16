@@ -69,9 +69,18 @@ export async function markRunning(taskId: string): Promise<boolean> {
   return (r.rowCount ?? 0) > 0;
 }
 
+/**
+ * 收尾为 done。**若任务期间被取消, 保持 cancelled 不覆盖**。
+ *
+ * 2026-09-16: 原先是无条件 `set status='done'`。取消与执行是并发的 ——
+ * 用户在章节批量生成到一半时点取消, 状态先变 cancelled, 随后执行器跑完把整批结果写回
+ * 并置 done: ①用户看到"已取消"的任务又变成"已完成"; ②**半成品结果被当成完整结果落库**。
+ * 用 `where status<>'cancelled'` 让取消赢。
+ */
 export async function markDone(taskId: string, result: unknown) {
   await pool.query(
-    `update research_tasks set status='done', result=$2::jsonb, progress=jsonb_set(coalesce(progress,'{}'::jsonb),'{doneAt}',to_jsonb(now()::text)), updated_at=now() where id=$1`,
+    `update research_tasks set status='done', result=$2::jsonb, progress=jsonb_set(coalesce(progress,'{}'::jsonb),'{doneAt}',to_jsonb(now()::text)), updated_at=now()
+      where id=$1 and status <> 'cancelled'`,
     [taskId, JSON.stringify(result ?? {})]
   );
 }
@@ -300,6 +309,21 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   let variables: unknown[] = [];
   let logicFlow = "";
   let stepTexts: Record<string, string> = {};
+  /**
+   * 阶段进度回写 —— 前端 SectionsView 的 3 步进度条(变量识别/框架分析/Skill 生成)与打字机
+   * 都读 `progress.stage`。2026-09-16 之前这个函数**一次都没写过 progress**,
+   * 后果是步骤条恒停在第 1 步、思考区永远空白(前端 `analyzeStep` 靠 stage 关键词推进)。
+   */
+  const setStage = async (stage: string, current: number, total = 3) => {
+    await pool.query(
+      `update research_tasks set progress = coalesce(progress,'{}'::jsonb) || $2::jsonb where id=$1`,
+      [ctx.taskId, JSON.stringify({ stage, current, total })]
+    ).catch((e) => {
+      // 不吞错: 这条写失败 = 前端步骤条不动, 属于"静默无反馈"类缺陷, 必须留下痕迹
+      console.warn(`[analyze] progress 回写失败(task=${ctx.taskId}): ${String(e).slice(0, 160)}`);
+    });
+  };
+  await setStage("变量识别", 1);
   try {
     const ep = getLlmEndpoint({ model: getRoleModel("reason") });
     const res = await fetchLlm({
@@ -319,6 +343,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
     logicFlow = String(j.logicFlow ?? "");
     stepTexts = { "2": String(j.step2Text ?? ""), "3": String(j.step3Text ?? "") };
   } catch { /* LLM 不可用 → 仅结构 */ }
+  await setStage("框架分析", 2);
   // ③ 落库: sections 节点 + analysis 节点(变量/逻辑/文本)
   const client = await pool.connect();
   try {
@@ -334,8 +359,26 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
       ? ((node.rows[0].payload as { sections: Array<Record<string, unknown>> }).sections)
       : [];
     const prevById = new Map(prevList.map((p) => [String(p.id ?? ""), p]));
+    /**
+     * 章节写作要求 + 字数配额（来自 analysis 节点的 `chapterPlan`）。
+     *
+     * 2026-09-16: 此前**从不并入** —— `runMainAgentAnalysis` 把 chapterPlan
+     * (含每章 `requirements` 与 `wordCount`) 写在 **analysis 节点**上, 而这里重建 sections 时
+     * 只继承 aiSkill/skill_prompt/… 四项, chapterPlan 就断在那一层。
+     * 后果: `runChapterBatch` 里的 `sec.requirements` 分支恒 false(章节生成拿不到"本章写作要求"),
+     *   前端「N 字(Phase 1 分配)」也只能靠 aiSkill.wordCount 一条路。
+     * 匹配用**标题**(sections 与 chapterPlan 没有共同 id)。
+     */
+    const analysisPrev = await client.query(
+      `select payload from research_nodes where project_id=$1 and node_key='analysis'`, [projectId]
+    ).catch(() => ({ rows: [] as Array<{ payload?: unknown }> }));
+    const planList = Array.isArray((analysisPrev.rows[0]?.payload as { chapterPlan?: unknown } | undefined)?.chapterPlan)
+      ? ((analysisPrev.rows[0].payload as { chapterPlan: Array<Record<string, unknown>> }).chapterPlan)
+      : [];
+    const planByTitle = new Map(planList.map((p) => [String(p.title ?? "").trim(), p]));
     const merged = sections.map((s) => {
       const prev = prevById.get(String(s.id));
+      const plan = planByTitle.get(String(s.title ?? "").trim());
       return {
         ...s,
         // 继承既有产物; 没有才置 pending
@@ -344,7 +387,11 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
         ...(prev?.aiSkill ? { aiSkill: prev.aiSkill } : {}),
         ...(prev?.skill_prompt ? { skill_prompt: prev.skill_prompt } : {}),
         ...(prev?.structuredSummary ? { structuredSummary: prev.structuredSummary } : {}),
-        ...(prev?.wordCount ? { wordCount: prev.wordCount } : {}),
+        // 字数: 节点里已有优先, 否则用 chapterPlan 的配额
+        ...((prev?.wordCount ?? plan?.wordCount) ? { wordCount: prev?.wordCount ?? plan?.wordCount } : {}),
+        // 写作要求: 节点里已有优先(可能是用户手改过的), 否则用 chapterPlan 的
+        ...((prev?.requirements ?? plan?.requirements)
+          ? { requirements: String(prev?.requirements ?? plan?.requirements ?? "") } : {}),
       };
     });
     const payload = JSON.stringify({ sections: merged });
@@ -402,6 +449,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   } finally {
     client.release();
   }
+  await setStage("Skill 生成", 3);
   return {
     text: `科研架构完成: ${sections.length} 个章节, ${variables.length} 个变量`,
     structured: {
@@ -417,14 +465,18 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
  *
  * V417 改造（2026-09-14 实测"参考文献永远是空的"）：
  *   原实现只让 LLM 编检索词，素材内容是"检索词列表 + (实际检索需接知识库/CNKI)"，
- *   从不碰任何库；而下游 buildCitationPool / buildMergedReferences 靠 `^\[\d+\] 条目` 抠引文
- *   → 参考文献恒为空，正文里 25 处 `[N]（待补引文）` 无人认领。
+ *   从不碰任何库 → 下游无条目可抠，参考文献恒为空，正文里 25 处 `[N]（待补引文）` 无人认领。
  *   现在：检索词仍由 LLM 规划（合理，模型知道该查什么），但**条目必须来自真实检索**
  *   （PG 向量库 / 本地 md 文献库 / 图谱臂）。搜不到就留空并在素材里注明"需人工补录"，
  *   绝不用 LLM 编造文献（那是学术不端）。
+ *
+ * 2026-09-16 补：下游的取条目口径改成 `refsFromMaterialRow` —— **优先读结构化
+ *   `references_json`, 回落 `content_md` 的 `[N] 条目` 行**。此前只认后者，
+ *   于是"手动录入的结构化文献"进得了库、渲染得出卡片, 却进不了可引池与参考文献表。
  */
 async function runLiteratureSearch(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
+  const sectionId = String(snapshot.sectionId ?? "");
   const sectionTitle = snapshot.sectionTitle ?? ctx.goal;
   const keywords = Array.isArray(snapshot.keywords) ? snapshot.keywords : [];
   const wantCount = Number(snapshot.count) > 0 ? Math.min(Number(snapshot.count), 20) : 8;
@@ -474,6 +526,12 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     title: hits.length ? `文献 ${hits.length} 条 · ${String(sectionTitle).slice(0, 24)}` : `检索式 · ${String(sectionTitle).slice(0, 24)}`,
     contentMd,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // 2026-09-16: 补**章节关联**。此前这条链一次都没传 sectionIds, 而前端发布门禁
+    //   (「还有 N 个素材未关联章节, 请先为每个素材选择所属章节」)与素材卡的「未关联」判据
+    //   读的都是 sectionId/sectionIds —— 于是每一批 AI 生成的素材都会被门禁拦下,
+    //   且用户看不出该挂哪章, 只能逐个手点「编排」。
+    //   需求里本来就带 sectionId(见 runMaterialPlan 的 plan 结构), 一路带到落库即可。
+    ...(sectionId ? { sectionIds: [sectionId] } : {}),
     // 2026-09-16: 带上 doi/venue/volumeIssue —— 外部臂(OpenAlex)才有的著录字段,
     //   前端文献卡要按 GB/T 7714 展示就必须一路存下来。内部臂没有这几项就是 undefined, 不补假值。
     references: hits.map((h) => ({
@@ -513,6 +571,7 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
 /** P3 理论框架生成(per section): 理论梳理 → theory 素材 */
 async function runTheoryGenerate(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
+  const sectionId = String(snapshot.sectionId ?? "");
   const sectionTitle = snapshot.sectionTitle ?? "本节";
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
   const res = await fetchLlm({
@@ -531,6 +590,7 @@ async function runTheoryGenerate(task: any, ctx: ExecCtx) {
     title: `理论框架 · ${(theory?.name || sectionTitle).toString().slice(0, 30)}`,
     contentMd: `${theory?.core ?? ""}\n\n本文应用: ${theory?.apply ?? ""}`,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `理论框架: ${theory?.name ?? "未生成"}`, structured: { theory } };
 }
@@ -569,6 +629,7 @@ ${hasData ? "" : "(无数据文件: dataAnalysis 段输出空数组)"}` }],
 /** P3 表格设计(per section): 设计论文所需表格规范 → table 素材(归"表格素材"分组, 与手动添加一致; data_result 留给实证产物) */
 async function runTableGenerate(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
+  const sectionId = String(snapshot.sectionId ?? "");
   const sectionTitle = snapshot.sectionTitle ?? "本节";
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
   const res = await fetchLlm({
@@ -587,6 +648,7 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
     title: `表格设计 · ${String(sectionTitle).slice(0, 30)}`,
     contentMd: tables.map((t) => `- ${t.title}: [${(t.columns ?? []).join("|")}] ${t.purpose ?? ""}`).join("\n"),
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `已设计 ${tables.length} 张表`, structured: { tables } };
 }
@@ -594,6 +656,7 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
 /** P3 数据分析方案(闭源 plan.dataAnalysis 段执行): 对变量产出拟用分析方法/验证路径 → data_result 素材(归"数据分析素材"分组) */
 async function runDataAnalysisPlan(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
+  const sectionId = String(snapshot.sectionId ?? "");
   const analysisType = String(snapshot.analysisType ?? "descriptive");
   const variables = Array.isArray(snapshot.variables) ? snapshot.variables as Array<{ name?: string; role?: string }> : [];
   const methods = Array.isArray(snapshot.methods) ? snapshot.methods as string[] : [];
@@ -617,8 +680,24 @@ ${methods.length ? `【备选方法】${methods.join("、")}` : ""}` }],
     title,
     contentMd: `分析方法: ${analysis?.coreMethod ?? (methods[0] ?? analysisType)}\n\n${analysis?.design ?? ""}${(analysis?.expectedTables ?? []).length ? `\n拟产出: ${(analysis?.expectedTables ?? []).join("; ")}` : ""}`,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `数据分析方案: ${analysis?.coreMethod ?? "已生成"}`, structured: { analysis } };
+}
+
+/**
+ * 任务是否已被取消。
+ *
+ * 2026-09-16: 此前执行器**从不检查取消状态** —— 前端点「取消」只把 status 改成 cancelled,
+ * 后台照样把剩下的章节一章一章生成完、结果照样落库。用户以为停住了, 实际还在烧 token。
+ * 批处理这类长循环必须逐轮查一次。
+ */
+async function isCancelled(taskId: string): Promise<boolean> {
+  try {
+    const r = await pool.query(`select status from research_tasks where id=$1`, [taskId]);
+    const st = String((r.rows[0] as { status?: unknown } | undefined)?.status ?? "");
+    return st === "cancelled";
+  } catch { return false; }
 }
 
 /** P4 章节批量生成(HAR: phase4/batch sectionSnapshots 含 skill_prompt; 复用 generateChapter) */
@@ -634,15 +713,27 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
   //   此前 input.totalWordCount 只存在 input 节点里, 到 generateChapter 就断了 ——
   //   界面写着"AI 智能体将按此字数进行科研分配"(InputView 字数预估卡), prompt 却写死
   //   800-1500 字, 也就是**承诺了没做的事**。现在按一级章均分当配额。
-  // 一次查齐: 章节配额 / 全文大纲树 / 项目语体
-  const planCtx = await (async (): Promise<{ quota?: number; outlineTree?: string; style?: string }> => {
+  // 一次查齐: 章节配额 / 全文大纲树 / 项目语体 / 用户上传的参考样例
+  const planCtx = await (async (): Promise<{ quota?: number; outlineTree?: string; style?: string; sampleContent?: string }> => {
     try {
       const n = await pool.query(`select payload from research_nodes where project_id=$1 and node_key='input'`, [ctx.projectId]);
-      const payload = (n.rows[0]?.payload ?? {}) as { totalWordCount?: unknown; outline?: unknown };
+      const payload = (n.rows[0]?.payload ?? {}) as {
+        totalWordCount?: unknown; outline?: unknown;
+        sampleFiles?: Array<{ name?: unknown; content?: unknown }>;
+      };
       const total = Number(payload.totalWordCount);
       const l1 = sections.filter((s) => (s.level ?? 1) === 1).length || sections.length;
       const pr = await pool.query(`select style from research_projects where id=$1`, [ctx.projectId]).catch(() => ({ rows: [] as unknown[] }));
       const style = String((pr.rows[0] as { style?: unknown } | undefined)?.style ?? "").trim();
+      // 2026-09-16: 参考文件此前**从不进入章节生成** —— 上传的范文只影响过"澄清提问"一次请求。
+      //   闭源语义: buildSampleContent() 拼成 `=== 文件名 ===\n内容`, 截 8000 字。
+      const sampleContent = Array.isArray(payload.sampleFiles)
+        ? payload.sampleFiles
+            .filter((f) => f && typeof f.content === "string" && f.content.trim())
+            .map((f) => `=== ${String(f.name ?? "参考文件")} ===\n${String(f.content)}`)
+            .join("\n\n")
+            .slice(0, 8000)
+        : "";
       return {
         ...(Number.isFinite(total) && total > 0 && l1 > 0 ? { quota: Math.max(300, Math.round(total / l1)) } : {}),
         // V417: outlineTree 此前被 sec.requirements 挪用(语义不符), 这里传**真正的**全文大纲,
@@ -651,12 +742,17 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
           ? { outlineTree: payload.outline.slice(0, 2000) } : {}),
         // V417: project.style 有列、有写、澄清也用, 但从来没传到章节生成 → 语体参数恒空。
         ...(style ? { style } : {}),
+        ...(sampleContent ? { sampleContent } : {}),
       };
     } catch { return {}; }
   })();
   const quota = planCtx.quota;
   const results: Array<{ id?: string; title?: string; ok: boolean; wordCount?: number; content?: string; error?: string }> = [];
   for (const sec of sections) {
+    // 每章开始前查一次取消 —— 取消后立刻停, 不再继续生成后面的章节
+    if (await isCancelled(ctx.taskId)) {
+      return { text: `已取消: 完成 ${results.filter((r) => r.ok).length}/${sections.length} 章(其余未执行)`, structured: { sections: results, cancelled: true } };
+    }
     try {
       // UI审计T4: 每章进度写回 progress(前端步骤卡消费)
       await pool.query(
@@ -674,6 +770,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
         ...(planCtx.outlineTree
           ? { outlineTree: planCtx.outlineTree }
           : sec.requirements ? { outlineTree: sec.requirements.slice(0, 1000) } : {}),
+        ...(planCtx.sampleContent ? { sampleContent: planCtx.sampleContent } : {}),
         ...(citationPool ? { citationPool } : {}),
       });
       results.push({ id: sec.id, title: sec.title, ok: !!ch.content, wordCount: ch.wordCount, content: ch.content });
@@ -739,26 +836,64 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
 }
 
 /** 引用池构建: 项目 citation 素材的 [N] 条目 → 编号清单(供正文引用, 格式对齐 GB/T7714 实体) */
+/**
+ * 结构化文献条目 → 一行著录(GB/T 7714 风格)。
+ *
+ * 2026-09-16: 补上"结构化 references 进不了引用链"的缺口。
+ * 库里存着两种形状的条目(检索臂写 `venue`, 手动录入写 `author`/`source`), 这里统一兜住;
+ * 闭源的 `gbRef` 字段若已存在就直接用它(那是它拼好的完整著录)。
+ * 缺字段就按有的拼, **不补假值**(学术文献不能编造著录信息)。
+ */
+function formatReferenceEntry(r: Record<string, unknown>): string {
+  const gbRef = String(r.gbRef ?? "").trim();
+  if (gbRef) return gbRef;
+  const title = String(r.title ?? "").trim();
+  if (!title) return "";
+  const authors = String(r.authors ?? r.author ?? "").trim();
+  const source = String(r.venue ?? r.source ?? "").trim();
+  const year = String(r.year ?? "").trim();
+  const vol = String(r.volumeIssue ?? "").trim();
+  const doi = String(r.doi ?? "").trim();
+  const head = [authors, title].filter(Boolean).join(". ");
+  const tail = [source, year, vol].filter(Boolean).join(", ");
+  const body = [head, tail].filter(Boolean).join(". ");
+  return doi ? `${body}. DOI: ${doi}` : body;
+}
+
+/** 素材行 → 引用条目文本(优先结构化 references, 回落 content_md 的 `[N] 条目` 行) */
+function refsFromMaterialRow(row: { content_md?: unknown; references_json?: unknown }): string[] {
+  const out: string[] = [];
+  if (Array.isArray(row.references_json)) {
+    for (const r of row.references_json) {
+      if (!r || typeof r !== "object") continue;
+      const line = formatReferenceEntry(r as Record<string, unknown>);
+      if (line) out.push(line);
+    }
+  }
+  // 兼容: 老的 [N] 文本形式(检索链早先的产出, 以及外部粘贴)
+  for (const line of String(row.content_md ?? "").split("\n")) {
+    const m = /^\s*\[(\d+)\]\s*(.+)$/.exec(line.trim());
+    if (m) out.push(m[2].trim());
+  }
+  return out;
+}
+
 async function buildCitationPool(userId: string, projectId: string): Promise<string> {
   try {
     const r = await pool.query(
-      `select content_md from research_materials
+      `select content_md, references_json from research_materials
         where project_id=$1 and user_id=$2 and kind='citation'
-        order by created_at limit 5`, [projectId, userId]);
+        order by created_at limit 8`, [projectId, userId]);
     const lines: string[] = [];
     for (const row of r.rows) {
-      const text = String(row.content_md ?? "");
-      for (const line of text.split("\n")) {
-        const m = /^\s*\[(\d+)\]\s*(.+)$/.exec(line.trim());
-        if (m) lines.push(`[${m[1]}] ${m[2].trim()}`);
-      }
+      for (const body of refsFromMaterialRow(row)) lines.push(body);
     }
     // 去重保序, 最多 20 条
     const seen = new Set<string>();
     const out: string[] = [];
     for (const l of lines) {
       const key = l.replace(/^\[\d+\]\s*/, "");
-      if (!seen.has(key)) { seen.add(key); out.push(l); }
+      if (!seen.has(key)) { seen.add(key); out.push(`[${out.length + 1}] ${key}`); }
       if (out.length >= 20) break;
     }
     return out.join("\n");
@@ -850,6 +985,25 @@ async function runPhase5(task: any, ctx: ExecCtx) {
          updated_at=now()
        where id=$1`,
       [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]);
+    // 2026-09-16: 同步写 finalize **节点** —— 与 review/revise 分支的读取口径统一。
+    //   那两处读的是 `fz.mergedTitle ?? p.merged_title`(节点优先, 注释写明"前端所见即所得"),
+    //   但 merge 只写了列、没写节点, 于是节点侧读到的是**旧值**: 用户在合稿页手改标题/摘要/正文后
+    //   点「全文审查」, 引擎取到的是改动前的版本 —— 审查的不是用户改完的稿。
+    //   用 jsonb_set 逐字段合并(与 review 分支同一范式), 不要整体替换 payload:
+    //   节点里还有 reviewReport 等别的字段, 整块覆盖会把它们抹掉。
+    await pool.query(
+      `update research_nodes set payload =
+         jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
+           coalesce(payload,'{}'::jsonb),
+           '{mergedTitle}',     to_jsonb($2::text), true),
+           '{mergedAbstract}',  to_jsonb($3::text), true),
+           '{mergedKeywords}',  to_jsonb($4::text), true),
+           '{mergedFullText}',  to_jsonb($5::text), true),
+           '{mergedReferences}',to_jsonb($6::text), true),
+         version=version+1, updated_at=now()
+       where project_id=$1 and node_key='finalize'`,
+      [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]
+    ).catch(() => ({ rowCount: 0 }));
     return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references, wordCount: fulltext.replace(/\s/g, "").length } };
   }
 
@@ -916,9 +1070,24 @@ ${fulltext.slice(0, 16000)}
     await pool.query(
       `update research_projects set review_result=$2::jsonb, updated_at=now() where id=$1`,
       [ctx.projectId, JSON.stringify(result)]);
+    // 报告双写: project.review_result(引擎链) + finalize 节点 payload.reviewReport(前端渲染源)。
+    // 2026-09-16 补: 同时把本次**实际审查的那份正文**写回节点。
+    //   读取是"节点优先、列兜底", 而这里此前只写 reviewReport —— 节点里的 merged_* 保持旧值,
+    //   于是用户在合稿页手改的标题/摘要/正文, 一刷新就被**列里的旧值**盖回去(读的是节点, 但节点是旧的)。
+    //   把 fz* 一并落节点, 让"审查的那份" = "回读出来的那份"。
     const nUpd = await pool.query(
-      `update research_nodes set payload=jsonb_set(coalesce(payload,'{}'::jsonb),'{reviewReport}', $2::jsonb), updated_at=now()
-        where project_id=$1 and node_key='finalize'`, [ctx.projectId, JSON.stringify(result)]).catch(() => ({ rowCount: 0 }));
+      `update research_nodes set payload =
+         jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
+           coalesce(payload,'{}'::jsonb),
+           '{reviewReport}',     $2::jsonb, true),
+           '{mergedTitle}',      to_jsonb($3::text), true),
+           '{mergedAbstract}',   to_jsonb($4::text), true),
+           '{mergedKeywords}',   to_jsonb($5::text), true),
+           '{mergedFullText}',   to_jsonb($6::text), true),
+         updated_at=now()
+       where project_id=$1 and node_key='finalize'`,
+      [ctx.projectId, JSON.stringify(result), title, abstract, keywords, fulltext]
+    ).catch(() => ({ rowCount: 0 }));
     void nUpd;
     return { text: `审查完成: ${result.overallScore} 分 ${result.grade} 级`, structured: result };
   }
@@ -966,14 +1135,24 @@ ${fulltext}
        revision_of_version=$5, merge_generated=true, updated_at=now()
      where id=$1`,
     [ctx.projectId, abs.content, kws.content, revisedBody, curVer || null]);
-  const fzPayload = {
-    mergedTitle: title, mergedAbstract: abs.content, mergedKeywords: kws.content,
-    mergedFullText: revisedBody, mergedReferences: refs, reviewReport: reviewReport,
-  };
+  // 写回 finalize 节点 —— 用 jsonb_set **逐字段合并**, 不要 `payload=$2` 整块替换。
+  //   2026-09-16: 这里原先是整块替换, 与 review 分支(1052 行)的范式不一致, 两个后果:
+  //   ① 节点里 review 分支写的 / 前端手改的其它键(如 isFinalized)会被静默抹掉;
+  //   ② 与 merge 分支(也是逐字段)不统一, 以后加字段就会踩。
+  //   注: `title`/`refs` 来自节点优先的合并读取, 所以这里写回的是"用户改过的值", 不是列里的旧值。
   await pool.query(
-    `update research_nodes set payload=$2::jsonb, version=version+1, updated_at=now()
-      where project_id=$1 and node_key='finalize'`,
-    [ctx.projectId, JSON.stringify(fzPayload)]).catch(() => ({ rowCount: 0 }));
+    `update research_nodes set payload =
+       jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
+         coalesce(payload,'{}'::jsonb),
+         '{mergedTitle}',      to_jsonb($2::text), true),
+         '{mergedAbstract}',   to_jsonb($3::text), true),
+         '{mergedKeywords}',   to_jsonb($4::text), true),
+         '{mergedFullText}',   to_jsonb($5::text), true),
+         '{mergedReferences}', to_jsonb($6::text), true),
+       version=version+1, updated_at=now()
+     where project_id=$1 and node_key='finalize'`,
+    [ctx.projectId, title, abs.content, kws.content, revisedBody, refs]
+  ).catch(() => ({ rowCount: 0 }));
   return {
     text: `修订完成: 全文 ${revisedBody.replace(/\s/g, "").length} 字 (revise of v${curVer})`,
     structured: result,
@@ -981,20 +1160,18 @@ ${fulltext}
 }
 
 /** 合并参考文献(GB/T7714 全文条目, 素材 citation 池去重; HAR mergedReferences 语义) */
-async function buildMergedReferences(userId: string, projectId: string): Promise<string> {
+export async function buildMergedReferences(userId: string, projectId: string): Promise<string> {
   try {
     const r = await pool.query(
-      `select content_md from research_materials
+      `select content_md, references_json from research_materials
         where project_id=$1 and user_id=$2 and kind in ('citation','note')
         order by created_at limit 10`, [projectId, userId]);
     const seen = new Set<string>();
     const out: string[] = [];
     for (const row of r.rows) {
-      const text = String(row.content_md ?? "");
-      for (const line of text.split("\n")) {
-        const m = /^\s*\[(\d+)\]\s*(.+)$/.exec(line.trim());
-        if (!m) continue;
-        const body = m[2].trim();
+      // 与 buildCitationPool 用同一个提取器 —— 两处口径不一致会导致
+      // "池里能引、表里不出现"(2026-09-16 修: 结构化 references 此前只进池不进表)
+      for (const body of refsFromMaterialRow(row)) {
         if (!seen.has(body)) {
           seen.add(body);
           out.push(`[${out.length + 1}] ${body}`);

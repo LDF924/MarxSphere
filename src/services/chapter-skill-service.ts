@@ -128,12 +128,20 @@ export async function getWorkbenchSnapshot(userId: string, projectId: string) {
       if (payload.isFinalized !== undefined) merged.isFinalized = payload.isFinalized;
     }
   }
-  // merged_* 列并入(列是最终落库, 优先)
-  if (row.merged_fulltext) merged.mergedFullText = row.merged_fulltext;
-  if (row.merged_references) merged.mergedReferences = row.merged_references;
-  if (row.merged_title) merged.mergedTitle = row.merged_title;
-  if (row.merged_abstract) merged.mergedAbstract = row.merged_abstract;
-  if (row.merged_keywords) merged.mergedKeywords = row.merged_keywords;
+  // merged_* 列并入(引擎 merge 分支写这里)。
+  //
+  // ⚠ 2026-09-16 口径修正: 这里原来是**列优先**(`if (row.merged_fulltext) merged.mergedFullText = row.merged_fulltext`),
+  //   与 research-exec-engine 的读取口径**相反** —— 那边是 `fz.mergedTitle ?? p.merged_title`
+  //   (节点优先, 注释写明"前端所见即所得")。
+  //   两边不一致的后果是实打实的数据丢失: 用户在手改合稿页的标题/摘要/正文后,
+  //   前端写节点、引擎写列, 回读时列赢 → **刷新即回退到引擎旧值**。
+  //   现在统一成"节点优先, 列只在节点没给该字段时兜底", 且逐字段判断
+  //   (原来只要列有值就整体覆盖, 连节点里更新过的 title 也会被列里的旧 title 盖掉)。
+  if (!merged.mergedFullText && row.merged_fulltext) merged.mergedFullText = row.merged_fulltext;
+  if (!merged.mergedReferences && row.merged_references) merged.mergedReferences = row.merged_references;
+  if (!merged.mergedTitle && row.merged_title) merged.mergedTitle = row.merged_title;
+  if (!merged.mergedAbstract && row.merged_abstract) merged.mergedAbstract = row.merged_abstract;
+  if (!merged.mergedKeywords && row.merged_keywords) merged.mergedKeywords = row.merged_keywords;
   merged.mergeGenerated = row.merge_generated ?? false;
   if (row.english_abstract) merged._englishAbstract = row.english_abstract;
   return { snapshot: merged, englishAbstract: row.english_abstract ?? "" };

@@ -7,7 +7,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
-import { createTask, getTask } from "@/shared/tasks";
+import { createTask, getTask, mergeNode } from "@/shared/tasks";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
 import { toast, confirmDialog } from "@/shared/ui";
 import { q } from "@/shared/api";
@@ -434,19 +434,32 @@ function stopPollSlot(kind: string) {
 function stopPoll() { for (const k of [...pollSlots.keys()]) stopPollSlot(k); }
 
 // ── 合并结果回读(project 列; GET → {project:{merged_*}}) ──
+/**
+ * 刷新合稿产物 + 审查报告。
+ *
+ * ⚠ 2026-09-16 修: 这里原来是**无条件列覆盖** —— 只要 project 行有 merged_* 就写进 store。
+ *   而合稿页的手改只写节点(见 scheduleMetaSave), 于是挂载顺序
+ *   `loadProject()`(节点优先, 读到用户改动) → `refreshMerged()`(列覆盖, 抹掉用户改动)
+ *   → **用户改完标题/摘要/正文, 一刷新就回退**。
+ *   这和后端 getWorkbenchSnapshot 之前"列优先"是同一个病, 只是这里又犯了一次。
+ *   现在改成: **节点/store 已有该字段就不动它**, 列只在该字段为空时兜底。
+ *   必须保留 refreshMerged 是为了拿 review_result 与 merge_generated(那两项只有列上有)。
+ */
 async function refreshMerged() {
   try {
     const r = await q<{ project?: Record<string, unknown>; data?: Record<string, unknown> }>(`/research/projects/${store.taskId}`);
     const p = (r.project ?? r.data ?? {}) as Record<string, unknown>;
-    if (p.merged_title) store.mergedTitle = String(p.merged_title);
-    if (p.merged_abstract) store.mergedAbstract = String(p.merged_abstract);
-    if (p.merged_keywords) store.mergedKeywords = String(p.merged_keywords);
-    if (p.merged_fulltext) store.mergedFullText = String(p.merged_fulltext);
-    if (p.merged_references) store.mergedReferences = String(p.merged_references);
+    // 只兜底, 不覆盖
+    if (p.merged_title && !store.mergedTitle) store.mergedTitle = String(p.merged_title);
+    if (p.merged_abstract && !store.mergedAbstract) store.mergedAbstract = String(p.merged_abstract);
+    if (p.merged_keywords && !store.mergedKeywords) store.mergedKeywords = String(p.merged_keywords);
+    if (p.merged_fulltext && !store.mergedFullText) store.mergedFullText = String(p.merged_fulltext);
+    if (p.merged_references && !store.mergedReferences) store.mergedReferences = String(p.merged_references);
     if (p.review_result) {
       store.reviewResult = typeof p.review_result === "string" ? JSON.parse(p.review_result) : (p.review_result as Record<string, unknown>);
       reviewReport.value = store.reviewResult;
     }
+    // 这两项列是权威来源(引擎写列, 不上节点)
     if (p.merge_generated !== undefined) store.mergeGenerated = Boolean(p.merge_generated);
     await store.saveProject();
   } catch { /* 容忍 */ }
@@ -461,10 +474,30 @@ const mergedBody = computed({
   }
 });
 let metaSaveTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * 元数据防抖落库 —— **快照 + finalize 节点都要写**。
+ *
+ * 闭源是 `watch(mergedFullText, ()=>{ saveProject(); saveCurrentNode(); })` 双写;
+ * 我方此前只写快照, 而回读时 merged_* 列会盖过快照(引擎 merge 只写列) ——
+ * 实测: 节点里是「引擎标题」、快照里写「用户改的标题」, 读回来仍是「引擎标题」。
+ * 结果就是用户改完标题/摘要/正文, 一刷新全回退。
+ *
+ * 现在两端口径都统一成"节点优先"(见 chapter-skill-service.ts 的注释),
+ * 所以这里必须把改动写进节点, 否则节点里的旧值又会赢。
+ * 用 mergeNode 做字段级合并: 节点里还有 reviewReport 等字段, 整块 PUT 会抹掉它们。
+ */
 function scheduleMetaSave() {
   if (metaSaveTimer) clearTimeout(metaSaveTimer);
   metaSaveTimer = setTimeout(() => {
     void store.saveProject();
+    if (!store.taskId) return;
+    void mergeNode(store.taskId, "finalize", {
+      mergedTitle: store.mergedTitle,
+      mergedAbstract: store.mergedAbstract,
+      mergedKeywords: store.mergedKeywords,
+      mergedFullText: store.mergedFullText,
+      mergedReferences: store.mergedReferences,
+    });
   }, 500);
 }
 function onMetaInput() {
@@ -510,7 +543,15 @@ async function adoptRevision() {
   store.mergedAbstract = rev.abstract || store.mergedAbstract;
   store.mergedFullText = rev.body;
   pendingRevision.value = null;
+  // 快照 + 节点双写(见 scheduleMetaSave 的注释: 只写快照会被节点里的旧值盖回去)
   await store.saveProject();
+  if (store.taskId) {
+    await mergeNode(store.taskId, "finalize", {
+      mergedTitle: store.mergedTitle, mergedAbstract: store.mergedAbstract,
+      mergedKeywords: store.mergedKeywords, mergedFullText: store.mergedFullText,
+      mergedReferences: store.mergedReferences,
+    });
+  }
   toast("修订稿已采用", "success");
 }
 
@@ -527,7 +568,13 @@ async function postProcessMerged() {
   if (tabled !== out || (refsRes && refsRes.references !== store.mergedReferences)) {
     store.mergedFullText = tabled;
     if (refsRes && refsRes.references !== store.mergedReferences) store.mergedReferences = refsRes.references;
+    // 快照 + 节点双写 —— 只写快照的话, 刷新后回读会被节点里的旧正文盖掉(等于后处理没生效)
     await store.saveProject();
+    if (store.taskId) {
+      await mergeNode(store.taskId, "finalize", {
+        mergedFullText: store.mergedFullText, mergedReferences: store.mergedReferences,
+      });
+    }
   }
 }
 
@@ -722,10 +769,21 @@ ${bodyToHtml(store.mergedFullText)}
         body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock() },
       });
       if (!r.base64) throw new Error("后端未返回文档内容");
+      const isPdf = exportFmt.value === "pdf";
+      // 产物**始终是 .docx** —— 平台没有 PDF 转换通道。扩展名必须跟着真实格式走:
+      //   原先这里写死 docx、下游却按 exportFmt 报"导出成功: X.pdf",
+      //   用户拿到的文件叫 .pdf 其实是 Word 文档(打不开)。
       downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      if (exportFmt.value === "pdf") {
+      exportStatus.value = "completed";
+      store.isFinalized = true;
+      // D4: 导出状态持久化(exportedAt 时间戳 + exportStatus)
+      store.exportedAt = new Date().toISOString();
+      store.exportStatus = "completed";
+      if (isPdf) {
+        // 谎报修掉: 只提示"导出了 Word, 需自行另存 PDF", 不再追加一句"导出成功 .pdf"
         toast("已导出 Word 文件。平台没有 PDF 转换通道, 请用 Word/WPS 另存为 PDF", "info", 6000);
+        return;
       }
     } else {
       toast(`不支持的导出格式: ${exportFmt.value}`, "error");
@@ -1107,7 +1165,7 @@ onMounted(async () => {
 .mt-item.done .mt-label { color: #E8EEF7; font-weight: 500; }
 .merge-msg { margin-top: 8px; font-size: 12.5px; color: #E8B54A; }
 .stream-block {
-  margin-top: 10px; padding: 10px 14px; background: #11192Cbeb;
+  margin-top: 10px; padding: 10px 14px; background: #11192C;
   border: 1px solid #3A3020; border-radius: 9px;
   font-size: 12.5px; color: #92400e; line-height: 1.7; white-space: pre-wrap;
   max-height: 220px; overflow-y: auto;
@@ -1132,7 +1190,7 @@ onMounted(async () => {
 .rr-suggestions { font-size: 12px; color: #DCE6F2; }
 .rr-suggestions ul { margin: 4px 0 0; padding-left: 18px; }
 .rr-suggestions li { margin-bottom: 2px; line-height: 1.6; }
-.revision-card { margin-top: 10px; padding: 10px 14px; background: #11192Cbeb; border: 1px solid #3A3020; border-radius: 9px; }
+.revision-card { margin-top: 10px; padding: 10px 14px; background: #11192C; border: 1px solid #3A3020; border-radius: 9px; }
 .revision-card p { margin: 0 0 8px; font-size: 12.5px; color: #92400e; }
 .rev-actions { display: flex; gap: 8px; }
 .btn-view-diff, .btn-adopt { padding: 5px 13px; border-radius: 7px; font-size: 12px; cursor: pointer; border: 0; }

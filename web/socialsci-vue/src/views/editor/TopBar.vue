@@ -259,7 +259,7 @@ async function handleDelete() {
   color: #5FD0B4;
 }
 .ade-topbar__status--yellow {
-  background: #11192Cbeb;
+  background: #11192C;
   color: #E8B54A;
 }
 .ade-topbar__status--gray {

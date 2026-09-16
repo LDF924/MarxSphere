@@ -35,23 +35,54 @@ const METHODS = [
   { id: "mixed", label: "混合方法", desc: "定性 + 定量结合" }
 ];
 
-// E2: 方法自动识别(闭源: 用户未手动选择 → 系统按标题+要求启发式识别并提示)
-function inferMethod(txt: string): string {
-  const quantWords = ["实证", "问卷", "回归", "显著性", "中介效应", "驱动因素", "影响因素", "数据分析", "模型", "检验"];
-  const qualWords = ["案例", "访谈", "文本分析", "叙事", "现象学", "扎根", "田野"];
-  const qn = quantWords.filter((w) => txt.includes(w)).length;
-  const ql = qualWords.filter((w) => txt.includes(w)).length;
-  return qn >= 2 && ql >= 2 ? "mixed" : qn >= 2 ? "quantitative" : ql >= 2 ? "qualitative" : "";
+/**
+ * 研究方法自动识别 —— 还原闭源 `wp()`(index-xpWAkSSw.js, "detectResearchMethod")。
+ *
+ * ⚠ 2026-09-16 修: 原先这里有**两份**词表(展示用 10 词 / 提交用 9 词), 两份还不一样,
+ *   而且都和闭源差得远。逐字对照闭源后的三处不等价:
+ *   ① 词表: 闭源定量 **34** 词、定性 **18** 词; 我方只有 10/7 —— "量表/结构方程/信度/效度/
+ *      绩效/评价指标"这类高频题面词全识别不出来。
+ *   ② 文本源: 闭源取 **title + outline**; 我方取 title + requirements。
+ *      后果: 用户写的目录里全是量化词, 系统却当没看见。
+ *   ③ 兜底: 闭源无匹配时**兜底 qualitative**(并打日志); 我方返 ""。
+ *      这条看似等价(下游默认走定性), 但空值会让 `researchMethodAuto` 判定为"没识别出来",
+ *      提示条不显示 —— 用户看不到系统替他选了什么。
+ *   现在统一成一份实现, 展示与提交共用(原先两份并存正是"显示的和提交的不一致"的根源)。
+ */
+const QUANT_WORDS = ["实证", "问卷", "量表", "回归", "统计", "数据分析", "假设检验", "结构方程", "sem", "amos", "spss", "stata", "计量", "量化", "定量", "样本", "显著性", "相关系数", "因子分析", "信度", "效度", "调查", "实验", "检验", "模型", "路径分析", "调节效应", "中介效应", "影响机制", "驱动因素", "影响因素", "绩效", "效率", "评价指标"];
+const QUAL_WORDS = ["案例", "访谈", "文本分析", "话语分析", "民族志", "扎根理论", "质性", "叙事", "现象学", "田野", "观察", "内容分析", "比较研究", "政策分析", "历史分析", "文献分析", "理论分析", "思辨"];
+/** 识别文本源: 标题 + 目录(闭源 `(title||"") + " " + (outline||"")`, 统一小写) */
+function methodHeuristicText(): string {
+  return `${store.input.title || ""} ${store.input.outline || ""}`.toLowerCase();
 }
+function inferMethod(txt: string): "qualitative" | "quantitative" | "mixed" {
+  let qn = 0, ql = 0;
+  for (const w of QUANT_WORDS) if (txt.includes(w)) qn++;
+  for (const w of QUAL_WORDS) if (txt.includes(w)) ql++;
+  if (qn >= 2 && ql >= 2) return "mixed";
+  if (qn >= 2) return "quantitative";
+  if (ql >= 2) return "qualitative";
+  return "qualitative"; // 闭源语义: 无明确定量线索 → 默认定性
+}
+/**
+ * 识别提示条是否显示。
+ *
+ * 闭源这里有**时序不对称**: 提示由 `wp()` 在**提交那一刻**才触发(它顺手把值写回 store),
+ * 而模型卡的高亮直接绑 `input.researchMethod` —— 所以"高亮"和"提示条"只在提交后才同时亮。
+ * 我方常驻计算, 在**表现上更好**(用户在提交前就知道系统会怎么判), 但两边必须用**同一份实现**,
+ * 否则会出现"提示说识别为定量、提交后却按定性走"这种自相矛盾。
+ * 现在共用 inferMethod, 一致性由结构保证, 不再靠两处词表碰巧长得一样。
+ */
 const researchMethodAuto = computed(() => {
+  // 用户手动选过就不再提示(那一项已高亮, 再提示是噪音)
   if (store.input.researchMethod) return false;
-  const txt = store.input.title + store.input.requirements;
-  return txt.trim().length >= 6 && !!inferMethod(txt);
+  const txt = methodHeuristicText();
+  // 闭源在提交时才校验"主题 ≥4 字", 这里只在够长时才展示判断, 免得空表单显示"已识别为定性"
+  return txt.trim().length >= 6;
 });
 const methodAutoLabel = computed(() => {
   const map: Record<string, string> = { qualitative: "定性研究", quantitative: "定量研究", mixed: "混合方法" };
-  const t = store.input.title + store.input.requirements;
-  return map[inferMethod(t)] ?? "";
+  return map[inferMethod(methodHeuristicText())] ?? "定性研究";
 });
 function pickMethod(id: string) {
   store.input.researchMethod = id;
@@ -63,7 +94,14 @@ function autoSave() {
   try {
     localStorage.setItem(
       "skf_draft",
-      JSON.stringify({ title: store.input.title, outline: store.input.outline, requirements: store.input.requirements, researchMethod: store.input.researchMethod, totalWordCount: store.input.totalWordCount })
+      // 2026-09-16: 补 clarifyAnswers —— 用户答完引导问题若刷新页面, 答案是空的(闭源草稿存整个 input 对象);
+      //   顺带把 sampleFiles 也存上, 但那可能很大, 只存文件名与大小, 内容不进草稿。
+      JSON.stringify({
+        title: store.input.title, outline: store.input.outline,
+        requirements: store.input.requirements, researchMethod: store.input.researchMethod,
+        totalWordCount: store.input.totalWordCount,
+        clarifyAnswers: store.input.clarifyAnswers ?? {},
+      })
     );
   } catch { /* 忽略 */ }
 }
@@ -77,6 +115,9 @@ function loadDraft() {
     if (typeof d.requirements === "string") store.input.requirements = d.requirements;
     if (typeof d.researchMethod === "string") store.input.researchMethod = d.researchMethod;
     if (typeof d.totalWordCount === "number") store.input.totalWordCount = d.totalWordCount;
+    if (d.clarifyAnswers && typeof d.clarifyAnswers === "object") {
+      store.input.clarifyAnswers = { ...(store.input.clarifyAnswers ?? {}), ...(d.clarifyAnswers as Record<string, string>) };
+    }
   } catch { /* 忽略 */ }
 }
 
@@ -183,6 +224,14 @@ async function persistSources(projectId: string): Promise<void> {
 const clarify = ref<{ state: "idle" | "loading" | "done" | "error"; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string; answer?: string }>; error: string }>({
   state: "idle", questions: [], error: ""
 });
+/**
+ * 后端每次都会回一段「总体分析」(已明确什么 + 还存在哪些关键模糊点)。
+ * 2026-09-16 修: 原先解析时把它丢了 —— 后果在"0 问完成态"最明显:
+ * 界面只剩一句「AI 未发现需要补充的引导问题」, 用户看不到任何分析结论。
+ */
+const clarifyAnalysis = ref("");
+/** 已进入第几轮追问(0 = 首轮); 后端按 round 切换"≤3 问、不重复已明确项"的提示词 */
+const clarifyRound = ref(0);
 let clarifyAbort: AbortController | null = null;
 
 /** 引导提问手风琴(闭源默认收起; 生成完/有答案时自动展开, 免得结果藏在折叠里没人看见) */
@@ -204,19 +253,33 @@ const CAT_COLORS: Record<string, string> = {
 function catLabel(c: string): string { return CAT_LABELS[String(c)] ?? String(c || "补充信息"); }
 function catColor(c: string): string { return CAT_COLORS[String(c)] ?? "cat-gray"; }
 
-async function runClarify() {
+/**
+ * 生成/续问澄清问题。
+ *
+ * @param nextRound true = 基于已答内容发起**第二轮追问**(闭源 `round` + `answers` 语义)。
+ *   后端一直支持这两个字段, 但前端从不传 —— 所以"答完第一轮再问一轮"的能力此前根本走不到。
+ *   后端在第 2 轮会切到"只问仍模糊的关键点(≤3 问, 不重复已明确项)"的提示词。
+ */
+async function runClarify(nextRound = false) {
   clarify.value.state = "loading";
-  clarify.value.questions = [];
+  if (!nextRound) clarify.value.questions = [];
   clarifyAbort?.abort();
   clarifyAbort = new AbortController();
   try {
+    // 已答内容带上 —— 第二轮靠它判断"哪些已经明确"
+    const answers = nextRound
+      ? clarify.value.questions
+          .filter((q) => String(q.answer ?? "").trim())
+          .map((q) => ({ question: q.question, answer: String(q.answer) }))
+      : [];
     const body = {
       title: store.input.title,
       outline: store.input.outline,
       requirements: store.input.requirements,
       researchMethod: store.input.researchMethod,
       totalWordCount: store.input.totalWordCount,
-      sampleContent: store.input.sampleFiles.map((f) => f.content.slice(0, 3000)).join("\n\n").slice(0, 8000)
+      sampleContent: store.input.sampleFiles.map((f) => f.content.slice(0, 3000)).join("\n\n").slice(0, 8000),
+      ...(nextRound ? { round: clarifyRound.value + 1, answers } : {})
     };
     const r = await fetch("/api/clarify/generate", {
       method: "POST",
@@ -230,9 +293,13 @@ async function runClarify() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     const qs = j?.data?.questions ?? j?.questions ?? [];
+    // 总体分析每次都要留下 —— 0 问时它是用户唯一能看到的结论
+    clarifyAnalysis.value = String(j?.data?.analysis ?? j?.analysis ?? "");
+    if (nextRound) clarifyRound.value += 1;
     if (!Array.isArray(qs) || !qs.length) {
       clarify.value.state = "done";
       clarify.value.questions = [];
+      toast(nextRound ? "第二轮追问完成: 已无更多关键模糊点" : "AI 未发现需要补充的引导问题", "info");
       return;
     }
     clarify.value.state = "done";
@@ -249,7 +316,7 @@ async function runClarify() {
         answer: store.input.clarifyAnswers[stableId] ?? store.input.clarifyAnswers[rawId] ?? ""
       };
     });
-    toast(`AI 生成了 ${qs.length} 个引导问题`, "success");
+    toast(nextRound ? `第 ${clarifyRound.value} 轮追问: ${qs.length} 个问题` : `AI 生成了 ${qs.length} 个引导问题`, "success");
   } catch (e) {
     if ((e as Error).name === "AbortError") return;
     clarify.value.state = "error";
@@ -282,14 +349,10 @@ async function submitAnalysis() {
   }
   submitting.value = true;
   try {
-    // researchMethod 启发式(闭源 wp: 定量/定性关键词计分)
+    // researchMethod 启发式(闭源 wp: 标题+目录 → 定量/定性关键词计分, 无匹配默认定性)
+    // 与展示用的 methodAutoLabel 共用同一份实现(原先这里是第二份词表, 两边会打架)
     if (!store.input.researchMethod) {
-      const txt = store.input.title + store.input.requirements;
-      const quantWords = ["实证", "问卷", "回归", "显著性", "中介效应", "驱动因素", "影响因素", "数据分析", "模型"];
-      const qualWords = ["案例", "访谈", "文本分析", "叙事", "现象学", "扎根"];
-      const qn = quantWords.filter((w) => txt.includes(w)).length;
-      const ql = qualWords.filter((w) => txt.includes(w)).length;
-      store.input.researchMethod = qn >= 2 && ql >= 2 ? "mixed" : qn >= 2 ? "quantitative" : ql >= 2 ? "qualitative" : "";
+      store.input.researchMethod = inferMethod(methodHeuristicText());
     }
     const pid = await store.ensureTask(store.input.title || "未命名科研任务");
     // 建项目(若 ensureTask 未建)
@@ -516,7 +579,7 @@ onMounted(async () => {
       <div v-if="clarifyOpen" class="clarify-body">
         <div v-if="clarify.state === 'idle'" class="clarify-idle">
           <p>AI智能体将根据你已填写的信息提出针对性问题，回答后将自动纳入科研架构分析。</p>
-          <button type="button" class="btn-clarify-run" @click="runClarify" data-control="workflow:clarify">AI 分析我的研究</button>
+          <button type="button" class="btn-clarify-run" @click="runClarify(false)" data-control="workflow:clarify">AI 分析我的研究</button>
         </div>
         <div v-else-if="clarify.state === 'loading'" class="clarify-loading">
           <span class="mini-spinner"></span>
@@ -524,13 +587,18 @@ onMounted(async () => {
         </div>
         <div v-else-if="clarify.state === 'error'" class="clarify-error">
           <p>⚠ 引导问题生成失败: {{ clarify.error }}</p>
-          <button type="button" class="btn-clarify-run" @click="runClarify" data-control="workflow:clarify-regen">重新生成引导问题</button>
+          <button type="button" class="btn-clarify-run" @click="runClarify(false)" data-control="workflow:clarify-regen">重新生成引导问题</button>
         </div>
         <div v-else-if="!clarify.questions.length" class="clarify-done-empty">
+          <!-- 2026-09-16: 0 问时原先只有一句否定, 后端算出的「总体分析」被丢掉了 ——
+               用户看不到"系统到底怎么看我的方案"。现在把它显示出来。 -->
+          <p v-if="clarifyAnalysis" class="cq-analysis">{{ clarifyAnalysis }}</p>
           <p>AI 未发现需要补充的引导问题。</p>
-          <button type="button" class="btn-clarify-run" @click="runClarify" data-control="workflow:clarify-retry">重新分析</button>
+          <button type="button" class="btn-clarify-run" @click="runClarify(false)" data-control="workflow:clarify-retry">重新分析</button>
         </div>
         <div v-else class="clarify-list">
+          <!-- 总体分析: 有就问显示在问题列表前面(它是这批问题的由来) -->
+          <p v-if="clarifyAnalysis" class="cq-analysis">{{ clarifyAnalysis }}</p>
           <div v-for="q in clarify.questions" :key="q.id" class="clarify-item">
             <div class="cq-head">
               <span class="cq-cat" :class="catColor(q.category)">{{ catLabel(q.category) }}</span>
@@ -539,6 +607,16 @@ onMounted(async () => {
             <p class="cq-question">{{ q.question }}</p>
             <p class="cq-guidance">{{ q.guidance }}</p>
             <textarea v-model="q.answer" class="cq-input" rows="2" placeholder="你的回答…" @input="setAnswer(q, ($event.target as HTMLTextAreaElement).value)"></textarea>
+          </div>
+          <!-- 第二轮追问(闭源: 答完一轮可再问一轮, 集中补齐仍模糊的点) -->
+          <div class="clarify-next">
+            <button
+              type="button" class="btn-clarify-run"
+              :disabled="clarifyRound >= 2"
+              data-control="workflow:clarify-next-round"
+              @click="runClarify(true)"
+            >{{ clarifyRound >= 2 ? "追问已达上限" : (clarifyRound === 0 ? "基于我的回答再问一轮" : `再追加一轮追问（已 ${clarifyRound} 轮）`) }}</button>
+            <span class="clarify-next-hint">回答后自动纳入科研架构分析</span>
           </div>
         </div>
       </div>
@@ -608,7 +686,7 @@ onMounted(async () => {
 .src-count { font-size: 11.5px; color: #8B9BB1; }
 /* E2 自动识别提示 */
 .auto-detect-note {
-  margin: 6px 0 0; font-size: 12px; color: #E8B54A; background: #11192Cbeb;
+  margin: 6px 0 0; font-size: 12px; color: #E8B54A; background: #11192C;
   border: 1px dashed #C9A23C; border-radius: 7px; padding: 6px 10px;
 }
 
@@ -705,6 +783,15 @@ onMounted(async () => {
 .cq-imp { font-size: 10px; padding: 2px 7px; background: #3A2323; color: #dc2626; border-radius: 8px; font-weight: 600; }
 .cq-question { margin: 0 0 4px; font-size: 13.5px; color: #E8EEF7; font-weight: 600; }
 .cq-guidance { margin: 0 0 8px; font-size: 12px; color: #8B9BB1; }
+/* 总体分析(后端每次都会回, 原先被丢弃) —— 0 问时它是用户唯一能看到的结论 */
+.cq-analysis {
+  margin: 0 0 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.7;
+  background: #16243F; border: 1px solid #24406B; border-radius: 8px; color: #A8C4E8;
+}
+/* 第二轮追加入口 */
+.clarify-next { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.clarify-next-hint { font-size: 11.5px; color: #7A8AA0; }
+.btn-clarify-run:disabled { opacity: .5; cursor: not-allowed; }
 .cq-input {
   width: 100%; box-sizing: border-box;
   padding: 7px 10px; border: 1px solid #222F44; border-radius: 7px;

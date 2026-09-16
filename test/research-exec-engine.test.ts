@@ -17,6 +17,11 @@ vi.mock("../src/services/research-materials-service.js", async (importOriginal) 
   const mod = await importOriginal<typeof import("../src/services/research-materials-service.js")>();
   return { ...mod, buildMaterialsContext: async () => "【素材上下文mock】" };
 });
+// 章节生成要调真 LLM —— 单测里必须打桩, 否则批量取消用例会去连真实端点
+vi.mock("../src/services/paper-outline-service.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../src/services/paper-outline-service.js")>();
+  return { ...mod, generateChapter: vi.fn(async () => ({ content: "章节正文", wordCount: 100 })) };
+});
 
 import { pool } from "../src/db/pool.js";
 import * as llmCommon from "../src/ai/llm-common.js";
@@ -120,8 +125,9 @@ describe("executeReadyTask 执行器分派", () => {
 
   it("通用 analyze 任务: LLM 执行成功 → done", async () => {
     const t = task("queued", { job_kind: "analyze" });
-    // analyze 走 runAnalyzeArchitecture: pool.query 4 次(读任务/markRunning/读 input 节点/markDone);
-    // sections+analysis 节点落库走 pool.connect 事务(client.query), 故需单独 mock connect
+    // analyze 走 runAnalyzeArchitecture: pool.query 6 次(读任务/markRunning/3×阶段进度/读 input 节点/markDone);
+    //   sections+analysis 节点落库走 pool.connect 事务(client.query), 故需单独 mock connect
+    //   (2026-09-16 起该函数会用 setStage 回写 progress.stage —— 前端 3 步进度条与打字机都读它)
     const clientQuery = vi.fn(async (sql: string) => {
       // 节点不存在 → 走 insert 分支(选择节点用 for update)
       if (String(sql).includes("for update")) return { rows: [] };
@@ -131,13 +137,18 @@ describe("executeReadyTask 执行器分派", () => {
     vi.mocked(pool.query)
       .mockResolvedValueOnce({ rows: [t] } as any)  // getTaskById
       .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any)   // markRunning(原子抢占成功)
+      .mockResolvedValueOnce({ rows: [] } as any)   // setStage: 变量识别
       .mockResolvedValueOnce({ rows: [] } as any)   // input 节点(无 → goal 解析章节)
+      .mockResolvedValueOnce({ rows: [] } as any)   // setStage: 框架分析
+      .mockResolvedValueOnce({ rows: [] } as any)   // setStage: Skill 生成
       .mockResolvedValueOnce({ rows: [] } as any);  // markDone
     vi.mocked(pool.connect).mockResolvedValue({ query: clientQuery, release } as any);
     const r = await executeReadyTask("t1");
     expect(r.ok, "err=" + (r.error ?? "")).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
     expect(sqls.some((s) => s.includes("status='done'"))).toBe(true);
+    // 阶段进度回写(前端进度条/打字机的数据源) —— 缺了它界面上步骤条会恒停在第 1 步
+    expect(sqls.filter((s) => s.includes("progress = coalesce(progress")).length).toBeGreaterThanOrEqual(3);
     // 事务路径: begin/commit + sections/analysis 节点落库
     const clientSqls = clientQuery.mock.calls.map((c) => String(c[0]));
     expect(clientSqls).toContain("begin");
@@ -266,5 +277,120 @@ describe("parseGoalToSections 层级结构", () => {
   it("一级行本身没有 parentId", () => {
     const out = parseGoalToSections("1. 引言\n2. 方法\n3. 结果\n4. 讨论\n5. 结论");
     for (const s of out.filter((x) => x.level === 1)) expect(s.parentId).toBeUndefined();
+  });
+});
+
+describe("取消语义(2026-09-16: 取消必须真停, 不能被收尾覆盖)", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("markDone 不覆盖已取消的任务", async () => {
+    // 并发场景: 用户点取消 → status=cancelled; 执行器随后跑完并调 markDone。
+    // 不加 `status <> 'cancelled'` 守卫的话, 任务会被改回 done —— 用户看到"已取消"的任务
+    // 又变成"已完成", 且半成品结果被当成完整结果落库。
+    const query = vi.mocked(pool.query);
+    query.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    const { markDone } = await import("../src/services/research-exec-engine.js");
+    await markDone("t1", { text: "半成品" });
+    const sql = String(query.mock.calls[0][0]);
+    expect(sql).toContain("status <> 'cancelled'");
+  });
+
+  it("批处理遇到取消就停, 不再生成后面的章节", async () => {
+    // 章节批量: sections 有 3 章, 但第 2 章开始前查到已取消 → 必须停在 2 章, 第 3 章不执行
+    const t = task("queued", {
+      job_kind: "phase4_batch",
+      input_snapshot: { sections: [
+        { id: "s1", title: "第一章", level: 1 },
+        { id: "s2", title: "第二章", level: 1 },
+        { id: "s3", title: "第三章", level: 1 },
+      ] },
+    });
+    const clientQuery = vi.fn(async () => ({ rows: [] }));
+    vi.mocked(pool.connect).mockResolvedValue({ query: clientQuery, release: vi.fn() } as never);
+
+    let poll = 0;
+    const query = vi.mocked(pool.query);
+    query.mockImplementation(async (sql: unknown) => {
+      const s = String(sql);
+      if (s.includes("select * from research_tasks")) return { rows: [t] } as never;
+      if (s.includes("status='running'")) return { rows: [{ id: "t1" }], rowCount: 1 } as never;
+      // 第 1 轮取消检查 → 未取消; 第 2 轮 → 已取消(模拟用户在第 1 章生成期间点了取消)
+      if (s.includes("select status from research_tasks")) {
+        poll++;
+        return { rows: [{ status: poll >= 2 ? "cancelled" : "running" }] } as never;
+      }
+      return { rows: [], rowCount: 0 } as never;
+    });
+    // 第 1 章正常产出
+    const { generateChapter } = await import("../src/services/paper-outline-service.js");
+    vi.mocked(generateChapter).mockResolvedValue({ content: "第一章正文", wordCount: 100 } as never);
+
+    const r = await executeReadyTask("t1");
+    expect(r.ok).toBe(true);
+    const doneCall = query.mock.calls.map((c) => String(c[0])).find((s) => s.includes("result=$2"));
+    // 收尾写回时仍受取消守卫约束
+    expect(String(doneCall)).toContain("status <> 'cancelled'");
+  });
+});
+
+describe("素材 references 链路(2026-09-16: 结构化文献必须能写、能读、能更新)", () => {
+  beforeEach(() => { vi.mocked(pool.query).mockReset(); });
+
+  it("PUT 更新时 references 映射到 references_json 列", async () => {
+    // 不映射的话, 前端保存表单会把结构化文献静默丢掉(此前 PUT 根本不接收该字段)
+    vi.mocked(pool.query).mockResolvedValue({ rows: [{ id: "m1" }] } as never);
+    const { updateMaterial } = await import("../src/services/research-materials-service.js");
+    await updateMaterial("u1", "m1", { title: "t", references: [{ title: "条目" }] });
+    const [sql, vals] = vi.mocked(pool.query).mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain("references_json=");
+    // 必须是 jsonb 参数, 不是普通文本
+    expect(sql).toContain("::jsonb");
+    // vals[0]=materialId, vals[1]=userId, 之后按 Object.entries 顺序追加
+    expect(vals.map(String).join("|")).toContain("条目");
+  });
+
+  it("单条 getMaterial 与列表同形状(camelCase references), 且保留 snake 旧键", async () => {
+    // 两处字段名不一致时: 前端把单条结果塞回表单 → references 是 undefined → 一保存就抹掉
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [{ id: "m1", content_md: "正文", references_json: [{ title: "A" }], section_ids: ["s1"], meta: {}, source_type: "literature" }],
+    } as never);
+    const { getMaterial } = await import("../src/services/research-materials-service.js");
+    const m = (await getMaterial("u1", "m1")) as Record<string, unknown>;
+    expect(Array.isArray(m.references)).toBe(true);
+    expect((m.references as unknown[]).length).toBe(1);
+    expect(m.contentMd).toBe("正文");
+    expect(m.sectionIds).toEqual(["s1"]);
+    // 旧蛇形键保留(React 侧 MaterialMaterialsDrawer 直接读 content_md)
+    expect(m.content_md).toBe("正文");
+  });
+});
+
+describe("引用链条目口径(2026-09-16: 结构化 references 必须进可引池与参考文献表)", () => {
+  beforeEach(() => { vi.mocked(pool.query).mockReset(); });
+
+  it("buildMergedReferences 优先读 references_json, 并兼容 content_md 的 [N] 行", async () => {
+    // 库里有两种形状: 结构化(手动录入/检索臂) 与 老的文本形式。
+    // 此前只认后者 —— 手动录入的文献因此进不了参考文献表(实测确认过的缺口)。
+    vi.mocked(pool.query).mockResolvedValue({
+      rows: [
+        { content_md: "", references_json: [{ title: "结构化条目", authors: "郭峰", year: "2020", source: "经济学(季刊)" }] },
+        { content_md: "[1] 文本条目. 2023.", references_json: [] },
+      ],
+    } as never);
+    const { buildMergedReferences } = await import("../src/services/research-exec-engine.js");
+    const out = await buildMergedReferences("u1", "p1");
+    expect(out).toContain("结构化条目");
+    expect(out).toContain("文本条目");
+    // 编号要连续(两条都在, 且是 [1] [2])
+    expect(out).toMatch(/\[1\][\s\S]*\[2\]/);
+  });
+
+  it("SQL 同时取 references_json 列(只取 content_md 就永远读不到结构化条目)", async () => {
+    vi.mocked(pool.query).mockResolvedValue({ rows: [] } as never);
+    const { buildMergedReferences } = await import("../src/services/research-exec-engine.js");
+    await buildMergedReferences("u1", "p1");
+    const sql = String(vi.mocked(pool.query).mock.calls[0][0]);
+    expect(sql).toContain("references_json");
+    expect(sql).toContain("content_md");
   });
 });

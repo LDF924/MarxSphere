@@ -44,7 +44,10 @@ async function selectSection(s: Section) {
     });
     if (!ok) return;
   }
-  editing.value = false;
+  // 2026-09-16: 这里原有一行 `editing.value = false`。因为 editing 是 computed(写 mdTab),
+  //   它的实际效果是**切章时把用户踢到「预览」** —— 闭源的 tab 是 MarkdownEditor 的局部
+  //   状态、与章节无关, 切章保持在哪个 tab 是用户的选择, 不该被切章动作改掉。
+  //   所以不要再动 mdTab; 切章只需换内容。
   // 解绑而不是写空串 —— 写空串会被防抖 watch 当成"用户把这一章清空了"(见 bindEditorTo 注释)
   editOwnerId = "";
   if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
@@ -385,9 +388,19 @@ function sendSectionToEditor() {
   if (sendMarkdownToEditor(sec.content, title)) toast("已送往学术文本工作台, 将新建文档", "success");
   else toast("发送失败(localStorage 不可用或已满)", "error");
 }
-/** 编辑/预览双 tab(闭源 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章 */
+/**
+ * 编辑/预览双 tab(闭源 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章。
+ *
+ * ⚠ 2026-09-16 修 bug: 这里原来把 `editing` 做成 computed(读 mdTab==='write', 写 mdTab),
+ *   而 selectSection() 会执行 `editing.value = false` —— 副作用是**点任意章节(包括当前章)
+ *   都把正文区从「编辑」踢到「预览」**。用户每点一次章节树就得手动切回来。
+ *   对照闭源 MarkdownEditor: 那个 tab 是组件内部的 `x("write")` 局部状态, 没有 watch、
+ *   与章节无任何关系, 切章不会重置。所以这里跟进: `editing` 就是 mdTab 本身,
+ *   切章路径不再去动它。
+ */
 const mdTab = ref<"write" | "preview">("write");
 const editText = ref("");
+/** 编辑态开关(= 在写 tab); 保留这个名字是因为模板与 saveEdit 都在用 */
 const editing = computed({
   get: () => mdTab.value === "write",
   set: (v: boolean) => { mdTab.value = v ? "write" : "preview"; },
@@ -476,7 +489,7 @@ const filteredMaterials = computed(() => {
   const cur = activeSection.value;
   const scope = cur ? [cur.id, ...store.sections.filter((s) => s.parentId === cur.id).map((s) => s.id)] : [];
   return materials.value.filter((m) => {
-    if (f !== "all" && m.kind !== f) return false;
+    if (f !== "all" && catOfKind(String(m.kind ?? "")) !== f) return false;
     if (!cur) return true;
     const ids = sectionIdsOf(m);
     // 未关联章节的素材照常显示(发布门禁会拦), 否则用户看不到它们就没法去关联
@@ -517,6 +530,21 @@ const KIND_META: Record<string, { icon: string; label: string; color: string; bg
   document: { icon: "📎", label: "附件", color: "#A8B4C4", bg: "#1A2333" },
 };
 const kindMeta = (k: string) => KIND_META[k] ?? KIND_META.file;
+/**
+ * 原始 kind → 闭源筛选器的概念类别。
+ *
+ * 后端真实写入的 kind 比筛选器多(图片上传写 `figure`、附件写 `file`、表格写 `table`),
+ * 直接拿原始 kind 当筛选项值会出现"选得出却永远筛不出"(2026-09-16 实测:
+ * `figure`/`file` 两个选项恒空)。这里把多对一收敛到闭源的 6 类,
+ * 未收录的一律归 "case"(不丢素材, 也不会出现空选项)。
+ */
+const FILTER_CATS: Record<string, string> = {
+  theory: "theory",
+  citation: "citation", literature: "citation",
+  data_result: "data", data: "data", table: "data",
+  case: "case", figure: "case", chart: "case", file: "case", document: "case", note: "case",
+};
+const catOfKind = (k: string): string => FILTER_CATS[k] ?? "case";
 const kindIcon = (k: string) => kindMeta(k).icon;
 const kindLabel = (k: string) => kindMeta(k).label;
 const kindColor = (k: string) => kindMeta(k).color;
@@ -650,7 +678,7 @@ watch(
 /** 切章时把编辑框同步到新章的正文, 否则会把上一章的内容带过去(编辑态是常驻的) */
 watch(activeSecId, (id) => {
   bindEditorTo(id, String(activeSection.value?.content ?? ""));
-  thinkPrompt.value = String(activeSection.value?.skill_prompt ?? "");
+  bindThinkTo(id, String(activeSection.value?.skill_prompt ?? ""));
 });
 
 /**
@@ -658,17 +686,29 @@ watch(activeSecId, (id) => {
  * 存到 section.skill_prompt —— 生成章节时 runChapterBatch 会优先用它(见后端 buildChapterPrompt)。
  * 500ms 防抖落库(闭源同款): 逐字敲时不该每键一次请求, 但也不能只在失焦时才存 ——
  *   用户写完直接点「执行智能体开始思考」, 那次生成就得用上刚写的内容。
+ *
+ * ⚠ 归属必须显式记(与 editOwnerId 同因): 切章时 `thinkPrompt = 新章的指导` 这一下会给 watch
+ *   排一个"把新章指导写进**旧章**"的定时器 —— 定时器执行时 activeSection 已经变了。
  */
 const thinkPrompt = ref("");
 let thinkTimer: ReturnType<typeof setTimeout> | null = null;
+let thinkOwnerId = "";
 watch(thinkPrompt, () => {
-  const sec = activeSection.value;
+  if (!thinkOwnerId) return;                    // 正在重置, 不是用户输入
+  const sec = store.sections.find((s) => s.id === thinkOwnerId);
   if (!sec) return;
   const next = thinkPrompt.value.trim();
   if (String(sec.skill_prompt ?? "") === next) return;
   if (thinkTimer) clearTimeout(thinkTimer);
-  thinkTimer = setTimeout(() => void persistThinkPrompt(sec.id, next), 500);
+  thinkTimer = setTimeout(() => void persistThinkPrompt(thinkOwnerId, next), 500);
 });
+/** 把思考框切到指定章节(所有切章路径都走它) */
+function bindThinkTo(sectionId: string, value: string) {
+  if (thinkTimer) { clearTimeout(thinkTimer); thinkTimer = null; }
+  thinkOwnerId = "";
+  thinkPrompt.value = value;
+  thinkOwnerId = sectionId;
+}
 async function persistThinkPrompt(sectionId: string, next: string) {
   const sec = store.sections.find((s) => s.id === sectionId);
   if (!sec) return;
@@ -683,7 +723,12 @@ async function persistThinkPrompt(sectionId: string, next: string) {
 onUnmounted(() => {
   if (thinkTimer) {
     clearTimeout(thinkTimer);
-    const sec = activeSection.value;
+    // 归属必须用 thinkOwnerId —— 不能用 activeSection(它是"当前选中的章"), 切章后两者不同。
+    //   实测竞态: 切章时 selectSection 先解绑 editText, 随后 watch(activeSecId) 调 bindEditorTo
+    //   把 editText 换成新章正文; 若本函数在两者之间执行, bodyTimer 的"旧章内容"就被算给了新章
+    //   (且会覆盖掉新章写入)。thinkPrompt 是同样的问题。
+    const owner = thinkOwnerId || activeSection.value?.id || "";
+    const sec = store.sections.find((s) => s.id === owner);
     if (sec) {
       const next = thinkPrompt.value.trim();
       if (String(sec.skill_prompt ?? "") !== next) sec.skill_prompt = next;
@@ -693,9 +738,13 @@ onUnmounted(() => {
   // 正文同样: 离开页面前把未落库的防抖内容冲掉, 否则最后 500ms 内敲的字丢失
   if (bodyTimer) {
     clearTimeout(bodyTimer);
-    const sec = activeSection.value;
+    // 同理以 editOwnerId 为准; 它为空说明编辑框正在被重置, 没有属于它的未落库内容
+    const sec = editOwnerId ? store.sections.find((s) => s.id === editOwnerId) : null;
     if (sec && editText.value !== (sec.content ?? "")) void persistBody(sec.id, editText.value);
   }
+  // 防抖 watch 是组件作用域创建的, 组件卸载后不应再落库(闭源的 watch 随组件销毁)
+  if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
+  if (thinkTimer) { clearTimeout(thinkTimer); thinkTimer = null; }
 });
 
 /** 状态胶囊三色(闭源: 待生成灰 / 生成中琥珀 / 已生成绿) */
@@ -886,7 +935,7 @@ onMounted(async () => {
     if (first) {
       activeSecId.value = first.id;
       bindEditorTo(first.id, String(first.content ?? ""));
-      thinkPrompt.value = String(first.skill_prompt ?? "");
+      bindThinkTo(first.id, String(first.skill_prompt ?? ""));
     }
   }
   // 写作指导也只在 SectionsView 拉过。直进本页会漏 → 批量生成时 skill_prompt 传空(裸生成)
@@ -1151,13 +1200,23 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <button class="mat-gen-btn" :disabled="busy" @click="openGenDlg" data-control="workflow:open-gen-dialog">＋ 生成</button>
         </div>
       </div>
+      <!--
+        素材分类筛选项 —— 与闭源同语义(全部/理论/数据/案例/方法/文献), 但取值走 `cat` 这个
+        **归一化后**的键, 不是原始 kind。
+        2026-09-16 修: 原先直接拿原始 kind 值当 option value(`data_result`/`figure`/`file`),
+        有两个问题 ——
+          ① 后端真实写入的 kind 有 `figure`(图片上传/图表导入)与 `file`(附件), 但它们**不在**
+             WorkspaceView 的 MATERIAL_KINDS 里(见下), 选中即恒空列表;
+          ② 与素材页手风琴用的同一类素材, 两处分类口径不一致。
+        现在筛选项值走 `catOfKind()` 归一化, 保证"选得出但筛不出"不可能发生。
+      -->
       <select v-model="materialFilter" class="mat-filter">
         <option value="all">全部素材</option>
         <option value="theory">理论</option>
+        <option value="data">数据</option>
+        <option value="case">案例</option>
+        <option value="method">方法</option>
         <option value="citation">文献</option>
-        <option value="data_result">数据</option>
-        <option value="figure">图表</option>
-        <option value="file">附件</option>
       </select>
       <div v-if="!filteredMaterials.length" class="rail-empty">
         <p>暂无素材</p>

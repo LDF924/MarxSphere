@@ -1744,7 +1744,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .chunk-note {
   margin-top: 8px;
   padding: 7px 11px;
-  background: #11192Cbeb;
+  background: #11192C;
   border: 1px solid #3A3020;
   border-radius: 7px;
   font-size: 12px;

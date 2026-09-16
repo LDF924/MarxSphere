@@ -16,6 +16,36 @@ import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
+/** 框架来源的四子字段(后端存的是对象; 旧数据里可能是纯字符串 → 统一成 {refFile: 原文} 兜底) */
+function fsOf(sk: { frameworkSource?: unknown } | undefined):
+  { refFile?: string; originalStructure?: string; variableMapping?: string; extractedModel?: string } | null {
+  const fs = sk?.frameworkSource;
+  if (!fs) return null;
+  if (typeof fs === "string") return { refFile: fs };
+  const o = fs as Record<string, unknown>;
+  const out = {
+    refFile: o.refFile ? String(o.refFile) : undefined,
+    originalStructure: o.originalStructure ? String(o.originalStructure) : undefined,
+    variableMapping: o.variableMapping ? String(o.variableMapping) : undefined,
+    extractedModel: o.extractedModel ? String(o.extractedModel) : undefined,
+  };
+  return Object.values(out).some(Boolean) ? out : null;
+}
+/** 子节规划(闭源: {title, aim}[]) */
+function childSecsOf(sk: { childSections?: unknown } | undefined): Array<{ title: string; aim?: string }> {
+  const list = sk?.childSections;
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((c) => c && typeof c === "object")
+    .map((c) => {
+      const o = c as Record<string, unknown>;
+      return { title: String(o.title ?? ""), ...(o.aim ? { aim: String(o.aim) } : {}) };
+    })
+    .filter((c) => c.title);
+}
+/** 闭源标签按"有没有参考文件"切换: 有 = 参考框架, 无 = AI 写作指导 */
+const hasSampleFiles = computed(() => store.input.sampleFiles.length > 0);
+
 
 // ── 打字机(闭源 L242-274: 20ms tick, chunk=clamp(8..40, ceil(剩余/20))) ──
 const typewriterArea = ref<HTMLElement | null>(null);
@@ -23,6 +53,17 @@ const typeText = ref("");
 let typeTimer: ReturnType<typeof setTimeout> | null = null;
 let typeQueue = "";
 let typeFull = "";
+/**
+ * 当前步要打的叙述。闭源打的是模型**流式增量**(skillStreamText), 我方后端是轮询 + 阶段,
+ * 没有逐字流 —— 所以这里打的是**阶段叙述**, 每段只在阶段变化时重打一次。
+ * 宁可如实展示"现在到哪一步了", 也不要留一个永远空白的 `<pre>` 让用户干等。
+ */
+const STAGE_NARRATION: Record<number, string> = {
+  1: "正在识别研究变量: 解析论文主题与目录, 判定本研究涉及的自变量、因变量、中介/调节变量…",
+  2: "正在构建研究框架: 梳理变量之间的逻辑关系, 形成研究主线与论证路径…",
+  3: "正在生成章节写作指导: 为每一章写出写作目标、要点、衔接逻辑与字数分配…",
+};
+let lastNarration = "";
 
 function startTypewriter(full: string) {
   typeFull = full || "";
@@ -98,6 +139,11 @@ async function startAnalysis(force = false) {
   analyzing.value = true;
   analyzeFailed.value = false;
   analyzeError.value = "";
+  // 新一轮分析: 清空思考区与"已打过的叙述"标记, 否则复用上一轮的残留文本,
+  //   用户会看到上一轮的阶段叙述挂在本轮进度条上(自相矛盾)
+  lastNarration = "";
+  stopTypewriter();
+  typeText.value = "";
   try {
     const sectionsSeed = store.sections.length
       ? store.sections
@@ -209,6 +255,18 @@ function pollJob() {
         } else {
           analyzeStep.value = analyzeStep.value || 1;
           analyzeMsg.value = "正在生成章节写作指导...";
+        }
+        // 阶段叙述推进打字机。
+        //
+        // 2026-09-16: 此前 `startTypewriter()` **一次都没被调用过**(只有 finishTypewriter 在完成时调),
+        //   所以思考区永远是空的 `<pre>` —— 用户盯着一个空盒子等几分钟。
+        // 前提: 本轮给后端补了 progress.stage 回写(V6), 在此之前这里根本没有可读的阶段。
+        // 说明: 我方后端是"轮询 + 阶段"而非闭源的逐字 SSE, 所以这里打字的是**阶段叙述**
+        //   (每段只在变化时重打一次), 不是模型逐字输出 —— 不假装有流式。
+        const narration = STAGE_NARRATION[analyzeStep.value];
+        if (narration && narration !== lastNarration) {
+          lastNarration = narration;
+          startTypewriter(narration);
         }
       }
     } catch { /* 容忍 */ }
@@ -337,6 +395,15 @@ async function confirmSections() {
   if (!skillComplete.value) {
     toast("科研架构尚未生成完整, 请先重新分析", "warning");
     return;
+  }
+  // 2026-09-16: 确认架构时**发布 phase2_architecture 版本**。
+  //   此前全仓没有这个标签的发布方(只有 phase3/phase4 有), 于是 `/versions/current` 里
+  //   `phase2Version` 恒为 null、`phase2Stale` 恒 false —— 素材页那条"架构已失效, 请返回
+  //   Phase 2 重新确认"的门禁**永远不可能触发**(后端算得对, 只是没人喂数据)。
+  //   发布失败不阻断推进(版本是审计与门禁的底座, 不是主链的必要条件)。
+  if (store.taskId) {
+    await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase2_architecture" } })
+      .catch(() => null);
   }
   store.setPhase(3);
   void router.push("/workflow/materials");
@@ -477,8 +544,15 @@ onUnmounted(() => {
         <button class="banner-cancel" data-control="workflow:cancel-analysis" @click="cancelAnalysis">取消</button>
       </div>
       <div class="step-progress">
+        <!-- 圆三态(闭源 X()/Y() 语义): 已完成 ✓ / **当前步转圈** / 未到 数字。
+             2026-09-16 修: 原先只有 ✓ 与数字两态 —— 当前正在跑的那一步长得跟没到的一模一样,
+             用户看不出"现在卡在哪一步"、也看不出它还在动。 -->
         <div v-for="(s, i) in steps" :key="s.key" class="step-item" :class="{ active: analyzeStep >= s.key, done: analyzeStep > s.key }">
-          <span class="step-circle">{{ analyzeStep > s.key ? "✓" : i + 1 }}</span>
+          <span class="step-circle" :class="{ spinning: analyzeStep === s.key && analyzing }">
+            <template v-if="analyzeStep > s.key">✓</template>
+            <template v-else-if="analyzeStep === s.key && analyzing"><span class="mini-spinner"></span></template>
+            <template v-else>{{ i + 1 }}</template>
+          </span>
           <span class="step-label">{{ s.label }}</span>
         </div>
       </div>
@@ -618,15 +692,41 @@ onUnmounted(() => {
             <span v-if="wordCountBadge(c)" class="wc-badge">{{ wordCountBadge(c) }}</span>
           </li>
         </ul>
-        <!-- 写作指导详情 -->
+        <!-- 写作指导详情(逐字对照闭源 SectionsView-C4lM9Tih.js 的展开区 8 项):
+             标签+type 徽 / 字数徽 / 框架来源(四子字段) / 草稿预览 / 写作目标 / 要点 / 衔接 / 注意 -->
         <div v-if="s.aiSkill" class="skill-detail">
-          <template v-if="s.aiSkill.frameworkSource">
-            <div class="fs-row amber"><strong>框架来源</strong>: {{ s.aiSkill.frameworkSource }}</div>
+          <div class="skill-head">
+            <span class="skill-source-tag">{{ hasSampleFiles ? "参考框架" : "AI 写作指导" }}</span>
+            <span v-if="s.aiSkill.type" class="skill-type-badge">{{ s.aiSkill.type }}</span>
+            <span v-if="s.aiSkill.wordCount" class="wc-badge">{{ s.aiSkill.wordCount }} 字（Phase 1 分配）</span>
+          </div>
+          <!--
+            ⚠ 2026-09-16 修: frameworkSource 是**对象**(四子字段), 原先当字符串插值 →
+              渲染出 [object Object]。闭源逐子字段渲染: 文件 / 原文结构 / 变量替换 / 分析框架。
+          -->
+          <template v-if="fsOf(s.aiSkill)">
+            <div class="fs-row amber">
+              <strong>框架来源</strong>
+              <p v-if="fsOf(s.aiSkill)?.refFile">文件：{{ fsOf(s.aiSkill)?.refFile }}</p>
+              <p v-if="fsOf(s.aiSkill)?.originalStructure">原文结构：{{ fsOf(s.aiSkill)?.originalStructure }}</p>
+              <p v-if="fsOf(s.aiSkill)?.variableMapping">变量替换：{{ fsOf(s.aiSkill)?.variableMapping }}</p>
+              <p v-if="fsOf(s.aiSkill)?.extractedModel">分析框架：{{ fsOf(s.aiSkill)?.extractedModel }}</p>
+            </div>
           </template>
+          <!-- 草稿预览(闭源: 独立绿框, 与其它字段分开; 原先完全不渲染) -->
+          <div v-if="s.aiSkill.chapterDraft" class="draft-box">
+            <strong>草稿预览</strong>
+            <p>{{ s.aiSkill.chapterDraft }}</p>
+          </div>
           <div v-if="s.aiSkill.writingGoal" class="skill-block"><strong>写作目标</strong>: {{ s.aiSkill.writingGoal }}</div>
           <div v-if="s.aiSkill.keyPoints" class="skill-block">
             <strong>要点</strong>
             <ul><li v-for="(k, ki) in s.aiSkill.keyPoints" :key="ki">{{ k }}</li></ul>
+          </div>
+          <!-- 子节规划(闭源: 子节标题 + 任务说明; 原先完全不渲染) -->
+          <div v-if="childSecsOf(s.aiSkill).length" class="skill-block">
+            <strong>子节规划</strong>
+            <ul><li v-for="(cs, ci) in childSecsOf(s.aiSkill)" :key="ci">{{ cs.title }}<span v-if="cs.aim" class="cs-aim"> — {{ cs.aim }}</span></li></ul>
           </div>
           <div v-if="s.aiSkill.connection" class="skill-block"><strong>衔接</strong>: {{ s.aiSkill.connection }}</div>
           <div v-if="s.aiSkill.notes" class="skill-block"><strong>注意</strong>: {{ s.aiSkill.notes }}</div>
@@ -678,6 +778,8 @@ onUnmounted(() => {
 }
 .step-item.active .step-circle { background: #dc2626; color: #F1F5F9; }
 .step-item.done .step-circle { background: #5FD0B4; color: #F1F5F9; }
+/* 当前步转圈: 让"正在跑"和"还没到"一眼可分 */
+.step-circle.spinning { background: #4D84CB; color: #F1F5F9; box-shadow: 0 0 0 3px #1E2A48; }
 .step-label { font-size: 12px; color: #8B9BB1; }
 .step-item.active .step-label { color: #E8EEF7; font-weight: 600; }
 .thinking-area { margin-top: 8px; }
@@ -689,7 +791,7 @@ onUnmounted(() => {
 }
 .thinking-empty { font-size: 12px; color: #7A8AA0; font-style: italic; padding: 10px; }
 .warn-bar {
-  background: #11192Cbeb; border: 1px solid #3A3020; color: #E8B54A;
+  background: #11192C; border: 1px solid #3A3020; color: #E8B54A;
   padding: 9px 14px; border-radius: 9px; font-size: 12.5px; margin-bottom: 14px;
   display: flex; align-items: center; gap: 10px;
 }
@@ -788,7 +890,24 @@ onUnmounted(() => {
 }
 .l2-title { font-size: 13px; color: #C6D2E4; }
 .skill-detail { margin: 8px 0 0 34px; display: flex; flex-direction: column; gap: 6px; }
-.fs-row.amber { background: #11192Cbeb; border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }
+/* 2026-09-16: 补三处。原先 .fs-row.amber 的背景写成 `#11192Cbeb` —— 8 位 hex 多打了 "beb",
+   浏览器按非法值丢弃整条声明, 等于"框架来源"卡一直没有底色。 */
+.skill-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.skill-source-tag { font-size: 12px; font-weight: 600; color: #8B9BB1; }
+.skill-type-badge {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 8px;
+  background: #1A2333; color: #9B8BD7; border: 1px solid #3A3355;
+}
+/* 草稿预览(闭源绿框): 与"框架来源"琥珀框并列, 视觉上是两块独立信息 */
+.draft-box {
+  background: #14281F; border: 1px solid #2E5C46; border-radius: 6px;
+  padding: 6px 10px; font-size: 12px; color: #7DD3A8; line-height: 1.6;
+}
+.draft-box strong { color: #5FD0B4; display: block; margin-bottom: 2px; }
+.draft-box p { margin: 0; white-space: pre-wrap; }
+.cs-aim { color: #8B9BB1; }
+.fs-row.amber { background: #11192C; border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }
+.fs-row.amber p { margin: 2px 0 0; color: #DCE6F2; }
 .skill-block { font-size: 12.5px; color: #DCE6F2; line-height: 1.6; }
 .skill-block strong { color: #E8EEF7; }
 .skill-block ul { margin: 4px 0 0; padding-left: 18px; }

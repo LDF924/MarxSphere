@@ -24,7 +24,7 @@ interface Material {
   id: string;
   kind: string; // literature/citation | data | table | theory | dataAnalysis | document
   title: string;
-  content?: string;
+  /** 后端唯一的内容字段(content_md → contentMd); 曾另造 `content` 别名, 编辑弹层读它恒为空 → 保存清空正文 */
   contentMd?: string;
   caption?: string;
   sectionId?: string;
@@ -73,6 +73,14 @@ function mKindBadge(m: Material): { text: string; cls: string } | null {
 }
 // 图片全屏预览层状态(闭源: Teleport 遮罩 + img max-h 85vh)
 const imagePreviewSrc = ref("");
+/** 通用素材卡里"展开全文"的素材 id 集合(长正文默认折叠 400 字) */
+const expandedIds = ref<Set<string>>(new Set());
+function toggleExpand(id: string) {
+  const next = new Set(expandedIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  expandedIds.value = next;
+}
 function openImagePreview(src: string) {
   if (src) imagePreviewSrc.value = String(src);
 }
@@ -215,18 +223,39 @@ const genPlaceholder = computed(() =>
 
 function openGenDialog(catKey: string) {
   if (!store.level1Sections.length) { toast("请先完成科研架构", "warning"); return; }
+  // 先停掉可能残留的轮询并复位 —— 否则"上次异常退出(接口挂了/generating 没复位)"会带进来,
+  //   新打开时次按钮直接显示成「取消」, 用户以为还在生成(实测: busy 标志就是这么卡住的)
+  stopGenDialogPoll();
+  resetGenDialogState();
   genDialog.value = {
     open: true, catKey, generating: false, preview: "", streaming: false,
     tableType: "comparison", sectionId: store.level1Sections[0]?.id ?? "",
     prompt: catKey === "literature" ? store.input.title : "", phaseText: "",
     retrievedRefs: []
   };
+}
+/**
+ * 关闭生成弹层(取消/放弃/保存完成都走它)。
+ *
+ * 2026-09-16 修: 原先只做 `open=false` —— `genTaskId` 不清零, 而它是页面级
+ *   `data-assistant-async-busy` 的判据(`matAsyncBusy`), 于是**第一次生成之后该标志永久为真**,
+ *   科研助手此后一直认为"正在生成素材", 不再推荐任何动作。实测: 生成一次 → 关掉 → busy 恒 true。
+ *   同时把弹层内的临时态一并复位, 否则下次打开会看到上一次的预览残留(闭源是"放弃 → 状态复位")。
+ */
+function resetGenDialogState() {
   genTaskId.value = "";
+  const d = genDialog.value;
+  d.generating = false;
+  d.streaming = false;
+  d.preview = "";
+  d.phaseText = "";
+  d.retrievedRefs = [];
 }
 function closeGenDialog() {
   if (genDialog.value.generating) return;
   stopGenDialogPoll();
   genDialog.value.open = false;
+  resetGenDialogState();
 }
 function stopGenDialogPoll() {
   if (genPollTimer.value) { clearInterval(genPollTimer.value); genPollTimer.value = null; }
@@ -304,6 +333,27 @@ function pollGenTask(taskId: string) {
     } catch { /* 容忍 */ }
   }, 800);
 }
+/** 中止正在跑的生成: 真去取消后端任务(不是只停本地轮询 —— 那样后端会照跑完并落库) */
+async function cancelGen() {
+  const taskId = genTaskId.value;
+  stopGenDialogPoll();
+  try {
+    if (taskId) {
+      await q(`/research/tasks/${taskId}/control`, { method: "POST", body: { action: "cancel" } });
+      // 后端可能已经写入了素材, 取消后清掉本次任务产出的草稿, 别留下半成品
+      const r = await q<{ materials?: Array<{ id: string; sourceRef?: string }> }>(`/research/materials?projectId=${store.taskId}`).catch(() => ({ materials: [] }));
+      const mine = (r.materials ?? []).filter((m) => m.sourceRef === taskId);
+      for (const m of mine) await q(`/research/materials/${m.id}`, { method: "DELETE" }).catch(() => null);
+      await loadMaterials();
+    }
+    genDialog.value.open = false;
+    resetGenDialogState();
+    toast("已取消生成", "info");
+  } catch (e) {
+    toast("取消失败: " + String((e as Error).message ?? e), "error");
+  }
+}
+
 /** 预览文本: job 产物素材内容(exec 落库)或 result structured 兜底 */
 async function buildGenPreview(taskId: string): Promise<string> {
   try {
@@ -325,17 +375,46 @@ async function buildGenPreview(taskId: string): Promise<string> {
   return res.text ?? "生成完成";
 }
 
-/** 完成: 保存(素材已自动入库, 关闭并刷新列表) */
+/**
+ * 「保存到素材库」。
+ *
+ * 2026-09-16 修: 原先这里是**空操作** —— 只 `open=false` + toast, 素材其实早在 exec 阶段就落库了,
+ *   所以「保存」既不保存什么、也不改变什么, 只是把窗口关掉。用户点完以为"我确认保存了这一条",
+ *   实际什么都没发生(这也让"未获取到真实文献数据"这类硬拦截无处可放)。
+ *
+ * 现在按闭源 `saveGeneratedMaterial` 的语义:
+ *   ① 文献类**必须有真命中**才允许入库 —— 检索空结果时后端写的是"需人工补录"占位条目,
+ *      把它当"已保存的文献"会误导(闭源在这里硬拦截并提示"未获取到真实文献数据")。
+ *      此时把该条草稿素材删掉, 避免库里留垃圾。
+ *   ② 其余类: 确认入库(toast 计数)。
+ */
 async function finishGenSave() {
   const d = genDialog.value;
-  if (d.catKey === "literature" && !d.preview) {
-    toast("请先完成生成", "warning");
-    return;
-  }
+  if (!genTaskId.value && !d.preview) { closeGenDialog(); return; }
+  const taskId = genTaskId.value;
   stopGenDialogPoll();
-  d.open = false;
-  await loadMaterials();
-  toast(`${genCatLabel.value}已保存到素材库`, "success");
+  try {
+    if (d.catKey === "literature") {
+      const r = await q<{ materials?: Array<{ id: string; sourceRef?: string; references?: unknown[] }> }>(`/research/materials?projectId=${store.taskId}`);
+      const mine = (r.materials ?? []).filter((m) => m.sourceRef === taskId || m.id === taskId);
+      const refCount = mine.reduce((n, m) => n + (Array.isArray(m.references) ? m.references.length : 0), 0);
+      if (!refCount) {
+        // 无真命中: 删掉占位素材, 明确告诉用户"这条没入库"
+        for (const m of mine) await q(`/research/materials/${m.id}`, { method: "DELETE" }).catch(() => null);
+        toast("未获取到真实文献数据, 该条未保存。可换检索词重试。", "warning");
+        await loadMaterials();
+        genDialog.value.open = false;
+        resetGenDialogState();
+        return;
+      }
+    }
+    genDialog.value.open = false;
+    resetGenDialogState();
+    await loadMaterials();
+    toast(`${genCatLabel.value}已保存到素材库`, "success");
+  } catch (e) {
+    toast("保存失败: " + String((e as Error).message ?? e), "error");
+  }
 }
 
 
@@ -388,21 +467,69 @@ function runBulkParse() {
   if (!arr.length) toast("未识别到有效文献, 请检查格式", "warning");
   else toast(`已批量解析 ${arr.length} 条文献, 请核对字段`, "success");
 }
+/**
+ * 把批量解析结果写进编辑中素材的**结构化 `references[]`**。
+ *
+ * 2026-09-16 修: 原先只把 `【题目】…【作者】…` 拼进自由文本 `content`, `references` 恒空。
+ * 后果是链式的 ——
+ *   · 文献卡的结构化渲染分支(逐条标题/作者/年份/DOI + GB 引用)永远不成立;
+ *   · 后端参考文献池 `buildCitationPool` 按 `content_md` 里的 `[N] 条目` 匹配, 拼出来的
+ *     `【题目】…` 格式它认不出 → **手动添加的文献从不进入正文引用池**。
+ * 闭源的做法就是解析成 `references[]` 数组(单条时原地替换), 这里对齐。
+ */
 function applyParsedRefs() {
-  // 合并进编辑中素材: content 按闭源格式 '1.【题目】..【作者】..【来源】..【年份】..【DOI】..'
   const m = editDialog.value.material;
-  const parts = parsedRefs.value.map((r) => {
-    return `【题目】${r.title}【作者】${r.author}【来源】${r.source}【年份】${r.year}【DOI】${r.doi}`;
-  });
-  m.content = (m.content ? m.content + "\n" : "") + parts.map((p, i) => `${i + 1}.${p}`).join("\n");
+  const incoming = parsedRefs.value.map((r) => ({
+    title: r.title ?? "", authors: r.author ?? "", author: r.author ?? "",
+    source: r.source ?? "", venue: r.source ?? "", year: r.year ?? "",
+    ...(r.doi ? { doi: r.doi } : {}),
+  }));
+  const prev = Array.isArray(m.references) ? m.references : [];
+  m.references = [...prev, ...incoming];
+  // 同步维护一份 `[N] 著录` 文本 —— 后端引用链现在**优先读结构化 entries**,
+  // 但这份文本仍有用: 外部复制/导出、以及"结构化字段缺项"时的兜底展示。
+  // 格式必须带 `[N]`, 与后端正则口径一致(此前拼的是 `1.【题目】…`, 后端认不出)。
+  if (m.references.length) {
+    m.contentMd = m.references
+      .map((r, i) => `[${i + 1}] ${[r.authors || r.author, r.title, r.source || r.venue, r.year].filter(Boolean).join(". ")}`)
+      .join("\n");
+  }
   parsedRefs.value = [];
   bulkRefText.value = "";
-  toast("已应用批量解析结果", "success");
+  toast(`已录入 ${incoming.length} 条结构化文献`, "success");
+}
+/** 逐条删除已录入的文献(闭源文献卡 hover 的「删除此条」) */
+function removeRefAt(i: number) {
+  const m = editDialog.value.material;
+  if (!Array.isArray(m.references)) return;
+  m.references.splice(i, 1);
+  // 文本副本跟着重排编号, 否则删了第 2 条后文本里编号会断层
+  m.contentMd = m.references
+    .map((x, idx) => `[${idx + 1}] ${[x.authors || x.author, x.title, x.source || x.venue, x.year].filter(Boolean).join(". ")}`)
+    .join("\n");
+}
+/** 单条手动录入一行(题目必填; 其余可空) */
+const newRef = ref({ title: "", author: "", year: "", source: "", doi: "" });
+function addRefRow() {
+  const r = newRef.value;
+  if (!r.title.trim()) { toast("请填写文献题目", "warning"); return; }
+  const m = editDialog.value.material;
+  if (!Array.isArray(m.references)) m.references = [];
+  m.references.push({
+    title: r.title.trim(), authors: r.author.trim(), author: r.author.trim(),
+    source: r.source.trim(), venue: r.source.trim(), year: r.year.trim(),
+    ...(r.doi.trim() ? { doi: r.doi.trim() } : {}),
+  });
+  // 与批量解析同口径: 同步维护 `[N] 著录` 文本
+  m.contentMd = m.references
+    .map((x, i) => `[${i + 1}] ${[x.authors || x.author, x.title, x.source || x.venue, x.year].filter(Boolean).join(". ")}`)
+    .join("\n");
+  newRef.value = { title: "", author: "", year: "", source: "", doi: "" };
 }
 
 // ── 手动添加 ──
 function openAdd(kind: string) {
-  editDialog.value = { open: true, kind, material: { id: "", kind, title: "", content: "" } };
+  editDialog.value = { open: true, kind, material: { id: "", kind, title: "", contentMd: "", references: [] } };
 }
 
 /** 变量角色色(SectionsView/WorkspaceView 同款 5 色) —— 文献弹层的「研究变量参考」chips 用 */
@@ -432,7 +559,7 @@ function sectionBadgeOf(m: Material): string {
 
 /** 素材字数(闭源「N 字」) */
 function wordCountOf(m: Material): number {
-  const t = String(m.contentMd ?? m.content ?? "");
+  const t = String(m.contentMd ?? "");
   return t.replace(/\s/g, "").length;
 }
 
@@ -464,7 +591,11 @@ async function saveManual() {
   //   否则"编辑"会变成"复制一份"(闭源素材卡的编辑是就地改)。
   if (m.id) {
     try {
-      await q(`/research/materials/${m.id}`, { method: "PUT", body: { title: m.title, contentMd: m.content ?? "" } });
+      await q(`/research/materials/${m.id}`, {
+        method: "PUT",
+        // references 必须一起传 —— 否则编辑一条已有的文献素材会把它的结构化条目抹掉
+        body: { title: m.title, contentMd: m.contentMd ?? "", references: m.references ?? [] },
+      });
       toast("素材已更新", "success");
       closeAdd();
       await loadMaterials();
@@ -476,7 +607,8 @@ async function saveManual() {
   const created = await createMaterial({
     kind: kindMap[editDialog.value.kind] ?? editDialog.value.kind,
     title: m.title,
-    contentMd: m.content ?? "",
+    contentMd: m.contentMd ?? "",
+    ...(Array.isArray(m.references) && m.references.length ? { references: m.references } : {}),
     sectionIds: store.level1Sections.length ? [store.level1Sections[0].id] : []
   });
   if (created) {
@@ -601,7 +733,13 @@ async function removeMaterial(m: Material) {  const ok = await confirmDialog({ m
 
 // ── B1 智能生成执行计划(闭源 na composable: 计划 → 确认弹层三段 checkbox → 逐段执行) ──
 interface PlanItem { _enabled: boolean; sectionId?: string; sectionTitle?: string; keywords?: string[]; title?: string; columns?: string[]; count?: number }
-const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "running" });
+/**
+ * ⚠ 2026-09-16 修: 初值原为 `state:"running"`, 而 `open:false` —— 于是**页面一打开**
+ *   `matAsyncBusy` 就是 true(`planDialog.state === "running"` 是它的判据之一),
+ *   科研助手全程以为"正在生成素材执行计划", 不再推荐任何动作。
+ *   未打开弹层时的正确状态是"就绪"(没有任务在跑)。
+ */
+const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "ready" });
 
 /**
  * 页面级异步状态埋点(闭源 MaterialsView: busy = 计划生成中 || 素材生成中 || dataBusy,
@@ -860,6 +998,26 @@ async function publishAndEnter() {
     toast(`还有 ${unassigned.length} 个素材未关联章节，请先为每个素材选择所属章节`, "warning");
     return;
   }
+  /**
+   * phase2 版本门禁(闭源: `!state.phase2Version || state.phase2Stale` → 中止并提示返回 Phase 2)。
+   *
+   * 2026-09-16 补: 后端 `/versions/current` 一直能算出 `phase2Stale`, 但**前端从不请求它**
+   * (`store.phase2Stale` 零写入方), 于是"架构改了却没重新确认"的情况下照样能发布素材版本 ——
+   * 素材是按旧架构关联的, 发布出去的就是一份对不上的版本。
+   * 这里在发布前真查一次; 查询失败(网络/404)不阻断, 门禁不能因为旁路故障把用户卡死。
+   */
+  const vs = await q<{ state?: { phase2Version?: unknown; phase2Stale?: boolean } }>(
+    `/research/versions/current?projectId=${store.taskId}`
+  ).catch(() => null);
+  const st2 = vs?.state;
+  if (st2) {
+    store.phase2VersionId = String((st2.phase2Version as { id?: string } | null)?.id ?? "");
+    store.phase2Stale = Boolean(st2.phase2Stale);
+    if (st2.phase2Stale) {
+      toast("科研架构版本已失效(确认后又改动过), 请返回 Phase 2 重新确认后再发布素材", "warning");
+      return;
+    }
+  }
   publishing.value = true;
   try {
     // publish 版本(POST publish → research_versions 指针快照)
@@ -993,18 +1151,24 @@ onMounted(async () => {
                 <input type="file" accept=".csv,.tsv,.xlsx,.xls,.json" style="display: none" :disabled="dataBusy"
                   @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }" />
               </label>
-              <button class="cat-inline-btn" data-control="workflow:goto-statistics" @click.stop="gotoModule('statistics')">前往数据分析</button>
-              <button class="cat-inline-btn" data-control="workflow:goto-viz" @click.stop="gotoModule('viz')">前往科研绘图</button>
+              <button class="cat-inline-btn" :data-control="`workflow:goto-statistics-${cat.key}`" @click.stop="gotoModule('statistics')">前往数据分析</button>
+              <button class="cat-inline-btn" :data-control="`workflow:goto-viz-${cat.key}`" @click.stop="gotoModule('viz')">前往科研绘图</button>
             </template>
             <template v-else>
+              <!-- 2026-09-16: id 必须逐类唯一。原先 5 个分类共用 `workflow:cat-generate`,
+                   而科研助手的上报按 id 去重(actions-bridge.collectDomActions) —— 结果是
+                   表格/理论/数据/附件四类的行内动作在助手里**不可见、不可点**, 只剩文献类那一条。
+                   `goto-statistics`/`goto-viz` 同理(页面里共出现 3 次)。
+                   另: 附件类没有 AI 生成能力, cat.aiAction 对它为空, 靠 v-if 兜住;
+                   原先 click 里写 `cat.key === 'document' ? undefined : ...` 是死条件(该按钮根本不渲染)。 -->
               <button
                 v-if="cat.aiAction"
                 class="cat-inline-btn" :disabled="genDialog.open"
-                data-control="workflow:cat-generate"
-                @click.stop="cat.key === 'document' ? undefined : aiGenerate(cat.key)"
+                :data-control="`workflow:cat-generate-${cat.key}`"
+                @click.stop="aiGenerate(cat.key)"
               >{{ cat.aiAction }}</button>
             </template>
-            <button v-if="cat.manualAction" class="cat-inline-btn" data-control="workflow:cat-add" @click.stop="openAdd(cat.key)">{{ cat.manualAction }}</button>
+            <button v-if="cat.manualAction" class="cat-inline-btn" :data-control="`workflow:cat-add-${cat.key}`" @click.stop="openAdd(cat.key)">{{ cat.manualAction }}</button>
             <span class="cat-caret" :class="{ open: expandedCats.has(cat.key) }" @click="toggleCat(cat.key)">▼</span>
           </div>
         </div>
@@ -1044,8 +1208,19 @@ onMounted(async () => {
                   </div>
                 </div>
               </template>
-              <div v-else-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData" class="mat-content">{{ String(m.contentMd).slice(0, 120) }}</div>
-              <div v-if="m.content && !m.contentMd && !(m as any).imageDataUrl" class="mat-content">{{ String(m.content).slice(0, 120) }}</div>
+              <!-- 通用分支(表格/理论/附件等非文献类)。
+                   2026-09-16 修: 原先硬截断 120 字 —— AI 生成的表格素材(contentMd 是
+                   `- 表题: [列名|列名] 用途` 列表)、理论素材(core + 本文应用)都读不全,
+                   用户看不到自己生成的东西。闭源这里是**全量**渲染 `o.content`。
+                   改成: 默认全文, 超过 400 字折叠, 点「展开全文」看剩余。 -->
+              <template v-else-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData">
+                <div class="mat-content">{{ expandedIds.has(m.id) ? String(m.contentMd) : String(m.contentMd).slice(0, 400) }}</div>
+                <button
+                  v-if="String(m.contentMd).length > 400"
+                  type="button" class="mat-more" :data-control="`workflow:expand-material-${m.id}`"
+                  @click.stop="toggleExpand(m.id)"
+                >{{ expandedIds.has(m.id) ? "收起" : `展开全文（共 ${String(m.contentMd).length} 字）` }}</button>
+              </template>
               <!-- B5: 图片素材预览(点击全屏放大; 闭源 imageDataUrl 语义) -->
               <div v-if="(m as any).imageDataUrl" class="mat-img">
                 <img :src="(m as any).imageDataUrl" :alt="m.title" class="mat-img-src" @click="openImagePreview((m as any).imageDataUrl)" />
@@ -1075,8 +1250,11 @@ onMounted(async () => {
               </div>
             </div>
           </div>
-          <!-- 继续搜集(闭源每类底部一行) -->
-          <button v-if="cat.aiAction" class="cat-more" data-control="workflow:cat-more" @click.stop="aiGenerate(cat.key)">
+          <!-- 继续搜集(闭源每类底部一行)。
+               2026-09-16 修条件: 原先只判 `cat.aiAction` —— 空分类底部会同时出现
+               「暂无X素材」和「＋继续搜集X素材」, 自相矛盾。闭源条件是
+               `hasAI && items.length > 0`: 一条都没有时不该引导"继续搜集"。 -->
+          <button v-if="cat.aiAction && catCount(cat.key) > 0" class="cat-more" :data-control="`workflow:cat-more-${cat.key}`" @click.stop="aiGenerate(cat.key)">
             ＋ 继续搜集{{ cat.label.replace("素材", "") }}素材
           </button>
         </div>
@@ -1116,8 +1294,7 @@ onMounted(async () => {
             <!-- 执行失败 -->
             <div v-else-if="planDialog.state === 'failed'" class="plan-state failed">
               <p>⚠ {{ planDialog.msg || "执行计划生成失败" }}</p>
-              <button class="btn-smart" @click="generatePlan" data-control="workflow:regenerate-plan">重新生成</button>
-            </div>
+              <button class="btn-smart" @click="generatePlan" data-control="workflow:regenerate-plan">重新生成</button>            </div>
             <!-- 就绪: 三段 checkbox -->
             <div v-else-if="planDialog.state === 'ready' && planDialog.plan" class="plan-ready">
               <p v-if="planDialog.msg" class="plan-empty-note">{{ planDialog.msg }}</p>
@@ -1254,7 +1431,14 @@ onMounted(async () => {
             </button>
             <!-- 已预览: 保存到素材库 / 完成 -->
             <button v-else class="btn-primary gen-start" @click="finishGenSave" data-control="workflow:finish-gen-save">保存到素材库</button>
-            <button class="btn-back" :disabled="genDialog.generating" @click="closeGenDialog">{{ genDialog.generating ? "取消" : genDialog.preview ? "放弃" : "取消" }}</button>
+            <!-- 2026-09-16: 原先生成中次按钮是 `:disabled="generating"` + 文案「取消」——
+                 看着能取消, 实际点不动(disabled), 用户只能干等。现在生成中允许中止:
+                 真去取消后端任务 + 复位弹层状态。 -->
+            <button
+              class="btn-back"
+              :data-control="genDialog.generating ? 'workflow:cancel-gen' : 'workflow:discard-gen'"
+              @click="genDialog.generating ? cancelGen() : closeGenDialog()"
+            >{{ genDialog.generating ? "取消" : genDialog.preview ? "放弃" : "取消" }}</button>
           </div>
         </div>
       </div>
@@ -1313,7 +1497,7 @@ onMounted(async () => {
           </div>
           <div class="modal-foot">
             <button class="btn-back" :disabled="allocBusy" @click="closeAllocate">取消</button>
-            <button class="btn-primary" :disabled="allocBusy || allocDialog.loading" data-control="workflow:confirm-plan" @click="confirmAllocate">
+            <button class="btn-primary" :disabled="allocBusy || allocDialog.loading" data-control="workflow:confirm-allocate" @click="confirmAllocate">
               {{ allocBusy ? "关联中…" : `确认关联（${allocSelected} 个）` }}
             </button>
           </div>
@@ -1336,7 +1520,42 @@ onMounted(async () => {
             </div>
             <div class="f-row">
               <label>内容</label>
-              <textarea v-model="editDialog.material.content" class="f-textarea" rows="6" placeholder="素材内容(文本/文献引用格式)…"></textarea>
+              <textarea v-model="editDialog.material.contentMd" class="f-textarea" rows="6" placeholder="素材内容(文本/文献引用格式)…"></textarea>
+            </div>
+            <!--
+              结构化文献条目(闭源 MaterialEditorDialog 的逐字段表单)。
+              2026-09-16 补: 原先只有「标题 + 自由文本」两个框, 作者/年份/来源/DOI 无处可填,
+              `references[]` 恒空 —— 文献卡的结构化分支与后端参考文献池都拿不到数据。
+              这里给"已录入条目"一个可逐条删除的列表, 新条目通过下面的批量解析或此项录入。
+            -->
+            <div v-if="editDialog.kind === 'literature'" class="refs-box">
+              <div class="refs-head">
+                <span>结构化文献条目</span>
+                <span class="refs-count">{{ (editDialog.material.references ?? []).length }} 条</span>
+              </div>
+              <div v-if="!(editDialog.material.references ?? []).length" class="refs-empty">
+                暂无条目。可在下方「批量粘贴文献」中解析后录入 — 录入的条目会进入正文参考文献池。
+              </div>
+              <div v-else class="refs-list">
+                <div v-for="(r, ri) in editDialog.material.references" :key="ri" class="ref-item">
+                  <span class="ri-num">{{ ri + 1 }}</span>
+                  <span class="ri-title">{{ r.title || "未填题目" }}</span>
+                  <span v-if="r.authors || r.author" class="ri-meta">{{ (r.authors || r.author || "").slice(0, 18) }}</span>
+                  <span v-if="r.year" class="ri-meta">{{ r.year }}</span>
+                  <span v-if="r.source || r.venue" class="ri-meta">{{ (r.source || r.venue || "").slice(0, 16) }}</span>
+                  <span v-if="r.doi" class="ri-doi">DOI:{{ r.doi.slice(0, 18) }}</span>
+                  <button type="button" class="ri-del" title="删除此条" @click="removeRefAt(ri)">×</button>
+                </div>
+              </div>
+              <!-- 单条手动录入(作者/年份/来源/DOI 逐字段) -->
+              <div class="ref-add">
+                <input v-model="newRef.title" class="rf-in wide" placeholder="题目 *" />
+                <input v-model="newRef.author" class="rf-in" placeholder="作者" />
+                <input v-model="newRef.year" class="rf-in narrow" placeholder="年份" />
+                <input v-model="newRef.source" class="rf-in" placeholder="期刊/来源" />
+                <input v-model="newRef.doi" class="rf-in" placeholder="DOI" />
+                <button type="button" class="btn-manual" data-control="workflow:add-ref-row" @click="addRefRow">添加此条</button>
+              </div>
             </div>
             <!-- B2 文献批量粘贴解析(仅文献类) -->
             <div v-if="editDialog.kind === 'literature'" class="bulk-ref-box">
@@ -1519,8 +1738,13 @@ onMounted(async () => {
 .mat-op.danger:hover { color: #dc2626; }
 .mat-kind { font-size: 10px; color: #dc2626; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
 .mat-content { font-size: 12px; color: #8B9BB1; line-height: 1.55; white-space: pre-wrap; }
+.mat-more {
+  margin-top: 4px; border: 0; background: transparent; color: #6FA8F5;
+  font-size: 11.5px; cursor: pointer; padding: 0; font-family: inherit;
+}
+.mat-more:hover { text-decoration: underline; }
 .mat-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.sec-chip { font-size: 10.5px; background: #11192Cbeb; color: #E8B54A; padding: 2px 8px; border-radius: 7px; }
+.sec-chip { font-size: 10.5px; background: #11192C; color: #E8B54A; padding: 2px 8px; border-radius: 7px; }
 .mat-words { font-size: 10.5px; color: #7A8AA0; }
 .mat-date { font-size: 10.5px; color: #7A8AA0; }
 .mat-foot .mat-src-btn { margin-left: auto; }
@@ -1563,7 +1787,7 @@ onMounted(async () => {
 .three-line-table td { padding: 4px 9px; color: #DCE6F2; }
 .three-line-table tbody tr:hover { background: #1A2333; }
 .review-report { margin-bottom: 14px; }
-.report-head { font-size: 13.5px; font-weight: 600; color: #E8EEF7; cursor: pointer; padding: 9px 13px; background: #11192Cbeb; border: 1px solid #3A3020; border-radius: 9px; }
+.report-head { font-size: 13.5px; font-weight: 600; color: #E8EEF7; cursor: pointer; padding: 9px 13px; background: #11192C; border: 1px solid #3A3020; border-radius: 9px; }
 .report-body {
   margin: 0; padding: 12px 15px; background: #11192C;
   border: 1px solid #3A3020; border-top: 0; border-radius: 0 0 9px 9px;
@@ -1635,6 +1859,23 @@ onMounted(async () => {
 @keyframes pspin { to { transform: rotate(360deg); } }
 
 
+/* 结构化文献条目(2026-09-16 补) */
+.refs-box { border: 1px solid #222F44; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.refs-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #8B9BB1; margin-bottom: 8px; }
+.refs-count { font-size: 11px; background: #1E2A48; color: #759FD7; padding: 1px 7px; border-radius: 8px; }
+.refs-empty { font-size: 12px; color: #7A8AA0; padding: 6px 0; }
+.refs-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.ref-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #DCE6F2; background: #11192C; border: 1px solid #222F44; border-radius: 6px; padding: 4px 8px; }
+.ri-num { color: #7A8AA0; flex-shrink: 0; }
+.ri-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ri-meta { color: #8B9BB1; font-size: 11px; flex-shrink: 0; }
+.ri-doi { color: #6FA8F5; font-size: 11px; flex-shrink: 0; }
+.ri-del { border: 0; background: transparent; color: #7A8AA0; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+.ri-del:hover { color: #E88A8A; }
+.ref-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rf-in { background: #11192C; border: 1px solid #222F44; border-radius: 6px; color: #E8EEF7; font-size: 12px; padding: 5px 8px; font-family: inherit; min-width: 0; }
+.rf-in.wide { flex: 1 1 160px; }
+.rf-in.narrow { width: 64px; }
 .bulk-ref-box { border: 1px solid #222F44; border-radius: 8px; overflow: hidden; }
 .bulk-summary { padding: 8px 12px; font-size: 12.5px; color: #2563eb; cursor: pointer; background: #1A2333; }
 .bulk-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
