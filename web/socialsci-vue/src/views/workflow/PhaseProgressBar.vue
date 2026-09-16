@@ -7,10 +7,15 @@
  */
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
+import { toast, confirmDialog } from "@/shared/ui";
+import { createTask } from "@/shared/tasks";
 
 const router = useRouter();
 const store = useWorkflowStore();
+
+/** 横向滚动容器 —— 用于把当前阶段滚到中央(闭源 p() 的语义) */
+const wrapperRef = ref<HTMLElement | null>(null);
 
 const NODES = [
   { ph: 1, key: "input", title: "信息录入", path: "/workflow/input" },
@@ -44,42 +49,88 @@ function goNode(n: { ph: number; path: string }) {
     5: "请先在文本创作中完成全部章节生成"
   };
   const t = tip[n.ph] ?? "";
-  void import("@/shared/ui").then(({ toast }) => toast(t || "请按流程逐步完成前置阶段", "warning"));
+  toast(t || "请按流程逐步完成前置阶段", "warning");
   void labels;
 }
-/** 已完成节点显示产物 metric(闭源实拍: ppb-metric 挂在 **done** 节点上, 如「9 章节」) */
+
+/**
+ * 把当前阶段节点滚到视口中央(闭源 p(): offsetLeft - (容器宽 - 节点宽) / 2)。
+ * 窄屏时进度条要横向滚动, 阶段一多当前节点可能就在屏外 —— 用户看不到自己走到哪了。
+ */
+function centerCurrentNode() {
+  requestAnimationFrame(() => {
+    const wrap = wrapperRef.value;
+    if (!wrap) return;
+    const cur = Math.max(1, Math.min(5, store.phase || 1));
+    const node = wrap.querySelector<HTMLElement>(`.ppb-node[data-phase="${cur}"]`);
+    if (!node) return;
+    wrap.scrollTo({ left: Math.max(0, node.offsetLeft - (wrap.clientWidth - node.offsetWidth) / 2), behavior: "smooth" });
+  });
+}
+watch(() => store.phase, centerCurrentNode, { immediate: true });
+/**
+ * 章节"已生成"的判据 —— **必须看正文, 不能只看 status 词汇**。
+ *
+ * 2026-09-16 实测: 后端 analyze 与 runChapterBatch 写的都是 `status:"done"`,
+ * 而前端多处写的是 `"generated"` —— 同一套数据两套词汇, 谁也没统一。
+ * 只认其中一个的结果是"已生成 N/M"恒算成 0(实测过了门槛的章节被漏数)。
+ * 有正文(>50 字, 与 doMerge 的门禁同口径)就是已生成。
+ */
+function isSectionGenerated(s: { status?: string; content?: string }): boolean {
+  if (s.status === "generated" || s.status === "done") return true;
+  return String(s.content ?? "").length > 50;
+}
+
+/**
+ * 节点 metric(逐字对照闭源 index-main.js 的 5 个节点定义):
+ *   科研架构 `N 章节` / 素材准备 `N 条` / 文本创作 `已生成/总数` / 合稿定稿 `已定稿|待确认`
+ * 2026-09-15 修: 原实现里素材写成「N 素材」、文本创作写成「N 章节」, 且合稿节点的 metric 完全没做。
+ */
 function nodeMetric(n: { key: string }): string {
   if (n.key === "sections") return store.level1Sections.length ? `${store.level1Sections.length} 章节` : "";
-  if (n.key === "materials") return store.materials.length ? `${store.materials.length} 素材` : "";
+  if (n.key === "materials") return store.materials.length ? `${store.materials.length} 条` : "";
   if (n.key === "workspace") {
-    const done = store.level1Sections.filter((s) => s.content && s.content.length > 50).length;
-    return done ? `${done} 章节` : "";
+    const total = store.level1Sections.length || 1;
+    const done = store.level1Sections.filter((s) => isSectionGenerated(s)).length;
+    return done > 0 ? `${done}/${total}` : "";
   }
+  if (n.key === "finalize") return store.isFinalized ? "已定稿" : store.mergeGenerated ? "待确认" : "";
   return "";
 }
 
 /**
- * 新项目(闭源 ppb-new-btn, 带 svg + 「新项目」文案)。
- * 语义: 清掉项目指针与上一份工作台快照, 回到信息录入重新开始 ——
- * 不是新建空项目(那会在库里堆一堆无标题项目), 是"当前项目重开"。
+ * 新项目(闭源 ppb-new-btn: 确认后 `createTaskWithTitle("未命名","workflow")` + 切到新任务)。
+ * 2026-09-15 补: 原先只清本地指针(注释里我写"怕在库里堆空项目")—— 但那**不是**闭源语义,
+ * 而且清指针会让用户误以为上一个项目没了。现在按闭源来: 真建一个空项目并切过去,
+ * 旧项目留在历史里(用户随时能从「历史记录」回去)。
  */
 async function newProject() {
-  const { confirmDialog } = await import("@/shared/ui");
   const ok = await confirmDialog({
-    title: "开始新项目?",
-    message: "当前项目的编辑进度会保留在服务器上, 本地将从「信息录入」重新开始。",
+    title: "开始新项目？",
+    message: "开始新项目？系统会创建独立任务，当前项目将保留在历史记录中。",
     okText: "开始新项目",
     cancelText: "留在当前项目",
   });
   if (!ok) return;
-  localStorage.removeItem("lastTask_workflow");
-  store.resetLocal();
-  void router.push("/workflow/input");
+  try {
+    // 不传 projectId → createTask 自动建一个新的项目容器(闭源 createTaskWithTitle 语义)
+    const t = await createTask({ title: "未命名", module: "workflow" });
+    const newPid = t?.projectId ?? "";
+    store.resetLocal();
+    if (newPid) {
+      store.taskId = newPid;
+      store.setPhase(1);
+      try { localStorage.setItem("lastTask_workflow", newPid); } catch { /* 隐私模式 */ }
+    }
+    void router.push("/workflow/input");
+  } catch (e) {
+    toast(`新建项目失败: ${String((e as Error).message ?? e)}`, "error");
+  }
 }
 </script>
 
 <template>
-  <div class="phase-progress-wrapper">
+  <div ref="wrapperRef" class="phase-progress-wrapper">
     <div class="phase-progress-bar">
       <div class="ppb-inner">
         <!-- 研究主题卡 -->
@@ -113,8 +164,9 @@ async function newProject() {
             </div>
             <div class="ppb-label" :class="nodeState(n)">
               <span class="ppb-label-text">{{ n.title }}</span>
-              <!-- metric 属于**已完成**的节点(闭源实拍: done 的「科研架构」挂着「9 章节」) -->
-              <span v-if="nodeState(n) === 'done' && nodeMetric(n)" class="ppb-metric">{{ nodeMetric(n) }}</span>
+              <!-- 闭源条件: (done||active||viewing) && metrics —— **三种状态都渲染**该节点的产物计数。
+                   2026-09-15 修: 原先写死只在 done 渲染, 方向反了 —— active 的节点明明有数据却不显示。 -->
+              <span v-if="nodeMetric(n)" class="ppb-metric">{{ nodeMetric(n) }}</span>
             </div>
           </div>
         </template>

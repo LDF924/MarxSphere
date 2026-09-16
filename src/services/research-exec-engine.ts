@@ -474,7 +474,14 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     title: hits.length ? `文献 ${hits.length} 条 · ${String(sectionTitle).slice(0, 24)}` : `检索式 · ${String(sectionTitle).slice(0, 24)}`,
     contentMd,
     sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
-    references: hits.map((h) => ({ title: h.title, authors: h.authors, year: h.year, source: h.source })),
+    // 2026-09-16: 带上 doi/venue/volumeIssue —— 外部臂(OpenAlex)才有的著录字段,
+    //   前端文献卡要按 GB/T 7714 展示就必须一路存下来。内部臂没有这几项就是 undefined, 不补假值。
+    references: hits.map((h) => ({
+      title: h.title, authors: h.authors, year: h.year, source: h.source,
+      ...(h.doi ? { doi: h.doi } : {}),
+      ...(h.venue ? { venue: h.venue } : {}),
+      ...(h.volumeIssue ? { volumeIssue: h.volumeIssue } : {}),
+    })),
     // B5 来源徽章: platformType=literature; sourceStatus 反映**真实**命中情况(不再恒 empty)
     meta: {
       platformType: "literature",
@@ -489,6 +496,8 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     sourceDocs: hits.map((h) => ({
       title: h.title, authors: h.authors, year: h.year, source: h.source,
       excerpt: String(h.excerpt ?? "").slice(0, 300),
+      ...(h.doi ? { doi: h.doi } : {}),
+      ...(h.venue ? { venue: h.venue } : {}),
     })),
     // V417: 同时写进**真列** retrieval_sources —— 该列在迁移 149 里专门建了, 但此前只有
     //   meta 里那份、这一列从来没人写(死列)。列上存结构化来源, 便于按源统计/筛选。

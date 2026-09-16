@@ -45,7 +45,9 @@ async function selectSection(s: Section) {
     if (!ok) return;
   }
   editing.value = false;
-  editText.value = "";
+  // 解绑而不是写空串 —— 写空串会被防抖 watch 当成"用户把这一章清空了"(见 bindEditorTo 注释)
+  editOwnerId = "";
+  if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
   activeSecId.value = s.id;
 }
 // 非空安全访问(模板闭包内 TS 收窄失效)
@@ -106,8 +108,19 @@ function statusText(): string {
   if (busy.value) return busyText.value;
   return "就绪";
 }
-const busy = computed(() => generating.value);
-const busyText = computed(() => "当前操作处理中");
+/**
+ * 页面忙态(闭源: batchGenerating || sectionGenerating || materialGenerating || skillThinking || mainAIThinking)。
+ * 2026-09-15 前只看 generating —— "素材生成中""结构化分析中"时界面表现为空闲,
+ * 用户能同时发起第二次生成(会撞任务)。少掉的聚合位由 genDlg.busy(素材)与 aiThinking(结构化分析)补上。
+ * 注: genDlg/aiThinking 在文件后段声明, computed 惰性求值, 此处引用是安全的。
+ */
+const busy = computed(() => generating.value || genDlg.value.busy || aiThinking.value);
+const busyText = computed(() => {
+  if (generating.value) return generateMode.value === "batch" ? "正在批量生成章节" : "正在生成章节内容";
+  if (genDlg.value.busy) return "正在生成素材";
+  if (aiThinking.value) return "正在结构化分析";
+  return "当前操作处理中";
+});
 
 // ── 单节生成(闭源 me()) ──
 async function generateSection() {
@@ -385,6 +398,48 @@ const editDirty = computed(() => {
   if (!sec) return false;
   return editText.value !== (sec.content ?? "");
 });
+
+/**
+ * 正文 500ms 防抖落库(闭源 O=Ze(()=>e.saveProject(),500), content 一变更就排程)。
+ * 2026-09-15 补: 原先只有点「保存修改」才写, 用户敲完直接切页/刷新, 整章改动就没了 ——
+ *   而界面上"未保存"三个字很容易被忽略。写节点(不是只写快照), 理由见 saveEdit 的注释。
+ *
+ * ⚠ 2026-09-16 修 bug: `editText` 必须连同**它属于哪一章**一起记。
+ *   切章时 selectSection() 在同一个同步块里先 `editText=""` 再 `activeSecId=s.id`,
+ *   而 watch 回调是**微任务**, 执行时 activeSecId 已经是新章 —— 于是"清空编辑框"被当成
+ *   "把新章正文改成空串", 静默清空了刚切过去那一章的正文(实测: 快照里某章 content 变成 0 字)。
+ *   现在以 owningId 为准, 切章时先把 owningId 置空, 任何残留的回调都会被丢弃。
+ */
+let bodyTimer: ReturnType<typeof setTimeout> | null = null;
+/** editText 当前承载的是哪一章的正文; 为空表示编辑框正在被重置, 此时的变更一律忽略 */
+let editOwnerId = "";
+watch(editText, (v) => {
+  if (!editOwnerId) return;                     // 编辑框正在重置, 不是用户输入
+  const sec = store.sections.find((s) => s.id === editOwnerId);
+  if (!sec) return;
+  if (v === (sec.content ?? "")) return;
+  if (bodyTimer) clearTimeout(bodyTimer);
+  bodyTimer = setTimeout(() => void persistBody(editOwnerId, v), 500);
+});
+/** 把编辑框切到指定章节(所有切章路径都必须走它, 别直接赋值 editText) */
+function bindEditorTo(sectionId: string, content: string) {
+  if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
+  editOwnerId = "";            // 先声明"这是重置", watch 里的那次回调会被丢弃
+  editText.value = content;
+  editOwnerId = sectionId;
+}
+async function persistBody(sectionId: string, next: string) {
+  const sec = store.sections.find((s) => s.id === sectionId);
+  if (!sec) return;
+  sec.content = next;
+  sec.status = "generated";
+  try {
+    await putNode(store.taskId, "sections", { sections: store.sections });
+  } catch {
+    /* 节点写失败由 saveEdit 的显式路径兜底并提示 */
+  }
+}
+
 async function saveEdit() {
   const sec = activeSection.value;
   if (!sec) return;
@@ -593,8 +648,8 @@ watch(
 );
 
 /** 切章时把编辑框同步到新章的正文, 否则会把上一章的内容带过去(编辑态是常驻的) */
-watch(activeSecId, () => {
-  editText.value = String(activeSection.value?.content ?? "");
+watch(activeSecId, (id) => {
+  bindEditorTo(id, String(activeSection.value?.content ?? ""));
   thinkPrompt.value = String(activeSection.value?.skill_prompt ?? "");
 });
 
@@ -634,6 +689,12 @@ onUnmounted(() => {
       if (String(sec.skill_prompt ?? "") !== next) sec.skill_prompt = next;
       void store.saveProject();
     }
+  }
+  // 正文同样: 离开页面前把未落库的防抖内容冲掉, 否则最后 500ms 内敲的字丢失
+  if (bodyTimer) {
+    clearTimeout(bodyTimer);
+    const sec = activeSection.value;
+    if (sec && editText.value !== (sec.content ?? "")) void persistBody(sec.id, editText.value);
   }
 });
 
@@ -824,7 +885,7 @@ onMounted(async () => {
     const first = store.level1Sections[0];
     if (first) {
       activeSecId.value = first.id;
-      editText.value = String(first.content ?? "");
+      bindEditorTo(first.id, String(first.content ?? ""));
       thinkPrompt.value = String(first.skill_prompt ?? "");
     }
   }
@@ -847,7 +908,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 </script>
 
 <template>
-  <div class="ws-page-root">
+  <div
+    class="ws-page-root"
+    :data-assistant-async-busy="(generating || aiThinking) ? 'true' : 'false'"
+    :data-assistant-async-reason="statusText() !== '就绪' ? statusText() : (aiThinking ? '正在结构化分析' : '')"
+  >
     <PhaseProgressBar />
     <div class="workspace-container wf-layout">
     <!-- 左: 章节导航 -->
@@ -857,13 +922,6 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <span class="rail-count">{{ genCount }}/{{ l1List.length }}</span>
       </div>
       <div class="rail-progress"><div class="rail-progress-fill" :style="{ width: progressPct + '%' }"></div></div>
-      <!-- 结构化指导开关(闭源在工作流主按钮之下、章节树之上) -->
-      <button class="workflow-outline-primary" :class="{ on: aiPanelOpen }" @click="aiPanelOpenToggle" data-control="workflow:toggle-ai-panel">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        {{ aiPanelOpen ? "关闭结构化指导" : "结构化指导" }}
-      </button>
       <div v-if="!l1List.length" class="rail-empty">暂无章节 — 请先完成信息录入与科研架构</div>
       <div v-else class="nav-list">
         <div v-for="(s, i) in l1List" :key="s.id" class="nav-l1" :class="{ active: activeSecId === s.id }" @click="selectSection(s)">
@@ -889,6 +947,13 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           </div>
         </div>
       </div>
+      <!-- 结构化指导开关(闭源顺序: 章节树**之后**、底部按钮之前)。2026-09-15 修: 原先放在树之上。 -->
+      <button v-if="l1List.length" class="workflow-outline-primary" :class="{ on: aiPanelOpen }" @click="aiPanelOpenToggle" data-control="workflow:toggle-ai-panel">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        {{ aiPanelOpen ? "关闭结构化指导" : "结构化指导" }}
+      </button>
       <div class="rail-footer">
         <!-- 智能全局思考(闭源三态文案: 生成中显示进度 / 全生成完显示"重新生成全部" / 否则"智能全局思考") -->
         <button class="btn-think-all" :disabled="generating" data-control="workflow:generate-all" @click="generateAll">
@@ -972,7 +1037,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <div v-else class="ai-idle">
             <svg class="ai-bulb" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
             <p class="ai-idle-text">尚未进行结构化分析</p>
-            <button class="ai-start" :disabled="generating" @click="runStructuredAnalysis" data-control="workflow:start-analysis">开始分析（变量、框架、写作指导）</button>
+            <button class="ai-start" :disabled="busy" @click="runStructuredAnalysis" data-control="workflow:start-analysis">开始分析（变量、框架、写作指导）</button>
           </div>
         </div>
       </div>
@@ -1083,7 +1148,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <strong>素材库</strong>
         <div class="rail-head-right">
           <span class="rail-count">{{ materials.length }}</span>
-          <button class="mat-gen-btn" :disabled="generating" @click="openGenDlg" data-control="workflow:open-gen-dialog">＋ 生成</button>
+          <button class="mat-gen-btn" :disabled="busy" @click="openGenDlg" data-control="workflow:open-gen-dialog">＋ 生成</button>
         </div>
       </div>
       <select v-model="materialFilter" class="mat-filter">
@@ -1337,10 +1402,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .md-foot .btn-save { margin-left: auto; }
 /* 结构化指导开关(闭源 workflow-outline-primary: 白底蓝边) */
 .workflow-outline-primary {
-  width: 100%; margin-bottom: 10px; padding: 7px 10px;
+  width: calc(100% - 12px); margin: 0 6px 8px; padding: 7px 10px;
   display: flex; align-items: center; gap: 7px;
   border: 1px solid #2B4A73; border-radius: 8px; background: #0E1729;
   color: #6FA8F5; font-size: 12px; font-weight: 500; cursor: pointer;
+  flex-shrink: 0;
 }
 .workflow-outline-primary:hover { background: #16243F; border-color: #4B7BB5; }
 .workflow-outline-primary.on { background: #16243F; border-color: #4B7BB5; color: #9CC5F5; }

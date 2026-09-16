@@ -32,7 +32,7 @@ interface Material {
   sectionIds?: string[];
   createdAt?: string;
   tableData?: { columns: string[]; rows: unknown[][] };
-  references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string }>;
+  references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string; venue?: string; doi?: string; volumeIssue?: string; authors?: string; excerpt?: string }>;
   source?: { sourceStatus?: { wanfang?: string; ncpssd?: string; internal?: string } };
 }
 
@@ -189,10 +189,12 @@ interface GenDialogState {
   sectionId: string;
   prompt: string;
   phaseText: string;
+  /** 文献类生成后回填的**真命中**条目(标题/作者/年份/来源), 用于弹层内的检索结果卡 */
+  retrievedRefs: Array<Record<string, unknown>>;
 }
 const genDialog = ref<GenDialogState>({
   open: false, catKey: "", generating: false, preview: "", streaming: false,
-  tableType: "comparison", sectionId: "", prompt: "", phaseText: ""
+  tableType: "comparison", sectionId: "", prompt: "", phaseText: "", retrievedRefs: []
 });
 const genPollTimer = ref<ReturnType<typeof setInterval> | null>(null);
 const genTaskId = ref("");
@@ -216,7 +218,8 @@ function openGenDialog(catKey: string) {
   genDialog.value = {
     open: true, catKey, generating: false, preview: "", streaming: false,
     tableType: "comparison", sectionId: store.level1Sections[0]?.id ?? "",
-    prompt: catKey === "literature" ? store.input.title : "", phaseText: ""
+    prompt: catKey === "literature" ? store.input.title : "", phaseText: "",
+    retrievedRefs: []
   };
   genTaskId.value = "";
 }
@@ -307,6 +310,9 @@ async function buildGenPreview(taskId: string): Promise<string> {
     const r = await q<{ materials?: Array<{ id: string; sourceRef?: string; contentMd?: string; references?: unknown[]; title?: string }> }>(`/research/materials?projectId=${store.taskId}`);
     const mine = (r.materials ?? []).filter((m) => m.sourceRef === taskId || m.id === taskId);
     if (mine.length) {
+      // 文献类: 顺带把真命中存进弹层, 生成后仍能看到"这次检索命中了什么"
+      const refs = mine.flatMap((m) => (Array.isArray(m.references) ? m.references : [])) as Array<Record<string, unknown>>;
+      if (refs.length) genDialog.value.retrievedRefs = refs;
       return mine.map((m) => `【${m.title ?? "素材"}】\n${String(m.contentMd ?? "").slice(0, 1200)}`).join("\n\n");
     }
   } catch { /* 兜底 result */ }
@@ -596,6 +602,20 @@ async function removeMaterial(m: Material) {  const ok = await confirmDialog({ m
 // ── B1 智能生成执行计划(闭源 na composable: 计划 → 确认弹层三段 checkbox → 逐段执行) ──
 interface PlanItem { _enabled: boolean; sectionId?: string; sectionTitle?: string; keywords?: string[]; title?: string; columns?: string[]; count?: number }
 const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "running" });
+
+/**
+ * 页面级异步状态埋点(闭源 MaterialsView: busy = 计划生成中 || 素材生成中 || dataBusy,
+ * reason = 对应阶段文案)。科研助手靠它避免在长任务进行中插动作。
+ * 2026-09-15 补: 原先根节点只有 `data-assistant-material-count="0"` 这个**写死的假值**。
+ */
+const matAsyncBusy = computed(() => publishing.value || !!genTaskId.value || dataBusy.value || planDialog.value.state === "running");
+const matAsyncReason = computed(() => {
+  if (publishing.value) return "正在发布素材版本";
+  if (planDialog.value.state === "running") return "正在生成素材执行计划";
+  if (genTaskId.value) return "正在生成素材";
+  if (dataBusy.value) return "正在上传数据文件";
+  return "";
+});
 let planJobId = ref("");
 
 async function generatePlan() {
@@ -869,7 +889,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16" data-assistant-material-count="0">
+  <div
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    :data-assistant-material-count="String(materials.length)"
+    :data-assistant-async-busy="matAsyncBusy ? 'true' : 'false'"
+    :data-assistant-async-reason="matAsyncReason"
+  >
     <PhaseProgressBar />
     <h1 class="wf-h1">素材准备</h1>
     <!-- 页头三行状态区(闭源: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
@@ -954,24 +979,36 @@ onMounted(async () => {
             <span class="cat-count">{{ catCount(cat.key) }} 项</span>
           </div>
           <div class="cat-head-actions">
-            <button
-              v-if="cat.aiAction && cat.key !== 'dataAnalysis'"
-              class="cat-inline-btn" :disabled="genDialog.open"
-              data-control="workflow:cat-generate"
-              @click.stop="cat.key === 'document' ? undefined : aiGenerate(cat.key)"
-            >{{ cat.key === 'document' ? cat.aiAction : cat.aiAction }}</button>
+            <!-- 数据分析素材(闭源头行三个按钮: 上传图片 / 前往数据分析 / 前往科研绘图)。
+                 2026-09-15: 原先 `cat.key !== 'dataAnalysis'` 把这类的 aiAction 整个屏蔽掉,
+                 于是「上传图片」没有入口, 而 uploadMaterialFile 的图片分支成了死代码。 -->
+            <template v-if="cat.key === 'dataAnalysis'">
+              <label class="cat-inline-btn" data-control="workflow:upload-image">
+                上传图片
+                <input type="file" accept=".png,.jpg,.jpeg,.webp" style="display: none"
+                  @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; if (f) void uploadMaterialFile('dataAnalysis', f); }" />
+              </label>
+              <label class="cat-inline-btn" data-control="workflow:upload-data">
+                {{ dataBusy ? "上传中…" : "上传数据" }}
+                <input type="file" accept=".csv,.tsv,.xlsx,.xls,.json" style="display: none" :disabled="dataBusy"
+                  @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }" />
+              </label>
+              <button class="cat-inline-btn" data-control="workflow:goto-statistics" @click.stop="gotoModule('statistics')">前往数据分析</button>
+              <button class="cat-inline-btn" data-control="workflow:goto-viz" @click.stop="gotoModule('viz')">前往科研绘图</button>
+            </template>
+            <template v-else>
+              <button
+                v-if="cat.aiAction"
+                class="cat-inline-btn" :disabled="genDialog.open"
+                data-control="workflow:cat-generate"
+                @click.stop="cat.key === 'document' ? undefined : aiGenerate(cat.key)"
+              >{{ cat.aiAction }}</button>
+            </template>
             <button v-if="cat.manualAction" class="cat-inline-btn" data-control="workflow:cat-add" @click.stop="openAdd(cat.key)">{{ cat.manualAction }}</button>
             <span class="cat-caret" :class="{ open: expandedCats.has(cat.key) }" @click="toggleCat(cat.key)">▼</span>
           </div>
         </div>
         <div v-if="expandedCats.has(cat.key)" class="cat-body">
-          <div v-if="cat.key === 'dataAnalysis'" class="cat-actions">
-            <label class="btn-manual" style="cursor: pointer" data-control="workflow:upload-data">
-              {{ dataBusy ? "上传中…" : "上传数据文件" }}
-              <input type="file" accept=".csv,.tsv,.xlsx,.xls,.json" style="display: none" :disabled="dataBusy"
-                @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; void uploadDataFile(f); }" />
-            </label>
-          </div>
           <div v-if="!catCount(cat.key)" class="cat-empty">暂无{{ cat.label }}素材</div>
           <div v-else class="mat-list">
             <div v-for="m in grouped[cat.key]" :key="m.id" class="mat-card">
@@ -984,7 +1021,30 @@ onMounted(async () => {
                   <button class="mat-op danger" data-control="workflow:delete-material" @click.stop="removeMaterial(m)">删除</button>
                 </span>
               </div>
-              <div v-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData" class="mat-content">{{ String(m.contentMd).slice(0, 120) }}</div>
+              <!-- 文献类: 「共 N 条文献」+ 逐条结构化卡。
+                   2026-09-15 补: 原先不论哪类都直出 contentMd 前 120 字, 检索到的文献被压成一坨文本,
+                   作者/年份/出处读不出来。数据取后端 references_json 的**真命中**(不臆造字段)。 -->
+              <template v-if="cat.key === 'literature' && (m.references?.length ?? 0) > 0">
+                <div class="ref-count">共 {{ m.references!.length }} 条文献</div>
+                <div class="ref-list">
+                  <div v-for="(ref, ri) in m.references" :key="ri" class="ref-item">
+                    <span class="ref-num">{{ ri + 1 }}</span>
+                    <div class="ref-body">
+                      <div class="ref-title">{{ ref.title || "（无标题）" }}</div>
+                      <div class="ref-meta">
+                        <span v-if="ref.author || (ref as any).authors">{{ ref.author || (ref as any).authors }}</span>
+                        <span v-if="(ref as any).venue" class="ref-venue">{{ (ref as any).venue }}</span>
+                        <span v-if="ref.source" class="ref-source">{{ ref.source }}</span>
+                        <span v-if="ref.year">· {{ ref.year }}</span>
+                        <span v-if="(ref as any).volumeIssue" class="ref-vol">{{ (ref as any).volumeIssue }}</span>
+                      </div>
+                      <div v-if="(ref as any).doi" class="ref-doi">DOI: {{ (ref as any).doi }}</div>
+                      <div v-if="ref.gbRef" class="ref-gb">{{ ref.gbRef }}</div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <div v-else-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData" class="mat-content">{{ String(m.contentMd).slice(0, 120) }}</div>
               <div v-if="m.content && !m.contentMd && !(m as any).imageDataUrl" class="mat-content">{{ String(m.content).slice(0, 120) }}</div>
               <!-- B5: 图片素材预览(点击全屏放大; 闭源 imageDataUrl 语义) -->
               <div v-if="(m as any).imageDataUrl" class="mat-img">
@@ -1031,7 +1091,7 @@ onMounted(async () => {
       </details>
     </div>
 
-    <!-- 底部操作(闭源只有两个: 描边返回 + flex-1 主按钮; 审视/编排/智能生成已移到上方「补充素材来源」卡) -->
+    <!-- 底部操作(闭源顺序: 描边返回在**左**, flex-1 主按钮在**右**) -->
     <div class="wf-actions">
       <button class="btn-back" @click="router.push('/workflow/sections')">返回章节清单</button>
       <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
@@ -1129,6 +1189,27 @@ onMounted(async () => {
                 <span v-for="v in store.variables" :key="v.name" class="gv-chip">
                   <i class="gv-dot" :style="{ background: roleColor(v.role) }"></i>{{ v.role }}　{{ v.name }}
                 </span>
+              </div>
+            </div>
+            <!-- 文献类: 检索结果卡(闭源生成前展示检索命中; 这里用后端返回的**真命中**条目) -->
+            <div v-if="genDialog.catKey === 'literature' && genDialog.retrievedRefs.length" class="gen-refs">
+              <p class="gr-title">本次检索命中 {{ genDialog.retrievedRefs.length }} 条（来自内部库真命中）</p>
+              <div class="ref-list">
+                <div v-for="(ref, ri) in genDialog.retrievedRefs" :key="ri" class="ref-item">
+                  <span class="ref-num">{{ ri + 1 }}</span>
+                  <div class="ref-body">
+                    <div class="ref-title">{{ String(ref.title ?? "（无标题）") }}</div>
+                    <div class="ref-meta">
+                      <span v-if="ref.author || ref.authors">{{ ref.author || ref.authors }}</span>
+                      <span v-if="ref.venue" class="ref-venue">{{ ref.venue }}</span>
+                      <span v-if="ref.source" class="ref-source">{{ ref.source }}</span>
+                      <span v-if="ref.year">· {{ ref.year }}</span>
+                      <span v-if="ref.volumeIssue" class="ref-vol">{{ ref.volumeIssue }}</span>
+                    </div>
+                    <div v-if="ref.doi" class="ref-doi">DOI: {{ ref.doi }}</div>
+                    <div v-if="ref.excerpt" class="ref-gb">{{ String(ref.excerpt).slice(0, 160) }}</div>
+                  </div>
+                </div>
               </div>
             </div>
             <!-- 生成要求 -->
@@ -1445,6 +1526,33 @@ onMounted(async () => {
 .mat-foot .mat-src-btn { margin-left: auto; }
 .mat-del { border: 0; background: none; color: #8B9BB1; font-size: 11.5px; cursor: pointer; }
 .mat-del:hover { color: #dc2626; }
+/* 文献类素材: 「共 N 条文献」+ 逐条结构化卡 */
+.ref-count { font-size: 11px; color: #7A8AA0; margin-bottom: 6px; }
+.gen-refs { margin-bottom: 12px; }
+.gr-title { margin: 0 0 7px; font-size: 12px; color: #8B9BB1; }
+.ref-list { display: flex; flex-direction: column; gap: 6px; }
+.ref-item { display: flex; gap: 8px; padding: 7px 9px; background: #0E1729; border: 1px solid #212C45; border-radius: 8px; }
+.ref-num {
+  flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px;
+  background: #16243F; color: #6FA8F5; font-size: 10.5px; font-weight: 700;
+  display: grid; place-items: center;
+}
+.ref-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ref-title { font-size: 12.5px; color: #E8EEF7; line-height: 1.5; }
+.ref-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: #8B9BB1; }
+/* 期刊名(GB/T 7714 著录载体) / 卷期 / DOI —— 外部源(OpenAlex)才有的字段 */
+.ref-venue {
+  font-size: 10px; padding: 1px 6px; border-radius: 6px;
+  background: #14291F; color: #5FD0B4;
+}
+.ref-vol { color: #7A8AA0; }
+.ref-doi { font-size: 10.5px; color: #5F7288; overflow-wrap: break-word; }
+.ref-source {
+  font-size: 10px; padding: 1px 6px; border-radius: 6px;
+  background: #16243F; color: #6FA8F5;
+}
+.ref-gb { font-size: 11px; color: #7A8AA0; line-height: 1.5; overflow-wrap: break-word; }
+
 /* 表格预览: 闭源 max-h-20 可滚动, 不截断行(原先 slice(0,3) 会把长表截成"只有表头") */
 .mat-table { max-height: 80px; overflow-y: auto; }
 .three-line-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }

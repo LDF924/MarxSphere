@@ -444,12 +444,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16" data-assistant-phase2-sections-count="1">
+  <div
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    :data-assistant-phase2-sections-count="String(l1Count)"
+    :data-assistant-async-busy="(analyzing || guidesBusy) ? 'true' : 'false'"
+    :data-assistant-async-reason="analyzeMsg || (guidesBusy ? '正在生成写作指导' : '')"
+  >
     <PhaseProgressBar />
     <h1 class="wf-h1">科研架构</h1>
     <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
-    <!-- 闭源措辞: 「3、6 个子节」(顿号), 不加药丸底色 -->
-    <p class="wf-stats"><span class="stats-num">{{ l1Count }}</span>、{{ childCount }} 个子节</p>
+    <!-- 闭源原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
+    <p class="wf-stats">共 <span class="stats-num">{{ l1Count }}</span> 章<template v-if="childCount > 0">、{{ childCount }} 个子节</template></p>
 
     <!-- AI 分析横幅(3 态) -->
     <div v-if="analyzeFailed" class="banner banner-fail">
@@ -760,10 +765,11 @@ onUnmounted(() => {
 .level1-row { border-bottom: 1px solid #212C45; padding: 10px 0; }
 .level1-row:last-child { border-bottom: 0; }
 .l1-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* 一级编号块(闭源 w-10 h-8 rounded-lg); 二级是更小的灰块(w-10 h-8 text-xs 灰字) */
+/* 编号块(闭源: 一级 bg-red-100 text-red-700 浅红底红字, 二级 bg-gray-100 text-gray-600 灰底灰字;
+   尺寸同为 w-10 h-8)。2026-09-15 修: 一级原为实心红底白字, 二级只有灰字没有底块。 */
 .l1-num {
   width: 40px; height: 32px; border-radius: 8px;
-  background: #dc2626; color: #F1F5F9;
+  background: #2A1C1C; color: #E88A8A;
   display: grid; place-items: center; font-size: 13px; font-weight: 700;
   flex-shrink: 0;
 }
@@ -773,7 +779,13 @@ onUnmounted(() => {
 .wc-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; }
 .l2-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 6px; border-left: 2px solid #212C45; }
 .l2-row { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 10px; flex-wrap: wrap; }
-.l2-num { font-size: 11.5px; color: #8B9BB1; min-width: 30px; font-variant-numeric: tabular-nums; }
+/* 二级编号块: 与一级同尺寸但灰底灰字(闭源 bg-gray-100 text-gray-600) */
+.l2-num {
+  width: 40px; height: 32px; border-radius: 8px;
+  background: #1A2333; color: #A8B4C4;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 600;
+  flex-shrink: 0; font-variant-numeric: tabular-nums;
+}
 .l2-title { font-size: 13px; color: #C6D2E4; }
 .skill-detail { margin: 8px 0 0 34px; display: flex; flex-direction: column; gap: 6px; }
 .fs-row.amber { background: #11192Cbeb; border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }

@@ -515,7 +515,7 @@ onMounted(async () => {
       </button>
       <div v-if="clarifyOpen" class="clarify-body">
         <div v-if="clarify.state === 'idle'" class="clarify-idle">
-          <p>大模型将结合你的主题、框架与参考文件, 生成需要你补充的关键信息。最长约 3 分钟。</p>
+          <p>AI智能体将根据你已填写的信息提出针对性问题，回答后将自动纳入科研架构分析。</p>
           <button type="button" class="btn-clarify-run" @click="runClarify" data-control="workflow:clarify">AI 分析我的研究</button>
         </div>
         <div v-else-if="clarify.state === 'loading'" class="clarify-loading">

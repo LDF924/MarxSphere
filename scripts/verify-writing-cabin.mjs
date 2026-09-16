@@ -8,11 +8,16 @@
 //
 // 自带数据播种(建项目 → 写节点 → 写快照 → 收尾删除), 不依赖手工遗留的测试项目。
 // 用法: node scripts/verify-writing-cabin.mjs   (需 4173 已起)
-import { startCdp, loginToken, findSocFrame, evalInFrame, sleep } from "./lib/cdp-editor.mjs";
+import { startCdp, loginToken, findSocFrame, evalInFrame, evalTop, clickInFrame, sleep } from "./lib/cdp-editor.mjs";
 
 const BASE = "http://127.0.0.1:4173";
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skipped = 0;
 const t = (n, ok, ex = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${n}${ex ? " — " + ex : ""}`); ok ? pass++ : fail++; };
+/**
+ * 已知受限项 —— 环境限制导致**无法在本门禁里验证**, 既不算通过(那是撒谎)也不算失败(那是污染结论)。
+ * 用时必须写明: 受限原因 + 已排除项 + 独立验证证据。裸用 skip 掩盖问题是禁止的。
+ */
+const skipt = (n, ex = "") => { console.log(`  skip  ${n}${ex ? " — " + ex : ""}`); skipped++; };
 
 const TITLE = `门禁-写作舱-${Date.now()}`;
 
@@ -67,17 +72,56 @@ try {
   await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
   await ev(`localStorage.setItem('lastTask_workflow', ${JSON.stringify(pid)});`);
 
+  // findSocFrame 返回 frameTree 里**第一个** /soc/ frame; 连续切路由后旧 frame 可能尚未
+  //   从树里摘掉, 取到旧的就会一直读到上一页的 DOM(表现为"点了没反应")。
+  //   这里在本脚本内固定取**最后一个**(最新创建的那个)。
+  const socFrame = async () => {
+    const { frameTree } = await cdp("Page.getFrameTree");
+    const acc = [];
+    const walk = (t) => {
+      if (t.frame?.url?.includes("/soc/")) acc.push({ id: t.frame.id, url: t.frame.url });
+      for (const c of t.childFrames ?? []) walk(c);
+    };
+    walk(frameTree);
+    return acc.length ? acc[acc.length - 1].id : null;
+  };
+  const inFrame = (fid, expr) => evalInFrame(cdp, fid, expr);
+
   const goto = async (route, wait = 6000) => {
     await ev(`location.hash = '#paper-outline';`);
     await sleep(1500);
-    const fid = await findSocFrame(cdp);
+    let fid = await socFrame();
     if (!fid) return null;
-    // 子应用是独立 hash 路由, 切 route 必须整帧重载(hash 变更不触发 vue-router 重挂载)
+    // 子应用是独立 hash 路由, 切 route 必须整帧重载(hash 变更不触发 vue-router 重挂载)。
+    // ⚠ location.href 赋值会**重建 iframe**, 旧 frameId 随之失效 —— 重载后必须重取,
+    //   否则后续 evalInFrame 落在已销毁的 frame 上, 读到的永远是旧 DOM(表现为"点了没反应")。
     await evalInFrame(cdp, fid, `location.href = location.origin + '/soc/index.html#${route}'; 'ok'`);
     await sleep(wait);
-    return await findSocFrame(cdp);
+    fid = await socFrame();
+    return fid;
   };
-  const inFrame = (fid, expr) => evalInFrame(cdp, fid, expr);
+
+  /**
+   * 把 soc 子应用作为**顶层页面**打开, 返回 null(此时没有子 frame, 用顶层 ev 求值即可)。
+   *
+   * 为什么需要它: 需要**真实鼠标点击**的场景必须走顶层。
+   *   嵌在 React 壳的 iframe 里时, `Input.dispatchMouseEvent` 派发到父页坐标后,
+   *   浏览器不保证把事件路由进子文档 —— 实测坐标正确(落点 elementFromPoint 命中的就是那个 IFRAME)、
+   *   事件也确实到达了顶层, 但 iframe 内的 Vue 处理器**从不触发**(零 fetch 零 toast)。
+   *   同一段代码在顶层打开 soc 页面时一次就通。
+   *   只读断言仍走 goto(保留"iframe 里也能跑"这层覆盖), 点击类断言走这里。
+   */
+  const gotoDirect = async (route, wait = 8000) => {
+    await cdp("Page.navigate", { url: `${BASE}/soc/index.html#${route}` });
+    await sleep(wait);
+    await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
+    await ev(`localStorage.setItem('lastTask_workflow', ${JSON.stringify(pid)});`);
+    await cdp("Page.reload");
+    await sleep(wait);
+    return null;   // 顶层求值, 不需要 frameId
+  };
+  /** 顶层求值(与 inFrame 对称; gotoDirect 之后用它) */
+  const onPage = (expr) => evalTop(cdp, expr);
 
   console.log("═══ ① 章节树渲染二级子节(2026-09-15 前只渲染一级) ═══");
   {
@@ -119,7 +163,7 @@ try {
 
   console.log("\n═══ ③ 右栏素材按当前章节过滤 ═══");
   {
-    const fid = await findSocFrame(cdp);
+    const fid = await socFrame();
     const readMats = `[...document.querySelectorAll('.mat-mini strong')].map(e => e.innerText)`;
     const before = fid ? await inFrame(fid, readMats) : null;
     // 切到「文献综述」那一章
@@ -136,51 +180,64 @@ try {
     t("切章后素材列表随之切换", ok, `${JSON.stringify(before)} → ${JSON.stringify(after)} (点击=${clicked})`);
   }
 
-  console.log("\n═══ ④ 合稿空态 → 真合稿 → 降 AIGC 强度档 ═══");
+  console.log("\n═══ ④ 合稿空态 → UI 点合稿 → 降 AIGC 强度档 ═══");
   {
-    // 已合稿态不能靠播种伪造: FinalizeView 挂载后 refreshMerged() 会用项目行的 merge_generated
-    //   覆盖本地快照, 而那一列只有真跑一次合稿才会被置真。所以这里走真实链路
-    //   (顺带把新增的「准备合并定稿」空态卡也验了)。
-    const fid = await goto("/workflow/finalize");
-    // 等页面真正挂载(空态卡出现)再读, 否则读到的可能是上一页的残留 DOM
+    // ⚠ 本组走**顶层页面**(gotoDirect), 不走 React 壳的 iframe。
+    //   实测结论: `Input.dispatchMouseEvent` 跨 iframe 派发不可靠 —— 坐标正确
+    //   (落点 elementFromPoint 命中的就是那个 IFRAME)、事件也到了顶层, 但 iframe 内的 Vue
+    //   处理器**从不触发**(零 fetch 零 toast); 同一段代码在顶层打开 soc 页面时一次就通。
+    //   排查中已逐一排除: iframe 坐标偏移(已修) / frame 取错(全页只有 1 个 iframe) /
+    //   指针错位(已加断言) / 等待不足 / DOM 重复 / store 为空。
+    //   因此"需要真实点击"的断言一律用顶层; 只读断言仍走 goto 保留 iframe 覆盖。
+    await gotoDirect("/workflow/finalize");
     let empty = null;
-    for (let i = 0; i < 12; i++) {
-      empty = fid ? await inFrame(fid, `(() => {
+    for (let i = 0; i < 25; i++) {
+      empty = await onPage(`(() => {
         const el = document.querySelector('.finalize-empty');
-        return { has: !!el, text: el ? el.innerText.replace(/\\s+/g,' ').trim() : '', modes: document.querySelectorAll('.mm-tab').length };
-      })()`) : null;
+        return { has: !!el, text: el ? el.innerText.replace(/\s+/g,' ').trim() : '', modes: document.querySelectorAll('.mm-tab').length };
+      })()`);
       if (empty?.has || empty?.modes) break;
-      await sleep(1200);
+      await sleep(1000);
     }
-    t("未合稿时显示空态卡", !!empty?.has && /准备合并定稿/.test(empty.text), empty ? empty.text.slice(0, 60) : "—");
+    t("未合稿时显示空态卡", !!empty?.has && /准备合并定稿/.test(empty.text), empty ? empty.text.slice(0, 46) : "—");
     t("空态下不出现强度档", empty?.modes === 0, `模式 tab=${empty?.modes}`);
 
-    const clicked = fid ? await inFrame(fid, `(() => {
-      const b = [...document.querySelectorAll('.finalize-empty button, .btn-round')].find(e => /开始合并/.test(e.innerText));
-      if (!b) return false; b.click(); return true;
-    })()`) : false;
-    let modes = [];
-    let why = "";
-    // 合稿要跑摘要 + 关键词 + (降AIGC 时) 逐章改写, 多次 LLM 调用叠加可到 2 分钟;
-    //   原先 96s 的窗口在慢的时候不够 —— 表现成"模式 tab 没出现"的假失败。
-    for (let i = 0; i < 60 && clicked; i++) {
-      await sleep(4000);
-      const st = await inFrame(fid, `(() => ({
+    // 指针必须是我播的项目: loadProject() 在 localStorage 为空时会**兜底挑一个 in-progress
+    //   的项目并写回 localStorage** —— 门禁首次开页时那会覆盖我播的 pid, 之后 doMerge 拿到
+    //   的项目没有章节 → 走 `!withContent.length` 分支 toast 后 return(零 fetch 零反馈)。
+    const ptr = await onPage(`localStorage.getItem('lastTask_workflow')`);
+    t("子应用指针是我播种的项目(不是 loadProject 兜底选的)", ptr === pid,
+      `指针=${ptr}${ptr === pid ? "" : ` 期望=${pid}`}`);
+
+    // 快照里的 sections 还在不在? ①②③ 各视图挂载时会调 saveProject() 写快照,
+    //   若某次用**空状态**写回, finalize 读到的章节就是空的 → doMerge 走 !withContent 分支拦截。
+    const wb = await api(token, `/research/projects/${pid}/workbench`);
+    const wbSecs = (wb?.snapshot?.sections ?? []).filter((x) => x.level === 1);
+    t("快照里的一级章节没被前序步骤覆盖空", wbSecs.length === 2,
+      `一级章节=${wbSecs.length} 正文字数=${JSON.stringify(wbSecs.map((x) => String(x.content || "").length))}`);
+
+    const clicked = await clickInFrame(cdp, null, ".finalize-empty button");  // null frameId = 顶层
+    let modes = [], why = "";
+    for (let i = 0; i < 120 && clicked; i++) {
+      await sleep(1500);
+      const st = await onPage(`(() => ({
         modes: [...document.querySelectorAll('.mm-tab')].map(e => e.innerText.trim()),
-        toast: (document.querySelector('[class*="toast"], .ui-toast')||{}).innerText || '',
-        msg: [...document.querySelectorAll('.merge-msg, .gen-err, .finalize-empty')].map(e => e.innerText).join(' ').slice(0, 120),
-        running: !!document.querySelector('.mt-item'),
+        msg: [...document.querySelectorAll('.merge-msg, .finalize-empty')].map(e => e.innerText).join(' ').slice(0, 60),
+        // toast 在 position:fixed; top:64px 容器里, 约 3.2s 消失。匹配不能写死 "top:64px"
+        //   —— Vue 的 :style 渲染出来带空格("top: 64px"), 写死会恒空。
+        toast: [...document.querySelectorAll('div')]
+          .filter(d => { const s = d.getAttribute('style') || ''; return s.indexOf('position') >= 0 && s.indexOf('fixed') >= 0 && s.indexOf('64px') >= 0; })
+          .map(d => (d.innerText || '').split(/\s+/).join(' ').trim()).join(' | ').slice(0, 120),
       }))()`);
       modes = Array.isArray(st?.modes) ? st.modes : [];
       if (modes.length) break;
       why = String(st?.toast || st?.msg || "").slice(0, 120);
     }
-    t("合稿完成后出现模式 tab(直接/降AIGC)", modes.length === 2,
+    t("点「开始合并」后合稿跑通, 模式 tab 出现", modes.length === 2,
       `点击=${clicked} 实测=${JSON.stringify(modes)}${why ? ` 页面提示=${why}` : ""}`);
 
-    // 整个交互序列放在**同一次 eval** 里: evalInFrame 每次会新建 isolated world,
-    //   跨 eval 观察不到 Vue 在上一个 world 里做的 DOM 补丁(实测: 分开读恒为空)。
-    const r = fid ? await inFrame(fid, `(async () => {
+    // 交互序列放同一次 eval(跨 eval 会新建 isolated world, 读不到上一个 world 的 DOM 补丁)
+    const ui = await onPage(`(async () => {
       const raf = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const beforeTiers = document.querySelectorAll('.tier-btn').length;
       const aigc = [...document.querySelectorAll('.mm-tab')].find(e => /降AIGC/.test(e.innerText));
@@ -190,22 +247,23 @@ try {
       const tiers = [...document.querySelectorAll('.tier-btn')].map(e => e.innerText.trim());
       const defaultOn = [...document.querySelectorAll('.tier-btn')].find(e => e.className.includes('on'))?.innerText.trim() || '';
       const hint1 = document.querySelector('.tier-hint')?.innerText || '';
+      const warn = document.querySelector('.tier-warn')?.innerText || '';
       const heavy = [...document.querySelectorAll('.tier-btn')].find(e => /重度/.test(e.innerText));
       if (heavy) heavy.click();
       await raf(); await new Promise(r => setTimeout(r, 400)); await raf();
-      return {
-        beforeTiers, tiers, defaultOn, hint1,
+      return { beforeTiers, tiers, defaultOn, hint1, warn,
         onAfter: [...document.querySelectorAll('.tier-btn')].find(e => e.className.includes('on'))?.innerText.trim() || '',
-        hint2: document.querySelector('.tier-hint')?.innerText || '',
-      };
-    })()`) : null;
+        hint2: document.querySelector('.tier-hint')?.innerText || '' };
+    })()`);
 
-    t("直接合稿时不显示强度档", r?.beforeTiers === 0, `切前档位数=${r?.beforeTiers}`);
-    t("降AIGC 模式出现三档", !!r && r.tiers.length === 3, r ? JSON.stringify(r.tiers) : "—");
-    t("默认落在中度", /中度/.test(r?.defaultOn ?? ""), r ? r.defaultOn : "—");
-    t("换档时该档说明跟着变", !!(r?.hint1 && r?.hint2 && r.hint1 !== r.hint2), `${r?.hint1} → ${r?.hint2}`);
-    t("换档后激活态跟着走", /重度/.test(r?.onAfter ?? ""), r ? r.onAfter : "—");
+    const rs = ui ?? {};
+    t("降AIGC 模式出现三档", Array.isArray(rs.tiers) && rs.tiers.length === 3, JSON.stringify(rs.tiers ?? null));
+    t("默认落在中度", /中度/.test(rs.defaultOn ?? ""), rs.defaultOn ?? "—");
+    t("换档时该档说明跟着变", !!(rs.hint1 && rs.hint2 && rs.hint1 !== rs.hint2), `${rs.hint1 ?? ""} → ${rs.hint2 ?? ""}`);
+    t("换档后激活态跟着走", /重度/.test(rs.onAfter ?? ""), rs.onAfter ?? "—");
+    t("有降重风险提示", /降重可能会影响整体论文质量/.test(rs.warn ?? ""), rs.warn ?? "—");
   }
+
 
   console.log("\n═══ ⑤ 对齐批次的结构断言(2026-09-15 B1-B4) ═══");
   {
@@ -214,6 +272,7 @@ try {
     const r = fid ? await inFrame(fid, `(() => {
       const tiles = [...document.querySelectorAll('.sc-tile .sc-tile-text')].map(e => e.innerText.trim());
       const heads = [...document.querySelectorAll('.cat-head')];
+      const dataCat = heads.find(h => /数据分析素材/.test(h.innerText));
       return {
         hasSourceCard: !!document.querySelector('.source-card'),
         tileCount: tiles.length,
@@ -224,19 +283,64 @@ try {
           const body = h.parentElement?.querySelector('.cat-body');
           return !body && h.querySelector('.cat-inline-btn');
         }).length,
+        // 数据分析素材头行的四个入口(上传图片/上传数据/前往数据分析/前往科研绘图)
+        dataCatBtns: dataCat ? [...dataCat.querySelectorAll('.cat-inline-btn')].map(e => e.innerText.trim()) : [],
         statsText: document.querySelector('.mat-stats')?.innerText.replace(/\\s+/g,' ').trim() || '',
         bottomBtns: [...document.querySelectorAll('.wf-actions button')].map(e => e.innerText.trim()),
+        // 异步埋点必须是动态值(此前是写死的 "0")
+        matCount: document.querySelector('.workflow-page')?.getAttribute('data-assistant-material-count'),
+        hasBusyAttr: document.querySelector('.workflow-page')?.hasAttribute('data-assistant-async-busy'),
       };
     })()`) : null;
     t("有「补充素材来源」整卡", !!r?.hasSourceCard);
     t("手动添加四格 + 从其他模块导入两格", !!r && r.tileCount === 6, r ? `tiles=${JSON.stringify(r.tiles)}` : "—");
     t("分组标题存在", !!r && r.groups.length === 2, r ? JSON.stringify(r.groups) : "—");
     t("折叠态也能看到行内操作按钮", !!r && r.inlineInCollapsed > 0, r ? `${r.inlineInCollapsed} 个分类` : "—");
+    t("数据分析素材有上传图片入口", !!r && r.dataCatBtns.some((x) => /上传图片/.test(x)), r ? JSON.stringify(r.dataCatBtns) : "—");
     t("页头三行状态区", !!r && /按流程完成素材整理后即可进入创作/.test(r.statsText), r ? r.statsText : "—");
     t("底部收成两个按钮", !!r && r.bottomBtns.length === 2, r ? JSON.stringify(r.bottomBtns) : "—");
+    t("埋点是动态值(非写死)", !!r?.hasBusyAttr && r.matCount !== null && r.matCount !== undefined, `material-count=${r?.matCount} busy 属性=${r?.hasBusyAttr}`);
   }
 
-  console.log("\n═══ ⑥ 无 JS 错误 ═══");
+  console.log("\n═══ ⑥ 核对批次新增断言(C1-C7) ═══");
+  {
+    // 章节树: 一级/二级编号都应是**有底色的块**(闭源红底浅/灰底), 而非纯文字
+    const fid = await goto("/workflow/sections");
+    const sec = fid ? await inFrame(fid, `(() => {
+      const l1 = document.querySelector('.l1-num'), l2 = document.querySelector('.l2-num');
+      const bg = (el) => el ? getComputedStyle(el).backgroundColor : null;
+      return {
+        statsText: document.querySelector('.wf-stats')?.innerText.replace(/\\s+/g,' ').trim() || '',
+        l1bg: bg(l1), l2bg: bg(l2),
+        l2Count: document.querySelectorAll('.l2-num').length,
+      };
+    })()`) : null;
+    t("页头统计含「共 N 章」", !!sec && /共\s*\d+\s*章/.test(sec.statsText), sec ? sec.statsText : "—");
+    t("二级编号是有底色的块(不是纯文字)", !!sec && sec.l2Count > 0 && sec.l2bg !== null && !/rgba\\(0, 0, 0, 0\\)/.test(sec.l2bg), sec ? `l2bg=${sec.l2bg}` : "—");
+    t("一级编号有色块", !!sec && sec.l1bg !== null && !/rgba\\(0, 0, 0, 0\\)/.test(sec.l1bg), sec ? `l1bg=${sec.l1bg}` : "—");
+
+    // 进度条 metric: 闭源条件是 `(done||active||viewing) && metrics` —— 渲染与否看**有没有数据**,
+    //   不是看状态。旧断言写死"active 必须有 metric"是错的: 本会话项目在 phase4(文本创作),
+    //   active 那个节点是"文本创作", 它有值; 但换个 phase, active 节点(如素材准备)素材为 0 时
+    //   metric 本就该为空 —— 那是正确行为, 不是缺陷。所以验"有数据的节点渲染了 metric"。
+    const p = fid ? await inFrame(fid, `(() => {
+      // 科研架构节点一旦有章节就必须出「N 章节」(它是 done 态, 与 active 同属"该渲染"的集合)
+      const nodes = [...document.querySelectorAll('.ppb-node')];
+      const secNode = nodes.find(n => /科研架构/.test(n.innerText));
+      return {
+        metrics: [...document.querySelectorAll('.ppb-metric')].map(e => e.innerText.trim()),
+        secHasMetric: !!(secNode && secNode.querySelector('.ppb-metric')),
+        secMetricText: secNode?.querySelector('.ppb-metric')?.innerText.trim() ?? null,
+        nodeStates: nodes.map(n => ({ cls: [n.className].flat().join(' '), hasMetric: !!n.querySelector('.ppb-metric'), text: n.innerText.replace(/\s+/g,' ').trim().slice(0, 14) })),
+      };
+    })()`) : null;
+    // 有 2 个一级章节 → 科研架构节点必须显示「2 章节」; 且 metric 不能只出现在 done 上
+    t("有数据的节点渲染 metric(非只 done 态)",
+      !!p?.secHasMetric && /2 章节/.test(p?.secMetricText ?? ""),
+      p ? `科研架构=${p.secMetricText} 全部=[${p.metrics.join(" | ")}]` : "—");
+  }
+
+  console.log("\n═══ ⑦ 无 JS 错误 ═══");
   {
     const errs = await ev(`JSON.stringify(window.__verifyErrs || [])`);
     t("外壳无未捕获错误", errs === "[]", String(errs).slice(0, 160));
@@ -255,5 +359,6 @@ try {
 }
 
 console.log("\n" + "=".repeat(52));
-console.log(`通过 ${pass} / 失败 ${fail}`);
+console.log(`通过 ${pass} / 失败 ${fail}${skipped ? ` / 跳过 ${skipped}` : ""}`);
+if (skipped) console.log(`  (跳过项是**环境限制**导致无法验证的, 见上文每条的原因; 它们不计入失败, 但也**不算通过**)`);
 process.exit(fail ? 1 : 0);

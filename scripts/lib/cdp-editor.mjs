@@ -136,11 +136,127 @@ export async function findSocFrame(cdp) {
  * Playwright 那套在这里用不上(脚本走的是裸 CDP); Runtime.evaluate 需要 frame 的
  * executionContextId —— 由 Page.createIsolatedWorld 拿。
  */
+/** 在**顶层文档**求值(不建 isolated world —— 顶层没有跨 world 的事件问题) */
+export async function evalTop(cdp, expression) {
+  const r = await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (r.exceptionDetails) return "JSERR:" + String(r.exceptionDetails.exception?.description ?? "").slice(0, 200);
+  return r.result?.value;
+}
+
 export async function evalInFrame(cdp, frameId, expression) {
   const { executionContextId } = await cdp("Page.createIsolatedWorld", { frameId, worldName: "verify", grantUniveralAccess: true });
   const r = await cdp("Runtime.evaluate", { expression, contextId: executionContextId, returnByValue: true, awaitPromise: true });
   if (r.exceptionDetails) return "JSERR:" + String(r.exceptionDetails.exception?.description ?? "").slice(0, 200);
   return r.result?.value;
+}
+
+/**
+ * 在子 frame 里对元素发**真实鼠标事件**(mousedown → mouseup)。
+ *
+ * 三个必须同时处理对的坑(都实际踩过):
+ *
+ * ① **不能用 element.click()**: 本文件的求值走 Page.createIsolatedWorld, 那是与页面主世界
+ *   **隔离**的执行环境 —— 在里面拿到的 element 是隔离世界的包装, `.click()` 合成的事件
+ *   到不了主世界 Vue 挂的监听器上。表现是"函数返回成功, 但界面毫无反应"。
+ *
+ * ② **必须加上 iframe 在父页里的偏移**: `Input.dispatchMouseEvent` 收的是**顶层页面**坐标,
+ *   而 `getBoundingClientRect()` 给的是 iframe 内的坐标。少了这个偏移就会点到别的地方 ——
+ *   实测写作舱的 iframe 顶部偏移 119px。
+ *
+ * ③ **滚动与读坐标必须分成两次求值**: 同一个同步块里 `scrollIntoView()` 之后立刻
+ *   `getBoundingClientRect()`, 拿到的是**滚动之前**的位置(浏览器不会同步重排)。
+ *   元素在视口外时点击坐标就是过期的 —— 这是"点不中"最隐蔽的一种, 因为函数照样返回 true。
+ *   实测写作舱的合稿按钮(页面中部)恒点不中, 而顶部的「新项目」按钮一直正常
+ *   (它在视口内, scrollIntoView 不产生滚动, 所以从来没暴露这个 bug)。
+ */
+export async function clickInFrame(cdp, frameId, selector, opts = {}) {
+  const sel = JSON.stringify(selector);
+  // frameId 为空 → 顶层页面(没有隔离 world 问题, 直接用 ev 语义)
+  const evalAt = frameId ? (expr) => evalInFrame(cdp, frameId, expr) : (expr) => evalTop(cdp, expr);
+  // 第一次求值: 只做滚动(behavior:instant 避免平滑滚动期间坐标继续变)
+  await evalAt(`(() => {
+    const el = document.querySelector(${sel});
+    if (el) el.scrollIntoView({ block: "center", behavior: "instant" });
+    return 'ok';
+  })()`);
+  await sleep(250); // 等滚动与重排落定
+  // 第二次求值: 滚动之后再读坐标
+  const point = await evalAt(`(() => {
+    const el = document.querySelector(${sel});
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return null;
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  })()`);
+  if (!point || typeof point !== "object") return false;
+  const off = await frameOffset(cdp, frameId);
+  const common = {
+    x: point.x + off.x, y: point.y + off.y,
+    button: "left", clickCount: 1, ...(opts.modifiers ? { modifiers: opts.modifiers } : {}),
+  };
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...common, button: "none" });
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...common });
+  await sleep(60);
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...common });
+  return true;
+}
+
+/**
+ * 顶层页面上的真实鼠标点击(clickInFrame 的无 frame 版本)。
+ * frameId 传 null / undefined 时可直接用 clickInFrame —— 这里单独给个名字是为了让调用点
+ * 一眼看出"这一击发生在顶层"。
+ */
+export async function clickOnPage(cdp, selector, opts = {}) {
+  return clickInFrame(cdp, null, selector, opts);
+}
+
+/**
+ * 子 frame 左上角在**顶层页面**里的坐标。
+ * 做法: 从根 frame 往下逐层找目标 frame, 每层在**父 frame 的文档**里查这个 iframe 元素的
+ * getBoundingClientRect, 把各级偏移累加 —— 这就是 Input.dispatchMouseEvent 需要的坐标系。
+ * 找不到时返回 {0,0}(退化成旧行为, 不会因此崩掉)。
+ */
+async function frameOffset(cdp, frameId) {
+  // 顶层页面无 frame 可找 —— 偏移就是 0
+  if (!frameId) return { x: 0, y: 0 };
+  try {
+    const { frameTree } = await cdp("Page.getFrameTree");
+    const walk = async (node, accX, accY) => {
+      if (node.frame?.id === frameId) return { x: accX, y: accY };
+      for (const child of node.childFrames ?? []) {
+        const childUrl = child.frame?.url ?? "";
+        const target = shortUrl(childUrl);
+        if (target === "/") continue;
+        // 这个子 frame 对应的 <iframe> 元素在**父 frame** 的文档里
+        const box = node.frame?.id
+          ? await evalInFrame(cdp, node.frame.id, `(() => {
+              const f = [...document.querySelectorAll('iframe')]
+                .find(x => (x.getAttribute('src') || '').includes(${JSON.stringify(target)}));
+              if (!f) return { x: 0, y: 0 };
+              const b = f.getBoundingClientRect();
+              return { x: Math.round(b.x), y: Math.round(b.y) };
+            })()`).catch(() => ({ x: 0, y: 0 }))
+          : { x: 0, y: 0 };
+        const safe = (box && typeof box === "object") ? box : { x: 0, y: 0 };
+        const got = await walk(child, accX + (safe.x ?? 0), accY + (safe.y ?? 0));
+        if (got) return got;
+      }
+      return null;
+    };
+    return (await walk(frameTree, 0, 0)) ?? { x: 0, y: 0 };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
+/** 取 URL 里有辨识度的一段(用于在父文档里定位对应的 iframe 元素) */
+function shortUrl(u) {
+  try {
+    const url = new URL(u);
+    return url.pathname + url.hash || "/";
+  } catch {
+    return u || "/";
+  }
 }
 
 /** 打印统一格式的结论行 */

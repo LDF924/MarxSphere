@@ -245,10 +245,30 @@ async function genChapter(sectionId: string) {
 let poll: ReturnType<typeof setInterval> | null = null;
 
 // ── 合稿门禁(闭源 ge()) ──
+/**
+ * 当前项目是否已失效(被删/不属于本用户)。
+ * 2026-09-16 补: 指针指向已删项目时, 页面长得和正常一样, 点合稿只会弹一个 3.2 秒的 toast
+ *   —— 用户看到的是"点了没反应"。这里显式探测一次, 失效时页面顶部常驻横幅。
+ */
+const projectGone = ref(false);
+async function checkProjectAlive() {
+  if (!store.taskId) { projectGone.value = false; return; }
+  try {
+    const r = await fetch(`/api/research/projects/${store.taskId}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+    });
+    projectGone.value = r.status === 404;
+  } catch { /* 网络问题不算失效, 别误报 */ }
+}
+
 async function doMerge() {
   const l1 = store.level1Sections;
   if (!store.taskId) {
     toast("请先创建并保存工作流任务", "warning");
+    return;
+  }
+  if (projectGone.value) {
+    toast("当前项目已不存在(可能被删除), 请从「新项目」重新开始", "error");
     return;
   }
   const withContent = l1.filter((s) => s.content && s.content.length > 50);
@@ -740,14 +760,28 @@ onMounted(async () => {
   void loadKatex();
   await store.loadProject().catch(() => null);
   await refreshMerged().catch(() => null);
+  void checkProjectAlive();
 });
 </script>
 
 <template>
-  <div class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16">
+  <div
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    :data-assistant-async-busy="(mergeRunning || reviewRunning || reviseRunning) ? 'true' : 'false'"
+    :data-assistant-async-reason="mergeRunning ? '正在合并全文' : reviewRunning ? '正在全文审查' : reviseRunning ? '正在生成修订稿' : ''"
+  >
     <PhaseProgressBar />
     <h1 class="wf-h1">合稿定稿</h1>
     <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
+
+    <!-- 项目失效常驻横幅: 指针指向已删项目时, 页面长得和正常一样, 只有点按钮才弹一个
+         3.2 秒的 toast —— 用户看到的是"点了没反应"。这里给持续、可操作的提示。 -->
+    <div v-if="projectGone" class="gone-banner" data-control="workflow:project-gone">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span>当前项目已不存在（可能已被删除）。请点左下角「新项目」重新开始，或从「历史记录」回到其它项目。</span>
+    </div>
 
     <!-- 未合稿空态(闭源: 大图标 + 「准备合并定稿」 + 说明 + 开始合并) -->
     <div v-if="!store.mergeGenerated && !mergeRunning" class="finalize-empty">
@@ -757,7 +791,7 @@ onMounted(async () => {
         </svg>
       </div>
       <h3>准备合并定稿</h3>
-      <p>前面各章正文已就绪。合稿会把它们合并为完整论文, 并自动生成摘要、关键词与参考文献。</p>
+      <p>AI 将把所有章节合并为一篇完整的学术论文，并进行语言优化、格式统一和参考文献整理。</p>
       <button class="btn-round" data-control="workflow:phase5-merge" @click="doMerge()">开始合并</button>
     </div>
 
@@ -802,6 +836,7 @@ onMounted(async () => {
             @click="mergeTier = t.value"
           >{{ t.label }}</button>
           <span class="tier-hint">{{ DEAI_TIERS.find((t) => t.value === mergeTier)?.hint }}</span>
+          <span class="tier-warn">降重可能会影响整体论文质量，请自行斟酌</span>
         </div>
         <!-- 时间轴(闭源每步带 desc 副文案) -->
         <div v-if="mergeRunning || mergeStep >= 5" class="merge-timeline">
@@ -1000,6 +1035,14 @@ onMounted(async () => {
 .wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
 .wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
 .rounds-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+/* 项目失效常驻横幅 */
+.gone-banner {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 14px;
+  padding: 11px 16px; border-radius: 10px;
+  background: #2A1C1C; border: 1px solid #7f1d1d; color: #E88A8A;
+  font-size: 13px; line-height: 1.5;
+}
+.gone-banner svg { flex-shrink: 0; }
 /* 未合稿空态 */
 .finalize-empty {
   text-align: center; padding: 40px 24px; margin-bottom: 16px;
@@ -1039,6 +1082,7 @@ onMounted(async () => {
 .tier-btn.on { background: #1E2A48; color: #E8B54A; border-color: #C9A23C; font-weight: 600; }
 .tier-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .tier-hint { font-size: 11.5px; color: #7A8AA0; margin-left: 4px; }
+.tier-warn { font-size: 11.5px; color: #E8B54A; margin-left: 4px; }
 .btn-round {
   padding: 7px 18px; border: 0; border-radius: 8px; background: #E8B54A;
   color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
