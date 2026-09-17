@@ -84,11 +84,14 @@ export async function readToast(cdp) {
  * 一次动作实测: 清日志 → 真点 → 等 → 取请求。
  * @returns {{clicked:*, before:string[], apiReqs:Array, last:object|null, toast:string}}
  */
-export async function probeAction(cdp, selector, { wait = 2600, index = 0 } = {}) {
+export async function probeAction(cdp, selector, { wait = 2600, index = 0, keepOverlays = false } = {}) {
   // ⚠ 必须先关掉可能挡路的浮层: 写作舱的助手面板/弹层是 position:fixed 的高 z-index 覆盖层,
   //   盖在按钮上时 Input.dispatchMouseEvent 打中的是覆盖层 —— 表现为"点了没反应",
   //   而按钮根本没收到事件。实测踩过: 素材页格子在浮层下恒报 DEAD(假失败)。
-  await dismissOverlays(cdp);
+  // keepOverlays: 目标按钮**就在弹层里**时必须置 true。
+  //   否则 dismissOverlays 会先把那个弹层关掉, 再去点一个已经不存在的按钮 —— 表现为
+  //   "点了没反应"(实测: 手动添加弹层的「保存」、生成弹层的按钮全部误报 DEAD)。
+  if (!keepOverlays) await dismissOverlays(cdp);
   await spyClear(cdp);
   const before = await evalTop(cdp, `(() => [...document.querySelectorAll(${JSON.stringify(selector)})]
     .map(e => (e.innerText || e.value || '').replace(/\\s+/g,' ').trim().slice(0, 40)))()`);
@@ -110,7 +113,16 @@ export async function probeAction(cdp, selector, { wait = 2600, index = 0 } = {}
   };
 }
 
-/** 关掉会挡住点击的浮层(助手面板 / 已打开的弹层)。只点"关闭"类按钮, 不碰业务动作。 */
+/**
+ * 关掉会挡住点击的浮层(助手面板 / 已打开的弹层)。只点"关闭"类按钮, 不碰业务动作。
+ *
+ * ⚠ 不要把全局 confirm 层的按钮(div[style*="position:fixed"] 里的取消/确认)收进来。
+ *   本函数在**每次 probeAction 之前**都跑 ——
+ *   (a) "点删除 → 断言确认层出现 → 再点确认"这类分两步的用例, 确认层会在第一步就被自己关掉
+ *       (实测踩到: 删素材的确认层刚出来就没了, 表现为"点了没反应");
+ *   (b) 断言过程中若用 probeAction 去查层内元素(它的 dismissOverlays 会先跑), 同样误关。
+ *   这两种场合改用 evalTop 直点。
+ */
 export async function dismissOverlays(cdp) {
   return evalTop(cdp, `(() => {
     let closed = 0;

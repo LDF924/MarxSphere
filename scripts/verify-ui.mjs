@@ -34,6 +34,15 @@ const SUITES = [
   { key: "site-content", file: "verify-site-content.mjs", desc: "四个 tab 真渲染 + 帮助条目跳转真生效" },
   // 写作舱这一批(2026-09-15)修的全是"类型检查抓不到、失败还静默"的项 —— 只能靠真浏览器顶住
   { key: "writing-cabin", file: "verify-writing-cabin.mjs", desc: "章节树二级/正文渲染/素材按章过滤/降AIGC档位" },
+  // 上面那条是**状态**断言(长什么样)。下面两条是**动作**断言(点下去做没做事) ——
+  //   两者互补, 缺一就会出现"界面全对、按钮全死"。这两条此前是手动脚本, 不进门禁的东西会腐烂:
+  //   补它们的过程中挖出的两个缺陷(采用修订稿是空操作、素材来源弹层只有状态没有视图)
+  //   都活了很久没有任何信号。
+  { key: "materials-actions", file: "probe-materials-actions.mjs", desc: "素材页 20 动作: 增删改/来源/审视/编排/文献结构化" },
+  { key: "workspace-actions", file: "probe-workspace-actions.mjs", desc: "创作台 16 动作: 面板/编辑/保存/素材/阶段门禁(不含 LLM)" },
+  { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "信息录入 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
+  // 布局是**另一层**问题: 旧门禁全是文案/结构断言, 从没量过"元素实际占多大、窄屏会不会塌、底部能不能滚到"
+  { key: "layout", file: "verify-layout.mjs", desc: "三档视口 × 5 视图: 溢出/塌陷/重叠/可滚动容器" },
   { key: "editor-ai6", file: "editor-ai6-verify.mjs", desc: "编辑器 AI 面板 6 页签与顺序" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },

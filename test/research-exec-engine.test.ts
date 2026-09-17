@@ -96,7 +96,7 @@ describe("executeReadyTask 执行器分派", () => {
     expect(reviewArgs.some((s: string) => s.includes("checks") && s.includes("aiTone") && s.includes("dataAccuracy"))).toBe(true);
   });
 
-  it("revise 任务走有向修订执行器(P-A: 读 review_result+merged_fulltext → 修订稿覆盖 merged_* + revisionOf)→ done", async () => {
+  it("revise 任务走有向修订执行器(P-A: 读 review_result+merged_fulltext → 修订稿**只落暂存**, 不动 merged_*)→ done", async () => {
     const t = task("queued", { job_kind: "revise", project_id: "p1" });
     const projectRow = {
       merged_title: "测试论文", merged_fulltext: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。",
@@ -110,14 +110,25 @@ describe("executeReadyTask 执行器分派", () => {
       .mockResolvedValueOnce({ rows: [] } as any)      // sections 节点(正文真源)
       .mockResolvedValueOnce({ rows: [{ payload: { mergedTitle: "测试论文", mergedFullText: "## 引言\n在当今背景下, 本文具有重要意义。\n## 结论\n综上所述, 发挥了重要作用。", mergedAbstract: "旧摘要", mergedKeywords: "旧;关键词", reviewReport: projectRow.review_result } }] } as any) // finalize 节点(真源)
       .mockResolvedValueOnce({ rows: [projectRow] } as any) // project 行
-      .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿覆盖 project merged_*
-      .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿覆盖 finalize 节点
+      .mockResolvedValueOnce({ rows: [{ version: 4 }] } as any) // insert research_versions → 修订稿的版本行
+      .mockResolvedValueOnce({ rows: [] } as any)      // 推进 published_version 指针
+      .mockResolvedValueOnce({ rows: [] } as any)      // 修订稿只写 finalize 节点的 revise_pending
       .mockResolvedValueOnce({ rows: [] } as any);     // markDone
     const r = await executeReadyTask("t1");
     expect(r.ok, "SQLs: " + JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => String(c[0]).slice(0, 90)))).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
-    // 修订结果覆盖 merged_fulltext + revision_of_version
-    expect(sqls.some((s) => s.includes("merged_fulltext=$4") && s.includes("revision_of_version=$5"))).toBe(true);
+    // 2026-09-16 起: 修订稿**不再**直接覆盖 merged_*。
+    //   闭源语义是"先作待激活版本, 采用时才提升"(activatePhase5Version), 而此前后端直接写
+    //   merged_fulltext, 前端 adopt 又拿的是同一次回读的 store —— 于是「采用修订稿」是空操作,
+    //   实测点击前后正文同长。现在只落 revise_pending, 由 adopt 走 versions/activate。
+    expect(sqls.some((s) => s.includes("merged_fulltext=$4") && s.includes("revision_of_version=$5")), "revise 不应再直接写 merged_*").toBe(false);
+    // 修订稿本体必须落进 finalize 节点的 revise_pending
+    const reviseBody = JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => c[1] ?? null));
+    expect(reviseBody.includes("revise_pending"), "revise_pending 未落节点: " + reviseBody.slice(0, 300)).toBe(true);
+    // 必须为「采用」建一个可激活的版本行 —— 否则前端 activate 会 404。
+    //   注: 这里用 insert ... select 而不是 publishVersion(), 因为后者会把 phase_label
+    //   覆盖成传入的 label, 进度条上的"合稿定稿"会跟着变。
+    expect(sqls.some((s) => s.includes("insert into research_versions") && s.includes("phase5_revision")), "未建修订版本行").toBe(true);
     // 修订 LLM 收到审稿意见(有向修订: checks + topSuggestions 进 prompt)
     const reviseArgs = (llmCommon.fetchLlm as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String((c[0] as { messages?: Array<{ content?: string }> })?.messages?.[0]?.content ?? ""));
     expect(reviseArgs.some((s: string) => s.includes("论文修订专家") && s.includes("aiTone") && s.includes("消除模板化表达"))).toBe(true);
@@ -392,5 +403,44 @@ describe("引用链条目口径(2026-09-16: 结构化 references 必须进可引
     const sql = String(vi.mocked(pool.query).mock.calls[0][0]);
     expect(sql).toContain("references_json");
     expect(sql).toContain("content_md");
+  });
+});
+
+describe("引用占位符重写(2026-09-16: 正文与参考文献表编号必须对齐)", () => {
+  const POOL = [
+    "郭峰. 测度中国数字普惠金融发展[J]. 经济学(季刊), 2020.",
+    "张三. 数字化转型与企业绩效[J]. 管理世界, 2021.",
+    "李四. 融资约束的政治经济学分析[J]. 经济研究, 2022.",
+  ];
+
+  it("按正文首次出现序重编号, 表按正文编号排(不是按池位置)", async () => {
+    // 关键场景: 正文首次引用的是池里第 2 条 —— 这正是 [N] 方案与闭源 fe() 都会错位的地方
+    const body = "张三指出转型提升绩效§REF_2_1§。李四讨论了融资约束§REF_3_1§。郭峰提出测度框架§REF_1_1§。";
+    const { rewriteCitationsWithRefs } = await import("../src/services/research-exec-engine.js");
+    const r = rewriteCitationsWithRefs(body, "", POOL);
+    // 正文: 张三→[1] 李四→[2] 郭峰→[3]
+    expect(r.body).toContain("张三指出转型提升绩效[1]");
+    expect(r.body).toContain("李四讨论了融资约束[2]");
+    expect(r.body).toContain("郭峰提出测度框架[3]");
+    // 表必须跟着正文走 —— 表[1] 就是正文[1] 的那篇
+    const refs = r.references.split("\n");
+    expect(refs[0]).toContain("张三");
+    expect(refs[1]).toContain("李四");
+    expect(refs[2]).toContain("郭峰");
+  });
+
+  it("重复引用复用同号, 不重复编号", async () => {
+    const { rewriteCitationsWithRefs } = await import("../src/services/research-exec-engine.js");
+    const r = rewriteCitationsWithRefs("甲§REF_1_1§ 又见甲§REF_1_1§。", "", POOL);
+    expect((r.body.match(/\[1\]/g) ?? []).length).toBe(2);
+    expect(r.references.split("\n").length).toBe(1);
+  });
+
+  it("没有占位符的历史正文原样保留, 不重排", async () => {
+    const { rewriteCitationsWithRefs } = await import("../src/services/research-exec-engine.js");
+    const legacy = "旧正文里写的是 [1] 和 [2]。";
+    const r = rewriteCitationsWithRefs(legacy, "已有参考文献表", POOL);
+    expect(r.body).toBe(legacy);
+    expect(r.references).toBe("已有参考文献表");
   });
 });

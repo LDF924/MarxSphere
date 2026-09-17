@@ -386,6 +386,10 @@ async function submitAnalysis() {
 
 watch(() => store.input.title, () => autoSave());
 watch(() => store.input.outline, () => autoSave());
+watch(() => store.input.researchMethod, () => autoSave());
+watch(() => store.input.requirements, () => autoSave());
+watch(() => store.input.totalWordCount, () => autoSave());
+watch(() => store.input.clarifyAnswers, () => autoSave(), { deep: true });
 
 onMounted(async () => {
   markWorkflowReady();
@@ -415,8 +419,12 @@ onMounted(async () => {
     :data-assistant-async-reason="asyncReason"
   >
     <PhaseProgressBar />
-    <h1 class="wf-h1">信息录入</h1>
-    <p class="wf-sub">请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划科研架构</p>
+    <!-- 闭源页头: `mb-8`(32px) 包住 h1.text-2xl(24px) + p.text-sm + `mt-1`(4px)。
+         2026-09-16 修: 我方原先 h1 22px / 副文案 13px / 下间距 18px —— 整条阶梯都塌了一档。 -->
+    <div class="wf-head">
+      <h1 class="wf-h1">信息录入</h1>
+      <p class="wf-sub">请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划科研架构</p>
+    </div>
 
     <!-- 研究主题 + 字数预估(闭源同一行: 主题 flex-1 + 字数 w-36, 都带红色 *) -->
     <section class="wf-card">
@@ -639,14 +647,16 @@ onMounted(async () => {
 <style scoped>
 
 .workflow-page { width: 100%; box-sizing: border-box; }
-.wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 0 0 18px; font-size: 13px; color: #8B9BB1; }
+.wf-head { margin-bottom: 32px; }
+.wf-h1 { margin: 0; font-size: 24px; font-weight: 700; color: #E8EEF7; }
+.wf-sub { margin: 4px 0 0; font-size: 14px; color: #8B9BB1; }
+/* 闭源各卡之间是 `space-y-6`(24px), 卡内 `p-5`(20px) —— 我方原 14px / 16px18px */
 .wf-card {
   background: #11192C;
   border: 1px solid #222F44;
   border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 14px;
+  padding: 20px;
+  margin-bottom: 24px;
 }
 .wf-label { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: #E8EEF7; margin-bottom: 8px; }
 .req-star { color: #dc2626; }

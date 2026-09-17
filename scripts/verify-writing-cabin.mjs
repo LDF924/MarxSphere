@@ -194,13 +194,19 @@ try {
     for (let i = 0; i < 25; i++) {
       empty = await onPage(`(() => {
         const el = document.querySelector('.finalize-empty');
-        return { has: !!el, text: el ? el.innerText.replace(/\s+/g,' ').trim() : '', modes: document.querySelectorAll('.mm-tab').length };
+        return { has: !!el, text: el ? el.innerText.replace(/\s+/g,' ').trim() : '',
+                 modes: document.querySelectorAll('.mm-tab').length,
+                 tiers: document.querySelectorAll('.finalize-empty .tier-btn').length };
       })()`);
       if (empty?.has || empty?.modes) break;
       await sleep(1000);
     }
     t("未合稿时显示空态卡", !!empty?.has && /准备合并定稿/.test(empty.text), empty ? empty.text.slice(0, 46) : "—");
-    t("空态下不出现强度档", empty?.modes === 0, `模式 tab=${empty?.modes}`);
+    // 2026-09-16 改: 空态**现在就该有**模式 tab —— 闭源未合稿空态里「直接合稿/降AIGC合稿」
+    //   与「开始合并」同屏(见 FinalizeView 空态注释)。此前的断言是 `modes === 0`, 那是在
+    //   给我方缺失的形态背书: 用户第一次合稿根本选不到模式, 只能先合并再点「重新合稿」去切。
+    t("空态下模式 tab 可选(合稿前就能选模式)", empty?.modes === 2, `模式 tab=${empty?.modes}`);
+    t("空态下默认不出现强度档(仅降AIGC 模式才出)", empty?.tiers === 0, `档位按钮=${empty?.tiers}`);
 
     // 指针必须是我播的项目: loadProject() 在 localStorage 为空时会**兜底挑一个 in-progress
     //   的项目并写回 localStorage** —— 门禁首次开页时那会覆盖我播的 pid, 之后 doMerge 拿到
@@ -216,12 +222,16 @@ try {
     t("快照里的一级章节没被前序步骤覆盖空", wbSecs.length === 2,
       `一级章节=${wbSecs.length} 正文字数=${JSON.stringify(wbSecs.map((x) => String(x.content || "").length))}`);
 
-    const clicked = await clickInFrame(cdp, null, ".finalize-empty button");  // null frameId = 顶层
+    // ⚠ 必须点名「开始合并」: `.finalize-empty button` 命中的是 DOM 里第一个 button,
+    //   空态加了模式 tab 之后那是「直接合稿」—— 点了它只会切模式, 不发起合稿(实测踩到)。
+    const clicked = await clickInFrame(cdp, null, ".finalize-empty .fe-start");  // null frameId = 顶层
     let modes = [], why = "";
     for (let i = 0; i < 120 && clicked; i++) {
       await sleep(1500);
+      // ⚠ 要等的是**轮次卡里的**模式 tab, 不是空态里那两个 —— 空态现在也有 .mm-tab,
+      //   直接查全局会立刻 break(还没开始合稿就"通过"), 后面的降档交互就落在空态上了。
       const st = await onPage(`(() => ({
-        modes: [...document.querySelectorAll('.mm-tab')].map(e => e.innerText.trim()),
+        modes: [...document.querySelectorAll('.round-row .mm-tab')].map(e => e.innerText.trim()),
         msg: [...document.querySelectorAll('.merge-msg, .finalize-empty')].map(e => e.innerText).join(' ').slice(0, 60),
         // toast 在 position:fixed; top:64px 容器里, 约 3.2s 消失。匹配不能写死 "top:64px"
         //   —— Vue 的 :style 渲染出来带空格("top: 64px"), 写死会恒空。
@@ -233,7 +243,7 @@ try {
       if (modes.length) break;
       why = String(st?.toast || st?.msg || "").slice(0, 120);
     }
-    t("点「开始合并」后合稿跑通, 模式 tab 出现", modes.length === 2,
+    t("点「开始合并」后合稿跑通, 轮次卡模式 tab 出现", modes.length === 2,
       `点击=${clicked} 实测=${JSON.stringify(modes)}${why ? ` 页面提示=${why}` : ""}`);
 
     // 交互序列放同一次 eval(跨 eval 会新建 isolated world, 读不到上一个 world 的 DOM 补丁)

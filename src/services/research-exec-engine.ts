@@ -686,6 +686,39 @@ ${methods.length ? `【备选方法】${methods.join("、")}` : ""}` }],
 }
 
 /**
+ * 往 finalize 节点上按字段合并(payload || patch), **节点不存在就建**。
+ *
+ * 2026-09-16: 合稿/审查/修订三处原先是裸的 `update ... where node_key='finalize'`。
+ * `update` 在"没有匹配行"时既不报错也不插入 —— 节点此前从没被建过的话(全新项目走
+ * merge 就是这种情况), 这三处写全部**静默落空**, 数据只进了 DB 列。
+ * 用户侧因为 `getWorkbenchSnapshot` 是"节点优先、列兜底"仍能看到内容, 所以一直没暴露;
+ * 但只要列被清(或列与节点分叉), 就再也回读不出来。
+ *
+ * 用一条 upsert 解决: 先试 update, 没命中再 insert。
+ */
+async function mergeIntoFinalizeNode(projectId: string, patch: Record<string, unknown>): Promise<void> {
+  const json = JSON.stringify(patch);
+  try {
+    const upd = await pool.query(
+      `update research_nodes
+          set payload = coalesce(payload,'{}'::jsonb) || $2::jsonb,
+              version = version + 1, updated_at = now()
+        where project_id=$1 and node_key='finalize'`,
+      [projectId, json]
+    );
+    if ((upd.rowCount ?? 0) > 0) return;
+    await pool.query(
+      `insert into research_nodes (project_id, node_key, payload, version, source_role)
+       values ($1, 'finalize', $2::jsonb, 1, 'agent')`,
+      [projectId, json]
+    );
+  } catch (e) {
+    // 不吞错: 这条写失败 = 合稿产物回读不到(节点头), 属于静默丢数据
+    console.warn(`[finalize-node] 写入失败(project=${projectId}): ${String(e).slice(0, 160)}`);
+  }
+}
+
+/**
  * 任务是否已被取消。
  *
  * 2026-09-16: 此前执行器**从不检查取消状态** —— 前端点「取消」只把 status 改成 cancelled,
@@ -777,6 +810,21 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
     } catch (e) {
       results.push({ id: sec.id, title: sec.title, ok: false, error: String(e).slice(0, 100) });
     }
+  }
+  /**
+   * 取消后的**二道收口**: 循环里那次取消检查发生在"每章开始前", 所以正在生成的那一章
+   * 仍会跑完并 push 进 results。在此之前这些结果是照样回写的 —— 而前端把该章标成
+   * "待生成"(pending), 于是**库里有正文、界面说没生成**: 用户点「执行智能体」不重新生成、
+   * 直接合稿却又能合进去(实测: 取消后 sec_0 落了 1617 字, 状态显示待生成)。
+   *
+   * 这里保留已完成章节的成果(取消是"别再往下跑了", 不是"把已生成的作废"),
+   * 但**不发完成进度、不回写正文** —— 与 markDone 的 `status <> 'cancelled'` 守卫同一口径。
+   */
+  if (await isCancelled(ctx.taskId)) {
+    return {
+      text: `已取消: 完成 ${results.filter((r) => r.ok).length}/${sections.length} 章(结果未回写)`,
+      structured: { sections: results, cancelled: true, wroteBack: false },
+    };
   }
   // UI审计T4: 完成进度标记
   await pool.query(
@@ -878,7 +926,25 @@ function refsFromMaterialRow(row: { content_md?: unknown; references_json?: unkn
   return out;
 }
 
-async function buildCitationPool(userId: string, projectId: string): Promise<string> {
+/**
+ * 可引文献池 —— **两端共用的唯一定义**。
+ *
+ * 2026-09-16: 改为占位符制(闭源 `§REF_a_b§` 规格)。
+ *
+ * 为什么: 先用 `[N]` 时, 正文编号与参考文献表编号各有各的序 ——
+ *   正文按**模型引用顺序**, 表按**素材建档顺序**。实测: 正文说 `[1]` 是"丙",
+ *   表说 `[1]` 是"甲", 而表里根本没有"丙"。闭源这套占位符就是为此设计的:
+ *   正文只标"引的是池里哪条", 编号留到合稿时按**正文首次出现序**统一重排。
+ *
+ * 格式(与闭源 `fe()` 的正则 `§REF_(\d+)_(\d+)§` 对齐):
+ *   `a` = 该条目在**本池**中的位置(1-based) —— 合稿时据此去池里取著录
+ *   `b` = 条内序号(一条素材可含多条文献), 从 1 起
+ * 池子按 `created_at` 排序 → 位置稳定可复现。
+ *
+ * ⚠ 前端 `FinalizeView.rebuildCitationsAndRefs` 按**同一个池**反查 a 位,
+ *   所以这个函数是两端共用的一份定义, 不要各写一份(此前就是各写一份而顺序不同)。
+ */
+export async function buildCitationPool(userId: string, projectId: string): Promise<string> {
   try {
     const r = await pool.query(
       `select content_md, references_json from research_materials
@@ -890,14 +956,52 @@ async function buildCitationPool(userId: string, projectId: string): Promise<str
     }
     // 去重保序, 最多 20 条
     const seen = new Set<string>();
-    const out: string[] = [];
+    const picked: string[] = [];
     for (const l of lines) {
       const key = l.replace(/^\[\d+\]\s*/, "");
-      if (!seen.has(key)) { seen.add(key); out.push(`[${out.length + 1}] ${key}`); }
-      if (out.length >= 20) break;
+      if (!seen.has(key)) { seen.add(key); picked.push(key); }
+      if (picked.length >= 20) break;
     }
-    return out.join("\n");
+    // 输出 `a.b 著录` 形式 —— a 就是占位符里的池位置
+    return picked.map((body, i) => `${i + 1}. ${body}`).join("\n");
   } catch { return ""; }
+}
+
+/**
+ * 合稿阶段: 把正文里的 `§REF_a_b§` 换成按首次出现序重排的 `[n]`, 并生成对应参考文献表。
+ *
+ * 与闭源 `fe()` 的差异(有意为之): 闭源用 `f.has(poolIdx)` 过滤池, 而 `f` 装的是
+ * **重排后的引用序号** —— 只有当"正文引用顺序恰好等于池顺序"时它才对得上;
+ * 正文先引池里第 3 条时, 闭源自己也会错位。
+ * 这里改成**按池位置取著录**(`usedPoolIdx`), 与它机制的声明意图一致。
+ *
+ * @param refsProvided 已有参考文献表(非空则原样保留, 不重排 —— 与闭源同语义)
+ */
+export function rewriteCitationsWithRefs(
+  fulltext: string,
+  refsProvided: string,
+  pool: string[]
+): { body: string; references: string } {
+  const raw = String(fulltext ?? "");
+  if (String(refsProvided ?? "").trim()) return { body: raw, references: refsProvided };
+  if (!/§REF_(\d+)_\d+§/.test(raw)) return { body: raw, references: refsProvided };
+  const seenIdx = new Map<string, number>();   // 池位置 a → 正文序号
+  let n = 0;
+  const body = raw.replace(/§REF_(\d+)_\d+§/g, (_m, a: string) => {
+    let no = seenIdx.get(a);
+    if (no === undefined) { n += 1; no = n; seenIdx.set(a, no); }
+    return `[${no}]`;
+  });
+  // 文献表必须按**正文编号**顺序排 —— 不是按池位置。
+  //   [1] 要对应正文里第一个被引的那条(它可能来自池里任意位置)。
+  //   实测踩到: 按池位置升序排会写成 "正文[1]=张三, 表[1]=郭峰", 依旧错位。
+  const byBodyNo = [...seenIdx.entries()].sort((x, y) => x[1] - y[1]);
+  const references = byBodyNo
+    .map(([a]) => String(pool[Number(a) - 1] ?? "").trim())
+    .filter(Boolean)
+    .map((entry, i) => `[${i + 1}] ${entry}`)
+    .join("\n");
+  return { body, references };
 }
 
 /** P5 合并/审查/修订(job_kind: merge|review|revise; 合并走 generateComponent 要件)
@@ -965,7 +1069,23 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     }
     const fulltext = (mergedBodies ?? []).join("\n\n");
     await setMergeStep(2, "整理参考文献");
-    const references = await buildMergedReferences(ctx.userId, ctx.projectId);
+    /**
+     * 占位符 → 正文编号 + 参考文献表。
+     *
+     * 2026-09-16: 章节 prompt 已改教模型写 `§REF_a_b§`(见 paper-outline-service 的引用池段),
+     * 这里负责按**正文首次出现序**重编号, 并同步生成对应的参考文献表 —— 两边永远对齐。
+     * 这是闭源 `fe()` 的语义。池与正文用的是**同一份** buildCitationPool 输出,
+     * 所以 `a` 位一定能反查到著录。
+     *
+     * 兼容: 没有占位符的历史正文(旧的 `[N]` 形式)走原路径, 不重排。
+     */
+    const citationPoolText = await buildCitationPool(ctx.userId, ctx.projectId);
+    const poolEntries = citationPoolText
+      ? citationPoolText.split("\n").map((l) => l.replace(/^\d+\.\s*/, "")).filter(Boolean)
+      : [];
+    const rewritten = rewriteCitationsWithRefs(fulltext, "", poolEntries);
+    const mergedFulltext = rewritten.body;
+    const references = rewritten.references || (await buildMergedReferences(ctx.userId, ctx.projectId));
     // 空正文保护: 无可用章节正文时仅回写摘要/关键词, 不清空既有全文(0 字节覆盖即"产物为空"根因)
     if (fulltext.trim().length < 20) {
       await pool.query(
@@ -984,27 +1104,20 @@ async function runPhase5(task: any, ctx: ExecCtx) {
          merged_references=$6, merge_generated=true,
          updated_at=now()
        where id=$1`,
-      [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]);
+      [ctx.projectId, ctx.goal, abstract.content, keywords.content, mergedFulltext, references]);
     // 2026-09-16: 同步写 finalize **节点** —— 与 review/revise 分支的读取口径统一。
     //   那两处读的是 `fz.mergedTitle ?? p.merged_title`(节点优先, 注释写明"前端所见即所得"),
     //   但 merge 只写了列、没写节点, 于是节点侧读到的是**旧值**: 用户在合稿页手改标题/摘要/正文后
     //   点「全文审查」, 引擎取到的是改动前的版本 —— 审查的不是用户改完的稿。
     //   用 jsonb_set 逐字段合并(与 review 分支同一范式), 不要整体替换 payload:
     //   节点里还有 reviewReport 等别的字段, 整块覆盖会把它们抹掉。
-    await pool.query(
-      `update research_nodes set payload =
-         jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
-           coalesce(payload,'{}'::jsonb),
-           '{mergedTitle}',     to_jsonb($2::text), true),
-           '{mergedAbstract}',  to_jsonb($3::text), true),
-           '{mergedKeywords}',  to_jsonb($4::text), true),
-           '{mergedFullText}',  to_jsonb($5::text), true),
-           '{mergedReferences}',to_jsonb($6::text), true),
-         version=version+1, updated_at=now()
-       where project_id=$1 and node_key='finalize'`,
-      [ctx.projectId, ctx.goal, abstract.content, keywords.content, fulltext, references]
-    ).catch(() => ({ rowCount: 0 }));
-    return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references, wordCount: fulltext.replace(/\s/g, "").length } };
+    await mergeIntoFinalizeNode(ctx.projectId, {
+      mergedTitle: ctx.goal, mergedAbstract: abstract.content, mergedKeywords: keywords.content,
+      mergedFullText: mergedFulltext, mergedReferences: references,
+      // 重新合稿 → 上一次尚未采用的修订稿作废(它修订的是旧合稿, 采用会倒退)。
+      revise_pending: null,
+    });
+    return { text: "合并完成: 摘要+关键词已生成", structured: { abstract: abstract.content, keywords: keywords.content, references, wordCount: mergedFulltext.replace(/\s/g, "").length } };
   }
 
   // ═══ P-A: review/revise 以 finalize 节点为真源(前端 PUT nodes/finalize 写入 merged_* + reviewReport) ═══
@@ -1018,6 +1131,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
   const fz = (nodeRow?.rows?.[0]?.payload ?? {}) as {
     mergedTitle?: string; mergedAbstract?: string; mergedFullText?: string;
     mergedKeywords?: string; mergedReferences?: string; reviewReport?: unknown;
+    revise_pending?: unknown;
   };
   const proj = await pool.query(
     `select merged_title, merged_abstract, merged_keywords, merged_fulltext, merged_references,
@@ -1031,12 +1145,20 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     published_version?: number; phase_label?: string;
   };
   const nodeReview = (typeof fz.reviewReport === "string" ? JSON.parse(fz.reviewReport) : fz.reviewReport) as Record<string, unknown> | null;
+  // 未采用的修订稿 —— **必须显式带上, 否则会丢**。
+  //   合并读取是"节点优先、列兜底", 而 revise 分支只把修订稿写进节点(不再写 merged_* 列),
+  //   所以列里的 merged_fulltext 仍是**未修订的合稿**。下面 `title/fulltext/...` 取的是节点值,
+  //   回写时若不带 revise_pending, 这个键就会在这一轮 mergeIntoFinalizeNode 里消失。
+  const pendingRev = (fz.revise_pending ?? null) as unknown;
   // 真源优先节点 payload(前端所见即所得), 缺时回落 project 列(引擎 merge 分支写)
   const title = fz.mergedTitle ?? p.merged_title ?? "";
   const fulltext = (fz.mergedFullText ?? p.merged_fulltext ?? "") as string;
   const abstract = fz.mergedAbstract ?? p.merged_abstract ?? "";
   const keywords = fz.mergedKeywords ?? p.merged_keywords ?? "";
   const refs = fz.mergedReferences ?? p.merged_references ?? "";
+  // 审查的报告源 = 本轮新报告(节点) > 历史报告(列)。
+  //   为什么不带 revise_pending: 闭源审查**只吃 reviewResult**(`createPhase5Review({reviewReport:e.reviewResult})`),
+  //   前端在生成修订稿后仍持有同一份 reviewResult —— 修订稿不参与审查输入, 两边一致。
   const reportSrc = (nodeReview ?? p.review_result ?? null) as Record<string, unknown> | null;
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
 
@@ -1075,20 +1197,10 @@ ${fulltext.slice(0, 16000)}
     //   读取是"节点优先、列兜底", 而这里此前只写 reviewReport —— 节点里的 merged_* 保持旧值,
     //   于是用户在合稿页手改的标题/摘要/正文, 一刷新就被**列里的旧值**盖回去(读的是节点, 但节点是旧的)。
     //   把 fz* 一并落节点, 让"审查的那份" = "回读出来的那份"。
-    const nUpd = await pool.query(
-      `update research_nodes set payload =
-         jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
-           coalesce(payload,'{}'::jsonb),
-           '{reviewReport}',     $2::jsonb, true),
-           '{mergedTitle}',      to_jsonb($3::text), true),
-           '{mergedAbstract}',   to_jsonb($4::text), true),
-           '{mergedKeywords}',   to_jsonb($5::text), true),
-           '{mergedFullText}',   to_jsonb($6::text), true),
-         updated_at=now()
-       where project_id=$1 and node_key='finalize'`,
-      [ctx.projectId, JSON.stringify(result), title, abstract, keywords, fulltext]
-    ).catch(() => ({ rowCount: 0 }));
-    void nUpd;
+    await mergeIntoFinalizeNode(ctx.projectId, {
+      reviewReport: result, mergedTitle: title, mergedAbstract: abstract,
+      mergedKeywords: keywords, mergedFullText: fulltext, revise_pending: pendingRev,
+    });
     return { text: `审查完成: ${result.overallScore} 分 ${result.grade} 级`, structured: result };
   }
 
@@ -1123,36 +1235,51 @@ ${fulltext}
   const abs = await generateComponent({ kind: "abstract", topic: ctx.goal ?? title, sections: [], chapterContents: [revisedBody] }).catch(() => ({ content: abstract }));
   const kws = await generateComponent({ kind: "keywords", topic: ctx.goal ?? title, sections: [] }).catch(() => ({ content: keywords }));
   const curVer = p.published_version ?? 0;
+  /**
+   * 为修订稿**建一个真版本行**。
+   *
+   * 为什么不让 adopt 直接写 merged_*: 闭源的「采用」是 `activatePhase5Version(id)`
+   *   —— 必须有一个**版本**可以激活(置 published / 其余 superseded / 记 revision_of_version)。
+   *   我们这儿 activateVersion 也依赖 research_versions 里真有这一行, 否则 404。
+   *
+   * 为什么不复用 publishVersion(): 它会顺带 `phase_label = 传入的 label`,
+   *   把"合稿定稿"覆盖成 `phase5_revision`, 进度条上的阶段名会跟着变。
+   *   这里只建版本 + 推进 published_version 指针 —— 指针不推的话, 下一次 publishVersion
+   *   会算出同一个 nextVer, 撞 (project_id, version) 唯一键。
+   */
+  const verIns = await pool.query(
+    `insert into research_versions (project_id, version, label, snapshot, created_by)
+     select $1, coalesce(published_version, 0) + 1, 'phase5_revision', $2::jsonb, $3
+       from research_projects where id=$1
+     returning version`,
+    [ctx.projectId, JSON.stringify({ revise_pending: { body: revisedBody, abstract: abs.content, keywords: kws.content } }), ctx.userId]
+  ).catch(() => ({ rows: [] as unknown[] }));
+  const revVersion = Number((verIns as { rows?: Array<{ version?: number }> })?.rows?.[0]?.version ?? 0);
+  if (revVersion > 0) {
+    await pool.query(
+      `update research_projects set published_version=$2, updated_at=now() where id=$1`,
+      [ctx.projectId, revVersion]
+    ).catch(() => null);
+  }
   const result = {
-    revisionOf: curVer, revisionOfVersion: curVer,
-    data: { abstract: abs.content, body: revisedBody },
+    revisionOf: curVer, revisionOfVersion: revVersion || curVer,
+    data: { abstract: abs.content, body: revisedBody, keywords: kws.content,
+            title: title || ctx.goal || "", references: refs },
     revisedAt: new Date().toISOString(),
   };
-  // 修订稿双写: project 列(引擎链) + finalize 节点 payload(前端渲染源)
-  await pool.query(
-    `update research_projects set
-       merged_abstract=$2, merged_keywords=$3, merged_fulltext=$4,
-       revision_of_version=$5, merge_generated=true, updated_at=now()
-     where id=$1`,
-    [ctx.projectId, abs.content, kws.content, revisedBody, curVer || null]);
-  // 写回 finalize 节点 —— 用 jsonb_set **逐字段合并**, 不要 `payload=$2` 整块替换。
-  //   2026-09-16: 这里原先是整块替换, 与 review 分支(1052 行)的范式不一致, 两个后果:
-  //   ① 节点里 review 分支写的 / 前端手改的其它键(如 isFinalized)会被静默抹掉;
-  //   ② 与 merge 分支(也是逐字段)不统一, 以后加字段就会踩。
-  //   注: `title`/`refs` 来自节点优先的合并读取, 所以这里写回的是"用户改过的值", 不是列里的旧值。
-  await pool.query(
-    `update research_nodes set payload =
-       jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(
-         coalesce(payload,'{}'::jsonb),
-         '{mergedTitle}',      to_jsonb($2::text), true),
-         '{mergedAbstract}',   to_jsonb($3::text), true),
-         '{mergedKeywords}',   to_jsonb($4::text), true),
-         '{mergedFullText}',   to_jsonb($5::text), true),
-         '{mergedReferences}', to_jsonb($6::text), true),
-       version=version+1, updated_at=now()
-     where project_id=$1 and node_key='finalize'`,
-    [ctx.projectId, title, abs.content, kws.content, revisedBody, refs]
-  ).catch(() => ({ rowCount: 0 }));
+  /**
+   * 修订稿 **只落 finalize 节点的 revise_pending, 不碰 merged_***。
+   *
+   * 2026-09-16 修(保留语义): 此前这里直接 `update research_projects set merged_fulltext=修订稿`
+   *   —— 于是用户一生成修订稿, 当前合稿就被替换了, 而修订卡上写着"当前合稿不会被替换, 确认后采用"。
+   *   更糟的是「采用修订稿」拿的是同一次长轮询后回读的 store.mergedFullText, 那时它**已经是修订稿**,
+   *   所以 adopt 退化成空操作: 实测点击前后正文都是 318 字, 数据库里也查不到 pendingRevision 这一列。
+   *
+   * 闭源语义(ye/activatePhase5Version): 修订稿先作为**待激活版本**存在,
+   *   「采用」才把它提升为当前终稿(`activatePhase5Version` → 前端 e.merged*=S.value)。
+   *   这里对齐该语义: 写 revise_pending, 由前端 adopt 时调 versions/activate + 落 merged_*。
+   */
+  await mergeIntoFinalizeNode(ctx.projectId, { revise_pending: result });
   return {
     text: `修订完成: 全文 ${revisedBody.replace(/\s/g, "").length} 字 (revise of v${curVer})`,
     structured: result,

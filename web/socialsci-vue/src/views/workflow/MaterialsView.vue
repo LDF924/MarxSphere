@@ -1048,7 +1048,7 @@ onMounted(async () => {
 
 <template>
   <div
-    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16 h-full overflow-y-auto"
     :data-assistant-material-count="String(materials.length)"
     :data-assistant-async-busy="matAsyncBusy ? 'true' : 'false'"
     :data-assistant-async-reason="matAsyncReason"
@@ -1505,6 +1505,50 @@ onMounted(async () => {
       </div>
     </Teleport>
 
+    <!--
+      素材来源弹层。
+      2026-09-17 修: 这个弹层此前**只有状态没有视图** —— `openSources()` 会 set
+      `srcDialog.open = true` 并真发 GET /materials/:id/sources, 但模板里从来没有渲染过它。
+      用户点「来源」的观感是: 什么也没发生(请求在 network 里 200, 界面上零反馈)。
+      GET/POST 两个端点一直在, 是前端把这半边功能丢了。
+      数据源: 后端 `getMaterialSources` → `{ sources: material.source_docs ?? [], sourceRef }`
+      (检索命中的文献条目, 在素材入库时一并落库)。
+    -->
+    <Teleport to="body">
+      <div v-if="srcDialog.open" class="modal-mask" @click.self="closeSrcDialog">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3>素材来源 · {{ srcDialog.title }}</h3>
+            <button class="modal-x" data-control="workflow:close-sources" @click="closeSrcDialog">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="src-sub">该素材入库时命中的来源文献（用于溯源核对，不参与正文生成）。</p>
+            <div v-if="srcDialog.loading" class="src-state">正在读取来源…</div>
+            <div v-else-if="srcDialog.error" class="src-state err">{{ srcDialog.error }}</div>
+            <!-- 空态必须与"加载失败"分开说 —— 两者都空白的话用户无法判断是没来源还是坏了 -->
+            <div v-else-if="!srcDialog.sources.length" class="src-state">
+              这条素材没有记录来源文献（手动添加的素材通常没有）。
+              <template v-if="srcDialog.sourceRef"><br />引用标识：<code>{{ srcDialog.sourceRef }}</code></template>
+            </div>
+            <div v-else class="src-list">
+              <div v-for="(d, i) in srcDialog.sources" :key="i" class="src-row">
+                <span class="src-idx">{{ i + 1 }}</span>
+                <div class="src-main">
+                  <strong class="src-title">{{ String((d as any).title ?? "未命名文献") }}</strong>
+                  <span class="src-meta">
+                    <template v-if="(d as any).authors">{{ String((d as any).authors) }}</template>
+                    <template v-if="(d as any).year"> · {{ String((d as any).year) }}</template>
+                  </span>
+                  <p v-if="(d as any).excerpt" class="src-excerpt">{{ String((d as any).excerpt) }}</p>
+                </div>
+              </div>
+              <p v-if="srcDialog.sourceRef" class="src-ref">引用标识：<code>{{ srcDialog.sourceRef }}</code></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 手动添加弹层 -->
     <Teleport to="body">
       <div v-if="editDialog.open" class="modal-mask" @click.self="closeAdd">
@@ -1604,10 +1648,10 @@ onMounted(async () => {
 /* 补充素材来源整卡 */
 .source-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
-  padding: 18px 20px; margin-bottom: 18px;
+  padding: 16px 20px; margin-bottom: 16px; /* 闭源 space-y-4=16px, p-4=16px */
 }
 .sc-title { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
-.sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
 .sc-btn-primary {
   padding: 8px 18px; border: 0; border-radius: 9px; background: #dc2626;
   color: #F1F5F9; font-size: 13px; font-weight: 500; cursor: pointer;
@@ -1620,7 +1664,7 @@ onMounted(async () => {
 .sc-btn-outline:hover { background: #2A1C1C; }
 .sc-btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
 .sc-group { margin: 0 0 10px; font-size: 11px; font-weight: 500; color: #7A8AA0; letter-spacing: 0.06em; }
-.sc-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+.sc-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
 .sc-grid-2 { display: grid; grid-template-columns: 1fr; gap: 10px; }
 @media (min-width: 768px) {
   .sc-grid-4 { grid-template-columns: repeat(4, 1fr); }
@@ -1645,7 +1689,7 @@ onMounted(async () => {
 /* 设计思路卡 */
 .design-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 10px;
-  padding: 12px 16px; margin-bottom: 18px;
+  padding: 12px 16px; margin-bottom: 16px;
 }
 .dc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: #8B9BB1; }
 .dc-head span { font-size: 13px; font-weight: 500; color: #DCE6F2; }
@@ -1660,7 +1704,7 @@ onMounted(async () => {
   border-radius: 50%; animation: jspin 0.8s linear infinite;
 }
 @keyframes jspin { to { transform: rotate(360deg); } }
-.cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; } /* 闭源 space-y-2.5=10px */
 .cat-card { background: #11192C; border: 1px solid #222F44; border-radius: 12px; overflow: hidden; }
 /* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(闭源如此) */
 .cat-head {
@@ -1687,7 +1731,7 @@ onMounted(async () => {
 .cat-inline-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cat-caret { color: #7A8AA0; font-size: 10px; cursor: pointer; transition: transform 0.16s; }
 .cat-caret.open { transform: rotate(180deg); }
-.cat-body { padding: 12px 18px 14px; border-top: 1px solid #212C45; }
+.cat-body { padding: 12px 18px 14px; border-top: 1px solid #212C45; } /* 闭源 space-y-3=12px */
 .cat-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .cat-more {
   margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px;
@@ -1779,12 +1823,23 @@ onMounted(async () => {
 
 /* 表格预览: 闭源 max-h-20 可滚动, 不截断行(原先 slice(0,3) 会把长表截成"只有表头") */
 .mat-table { max-height: 80px; overflow-y: auto; }
+/*
+ * 三线表 —— 必须是**三条线**: 顶线 / 栏目线 / 底线。
+ *
+ * 2026-09-16 修: 我方把边框挂在 `th` 上(上 2px + 下 1px), `tbody` **没有底线** ——
+ *   表格底部不封口, 只剩两条线。闭源的写法是按语义元素挂:
+ *     thead{border-top:2px;border-bottom:1.5px} + tbody{border-bottom:2px}
+ *   注: `border-collapse:collapse` 下 thead 的 border 在部分浏览器里不生效,
+ *   所以顶/栏目线**同时**挂在 thead 上(与闭源一致), 底线挂 tbody。
+ */
 .three-line-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+.three-line-table thead { border-top: 2px solid #46587A; border-bottom: 1.5px solid #46587A; }
 .three-line-table th {
-  border-top: 2px solid #1e293b; border-bottom: 1px solid #475569;
   padding: 5px 9px; text-align: left; color: #E8EEF7; white-space: nowrap;
+  border: none;
 }
-.three-line-table td { padding: 4px 9px; color: #DCE6F2; }
+.three-line-table td { padding: 4px 9px; color: #DCE6F2; border: none; }
+.three-line-table tbody { border-bottom: 2px solid #46587A; }
 .three-line-table tbody tr:hover { background: #1A2333; }
 .review-report { margin-bottom: 14px; }
 .report-head { font-size: 13.5px; font-weight: 600; color: #E8EEF7; cursor: pointer; padding: 9px 13px; background: #11192C; border: 1px solid #3A3020; border-radius: 9px; }
@@ -1808,7 +1863,8 @@ onMounted(async () => {
   background: #dc2626; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .btn-primary:disabled { background: #46587A; cursor: not-allowed; }
-.modal-mask { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.2); display: flex; align-items: center; justify-content: center; }
+.modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+  background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 520px; max-width: 95vw; background: #11192C; border-radius: 16px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #222F44; }
 .modal-head h3 { margin: 0; font-size: 16px; color: #E8EEF7; }
@@ -1861,7 +1917,22 @@ onMounted(async () => {
 
 /* 结构化文献条目(2026-09-16 补) */
 .refs-box { border: 1px solid #222F44; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-.refs-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #8B9BB1; margin-bottom: 8px; }
+/* 素材来源弹层(见模板里同名注释: 此前只有状态没有视图) */
+.src-sub { margin: 0; font-size: 12px; color: #7A8AA0; line-height: 1.6; }
+.src-state { padding: 14px 0; font-size: 13px; color: #8B9BB1; line-height: 1.7; }
+.src-state.err { color: #E08A8A; }
+.src-state code, .src-ref code { background: #0E1729; border: 1px solid #222F44; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+.src-list { display: flex; flex-direction: column; gap: 8px; max-height: 44vh; overflow-y: auto; }
+.src-row { display: flex; gap: 10px; padding: 9px 11px; background: #0E1729; border: 1px solid #222F44; border-radius: 8px; }
+.src-idx {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: #1E2A48;
+  color: #6FA8F5; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+.src-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.src-title { font-size: 13px; font-weight: 600; color: #E8EEF7; }
+.src-meta { font-size: 11.5px; color: #7A8AA0; }
+.src-excerpt { margin: 2px 0 0; font-size: 12px; color: #A9BBD0; line-height: 1.6; }
+.src-ref { margin: 2px 0 0; font-size: 12px; color: #7A8AA0; }.refs-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #8B9BB1; margin-bottom: 8px; }
 .refs-count { font-size: 11px; background: #1E2A48; color: #759FD7; padding: 1px 7px; border-radius: 8px; }
 .refs-empty { font-size: 12px; color: #7A8AA0; padding: 6px 0; }
 .refs-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
@@ -1919,7 +1990,8 @@ onMounted(async () => {
 .alloc-select:disabled { background: #212C45; color: #8B9BB1; }
 
 /* B4 单类生成弹层(闭源 MaterialGenerateDialog) */
-.gen-mask { background: rgba(0, 0, 0, 0.2); }
+.gen-mask { /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+  background: rgba(0, 0, 0, 0.55); }
 .gen-card { width: 640px !important; }
 .gen-body { max-height: 62vh; overflow-y: auto; }
 .gen-hint { margin: 0; font-size: 12px; color: #8B9BB1; background: #1A2333; border-radius: 8px; padding: 8px 12px; line-height: 1.6; }

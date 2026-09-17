@@ -94,23 +94,32 @@ select:disabled {
   color: #7a8aa0;
 }
 
-/* 全站通用三层线表(素材/统计/PaperPreview) */
+/*
+ * 全站通用三线表(素材/统计/PaperPreview)。
+ *
+ * 2026-09-16 修: 这里此前**一条边框都没有** —— 用它的表格完全不像三线表。
+ * 按闭源 MaterialsView 的写法补齐三条线(顶线/栏目线/底线), 与 MaterialsView.vue
+ * 的 scoped 版保持一致(两处不同步正是会漂移的地方)。
+ */
 .three-line-table {
   border-collapse: collapse;
   width: 100%;
   color: #dce6f2;
 }
+.three-line-table thead { border-top: 2px solid #46587A; border-bottom: 1.5px solid #46587A; }
 .three-line-table th {
   padding: 6px 10px;
   text-align: left;
   color: #a3b3c8;
   white-space: nowrap;
+  border: none;
 }
 .three-line-table td {
   padding: 5px 10px;
   color: #dce6f2;
   border: none;
 }
+.three-line-table tbody { border-bottom: 2px solid #46587A; }
 .three-line-table tbody tr:hover {
   background: #1a2333;
 }

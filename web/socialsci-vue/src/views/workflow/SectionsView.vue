@@ -512,7 +512,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16 h-full overflow-y-auto"
     :data-assistant-phase2-sections-count="String(l1Count)"
     :data-assistant-async-busy="(analyzing || guidesBusy) ? 'true' : 'false'"
     :data-assistant-async-reason="analyzeMsg || (guidesBusy ? '正在生成写作指导' : '')"

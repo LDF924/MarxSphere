@@ -236,15 +236,25 @@ const counter = computed(() => {
       <div v-for="(n, i) in tree" :key="n.id" class="oe-level1" :class="{ 'is-collapsed': n.collapsed }">
         <div class="oe-row l1">
           <span class="oe-index">{{ cnOf(i) }}</span>
-          <button type="button" class="oe-collapse" :class="{ collapsed: n.collapsed }" title="折叠/展开" @click="toggleCollapse(i)">▼</button>
           <input
             class="oe-title-input"
             :value="n.title"
             placeholder="输入一级标题"
             @input="setTitle(i, ($event.target as HTMLInputElement).value)"
           />
+          <!-- 闭源把「+ 子节」与折叠箭头放在 input **之后**的常显小组里(`w-6 h-6` 图标钮,
+               不参与 .group:hover 揭示), 只有 ↑↓✕ 是悬停才出现的 .op-btn。
+               2026-09-16 修: 我方原先「+ 子节」混在悬停组里当文字按钮(.op-btn-sm), 且折叠箭头
+               摆在 input 之前的行首、任何情况都渲染 —— 位置与显隐规则两处都不对。 -->
+          <div class="oe-inline-ops">
+            <button type="button" class="op-btn-add" title="添加子节" @click="addChild(i)">+</button>
+            <button
+              v-if="n.children.length"
+              type="button" class="op-btn-add" :title="n.collapsed ? '展开' : '折叠'"
+              @click="toggleCollapse(i)"
+            >{{ n.collapsed ? "▶" : "▼" }}</button>
+          </div>
           <div class="oe-ops">
-            <button type="button" class="op-btn-sm" title="添加子节" @click="addChild(i)">+ 子节</button>
             <button type="button" class="op-btn" :disabled="i === 0" title="上移" @click="moveUp(i)">↑</button>
             <button type="button" class="op-btn" :disabled="i === tree.length - 1" title="下移" @click="moveDown(i)">↓</button>
             <button type="button" class="op-btn op-btn-danger" title="删除" @click="delLevel1(i)">✕</button>
@@ -261,7 +271,7 @@ const counter = computed(() => {
               @input="setChildTitle(i, j, ($event.target as HTMLInputElement).value)"
             />
             <div class="oe-ops">
-              <button type="button" class="op-btn-sm op-btn-danger" title="删除子节" @click="delChild(i, j)">✕</button>
+              <button type="button" class="op-btn-sm" title="删除子节" @click="delChild(i, j)">✕</button>
             </div>
           </div>
         </div>
@@ -341,26 +351,57 @@ const counter = computed(() => {
   font-weight: 600;
   min-width: 34px;
 }
-/* 子节树形缩进(闭源 tree-branch/tree-child: 左侧竖线 + 缩进) */
+/*
+ * 子节树形 —— 逐条对齐闭源 InputView-D7ddvbNn.css:
+ *   .tree-branch{margin-left:28px;padding-left:20px;border-left:1.5px solid}
+ *   .tree-child:before{left:-20px;top:50%;width:16px;height:1.5px}   ← 水平连接线
+ *   .tree-child-last:after{left:-21px;bottom:0;width:3px;height:50%} ← 末行遮住下半段竖线
+ * 2026-09-16 修: 我方原先只有竖线 + 缩进(20/12), **没有任何水平连接线** ——
+ *   子节与父章之间的树形关系看不出来, 缩进量也小一档。
+ */
 .oe-children.tree-branch {
   position: relative;
-  margin-left: 20px;
-  padding-left: 12px;
-  border-left: 1px solid #1A2333;
+  margin-left: 28px;
+  padding-left: 20px;
+  border-left: 1.5px solid #1A2333;
 }
-.oe-row.l2.tree-child { padding-top: 6px; padding-bottom: 6px; }
-.oe-collapse {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+.oe-row.l2.tree-child { position: relative; padding-top: 6px; padding-bottom: 6px; }
+/* 水平连接短线(从竖线连到子节行) */
+.oe-row.l2.tree-child::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 16px;
+  height: 1.5px;
+  background: #1A2333;
+}
+/* 末行: 用背景色遮住竖线的下半段, 让树"收住"(闭源 tree-child-last 语义) */
+.oe-row.l2.tree-child:last-child::after {
+  content: "";
+  position: absolute;
+  left: -21px;
+  bottom: 0;
+  width: 3px;
+  height: 50%;
+  background: #11192C;
+  pointer-events: none;
+}
+/* 闭源常显小组: 两个 `w-6 h-6 rounded` 图标钮(蓝 hover), 与悬停才出的 .op-btn 分开 */
+.oe-inline-ops { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.op-btn-add {
+  width: 24px;
+  height: 24px;
   border: 0;
+  border-radius: 4px;
   background: transparent;
   color: #8B9BB1;
-  font-size: 9px;
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer;
-  transition: transform 0.15s;
+  transition: all 0.15s;
 }
-.oe-collapse.collapsed { transform: rotate(-90deg); }
+.op-btn-add:hover { color: #6FA8F5; background: #16203A; }
 .oe-title-input {
   flex: 1;
   min-width: 0;
@@ -386,15 +427,23 @@ const counter = computed(() => {
 }
 .op-btn:hover:not(:disabled) { background: #2A1C1C; color: #dc2626; }
 .op-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+/* 闭源 .op-btn-sm{width:18px;height:18px;font-size:10px} —— 2026-09-16 修:
+   我方原先是 `padding:1px 6px` 的文字按钮, 尺寸随文案变。现在只用于子节行的 ✕,
+   与 .op-btn 一样走「悬停才显形」(.oe-row:hover .oe-ops / 子节行同理)。 */
 .op-btn-sm {
-  padding: 1px 6px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: #8B9BB1;
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 0.15s;
 }
 .op-btn-sm:hover { background: #2A1C1C; color: #dc2626; }
 .op-btn-danger:hover { color: #dc2626; }

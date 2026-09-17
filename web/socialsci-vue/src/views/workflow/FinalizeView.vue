@@ -41,6 +41,16 @@ const MERGE_STEPS = [
   { title: "生成元信息", desc: "标题、摘要、关键词" },
   { title: "完成", desc: "论文合并完成" },
 ];
+/**
+ * 某一步是否已**开始**执行 —— 闭源用的是 `w >= o + 1`(w 为 1-based 的 currentStep)。
+ *
+ * 其推进链是 `H(Math.min(I,4)) → w = I`, 而 `I > 0` 才 H, 所以合并中 w∈[1,4],
+ * 第 5 步永远不会变成 active, 它只在完成时被 `H(5)` 一次性推到 done。
+ * 我方 mergeStep 是 0-based, 故等价式是 `mergeStep >= i`。
+ */
+function stepStarted(i: number) { return mergeStep.value >= i; }
+/** 当前正在执行的步(= 第一个还没开始的步), 闭源 w === o + 1 */
+const stepActive = computed(() => Math.min(mergeStep.value, MERGE_STEPS.length - 1));
 const store = useWorkflowStore();
 
 // ── 三轮状态 ──
@@ -52,7 +62,17 @@ const mergeMessage = ref("");
 const streamContent = ref("");
 const reviewStream = ref("");
 const reviewReport = ref<Record<string, unknown> | null>(null);
-const pendingRevision = ref<{ title: string; abstract: string; body: string } | null>(null);
+/**
+ * 待采用的修订稿。
+ *
+ * 2026-09-16 修(保留语义): 后端 revise 此前直接 `update merged_* = 修订稿`,
+ *   而这里取的是**同一次轮询后回读的 store**(那时 store 已经是修订稿) ——
+ *   于是「采用修订稿」把修订稿赋给已经是修订稿的 store, 退化成空操作:
+ *   实测点击前后正文都是 318 字。而修订卡上明写着"当前合稿不会被替换, 确认后采用"。
+ *   现在后端只写节点的 `revise_pending`, doc 由这里从**任务结果**取, 采用才落盘。
+ */
+type PendingRevision = { title: string; abstract: string; keywords: string; body: string; references: string; version: number };
+const pendingRevision = ref<PendingRevision | null>(null);
 // V417: 修订前的正文/摘要 —— viewDiff 要用真旧版对比(原来取的是修订后的值, 两版永远相同)
 const preRevisionFullText = ref("");
 const preRevisionAbstract = ref("");
@@ -385,13 +405,27 @@ async function doRevise() {
       inputSnapshot: {}
     });
     pollTask(t.id, "revise", async () => {
-      await refreshMerged();
+      // 从**任务结果**拿修订稿 —— 不能再靠 refreshMerged 回读: 后端已不往 merged_* 写修订稿了。
+      //   ⚠ 路径是 result.**structured**.data: 执行器返回 {text, structured}(见 exec-engine 的 return),
+      //   任务行存的是这一整个对象。少一层 structured 就会静默走进"未返回修订稿"分支, 卡片根本不出现。
+      const task = await getTask(t.id);
+      const rv = ((task?.result ?? null) as { structured?: { revisionOfVersion?: number; data?: Record<string, unknown> } } | null)?.structured ?? null;
+      const d = rv?.data ?? {};
       reviseRunning.value = false;
-      pendingRevision.value = {
-        title: store.mergedTitle,
-        abstract: store.mergedAbstract,
-        body: store.mergedFullText
-      };
+      if (rv && typeof d.body === "string" && d.body) {
+        pendingRevision.value = {
+          title: String(d.title ?? store.mergedTitle),
+          abstract: String(d.abstract ?? ""),
+          keywords: String(d.keywords ?? ""),
+          body: d.body,
+          references: String(d.references ?? store.mergedReferences ?? ""),
+          version: Number(rv.revisionOfVersion ?? 0),
+        };
+      } else {
+        pendingRevision.value = null;
+        toast("修订任务未返回修订稿", "error");
+        return;
+      }
       toast("修订稿已生成, 请检查后再采用", "success");
     });
   } catch (e) {
@@ -535,21 +569,36 @@ function viewDiff() {
   showDiff.value = true;
 }
 
-// ── 采用修订稿(覆盖 merged_*) ──
+// ── 采用修订稿(闭源 ye(): activatePhase5Version → 提升为当前终稿 → 落 store) ──
 async function adoptRevision() {
   const rev = pendingRevision.value;
   if (!rev) return;
+  // 1) 激活该版本(闭源 activatePhase5Version: 版本置 published, 其余 superseded, 记 revision_of_version)
+  if (rev.version > 0 && store.taskId) {
+    try {
+      await q(`/research/projects/${store.taskId}/versions/${rev.version}/activate`, { method: "POST" });
+    } catch (e) {
+      toast(`采用失败: ${String((e as Error).message ?? e)}`, "error");
+      return;
+    }
+  }
+  // 2) 落 store(这一步之前是空操作: 后端已经把修订稿写进 merged_*, 回读回来的就是它自己)
   store.mergedTitle = rev.title || store.mergedTitle;
   store.mergedAbstract = rev.abstract || store.mergedAbstract;
+  store.mergedKeywords = rev.keywords || store.mergedKeywords;
   store.mergedFullText = rev.body;
+  store.mergedReferences = rev.references || store.mergedReferences;
+  store.mergeGenerated = true;
   pendingRevision.value = null;
-  // 快照 + 节点双写(见 scheduleMetaSave 的注释: 只写快照会被节点里的旧值盖回去)
+  // 3) 快照 + 节点双写(见 scheduleMetaSave 的注释: 只写快照会被节点里的旧值盖回去),
+  //    并清掉 revise_pending —— 已采用, 不再有待决修订稿。
   await store.saveProject();
   if (store.taskId) {
     await mergeNode(store.taskId, "finalize", {
       mergedTitle: store.mergedTitle, mergedAbstract: store.mergedAbstract,
       mergedKeywords: store.mergedKeywords, mergedFullText: store.mergedFullText,
       mergedReferences: store.mergedReferences,
+      revise_pending: null,
     });
   }
   toast("修订稿已采用", "success");
@@ -648,7 +697,7 @@ function sendToEditor() {
   if (!md.trim()) { toast("终稿为空, 请先合稿", "warning"); return; }
   const title = store.mergedTitle || store.title || "未命名论文";
   if (sendMarkdownToEditor(md, title)) toast("已送往学术文本工作台, 将新建文档", "success");
-  else toast("发送失败(localStorage 不可用或已满)", "error");
+  else toast("发送失败: 需要从平台外壳中打开写作舱(独立打开子应用时无法转发)", "error");
 }
 
 // ── 导出(闭源 _e(); md/html 拼装; docx 提示走 Word) ──
@@ -813,18 +862,46 @@ function downloadText(name: string, content: string) {
 }
 
 // ── 恢复(挂载: loadProject + refreshMerged 双保险) ──
+/**
+ * 回读待采用的修订稿。
+ * 后端不再把它写进 merged_*, 而刷新后 store.mergedFullText 就是当前合稿 —— 这张卡
+ * 只能从 finalize 节点的 revise_pending 恢复, 否则用户一刷新就"修订稿消失了"(只能重跑一次 LLM)。
+ */
+async function loadPendingRevision() {
+  if (!store.taskId) return;
+  try {
+    const r = await q<{ node?: { payload?: Record<string, unknown> } }>(`/research/projects/${store.taskId}/nodes/finalize`);
+    // 同 doRevise: 存的是执行器返回的 {text, structured}, 多包一层 structured
+    const rp = (r.node?.payload?.revise_pending as
+      | { structured?: { revisionOfVersion?: number; data?: Record<string, unknown> } }
+      | null | undefined)?.structured ?? null;
+    const d = rp?.data ?? {};
+    if (rp && typeof d.body === "string" && d.body) {
+      pendingRevision.value = {
+        title: String(d.title ?? store.mergedTitle),
+        abstract: String(d.abstract ?? ""),
+        keywords: String(d.keywords ?? ""),
+        body: d.body,
+        references: String(d.references ?? store.mergedReferences ?? ""),
+        version: Number(rp.revisionOfVersion ?? 0),
+      };
+    }
+  } catch { /* 节点不存在 = 没有待决修订稿 */ }
+}
+
 onMounted(async () => {
   markWorkflowReady();
   void loadKatex();
   await store.loadProject().catch(() => null);
   await refreshMerged().catch(() => null);
+  await loadPendingRevision().catch(() => null);
   void checkProjectAlive();
 });
 </script>
 
 <template>
   <div
-    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16"
+    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16 h-full overflow-y-auto"
     :data-assistant-async-busy="(mergeRunning || reviewRunning || reviseRunning) ? 'true' : 'false'"
     :data-assistant-async-reason="mergeRunning ? '正在合并全文' : reviewRunning ? '正在全文审查' : reviseRunning ? '正在生成修订稿' : ''"
   >
@@ -841,7 +918,11 @@ onMounted(async () => {
       <span>当前项目已不存在（可能已被删除）。请点左下角「新项目」重新开始，或从「历史记录」回到其它项目。</span>
     </div>
 
-    <!-- 未合稿空态(闭源: 大图标 + 「准备合并定稿」 + 说明 + 开始合并) -->
+    <!--
+      未合稿空态(闭源: 大图标 + 「准备合并定稿」 + 说明 + **合并模式/强度档** + 开始合并 + 五步预览)。
+      2026-09-16 修: 我方原先只有一个光秃秃的「开始合并」, 模式和档位只在合稿**之后**的轮次卡里 ——
+      用户第一次合稿时根本选不到模式, 只能先合并再点「重新合稿」去切。闭源是合稿前就同屏可选。
+    -->
     <div v-if="!store.mergeGenerated && !mergeRunning" class="finalize-empty">
       <div class="fe-icon">
         <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -850,7 +931,39 @@ onMounted(async () => {
       </div>
       <h3>准备合并定稿</h3>
       <p>AI 将把所有章节合并为一篇完整的学术论文，并进行语言优化、格式统一和参考文献整理。</p>
-      <button class="btn-round" data-control="workflow:phase5-merge" @click="doMerge()">开始合并</button>
+      <div class="merge-mode fe-modes" role="tablist">
+        <button
+          v-for="m in MERGE_MODES" :key="m.value"
+          class="mm-tab" :class="{ on: mergeMode === m.value }" role="tab"
+          :aria-pressed="mergeMode === m.value"
+          :data-control="m.control"
+          @click="mergeMode = m.value; if (m.value === 'deAIGC') mergeTier = 'medium'"
+        >{{ m.label }}</button>
+      </div>
+      <div v-if="mergeMode === 'deAIGC'" class="tier-row fe-tiers">
+        <span class="tier-label">强度：</span>
+        <button
+          v-for="t in DEAI_TIERS" :key="t.value"
+          class="tier-btn" :class="{ on: mergeTier === t.value }"
+          :title="t.hint"
+          :data-control="`workflow:aigc-tier-${t.value}`"
+          @click="mergeTier = t.value"
+        >{{ t.label }}</button>
+        <span class="tier-warn">降重可能会影响整体论文质量，请自行斟酌</span>
+      </div>
+      <button class="btn-round fe-start" data-control="workflow:phase5-merge" @click="doMerge()">
+        {{ mergeMode === "deAIGC" ? "降AIGC中…" : "开始合并" }}
+      </button>
+      <!-- 五步预览(闭源常显, 灰底圆 + 两位序号) -->
+      <div class="merge-steps-preview">
+        <div v-for="(st, i) in MERGE_STEPS" :key="st.title" class="msp-item">
+          <span class="msp-num">{{ String(i + 1).padStart(2, "0") }}</span>
+          <span class="msp-text">
+            <strong>{{ st.title }}</strong>
+            <small>{{ st.desc }}</small>
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ 三轮主流程 ═══ -->
@@ -896,18 +1009,40 @@ onMounted(async () => {
           <span class="tier-hint">{{ DEAI_TIERS.find((t) => t.value === mergeTier)?.hint }}</span>
           <span class="tier-warn">降重可能会影响整体论文质量，请自行斟酌</span>
         </div>
-        <!-- 时间轴(闭源每步带 desc 副文案) -->
+        <!-- 时间轴: 闭源是 **之字形**(1 左 2 右 3 左 4 右 5 左, 轨道居中, 标记 36px) -->
         <div v-if="mergeRunning || mergeStep >= 5" class="merge-timeline">
-          <div class="mt-track"><div class="mt-fill" :style="{ height: mergeStep >= 5 ? '100%' : mergeStep * 20 + '%' }"></div></div>
-          <div v-for="(st, i) in MERGE_STEPS" :key="st.title" class="mt-item" :class="{ done: mergeStep > i, active: mergeStep === i }">
-            <span class="mt-dot">{{ mergeStep > i ? "✓" : mergeStep === i ? "◌" : "" }}</span>
-            <span class="mt-text">
-              <span class="mt-label">{{ st.title }}</span>
-              <span class="mt-desc">{{ st.desc }}</span>
-            </span>
+          <div class="merge-timeline__track"></div>
+          <div class="merge-timeline__progress" :style="{ height: (mergeStep / (MERGE_STEPS.length - 1)) * 100 + '%' }"></div>
+          <div class="merge-timeline__items">
+            <div
+              v-for="(st, i) in MERGE_STEPS" :key="st.title"
+              class="merge-timeline__item" :class="{ 'is-left': i % 2 === 1 }"
+            >
+              <div
+                class="merge-timeline__marker"
+                :class="stepStarted(i) ? (mergeStep === i ? 'is-active' : 'is-done') : 'is-pending'"
+              >
+                <!-- 闭源三态: 进行中=转圈 / 已完成=对勾 / 未开始=两位序号 -->
+                <svg v-if="mergeStep === i" class="mt-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <circle cx="12" cy="12" r="10" class="opacity-20" />
+                  <path d="M12 2a10 10 0 019.95 9" stroke-linecap="round" />
+                </svg>
+                <svg v-else-if="stepStarted(i)" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span v-else class="mt-num">{{ String(i + 1).padStart(2, "0") }}</span>
+              </div>
+              <div class="merge-timeline__content">
+                <p class="mt-label" :class="{ on: stepStarted(i) }">{{ st.title }}</p>
+                <!-- 闭源: active 步显示实时 stage 文案(缺省「处理中...」), 其余步显示固定 desc -->
+                <p class="mt-desc" :class="{ on: stepActive === i }">
+                  {{ stepActive === i ? (mergeMessage || "处理中...") : st.desc }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-        <div v-if="mergeRunning" class="merge-msg">{{ mergeMessage || "正在合并正文…" }}</div>
+        <div v-if="mergeRunning && mergeMessage" class="merge-msg">{{ mergeMessage }}</div>
       </div>
 
       <!-- 审查轮 -->
@@ -1073,14 +1208,22 @@ onMounted(async () => {
     <!-- 预览全文(简化版式) -->
     <div v-if="store.exportFormat === 'preview'" class="preview-card">
       <button class="preview-close" @click="store.exportFormat = 'md'">×</button>
+      <!-- 结构逐条对齐闭源 PaperPreview: paper-header / paper-abstract / paper-keywords / paper-body / paper-references。
+           ⚠ 正文容器**不再挂 `.markdown-body`** —— 那个全局类会把颜色设成浅色(深色主题用的),
+           压在白色纸面上同样读不了(与标题那个 `#111 on #11192C` 是同一个病的两面)。 -->
       <div class="preview-paper">
-        <h1>{{ store.mergedTitle }}</h1>
-        <div class="preview-abstract"><strong>摘要</strong> {{ store.mergedAbstract }}</div>
-        <p><strong>关键词：</strong>{{ store.mergedKeywords }}</p>
-        <div class="preview-body markdown-body" v-html="mergedHtml"></div>
-        <div class="preview-refs">
-          <strong>参考文献</strong>
-          <div class="markdown-body" v-html="refsHtml"></div>
+        <div class="paper-header">
+          <h1 class="paper-title">{{ store.mergedTitle }}</h1>
+        </div>
+        <div class="paper-abstract">
+          <h2>摘要</h2>
+          <p>{{ store.mergedAbstract }}</p>
+        </div>
+        <p class="paper-keywords"><strong>关键词：</strong>{{ store.mergedKeywords }}</p>
+        <div class="paper-body" v-html="mergedHtml"></div>
+        <div class="paper-references">
+          <h2>参考文献</h2>
+          <pre>{{ store.mergedReferences }}</pre>
         </div>
       </div>
     </div>
@@ -1112,6 +1255,21 @@ onMounted(async () => {
 }
 .finalize-empty h3 { margin: 0 0 8px; font-size: 16px; color: #E8EEF7; }
 .finalize-empty p { margin: 0 auto 18px; max-width: 420px; font-size: 13px; color: #8B9BB1; line-height: 1.7; }
+/* 空态里的模式/档位/开始按钮: 闭源是居中收窄的窄列, 与上方说明文字同宽 */
+.fe-modes { justify-content: center; width: max-content; margin: 0 auto 12px; }
+.fe-tiers { margin: 0 auto 12px; justify-content: center; }
+.fe-start { display: inline-block; padding: 11px 32px; font-size: 15px; }
+/* 五步预览(闭源 at/nt: 左对齐、居中收窄、每步 灰圈+两位序号 + 标题/说明) */
+.merge-steps-preview { margin: 28px auto 0; max-width: 448px; text-align: left; display: flex; flex-direction: column; gap: 12px; }
+.msp-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #7A8AA0; }
+.msp-num {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #2A3A55;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-size: 12px; font-weight: 600; color: #7A8AA0;
+}
+.msp-text { display: flex; flex-direction: column; }
+.msp-text strong { font-size: 14px; font-weight: 500; color: #8B9BB1; }
+.msp-text small { font-size: 12px; color: #7A8AA0; }
 .round-row {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
   padding: 16px 18px;
@@ -1147,23 +1305,59 @@ onMounted(async () => {
 }
 .btn-round.ghost { background: #11192C; color: #E8B54A; border: 1px solid #C9A23C; }
 .btn-round:disabled { opacity: 0.55; cursor: not-allowed; }
-.merge-timeline { position: relative; margin: 18px 0 6px 30px; display: flex; flex-direction: column; gap: 10px; }
-.mt-track { position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: #1A2333; }
-.mt-fill { width: 100%; background: #E8B54A; transition: height 0.3s; }
-.mt-item { position: relative; display: flex; align-items: center; gap: 10px; padding-left: 2px; }
-.mt-dot {
-  width: 16px; height: 16px; border-radius: 50%; background: #1A2333;
-  display: grid; place-items: center; font-size: 9px; color: #F1F5F9; z-index: 1; flex-shrink: 0;
+/*
+ * 合稿时间轴 —— 逐条对照闭源 FinalizeView-DLWtk8kO.css:
+ *   .merge-timeline{position:relative;width:100%;max-width:640px;margin:0 auto}
+ *   .merge-timeline__track,__progress{position:absolute;top:0;left:50%;width:2px;transform:translate(-50%)}
+ *   .merge-timeline__track{bottom:0;background:#e5e7eb}  __progress{background:#f59e0b}
+ *   .merge-timeline__items{position:relative;display:flex;flex-direction:column;gap:32px}
+ *   .merge-timeline__item{display:grid;grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr);column-gap:16px;align-items:start}
+ *   .merge-timeline__marker{grid-column:2;grid-row:1}
+ *   .merge-timeline__content{grid-column:3;grid-row:1;min-width:0;padding-top:6px;text-align:left}
+ *   .merge-timeline__item.is-left .merge-timeline__content{grid-column:1;text-align:right}
+ *
+ * 2026-09-16 修: 我方原先是**单列竖排**(轨道 left:7px, 圆点 16px, 无 max-width)——
+ *   形状就不是一个东西。闭源是"1 左 2 右 3 左 4 右 5 左"的之字形, 轨道穿中间。
+ */
+.merge-timeline { position: relative; width: 100%; max-width: 640px; margin: 18px auto 6px; }
+.merge-timeline__track, .merge-timeline__progress {
+  position: absolute; top: 0; left: 50%; width: 2px; transform: translateX(-50%);
 }
-.mt-item.done .mt-dot { background: #E8B54A; }
-.mt-item.active .mt-dot { background: #11192C; border: 2px solid #E8B54A; color: #E8B54A; animation: spin-dot 1.2s linear infinite; }
-@keyframes spin-dot { 50% { border-color: #fbbf24; } }
-.mt-label { font-size: 12.5px; color: #8B9BB1; }
-.mt-text { display: flex; flex-direction: column; gap: 1px; }
-.mt-desc { font-size: 11px; color: #7A8AA0; }
-.mt-item.done .mt-desc { color: #5F7288; }
-.mt-item.done .mt-label { color: #E8EEF7; font-weight: 500; }
+.merge-timeline__track { bottom: 0; background: #1A2333; }
+.merge-timeline__progress { background: #E8B54A; transition: height 0.7s; }
+.merge-timeline__items { position: relative; display: flex; flex-direction: column; gap: 32px; }
+.merge-timeline__item {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
+  column-gap: 16px; align-items: start;
+}
+.merge-timeline__marker {
+  grid-column: 2; grid-row: 1;
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.5s;
+}
+.merge-timeline__marker.is-pending { background: #1A2333; border: 2px solid #2A3A55; color: #7A8AA0; }
+.merge-timeline__marker.is-done { background: #E8B54A; color: #F1F5F9; box-shadow: 0 3px 10px #E8B54A40; }
+.merge-timeline__marker.is-active { background: #E8B54A; color: #F1F5F9; }
+.mt-spin { width: 16px; height: 16px; animation: mt-rotate 1.1s linear infinite; }
+@keyframes mt-rotate { to { transform: rotate(360deg); } }
+.mt-num { font-size: 12px; font-weight: 700; color: #7A8AA0; }
+.merge-timeline__content { grid-column: 3; grid-row: 1; min-width: 0; padding-top: 6px; text-align: left; }
+.merge-timeline__item.is-left .merge-timeline__content { grid-column: 1; text-align: right; }
+.mt-label { margin: 0; font-size: 13px; font-weight: 600; color: #7A8AA0; }
+.mt-label.on { color: #E8EEF7; }
+.mt-desc { margin: 2px 0 0; font-size: 12px; color: #7A8AA0; }
+.mt-desc.on { color: #E8B54A; font-weight: 500; }
 .merge-msg { margin-top: 8px; font-size: 12.5px; color: #E8B54A; }
+@media (max-width: 640px) {
+  .merge-timeline { max-width: 360px; }
+  .merge-timeline__track, .merge-timeline__progress { left: 18px; }
+  .merge-timeline__item { grid-template-columns: 36px minmax(0, 1fr); }
+  .merge-timeline__marker { grid-column: 1; }
+  .merge-timeline__content,
+  .merge-timeline__item.is-left .merge-timeline__content { grid-column: 2; text-align: left; }
+}
 .stream-block {
   margin-top: 10px; padding: 10px 14px; background: #11192C;
   border: 1px solid #3A3020; border-radius: 9px;
@@ -1219,10 +1413,20 @@ onMounted(async () => {
 }
 .f-area.body { font-size: 14px; min-height: 300px; }
 .f-area.refs { font-size: 12px; }
+/*
+ * 导出/要件卡 —— **纵向块流**, 不是横向 flex。
+ *
+ * 2026-09-16 修: 原先是 `display:flex;align-items:center`, 而卡里装的是多个
+ * `width:100%` 的块(两个 .export-row / 一个 .export-row + .chapter-list)。
+ * flex 会把它们当**并排子项**: 实测导出卡里 3 个 .export-row 挤成各约 1/3 宽,
+ * 论文要件卡里 .export-row 与 .chapter-list 左右并排、卡片被撑到 778px 高。
+ * 闭源这里是纵向块流(`space-y-*`), 没有横向排布。
+ */
 .export-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
-  padding: 14px 18px; display: flex; align-items: center;
+  padding: 14px 18px; display: block;
 }
+.export-card > * + * { margin-top: 10px; }
 .export-row { display: flex; align-items: center; gap: 10px; width: 100%; flex-wrap: wrap; }
 .export-row > span { font-size: 13px; color: #DCE6F2; font-weight: 600; }
 .fmt-select { padding: 7px 10px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; background: #11192C; }
@@ -1241,13 +1445,38 @@ onMounted(async () => {
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .preview-close { position: absolute; top: 16px; right: 20px; font-size: 22px; background: rgba(17,25,44,0.92); border: 0; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; z-index: 2; }
+/*
+ * 终稿预览 —— **纸面观感**(白底黑字), 逐条对齐闭源 PaperPreview-DVOZcwe9.css。
+ *
+ * 2026-09-16 修: 深色化时把背景改成了 #11192C, 却漏改 `color:#111` ——
+ *   实测标题/摘要/关键词的颜色是 rgb(17,17,17) 压在 rgb(17,25,44) 上, 对比度约 1.05:1,
+ *   **完全不可读**(正文/参考文献因为用了全局 .markdown-body 的浅色而侥幸正常, 反衬得标题像空白)。
+ *
+ *   修法不是把字改成浅色 —— 闭源这里本来就是**白底黑字的一张纸**(预览要像打印稿),
+ *   深色主题下它是一块"纸"浮在深色画布上。所以背景回白、字回黑, 并补齐闭源缺的规格。
+ */
 .preview-paper {
-  width: min(100%, 860px); max-height: 90vh; overflow-y: auto;
-  background: #11192C; padding: 48px 64px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.3);
-  font-family: SimSun, "Noto Serif SC", serif; font-size: 12pt; line-height: 1.8; color: #111;
+  width: min(100%, 860px); min-height: 100%; max-height: 90vh; overflow-y: auto; margin: 0 auto;
+  /* 闭源: padding:64px 76px 80px */
+  padding: 64px 76px 80px;
+  background: #FFFFFF; color: #111111;
+  box-shadow: 0 8px 28px #0f172a14;
+  font-family: SimSun, "Songti SC", STSong, "Noto Serif SC", serif;
+  font-size: 12pt; line-height: 1.65;
 }
-.preview-paper h1 { text-align: center; font-size: 18pt; font-family: SimHei, sans-serif; }
-.preview-abstract { margin: 16px 0; }
-.preview-body p { text-indent: 2em; margin: 0.4em 0; text-align: justify; }
-.preview-refs pre { white-space: pre-wrap; font-family: inherit; font-size: 10.5pt; }
+.paper-title { margin: 0 0 32px; color: #111827; font-family: SimHei, "Heiti SC", "Noto Sans CJK SC", sans-serif; font-size: 18pt; line-height: 1.35; font-weight: 700; text-align: center; }
+.paper-abstract { margin: 0 auto 14px; max-width: 720px; }
+.paper-abstract h2, .paper-references h2 { margin: 0 0 8px; color: #111827; font-family: SimHei, "Heiti SC", sans-serif; font-size: 12pt; font-weight: 700; text-align: center; }
+.paper-abstract p { margin: 0; font-size: 10.5pt; line-height: 1.65; text-align: justify; text-indent: 2em; }
+.paper-keywords { margin: 12px auto 0; max-width: 720px; font-size: 10.5pt; line-height: 1.65; }
+.paper-body { font-size: 12pt; }
+.paper-body p { margin: 0 0 1em; line-height: 1.65; text-align: justify; text-indent: 2em; }
+/* 闭源: 参考文献悬挂缩进(padding-left:2em + text-indent:-2em), 我方原是直排 */
+.paper-references { margin-top: 42px; padding-top: 18px; border-top: 1px solid #cbd5e1; }
+.paper-references pre { margin: 0; padding-left: 2em; white-space: pre-wrap; font: inherit; font-size: 10.5pt; line-height: 1.65; text-indent: -2em; }
+/* 闭源 @media(max-width:700px){padding:36px 24px 48px; .paper-title{font-size:22px}} */
+@media (max-width: 700px) {
+  .preview-paper { padding: 36px 24px 48px; }
+  .paper-title { font-size: 22px; }
+}
 </style>

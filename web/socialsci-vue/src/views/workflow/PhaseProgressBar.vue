@@ -27,17 +27,42 @@ const NODES = [
 /** 研究主题步(未完成过信息录入 → 主题未成; 视为 done 态当 phase>0 或有标题) */
 const topicDone = computed(() => store.phase >= 1 || !!store.input.title.trim() || !!store.taskId);
 
+/**
+ * 当前**正在查看**的阶段(闭源 `viewing` 第四态)。
+ *
+ * 闭源的状态机是三档 + 一档(逐字对照 index-xpWAkSSw.js):
+ *   y(O) = O.phase <  store.phase                        → done
+ *   g(O) = O.phase === store.phase                       → active
+ *   E(O) = O.phase === viewing.value && O.phase !== store.phase → **viewing**
+ *   L(O) = y ? "done" : g ? "active" : E ? "viewing" : "pending"
+ *
+ * 语义: 用户点了某个阶段去看, 但那一阶段**不是当前阶段** —— 圆变蓝 + 另一圈样式,
+ * 与"走到了这一步(active)"区分开。
+ * 2026-09-16 补: 我方此前只有三态, 而渲染条件里还写着 `(done||active||viewing)` ——
+ * 注释提了第四态、代码从没实现, viewing 分支永远不成立。
+ */
+const viewing = ref(0);
+/** 路由一落地就同步 viewing: 用户直接开某页 URL 时, 该页对应的节点也该是 viewing */
+const routePh = computed(() => {
+  const p = String(router.currentRoute.value?.path ?? "");
+  const hit = NODES.find((n) => p.startsWith(n.path));
+  return hit?.ph ?? 0;
+});
+watch(routePh, (v) => { if (v) viewing.value = v; }, { immediate: true });
+
 function nodeState(n: { ph: number }) {
   // store.phase 编号: 1=信息录入 2=科研架构 3=素材准备 4=文本创作 5=合稿定稿
   const cur = Math.max(1, Math.min(5, store.phase || 1));
   if (n.ph < cur) return "done";
   if (n.ph === cur) return "active";
+  if (n.ph === viewing.value) return "viewing";
   return "pending";
 }
 /** 节点点击: 已完成/当前可达, 未完成阶段门禁提示(由后续视图按钮承担推进) */
 function goNode(n: { ph: number; path: string }) {
   const cur = Math.max(1, Math.min(5, store.phase || 1));
   if (n.ph <= cur) {
+    viewing.value = n.ph;
     void router.push(n.path);
     return;
   }
@@ -146,7 +171,7 @@ async function newProject() {
         <!-- 阶段节点 -->
         <template v-for="n in NODES" :key="n.key">
           <div class="ppb-line-wrap">
-            <div class="ppb-line" :class="nodeState(n) === 'pending' ? 'pending' : 'done'"></div>
+            <div class="ppb-line" :class="nodeState(n) === 'pending' ? 'pending' : (nodeState(n) === 'viewing' ? 'viewing' : 'done')"></div>
           </div>
           <div
             class="ppb-node"
@@ -157,15 +182,17 @@ async function newProject() {
             <!-- 2026-09-15: pending 圆圈原先**没有序号**(空圈), 闭源实拍是 ppb-num 显示 4/5。
                  active 也用 ppb-num, 圈本身另挂状态类(闭源 .ppb-circle.done/.active/.pending)。 -->
             <div class="ppb-circle" :class="nodeState(n)">
-              <svg v-if="nodeState(n) === 'done'" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3">
+              <svg v-if="nodeState(n) === 'done'" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3">
                 <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <span v-else class="ppb-num">{{ n.ph }}</span>
             </div>
+            <!-- 闭源 ppb-label 是**独立块**(圆在上、标签在下), 不是圆的同行兄弟 -->
             <div class="ppb-label" :class="nodeState(n)">
               <span class="ppb-label-text">{{ n.title }}</span>
-              <!-- 闭源条件: (done||active||viewing) && metrics —— **三种状态都渲染**该节点的产物计数。
-                   2026-09-15 修: 原先写死只在 done 渲染, 方向反了 —— active 的节点明明有数据却不显示。 -->
+              <!-- 闭源条件: (done||active||viewing) && metrics —— 三种状态都渲染该节点的产物计数。
+                   2026-09-15 修: 原先写死只在 done 渲染, 方向反了。
+                   2026-09-16 再修: 补上 viewing —— 否则"正在查看的那个非当前阶段"的计数不显示。 -->
               <span v-if="nodeMetric(n)" class="ppb-metric">{{ nodeMetric(n) }}</span>
             </div>
           </div>
@@ -183,18 +210,25 @@ async function newProject() {
 </template>
 
 <style scoped>
+/* 闭源 .phase-progress-wrapper{height:90px;...;display:flex;align-items:center} —— 我方实测 78px */
 .phase-progress-wrapper {
   background: #11192C; border-bottom: 1px solid #222F44;
   position: sticky; top: 0; z-index: 30;
+  height: 90px; display: flex; align-items: center;
   max-width: 100%; overflow-x: auto;
 }
 /* 只有 wrapper 一层横向滚动(闭源: ppb-inner 无 min-width, 窄容器由外层滚) ——
    原先内层也套了 overflow-x 并钉死 min-width:860px, 窄屏会出现双滚动条且内条不动。 */
-.phase-progress-bar { max-width: 1120px; margin: 0 auto; padding: 12px 20px 10px; }
-.ppb-inner { display: flex; align-items: center; gap: 6px; }
+/* 闭源 .phase-progress-bar{position:relative;width:100%;height:100%} —— 限宽交给 .ppb-inner(1200px) */
+.phase-progress-bar { position: relative; width: 100%; height: 100%; }
+/* 闭源 .ppb-inner{justify-content:center;padding:0 20px;max-width:1200px;margin:0 auto;height:100%} */
+.ppb-inner { display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 20px; max-width: 1200px; margin: 0 auto; height: 100%; }
 .ppb-topic {
-  width: 280px; flex-shrink: 0; border: 1px solid #222F44; border-radius: 10px;
-  padding: 8px 12px; cursor: pointer; background: #1A2333;
+  /* 闭源: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
+  width: 280px; flex-shrink: 0; margin: 0 24px 0 0; min-width: 0;
+  padding: 8px 12px; box-sizing: border-box;
+  border: 1px solid #222F44; border-radius: 7px; background: #1A2333;
+  cursor: pointer;
 }
 .ppb-topic:hover { border-color: #B06A6A; }
 .ppb-topic-heading { display: flex; align-items: center; gap: 7px; }
@@ -206,33 +240,66 @@ async function newProject() {
   display: block; font-size: 12px; font-weight: 600; color: #E8EEF7; margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ppb-line-wrap { flex: 0 0 26px; display: flex; align-items: center; }
-.ppb-line { height: 2px; flex: 1; background: #222F44; border-radius: 1px; }
+/* 闭源 .ppb-line-wrap{width:40px} —— 我方原 26px, 连接线过短 */
+.ppb-line-wrap { width: 40px; flex-shrink: 0; display: flex; align-items: center; }
+/* 闭源 .ppb-line{width:100%;height:2.5px;border-radius:2px} */
+.ppb-line { width: 100%; height: 2.5px; background: #222F44; border-radius: 2px; transition: background .35s ease; }
 .ppb-line.done { background: #5FD0B4; }
-.ppb-node { display: flex; align-items: center; gap: 7px; cursor: pointer; padding: 5px 9px; border-radius: 9px; flex-shrink: 0; }
+.ppb-line.viewing { background: #4D84CB; }
+/*
+ * 闭源 .ppb-node{display:flex;flex-direction:column;align-items:center;gap:6px;
+ *   padding:4px 8px;border-radius:12px;min-width:72px}
+ * 2026-09-16 修: 我方原先是 `flex-direction:row` 的**横向 pill** —— 方向反了,
+ *   闭源是"圆在上、标签在下"的纵向块。整条进度条的视觉节奏因此完全不同。
+ */
+.ppb-node {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  cursor: pointer; padding: 4px 8px; border-radius: 12px;
+  min-width: 72px; position: relative; flex-shrink: 0;
+  transition: all .25s ease;
+}
 .ppb-node:hover { background: #1A2333; }
+/* 闭源 .ppb-circle{width:32px;height:32px;font-size:12px} —— 我方原 24px */
 .ppb-circle {
-  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 12px; font-weight: 700; color: #F1F5F9; background: #46587A; flex-shrink: 0;
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0; position: relative;
+  transition: all .35s ease;
+  background: #222F44; color: #7A8AA0; border: 2px solid #2A3A55;
 }
-.ppb-node.done .ppb-circle { background: #16a34a; }
-.ppb-node.active .ppb-circle { background: #4D84CB; box-shadow: 0 0 0 4px #1E2A48; }
-.ppb-node.pending .ppb-circle { background: #222F44; color: #7A8AA0; }
-.ppb-num { font-size: 12px; font-weight: 700; line-height: 1; }
-.ppb-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.ppb-label-text { font-size: 13px; color: #8B9BB1; font-weight: 500; }
-.ppb-node.active .ppb-label-text { color: #759FD7; font-weight: 700; }
-.ppb-node.done .ppb-label-text { color: #E8EEF7; }
-.ppb-node.pending .ppb-label-text { color: #7A8AA0; }
+.ppb-circle.done { background: #16a34a; color: #F1F5F9; border: none; box-shadow: 0 2px 8px #16a34a40; }
+.ppb-circle.active { background: #4D84CB; color: #F1F5F9; border: none; box-shadow: 0 0 0 4px #1E2A48, 0 2px 8px #00000014; }
+/* 第四态: 用户在看的阶段(不是当前阶段) —— 闭源 .ppb-circle.viewing{background:#3b82f6;border:2px solid #93bbfd} */
+.ppb-circle.viewing { background: #3B82F6; color: #F1F5F9; border: 2px solid #93BBFD; box-shadow: 0 2px 8px #3b82f64d; }
+.ppb-num { font-size: 13px; font-weight: 700; line-height: 1; }
+/* 闭源 .ppb-label{font-size:11px;font-weight:600;text-align:center;white-space:nowrap} —— 我方原 13px */
+.ppb-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; text-align: center; }
+.ppb-label-text { font-size: 11px; font-weight: 600; color: #7A8AA0; letter-spacing: .02em; }
+.ppb-label.active .ppb-label-text { color: #759FD7; }
+.ppb-label.done .ppb-label-text { color: #5FD0B4; }
+.ppb-label.viewing .ppb-label-text { color: #6FA8F5; }
+.ppb-label.pending .ppb-label-text { color: #7A8AA0; }
+/* 闭源 .ppb-metric{font-size:9.5px;display:block;margin-top:1px;opacity:.85} —— 我方原是带底色的胶囊 */
 .ppb-metric {
-  font-size: 10px; background: #1E2A48; color: #759FD7;
-  padding: 1.5px 7px; border-radius: 8px;
+  font-size: 9.5px; font-weight: 500; display: block; margin-top: 1px; opacity: .85;
+  color: #8B9BB1; background: none; padding: 0;
 }
-.ppb-new-btn {
-  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-  margin-left: 6px; padding: 6px 12px; border-radius: 8px;
-  background: transparent; border: 1px solid #222F44; color: #8B9BB1;
-  font-size: 12.5px; cursor: pointer; white-space: nowrap;
-}
+.ppb-label.active .ppb-metric, .ppb-label.viewing .ppb-metric { color: #6FA8F5; }
 .ppb-new-btn:hover { border-color: #B06A6A; color: #E8EEF7; }
+
+/*
+ * 窄屏紧凑化 —— 逐条对照闭源 @media(max-width:600px):
+ *   .ppb-topic{width:170px;margin-left:0;padding:6px 8px}
+ *   .ppb-inner{gap:0;padding:12px 8px;overflow-x:auto;justify-content:flex-start;scroll-behavior:smooth}
+ *   .ppb-line-wrap{width:28px} / .ppb-circle{28px} / .ppb-label{font-size:10px} / .ppb-node{min-width:56px;padding:2px 4px}
+ * 2026-09-16 补: 我方此前全工作流**零响应式**(只有素材页一处 768px 断点),
+ *   1100px 视口下节点就溢出到 1207px、只能靠外层 overflow-x 兜住。
+ */
+@media (max-width: 600px) {
+  .ppb-topic { width: 170px; margin-left: 0; padding: 6px 8px; margin-right: 12px; }
+  .ppb-inner { gap: 0; padding: 12px 8px; overflow-x: auto; justify-content: flex-start; scroll-behavior: smooth; }
+  .ppb-line-wrap { width: 28px; }
+  .ppb-circle { width: 28px; height: 28px; }
+  .ppb-label-text { font-size: 10px; }
+  .ppb-node { min-width: 56px; padding: 2px 4px; }
+}
 </style>

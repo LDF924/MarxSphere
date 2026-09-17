@@ -386,7 +386,11 @@ function sendSectionToEditor() {
   if (!sec?.content || sec.content.length < 50) { toast("本章正文为空, 请先生成", "warning"); return; }
   const title = `${store.title || "未命名论文"} · ${sec.title}`;
   if (sendMarkdownToEditor(sec.content, title)) toast("已送往学术文本工作台, 将新建文档", "success");
-  else toast("发送失败(localStorage 不可用或已满)", "error");
+  // 2026-09-17 修: 原提示写的是"localStorage 不可用或已满" —— 这条通道**根本不碰 localStorage**
+  //   (见 workflow-bridge 的注释: 该路是 postMessage → React 外壳中转)。真实失败原因只有一个:
+  //   没有父窗口(独立打开 /soc/ 子应用而不是从外壳嵌进来), 或跨源拿不到 parent。
+  //   报错指向错的组件, 排查会被带偏(本轮探针就在这里绕了一圈)。
+  else toast("发送失败: 需要从平台外壳中打开写作舱(独立打开子应用时无法转发)", "error");
 }
 /**
  * 编辑/预览双 tab(闭源 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章。
@@ -1293,10 +1297,13 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 </template>
 
 <style scoped>
-.ws-page-root { height: 100vh; width: 100%; max-width: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+/* 闭源 .app-root--workspace{height:100vh;height:100dvh} —— 后者覆盖前者;
+   移动端地址栏收起时 100vh 大于可视高度, 底栏会被推出视口 */
+.ws-page-root { height: 100vh; height: 100dvh; width: 100%; max-width: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
 .wf-layout { display: flex; gap: 0; flex: 1; min-height: 0; }
+/* 闭源两栏都是 `w-72`(288px) —— 我方原左 260 / 右 240, 各窄 28/48px */
 .left-rail {
-  width: 260px; flex-shrink: 0; border-right: 1px solid #222F44;
+  width: 288px; flex-shrink: 0; border-right: 1px solid #222F44;
   display: flex; flex-direction: column; background: #11192C; overflow-y: auto;
 }
 .rail-head { display: flex; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #212C45; }
@@ -1333,7 +1340,13 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   border: 0; background: #1e293b; color: #F1F5F9; padding: 8px; border-radius: 7px;
   font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
+/*
+ * 中央列 —— 闭源是 `flex-1 overflow-y-auto` + 内容 `max-w-4xl mx-auto px-8 py-6`。
+ * 2026-09-16 修: 我方原先只有 padding, **没有 max-width 约束** —— 宽屏下正文行宽拉满,
+ *   中文长行极难读(闭源用 896px 上限 + 居中)。
+ */
 .center-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #11192C; padding: 16px 24px; overflow-y: auto; }
+.center-main > * { width: 100%; max-width: 896px; margin-left: auto; margin-right: auto; }
 .sec-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .sec-num-big {
   width: 30px; height: 30px; border-radius: 7px; background: #dc2626; color: #F1F5F9;
@@ -1371,7 +1384,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
 .summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
 .right-rail {
-  width: 240px; flex-shrink: 0; border-left: 1px solid #222F44;
+  width: 288px; flex-shrink: 0; border-left: 1px solid #222F44;
   display: flex; flex-direction: column; background: #141E33;
 }
 .mat-filter { margin: 8px 10px; padding: 5px 8px; border: 1px solid #222F44; border-radius: 7px; font-size: 12px; background: #11192C; }
@@ -1583,7 +1596,8 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .mat-gen-btn:hover { background: #161F33; }
 .mat-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .rail-empty-sub { font-size: 11px; color: #46587A; margin: 3px 0 0; }
-.modal-mask { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.2); display: flex; align-items: center; justify-content: center; }
+.modal-mask { position: fixed; inset: 0; z-index: 90; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+  background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 480px; max-width: 94vw; background: #11192C; border-radius: 14px; padding: 18px 22px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
 .modal-title { margin: 0 0 14px; font-size: 17px; font-weight: 700; color: #E8EEF7; }
 .modal-body { display: flex; flex-direction: column; gap: 13px; }
