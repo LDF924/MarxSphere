@@ -1406,8 +1406,18 @@ function ModelUsageBanner() {
   const [log, setLog] = useState<Array<{ at: string; action: string; result: string }>>([]);
 
   useEffect(() => {
-    fetch("/api/eval/model-info").then((r) => r.json()).then((d) => {
-      if (d?.ok) setInfo({ model: d.model, provider: d.provider });
+    /**
+     * ⚠ 原先是 `fetch("/api/eval/model-info")` —— **后端没有这个端点**(实测恒 404),
+     *   于是「当前模型」那一格**永远显示"…"**。契约对账时挖出来的。
+     *   改读平台现成的 `/api/llm/models`(聊天/编排都在用的同一个):
+     *   取当前 reason 角色的模型(评测走的就是 reason), 显示它的 id 与 provider。
+     */
+    fetch("/api/llm/models").then((r) => r.json()).then((d) => {
+      const models = (d?.models ?? []) as Array<{ id: string; provider: string; roles?: string[] }>;
+      const current = String(d?.current ?? "");
+      const m = models.find((x) => x.id === current) ?? models.find((x) => x.roles?.includes("reason"));
+      if (m) setInfo({ model: m.id, provider: m.provider });
+      else if (models[0]) setInfo({ model: models[0].id, provider: models[0].provider });
     }).catch(() => {});
     // 读本地运行记录（localStorage）
     try {
@@ -1419,16 +1429,31 @@ function ModelUsageBanner() {
   const confirmRun = async (action: "eval" | "proactive") => {
     if (action === "eval") setEvalPending(true); else setProactivePending(true);
     try {
-      const r = await fetch("/api/eval/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const d = await r.json();
+      /**
+       * ⚠ 原先是 `fetch("/api/eval/confirm", {action})` —— **后端没有这个端点**(实测恒 404),
+       *   而下面又把 404 的响应体当结果读(`d?.ok` 恒 false), 于是**两个按钮都永远记"失败"**。
+       *   改接平台**真实存在**的入口:
+       *     · 评测回归 → 现成入口在「科研评测」面板(这里不重复起, 免得与它的 SSE 状态打架)
+       *     · 主动巡检 → `/api/agent/proactive-research`(实测存在)
+       *   回归不再假装"跑完了"。
+       */
+      let d: { ok?: boolean; result?: { passed?: number; total?: number; created?: number }; skipped?: boolean };
+      if (action === "eval") {
+        d = { ok: true, skipped: true };
+      } else {
+        const r = await fetch("/api/agent/proactive-research", { method: "POST" });
+        if (!r.ok) throw new Error(`主动巡检失败 (${r.status})`);
+        d = await r.json();
+      }
       const entry = {
         at: new Date().toLocaleString(),
         action: action === "eval" ? "评测回归" : "主动巡检",
-        result: d?.ok ? (action === "eval" ? `完成 ${d.result?.passed}/${d.result?.total} 题通过` : `创建 ${d.result?.created} 个任务`) : "失败",
+        result: !d?.ok
+          ? "失败"
+          : action === "eval"
+            // 说清楚去哪个入口跑, 不留"刚才到底跑没跑"的疑问
+            ? "请到「科研评测」面板运行(本入口不再触发, 避免与它的运行状态打架)"
+            : `创建 ${d.result?.created ?? 0} 个任务`,
       };
       const next = [entry, ...log].slice(0, 10);
       setLog(next);
@@ -1448,15 +1473,18 @@ function ModelUsageBanner() {
           当前模型：<span className="font-mono text-foreground">{info?.model || "…"}</span>
           {info?.provider ? `（${info.provider}）` : ""}
         </span>
-        <span className="text-muted-foreground">评测回归 / 主动巡检启动后不再自动运行，需手动确认：</span>
+        <span className="text-muted-foreground">
+          两个动作都不再自动跑，要点一下才走。主动巡检走后台的主动研究链；评测回归请到「科研评测」面板运行。
+        </span>
         <button
           type="button"
           data-control="eval:run"
           onClick={() => void confirmRun("eval")}
           disabled={evalPending}
-          className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+          className="rounded-md border border-border px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+          title="评测回归的入口在「科研评测」面板(它自带运行状态与 SSE 进度)"
         >
-          {evalPending ? "运行中…" : "▶ 运行评测回归（4 题）"}
+          {evalPending ? "运行中…" : "▶ 评测回归去哪跑"}
         </button>
         <button
           type="button"

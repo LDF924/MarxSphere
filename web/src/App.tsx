@@ -4462,14 +4462,17 @@ function SettingsPanel(props: {
               if (v === "302ai") setLlmBaseUrl("https://api.302ai.cn/v1");
               else if (v === "deepseek") setLlmBaseUrl("https://api.deepseek.com/v1");
               else if (v === "openai") setLlmBaseUrl("https://api.openai.com/v1");
-              // V449: 服务商联动 — 同步 LLM_MODEL（后端写 .env + 当前进程生效）
-              if (v === "deepseek" || v === "302ai") {
-                void fetch("/api/llm/provider-sync", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ provider: v }),
-                }).catch(() => {});
-              }
+              /**
+               * ⚠ 原先是 POST `/api/llm/provider-sync` 让"后端写 .env + 当前进程生效" ——
+               *   **后端没有这个端点**(实测恒 404), 且带 `.catch(() => {})` 静默吞掉,
+               *   于是"服务商联动"**从来没生效过**, 而且不报错。
+               *   契约对账时挖出来的(2026-09-19)。
+               *
+               *   产品决策: 这里**不补一个写 .env 的端点** —— 让一个纯前端下拉框去改服务端
+               *   配置文件(还要求当前进程生效)本身就是越权形状, 多用户下更说不通。
+               *   下拉框改为**纯粹的 baseURL 便捷填充**, 也就是它真正可靠做到的那件事;
+               *   模型名请走设置页/`.env`。*/
+              // (原 fetch 已删除, 详见上方说明)
             }}
           >
             <option value="302ai">阿里云百炼 302AI</option>
