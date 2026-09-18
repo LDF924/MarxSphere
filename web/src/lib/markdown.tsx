@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // markdown.tsx — 轻量 Markdown 渲染（App 对话与知识页 Claude 结论共用）
-// 支持：标题 / 加粗 / 行内代码 / 代码块 / 无序有序列表 / 表格 / 引用 [n]
+// 支持：标题 / 加粗 / 行内代码 / 代码块 / 无序有序列表 / 表格 / 引用 [n] / 独占一行的图片(![](url))
+//   图片: / 开头走带鉴权的 AuthedImg(后端图片端点要 token, 裸 <img> 取不到), 外链原样
 import type { ReactNode } from "react";
 import { cn } from "./utils";
+import { AuthedImg } from "./authed-image";
 
 export interface MarkdownCitation {
   index: number;
@@ -120,6 +122,28 @@ export function renderMarkdownLines(
         <div key={index} className="flex gap-2">
           <span className="text-muted-foreground">{trimmed.split(".")[0]}.</span>
           <span>{renderInlineMarkdown(ordered[1], citations, onOpenCitation)}</span>
+        </div>
+      );
+      continue;
+    }
+    /**
+     * 独占一行的图片。
+     *
+     * 2026-09-18 补: 此前这里**没有图片分支** —— `![图表](/api/viz/files/…)` 会落到最后那条
+     * `<p>`, 原样显示一坨 markdown 文本。编辑器「插入正文」插的正是这个形状, 所以
+     * "插入了图表"在预览里根本看不到图。
+     *
+     * 只认**独占一行**的(与正文混排的行内图片这里不处理, 交给 renderInlineMarkdown 的既有行为);
+     * `/` 开头的相对路径走带鉴权的 `AuthedImg`, 外链原样。
+     */
+    const image = trimmed.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+    if (image) {
+      const [, alt, src] = image;
+      nodes.push(
+        <div key={index} className="my-2">
+          {src.startsWith("/")
+            ? <AuthedImg path={src} alt={alt} className="max-w-full rounded-md border border-border" />
+            : <img src={src} alt={alt} className="max-w-full rounded-md border border-border" />}
         </div>
       );
       continue;

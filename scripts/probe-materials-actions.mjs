@@ -10,7 +10,7 @@
 // 用法: node scripts/probe-materials-actions.mjs        (需 4173 已起)
 //       node scripts/probe-materials-actions.mjs --all  (含真调 LLM 的动作, 慢)
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
-import { openSoc, spyInstall, probeAction, waitFor, dismissOverlays } from "./lib/probe-actions.mjs";
+import { openSoc, spyInstall, probeAction, waitFor, dismissOverlays, readToast } from "./lib/probe-actions.mjs";
 
 const BASE = "http://127.0.0.1:4173";
 const ALL = process.argv.includes("--all");
@@ -89,10 +89,6 @@ async function seed(token) {
 }
 
 /** 读页面上的 toast(全局层: position:fixed)。存活约 3.2s, 需要轮询而不是固定延时读一次 */
-const readToast = (cdp) => evalTop(cdp, `(() => {
-  const t = [...document.querySelectorAll('div')].find(d => { const st = d.getAttribute('style')||''; return st.includes('position') && st.includes('fixed'); });
-  return t ? (t.innerText||'').replace(/\s+/g,' ').slice(0, 60) : '';
-})()`);
 
 const { cdp, ev, close } = await startCdp({ preferredPort: 31041, label: "probe-materials-actions" });
 try {
@@ -210,6 +206,16 @@ try {
       const req = r.apiReqs.find((x) => /sources/.test(x.url));
       rec("materials", "open-sources(来源弹层有视图)", st?.open && req ? "ok" : (req ? "ERR" : "DEAD"),
         `弹层=${st?.open} ${req ? `GET ${short(req.url)}→${req.status}` : "零请求"} | ${st?.text ?? ""}`);
+      // 关闭: 弹层必须真的关掉(否则挡住后面所有点击)
+      const closed = await evalTop(cdp, `(() => {
+        const x = document.querySelector('[data-control="workflow:close-sources"]');
+        if (!x) return 'no-btn';
+        x.click(); return 'clicked';
+      })()`);
+      await sleep(700);
+      const gone = await evalTop(cdp, `!document.querySelector('.modal-mask')`);
+      rec("materials", "close-sources(关闭来源弹层)", closed === "clicked" && gone ? "ok" : "ERR",
+        `按钮=${closed} 弹层已关=${gone}`);
       await closeModal(cdp);
       await sleep(500);
     } else rec("materials", "open-sources(来源弹层)", "skip", "当前无带来源的文献素材");
@@ -358,6 +364,21 @@ try {
     const after = (await api(token, `/research/materials?projectId=${s.pid}`))?.materials?.length ?? -1;
     rec("materials", "upload-attachment(附件上传入库)", picked === "picked" && after > before ? "ok" : (picked === "picked" ? "ERR" : "DEAD"),
       `选择=${picked} 素材 ${before} → ${after} 条` + (ALL ? "(注意: --all 模式下计划执行也会新增素材, 该增量不纯)" : ""));
+
+    // 图片上传(accept=.png…) 与 数据上传(accept=.csv…) 是**两个不同的 input**,
+    //   各自走不同管道(图 → data-url 素材; 数据 → /files/upload 拿 fileId)
+    for (const [accept, name, content, label] of [
+      [".png", "探针图.png", "fake-png-bytes", "upload-image(图片上传)"],
+      // 用 fromCharCode(10) 而不是字面换行: 这段要经 evalTop 的 JSON 传输
+      [".csv", "探针数据.csv", ["v1,v2","1,2","3,4"].join(String.fromCharCode(10)), "upload-data(数据上传)"],
+    ]) {
+      const n0 = (await api(token, `/research/materials?projectId=${s.pid}`))?.materials?.length ?? -1;
+      const pk = await pickFile(accept, name, content);
+      await sleep(4500);
+      const n1 = (await api(token, `/research/materials?projectId=${s.pid}`))?.materials?.length ?? -1;
+      rec("materials", label, pk === "picked" ? (n1 > n0 ? "ok" : "ERR") : "DEAD",
+        `选择=${pk} 素材 ${n0} → ${n1} 条`);
+    }
   }
 
   // ── ⑧ 生成弹层的写库链路(需真 LLM) ──

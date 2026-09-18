@@ -8,7 +8,7 @@
 // 用法: node scripts/probe-input-clarify-and-phase.mjs        (需 4173 已起)
 //       node scripts/probe-input-clarify-and-phase.mjs --all  (含真调 LLM 的澄清, 慢)
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
-import { openSoc, spyInstall, probeAction, waitFor } from "./lib/probe-actions.mjs";
+import { openSoc, spyInstall, probeAction, waitFor, readToast } from "./lib/probe-actions.mjs";
 
 const BASE = "http://127.0.0.1:4173";
 const ALL = process.argv.includes("--all");
@@ -27,10 +27,6 @@ const api = async (token, path, method = "GET", body) => {
   return r.ok ? r.json().catch(() => ({})) : { __status: r.status };
 };
 const short = (u) => String(u ?? "").replace(BASE, "").replace("/api/research", "").slice(0, 70);
-const readToast = (cdp) => evalTop(cdp, `(() => {
-  const t = [...document.querySelectorAll('div')].find(d => { const st = d.getAttribute('style')||''; return st.includes('position') && st.includes('fixed'); });
-  return t ? (t.innerText||'').replace(/\\s+/g,' ').slice(0, 60) : '';
-})()`);
 /** 轮询读 toast(存活约 3.2s, 固定延时读一次会扑空) */
 async function pollToast(cdp, n = 10) {
   let fb = "";
@@ -116,6 +112,21 @@ try {
       rec("参考来源勾选(可切可取消)", n1 !== n0 ? "ok" : "DEAD",
         `${srcs} 个源 → selected ${n0} → ${n1}${n0 > 0 ? "(默认勾第一个, 点一下=取消)" : ""}`);
     } else rec("参考来源勾选", "skip", "未渲染数据源列表(需后端 available-sources 有返回)");
+  }
+
+  // ── ①a 大纲编辑器: 插入模板 ──
+  console.log("\n═══ ①a 大纲模板 ═══");
+  {
+    const before = await evalTop(cdp, `document.querySelectorAll('.oe-row.l1').length`);
+    const ins = await evalTop(cdp, `(() => {
+      const b = document.querySelector('[data-control="workflow:insert-template"]');
+      if (!b) return 'no-btn';
+      b.click(); return 'clicked';
+    })()`);
+    await sleep(1500);
+    const after = await evalTop(cdp, `document.querySelectorAll('.oe-row.l1').length`);
+    rec("insert-template(插入五段式模板)", ins === "clicked" && after > before ? "ok" : "ERR",
+      `按钮=${ins} 一级章节 ${before} → ${after}`);
   }
 
   // ── ①b 草稿的**恢复**路径(只写不读 = 白写) ──

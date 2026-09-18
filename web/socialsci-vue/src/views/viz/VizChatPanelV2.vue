@@ -902,6 +902,7 @@ onUnmounted(() => {
         ref="textareaEl"
         v-model="input"
         class="composer-input"
+        data-control="viz:chat-input"
         rows="1"
         placeholder="描述图表需求, Enter 发送, Shift+Enter 换行…"
         :disabled="sending || readOnly"
@@ -911,8 +912,8 @@ onUnmounted(() => {
       ></textarea>
       <div class="composer-side">
         <span class="token-est">{{ tokenEstimate }} tokens</span>
-        <button v-if="sending" class="send-btn stop" @click="stop">⏹</button>
-        <button v-else class="send-btn" :disabled="!input.trim() || readOnly" @click="send">↗</button>
+        <button v-if="sending" class="send-btn stop" data-control="viz:chat-stop" @click="stop">⏹</button>
+        <button v-else class="send-btn" data-control="viz:chat-send" :disabled="!input.trim() || readOnly" @click="send">↗</button>
       </div>
     </div>
 

@@ -525,7 +525,13 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "citation",
     title: hits.length ? `文献 ${hits.length} 条 · ${String(sectionTitle).slice(0, 24)}` : `检索式 · ${String(sectionTitle).slice(0, 24)}`,
     contentMd,
-    sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
+    //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
+    //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
+    //   ⚠ 列 `produced_by_dag_node` 与 mapper 的输出**保留** —— 列里已有历史数据、且是对外契约,
+    //   删列/删字段是另一件事(需迁移), 不在本次范围。
+    sourceRef: task.id,
     // 2026-09-16: 补**章节关联**。此前这条链一次都没传 sectionIds, 而前端发布门禁
     //   (「还有 N 个素材未关联章节, 请先为每个素材选择所属章节」)与素材卡的「未关联」判据
     //   读的都是 sectionId/sectionIds —— 于是每一批 AI 生成的素材都会被门禁拦下,
@@ -589,7 +595,13 @@ async function runTheoryGenerate(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "theory",
     title: `理论框架 · ${(theory?.name || sectionTitle).toString().slice(0, 30)}`,
     contentMd: `${theory?.core ?? ""}\n\n本文应用: ${theory?.apply ?? ""}`,
-    sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
+    //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
+    //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
+    //   ⚠ 列 `produced_by_dag_node` 与 mapper 的输出**保留** —— 列里已有历史数据、且是对外契约,
+    //   删列/删字段是另一件事(需迁移), 不在本次范围。
+    sourceRef: task.id,
     ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `理论框架: ${theory?.name ?? "未生成"}`, structured: { theory } };
@@ -647,7 +659,13 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "table",
     title: `表格设计 · ${String(sectionTitle).slice(0, 30)}`,
     contentMd: tables.map((t) => `- ${t.title}: [${(t.columns ?? []).join("|")}] ${t.purpose ?? ""}`).join("\n"),
-    sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
+    //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
+    //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
+    //   ⚠ 列 `produced_by_dag_node` 与 mapper 的输出**保留** —— 列里已有历史数据、且是对外契约,
+    //   删列/删字段是另一件事(需迁移), 不在本次范围。
+    sourceRef: task.id,
     ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `已设计 ${tables.length} 张表`, structured: { tables } };
@@ -679,7 +697,13 @@ ${methods.length ? `【备选方法】${methods.join("、")}` : ""}` }],
     projectId: ctx.projectId, userId: ctx.userId, kind: "data_result",
     title,
     contentMd: `分析方法: ${analysis?.coreMethod ?? (methods[0] ?? analysisType)}\n\n${analysis?.design ?? ""}${(analysis?.expectedTables ?? []).length ? `\n拟产出: ${(analysis?.expectedTables ?? []).join("; ")}` : ""}`,
-    sourceRef: task.id, producedByDagNode: ctx.dagNodeId,
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
+    //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
+    //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
+    //   ⚠ 列 `produced_by_dag_node` 与 mapper 的输出**保留** —— 列里已有历史数据、且是对外契约,
+    //   删列/删字段是另一件事(需迁移), 不在本次范围。
+    sourceRef: task.id,
     ...(sectionId ? { sectionIds: [sectionId] } : {}),
   });
   return { text: `数据分析方案: ${analysis?.coreMethod ?? "已生成"}`, structured: { analysis } };

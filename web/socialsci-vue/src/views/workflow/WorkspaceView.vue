@@ -1014,7 +1014,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             ? `生成中 (${genProgress.current ?? 0}/${genProgress.total ?? 0})`
             : l1List.length && pendingCount === 0 ? "重新生成全部" : "智能全局思考" }}
         </button>
-        <button class="btn-back-sm" @click="router.push('/workflow/materials')">返回素材准备</button>
+        <button class="btn-back-sm" data-control="workflow:back" @click="router.push('/workflow/materials')">返回素材准备</button>
         <!-- 闭源: 未全部完成时不可进入合稿, 文案带未完成章数 -->
         <button
           class="btn-finalize-all"

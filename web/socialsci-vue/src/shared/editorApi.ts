@@ -149,26 +149,6 @@ export function canonicalStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** 导出 docx(闭源 POST /documents/:id/export body {html,title,format_options} → blob) */
-export async function exportDocxBlob(docId: string, html: string, title: string, formatOptions: Record<string, unknown>): Promise<Blob> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api/editor/v1/documents/${docId}/export`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ html, title, format_options: formatOptions })
-  });
-  if (!res.ok) throw new Error(`导出失败(${res.status})`);
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) {
-    const j = await res.json();
-    if (j?.ok && j?.base64) return base64ToBlob(j.base64, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    throw new Error(j?.error?.message ?? "导出失败");
-  }
-  return res.blob();
-}
-
 export function base64ToBlob(b64: string, mime: string): Blob {
   const bin = atob(b64.replace(/^data:[^;]+;base64,/, ""));
   const arr = new Uint8Array(bin.length);

@@ -126,7 +126,7 @@ async function handleDelete() {
           <div class="space-y-4 p-6">
             <div>
               <label class="mb-1.5 block text-sm font-medium text-[#C3D2E5]">文档标题</label>
-              <input
+              <input data-control="editor:new-title"
                 v-model="newTitle"
                 class="w-full rounded-lg border border-[#2A3A55] px-3 py-2 text-sm focus:border-[#4D84CB] focus:outline-none"
                 placeholder="例如: 数字经济与中小企业融资约束研究"
@@ -136,7 +136,7 @@ async function handleDelete() {
           </div>
           <div class="flex justify-end gap-3 border-t px-6 py-4">
             <button class="rounded-lg border border-[#222F44] px-4 py-2 text-sm text-[#A3B3C8] hover:bg-[#1A2333]" @click="showNewDialog = false">取消</button>
-            <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50" :disabled="creating || !newTitle.trim()" @click="handleCreate">
+            <button class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50" data-control="editor:new-confirm" :disabled="creating || !newTitle.trim()" @click="handleCreate">
               {{ creating ? "创建中…" : "创建" }}
             </button>
           </div>

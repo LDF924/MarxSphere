@@ -128,6 +128,7 @@ import * as pointsService from "../services/points-service.js";
 import * as wechatAuth from "../services/wechat-auth-service.js";
 // SocialSci 补漏R2: 章节技能卡 + 工作台整包快照
 import * as chapterSkill from "../services/chapter-skill-service.js";
+import { syncSnapshotToNodes } from "../services/workbench-sync.js";
 
 // 桌面端封装（V397）: SAG_ROOT 环境变量覆盖资源根目录（安装目录 vs 运行时目录分离）
 //
@@ -1543,6 +1544,8 @@ export function buildHttpServer() {
     paperTitle: z.string().min(1).max(200),
     nodes: z.array(z.unknown()).max(200),
     fontName: z.string().max(60).optional(),
+    // R7: 字号来自编辑器预览预设(闭源 formatPresets.docxFontSize) —— 与 fontName 配套
+    fontSize: z.number().min(6).max(36).optional(),
     // V417: 参考文献块。缺省时按"没接出可引文献"处理 → 文档里显式提醒人工补录(不伪造)
     references: z.object({
       text: z.string().max(200_000).optional(),
@@ -1554,7 +1557,7 @@ export function buildHttpServer() {
     const body = outlineExportSchema.parse(request.body);
     const { exportOutlineDocx } = await import("../services/paper-outline-service.js");
     const result = await exportOutlineDocx({
-      paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName,
+      paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName, fontSize: body.fontSize,
       references: body.references
         ? { text: body.references.text ?? "", needsManual: body.references.needsManual ?? false, sources: body.references.sources ?? [] }
         : undefined,
@@ -11739,14 +11742,54 @@ ${dataBlock}
     if (!r) return reply.code(404).send({ error: "项目不存在" });
     return { snapshot: r.snapshot, englishAbstract: r.englishAbstract };
   });
+  /**
+   * 工作台整包快照。
+   *
+   * 2026-09-18: 这里从"只写快照列"改成**由服务端负责同步到节点**。
+   *   此前节点侧靠每个调用点自己记得补一刀, 忘了就静默丢数据 ——
+   *   实测栽过:「已定稿」只写快照而读侧只从 finalize 节点读 → 刷新后丢失;
+   *   要件生成只写快照 → 刷新后被 sections 节点盖回去。
+   *   现在客户端只管提交视图, 同步由 `workbench-sync` 的映射表保证
+   *   (含 diff 守卫: 值没变不写节点, 免得把 research_node_history 撑爆)。
+   *
+   *   两道写(快照 + 节点)放**同一事务**: 任一步失败整体回滚, 不留"列新节点旧"的分叉。
+   */
   app.put("/api/research/projects/:projectId/workbench", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId } = request.params as { projectId: string };
     const body = request.body as { snapshot?: Record<string, unknown> };
     if (!body?.snapshot) return reply.code(400).send({ error: "缺少 snapshot" });
-    const r = await chapterSkill.saveWorkbenchSnapshot(user.id, projectId, body.snapshot);
-    if (!r.ok) return reply.code(404).send({ error: r.error });
-    return { ok: true };
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const owned = await client.query(
+        `select id from research_projects where id=$1 and user_id=$2`, [projectId, user.id]);
+      if (!owned.rows.length) { await client.query("rollback"); return reply.code(404).send({ error: "项目不存在" }); }
+      // 快照列 —— 用 jsonb `||` **合并**而不是整块替换。
+      //
+      // 2026-09-18: 原来是 `workbench_snapshot=$2` 整块覆盖。正常路径(前端一次提交全部
+      //   28 个键)看不出问题, 但只要有一次**部分提交**(比如只带 phase/phaseLabel 的推进),
+      //   之前存的键就被抹掉了 —— 实测: 只提交 3 个键后, 快照里原本的 sections /
+      //   statisticsFileId 全没了。
+      //   本地图里没有任何"删除快照键"的语义(前端 resetLocal 只清内存态并换 taskId),
+      //   所以合并写严格优于覆盖写。
+      const en = body.snapshot._englishAbstract;
+      await client.query(
+        `update research_projects
+            set workbench_snapshot = coalesce(workbench_snapshot,'{}'::jsonb) || $2::jsonb,
+                english_abstract = coalesce($3, english_abstract), updated_at=now()
+          where id=$1`,
+        [projectId, JSON.stringify(body.snapshot), typeof en === "string" ? en : null]);
+      const sync = await syncSnapshotToNodes(client, projectId, body.snapshot);
+      await client.query("commit");
+      return { ok: true, syncedNodes: sync.synced };
+    } catch (e) {
+      await client.query("rollback").catch(() => null);
+      request.log.error({ err: e, projectId }, "workbench 保存失败");
+      return reply.code(500).send({ error: "保存失败" });
+    } finally {
+      client.release();
+    }
   });
 
   // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate) ═══

@@ -99,6 +99,26 @@ try {
       `preview tab on=${/on/.test(st?.previewOn ?? "")} 预览容器 .content-view=${st?.hasPreview}`);
   }
 
+  // ── ①c 主控智能体思考(可编辑 textarea, 内容跟章节走) ──
+  console.log("\n═══ ①c 主控思考框 ═══");
+  {
+    const st = await evalTop(cdp, `(() => {
+      const ta = document.querySelector('[data-control="workflow:section-think"]');
+      return ta ? { exists: true, len: ta.value.length, ph: ta.placeholder.slice(0, 16) } : { exists: false };
+    })()`);
+    rec("section-think 渲染且可编辑", st?.exists ? "ok" : "ERR",
+      st?.exists ? `已有 ${st.len} 字 占位="${st.ph}"` : "未渲染");
+    if (st?.exists) {
+      const set = await evalTop(cdp, `(() => {
+        const ta = document.querySelector('[data-control="workflow:section-think"]');
+        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(ta, '探针写入的本章写作思路。');
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        return ta.value;
+      })()`);
+      rec("section-think 可写入", set === "探针写入的本章写作思路。" ? "ok" : "ERR", `写入="${String(set).slice(0, 20)}"`);
+    }
+  }
+
   // ── ② 生成动作: 生成/停止(需真 LLM) ──
   console.log("\n═══ ② 章节生成 ═══");
   {
@@ -152,6 +172,13 @@ try {
         //   修前实测: 取消后 sec_0 落了 1617 字。
         rec("已取消的任务不再回填正文(守卫生效)", !String(sec?.content ?? "") ? "ok" : "ERR",
           `章节正文 ${String(sec?.content ?? "").length} 字(取消后应为 0)`);
+      }
+      // 批量生成跑到一半时, 侧栏会出现两个回滚入口 —— 这是它们唯一渲染的时机, 顺带验掉
+      const keep = await waitFor(cdp, `document.querySelector('[data-control="workflow:rollback-keep"]') ? 1 : null`, { timeout: 25000, every: 1500 });
+      rec("批量中渲染「回滚本次成功」", keep ? "ok" : "skip", keep ? "有(需 genProgress.current>0)" : "25s 内未出现");
+      if (keep) {
+        const rk = await probeAction(cdp, '[data-control="workflow:rollback-keep"]', { wait: 2500 });
+        rec("rollback-keep(保留成功部分回滚)", rk.clicked ? "ok" : "DEAD", `点击=${rk.clicked}`);
       }
       const all = await probeAction(cdp, '[data-control="workflow:generate-all"]', { wait: 3500 });
       rec("generate-all(全部生成)", all.apiReqs.length ? "ok" : "DEAD",

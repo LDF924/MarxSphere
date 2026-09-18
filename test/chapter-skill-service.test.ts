@@ -10,6 +10,7 @@ vi.mock("../src/ai/llm-common.js", () => ({
 
 import { pool } from "../src/db/pool.js";
 import { saveWorkbenchSnapshot, getWorkbenchSnapshot } from "../src/services/chapter-skill-service.js";
+import { mergeSectionsById, applyNodesToSnapshot, SNAPSHOT_NODE_MAP } from "../src/services/workbench-sync.js";
 
 describe("saveWorkbenchSnapshot", () => {
   beforeEach(() => { vi.mocked(pool.query).mockReset(); });
@@ -28,7 +29,10 @@ describe("saveWorkbenchSnapshot", () => {
     const r = await saveWorkbenchSnapshot("u1", "p1", { phase: 3, _englishAbstract: "EN" });
     expect(r.ok).toBe(true);
     const [sql, vals] = vi.mocked(pool.query).mock.calls[1] as unknown as [string, unknown[]];
-    expect(sql).toContain("workbench_snapshot=$2");
+    // 2026-09-18: 由整块覆盖改成 jsonb `||` 合并 —— 部分提交不再抹掉之前存的键
+    // (实测: 只提交 {phase,phaseLabel} 会把 sections / statisticsFileId 全弄丢)
+    expect(sql).toContain("coalesce(workbench_snapshot,'{}'::jsonb) || $2::jsonb");
+    expect(sql).not.toContain("workbench_snapshot=$2,");
     expect(sql).toContain("english_abstract=coalesce($3,");
     const snapJson = String(vals[1]);
     expect(snapJson).toContain('"phase":3');
@@ -46,10 +50,49 @@ describe("getWorkbenchSnapshot", () => {
       .mockResolvedValueOnce({ rows: [{ node_key: "sections", payload: { sections: [{ id: "s1", title: "引言" }] }, updated_at: new Date() }] } as any);
     const r = await getWorkbenchSnapshot("u1", "p1");
     expect(r?.snapshot?.phase).toBe(2);
-    expect(r?.snapshot?.sections?.[0]?.title).toBe("引言"); // 节点动态合并
+    const secs = (r?.snapshot?.sections ?? []) as Array<{ title?: string }>;
+    expect(secs[0]?.title).toBe("引言"); // 节点动态合并
     expect(r?.englishAbstract).toBe("Abs");
     vi.mocked(pool.query).mockReset();
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: [] } as any);
     expect(await getWorkbenchSnapshot("u1", "p1")).toBeNull();
+  });
+});
+
+// ═══ 2026-09-18: 「快照 ↔ 节点」口径真源(workbench-sync) ═══
+// 这些断言的由来: 前一段挖出的 7 个缺陷里一半是"写进去的和读出来的不是一套"。
+// 映射表就是防它再犯的, 所以每条策略都得有测试锁住。
+describe("workbench-sync 口径", () => {
+  it("映射表覆盖了此前整条链失效的 isFinalized", () => {
+    // 它此前只写快照、而读侧只从 finalize 节点读 → 刷新后「已定稿」静默丢失
+    const e = SNAPSHOT_NODE_MAP.find((x) => x.snapshotKey === "isFinalized");
+    expect(e?.nodeKey).toBe("finalize");
+  });
+
+  it("mergeById: 提交里的空 content 不得清空节点已有的正文", () => {
+    // 这是防倒退的核心 —— 客户端拿旧视图提交时, 引擎刚写的正文必须活下来
+    const cur = [{ id: "s1", title: "引言", content: "引擎刚写完的正文", status: "done" }];
+    const inc = [{ id: "s1", title: "引言(改了标题)", content: "", status: "" }];
+    const out = mergeSectionsById(cur, inc) as Array<Record<string, unknown>>;
+    expect(out[0].content).toBe("引擎刚写完的正文"); // 空值保留节点现值
+    expect(out[0].status).toBe("done");
+    expect(out[0].title).toBe("引言(改了标题)");     // 编辑性字段以提交值为准
+  });
+
+  it("mergeById: 提交里没有的章节保留(客户端可能是旧视图)", () => {
+    const cur = [{ id: "s1", title: "引言" }, { id: "s2", title: "结论" }];
+    const inc = [{ id: "s1", title: "引言" }];
+    const out = mergeSectionsById(cur, inc) as Array<Record<string, unknown>>;
+    expect(out.map((s) => s.id)).toEqual(["s1", "s2"]);
+  });
+
+  it("读侧: sections 节点空数组也算(语义=清空章节), 与既有行为一致", () => {
+    const merged = applyNodesToSnapshot({ sections: [{ id: "old" }] }, [{ node_key: "sections", payload: { sections: [] } }]);
+    expect(merged.sections).toEqual([]);
+  });
+
+  it("读侧: 节点的空串不得盖掉快照里的值(与原来 truthy 判据一致)", () => {
+    const merged = applyNodesToSnapshot({ input: { title: "快照里的标题" } }, [{ node_key: "input", payload: { input: "" } }]);
+    expect(merged.input).toEqual({ title: "快照里的标题" });
   });
 });

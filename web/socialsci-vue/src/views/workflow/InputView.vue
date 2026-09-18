@@ -639,7 +639,7 @@ onMounted(async () => {
         data-control="workflow:submit-analysis"
         @click="submitAnalysis"
       >开始思考科研架构</button>
-      <button type="button" class="btn-back" @click="router.push('/workflow')">返回</button>
+      <button type="button" class="btn-back" data-control="workflow:back" @click="router.push('/workflow')">返回</button>
     </div>
   </div>
 </template>

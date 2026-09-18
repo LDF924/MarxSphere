@@ -101,7 +101,27 @@ export async function probeAction(cdp, selector, { wait = 2600, index = 0, keepO
   } catch (e) {
     clicked = "ERR:" + e.message;
   }
-  await sleep(wait);
+  /**
+   * 等待期间**持续采样 toast** —— 不能等完再读一次。
+   *
+   * 2026-09-18 修(这个坑我逐个脚本补了四次, 索性在这里一次修掉):
+   *   toast 只活约 3.2s。`await sleep(wait)` 之后再 `readToast()` —— 只要 wait ≥ 3.2s
+   *   (而门禁类断言恰恰常用 wait:2500~4000 来"等它别急"), toast 必然已经消失,
+   *   于是"被门禁拦下并给了提示"被读成"零请求 + 零提示"= DEAD(假失败)。
+   *   实测踩过: 素材页 allocate、创作台 section-to-editor、合稿页 finish-gen-save、
+   *   审稿台 submit、数据台 run —— 五次全是同一个形状。
+   *
+   * 现在按 250ms 采样整个等待窗口, 取**第一条**非空 toast(最早的那条最贴近本次动作)。
+   */
+  let toast = "";
+  const deadline = Date.now() + Math.max(0, wait);
+  while (!toast && Date.now() < deadline) {
+    await sleep(250);
+    toast = (await readToast(cdp)) || "";
+  }
+  // 若在窗口内就采到了, 剩余时间照等 —— 调用方依赖 `wait` 也用来"等异步落库"
+  const rest = deadline - Date.now();
+  if (rest > 0) await sleep(rest);
   const reqs = (await spyLog(cdp)) || [];
   const apiReqs = (Array.isArray(reqs) ? reqs : []).filter((r) => r && typeof r.url === "string" && r.url.includes("/api/"));
   return {
@@ -109,7 +129,7 @@ export async function probeAction(cdp, selector, { wait = 2600, index = 0, keepO
     before: Array.isArray(before) ? before : [],
     apiReqs,
     last: apiReqs.length ? apiReqs[apiReqs.length - 1] : null,
-    toast: await readToast(cdp),
+    toast,
   };
 }
 

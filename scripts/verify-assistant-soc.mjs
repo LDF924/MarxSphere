@@ -112,6 +112,32 @@ try {
   }
   t("新页面的动作也能命中可点", broken2.length === 0, broken2.length ? `问题项: ${broken2.join(", ")}` : `回查 ${Math.min(acts2.length, 15)} 条全通过`);
 
+  console.log("\n═══ ④b 动作数量地板(防『埋点被静默摘掉』) ═══");
+  /**
+   * 为什么要有数量地板: ①②③ 只验"上报的能点" —— **一条都不报也照样全绿**,
+   * 埋点被人删掉或改错前缀, 门禁不会有任何反应。
+   *
+   * 2026-09-18 实测的教训: 把闭源 44 个 data-assistant-control 逐条对照时发现,
+   *   五个阶段页的「返回」按钮**一个都没埋点**(它们长得跟有埋点的一模一样, 肉眼看不出来);
+   *   合稿页更是连"空态根本没有返回路径"这个真缺陷也是靠这条线才浮出来的。
+   *   补齐后各页动作显著变多, 这里把**只增不减**钉住。
+   *
+   * 数字取自补齐后的**实测值**(这一门禁自己量出来的口径: 上报条数含视图前缀,
+   *   与 DOM 里 `[data-control]` 的去重种类数**不是同一个量**, 别拿那边数当基准)。
+   * **往下调要说明理由** —— 那意味着有功能从助手视野里消失。
+   */
+  const FLOOR = { input: 9, sections: 5, materials: 27, workspace: 8, finalize: 8 };
+  for (const [page, min] of Object.entries(FLOOR)) {
+    await evalTop(cdp, `(() => { const f = document.querySelector('iframe'); if (f) f.contentWindow.location.href = location.origin + '/soc/index.html#/workflow/${page}'; return 1; })()`);
+    await sleep(6500);
+    const got = (await collectActs()) || [];
+    // ⚠ 上报的 id **带视图前缀**(形如 `materials:workflow:back`), 所以只能按子串判,
+    //   别用 split(":") 取尾段 —— 那样恒判"缺 back"(我第一版就是这么写的, 红了 5 条)。
+    const missing = page !== "input" && !got.some((a) => String(a.id).toLowerCase().includes("back")) ? ["back"] : [];
+    t(`${page} 动作数 ≥ ${min} 且返回键在`, got.length >= min && !missing.length,
+      `实测 ${got.length} 条${missing.length ? ` · 缺: ${missing.join(",")}` : ""}`);
+  }
+
   console.log("\n═══ ⑤ 无 JS 错误 ═══");
   const errs = await evalTop(cdp, `JSON.stringify(window.__verifyErrs || [])`);
   t("页面无未捕获错误", errs === "[]", String(errs).slice(0, 160));

@@ -229,7 +229,22 @@ async function genComponent(kind: "abstract" | "keywords" | "conclusion") {
     const existing = (store.sections ?? []).find((s) => s.title === label);
     if (existing) existing.content = r.content;
     else store.sections.unshift({ id: `gen-${kind}-${Date.now()}`, title: label, level: 1, parentId: null, order: -1, content: r.content, status: "generated" });
+    /**
+     * ⚠ 必须**快照 + sections 节点双写**。
+     *
+     * 2026-09-17 修(实测): 原先只 `saveProject()`(写 workbench **快照列**)。
+     *   而 `getWorkbenchSnapshot` 回读时对 sections 是**节点无条件赢** ——
+     *   `else if (n.node_key === "sections" && Array.isArray(payload.sections)) merged.sections = payload.sections`。
+     *   于是: 弹了"摘要 已生成(341 字)"、快照列里也确实有摘要, 但**一刷新就消失**
+     *   (节点里的旧列表把整个数组盖回去)。用户在界面上看着生成成功, 重进却没了。
+     *
+     * 与 2026-09-16 修过的 `merged_*` 是**同一个 bug 类的另一面**: 那次是"列优先"把节点盖掉,
+     * 这次是"节点无条件赢"把列盖掉。此处采用同一范式 —— 前端改过的内容两处都写。
+     */
     await store.saveProject().catch(() => null);
+    if (store.taskId) {
+      await mergeNode(store.taskId, "sections", { sections: store.sections }).catch(() => null);
+    }
     toast(`${label} 已生成(${r.wordCount ?? r.content.length} 字)`, "success");
   } catch (e) {
     toast(`${label}生成失败: ${(e as Error).message}`, "error");
@@ -964,6 +979,10 @@ onMounted(async () => {
           </span>
         </div>
       </div>
+      <!-- 2026-09-18: 空态此前**没有任何返回路径** —— 返回键只长在"已合稿"那半个分支里,
+           于是新项目来到合稿页(第一眼看到的就是这个空态)只能靠浏览器后退。
+           其余四个阶段页的返回都是**全状态可见**的, 这里补齐, 与它们同一口径。 -->
+      <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
     </div>
 
     <!-- ═══ 三轮主流程 ═══ -->
@@ -1148,7 +1167,7 @@ onMounted(async () => {
     <div v-if="store.mergedFullText" class="export-card">
       <div class="export-row">
         <span>导出格式</span>
-        <select v-model="exportFmt" class="fmt-select">
+        <select v-model="exportFmt" class="fmt-select" data-control="workflow:export-format">
           <option value="md">Markdown</option>
           <option value="html">HTML(打印友好)</option>
           <option value="docx">Word(.docx)</option>
@@ -1158,7 +1177,7 @@ onMounted(async () => {
           {{ exportStatus === "running" ? "导出中…" : "导出论文" }}
         </button>
         <button class="btn-preview" @click="store.exportFormat = 'preview'">预览全文</button>
-        <button class="btn-back-ws" @click="router.push('/workflow/workspace')">返回工作台</button>
+        <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
       </div>
       <!-- 后端按大纲树出文件(与上面的"拼文本"路径互补): Word 带大纲层级 + PPT 逐节点成片。
            这两个能力原先只有被弃用的 React 大纲面板在用, 搬到这里才有界面入口。 -->

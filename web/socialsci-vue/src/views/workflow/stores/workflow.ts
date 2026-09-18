@@ -233,6 +233,12 @@ export const useWorkflowStore = defineStore("workflow", () => {
       if (typeof snap.mergeGenerated === "boolean") mergeGenerated.value = snap.mergeGenerated;
       if (typeof snap.isFinalized === "boolean") isFinalized.value = snap.isFinalized;
       if (snap.reviewResult) reviewResult.value = snap.reviewResult as Record<string, unknown>;
+      /**
+       * statisticsFileId 此前是**写了但永不回读**的死键 —— 而 `MaterialsView` 用它判
+       * `hasDataFile`, 于是上传完数据文件一刷新, 素材计划里的 dataAnalysis 段就又变空了。
+       * 2026-09-18 补上回读, 与 `saveProject` 保存的键对齐。
+       */
+      if (snap.statisticsFileId) statisticsFileId.value = String(snap.statisticsFileId);
       if (snap.exportStatus) exportStatus.value = String(snap.exportStatus);
       if (snap.exportFormat) exportFormat.value = String(snap.exportFormat);
       if (snap.exportedAt) exportedAt.value = String(snap.exportedAt);

@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import type { McpMessageRecord, McpSessionRecord, McpToolCallRecord } from "../types";
 import { MarkdownCitation } from "../lib/markdown";
 import { cn, formatDate } from "../lib/utils";
+import { AuthedImg } from "../lib/authed-image";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { MarkdownRich, MarkdownStreaming } from "./MarkdownRich";
@@ -680,9 +681,9 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         {isUser && message.images?.length ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {message.images.map((img, i) => (
-                              <img
+                              <AuthedImg
                                 key={i}
-                                src={`/api/chat/images/${img.path}`}
+                                path={`/api/chat/images/${img.path}`}
                                 alt={img.name}
                                 className="max-h-44 rounded-lg border border-border/60"
                               />

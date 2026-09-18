@@ -124,8 +124,8 @@ export const ConfirmHost = {
           ]),
           h("div", { style: D.body }, confirmState.message),
           h("div", { style: D.foot }, [
-            h("button", { onClick: () => settleConfirm(false), style: D.cancel }, confirmState.cancelText),
-            h("button", { onClick: () => settleConfirm(true), style: okStyle }, confirmState.okText)
+            h("button", { onClick: () => settleConfirm(false), style: D.cancel, "data-control": "dialog:cancel" }, confirmState.cancelText),
+            h("button", { onClick: () => settleConfirm(true), style: okStyle, "data-control": "dialog:confirm" }, confirmState.okText)
           ])
         ])
       ]);

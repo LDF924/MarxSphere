@@ -5,6 +5,7 @@
 // 迁移124 chapter_skill_cards + research_projects.workbench_snapshot
 import { randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
+import { applyNodesToSnapshot } from "./workbench-sync.js";
 import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 
@@ -63,37 +64,77 @@ ${input.outlineTree ? `【全文大纲】\n${input.outlineTree.slice(0, 2000)}` 
      String(card.connection ?? ""), String(card.frameworkSource ?? ""),
      String(card.chapterDraft ?? ""), JSON.stringify(card.childSections ?? [])]);
 
-  // 同时回写 sections 节点(aiSkill 挂章)
-  const r = await pool.query(
-    `select payload from research_nodes where project_id=$1 and node_key='sections'`, [input.projectId]);
-  if (r.rows[0]) {
-    const payload = r.rows[0].payload ?? { sections: [] };
-    const list = Array.isArray(payload.sections) ? payload.sections : [];
-    const idx = list.findIndex((s: { id?: string }) => s.id === input.sectionId);
-    if (idx >= 0) {
-      list[idx] = { ...list[idx], aiSkill: {
-        type: card.type, wordCount: card.wordCount, writingGoal: card.writingGoal,
-        keyPoints: card.keyPoints, notes: card.notes, connection: card.connection,
-        sectionTitle: input.sectionTitle, frameworkSource: card.frameworkSource,
-        chapterDraft: card.chapterDraft, childSections: card.childSections,
-      } };
-      await pool.query(
-        `update research_nodes set payload=$2, version=version+1, updated_at=now()
-          where project_id=$1 and node_key='sections'`,
-        [input.projectId, JSON.stringify(payload)]);
+  /**
+   * 同时回写 sections 节点(aiSkill 挂章)。
+   *
+   * ⚠ 2026-09-18 修: 这里原来是**无事务的读改写** —— "读 payload" 与 "写 payload"
+   *   是两条独立语句, 而写的是**整块 payload**。与 `runChapterBatch`(整块回写正文)、
+   *   或批量生成技能卡(循环调用本函数)并发时, 后写的一方会把对方刚写的整批内容顶掉:
+   *   用户看到的是"生成了 20 章写作指导, 正文没了"。
+   *   现在包进单事务 + `for update` 行锁, 读改写在同一把锁下完成。
+   */
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const r = await client.query(
+      `select id, payload from research_nodes
+        where project_id=$1 and node_key='sections' for update`, [input.projectId]);
+    if (r.rows[0]) {
+      const payload = r.rows[0].payload ?? { sections: [] };
+      const list = Array.isArray(payload.sections) ? payload.sections : [];
+      const idx = list.findIndex((s: { id?: string }) => s.id === input.sectionId);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], aiSkill: {
+          type: card.type, wordCount: card.wordCount, writingGoal: card.writingGoal,
+          keyPoints: card.keyPoints, notes: card.notes, connection: card.connection,
+          sectionTitle: input.sectionTitle, frameworkSource: card.frameworkSource,
+          chapterDraft: card.chapterDraft, childSections: card.childSections,
+        } };
+        await client.query(
+          `insert into research_node_history (node_id, version, payload, parent_version, by_role, note)
+           select id, version, payload, version, 'agent', '写作指导回写' from research_nodes
+            where project_id=$1 and node_key='sections'`,
+          [input.projectId]);
+        await client.query(
+          `update research_nodes set payload=$2, version=version+1, updated_at=now()
+            where project_id=$1 and node_key='sections'`,
+          [input.projectId, JSON.stringify(payload)]);
+      }
     }
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback").catch(() => null);
+    throw e;
+  } finally {
+    client.release();
   }
   return { ok: true, card };
 }
 
 // ═══ 工作台整包快照(HAR: task.snapshot 23键) ═══
+/**
+ * 保存工作台快照。
+ *
+ * 2026-09-18: 由**整块覆盖**改成 **jsonb `||` 合并**。
+ *   坑: 只要有一次**部分提交**(比如只带 `{phase, phaseLabel}` 的阶段推进, 或
+ *   `/materials/review` 那条读改写路径…),
+ *   之前存的键就被整块抹掉 —— 实测: 只提交 3 个键后, 快照里原有的 `sections` 与
+ *   `statisticsFileId` 全没了。
+ *   而本地图里没有任何"删除快照键"的语义(`resetLocal` 只清内存态并换 taskId),
+ *   所以合并写严格优于覆盖写。
+ *
+ * ⚠ 同步改动: 主写入路径现在是 `PUT /workbench`(server.ts), 它会**连节点一起同步**。
+ *   本函数保留给"只改快照不动节点"的调用方(如 `/materials/review` 只并一个报告键),
+ *   语义与那条路径保持一致(合并写)。
+ */
 export async function saveWorkbenchSnapshot(userId: string, projectId: string, snapshot: Record<string, unknown>) {
   const owned = await pool.query(`select id from research_projects where id=$1 and user_id=$2`, [projectId, userId]);
   if (!owned.rows.length) return { ok: false, error: "项目不存在" };
   // englishAbstract 提取(若有)
   const en = snapshot._englishAbstract;
   await pool.query(
-    `update research_projects set workbench_snapshot=$2,
+    `update research_projects
+        set workbench_snapshot = coalesce(workbench_snapshot,'{}'::jsonb) || $2::jsonb,
             english_abstract=coalesce($3, english_abstract), updated_at=now()
       where id=$1`,
     [projectId, JSON.stringify(snapshot), typeof en === "string" ? en : null]);
@@ -107,27 +148,13 @@ export async function getWorkbenchSnapshot(userId: string, projectId: string) {
   if (!r.rows.length) return null;
   const row = r.rows[0];
   const stored = row.workbench_snapshot ?? {};
-  // 与节点最新状态动态合并(节点是"最近真相", 快照是"缓存视图")
+  // 与节点最新状态动态合并(节点是"最近真相", 快照是"缓存视图")。
+  // 2026-09-18: if-else 链改成**遍历 SNAPSHOT_NODE_MAP**(workbench-sync.ts) ——
+  //   同一张表也驱动写入侧的同步, 于是"读什么"与"写什么"不会再各说各话。
+  //   各条的合并判据(readGate)是从原 if-else 逐条抄的, 行为不变。
   const nodes = await pool.query(
     `select node_key, payload, updated_at from research_nodes where project_id=$1`, [projectId]);
-  const merged = { ...stored };
-  for (const n of nodes.rows) {
-    const payload = n.payload ?? {};
-    if (n.node_key === "input" && payload.input) merged.input = payload.input;
-    else if (n.node_key === "sections" && Array.isArray(payload.sections)) merged.sections = payload.sections;
-    else if (n.node_key === "analysis") {
-      if (payload.variables) merged.variables = payload.variables;
-      if (payload.stepAnalysisTexts) merged.stepAnalysisTexts = payload.stepAnalysisTexts;
-      if (payload.logicFlow) merged.logicFlow = payload.logicFlow;
-    } else if (n.node_key === "finalize" && payload) {
-      if (payload.mergedTitle !== undefined) merged.mergedTitle = payload.mergedTitle;
-      if (payload.mergedAbstract !== undefined) merged.mergedAbstract = payload.mergedAbstract;
-      if (payload.mergedKeywords !== undefined) merged.mergedKeywords = payload.mergedKeywords;
-      if (payload.mergedFullText !== undefined) merged.mergedFullText = payload.mergedFullText;
-      if (payload.mergedReferences !== undefined) merged.mergedReferences = payload.mergedReferences;
-      if (payload.isFinalized !== undefined) merged.isFinalized = payload.isFinalized;
-    }
-  }
+  const merged = applyNodesToSnapshot(stored, nodes.rows as Array<{ node_key: string; payload: unknown }>);
   // merged_* 列并入(引擎 merge 分支写这里)。
   //
   // ⚠ 2026-09-16 口径修正: 这里原来是**列优先**(`if (row.merged_fulltext) merged.mergedFullText = row.merged_fulltext`),

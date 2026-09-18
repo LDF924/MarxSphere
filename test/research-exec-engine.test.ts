@@ -371,7 +371,7 @@ describe("素材 references 链路(2026-09-16: 结构化文献必须能写、能
     expect((m.references as unknown[]).length).toBe(1);
     expect(m.contentMd).toBe("正文");
     expect(m.sectionIds).toEqual(["s1"]);
-    // 旧蛇形键保留(React 侧 MaterialMaterialsDrawer 直接读 content_md)
+    // 旧蛇形键保留(兼容按列名取值的外部消费方; 原"React 侧直接读"的理由已随那批死组件删除失效)
     expect(m.content_md).toBe("正文");
   });
 });

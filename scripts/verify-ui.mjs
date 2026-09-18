@@ -41,9 +41,36 @@ const SUITES = [
   { key: "materials-actions", file: "probe-materials-actions.mjs", desc: "素材页 20 动作: 增删改/来源/审视/编排/文献结构化" },
   { key: "workspace-actions", file: "probe-workspace-actions.mjs", desc: "创作台 16 动作: 面板/编辑/保存/素材/阶段门禁(不含 LLM)" },
   { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "信息录入 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
+  // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
+  //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
+  { key: "sections-banners", file: "probe-sections-banners.mjs", desc: "科研架构 失败/分析中横幅: 取消→失败态→补指导/重跑" },
+  // 要件生成是**同步** LLM 接口, 真跑一次要烧额度 → 默认组不带, 需要时 `--only=finalize-gen`
+  // 或手动 `node scripts/probe-finalize-component-gen.mjs`。
+  { key: "finalize-gen", file: "probe-finalize-component-gen.mjs", desc: "论文要件生成: 参数/并回章节/刷新后仍在/缺标题门禁", data: true },
+  // 支撑视图(不在写作舱主流程): DAG 编排 / 数据台 / 绘图台 / 审稿台。
+  //   审稿那四个动作(retry/export-html/export-word/send-to-workflow)只在**已有审稿结果**后渲染 ——
+  //   不真跑一次审稿它们根本不出现, 所以带 LLM 的那段归 --all。
+  { key: "support-views", file: "probe-support-views-actions.mjs", desc: "QuickMode/Statistics/Viz/Review 的 12 个动作" },
+  // 数据分析台的 .xlsx 上传: 台账长期记的是「后端仅 csv/tsv」, 实际早有 xlsx→CSV 通道 ——
+  //   但套件里**从来没有 xlsx 用例**(只验过 csv), 所以这条是真跑一遍端到端。
+  //   xlsx 在 node 侧用 fflate 现造(最小 OOXML, openpyxl 能读), 不往仓库塞二进制样本。
+  { key: "stats-xlsx", file: "probe-stats-xlsx-upload.mjs", desc: "xlsx 上传: 后端转换/profile/变量渲染/可点选/运行前置" },
+  // 审稿台「＋ 新建审稿」: 按闭源 review_new_review 补的入口, 补完只验了渲染 ——
+  //   跑整条流才现形: 点确认后正文一个字没少(正文框另存了一份本地副本, resetPaper 只清了 store)。
+  //   同时钉住"不重挂载组件时重置也要清界面"(另一个入口走同一路径)。
+  { key: "review-reset", file: "probe-review-reset.mjs", desc: "新建审稿: 确认层文案/取消保留/确认清空/重置机制" },
+  // R9: 后端的图片端点是 requireUser 保护的, 而 `<img src="/api/...">` 发不带 Authorization 头 ——
+  //   实测**本机也是 401**(不是"上云才坏"), naturalWidth=0。这条钉住"带鉴权取 blob"这条路必须通。
+  { key: "authed-image", file: "probe-authed-image.mjs", desc: "受保护图片: 原生 img 取不到 / 带鉴权 fetch 200 / objectURL 可解码 / 404" },
+  // 「快照 ↔ 节点」口径: 验"改完之后刷新还在不在"(用户视角), 与单测(验合并函数本身)互补。
+  //   不调 LLM, 秒级。
+  { key: "workbench-sync", file: "probe-workbench-sync.mjs", desc: "已定稿/数据文件刷新后仍在 + 防倒退 + diff 守卫" },
   // 布局是**另一层**问题: 旧门禁全是文案/结构断言, 从没量过"元素实际占多大、窄屏会不会塌、底部能不能滚到"
   { key: "layout", file: "verify-layout.mjs", desc: "三档视口 × 5 视图: 溢出/塌陷/重叠/可滚动容器" },
   { key: "editor-ai6", file: "editor-ai6-verify.mjs", desc: "编辑器 AI 面板 6 页签与顺序" },
+  // 编辑器「导出 Word」此前**零覆盖** —— 一验就现形: 它打的是一个后端不存在的 URL(恒 404)。
+  //   这条同时反向断言"不再打那个死 URL", 否则将来有人把旧代码抄回来照样绿。
+  { key: "editor-export", file: "probe-editor-export.mjs", desc: "编辑器导出 Word: 真端点/请求体带内容/产物是真 docx" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },
   { key: "empirical-switch", file: "verify-empirical-project-switch.mjs", desc: "实证台课题切换与空态" },

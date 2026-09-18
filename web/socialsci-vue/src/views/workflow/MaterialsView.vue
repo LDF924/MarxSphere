@@ -32,7 +32,7 @@ interface Material {
   sectionIds?: string[];
   createdAt?: string;
   tableData?: { columns: string[]; rows: unknown[][] };
-  references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string; venue?: string; doi?: string; volumeIssue?: string; authors?: string; excerpt?: string }>;
+  references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string; venue?: string; doi?: string; volume?: string; issue?: string; pages?: string; authors?: string; excerpt?: string }>;
   source?: { sourceStatus?: { wanfang?: string; ncpssd?: string; internal?: string } };
 }
 
@@ -420,6 +420,21 @@ async function finishGenSave() {
 
 // ── B2 文献批量解析(闭源 la(): DOI/年份/APA·GB 混合; 空条目工厂/单条解析/批量粘贴) ──
 const REF_KEYS = ["title", "author", "source", "journal", "year", "volume", "issue", "pages", "doi", "abstract"];
+/**
+ * 卷(期):页码 —— 模板此前读的是 `volumeIssue`, 而解析器产出的是
+ * `volume`/`issue`/`pages` 三个独立键(见 REF_KEYS), **全仓没有任何地方写 volumeIssue**。
+ * 于是用户填的卷期永远不显示 —— 读的是个恒空的键。
+ * 2026-09-18 修: 按 `REF_KEYS` 的口径拼, 不显示空占位。
+ */
+function refVol(ref: Record<string, unknown>): string {
+  const v = String(ref.volume ?? "").trim();
+  const i = String(ref.issue ?? "").trim();
+  const p = String(ref.pages ?? "").trim();
+  if (!v && !i && !p) return "";
+  let s = v + (i ? `(${i})` : "");
+  if (p) s += `: ${p}`;
+  return s;
+}
 function emptyRef(): Record<string, string> {
   const r: Record<string, string> = {};
   for (const k of REF_KEYS) r[k] = "";
@@ -447,6 +462,19 @@ function parseSingleRef(raw: string): Record<string, string> {
   if (!r.title) {
     if (gb) { r.author = gb[1].trim(); r.title = gb[2].trim(); r.source = gb[3].trim(); r.year = gb[4]; }
     else r.title = t.slice(0, 60);
+  }
+  /**
+   * 卷(期):页码 —— GB/T 7714 里跟在年份后面(如 `经济学(季刊), 2020, 19(4): 1-15.`)。
+   * 2026-09-18 补: 此前**完全不抽**这三项, 而 REF_KEYS 里定义了它们、模板也想显示,
+   * 结果是"著录里明明有卷期, 卡片上永远不显示"。抽取是保守的: 只在紧跟年份之后认,
+   * 认不出就不写(宁可空, 也不要把年份/页码错切到卷号上)。
+   */
+  const vip = t.match(/[,，]\s*(\d{4})\s*[,，]\s*(\d+)\s*(?:\(\s*(\d+)\s*\))?\s*(?::\s*([\d\-–—~]+))?/);
+  if (vip) {
+    if (!r.year) r.year = vip[1];
+    r.volume = vip[2] ?? "";
+    if (vip[3]) r.issue = vip[3];
+    if (vip[4]) r.pages = vip[4];
   }
   return r;
 }
@@ -1200,7 +1228,7 @@ onMounted(async () => {
                         <span v-if="(ref as any).venue" class="ref-venue">{{ (ref as any).venue }}</span>
                         <span v-if="ref.source" class="ref-source">{{ ref.source }}</span>
                         <span v-if="ref.year">· {{ ref.year }}</span>
-                        <span v-if="(ref as any).volumeIssue" class="ref-vol">{{ (ref as any).volumeIssue }}</span>
+                        <span v-if="refVol(ref)" class="ref-vol">{{ refVol(ref) }}</span>
                       </div>
                       <div v-if="(ref as any).doi" class="ref-doi">DOI: {{ (ref as any).doi }}</div>
                       <div v-if="ref.gbRef" class="ref-gb">{{ ref.gbRef }}</div>
@@ -1271,7 +1299,7 @@ onMounted(async () => {
 
     <!-- 底部操作(闭源顺序: 描边返回在**左**, flex-1 主按钮在**右**) -->
     <div class="wf-actions">
-      <button class="btn-back" @click="router.push('/workflow/sections')">返回章节清单</button>
+      <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/sections')">返回章节清单</button>
       <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
         {{ publishing ? "发布中…" : "确认并进入创作" }}
       </button>
@@ -1381,7 +1409,7 @@ onMounted(async () => {
                       <span v-if="ref.venue" class="ref-venue">{{ ref.venue }}</span>
                       <span v-if="ref.source" class="ref-source">{{ ref.source }}</span>
                       <span v-if="ref.year">· {{ ref.year }}</span>
-                      <span v-if="ref.volumeIssue" class="ref-vol">{{ ref.volumeIssue }}</span>
+                      <span v-if="refVol(ref)" class="ref-vol">{{ refVol(ref) }}</span>
                     </div>
                     <div v-if="ref.doi" class="ref-doi">DOI: {{ ref.doi }}</div>
                     <div v-if="ref.excerpt" class="ref-gb">{{ String(ref.excerpt).slice(0, 160) }}</div>
@@ -1617,6 +1645,8 @@ onMounted(async () => {
                       <span class="pi-title">{{ r.title || "未识别题目" }}</span>
                       <span v-if="r.author" class="pi-meta">{{ r.author.slice(0, 20) }}</span>
                       <span v-if="r.year" class="pi-meta">{{ r.year }}</span>
+                      <!-- 卷(期):页码 —— 解析器抽了这三项, 此前预览卡不渲染, 用户看不到解析结果对不对 -->
+                      <span v-if="refVol(r)" class="pi-meta">{{ refVol(r) }}</span>
                       <span v-if="r.doi" class="pi-doi">DOI: {{ r.doi.slice(0, 24) }}</span>
                     </div>
                     <div v-if="parsedRefs.length > 6" class="parsed-more">…还有 {{ parsedRefs.length - 6 }} 条</div>

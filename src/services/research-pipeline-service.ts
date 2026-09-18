@@ -455,9 +455,18 @@ export async function publishVersion(userId: string, projectId: string, label: s
        values ($1,$2,$3,$4,$5)`,
       [projectId, nextVer, label, JSON.stringify(snapshot), userId]
     );
+    /**
+     * ⚠ 2026-09-18: 这里原来还把 `label` 写进 `research_projects.phase_label`。
+     *   而那个列是**阶段名**的列(PATCH /projects/:id 写的是「合稿定稿」这种中文阶段名,
+     *   前端 syncPhaseToProject 也在写它)。`label` 却是**版本标签**(`phase4_text`),
+     *   两个写入方挤在同一列、语义不同 —— 谁后到谁赢, 阶段名会被覆成英文标签。
+     *   该列目前**没有用户可见的读路径**(历史面板读的是 `research_tasks.phase_label`,
+     *   不是这个列), 所以是潜在缺陷而非现症; 既然版本标签的权威位置是
+     *   `research_versions.label`(下一句就写了), 就不该再往阶段列上写。
+     */
     await client.query(
-      `update research_projects set published_version=$2, phase_label=$3, updated_at=now() where id=$1`,
-      [projectId, nextVer, label]
+      `update research_projects set published_version=$2, updated_at=now() where id=$1`,
+      [projectId, nextVer]
     );
     await client.query("commit");
     return { ok: true as const, version: nextVer };

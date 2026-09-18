@@ -469,7 +469,7 @@ watch(() => props.taskId, () => {
         <span v-if="fileName" class="file-capsule">已加载: {{ fileName }}</span>
         <span v-else class="file-capsule file-none">未加载数据</span>
         <a class="stats-link" href="#/workflow/workspace" style="display: none">前往工作流</a>
-        <button class="btn-new-stats" @click="resetAll">＋ 新建分析</button>
+        <button class="btn-new-stats" data-control="statistics:new" @click="resetAll">＋ 新建分析</button>
       </div>
     </div>
 

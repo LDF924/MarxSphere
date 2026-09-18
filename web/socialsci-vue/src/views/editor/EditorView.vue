@@ -18,6 +18,8 @@ import { useEditorAiStore } from "./stores/editorAi";
 import { EVT, K } from "@/shared/constants";
 import { toast } from "@/shared/ui";
 import { base64ToBlob } from "@/shared/editorApi";
+import { q } from "@/shared/api";
+import { presetByKey, loadPresetKey } from "./presets";
 
 const route = useRoute();
 const router = useRouter();
@@ -318,6 +320,25 @@ async function onAiInsertChart(e: Event) {
   }
 }
 
+/**
+ * 导出 Word。
+ *
+ * ⚠ 2026-09-18 修: 这里原来 POST `/api/editor/v1/documents/<id>/export` —— **那个端点不存在**,
+ *   实测恒 404「接口不存在」, 点「导出 Word」必然弹「导出失败」。
+ *   同一个契约层里 `shared/editorApi.ts` 的 `exportDocxBlob()` 是专为它写的包装, **零调用点**;
+ *   全仓 `format_options` 也只有前端两处、后端一处不认 —— 这条路从来没被后端接住过。
+ *   闭源确实有 `/editor/v1/documents/document/<id>/export/...`, 但那是**服务端 HTML→docx**,
+ *   我方没有等价地基服务(`docx`/`mammoth` 在 node_modules 里但全仓零 import)。
+ *
+ *   改走平台**已有且实测可用**的 docx 通道 POST `/api/paper-outline/export`
+ *   —— React 外壳版一直在用同一条(`web/src/components/EditorView.tsx` 的 `exportDocx`,
+ *   且 `fontName` 参数当初就是为该场景加的, 见 `paper-outline-service.ts` 的 R7 注释)。
+ *
+ * 形态说明: 那里的 `nodes` 是**骨架 + 正文**两段式。编辑器正文是 TipTap JSON 富文本,
+ *   是它的超集 —— 本函数只搬「标题层级 + 文本, 附空行」, 其余包裹格式(粗斜体/列表/表格)
+ *   **会降级成纯文本**。这是已知限制, 不假装支持; 要保真得让后端直接吃 HTML。
+ *   顺带一提, 降级后正好落回闭源「导出后 postprocess 处理 docx_text」的往返语义。
+ */
 async function handleExport() {
   const ed = editorRef.value;
   if (!ed || !store.currentDocument) {
@@ -325,33 +346,44 @@ async function handleExport() {
     toast("请先新建或打开一篇文档再导出", "warning");
     return;
   }
-  const html = ed.getHTML();
   const title = store.currentDocument.title || "未命名学术文档";
   try {
-    const res = await fetch(`/api/editor/v1/documents/${store.currentDocument.id}/export`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}`
-      },
-      body: JSON.stringify({ html, title, format_options: {} })
+    // tiptap 是 Level 1 里唯一有 `.text` 的；Level 2/3 走两个 content 槽 ——
+    //   这样 `flattenForDocx` 的 "content 非空才 push" 判定才拿得到正文(填成 `,` 列会丢)。
+    const top: Array<Record<string, unknown>> = [];
+    const sub: Array<Record<string, unknown>> = [];
+    /** 正文往当前最深的槽里追加(没有子节就挂到当前 h1) */
+    const put = (text: string) => {
+      const host = (sub[sub.length - 1] ?? top[top.length - 1]) as Record<string, unknown> | undefined;
+      if (host) host.content = String(host.content ?? "") + text + "\n";
+      else top.push({ title: "", level: 1, content: text + "\n", children: sub });
+    };
+    ed.state.doc.forEach((child) => {
+      const level = child.type.name === "heading" ? Number(child.attrs.level) : 0;
+      if (level === 1) top.push({ title: child.textContent, level: 1, content: "", children: sub });
+      else if (level >= 2) sub.push({ title: child.textContent, level, content: "", children: [] });
+      else if (child.textContent.trim()) put(child.textContent);
     });
-    const ct = res.headers.get("content-type") || "";
-    let blob: Blob;
-    if (ct.includes("application/json")) {
-      const j = await res.json();
-      if (!j?.ok || !j?.base64) throw new Error(j?.error?.message ?? "导出失败");
-      blob = base64ToBlob(j.base64, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    } else {
-      blob = await res.blob();
-    }
+    const preset = presetByKey(loadPresetKey());
+    const r = await q<{ ok: boolean; base64?: string; error?: { message?: string } }>("/paper-outline/export", {
+      method: "POST",
+      body: {
+        paperTitle: title,
+        // 没有标题块时不要交一个空数组 —— 那会让导出识别不出论文标题
+        nodes: top.length ? top : [{ title, level: 1, content: ed.state.doc.textContent, children: [] }],
+        fontName: preset.docxFont,
+        fontSize: preset.docxFontSize,
+      },
+    });
+    if (!r?.ok || !r?.base64) throw new Error(r?.error?.message ?? "导出失败");
+    const blob = base64ToBlob(r.base64, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `${title.replace(/[\\/:*?"<>|]/g, "_")}.docx`;
     a.click();
     URL.revokeObjectURL(url);
-    toast("Word 导出完成", "success");
+    toast("已导出 Word 文件", "success");
   } catch (err) {
     toast(`导出失败: ${(err as Error).message}`, "error");
   }

@@ -22,7 +22,23 @@ const router = useRouter();
 
 // ── 输入页状态 ──
 const inputTab = ref<"paste" | "upload">("paste");
-const pastedText = ref("");
+/**
+ * ⚠ 正文框**不能再另存一份本地 ref**。
+ *
+ * 2026-09-18: 原来是 `const pastedText = ref("")` —— 输入时 `onPasteInput` 把它**复制**进
+ *   `store.paperContent`, 于是同一份正文有了两个副本。`store.resetPaper()` 只清 store,
+ *   另一个副本原地不动; 视图继续把 store 回写进文本框(`v-if` 分支重新挂载时同样会回写),
+ *   表现为**点了"新建审稿"并确认, 正文还在**(实测: 168 字一个不少)。
+ *   同一个坑还有两个既有入口: 删除当前任务(878)、带 `?new=1` 进页(793)。
+ *
+ * 改成直接读写 store 的字段 —— 一份数据一个真源, resetPaper 一清就全清,
+ *   三条入口**一处修复全受益**, 不靠"记得在每处补一句置空"。
+ *   (正文落库与标题截取都在 setter 里做完, 所以模板上那个 @input="onPasteInput" 也一并删了)
+ */
+const pastedText = computed({
+  get: () => store.paperContent,
+  set: (v: string) => store.setPaper({ content: v, title: v.slice(0, 40), sourceType: "txt" }),
+});
 const uploadFileName = ref("");
 const uploadChunked = ref(false);
 const submitting = ref(false);
@@ -46,9 +62,6 @@ const canSubmit = computed(() => {
   return text.trim().length >= 100 && !!uploadFileName.value;
 });
 
-function onPasteInput() {
-  store.setPaper({ content: pastedText.value, title: pastedText.value.slice(0, 40), sourceType: "txt" });
-}
 
 async function onFileSelected(file: File) {
   if (!file) return;
@@ -125,6 +138,21 @@ const effectiveDimensions = computed(() => mergedDimensions.value.filter((d) => 
 const weightSum = computed(() => effectiveDimensions.value.reduce((s, d) => s + d.weight, 0));
 
 // ── 提交(闭源 _() R:37026-37064) ──
+/** 新建审稿(闭源 X(): 确认 → resetPaper)。已有内容/结果时才问, 空白页直接重置不打断 */
+async function startNewReview() {
+  if (store.paperTitle || store.paperContent || store.result) {
+    const ok = await confirmDialog({
+      message: "开始新的审稿？当前审稿状态将清除。",
+      title: "新建审稿",
+      okText: "新建",
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  store.resetPaper();
+  store.backToInput();
+}
+
 async function submitReview() {
   const text = store.paperContent.trim();
   if (text.length < 100) {
@@ -1210,7 +1238,13 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
             <h1 class="page-title">论文审稿</h1>
             <p class="page-sub">AI 多维度学术评审 · 期刊标准 + 审稿维度 + 原文批注</p>
           </div>
-          <router-link to="/review/library" class="lib-link">审稿库 →</router-link>
+          <div class="head-actions">
+            <!-- 闭源 review_new_review: 确认层文案与流程逐字对齐
+                 (确认 → resetPaper 清空状态)。原先没有这个入口 —— 提交过一次之后
+                 想换一篇重来只能刷新页面。 -->
+            <button class="lib-link" data-control="review:new" @click="startNewReview">＋ 新建审稿</button>
+            <router-link to="/review/library" class="lib-link" data-control="review:open-library">审稿库 →</router-link>
+          </div>
         </div>
 
         <div class="input-card">
@@ -1226,7 +1260,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
           </div>
 
           <template v-if="inputTab === 'paste'">
-            <textarea v-model="pastedText" class="paste-area" placeholder="在此粘贴论文全文(至少 100 字)…" @input="onPasteInput"></textarea>
+            <textarea v-model="pastedText" class="paste-area" placeholder="在此粘贴论文全文(至少 100 字)…"></textarea>
             <div class="input-hint">{{ pastedText.length }} 字</div>
           </template>
           <template v-else>
@@ -1681,6 +1715,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
   padding: 24px;
   flex: 1;
 }
+.head-actions { display: flex; align-items: center; gap: 14px; }
 .page-head {
   display: flex;
   align-items: flex-start;

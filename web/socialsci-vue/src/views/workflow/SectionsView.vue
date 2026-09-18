@@ -98,6 +98,8 @@ const analyzeStep = ref(0); // 0 idle/1 变量识别/2 框架/3 skill
 const analyzeMsg = ref("");
 const analyzeFailed = ref(false);
 const analyzeError = ref("");
+/** 失败横幅是**取消**还是**真失败** —— 两者标题与出路不同, 混说会让用户以为系统坏了 */
+const analyzeCancelled = ref(false);
 const pollTimer = ref<ReturnType<typeof setInterval> | null>(null);
 const activeJobId = ref("");
 // 写作指导单独重试: analyze 失败/取消时正文不会跑到 generateWritingGuides, 此前该章指导永久缺失
@@ -138,6 +140,7 @@ async function startAnalysis(force = false) {
   if (analyzing.value) return; // 防双任务
   analyzing.value = true;
   analyzeFailed.value = false;
+  analyzeCancelled.value = false;
   analyzeError.value = "";
   // 新一轮分析: 清空思考区与"已打过的叙述"标记, 否则复用上一轮的残留文本,
   //   用户会看到上一轮的阶段叙述挂在本轮进度条上(自相矛盾)
@@ -169,7 +172,17 @@ async function startAnalysis(force = false) {
   }
 }
 
-/** 取消分析: 停轮询 + 后端任务 cancel(防旧 job 泵执行完覆盖; 刷新/重进时恢复续显) */
+/**
+ * 取消分析: 停轮询 + 后端任务 cancel(防旧 job 泵执行完覆盖; 刷新/重进时恢复续显)。
+ *
+ * ⚠ 2026-09-17 修: 这里原来只 `analyzing = false` —— 横幅于是**退回了 idle**,
+ *   而失败横幅里那句「科研架构分析已取消。可直接重试生成写作指导…」是**死代码**
+ *   (只有 pollJob 收到 status='cancelled' 才会走到, 但取消时轮询已经被我们自己停了)。
+ *   结果是用户点了取消 → 只弹个 toast 就回到"开始分析"的空态, 看不到"接下来能做什么":
+ *   已经拿到的变量/章节结构还在, 却没有"只补写作指导"这个入口。
+ *   改成落**失败横幅**(它本就有取消态文案与两条出路), 并再读一次任务状态兜底 ——
+ *   取消是用户主动动作, 前端已经知道结果, 不必依赖那次轮询。
+ */
 async function cancelAnalysis() {
   const jobId = activeJobId.value;
   stopPoll();
@@ -179,6 +192,10 @@ async function cancelAnalysis() {
       await q(`/research/tasks/${jobId}/control`, { method: "POST", body: { action: "cancel" } }).catch(() => null);
     } catch { /* 容忍 */ }
   }
+  activeJobId.value = "";
+  analyzeFailed.value = true;
+  analyzeCancelled.value = true;
+  analyzeError.value = "可直接重试生成写作指导, 或用「重新分析」重跑全流程。";
   toast("已取消分析", "info");
 }
 
@@ -241,9 +258,11 @@ function pollJob() {
         stopPoll();
         analyzing.value = false;
         analyzeFailed.value = true;
-        analyzeError.value = t.status === "cancelled"
-          ? "科研架构分析已取消。可直接重试生成写作指导, 或用「重新分析」重跑全流程。"
-          : `科研架构生成失败${describeJobError(t)}。章节结构已保留, 可直接重试生成写作指导。`;
+        // 轮询这条路径同样要区分"取消"与"真失败"(任务可能被别处取消)
+        analyzeCancelled.value = t.status === "cancelled";
+        analyzeError.value = analyzeCancelled.value
+          ? "可直接重试生成写作指导, 或用「重新分析」重跑全流程。"
+          : `${describeJobError(t)}。章节结构已保留, 可直接重试生成写作指导。`;
       } else {
         // progress {stage,current,total} → 步骤推进
         const progress = (t as { progress?: { stage?: string; current?: number; total?: number } }).progress;
@@ -526,10 +545,13 @@ onUnmounted(() => {
     <!-- AI 分析横幅(3 态) -->
     <div v-if="analyzeFailed" class="banner banner-fail">
       <div class="banner-head">
-        <strong>科研架构生成失败</strong>
+        <strong>{{ analyzeCancelled ? "科研架构分析已取消" : "科研架构生成失败" }}</strong>
       </div>
-      <!-- 闭源: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步 -->
-      <p class="banner-body"><span class="fail-step">Step {{ Math.max(1, analyzeStep) }} 执行失败</span>{{ analyzeError ? `：${analyzeError}` : "" }}</p>
+      <!-- 闭源: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步。
+           取消不是"失败", 前缀按状态换, 免得用户以为系统坏了。 -->
+      <p class="banner-body">
+        <span class="fail-step">Step {{ Math.max(1, analyzeStep) }} {{ analyzeCancelled ? "已取消" : "执行失败" }}</span>{{ analyzeError ? `：${analyzeError}` : "" }}
+      </p>
       <div class="banner-actions">
         <button class="btn-red-sm" data-control="workflow:retry-guides" :disabled="guidesBusy" @click="retryGuides">
           {{ guidesBusy ? "正在生成写作指导…" : "只重试生成写作指导" }}
@@ -738,7 +760,7 @@ onUnmounted(() => {
 
     <!-- 底部操作 -->
     <div class="wf-actions">
-      <button class="btn-back" @click="router.push('/workflow/input')">返回修改</button>
+      <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/input')">返回修改</button>
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
         确认科研架构, 进入素材准备
       </button>

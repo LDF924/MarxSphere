@@ -85,7 +85,11 @@ export async function createMaterial(input: MaterialInput) {
  * 而列表返回 camelCase(`references`/`contentMd`/`sectionIds`) —— 同一资源两套命名。
  * 后果是"列表里读得到的字段, 单条读回来叫另一个名字": 前端把单条结果塞回编辑表单时
  * `references` 是 undefined, 一保存就把结构化文献抹掉。
- * 旧蛇形键**原样保留**(React 侧 MaterialsDrawer 在直接读 `content_md`)。
+ * 旧蛇形键**原样保留**(`{...m}` 展开的结果)。
+ * 2026-09-18: 保留它的原始理由(「React 侧 MaterialsDrawer 直接读 `content_md`」)**已失效** ——
+ *   那批 09-06/07 的 React 组件已删(零引用死代码)。现在保留是因为它成了**对外契约的一部分**:
+ *   `test/research-exec-engine.test.ts` 与外部 Agent/MCP 消费方可能仍按列名取值,
+ *   且删它属于"顺带改契约", 与本改动无关。要收紧就单独开一条, 别混在删除里。
  */
 function mapMaterialRow<T extends Record<string, unknown>>(m: T) {
   const meta = (m.meta ?? {}) as Record<string, unknown>;

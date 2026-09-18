@@ -9,6 +9,7 @@ import rehypeKatex from "rehype-katex";
 import { Check, Copy } from "lucide-react";
 import { renderMarkdownLines, type MarkdownCitation } from "../lib/markdown";
 import { cn } from "../lib/utils";
+import { AuthedImg } from "../lib/authed-image";
 import { ReviewerCard, type ReviewerBlock } from "./ReviewerCard";
 
 /** 解析 ```review fenced JSON(协议见 src/services/review-fence.ts); 畸形返回 null */
@@ -239,6 +240,23 @@ function RichCodeBlock({ content, lang }: { content: string; lang?: string }) {
 }
 
 /** 富 Markdown 消息：代码块高亮 + KaTeX 公式 + 引用徽章（正文段走现有轻量渲染） */
+/**
+ * markdown 里 `![...](/api/...)` 渲染出来的就是裸 `<img src>` —— 而后端的图基本都要鉴权,
+ * `<img>` 发不带 Authorization 头。2026-09-18 实测: 原生 `<img>` 取 `/api/viz/files/...` 得到
+ * **error(naturalWidth=0)**, 而带鉴权 fetch 是 200。也就是说**编辑器正文里插入的图表, 预览时一直是裂的**。
+ *
+ * 只接管**本域相对路径**(我们自己产出的图); 外链(http/https/data/blob)原样交给浏览器 ——
+ * 那些不需要我们的 token, 也不该被 fetch 成 blob 绕一圈。
+ */
+function mdImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const src = typeof props.src === "string" ? props.src : "";
+  if (src.startsWith("/")) {
+    return <AuthedImg path={src} alt={props.alt} className={props.className} />;
+  }
+  return <img {...props} alt={props.alt ?? ""} />;
+}
+const MD_COMPONENTS = { img: mdImage };
+
 export function MarkdownRich({
   content,
   citations = [],
@@ -301,7 +319,7 @@ export function MarkdownStreaming({ content }: { content: string }) {
     } else if (/^\$\$[\s\S]+\$\$$/.test(part) || /^\$[^$\n]+\$$/.test(part)) {
       nodes.push(
         <span key={nodes.length} className="markdown-rich-inline">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeKatex]}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeKatex]} components={MD_COMPONENTS}>
             {part}
           </ReactMarkdown>
         </span>

@@ -321,10 +321,14 @@ export async function exportOutlineDocx(input: {
   paperTitle: string;
   nodes: OutlineNode[];
   fontName?: string; // R7(闭源 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
+  fontSize?: number; // R7: 正文字号(pt), 同样来自预览预设; 缺省走 python 侧默认
   references?: ReferenceListInfo; // V417: 参考文献 + 著录完整性(补录提醒)
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
   const fontName = input.fontName || "SimSun";
+  // 字号: 之前只传字体不传字号 —— 预设里 docxFontSize 4 档(10.5/10.5/12/11)在导出时被整个丢掉。
+  //   0 / 未传 → python 侧保持原默认(不改既有行为)
+  const bodyFontSize = Number(input.fontSize) > 0 ? Number(input.fontSize) : 0;
   const refs = input.references ?? { text: "", needsManual: false, sources: [] };
   const script = `
 import sys, json, base64, io
@@ -335,6 +339,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 items = ${JSON.stringify(items)}
 paper_title = ${JSON.stringify(input.paperTitle)}
 font_name = ${JSON.stringify(fontName)}
+body_size = ${bodyFontSize > 0 ? bodyFontSize : "None"}
 references_text = ${JSON.stringify(refs.text ?? "")}
 refs_needs_manual = ${refs.needsManual ? "True" : "False"}
 refs_sources = ${JSON.stringify(refs.sources ?? [])}
@@ -393,7 +398,7 @@ for it in items:
         else:
             pp = doc.add_paragraph(p)
             for run in pp.runs:
-                set_run(run)
+                set_run(run, body_size)
 
 # ── 参考文献(V417): 有真实条目就落列表; 没有就显式标注"需人工补录", 不伪造 ──
 refh = doc.add_heading("参考文献", level=1)
