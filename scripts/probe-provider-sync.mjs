@@ -20,7 +20,7 @@
 // ⚠ 这个文件必须用**写文件工具**生成, 不能走 shell heredoc ——
 //   `\d` / `\n` 这类转义在 heredoc 里会被解释掉, 变成 `Invalid regular expression`。
 //   同一个坑这个会话里踩过五次以上, 故此处直接用 Write 落盘。
-import { startCdp, loginToken, sleep, evalTop } from "./scripts/lib/cdp-editor.mjs";
+import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 
 const BASE = "http://127.0.0.1:4173";
 /** 种子模型: 选**非 deepseek**的, 这样"切回 deepseek"才有真实变化可观察 */

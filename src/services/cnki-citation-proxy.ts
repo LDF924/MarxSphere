@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 // tabInfo/navigate 来自通用 CDP 原语(2026-09-19 抽出); 本文件其余 curl/evalJs 仍是自己的实现, 逐步收敛中
-import { listTargets, navigate as cdpNavigate, tabInfo } from "./cdp-browser.js";
+import { activateTab, listTargets, navigate as cdpNavigate, tabInfo } from "./cdp-browser.js";
 
 /**
  * cnki-citation-proxy — 知网引文网络 CDP 代理
@@ -38,13 +38,22 @@ import { listTargets, navigate as cdpNavigate, tabInfo } from "./cdp-browser.js"
  * ## 已知环境边界(不是本仓能修的)
  *
  * 知网的引文区**只在标签页可见时才渲染**: 后台标签(`visibilityState === "hidden"`)的
- * `#refpartdiv` 永远只有 6 个标签文字(长度恒为 **39**), 等 25 秒、重载都不变;
- * 同一个 URL 在可见标签里就有完整条目(长度 **712**、10 条)。
+ * `#refpartdiv` 只有 6 个标签文字、**连计数都不带**(`参考文献(49)` 那行都不出现, 长度 **39**);
+ * 同一个页面被激活后立刻变成 **98** 并出现计数, 再往下才渲染出条目(长度 **712**、10 条)。
  *
- * 而 CDP 代理**没有"激活标签"端点**(只有 `/new /navigate /close /back /eval /click /clickAt
- * /scroll /screenshot /info /targets`), `window.focus()` 也改不了 `visibilityState`(实测仍 hidden)。
- * ⇒ 服务端**无法自己**把标签切到前台, 只能在这种情况下如实告诉用户"请把这个标签切到前台"。
- *   (这也解释了我先前那次"能抓到 10 条"为什么成功: 那是我**用真实鼠标点击**打开的、当时在前台的标签。)
+ * ⚠ 实测(2026-09-19)的**卡点** —— `Target.activateTarget` **改不了窗口的遮挡状态**:
+ *   · 本机 Edge 的**全部 6 个标签(含面板自己)都是 `visibility: hidden`** ⇒ 说明是**整个浏览器窗口
+ *     被遮挡/最小化**, 不是标签选择问题;
+ *   · `/activate` 每次都能报到 `visible`, 但**下一次求值就是 `hidden`**(激活被立刻收回,
+ *     全程 `focused: false`) —— 所以"激活一次"与"反复激活"都救不回来。
+ *   `document.visibilityState` 看的是**窗口是否可见**, 而 CDP 的 activateTarget 只管**标签是否活动**,
+ *   两者不是一回事。要真正解决得让窗口前置(系统级操作), 那超出本模块、也不该由抓取代码擅自做。
+ *
+ * ⇒ 结论: 在这种环境下**抓不到数据是环境限制, 不是解析失败**。模块如实这么报
+ *   (「该文献详情页当前在后台标签…请切到前台再点一次」), 而不是含糊成"抓取失败" ——
+ *   我先前正是含糊过去, 才一路把它误读成"知网改了结构 / 不下发数据"。
+ *   仍然成立的正向证据: 用**真实鼠标点击**(`/clickAt`)打开、且当时在前台的标签,
+ *   实测能拿到 10 条 + `total「期刊共50条」`(那是本会话早期真实发生过的成功抓取)。
  *
  * 消费者: `web/src/components/SciversePanel.tsx`(外壳「外部检索」tab)+ `web/src/lib/api.ts`
  *   的 `getCnkiCitations` / `searchCnkiOpen`, 经 `server.ts` 的 `/api/cnki/citations/:type`。
@@ -387,7 +396,18 @@ export async function searchCnkiAndOpenPaper(query: string): Promise<{ ok: boole
     return { ok: false, error: "搜索结果中未找到论文（可能被安全验证拦截，请手动在 Edge 完成滑块验证）" };
   }
 
-  // 3. 在搜索页内标记论文链接，真实鼠标点击打开详情页（模拟完整用户流程，确保引文数据加载）
+  /**
+   * 3. **先在检索页上激活一次, 再真实点击**。
+   *
+   * ⚠ 实测(2026-09-20): 检索页若是 `hidden`, `/clickAt` 的坐标**算得对但点不中** ——
+   *   它用 `getBoundingClientRect()` 取坐标(实测拿到了正确的 583,347,命中目标元素中心),
+   *   但**隐藏标签没在合成帧里, 派发的鼠标事件到不了渲染层**, 于是什么都没发生、也不报错。
+   *   所以真实点击这条路**必须先让页面可见**。
+   */
+  // 代理若是旧版(没有 /activate)也继续 —— 后面用"到底有没有新详情页"来判定
+  activateTab(targetId);
+
+  // 在搜索页内标记论文链接，真实鼠标点击打开详情页（模拟完整用户流程，确保引文数据加载）
   evalJs(
     targetId,
     `(() => {
@@ -439,19 +459,41 @@ export async function searchCnkiAndOpenPaper(query: string): Promise<{ ok: boole
      *
      * ⚠ 实测踩到(2026-09-19): 原来写的是"取第一个 targetId !== 搜索页的 kcms2",
      *   而浏览器里可能同时开着好几篇旧详情页 —— 于是**明明要点 A, 却把旧的那篇 B 返回了**,
-     *   后续抓引文抓的是 B 的数据。和上面 `searchTabId` 是同一类错(拿"任意一个"当"刚操作的那个"),
-     *   只是在两个不同步骤上各犯了一次。
-     *   可靠判据: **点击之后新出现的**那个 kcms2(与点击前做差集)。
+     *   后续抓引文抓的是 B 的数据。
+     *
+     * ⚠⚠ 2026-09-20 再修: 原来还是 `fresh ?? fallback`, **兜底那半边就是同一个错** ——
+     *   点击没生效时(比如检索页不可见), 它会挑一篇**八竿子打不着的旧详情页**当"刚打开的",
+     *   然后报"成功"。实测: 搜「数实融合…」, 它返回的却是《2026中国国际数字经济博览会筹备工作
+     *   基本完成》(报纸, 根本不在结果列表里), 再抓引文自然扑空 —— **而且全程不报错**。
+     *   ⇒ 现在**没有新详情页就算失败**, 由下面统一走"自己开 + 激活"的回退, 绝不复用旧页。
      */
     const details = tabs.filter((t) => t.url.includes("kcms2"));
     const fresh = details.find((t) => !beforeClickDetailIds.has(t.targetId));
-    const fallback = details.find((t) => t.targetId !== searchTabId) ?? details[0];
-    detailTab = (fresh ?? fallback)?.targetId ?? "";
+    detailTab = fresh?.targetId ?? "";
   } catch {
     // 忽略
   }
+
+  /**
+   * 4b. 回退: **自己开一个详情页标签并激活它**。
+   *
+   * 注意回退开的是**后台标签**(代理的 `/new` 明确是"创建新后台 tab"), 而知网的引文区
+   * 只在可见标签里渲染 —— 所以这里**必须紧跟着激活**, 否则等于换了个地方继续失败。
+   * (本会话早期正是败在这里: 回退→后台标签→引文区只有 6 个标签文字、无数据。)
+   */
   if (!detailTab) {
-    return { ok: false, error: "点击后未找到详情页 tab" };
+    const fallbackTab = newTab(firstLink);
+    if (!fallbackTab) return { ok: false, error: "打开论文详情页失败" };
+    // 激活端点缺失时仍继续, 由抓引文时的"数据到没到"来如实判定
+    activateTab(fallbackTab);
+    await new Promise((r) => setTimeout(r, 10000));
+    const title = readTitle(fallbackTab);
+    if (!title) {
+      closeTab(fallbackTab);
+      return { ok: false, error: "详情页加载失败（可能触发安全验证）" };
+    }
+    currentDetail = { tabId: fallbackTab, title };
+    return { ok: true, tabId: fallbackTab, paperTitle: title };
   }
 
   const title = readTitle(detailTab);
@@ -507,6 +549,25 @@ export async function fetchCnkiCitations(
       error: "未找到知网详情页 tab——请确保 Edge 中已登录知网并打开论文详情页"
     };
   }
+
+  /**
+   * **把标签切到前台** —— 这是拿到数据的前提, 不是可选优化。
+   *
+   * ⚠ 实测(2026-09-19): 知网的引文区**只在前台标签里渲染**。后台标签
+   *   (`document.visibilityState === "hidden"`) 的 `#refpartdiv` 只有 6 个标签文字、
+   *   连计数都不带(`参考文献(49)` 这行都不出现), `innerText` 长度 39;
+   *   同一个页面被激活后立刻变成 98, 并出现 `共引文献(0) … 参考文献(49) …` 的计数。
+   *
+   *   而且**激活会被抢走**: 用户(或别的自动化)切一下标签, `visibilityState` 就回到 hidden,
+   *   所以不能"激活一次就完事", 必须在每次抓取前保证它在前台。
+   *
+   *   ⚠ 副作用要说清楚: 这会把用户的浏览器**切到知网那个标签**。抓引文本来就需要用户登录态,
+   *     把焦点带过去是可接受的代价; 但**不要让它在纯只读场景里空跑**。
+   *   ⚠ 代理不支持激活时(`/activate` 端点缺失, 例如旧版 cdp-proxy)不要卡死 ——
+   *     记下状态继续走, 后面用"数据到没到"的事实来判定, 而不是假设激活成功了。
+   */
+  // 端点缺失或失败也继续走, 由下面的渲染等待来判定
+  const activation = activateTab(targetId);
 
   /**
    * ⚠ 先分辨"**被安全验证挡住**"与"**这篇没有引文区**" —— 两者表现一样(都找不到引文 tab),
@@ -566,6 +627,18 @@ export async function fetchCnkiCitations(
     state = await refpartReady();
     // 6 个标签齐全, 且文本明显超过标签本身 ⇒ 数据到了
     if (state.lis >= 6 && state.len > 120) break;
+
+    /**
+     * ⚠ **激活会衰减, 必须反复重申** —— 实测: `/activate` 当场回 `visibility: "visible"`,
+     *   但紧接着的下一次求值就是 `hidden`(用户的浏览器窗口不在前台时尤其如此,
+     *   激活会被系统/其它窗口立刻抢回)。
+     *   所以"抓之前激活一次"是不够的; 在**等待渲染的每一轮**里重申, 才可能真正等来数据。
+     */
+    if (i % 2 === 1) {
+      // 拿不到就算了, 由下面的渲染等待与最终错误如实反映
+      activateTab(targetId);
+    }
+
     // 标签在但没数据, 熬了 4 轮还没来 ⇒ 重载一次再等
     if (state.lis >= 6 && state.len <= 120 && i === 3 && !reloaded) {
       reloaded = true;
@@ -591,14 +664,23 @@ export async function fetchCnkiCitations(
      *   /scroll /screenshot /info /targets), 而 `window.focus()` 也改不了 visibilityState
      *   (实测仍是 hidden)。因此服务端**无法自己**把标签切到前台。
      */
-    const vis = evalJs(targetId, "document.visibilityState");
-    const hidden = vis.replace(/^"|"$/g, "") === "hidden";
+    /**
+     * ⚠ 判据用**排除法**: 只有**明确读到 `"visible"`** 才认为它是可见的。
+     *   反过来写(`read !== "hidden"` → 认为可见)会出事 —— `evalJs` 读失败时返回 `""`,
+     *   于是"读不到"会被当成"可见", 报出「引文区只渲染出标签、数据未加载(已重载重试)」
+     *   这句**指向错误方向**的话, 而真实原因还是后台标签。
+     *   实测踩到(2026-09-20): 面板上就是这么显示的, 与知网页面实际是 hidden 相矛盾。
+     */
+    const vis = evalJs(targetId, "document.visibilityState").replace(/^"|"$/g, "");
+    const hidden = vis !== "visible";
     return {
       ok: false,
       type,
       items: [],
       error: hidden
-        ? "该文献详情页当前在**后台标签**, 知网的引文区在后台不渲染数据 —— 请在浏览器里把这个知网标签切到前台, 再点一次"
+        ? activation.supported
+          ? "该文献详情页当前在**后台/被遮挡的浏览器窗口**里, 知网的引文区只在窗口可见时渲染数据 —— 请把浏览器窗口切到前台(不要最小化、不要被别的窗口盖住), 再点一次"
+          : "该文献详情页在后台, 知网的引文区只在窗口可见时渲染数据; 而当前 CDP 代理**没有 /activate 端点**(旧版), 服务端无法自己把标签切到前台 —— 请更新技能包里的 cdp-proxy.mjs, 或手动把知网标签切到前台"
         : "引文区只渲染出标签、数据未加载(已重载重试) —— 稍后再点一次"
     };
   }

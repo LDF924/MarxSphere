@@ -163,3 +163,36 @@ export function assertLive(): { ok: boolean; targetId?: string; error?: string }
   closeTab(id);
   return { ok: true, targetId: id };
 }
+
+/**
+ * 把标签切到前台 —— `GET /activate?target=`。
+ *
+ * ## 为什么需要它
+ *
+ * 有些站点**只在窗口可见时渲染内容**, 后台标签拿到的是空壳。实测(知网文献详情页):
+ * 后台标签的 `#refpartdiv` 只有 6 个标签文字(innerText 长度恒为 **39**), 等 25 秒、重载都不变;
+ * 同一个 URL 被激活后立刻变成 **712** 长度 / 10 条完整条目。
+ *
+ * ⚠ `Target.activateTarget` 只能改**标签是否活动**, 改不了**窗口是否被遮挡**
+ * —— 窗口被盖住(或最小化)时, 激活后 `focused:true` 但 `visibilityState` 仍是 `hidden`。
+ *   所以本函数**不保证**调用后页面就可见, 判据要看返回的 `state`。
+ *
+ * ⚠⚠ **这是对本地代理扩展能力的依赖**: `/activate` 是 2026-09-20 加进
+ *   `~/.claude/skills/web-access/scripts/cdp-proxy.mjs` 的, 而那个 skill **不在本仓库里**。
+ *   代理若是旧版(没有该端点), 这里会返回 `supported: false` —— 调用方应当**如实降级**
+ *   (例如把"引文区没渲染出数据"说成"需要你把浏览器窗口切到前台"), 而不是当成普通失败。
+ */
+export function activateTab(targetId: string): { supported: boolean; visible: boolean; raw?: string; error?: string } {
+  let out = "";
+  try {
+    out = cdpCurl(["-s", "-m", "25", `${CDP_PROXY}/activate?target=${targetId}`]);
+  } catch (e) {
+    return { supported: false, visible: false, error: String((e as Error)?.message ?? e).slice(0, 160) };
+  }
+  // 未知端点时代理回 404 + {error:"未知端点", endpoints:{…}} —— 据此判定"能力不存在"
+  if (out.includes("未知端点") || out.includes("Unknown endpoint")) {
+    return { supported: false, visible: false, raw: out.slice(0, 200) };
+  }
+  const visible = out.includes('"visibility":"visible"') || out.includes('\\"visibility\\":\\"visible\\"');
+  return { supported: true, visible, raw: out.slice(0, 200) };
+}
