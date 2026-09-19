@@ -304,7 +304,16 @@ try {
     })()`) : null;
     t("有「补充素材来源」整卡", !!r?.hasSourceCard);
     t("手动添加四格 + 从其他模块导入两格", !!r && r.tileCount === 6, r ? `tiles=${JSON.stringify(r.tiles)}` : "—");
-    t("分组标题存在", !!r && r.groups.length === 2, r ? JSON.stringify(r.groups) : "—");
+    /**
+     * ⚠ 2026-09-19 修: 原来是 `r.groups.length === 2` —— **写死了分组数量**。
+     *   素材页后来按需加了「文献库身份」「文献检索（中文三大库）」两组, 这条就假失败了,
+     *   而页面本身没有任何问题(31 通过 / 1 失败)。
+     *   改判**结构**: 原本必须有的两组要在, 且不允许空标题。
+     *   —— 断言"数量等于 N"会把正常的新增判成回归; 断言"该有的在"才不会。
+     */
+    const needGroups = ["手动添加", "从其他模块导入"];
+    const groupsOk = !!r && needGroups.every((g) => r.groups.includes(g)) && r.groups.every((g) => g.length > 0);
+    t("必备分组标题都在(不锁数量)", groupsOk, r ? `实际=[${r.groups.join(", ")}]` : "—");
     t("折叠态也能看到行内操作按钮", !!r && r.inlineInCollapsed > 0, r ? `${r.inlineInCollapsed} 个分类` : "—");
     t("数据分析素材有上传图片入口", !!r && r.dataCatBtns.some((x) => /上传图片/.test(x)), r ? JSON.stringify(r.dataCatBtns) : "—");
     t("页头三行状态区", !!r && /按流程完成素材整理后即可进入创作/.test(r.statsText), r ? r.statsText : "—");
