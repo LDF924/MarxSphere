@@ -97,22 +97,10 @@ export interface MinionJob {
 }
 
 /** 与 request() 一致的鉴权头构造（流式接口手写 fetch 时复用，避免缺失 Authorization 被 401 拦截） */
-/**
- * 鉴权头 —— **两个 token 键都要认, 且 `skf_auth_token` 优先**。
- *
- * 2026-09-19 修: 此前这里**只读 `sag_token`**。而登录页/子应用写的是 `skf_auth_token`,
- *   仓里其它处(BillingPanel / AskPanel / FloatingAssistantFAB / soc 的 shared/api)一律是
- *   `skf_auth_token || sag_token` —— 只有本函数不同。后果: 只要当前登录态是"新"的那套,
- *   走 `request()` 的调用就集体 **401**, 而后端 401 会触发**登出**。
- *
- * 实测到的复现(修前): 设置页切换「任意角色模型」 → `401 PUT /api/llm/models` →
- *   被踢到登录页 + `sag_token` 被清。这个下拉从 2026-08-07 就存在, 一直是这样。
- *   本轮我加的服务商联动用了裸 fetch, 也踩了同一个坑 —— 所以修在根上, 而不是逐个调用点补头。
- */
 function authHeaders(init?: { headers?: HeadersInit }): Headers {
   const headers = new Headers(init?.headers);
   if (!headers.has("Authorization")) {
-    const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+    const token = localStorage.getItem("sag_token");
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   return headers;
@@ -810,16 +798,9 @@ export const api = {
       type: string;
       paperTitle?: string;
       items: Array<{ raw: string }>;
+      /** 注意: `ok:true` 且 items 为空时, 这里带的是**空结果的解释**(如「此类引文为 0, 属正常」), 不是失败原因 */
       error?: string;
     }>(`/api/cnki/citations/${encodeURIComponent(type)}`);
-  },
-
-  /** 当前浏览器里的知网身份(平台不存知网密码, 只是读出来显示) */
-  async cnkiIdentity(): Promise<{
-    ok: boolean; loggedIn: boolean; userName?: string; showName?: string;
-    userType?: string; isInstitution?: boolean; error?: string;
-  }> {
-    return request("/api/cnki/identity");
   },
 
   // 知网搜索并打开论文详情页
@@ -1322,25 +1303,13 @@ export const apiEmpirical = {
 
 // ─── 实证研究工作台增强（V380+）: 课题/问卷/数据版本 ───
 export interface QuestionOption { code: number; label: string }
-// V414: ifOption 支持多值 —— 原著常写"选 A 或 B 时显示"。优先 ifOptions(数组), 兼容旧 ifOption。
-export interface SkipLogic {
-  ifQid: string;
-  ifOption?: number | null;
-  ifOptions?: number[] | null;
-  goto: string;
-}
-// V414: charts 每项含两份产物 —— file(png, 展示用) 与 pdfFile(矢量, 投稿用)
-export interface EmpiricalChart { id: string; title: string; file: string; pdfFile?: string; sizeKB: number }
+export interface SkipLogic { ifQid: string; ifOption: number | null; goto: string }
 export interface Question {
   qid: string; varName: string; stem: string;
   type: "cat" | "ordinal" | "cont" | "text" | "multi";
   options?: QuestionOption[]; skipLogic?: SkipLogic | null; derived?: string;
 }
-export interface EmpiricalProject {
-  id: string; title: string; topic: string; status: string; created_at: string;
-  /** V414: 产出计数 — 课题选择器显示"N 问卷 · N 数据 · N 分析", 区分空课题 */
-  counts?: { questionnaires: number; versions: number; runs: number };
-}
+export interface EmpiricalProject { id: string; title: string; topic: string; status: string; created_at: string }
 export interface EmpiricalQuestionnaire { id: string; projectId: string | null; title: string; source: string; columns: string[]; meta: any; created_at: string }
 export interface EmpiricalDataVersion {
   id: string; projectId: string | null; name: string; columns: string[]; nRows: number;

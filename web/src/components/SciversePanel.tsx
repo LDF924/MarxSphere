@@ -71,6 +71,14 @@ export function SciversePanel() {
   const [cnkiLoading, setCnkiLoading] = useState(false);
   const [cnkiPaperTitle, setCnkiPaperTitle] = useState("");
   const [cnkiError, setCnkiError] = useState<string | null>(null);
+  /**
+   * 空结果的**解释**(与 cnkiError 分开)。
+   *
+   * ⚠ 2026-09-19 修: 后端对"这一类引文为 0"返回的是 `{ok:true, items:[], error:"该文献在此类引文下没有条目…"}`,
+   *   而面板此前**只在 `ok:false` 时才用 error** —— 于是那句解释被静默丢掉, 用户看到的是空态占位
+   *   「输入论文标题检索…」(牛头不对马嘴: 他刚点完 tab)。后端写得很清楚的一句话, 在界面上消失了。
+   */
+  const [cnkiNote, setCnkiNote] = useState<string | null>(null);
   const [cnkiQuery, setCnkiQuery] = useState("");
   const [cnkiSearching, setCnkiSearching] = useState(false);
   // AI 分析（面板 → Claude Code）
@@ -147,12 +155,15 @@ export function SciversePanel() {
     setCnkiType(type);
     setCnkiLoading(true);
     setCnkiError(null);
+    setCnkiNote(null);
     setCnkiItems([]);
     try {
       const data = await api.getCnkiCitations(type);
       if (data.ok) {
         setCnkiItems(data.items);
         setCnkiPaperTitle(data.paperTitle ?? "");
+        // 空结果也要把后端那句解释显示出来, 否则用户看到的是"刚点完 tab 却让我去检索"
+        if (data.items.length === 0) setCnkiNote(data.error ?? "该文献在此类引文下没有条目");
         // 联动知识页：引文数据沉淀为证据
         try {
           const paperTitle = data.paperTitle ?? "";
@@ -530,6 +541,7 @@ export function SciversePanel() {
               <button
                 key={tab.key}
                 type="button"
+                data-control={`sciverse:cnki-tab-${tab.key}`}
                 onClick={() => void loadCnkiCitations(tab.key)}
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs transition-colors",
@@ -543,16 +555,24 @@ export function SciversePanel() {
           {cnkiLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />提取中…</div>
           ) : cnkiError ? (
-            <div className="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">{cnkiError}</div>
+            <div data-control="sciverse:cnki-error" className="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">{cnkiError}</div>
           ) : cnkiItems.length > 0 ? (
-            <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+            <div data-control="sciverse:cnki-items" className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
               <div className="text-xs text-muted-foreground">{cnkiPaperTitle ? `《${cnkiPaperTitle.slice(0, 40)}》` : ""} · 共 {cnkiItems.length} 条（当前页）</div>
               {cnkiItems.map((item, i) => (
                 <div key={i} className="rounded bg-muted/30 px-2 py-1 text-xs leading-5">{item.raw}</div>
               ))}
             </div>
           ) : (
-            <div className="text-xs text-muted-foreground">输入论文标题检索，或在 Edge 打开知网详情页后点击上方 tab 提取</div>
+            <div className="space-y-1.5">
+              {/* 空结果的解释优先显示(如「该文献在此类引文下没有条目, 属正常结果」), 没有再退回通用占位 */}
+              {cnkiNote ? (
+                <div data-control="sciverse:cnki-note" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  {cnkiNote}
+                </div>
+              ) : null}
+              <div data-control="sciverse:cnki-empty" className="text-xs text-muted-foreground">输入论文标题检索，或在 Edge 打开知网详情页后点击上方 tab 提取</div>
+            </div>
           )}
 
           {/* AI 执行：面板 → Claude Code（带自定义输入框） */}
