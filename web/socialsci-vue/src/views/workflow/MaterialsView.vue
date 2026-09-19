@@ -805,6 +805,14 @@ const litQuery = ref("");
 const litBusy = ref(false);
 const litHits = ref<LitHit[]>([]);
 const litTotal = ref("");
+/**
+ * 该源页面上**提供的筛选**及其勾选状态(只读)。
+ *
+ * ⚠ 措辞必须说"该库可选", 不能说"已筛选" —— 实测**程序化勾选不改变结果**
+ *   (三种触发方式都试过, 结果条目原封不动), 所以这些筛选**并没有被我们应用**。
+ *   它们只是告诉用户"去浏览器里还能按什么收窄", 以及页面当前勾了什么。
+ */
+const litFilters = ref<string[]>([]);
 const litNote = ref<{ kind: "warn" | "err" | "info"; text: string } | null>(null);
 /** 已勾选待入库的条目(按 index) */
 const litPicked = ref<Set<number>>(new Set());
@@ -817,12 +825,13 @@ async function runLitSearch() {
   litHits.value = [];
   litPicked.value = new Set();
   try {
-    const r = await q<{ hits?: LitHit[]; total?: string; error?: string }>("/literature/search", {
+    const r = await q<{ hits?: LitHit[]; total?: string; filters?: string[]; error?: string }>("/literature/search", {
       method: "POST",
       body: { source: litSource.value, query }
     });
     litHits.value = Array.isArray(r.hits) ? r.hits : [];
     litTotal.value = r.total ?? "";
+    litFilters.value = Array.isArray(r.filters) ? r.filters : [];
     if (!litHits.value.length) litNote.value = { kind: "info", text: r.error || "没有检索到结果" };
   } catch (e) {
     const msg = (e as Error).message ?? "";
@@ -1274,7 +1283,12 @@ onMounted(async () => {
 
         <template v-if="litHits.length">
           <div class="ls-meta">
-            <span>共 {{ litHits.length }} 条{{ litTotal ? `（页面显示命中 ${litTotal}）` : "" }}</span>
+            <span>
+              共 {{ litHits.length }} 条{{ litTotal ? `（页面显示命中 ${litTotal}）` : "" }}
+              <template v-if="litFilters.length">
+                · <span class="ls-filter" :title="`该库页面上提供的筛选（勾选状态见括号）：${litFilters.join('；')}`">该库可选筛选：{{ litFilters.join(' / ') }}</span>
+              </template>
+            </span>
             <button class="ls-import" data-control="workflow:lit-import" :disabled="!litPicked.size" @click="importLitHits">
               入库选中的 {{ litPicked.size }} 条
             </button>
@@ -1877,6 +1891,7 @@ onMounted(async () => {
 .ls-note.err { color: #D9706A; }
 .ls-note.info { color: #6B7A90; }
 .ls-meta { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 6px; font-size: 11px; color: #7A8AA0; }
+.ls-filter { color: #6FD08C; }
 .ls-import { padding: 4px 12px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: #A9BBD0; font-size: 11px; cursor: pointer; }
 .ls-import:disabled { opacity: 0.45; cursor: default; }
 .ls-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }

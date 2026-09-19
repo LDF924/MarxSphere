@@ -9,8 +9,8 @@
 //      catch 静默吞成 null → 报"入库 0 条"。**界面全对、点了没反应**就是这样来的。
 //   2. **不能用"数量+标题匹配"认定新增**: 检索词是「数字经济」时多条标题**完全同名**,
 //      按标题分不出新的。必须用 **id 差集**。(第一版按标题匹配, 报了"新入库=0"。)
-import { startCdp, loginToken, sleep, evalTop } from "./scripts/lib/cdp-editor.mjs";
-import { openSoc } from "./scripts/lib/probe-actions.mjs";
+import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
+import { openSoc } from "./lib/probe-actions.mjs";
 
 const BASE = "http://127.0.0.1:4173";
 const rows = [];

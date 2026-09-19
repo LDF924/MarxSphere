@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// tabInfo 来自通用 CDP 原语(2026-09-19 抽出); 本文件其余 curl/evalJs 仍是自己的实现, 逐步收敛中
+import { tabInfo } from "./cdp-browser.js";
 
 /**
  * cnki-citation-proxy — 知网引文网络 CDP 代理
@@ -262,10 +264,21 @@ export async function searchCnkiAndOpenPaper(query: string): Promise<{ ok: boole
 }
 
 /** 提取引文数据：先点击 tab，再从 refpartdiv 提取条目 */
-export async function fetchCnkiCitations(type: CnkiCitationType): Promise<CnkiCitationResult> {
-  // 优先用 searchAndOpen 打开的详情页 tab，但验证它仍有效（避免指向已失效 tab）
-  let targetId = "";
-  if (currentDetailTab) {
+export async function fetchCnkiCitations(
+  type: CnkiCitationType,
+  /**
+   * 指定在哪个详情页 tab 上抓。
+   *
+   * 用途(2026-09-19): 检索结果里挑中的是**某一篇**, 而 `searchAndOpen` 只打开搜索结果的**第一篇** ——
+   *   实测搜「数字经济」第一篇是《工人日报》的**报纸**文章, 报纸**没有引文网络**,
+   *   于是抓引文报"页面上未找到引文 tab", 看起来像选择器失效, 实际是**点错了文献类型**。
+   *   调用方拿到检索结果的 `url` 后自己开 tab, 再把这个 tabId 传进来。
+   */
+  targetIdOverride?: string
+): Promise<CnkiCitationResult> {
+  // 优先用调用方指定的 tab; 其次用 searchAndOpen 打开的(并验证仍有效, 避免指向已失效 tab)
+  let targetId = targetIdOverride && evalJs(targetIdOverride, "document.title") ? targetIdOverride : "";
+  if (!targetId && currentDetailTab) {
     try {
       const out = curl(["-s", "-m", "5", `${CDP_PROXY}/targets`]);
       const tabs = JSON.parse(out) as Array<{ targetId: string; url: string }>;
@@ -287,6 +300,26 @@ export async function fetchCnkiCitations(type: CnkiCitationType): Promise<CnkiCi
       items: [],
       error: "未找到知网详情页 tab——请确保 Edge 中已登录知网并打开论文详情页"
     };
+  }
+
+  /**
+   * ⚠ 先分辨"**被安全验证挡住**"与"**这篇没有引文区**" —— 两者表现一样(都找不到引文 tab),
+   *   但处置完全不同: 前者要用户本人去点验证码, 后者是正常情况(报纸/资讯类没有引文网络)。
+   *   实测(2026-09-19): 连开几篇详情页后知网会弹 `kns.cnki.net/verify/home?captchaType=clickWord`。
+   *   若不分辨, 用户会一直以为"这个功能坏了"。
+   */
+  try {
+    const cur = tabInfo(targetId);
+    if (cur?.url && /\/verify\//.test(cur.url)) {
+      return {
+        ok: false,
+        type,
+        items: [],
+        error: "知网要求人机验证——请在浏览器里完成验证后重试(验证码只能由你本人完成)"
+      };
+    }
+  } catch {
+    /* 读不到 URL 就按原路继续 */
   }
 
   // 0. 滚动到引文区域（知网懒加载：滚动后点击 tab 才触发数据请求）

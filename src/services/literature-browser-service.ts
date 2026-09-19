@@ -44,6 +44,8 @@ export interface LitSearchResult {
   hits: LitHit[];
   /** 打开/复用的 tab, 供后续在这个页面上继续抓(如知网的引文) */
   tabId?: string;
+  /** 页面上**当前生效的筛选**(如万方的获取范围: 机构已购) —— 决定"这些结果能不能下全文" */
+  filters?: string[];
   error?: string;
 }
 
@@ -156,6 +158,63 @@ const PARSE_EXPR: Record<LitSourceId, string> = {
   })()`
 };
 
+/**
+ * 读页面上**筛选区的勾选状态**。
+ *
+ * 目的: 让用户看到"这个库上有哪些获取范围开关、现在哪个是开的"。这决定结果能不能下全文,
+ *   而它藏在页面里、界面上完全看不出来。
+ *
+ * ⚠⚠ 两处**实测反直觉**, 别照直觉写注释:
+ *   1. 万方的「机构已购」**默认并不是勾上的**(实测 on=false) —— 我一度以为它默认开着。
+ *   2. 勾选态是 `label.ivu-checkbox-wrapper-checked`(**不是 innerText 里的字样**)。
+ *   3. 更重要的: **点了它(以及「有全文」)结果数纹丝不动**(实测 329,426 → 329,426,
+ *      URL 也不变), 连"有全文(262747)"这种教科书级该变数的筛选也一样 ——
+ *      说明该 SPA 不响应这种程序化点击。**所以本函数只读"勾没勾", 不声称"筛掉了多少"**。
+ *      要让筛选真生效, 得走它的表单提交路径 —— 那是另一件事, 本模块不做。
+ */
+const FILTERS_EXPR: Record<LitSourceId, string> = {
+  wanfang: `(() => {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll(".facet-list-box"));
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var box = boxes[i];
+      var scope = box.previousElementSibling ? (box.previousElementSibling.textContent || "").trim().slice(0, 8) : "";
+      var labels = Array.prototype.slice.call(box.querySelectorAll("label"));
+      var on = [];
+      for (var j = 0; j < labels.length; j++) {
+        if (String(labels[j].className).indexOf("checked") >= 0) on.push((labels[j].textContent || "").trim().slice(0, 16));
+      }
+      var mark = [];
+      for (var k = 0; k < on.length; k++) mark.push(on[k] + "(已勾)");
+      // 把整组的候选项也带上, 让用户知道**有哪些可选项**(不只当前勾的)
+      var all = [];
+      for (var q = 0; q < labels.length; q++) {
+        var tx = (labels[q].textContent || "").trim().slice(0, 16);
+        if (tx) all.push(tx);
+      }
+      if (all.length) out.push((scope ? scope + ": " : "") + all.join(" / ") + (mark.length ? " (已勾: " + mark.join(", ") + ")" : ""));
+    }
+    return JSON.stringify(out);
+  })()`,
+  cqvip: `(() => {
+    // 维普的筛选在「聚类」区, 勾选态同样是 class 带 checked
+    var on = [];
+    var items = Array.prototype.slice.call(document.querySelectorAll(".cluster-item"));
+    for (var i = 0; i < items.length; i++) {
+      if (String(items[i].className).indexOf("active") >= 0 || String(items[i].className).indexOf("checked") >= 0) {
+        on.push((items[i].textContent || "").trim().slice(0, 18));
+      }
+    }
+    return JSON.stringify(on.slice(0, 6));
+  })()`,
+  cnki: `(() => {
+    var on = [];
+    var items = Array.prototype.slice.call(document.querySelectorAll(".result-table-list .filter-item, .filters .cur, .group-item .cur"));
+    for (var i = 0; i < items.length; i++) on.push((items[i].textContent || "").trim().slice(0, 18));
+    return JSON.stringify(on.slice(0, 6));
+  })()`
+};
+
 /** 读页面上"共 N 条"之类的总数(取不到就不给) */
 const TOTAL_EXPR = `(() => {
   var m = document.body.innerText.match(/找到\\s*([\\d,]+)\\s*条/);
@@ -224,8 +283,17 @@ export async function searchInBrowserSource(
     /* 取不到就不给 */
   }
 
+  let filters: string[] = [];
+  try {
+    const fj = evalJs(tabId, FILTERS_EXPR[source]);
+    const arr = JSON.parse(fj) as string[];
+    filters = Array.isArray(arr) ? arr.filter((x) => x && x.trim()) : [];
+  } catch {
+    /* 取不到就不给 —— 筛选读不出来不该让整次检索失败 */
+  }
+
   if (!hits.length) {
     return { ok: true, source, query, hits: [], tabId, total, error: "页面上没有解析到结果(可能是空结果, 或该站页面结构变了)" };
   }
-  return { ok: true, source, query, hits, tabId, total };
+  return { ok: true, source, query, hits, tabId, total, filters };
 }
