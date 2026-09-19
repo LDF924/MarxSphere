@@ -814,6 +814,14 @@ export const api = {
     }>(`/api/cnki/citations/${encodeURIComponent(type)}`);
   },
 
+  /** 当前浏览器里的知网身份(平台不存知网密码, 只是读出来显示) */
+  async cnkiIdentity(): Promise<{
+    ok: boolean; loggedIn: boolean; userName?: string; showName?: string;
+    userType?: string; isInstitution?: boolean; error?: string;
+  }> {
+    return request("/api/cnki/identity");
+  },
+
   // 知网搜索并打开论文详情页
   async searchCnkiOpen(query: string) {
     return request<{

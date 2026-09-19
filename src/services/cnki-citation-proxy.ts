@@ -59,11 +59,24 @@ export interface CnkiCitationResult {
 }
 
 /** 找到知网 tab（优先详情页 kcms2，退回任意知网 tab） */
+/**
+ * 最近一次 `searchAndOpen` 打开的详情页 tab。
+ *
+ * ⚠ 2026-09-19 加: `findCnkiTab` 原来**取第一个 kcms2 详情页** —— 而浏览器里同时开着多篇
+ *   （比如先搜到一篇《工人日报》的报纸文章、又打开一篇期刊论文）时，会拿到**不一定是刚搜的那篇**。
+ *   实测踩到：搜"数字经济"排第一的是报纸，报纸**没有引文网络**，于是 `fetch` 报
+ *   「页面上未找到引文 tab」 —— 看起来像选择器过时，实际是**点错了页面**。
+ *   记住自己开的那篇，让"搜索 → 打开 → 抓引文"落在同一条链上。
+ */
+let lastOpenedTabId = "";
+
 function findCnkiTab(): string {
   try {
     const out = curl(["-s", "-m", "5", `${CDP_PROXY}/targets`]);
     const tabs = JSON.parse(out) as Array<{ targetId: string; title: string; url: string }>;
-    // 优先详情页（kcms2）
+    // 自己刚打开的那篇优先（它才是用户/调用方要抓的对象）
+    if (lastOpenedTabId && tabs.some((t) => t.targetId === lastOpenedTabId)) return lastOpenedTabId;
+    // 否则退回任意详情页（kcms2）
     const detail = tabs.find((t) => t.title.includes("中国知网") && t.url.includes("kcms2"));
     if (detail) return detail.targetId;
     // 退回搜索页/首页
@@ -108,10 +121,22 @@ function navigate(targetId: string, url: string): boolean {
 }
 
 /** 通过 CDP 新建 tab */
+/**
+ * 新建 tab 并返回 targetId。
+ *
+ * ⚠ 2026-09-19 修: 这里原先把 URL 用 `JSON.stringify(url)` 发出去 —— **代理要的是裸 URL 文本**
+ *   (见 web-access skill 的文档: `curl -s -X POST --data-raw 'https://example.com' :3456/new`)。
+ *   传 JSON 串会让 `/new` 返回**空响应**, `JSON.parse("")` 抛错被 catch 吞掉 → 返回空 targetId
+ *   → 上层报"打开论文详情页失败"。
+ *
+ *   这个错从 2026-08 就在, 后果是 **`searchAndOpen` 从来没成功打开过任何详情页** ——
+ *   表现为"知网功能有路由、有实现, 但一用就失败", 很容易被当成"知网本身不稳定"。
+ *   实测对照: 裸 URL → `{"targetId":"CBC8641907…"}`; JSON 串 → 空。
+ */
 function newTab(url: string): string {
   try {
     const out = curl(
-      ["-s", "-m", "20", "-X", "POST", `${CDP_PROXY}/new`, "--data-raw", JSON.stringify(url)]
+      ["-s", "-m", "20", "-X", "POST", `${CDP_PROXY}/new`, "--data-raw", url]
     );
     const parsed = JSON.parse(out);
     return parsed?.targetId ?? "";
@@ -168,6 +193,7 @@ export async function searchCnkiAndOpenPaper(query: string): Promise<{ ok: boole
   // 1. 导航到知网搜索页（主题检索）
   const searchUrl = `https://kns.cnki.net/kns8s/defaultresult/index?korder=SU&kw=${encodeURIComponent(query)}`;
   navigate(targetId, searchUrl);
+  lastOpenedTabId = targetId;
 
   // 2. 轮询等待论文链接出现（最多 30 秒）
   let firstLink = "";
@@ -335,8 +361,63 @@ export async function fetchCnkiCitations(type: CnkiCitationType): Promise<CnkiCi
   };
 }
 
+/**
+ * 读**当前浏览器**里的知网登录身份。
+ *
+ * 产品前提(必须说清, 别让界面暗示我们在存密码): **我们不保存知网的账号密码**。
+ *   知网访问走的是用户自己浏览器里的登录态(知网写下的 `Ecp_LoginStuts` cookie)。
+ *   本函数只是**把它读出来显示给用户看**, 好让用户知道"现在拿谁的身份在查"。
+ *
+ * 实测(2026-09-19, 用户的 Edge): `{UserName:"GZ0041", ShowName:"南宁师范大学", UserType:"bk"}` ——
+ *   `bk` 表示机构账号(学校/单位订阅), 这也是"机构订阅"模式的判定依据。
+ */
+export interface CnkiIdentity {
+  ok: boolean;
+  loggedIn: boolean;
+  /** 账号名(如 GZ0041) */
+  userName?: string;
+  /** 显示名(如 南宁师范大学) */
+  showName?: string;
+  /** 账号类型: bk(机构/包库) / 个人登录等其他值 */
+  userType?: string;
+  /** 是否机构订阅身份 */
+  isInstitution?: boolean;
+  error?: string;
+}
+
+export async function readCnkiIdentity(): Promise<CnkiIdentity> {
+  const tabId = findCnkiTab();
+  if (!tabId) return { ok: false, loggedIn: false, error: "浏览器里没有知网标签页 —— 请先在 Edge 里打开知网" };
+  try {
+    const raw = evalJs(
+      tabId,
+      `(() => { const m = document.cookie.match(/Ecp_LoginStuts=([^;]+)/); return m ? decodeURIComponent(m[1]) : ""; })()`
+    );
+    const cookie = String(raw ?? "").trim();
+    if (!cookie) return { ok: true, loggedIn: false };
+    const parsed = JSON.parse(cookie) as { UserName?: string; ShowName?: string; UserType?: string };
+    const decodeName = (v?: string) => {
+      if (!v) return "";
+      try { return decodeURIComponent(v); } catch { return v; }
+    };
+    const userType = String(parsed.UserType ?? "");
+    return {
+      ok: true,
+      loggedIn: Boolean(parsed.UserName || parsed.ShowName),
+      userName: String(parsed.UserName ?? ""),
+      showName: decodeName(parsed.ShowName),
+      userType,
+      // bk = 包库/机构订阅; 个人账号知网给的是别的值
+      isInstitution: userType === "bk"
+    };
+  } catch (e) {
+    return { ok: false, loggedIn: false, error: String((e as Error)?.message ?? e).slice(0, 160) };
+  }
+}
+
 export const cnkiCitationProxy = {
   fetch: fetchCnkiCitations,
   findTab: findCnkiTab,
-  searchAndOpen: searchCnkiAndOpenPaper
+  searchAndOpen: searchCnkiAndOpenPaper,
+  readIdentity: readCnkiIdentity
 };

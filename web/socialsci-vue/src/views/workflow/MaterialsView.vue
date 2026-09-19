@@ -767,6 +767,115 @@ interface PlanItem { _enabled: boolean; sectionId?: string; sectionTitle?: strin
  *   科研助手全程以为"正在生成素材执行计划", 不再推荐任何动作。
  *   未打开弹层时的正确状态是"就绪"(没有任务在跑)。
  */
+/** 文献库账户模式(2026-09-19) —— 只影响"拿谁的身份去查"的**说明**, 不涉及存密码 */
+const CNKI_MODES = [
+  { value: "personal", label: "我的账户", hint: "在 Edge 里登录你自己的知网账户后刷新" },
+  { value: "institution", label: "机构订阅账户", hint: "在 Edge 里登录学校/单位的机构账号(包库)后刷新" }
+] as const;
+const cnkiMode = ref<"personal" | "institution">("institution");
+type CnkiIdentity = { ok: boolean; loggedIn: boolean; userName?: string; showName?: string; userType?: string; isInstitution?: boolean; error?: string };
+const cnkiIdentity = ref<CnkiIdentity | null>(null);
+const cnkiBusy = ref(false);
+async function loadCnkiIdentity() {
+  cnkiBusy.value = true;
+  try {
+    cnkiIdentity.value = await q<CnkiIdentity>("/cnki/identity");
+    // 检测到的身份与所选模式不一致时**自动对齐** —— 否则界面显示"机构订阅"而实际用个人号,
+    //   用户以为切了其实没切(实测这类"界面说的和实际不是一个"正是本仓反复出现的一类缺陷)。
+    if (cnkiIdentity.value?.loggedIn) cnkiMode.value = cnkiIdentity.value.isInstitution ? "institution" : "personal";
+  } catch (e) {
+    cnkiIdentity.value = { ok: false, loggedIn: false, error: (e as Error).message };
+  } finally {
+    cnkiBusy.value = false;
+  }
+}
+
+// ── 中文三大库检索(2026-09-19) ──
+// 走**用户浏览器里的机构登录态**: 这三家都没有对外检索 API, 检索页是 SPA 空壳。
+// 平台不存它们的密码 —— 所以"未登录"是正常返回(409), 不是故障, 界面上要说清。
+const LIT_SOURCES = [
+  { id: "wanfang", label: "万方" },
+  { id: "cqvip", label: "维普" },
+  { id: "cnki", label: "知网" }
+] as const;
+type LitSourceId = (typeof LIT_SOURCES)[number]["id"];
+type LitHit = { index: number; title: string; type?: string; journal?: string; issue?: string; authors?: string; abstract?: string; url?: string };
+const litSource = ref<LitSourceId>("wanfang");
+const litQuery = ref("");
+const litBusy = ref(false);
+const litHits = ref<LitHit[]>([]);
+const litTotal = ref("");
+const litNote = ref<{ kind: "warn" | "err" | "info"; text: string } | null>(null);
+/** 已勾选待入库的条目(按 index) */
+const litPicked = ref<Set<number>>(new Set());
+
+async function runLitSearch() {
+  const query = litQuery.value.trim();
+  if (!query) { toast("请输入检索词", "warning"); return; }
+  litBusy.value = true;
+  litNote.value = null;
+  litHits.value = [];
+  litPicked.value = new Set();
+  try {
+    const r = await q<{ hits?: LitHit[]; total?: string; error?: string }>("/literature/search", {
+      method: "POST",
+      body: { source: litSource.value, query }
+    });
+    litHits.value = Array.isArray(r.hits) ? r.hits : [];
+    litTotal.value = r.total ?? "";
+    if (!litHits.value.length) litNote.value = { kind: "info", text: r.error || "没有检索到结果" };
+  } catch (e) {
+    const msg = (e as Error).message ?? "";
+    // 后端用 409 表达"需要先登录" —— 这与"服务坏了"是两回事, 提示也要不同
+    if (/需要先在浏览器|NEEDS_LOGIN|登录/.test(msg)) {
+      const label = LIT_SOURCES.find((s) => s.id === litSource.value)?.label ?? "";
+      litNote.value = { kind: "warn", text: `需要先在浏览器里登录${label}（可先点上面的「刷新」查看当前身份）` };
+    } else {
+      litNote.value = { kind: "err", text: `检索失败：${msg}` };
+    }
+  } finally {
+    litBusy.value = false;
+  }
+}
+
+function toggleLitPick(idx: number) {
+  const next = new Set(litPicked.value);
+  if (next.has(idx)) next.delete(idx);
+  else next.add(idx);
+  litPicked.value = next;
+}
+
+/** 把选中的检索结果落成文献素材(kind=citation + 结构化 references[]) —— 复用现有素材通道 */
+async function importLitHits() {
+  const picked = litHits.value.filter((h) => litPicked.value.has(h.index));
+  if (!picked.length) { toast("请先勾选要入库的条目", "warning"); return; }
+  let ok = 0;
+  for (const h of picked) {
+    const gbRef = [h.authors, h.title, h.journal, h.issue, h.url].filter(Boolean).join(". ");
+    const created = await createMaterial({
+      kind: "citation",
+      title: h.title,
+      contentMd: [h.title, h.authors, h.journal, h.issue, h.url].filter(Boolean).join("\n"),
+      sourceType: litSource.value,
+      sourceUrl: h.url ?? "",
+      references: [{
+        title: h.title,
+        author: h.authors ?? "",
+        venue: h.journal ?? "",
+        year: h.issue ?? "",
+        gbRef,
+        ...(h.url ? { url: h.url } : {})
+      }]
+    });
+    if (created) ok += 1;
+  }
+  toast(ok ? `已入库 ${ok} 条文献素材` : "入库失败", ok ? "success" : "error");
+  if (ok) {
+    litPicked.value = new Set();
+    await loadMaterials();
+  }
+}
+
 const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "ready" });
 
 /**
@@ -1064,6 +1173,7 @@ async function publishAndEnter() {
 }
 
 onMounted(async () => {
+  void loadCnkiIdentity();
   await store.loadProject().catch(() => null);
   await loadMaterials();
   // V417: 接外部模块投递的素材(文献库检索结果/论文评审意见/统计结果/图表), 落 research_materials
@@ -1099,6 +1209,91 @@ onMounted(async () => {
         <button class="sc-btn-primary" data-control="workflow:smart-generate" @click="generatePlan">智能生成素材</button>
         <button class="sc-btn-outline" data-control="workflow:review-materials" @click="reviewAll">审视素材</button>
         <button class="sc-btn-outline" data-control="workflow:allocate" :disabled="!materials.length" @click="runAllocate">编排素材</button>
+      </div>
+
+      <!-- ═══ 文献库身份(2026-09-19) ═══
+           用户要在"用自己的账户"与"用机构订阅账户"之间选, 并希望登录后平台直接拿它去查。
+           ⚠ 前提必须说清: **平台不保存知网账号密码** —— 知网访问走的是**你自己浏览器里的登录态**。
+             所以这里做的是"**选模式 + 把当前身份读出来给你看**", 不是"把密码交给平台"。
+             那是安全与合规的硬边界, 不是没做完。 -->
+      <h3 class="sc-group">文献库身份</h3>
+      <div class="cnki-identity">
+        <div class="ci-modes" role="radiogroup" aria-label="文献库账户模式">
+          <button
+            v-for="m in CNKI_MODES" :key="m.value"
+            class="ci-mode" :class="{ on: cnkiMode === m.value }" role="radio"
+            :aria-checked="cnkiMode === m.value"
+            :data-control="`workflow:cnki-mode-${m.value}`"
+            :title="m.hint"
+            @click="cnkiMode = m.value"
+          >{{ m.label }}</button>
+        </div>
+        <div class="ci-row">
+          <span class="ci-label">当前身份</span>
+          <span v-if="cnkiBusy" class="ci-val ci-dim">读取中…</span>
+          <span v-else-if="cnkiIdentity?.loggedIn" class="ci-val">
+            {{ cnkiIdentity.showName || cnkiIdentity.userName }}
+            <span class="ci-badge" :class="cnkiIdentity.isInstitution ? 'inst' : 'personal'">
+              {{ cnkiIdentity.isInstitution ? "机构订阅" : "个人账户" }}
+            </span>
+          </span>
+          <span v-else class="ci-val ci-dim">未检测到登录态</span>
+          <button class="ci-refresh" data-control="workflow:cnki-refresh" :disabled="cnkiBusy" @click="loadCnkiIdentity">刷新</button>
+        </div>
+        <p class="ci-note">
+          平台<strong>不保存</strong>知网账号密码。请先在 Edge 里登录<strong>你自己的账户</strong>或<strong>机构订阅账户</strong>，再点「刷新」。
+        </p>
+      </div>
+
+      <!-- ═══ 文献检索(中文三大库, 2026-09-19) ═══
+           走用户浏览器里的机构登录态: 这三家都没有对外检索 API, 检索页是 SPA 空壳。
+           ⚠ 平台不存它们的账号密码 —— 未登录时后端返回 409, 界面提示"去登录", 不是"重试"。 -->
+      <h3 class="sc-group">文献检索（中文三大库）</h3>
+      <div class="lit-search">
+        <div class="ls-row">
+          <div class="ls-srcs" role="radiogroup" aria-label="文献源">
+            <button
+              v-for="s in LIT_SOURCES" :key="s.id"
+              class="ls-src" :class="{ on: litSource === s.id }" role="radio"
+              :aria-checked="litSource === s.id"
+              :data-control="`workflow:lit-source-${s.id}`"
+              @click="litSource = s.id"
+            >{{ s.label }}</button>
+          </div>
+          <input
+            v-model="litQuery" class="ls-input" placeholder="检索词，如：数字经济"
+            data-control="workflow:lit-query"
+            @keydown.enter="runLitSearch"
+          />
+          <button class="ls-go" data-control="workflow:lit-search" :disabled="litBusy" @click="runLitSearch">
+            {{ litBusy ? "检索中…" : "检索" }}
+          </button>
+        </div>
+
+        <p v-if="litNote" class="ls-note" :class="litNote.kind">{{ litNote.text }}</p>
+
+        <template v-if="litHits.length">
+          <div class="ls-meta">
+            <span>共 {{ litHits.length }} 条{{ litTotal ? `（页面显示命中 ${litTotal}）` : "" }}</span>
+            <button class="ls-import" data-control="workflow:lit-import" :disabled="!litPicked.size" @click="importLitHits">
+              入库选中的 {{ litPicked.size }} 条
+            </button>
+          </div>
+          <div class="ls-list">
+            <label v-for="h in litHits" :key="h.index" class="ls-item" :class="{ picked: litPicked.has(h.index) }">
+              <input type="checkbox" :checked="litPicked.has(h.index)" @change="toggleLitPick(h.index)" />
+              <span class="ls-body">
+                <span class="ls-title">{{ h.title }}</span>
+                <span class="ls-sub">
+                  <template v-if="h.journal">{{ h.journal }}</template>
+                  <template v-if="h.issue"> · {{ h.issue }}</template>
+                  <template v-if="h.type"> · {{ h.type }}</template>
+                </span>
+                <span v-if="h.abstract" class="ls-abs">{{ h.abstract }}</span>
+              </span>
+            </label>
+          </div>
+        </template>
       </div>
 
       <h3 class="sc-group">手动添加</h3>
@@ -1667,7 +1862,48 @@ onMounted(async () => {
 
 <style scoped>
 
-.workflow-page { width: 100%; box-sizing: border-box; }
+.workflow-page {
+/* 文献检索(中文三大库) */
+.lit-search { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid #222F44; border-radius: 8px; background: #11192C; }
+.ls-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ls-srcs { display: flex; gap: 4px; }
+.ls-src { padding: 4px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: #A9BBD0; font-size: 12px; cursor: pointer; }
+.ls-src.on { border-color: #4D84CB; background: #1B2C4A; color: #E8EEF7; }
+.ls-input { flex: 1; min-width: 160px; padding: 5px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #0D1526; color: #E8EEF7; font-size: 12px; }
+.ls-go { padding: 5px 14px; border: 0; border-radius: 6px; background: #4D84CB; color: #F1F5F9; font-size: 12px; cursor: pointer; }
+.ls-go:disabled { opacity: 0.5; cursor: default; }
+.ls-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; }
+.ls-note.warn { color: #D9A441; }
+.ls-note.err { color: #D9706A; }
+.ls-note.info { color: #6B7A90; }
+.ls-meta { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 6px; font-size: 11px; color: #7A8AA0; }
+.ls-import { padding: 4px 12px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: #A9BBD0; font-size: 11px; cursor: pointer; }
+.ls-import:disabled { opacity: 0.45; cursor: default; }
+.ls-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.ls-item { display: flex; gap: 8px; padding: 8px 10px; border: 1px solid #1E2A40; border-radius: 6px; background: #0D1526; cursor: pointer; }
+.ls-item.picked { border-color: #4D84CB; background: #13203A; }
+.ls-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ls-title { font-size: 12.5px; color: #E8EEF7; line-height: 1.5; }
+.ls-sub { font-size: 11px; color: #7A8AA0; }
+.ls-abs { font-size: 11px; color: #6B7A90; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* 文献库身份卡 */
+.cnki-identity { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid #222F44; border-radius: 8px; background: #11192C; }
+.ci-modes { display: flex; gap: 6px; margin-bottom: 8px; }
+.ci-mode { padding: 4px 12px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: #A9BBD0; font-size: 12px; cursor: pointer; }
+.ci-mode.on { border-color: #4D84CB; background: #1B2C4A; color: #E8EEF7; }
+.ci-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ci-label { color: #7A8AA0; }
+.ci-val { color: #E8EEF7; }
+.ci-dim { color: #6B7A90; }
+.ci-badge { margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px; }
+.ci-badge.inst { background: #1B3A2A; color: #6FD08C; }
+.ci-badge.personal { background: #1B2C4A; color: #7FB2EC; }
+.ci-refresh { margin-left: auto; padding: 3px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: #A9BBD0; font-size: 11px; cursor: pointer; }
+.ci-refresh:disabled { opacity: 0.5; cursor: default; }
+.ci-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: #6B7A90; }
+.ci-note strong { color: #A9BBD0; }
+ width: 100%; box-sizing: border-box; }
 .wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
 .wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
 /* 页头三行状态区(闭源: N | 说明 | 版本状态, 中间夹竖线) */

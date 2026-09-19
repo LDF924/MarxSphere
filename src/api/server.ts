@@ -3749,6 +3749,53 @@ export function buildHttpServer() {
     return result;
   });
 
+  /**
+   * 中文三大库检索(知网/万方/维普) —— **借用户浏览器里的机构登录态**。
+   *
+   * 为什么不是普通 API 调用: 这三家**都没有对外检索接口**, 检索页是 SPA 空壳, 必须渲染后取。
+   *   产品前提: **平台不存这三家的密码** —— 走用户自己浏览器里的登录态。
+   *   所以本端点在"用户未登录"时返回 `needsLogin: true`(而不是 502), 让前端能说清原因。
+   *
+   * 实测(2026-09-19, 用户机构 = 南宁师范大学):
+   *   万方 total=329,426 / 维普 20 条 / 知网 total=136,905。
+   */
+  const litSearchSchema = z.object({
+    source: z.enum(["cnki", "wanfang", "cqvip"]),
+    query: z.string().min(1).max(200)
+  });
+  app.post("/api/literature/search", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const input = litSearchSchema.parse(request.body);
+    const { searchInBrowserSource } = await import("../services/literature-browser-service.js");
+    const r = await searchInBrowserSource(input.source, input.query);
+    if (r.needsLogin) {
+      // ⚠ 用 409 而不是 502: 这不是"服务端坏了", 是**需要用户去浏览器里登录一次**。
+      //   有区别 —— 前端据此显示"去登录"而不是"重试"。
+      return reply.code(409).send({
+        error: { code: "NEEDS_LOGIN", message: r.error ?? "需要先在浏览器里登录该文献源" },
+        needsLogin: true,
+        source: input.source
+      });
+    }
+    if (!r.ok) {
+      return reply.code(502).send({ error: { code: "LIT_SEARCH_FAILED", message: r.error ?? "检索失败" } });
+    }
+    return r;
+  });
+
+  /**
+   * 当前浏览器里的知网身份(供前端显示"现在拿谁的身份在查")。
+   *
+   * ⚠ 与"用户选择账户"的关系: 平台**不保存知网账号密码** —— 知网访问走用户自己浏览器的登录态。
+   *   所以这个端点做的是"**读出来给你看**", 不是"帮你登录"。
+   *   实测返回: `{loggedIn:true, userName:"GZ0041", showName:"南宁师范大学", userType:"bk", isInstitution:true}`。
+   */
+  app.get("/api/cnki/identity", async (_request, reply) => {
+    const r = await cnkiCitationProxy.readIdentity();
+    if (!r.ok && r.error) return reply.code(502).send(notFound("CNKI_IDENTITY_FAILED", r.error));
+    return r;
+  });
+
   // 知网搜索并打开论文详情页（联动引文网络）
   const cnkiSearchSchema = z.object({
     query: z.string().min(1).max(100)
