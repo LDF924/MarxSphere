@@ -97,10 +97,22 @@ export interface MinionJob {
 }
 
 /** 与 request() 一致的鉴权头构造（流式接口手写 fetch 时复用，避免缺失 Authorization 被 401 拦截） */
+/**
+ * 鉴权头 —— **两个 token 键都要认, 且 `skf_auth_token` 优先**。
+ *
+ * 2026-09-19 修: 此前这里**只读 `sag_token`**。而登录页/子应用写的是 `skf_auth_token`,
+ *   仓里其它处(BillingPanel / AskPanel / FloatingAssistantFAB / soc 的 shared/api)一律是
+ *   `skf_auth_token || sag_token` —— 只有本函数不同。后果: 只要当前登录态是"新"的那套,
+ *   走 `request()` 的调用就集体 **401**, 而后端 401 会触发**登出**。
+ *
+ * 实测到的复现(修前): 设置页切换「任意角色模型」 → `401 PUT /api/llm/models` →
+ *   被踢到登录页 + `sag_token` 被清。这个下拉从 2026-08-07 就存在, 一直是这样。
+ *   本轮我加的服务商联动用了裸 fetch, 也踩了同一个坑 —— 所以修在根上, 而不是逐个调用点补头。
+ */
 function authHeaders(init?: { headers?: HeadersInit }): Headers {
   const headers = new Headers(init?.headers);
   if (!headers.has("Authorization")) {
-    const token = localStorage.getItem("sag_token");
+    const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   return headers;

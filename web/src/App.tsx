@@ -4288,6 +4288,90 @@ function normalizeChunkingMode(value: unknown): ChunkingMode {
 }
 
 // V438: 按 base URL 推断服务商（设置页下拉回显用）
+/**
+ * 带鉴权调 LLM 模型注册表。
+ *
+ * ⚠ **必须显式带头**: `lib/api.ts` 的 `authHeaders` 只对 `request()` 生效, 裸 `fetch` 不走它。
+ *   实测(2026-09-19): 设置页切换角色模型时裸 fetch PUT 拿到 **401 → 触发登出 → 被踢到登录页**。
+ *   这个下拉从 2026-08-07 就存在, 一直如此。别处都写
+ *   `skf_auth_token || sag_token`(两个键都认), 这里照同一口径来。
+ */
+async function llmModelsFetch(init?: RequestInit): Promise<Response> {
+  const token = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+  return fetch("/api/llm/models", {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+}
+
+/**
+ * 切换服务商时**真的**把各角色模型换成该服务商可用的模型。
+ *
+ * 2026-09-19: 这里原先 POST `/api/llm/provider-sync` 想让"后端写 .env + 当前进程生效" ——
+ *   **后端没有这个端点**(实测恒 404), 还带 `.catch(()=>{})` 静默吞, 于是"服务商联动"
+ *   **从来没生效过**。契约对账时挖出来的。
+ *
+ * 我当时的第一反应是"不该让前端去改服务端 .env"(越权形状), 于是只把文案改成不撒谎。
+ * **但那把功能直接删了** —— 复核后发现平台**本来就有**正确的落点:
+ *   `PUT /api/llm/models {role, modelId}`(带 requireUser + `saveModelSelection()` 持久化),
+ *   设置页的「LLM 模型(角色配置)」一直在用它。
+ *
+ * 所以真正该做的是: **只改平台的角色配置**, 不碰 `.env`。
+ *   · 每个角色改成该服务商下**支持这个角色**的模型(避免把只支持部分角色的模型硬塞进去)
+ *   · 该服务商没有可用模型(比如没配密钥) → **一个都不动**, 如实说, 不假装切了
+ *
+ * 注: "302ai" 与 "openai" 在当前注册表里没有模型, 所以这两个选项会走"未动"分支 ——
+ * 这不是 bug, 是如实反馈(它们只是 baseURL 便捷填充)。
+ */
+async function syncRoleModelsToProvider(
+  provider: string
+): Promise<{ changed: number; already: number; picked?: string; reason?: string }> {
+  try {
+    const res = await llmModelsFetch();
+    if (!res.ok) return { changed: 0, already: 0, reason: `读模型注册表失败 (${res.status})` };
+    const data = await res.json();
+    const models = (data.models ?? []) as Array<{ id: string; provider: string; roles?: string[] }>;
+    const roleMap = (data.roleMap ?? {}) as Record<string, string>;
+    const mine = models.filter((m) => m.provider === provider);
+    if (!mine.length) return { changed: 0, already: 0, reason: `该服务商在当前注册表里没有模型(只改了地址)` };
+
+    let changed = 0;
+    let already = 0;
+    /** 首选模型(该服务的第一个) —— 提示里点名, 免得用户只知道"切了"不知道"切成什么" */
+    const picked = mine[0]?.id;
+    const failed: string[] = [];
+    for (const role of Object.keys(roleMap)) {
+      const cur = roleMap[role];
+      /**
+       * ⚠ 关键规则: **角色已经在该服务商下就不动它**。
+       *
+       * 我第一版是无条件 `pick = mine.find(支持该角色) ?? mine[0]` —— 那样切到 deepseek 会把
+       * `plan` 从 `deepseek-v4-pro` 强行改成 `deepseek-flash`(因为 flash 是列表第一个),
+       * **把用户之前的选择冲掉**。用户切服务商的意思是"换一家", 不是"把我这个角色也重设"。
+       * 实测: 8 个角色本是 v4-pro, 切到 deepseek 时被报成"8 个本来就在用" —— 那恰恰说明
+       * `mine[0]` 不是"支持该角色的首选", 而只是"列表第一个"。改成认服务商而不是认列表序。
+       */
+      if (cur && mine.some((m) => m.id === cur)) { already++; continue; }
+      const pick = mine.find((m) => m.roles?.includes(role)) ?? mine[0];
+      if (!pick) continue;
+      const r = await llmModelsFetch({
+        method: "PUT",
+        body: JSON.stringify({ role, modelId: pick.id }),
+      });
+      if (r.ok) changed++;
+      else failed.push(role);
+    }
+    if (failed.length) return { changed, already, picked, reason: `${failed.length} 个角色未改成功(${failed.join("/")}) —— 多半是密钥没配` };
+    return { changed, already, picked };
+  } catch (e) {
+    return { changed: 0, already: 0, reason: (e as Error).message };
+  }
+}
+
 function providerDetect(baseUrl: string): string {
   if (baseUrl.includes("deepseek")) return "deepseek";
   if (baseUrl.includes("302ai")) return "302ai";
@@ -4312,6 +4396,8 @@ function SettingsPanel(props: {
   const [embeddingApiKey, setEmbeddingApiKey] = useState("");
   const [clearEmbeddingApiKey, setClearEmbeddingApiKey] = useState(false);
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  /** 服务商联动结果的即时反馈(切换后同步了哪些角色 —— 成功/失败都要看得见) */
+  const [providerSyncNote, setProviderSyncNote] = useState<{ kind: "ok" | "warn"; text: string } | null>(null);
   const [llmModel, setLlmModel] = useState("");
   const [llmApiKey, setLlmApiKey] = useState("");
   const [clearLlmApiKey, setClearLlmApiKey] = useState(false);
@@ -4463,16 +4549,20 @@ function SettingsPanel(props: {
               else if (v === "deepseek") setLlmBaseUrl("https://api.deepseek.com/v1");
               else if (v === "openai") setLlmBaseUrl("https://api.openai.com/v1");
               /**
-               * ⚠ 原先是 POST `/api/llm/provider-sync` 让"后端写 .env + 当前进程生效" ——
-               *   **后端没有这个端点**(实测恒 404), 且带 `.catch(() => {})` 静默吞掉,
-               *   于是"服务商联动"**从来没生效过**, 而且不报错。
-               *   契约对账时挖出来的(2026-09-19)。
-               *
-               *   产品决策: 这里**不补一个写 .env 的端点** —— 让一个纯前端下拉框去改服务端
-               *   配置文件(还要求当前进程生效)本身就是越权形状, 多用户下更说不通。
-               *   下拉框改为**纯粹的 baseURL 便捷填充**, 也就是它真正可靠做到的那件事;
-               *   模型名请走设置页/`.env`。*/
-              // (原 fetch 已删除, 详见上方说明)
+               * 服务商联动: 只改地址 + **真的**把角色模型换成该服务商可用的(见
+               * `syncRoleModelsToProvider` 的注释 —— 走平台自己的 `PUT /api/llm/models`,
+               * 不碰 `.env`)。结果无论成败都在下面显示出来。
+               */
+              setProviderSyncNote(null);
+              void syncRoleModelsToProvider(v).then((r) => {
+                setProviderSyncNote(
+                  r.changed > 0
+                    ? { kind: "ok", text: `已把 ${r.changed} 个角色的模型切到 ${r.picked}${r.already ? `（另 ${r.already} 个本来就是）` : ""}${r.reason ? `；${r.reason}` : ""}` }
+                    : r.reason
+                      ? { kind: "warn", text: `模型未改动：${r.reason}` }
+                      : { kind: "ok", text: `${r.already} 个角色本来就在用该服务商的模型，无需改动` }
+                );
+              });
             }}
           >
             <option value="302ai">阿里云百炼 302AI</option>
@@ -4480,14 +4570,18 @@ function SettingsPanel(props: {
             <option value="openai">OpenAI 兼容</option>
             <option value="custom">自定义</option>
           </select>
-          {/* ⚠ 说清楚边界: 切换服务商**只改地址**, 不会连带改模型名。
-              原先这里是 POST /api/llm/provider-sync(端点不存在, 且 .catch 静默吞), 所以
-              文案写着"自动填地址+模型"而实际一件事都没做。删掉那次调用后, 文案必须跟着诚实 ——
-              否则用户以为模型也跟着切了, 实际推理还在用上一个服务商的模型名。 */}
+          {/* 切换结果如实反馈: 成功说清改了几个角色, 失败说清为什么没改(不静默)。
+              这条链路此前是死的(POST 到不存在的端点 + .catch 吞掉), 所以"切了服务商模型没变"
+              一直是**静默**发生的 —— 用户只会觉得推理结果怪。 */}
+          {providerSyncNote ? (
+            <p className={`mt-1 text-[11px] leading-5 ${providerSyncNote.kind === "ok" ? "text-emerald-400" : "text-amber-400"}`}>
+              {providerSyncNote.text}
+            </p>
+          ) : null}
           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
             {t(
-              "切换服务商只改上面的地址，不会连带切换模型名 —— 模型按角色配置，请用下面的「LLM 模型（角色配置）」。",
-              "Switching provider only changes the base URL — it does not switch the model. Models are per-role; use “LLM models (per-role)” below."
+              "切换服务商会同步把各角色的模型换成该服务商可用的模型（走「LLM 模型（角色配置）」，不写配置文件）。",
+              "Switching provider also re-points each role to a model from that provider (via “LLM models (per-role)”; no config file is written)."
             )}
           </p>
         </Field>
@@ -5131,7 +5225,7 @@ function ModelRoleSettings() {
   const [models, setModels] = useState<any[]>([]);
   const [roleMap, setRoleMap] = useState<Record<string, string>>({});
   useEffect(() => {
-    fetch("/api/llm/models")
+    llmModelsFetch()
       .then((r) => r.json())
       .then((d) => {
         setModels(d.models || []);
@@ -5143,9 +5237,8 @@ function ModelRoleSettings() {
     reason: "推理合成", judge: "评测打分", review: "评审", plan: "规划", verify: "题型复核", strategy: "策略决策",
   };
   const setRole = async (role: string, modelId: string) => {
-    await fetch("/api/llm/models", {
+    await llmModelsFetch({
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role, modelId }),
     });
     setRoleMap((prev) => ({ ...prev, [role]: modelId }));

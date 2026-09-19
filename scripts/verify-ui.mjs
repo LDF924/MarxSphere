@@ -62,6 +62,10 @@ const SUITES = [
   // R9: 后端的图片端点是 requireUser 保护的, 而 `<img src="/api/...">` 发不带 Authorization 头 ——
   //   实测**本机也是 401**(不是"上云才坏"), naturalWidth=0。这条钉住"带鉴权取 blob"这条路必须通。
   { key: "authed-image", file: "probe-authed-image.mjs", desc: "受保护图片: 原生 img 取不到 / 带鉴权 fetch 200 / objectURL 可解码 / 404" },
+  // 服务商联动: 原先 POST 到一个不存在的端点(恒 404 + 静默吞), 功能从没生效过。
+  //   ⚠ 需要**前置**: 从 DB 把某个角色种到别家服务商 + 重启后端(见该文件头注释),
+  //   否则"别家的角色"为空, 断言会退化成 0===0 的假通过。故不放进默认组。
+  { key: "provider-sync", file: "probe-provider-sync.mjs", desc: "切换服务商: 真把角色模型写进后端 + 不冲掉已在该服务商的角色", data: true },
   // 「快照 ↔ 节点」口径: 验"改完之后刷新还在不在"(用户视角), 与单测(验合并函数本身)互补。
   //   不调 LLM, 秒级。
   { key: "workbench-sync", file: "probe-workbench-sync.mjs", desc: "已定稿/数据文件刷新后仍在 + 防倒退 + diff 守卫" },
