@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, type FC } from "react";
 import { Loader2, Play, GraduationCap, BookOpen, Stethoscope, CalendarClock, ClipboardList, HeartHandshake, ChevronDown, ChevronRight, File, FileText, FileImage, Download, X, Cpu } from "lucide-react";
 import { cn } from "../lib/utils";
+import { fetchBinaryObjectUrl } from "../lib/authed-image";
 import { LearningCanvas } from "./LearningCanvas";
 import { ToolRunner } from "./ToolRunner";
 
@@ -113,8 +114,9 @@ function ObsidianVaultSidebar({ onCollapse }: { onCollapse?: () => void }) {
         } else {
           // PDF 加 #view=FitH 适配水平宽度
           const isPdf = fileName.toLowerCase().endsWith(".pdf");
-          const base = `/api/vault/binary?path=${encodeURIComponent(filePath)}`;
-          setBinaryUrl(isPdf ? `${base}#view=FitH` : base);
+          // 同 PolicyPanel/VaultPanel: 裸路径在 <img>/<iframe> 里带不了 Authorization 头(局域网 401)
+          const objUrl = await fetchBinaryObjectUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`);
+          setBinaryUrl(isPdf ? `${objUrl}#view=FitH` : objUrl);
         }
       } else {
         setIsOffice(true);

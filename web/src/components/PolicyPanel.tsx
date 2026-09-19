@@ -4,6 +4,7 @@
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { Landmark, Loader2, Search, FileText, FolderOpen, ChevronRight, ChevronDown, Save, RefreshCw, CheckCircle2, ExternalLink, Download, X } from "lucide-react";
 import { api } from "../lib/api";
+import { AuthedImg, fetchBinaryObjectUrl } from "../lib/authed-image";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
@@ -145,7 +146,9 @@ export function PolicyPanel() {
           const data = await api.getVaultFile(filePath);
           setFile(data.file);
         } else {
-          setBinaryUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`);
+          // 带鉴权取成 object URL —— 裸路径放进 <img>/<iframe> 是带不了 Authorization 头的,
+          // 该端点由**全局鉴权中间件**挡住(实测局域网 IP 401, 本机放行) → 远程部署下预览全白。
+          setBinaryUrl(await fetchBinaryObjectUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`));
         }
       } else {
         setIsOffice(true);
@@ -271,7 +274,7 @@ export function PolicyPanel() {
                   </div>
                 ) : (
                   <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-                    <img src={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
+                    <AuthedImg path={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
                   </div>
                 )}
               </div>

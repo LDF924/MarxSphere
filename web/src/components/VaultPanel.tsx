@@ -3,6 +3,7 @@
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { FolderOpen, FileText, FileImage, File, Download, Loader2, ChevronRight, ChevronDown, BookMarked, RefreshCw, X, BookOpenCheck } from "lucide-react";
 import { api } from "../lib/api";
+import { fetchBinaryObjectUrl } from "../lib/authed-image";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
@@ -115,9 +116,10 @@ export function VaultPanel() {
           const data = await api.getVaultFile(filePath);
           setFile(data.file);
         } else {
-          // PDF/图片 → iframe 内联预览
-          const url = `/api/vault/binary?path=${encodeURIComponent(filePath)}`;
-          setBinaryUrl(url);
+          // PDF/图片 → iframe 内联预览。
+          // ⚠ 原来的裸路径带不了 Authorization 头(该端点被全局鉴权中间件挡住, 实测局域网 401)
+          //   → 远程部署时预览全白。改为带鉴权取 blob。
+          setBinaryUrl(await fetchBinaryObjectUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`));
         }
       } else {
         // Office 等 → 下载模式

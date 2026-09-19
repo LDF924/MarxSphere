@@ -85,6 +85,20 @@ export async function fetchImageObjectUrl(url: string, opts: AuthedImageOptions 
 }
 
 /**
+ * 取**任意受保护二进制**的 object URL(图片之外的 PDF / 附件也走它)。
+ *
+ * 由来(2026-09-19): 壳里有三处把 `/api/vault/binary?path=…` 直接当 `<img src>` / `<iframe src>`
+ *   (`PolicyPanel` / `VaultPanel` / `EducationPanel`)。该端点**没有 requireUser**, 却被
+ *   **全局鉴权中间件**挡住 —— 实测本机 500(放行进入处理)、**局域网 IP 401**。
+ *   也就是说远程部署时, 保管箱/政策资料/教育资料里的图片与 PDF 预览**全是白的**。
+ *
+ * 与 `fetchImageObjectUrl` 同一套重试规格, 只是不假设内容是图片。
+ */
+export async function fetchBinaryObjectUrl(url: string, opts: AuthedImageOptions = {}): Promise<string> {
+  return fetchImageObjectUrl(url, opts);
+}
+
+/**
  * React 侧的一步到位版: 传 URL → 拿状态与可用地址, **卸载/换 URL 时自动 revoke**。
  *
  * 组件里原本要自己写 `useEffect` + `createObjectURL` + 清理, 很容易漏掉 revoke(内存泄漏),

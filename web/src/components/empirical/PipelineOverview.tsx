@@ -3,6 +3,7 @@
 // 把分散在各页的产出(识别/仿真/信效度/插补…)串成一条可展开的流水线, 直观看到完整过程与结果
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Database, FlaskConical, Wand2, ClipboardList, Loader2, BarChart3, Table2, ScrollText, Download, FileDown } from "lucide-react";
+import { AuthedImg, fetchImageObjectUrl } from "../../lib/authed-image";
 import { apiEmpiricalWorkshop } from "../../lib/api";
 
 interface PipelineProps { projectId?: string; refreshKey?: number; projectTitle?: string }
@@ -16,6 +17,22 @@ const STAGE_META: Record<string, { label: string; icon: any; color: string }> = 
   data_pipeline: { label: "数据管道", icon: ScrollText, color: "text-rose-600" },
   regression: { label: "回归", icon: BarChart3, color: "text-indigo-600" },
 };
+
+/**
+ * 「点击放大」—— 也要带鉴权。
+ *
+ * 使用者是 `StageCard` 里的图表缩略图。原实现是 `<a href target=_blank>`, 同样带不了
+ * Authorization 头; 远程部署下点开只会得到一个 401 页面。改为取 blob 后写进新窗口。
+ * (放在模块级: 使用它的 `StageCard` 与我想放的位置不在同一个组件里 —— 插错过一次。)
+ */
+async function openFigureFullSize(f: { file: string }) {
+  try {
+    const url = await fetchImageObjectUrl(apiEmpiricalWorkshop.figuresUrl(f.file));
+    const w = window.open("", "_blank");
+    if (!w) { URL.revokeObjectURL(url); return; }
+    w.document.write('<title>' + f.file + '</title><body style="margin:0;background:#111"><img src="' + url + '" style="max-width:100%"></body>');
+  } catch { /* 取不到就不弹 —— 缩略图的失败态已经说明了 */ }
+}
 
 function fmtTime(iso: string): string {
   try {
@@ -82,15 +99,25 @@ function StageCard({ run, index, total }: { run: any; index: number; total: numb
           {figs.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {figs.map((f: any) => (
-                <a key={f.file} href={apiEmpiricalWorkshop.figuresUrl(f.file)} target="_blank" rel="noreferrer" className="group">
-                  <img
-                    src={apiEmpiricalWorkshop.figuresUrl(f.file)}
+                /* ⚠ 原来是裸 `<a href>` + 裸 `<img src>`, **都带不了 Authorization 头**。
+                    该端点(`/api/empirical/figures/:file`)的鉴权是 **V414 补丁式**的:
+                    本机 socket 放行、**远程仍要求登录** —— 实测本机 404(放行)、局域网 IP **401**。
+                    也就是说远程/局域网部署时, 实证图表**全是碎的**。
+                    (V414 当年的修复只豁免了本机, 等于把问题从"本机可见"挪成了"只有本机可见"。)
+                    改用带鉴权取 blob; 「点开原图」也换成 blob 预览, 否则同样 401。 */
+                <button
+                  key={f.file}
+                  type="button"
+                  onClick={() => void openFigureFullSize(f)}
+                  className="group cursor-pointer"
+                >
+                  <AuthedImg
+                    path={apiEmpiricalWorkshop.figuresUrl(f.file)}
                     alt={f.title ?? f.file}
-                    title={`${f.title ?? ""} (${f.sizeKB}KB) — 点击查看原图`}
                     className="max-h-44 rounded border bg-white object-contain transition-opacity group-hover:opacity-80 dark:bg-card"
                   />
                   <div className="text-center text-[8px] text-muted-foreground group-hover:text-emerald-600">↘ 点击放大</div>
-                </a>
+                </button>
               ))}
             </div>
           )}
