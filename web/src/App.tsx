@@ -4453,7 +4453,7 @@ function SettingsPanel(props: {
             placeholder={t("留空不修改", "Leave blank to keep unchanged")}
           />
         </Field>
-        <Field label={t("LLM 服务商（自动填地址+模型）", "LLM provider (auto-fills base URL & model)")}>
+        <Field label={t("LLM 服务商（仅自动填地址）", "LLM provider (fills base URL only)")}>
           <select
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             value={providerDetect(llmBaseUrl)}
@@ -4480,6 +4480,16 @@ function SettingsPanel(props: {
             <option value="openai">OpenAI 兼容</option>
             <option value="custom">自定义</option>
           </select>
+          {/* ⚠ 说清楚边界: 切换服务商**只改地址**, 不会连带改模型名。
+              原先这里是 POST /api/llm/provider-sync(端点不存在, 且 .catch 静默吞), 所以
+              文案写着"自动填地址+模型"而实际一件事都没做。删掉那次调用后, 文案必须跟着诚实 ——
+              否则用户以为模型也跟着切了, 实际推理还在用上一个服务商的模型名。 */}
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+            {t(
+              "切换服务商只改上面的地址，不会连带切换模型名 —— 模型按角色配置，请用下面的「LLM 模型（角色配置）」。",
+              "Switching provider only changes the base URL — it does not switch the model. Models are per-role; use “LLM models (per-role)” below."
+            )}
+          </p>
         </Field>
         <Field label={t("LLM 接口地址", "LLM API base URL")}>
           <Input value={llmBaseUrl} onChange={(event) => setLlmBaseUrl(event.target.value)} />

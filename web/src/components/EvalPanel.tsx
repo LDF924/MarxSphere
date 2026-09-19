@@ -1437,23 +1437,32 @@ function ModelUsageBanner() {
        *     · 主动巡检 → `/api/agent/proactive-research`(实测存在)
        *   回归不再假装"跑完了"。
        */
-      let d: { ok?: boolean; result?: { passed?: number; total?: number; created?: number }; skipped?: boolean };
+      /**
+       * ⚠ 字段名必须照后端来。`runProactiveResearch()` 返回的是
+       *   `{ created: string[], skipped: number, signals: number }` ——
+       *   `created` 是**任务 id 数组不是计数**(我第一版写成 `d.result?.created ?? 0`,
+       *   会渲染成 `创建 a1b2c3…,d4e5f6… 个任务`; 而且空数组不是 nullish, `??` 也兜不住,
+       *   还会变成 `创建 个任务`)。这条是自查时抓出来的 —— 与前面那批 404 同一个病根: **没照契约写**。
+       */
+      let resultText: string;
       if (action === "eval") {
-        d = { ok: true, skipped: true };
+        resultText = "请到「科研评测」面板运行(本入口不再触发, 避免与它的运行状态打架)";
       } else {
         const r = await fetch("/api/agent/proactive-research", { method: "POST" });
         if (!r.ok) throw new Error(`主动巡检失败 (${r.status})`);
-        d = await r.json();
+        const d = (await r.json()) as { ok?: boolean; result?: { created?: string[]; skipped?: number; signals?: number } };
+        if (!d?.ok) throw new Error("主动巡检返回失败");
+        const made = d.result?.created?.length ?? 0;
+        const skipped = d.result?.skipped ?? 0;
+        const signals = d.result?.signals ?? 0;
+        resultText = made
+          ? `创建 ${made} 个任务(信号 ${signals} 条, 跳过 ${skipped} 条)`
+          : `未创建任务 —— 信号 ${signals} 条, 全部跳过(最近 24h 内已有相同目标, 或质量未过门槛)`;
       }
       const entry = {
         at: new Date().toLocaleString(),
         action: action === "eval" ? "评测回归" : "主动巡检",
-        result: !d?.ok
-          ? "失败"
-          : action === "eval"
-            // 说清楚去哪个入口跑, 不留"刚才到底跑没跑"的疑问
-            ? "请到「科研评测」面板运行(本入口不再触发, 避免与它的运行状态打架)"
-            : `创建 ${d.result?.created ?? 0} 个任务`,
+        result: resultText,
       };
       const next = [entry, ...log].slice(0, 10);
       setLog(next);
@@ -1488,6 +1497,7 @@ function ModelUsageBanner() {
         </button>
         <button
           type="button"
+          data-control="eval:proactive"
           onClick={() => void confirmRun("proactive")}
           disabled={proactivePending}
           className="rounded-md border border-border px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
