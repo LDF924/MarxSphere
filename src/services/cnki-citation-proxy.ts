@@ -9,12 +9,31 @@ import { tabInfo } from "./cdp-browser.js";
 /**
  * cnki-citation-proxy — 知网引文网络 CDP 代理
  *
- * 通过 CDP proxy（localhost:3456）驱动浏览器知网页面：
+ * ⚠⚠ **当前状态: 对不上知网的新结构, 引文抓取实际不可用(2026-09-19 实测)**。
+ *
+ *   本模块假定引文在 `#refpartdiv` 内以 `[N] …` 行成列。**实测该结构已不存在**:
+ *     · `#refpartdiv` 只剩 `H5.module-title` + `UL.module-tab`(6 个 tab 名) + `#MapArea`;
+ *     · `#MapArea` 内 `#references` 现在是一个 **`<a class="ReferLinkOn">参考文献</a>` 链接**,
+ *       不再是列表容器; 所有 `nxgp-*` 容器 `li=0`、字节为 0;
+ *     · 引文内容改成了**点链接跳转**, 不再是页面内展开。
+ *   ⇒ 结果: 要么报"页面上未找到引文 tab", 要么报"该论文暂无引文数据" —— **两种都不准**,
+ *     真实原因是容器结构换过。**别把它当成"这篇没数据"。**
+ *
+ *   佐证: 同一时间两篇详情页(`#refpartdiv` 分别 =1 / =0)**都是 0 条引文**;
+ *         且两篇都通过了一次验证码, 排除了"被验证页挡住"这条原因。
+ *
+ *   消费者: 目前**只有 `web/src/lib/api.ts` 的一层封装, 没有任何 UI 调用** ——
+ *     也就是说它现在既不工作、也没人用。要恢复需要按新结构重写抓取(那是新的一摊调研,
+ *     而且知网会再改); 在那之前**不要把它接进界面**, 否则用户看到的是"这个功能坏了"。
+ *
+ *   仍然可靠的用途: `searchAndOpen`(检索并打开详情页)与 `readIdentity`(读登录身份) —— 实测可用。
+ *
+ * 原设计(已失效, 留档): 通过 CDP proxy(localhost:3456)驱动浏览器知网页面：
  * 1. 找到知网详情页 tab
- * 2. 真实点击引文 tab（参考文献/引证文献/共引文献/同被引文献/二级参考文献/二级引证文献）
+ * 2. 真实点击引文 tab(参考文献/引证文献/共引文献/同被引文献/二级参考文献/二级引证文献)
  * 3. 从 #refpartdiv 提取对应数据
  *
- * 依赖：web-access skill 的 cdp-proxy（Edge 已登录知网）
+ * 依赖：web-access skill 的 cdp-proxy(Edge 已登录知网)
  */
 
 const CDP_PROXY = process.env.CDP_PROXY_URL || "http://localhost:3456";
@@ -336,7 +355,12 @@ export async function fetchCnkiCitations(
     `(() => { const tabs = Array.from(document.querySelectorAll("#refpartdiv li")); const t = tabs.find(x => (x.className || "").includes("${cls}")); if (!t) return "notfound"; t.click(); return "ok:" + (t.innerText || "").trim(); })()`
   );
   if (!markResult.startsWith("ok")) {
-    return { ok: false, type, items: [], error: "页面上未找到引文 tab", tabFound: false };
+    /**
+     * ⚠ 这句**措辞不准, 会把人带偏**: "没有引文 tab" 让人以为页面没这个功能区。
+     *   实测(2026-09-19) 6 个引文 tab **都在**(在 `UL.module-tab` 里), 只是**不在 `#refpartdiv li` 里**
+     *   —— 也就是本模块依赖的那层结构没了。真实原因是**知网改版**, 不是"页面没有引文功能"。
+     */
+    return { ok: false, type, items: [], error: "知网的引文区结构已变更(本模块仍按旧结构 #refpartdiv li 查找) —— 引文抓取当前不可用, 详见文件头", tabFound: false };
   }
 
   // 3. 等待数据加载后提取（重试 5 次，每次 4 秒——tab 切换后数据异步加载）
@@ -381,7 +405,9 @@ export async function fetchCnkiCitations(
       type,
       items: [],
       total: parsed.counts?.[0],
-      error: "该论文在知网暂无此类型引文数据（数据为空）"
+      // ⚠ 这句以前会被当成"这篇确实没有引文"。但实测**新结构下所有容器都是空的**,
+      //   所以它更可能是"抓取对不上结构"而不是"没数据"。措辞必须把两种可能都说出来。
+      error: "未解析到引文条目 —— 可能是该文献确无此类引文(如报纸/资讯类), 也可能是知网的引文容器结构已变更(实测 2026-09 已变)"
     };
   }
 
