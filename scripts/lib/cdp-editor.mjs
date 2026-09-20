@@ -171,18 +171,25 @@ export async function evalInFrame(cdp, frameId, expression) {
  */
 export async function clickInFrame(cdp, frameId, selector, opts = {}) {
   const sel = JSON.stringify(selector);
+  const idx = Number.isInteger(opts.index) && opts.index > 0 ? opts.index : 0;
+  // index: 命中多个时必须能选第 N 个 —— 之前**收了 opts.index 却从没用过**, 一直是
+  //   querySelector 取第一个。调用方(probe-actions)照常把 index 传下来, 于是所有
+  //   "点列表第 N 项"的断言实际点的都是第一项, 表现是"点了没反应"或**假通过**
+  //   (实测: 版本抽屉倒序渲染, 想点 v2 却总点中 v3 —— 恢复确实发生了, 但恢复的是最新版,
+  //    于是"正文变回旧版"的断言永远红)。这里补上取样。
+  const pick = `[...document.querySelectorAll(${sel})][${idx}] ?? null`;
   // frameId 为空 → 顶层页面(没有隔离 world 问题, 直接用 ev 语义)
   const evalAt = frameId ? (expr) => evalInFrame(cdp, frameId, expr) : (expr) => evalTop(cdp, expr);
   // 第一次求值: 只做滚动(behavior:instant 避免平滑滚动期间坐标继续变)
   await evalAt(`(() => {
-    const el = document.querySelector(${sel});
+    const el = ${pick};
     if (el) el.scrollIntoView({ block: "center", behavior: "instant" });
     return 'ok';
   })()`);
   await sleep(250); // 等滚动与重排落定
   // 第二次求值: 滚动之后再读坐标
   const point = await evalAt(`(() => {
-    const el = document.querySelector(${sel});
+    const el = ${pick};
     if (!el) return null;
     const r = el.getBoundingClientRect();
     if (!r.width && !r.height) return null;

@@ -68,6 +68,36 @@ try {
     const run = await btn(cdp, '[data-control="quick:ms-run"]');
     if (!run?.exists) rec("quick", "ms-run(DAG 直接运行)", "skip", "需先有 DAG 节点才渲染运行按钮");
     else rec("quick", "ms-run 存在", "ok", `文案="${run.text}" 禁用=${run.disabled}(未填题面时应为 true)`);
+
+    // ── V418: 一句话生成流程(这轮新接的入口) ──
+    // 后端 POST /orchestrator/nl-to-dag 此前**零前端调用**; 接线后按三条断言锁住:
+    //   空输入禁用 → 输入后解禁 → 点下去真发请求且**画布节点数真的变多**。
+    // 第三条是关键: 只断言 200 会漏掉"请求成功但图没载入"这种半截接线。
+    const nlBtn = await btn(cdp, '[data-control="quick:nl-generate"]');
+    if (!nlBtn?.exists) {
+      rec("quick", "nl-generate 存在", "skip", "该页未渲染此按钮");
+    } else {
+      rec("quick", "nl-generate 未输入时禁用(门禁)", nlBtn.disabled ? "ok" : "err",
+        `文案="${nlBtn.text}" 禁用=${nlBtn.disabled}`);
+      const beforeN = await evalTop(cdp, `document.querySelectorAll('.agent-flow-node').length`);
+      await evalTop(cdp, `(() => {
+        const el = document.querySelector('[data-control="quick:nl-input"]');
+        const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        set.call(el, '分析资本下乡对村级治理的影响');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return el.value;
+      })()`);
+      await sleep(400);
+      const enabled = await evalTop(cdp, `!document.querySelector('[data-control="quick:nl-generate"]')?.disabled`);
+      rec("quick", "nl-generate 输入后解禁", enabled ? "ok" : "err", `解禁=${enabled}`);
+      const r = await probeAction(cdp, '[data-control="quick:nl-generate"]', { wait: 45000 });
+      const hit = (r.apiReqs ?? []).find((x) => /orchestrator\/nl-to-dag/.test(x.url));
+      rec("quick", "nl-generate 打真端点且 200", hit && hit.status === 200 ? "ok" : "DEAD",
+        hit ? `${short(hit.url)} → ${hit.status}` : `未见请求(共 ${(r.apiReqs ?? []).length} 个)`);
+      const afterN = await evalTop(cdp, `document.querySelectorAll('.agent-flow-node').length`);
+      rec("quick", "nl-generate 画布真载入生成结果", afterN > beforeN ? "ok" : "DEAD",
+        `节点 ${beforeN} → ${afterN} · toast="${(r.toast ?? "").slice(0, 30)}"`);
+    }
   }
 
   // ═══ ② 数据分析台(Statistics) ═══

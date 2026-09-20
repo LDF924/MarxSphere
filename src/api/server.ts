@@ -7151,6 +7151,20 @@ except Exception as e:
     const { listTemplatesWithCost } = await import("../services/orchestrator-service.js");
     return { ok: true, templates: await listTemplatesWithCost() };
   });
+  // V418: 一句话 → 可执行流程图(速览模式「生成流程」按钮)。
+  // 为什么不是复用项目级那个 POST /research/projects/:id/nl-to-dag: 那个往
+  //   `research_projects.canvas` 落库, 而速览模式的画布是**纯客户端状态**, 它的「开始执行」
+  //   走 POST /orchestrator/run(自包含, 不读 canvas 列)—— 两条路不通用。落库那条留着给
+  //   项目工作台; 这个入口直接把拆解结果按 OrchestratorGraph 回给前端画布。
+  app.post("/api/orchestrator/nl-to-dag", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { description?: string };
+    if (!body?.description?.trim()) return reply.code(400).send({ error: "请描述研究任务" });
+    const { nlToOrchestratorGraph } = await import("../services/research-pipeline-service.js");
+    const r = await nlToOrchestratorGraph(body.description.trim());
+    if ("error" in r) return reply.code(422).send({ error: r.error });
+    return { ok: true, graph: r.graph };
+  });
   // V415: 把 MetaSkill(声明式 DAG, 含提案 accept 进来的)搬进画布 ——
   //   列清单 + 反解成图。用户要求"MetaSkill DAG 的能力融合进课题流程编排"。
   app.get("/api/orchestrator/meta-skills", async () => {
@@ -10907,7 +10921,54 @@ except Exception as e:
     const r = await pool.query(
       `select version, content_hash, title, content_len, by_editor, created_at from doc2_versions
         where document_id=$1 order by version desc limit 50`, [docId]);
-    return { versions: r.rows };
+    // 沿用 items 这条链自己的线格式(api.listDocs 回的就是 items; 前端内联的闭源契约也是
+    //   {items,pagination}) —— 版本列表比文档列表更小, 不需要分页, 只带 items。
+    // api.ts 的 q() 直接返回整个响应体(不像 axios 那样剥 data), 所以**不能再套一层信封**,
+    //   否则前端拿到的是对象: `!versions.length` 恒 false 会渲染「暂无版本记录」的兄弟分支,
+    //   而 v-for 会去遍历这个对象。
+    const items = r.rows.map((row) => ({
+      // 前端 :key / 恢复调用都用 id; 版本表的主键(闭源版本列表同字段)
+      id: String(row.version),
+      version_num: row.version,
+      created_at: row.created_at,
+      word_count: row.content_len,
+      title: row.title,
+      content_hash: row.content_hash,
+      by_editor: row.by_editor,
+    }));
+    return { items };
+  });
+
+  // Word 导入(docx 二进制 → HTML): 前端「导入 Word」的唯一落点。
+  // 形态与 /paper-outline/export 对称(那边 HTML→docx 也是服务端做), 同为 base64 JSON、
+  //   同受 bodyLimit 30MB 约束。用 mammoth 而非手写解包: docx 的 XML 关系与样式继承
+  //   自己实现必然漏(且仓库早在依赖里就有这两个包, 只是一直零 import)。
+  // 注意前端把返回值喂给 TipTap 的 setContent, **要的是 HTML 而不是 markdown**。
+  app.post("/api/editor/v1/documents/import", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { filename?: string; base64?: string };
+    const b64 = String(body?.base64 ?? "").replace(/^data:[^;]+;base64,/, "");
+    if (!b64) return reply.code(400).send({ error: "缺少 base64" });
+    let buf: Buffer;
+    try { buf = Buffer.from(b64, "base64"); } catch { return reply.code(400).send({ error: "base64 无法解码" }); }
+    if (!buf.length) return reply.code(400).send({ error: "文件内容为空" });
+    // 旧版 .doc 是 OLE 复合文档, mammoth 只吃 OOXML —— 明确拒绝, 别让它抛一句看不懂的错
+    if (buf.subarray(0, 4).toString("hex") === "d0cf11e0") {
+      return reply.code(400).send({ error: "暂不支持旧版 .doc, 请先另存为 .docx" });
+    }
+    try {
+      const mammoth = (await import("mammoth")) as unknown as {
+        convertToHtml: (o: { buffer: Buffer }) => Promise<{ value: string; messages: unknown[] }>;
+      };
+      const { value } = await mammoth.convertToHtml({ buffer: buf });
+      const filename = String(body?.filename ?? "");
+      // 标题: 文件名兜底(闭源同口径); 前端另有 .docx 后缀剥离
+      const title = filename.replace(/\.docx?$/i, "") || "导入文档";
+      return { html: value, title };
+    } catch (e) {
+      request.log.error({ err: e }, "docx 解析失败");
+      return reply.code(400).send({ error: "Word 文件解析失败(可能已损坏或非 .docx)" });
+    }
   });
 
   // 版本回档(取历史 content 写回 + 新版本行; 编辑器"版本历史"面板用)

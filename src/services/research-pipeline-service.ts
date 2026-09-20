@@ -569,31 +569,141 @@ export function dagTemplateFiveStage(topic: string): CanvasState {
   return { nodes, edges };
 }
 
-// ═══ NL → DAG(自然语言任务描述 → 研究框架节点, 对齐画布任务形态) ═══
-export async function nlToDag(userId: string, projectId: string, description: string): Promise<{ canvas: CanvasState } | { error: string }> {
+// ═══ NL → DAG(自然语言任务描述 → 可执行流程) ═══
+/**
+ * 2026-09-20 重做。原实现只产出 `{id,type,label}` 的**绘制用**画布, 有两个已实测的问题:
+ *   ① 本仓没有任何视图读 `research_projects.canvas`, 也没有把画布节点变成 research_tasks
+ *      的路径(8 个有 canvas 的项目, 画布节点从未变成过任务)—— 接出去就是个执行不了的视图;
+ *   ② 速览模式 (`/workbench/quick`) 的画布是**纯客户端状态**, 从不落库, 它的「开始执行」
+ *      走 `POST /orchestrator/run`(自包含, 不碰项目)—— 所以"生成→落 canvas 列→再读回来"
+ *      那条路与真正能执行的那条**根本不是同一条**。
+ *
+ * 现在把"拆解"与"投递"分开: `planFromNl` 只负责调 LLM 出步骤(纯函数, 不落库);
+ * 两个入口各自把结果投到**各自能执行的地方** —— 速览模式走 `/orchestrator/nl-to-dag`(载入
+ * 前端画布, 接着点「开始执行」), 项目工作台走 `nlToDag`(落 canvas 列, 供项目级流程查看)。
+ *
+ * 节点 → 能力对应, 抄 `orchestrator-templates.ts` 的既有约定, 不自造:
+ *   澄清/采集 → io:clarify · 检索 → tool:sag_search(真实检索能力) · 撰写 → io:llm-write ·
+ *   成稿/审校 → io:quality-gate。chart 不给绑定, 后端按 llm_chat 兜底 —— 宁缺勿错。
+ *
+ * 「这一步做什么」同时写进 `label` 与 `goal`: 图执行时节点取到的是那一条自足指令,
+ * 下游 `{{outputs.<nodeId>}}` 代入的就是它的产物文本。不往 params 里塞参数骨架 ——
+ * 能力自带 fields 与默认模板, 塞了反而可能把默认覆盖掉。
+ */
+const NL_TYPE_TO_CAP: Record<string, string | undefined> = {
+  goal: "io:clarify",
+  object_sample: "io:clarify",
+  literature: "tool:sag_search",
+  analysis: "io:llm-write",
+  data_design: "io:llm-write",
+  chart: undefined,
+  writing: "io:llm-write",
+  review: "io:quality-gate",
+  deliverable: "io:quality-gate",
+};
+// 这些能力的必填字段名按**类型**给值。为什么能这么做: 类型(goal/literature/writing/…)
+//   是我自己枚举里的, 字段名由能力注册表固定(io:clarify{title,body} / tool:sag_search{query} /
+//   io:quality-gate{criteria,text} / io:llm-write{system,task}), 两边都在本仓可查, 不是猜的。
+//   不这么做的后果实测过: 只写 label 的话, 上图执行时 tool:sag_search 拿不到 query、
+//   io:quality-gate 拿不到 criteria, 节点会空跑。
+const NL_TYPE_FIELDS: Record<string, string[]> = {
+  goal: ["title", "body"],
+  object_sample: ["title", "body"],
+  literature: ["query"],
+  analysis: ["task"],
+  data_design: ["task"],
+  writing: ["task"],
+  review: ["criteria", "text"],
+  deliverable: ["criteria", "text"],
+};
+
+export interface NlStep {
+  id: string;
+  type: string;
+  label: string;
+  goal: string;
+  capabilityId?: string;
+  /** 该能力的必填字段 → 值(见 NL_TYPE_FIELDS 的说明) */
+  params?: Record<string, string>;
+}
+
+/** 一句话 → 步骤序列(只拆解, 不落库; 两个入口共用) */
+export async function planFromNl(description: string): Promise<{ steps: NlStep[]; edges: Array<{ source: string; target: string }> } | { error: string }> {
   const ans = await llmJson(`你是科研任务规划专家。把用户的一句话研究需求拆成 DAG 节点(研究流程), 输出 JSON:
-{"steps":[{"type":"goal|object_sample|data_design|literature|analysis|chart|writing|review|deliverable","label":"步骤名(一句话)"}]}
+{"steps":[{"type":"goal|object_sample|data_design|literature|analysis|chart|writing|review|deliverable","label":"步骤名(一句话)","task":"这一步要做什么(一句可直接执行的指令)"}]}
 
 用户需求: ${description}
-要求: 4-9 步, 类型取自枚举(goal 开头, deliverable 收尾), label 中文简短。`);
-  const steps: Array<{ type: string; label: string }> = ans?.steps;
+要求: 4-9 步, 类型取自枚举(goal 开头, deliverable 收尾), label 中文简短, task 具体到能直接交给执行器。`);
+  const steps: Array<{ type: string; label: string; task?: string }> = ans?.steps;
   if (!Array.isArray(steps) || !steps.length) return { error: "AI 未能解析任务结构, 请重试或手动搭建画布" };
-  // 强制首尾
-  const norm = steps.map((s, i) => ({
-    type: i === 0 ? "goal" : i === steps.length - 1 ? "deliverable" : (s.type ?? "analysis"),
-    label: s.label ?? `步骤${i + 1}`,
-  }));
+  const out: NlStep[] = steps.map((s, i) => {
+    // 强制首尾(闭源同口径: goal 起、deliverable 收)
+    const type = i === 0 ? "goal" : i === steps.length - 1 ? "deliverable" : String(s.type ?? "analysis");
+    const label = String(s.label ?? `步骤${i + 1}`);
+    const task = String(s.task ?? "").trim();
+    const cap = NL_TYPE_TO_CAP[type];
+    const goal = task || label;
+    // 必填字段给值 —— 空跑比报错更难发现, 所以宁可把 label 也兜底填进去
+    const names = cap ? (NL_TYPE_FIELDS[type] ?? []) : [];
+    const params: Record<string, string> = {};
+    for (const n of names) params[n] = goal;
+    return {
+      id: `nl_${i + 1}`, type, label, goal,
+      ...(cap ? { capabilityId: cap } : {}),
+      ...(Object.keys(params).length ? { params } : {}),
+    };
+  });
+  return { steps: out, edges: out.slice(0, -1).map((_, i) => ({ source: out[i].id, target: out[i + 1].id })) };
+}
+
+/** 项目工作台的 NL→DAG: 落 `research_projects.canvas`(供项目级流程查看/后续接线) */
+export async function nlToDag(userId: string, projectId: string, description: string): Promise<{ canvas: CanvasState } | { error: string }> {
+  const planned = await planFromNl(description);
+  if ("error" in planned) return planned;
   const canvas: CanvasState = {
-    nodes: norm.map((s, i) => ({
-      id: `nl_${i + 1}`,
+    nodes: planned.steps.map((s, i) => ({
+      id: s.id,
       type: s.type,
       position: { x: 60, y: 60 + i * 96 },
-      data: { label: s.label, status: "idle", fromNl: true },
+      data: {
+        label: s.goal === s.label ? s.label : `${s.label}: ${s.goal}`,
+        goal: s.goal,
+        status: "idle",
+        fromNl: true,
+        index: String(i + 1).padStart(2, "0"),
+        ...(s.capabilityId ? { capabilityId: s.capabilityId } : {}),
+        ...(s.params ? { params: s.params } : {}),
+      },
     })),
-    edges: norm.slice(0, -1).map((_, i) => ({ id: `nle_${i + 1}`, source: `nl_${i + 1}`, target: `nl_${i + 2}` })),
+    edges: planned.edges.map((e, i) => ({ id: `nle_${i + 1}`, ...e })),
   };
   await putCanvas(userId, projectId, canvas);
   return { canvas };
+}
+
+/**
+ * 速览模式的 NL→DAG: **不落库**, 直接回给前端画布吃。
+ * 落库那条(de `nlToDag`)产出的是项目画布, 而速览模式的「开始执行」走 `/orchestrator/run`,
+ * 读的是前端内存里的图 —— 两者不通用。这个入口把 `planFromNl` 的结果按 OrchestratorGraph
+ * 的形状回给前端, 于是「生成→开始执行」全程在同一条能跑的链上。
+ */
+export async function nlToOrchestratorGraph(description: string): Promise<{ graph: { name: string; description: string; nodes: Array<{ id: string; capabilityId?: string; title: string }>; edges: Array<{ source: string; target: string }> } } | { error: string }> {
+  const planned = await planFromNl(description);
+  if ("error" in planned) return planned;
+  return {
+    graph: {
+      name: description.slice(0, 40) || "AI 拆解流程",
+      description: `由一句话需求拆解: ${description.slice(0, 120)}`,
+      nodes: planned.steps.map((s) => ({
+        id: s.id,
+        ...(s.capabilityId ? { capabilityId: s.capabilityId } : {}),
+        // 标题即指令: 执行器读到的就是它, 下游 {{outputs.id}} 代入的也是它
+        title: s.goal === s.label ? s.label : `${s.label}: ${s.goal}`,
+        ...(s.params ? { params: s.params } : {}),
+      })),
+      edges: planned.edges,
+    },
+  };
 }
 
 // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate → {analysis, questions[5]带id/category/guidance/importance}) ═══

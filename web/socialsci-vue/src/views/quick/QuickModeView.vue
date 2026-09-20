@@ -18,6 +18,7 @@ import AgentFlowCanvas from "./AgentFlowCanvas.vue";
 import type { BizNode } from "./AgentFlowCanvas.vue";
 import { useDraggablePanel } from "./useDraggablePanel";
 import { toast, confirmDialog } from "@/shared/ui";
+import { q } from "@/shared/api";
 import {
   fetchCapabilities, fetchTemplates, startRun, fetchProgress, controlRun, fetchRuns,
   listGraphs, loadGraph, saveGraph, deleteGraph, fetchAgentSetting, updateAgentSetting,
@@ -128,6 +129,44 @@ async function openMetaSkill(id: string) {
     dagBusy.value = false;
   }
 }
+
+// ── V418: 一句话 → 可执行流程 ──
+// 走 POST /orchestrator/nl-to-dag(本页同一条执行链), **不是**项目级那个 nl-to-dag ——
+//   后者往 research_projects.canvas 落库, 而本页画布是纯客户端状态、「开始执行」走
+//   /orchestrator/run 不读那个列, 两条路不通用(2026-09-20 实测后重做)。
+const nlDescription = ref("");
+const nlBusy = ref(false);
+
+async function genFromNl() {
+  const desc = nlDescription.value.trim();
+  if (!desc) return;
+  nlBusy.value = true;
+  try {
+    const r = await q<{ graph?: OrchGraph }>("/orchestrator/nl-to-dag", { method: "POST", body: { description: desc } });
+    const g = r.graph;
+    const ns = Array.isArray(g?.nodes) ? g!.nodes : [];
+    if (!ns.length) { toast("AI 没拆出步骤, 换个说法再试", "error"); return; }
+    // 与 applyTemplate 同一形态: 载入画布 → 用户可改 → 点「开始执行」
+    loadGraphInto(ns, g!.edges ?? [], g!.name || desc.slice(0, 40));
+    graphId.value = "";        // 未保存的新图, 别覆盖已有编排
+    graphName.value = g!.name || desc.slice(0, 40);
+    graphBasedOn.value = "";
+    nlDescription.value = "";
+    await nextTick();
+    fitCanvas();
+    const withCap = ns.filter((n) => n.capabilityId).length;
+    pushMsg({
+      role: "agent",
+      text: `已拆成 ${ns.length} 个步骤(其中 ${withCap} 个绑定了真实能力), 已载入下方画布。\n可以拖动调整、改参数, 然后点「开始执行」—— 和内置模板走同一条执行链。`,
+    });
+    toast(`已生成 ${ns.length} 步流程`, "success");
+  } catch (e) {
+    toast(`生成失败: ${(e as Error).message}`, "error");
+  } finally {
+    nlBusy.value = false;
+  }
+}
+
 /** 让平台按高频主题组装一条候选 DAG(走 /api/meta-skill/propose-dag, 不自动注册) */
 async function proposeDag() {
   const topic = proposeTopic.value.trim();
@@ -1140,6 +1179,26 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
            两处修正: ① 已注册/候选不再左右分栏, 改成上下两段(候选在下面);
                      ② 画布挪到页面下方通栏, 所以这一面能占满高度。 -->
       <section class="dag-panel">
+        <!-- V418: 一句话生成流程 —— 后端 POST /research/projects/:id/nl-to-dag 早就实现了,
+             但从没有任何前端调用过(2026-09-20 契约对账查出)。接在这里而不是另开一个
+             "画布视图": 它产出的就是本画布能吃的那种图, 载入后与内置模板走**同一条**执行链,
+             用户接着点「开始执行」即可 —— 而不是看着一个执行不了的图。 -->
+        <div class="nl-dag-bar">
+          <input
+            v-model="nlDescription"
+            class="nl-dag-input"
+            placeholder="一句话描述研究需求, 让 AI 拆成可执行流程(如: 分析资本下乡对村级治理的影响)"
+            data-control="quick:nl-input"
+            :disabled="nlBusy || locked"
+            @keydown.enter.exact.prevent="genFromNl"
+          />
+          <button
+            class="hdr-btn is-primary"
+            data-control="quick:nl-generate"
+            :disabled="nlBusy || locked || !nlDescription.trim()"
+            @click="genFromNl"
+          >{{ nlBusy ? "拆解中…" : "生成流程" }}</button>
+        </div>
         <header class="dag-strip-head">
           <div>
             <strong>声明式 DAG</strong>
@@ -1764,6 +1823,16 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
    0.62 视口比 + 下限 520 —— 上排变高后画布也要跟着变高, 不是被挤掉。 */
 .canvas-band { flex: none; height: clamp(560px, 68vh, 1000px); }
 .dag-strip-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* V418: 一句话生成流程 —— 与下方 DAG 列表同栏, 视觉上属于"图"那一块而不是助手区 */
+.nl-dag-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.nl-dag-input {
+  flex: 1; min-width: 0; background: #0E1626; border: 1px solid #24344E; border-radius: 7px;
+  color: #DCE6F2; font-size: 11.5px; padding: 6px 10px;
+}
+.nl-dag-input:focus { outline: none; border-color: #3C5A85; }
+.nl-dag-input:disabled { opacity: 0.5; }
+.hdr-btn.is-primary { border-color: #3C5A85; color: #CFE0F5; background: #16294A; }
+.hdr-btn.is-primary:hover:not(:disabled) { background: #1E355C; color: #EAF2FC; }
 .dag-strip-head strong { font-size: 12.5px; color: #E8EEF7; margin-right: 8px; }
 .dag-strip-head span { font-size: 10.5px; color: #7A8AA0; }
 .dag-col-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; }

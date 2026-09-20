@@ -50,10 +50,25 @@ export const editorApi: EditorApi = {
     return q(`/editor/v1/documents/${id}/unlock`, { method: "POST" });
   },
   async versions(id) {
-    return q(`/editor/v1/documents/${id}/versions`);
+    // 解包在**契约层**做: 消费者(VersionHistory.vue)把返回值直接当数组用(v-for / .length)。
+    // 2026-09-20 修——原实现直接 `return q(...)` 把整个响应体当数组返回, 于是版本列表
+    //   永远是空的(渲染「暂无版本记录」的兄弟分支), 恢复按钮也就无从点起。
+    //   同时按版本号映射字段: 后端用 version/content_len, 闭源契约与模板用 version_num/word_count。
+    const r = await q<{ items?: Array<Record<string, unknown>> }>(`/editor/v1/documents/${id}/versions`);
+    return (r.items ?? []).map((v) => ({
+      id: String(v.id ?? v.version ?? ""),
+      version_num: Number(v.version_num ?? v.version ?? 0),
+      created_at: String(v.created_at ?? ""),
+      word_count: Number(v.word_count ?? v.content_len ?? 0),
+      change_summary: v.change_summary === undefined || v.change_summary === null ? undefined : String(v.change_summary),
+      title: v.title === undefined ? undefined : String(v.title),
+      by_editor: v.by_editor === undefined ? undefined : String(v.by_editor),
+    }));
   },
   async restoreVersion(id, versionId) {
-    return q(`/editor/v1/documents/${id}/versions/${versionId}/restore`, { method: "POST" });
+    // 后端真实形态是 POST /documents/:docId/restore {version} —— 按版本号回档。
+    // 闭源把版本 id 放进路径段, 我方没有版本行 id, 用版本号(上面映射时 id 就取的是版本号)。
+    return q(`/editor/v1/documents/${id}/restore`, { method: "POST", body: { version: Number(versionId) } });
   },
   async importWord(fileBase64, fileName) {
     // 我方后端走 base64 JSON(闭源 multipart; 语义等价)
