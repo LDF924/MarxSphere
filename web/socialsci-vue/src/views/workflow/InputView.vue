@@ -8,7 +8,8 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import OutlineEditor from "./OutlineEditor.vue";
 import { useWorkflowStore } from "./stores/workflow";
-import { toast } from "@/shared/ui";
+import { toast, confirmDialog } from "@/shared/ui";
+import { q } from "@/shared/api";
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { putNode, createTask } from "@/shared/tasks";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
@@ -340,6 +341,53 @@ const asyncBusy = computed(() => submitting.value || clarify.value.state === "lo
 const asyncReason = computed(() =>
   submitting.value ? "正在提交研究信息" : clarify.value.state === "loading" ? "正在生成需求澄清问题" : ""
 );
+const deleting = ref(false);
+
+/**
+ * 删除当前项目(V419b)。软删 —— 后端 PUT status='deleted', 不删数据。
+ *
+ * 确认层要把**真实后果**说清楚, 尤其"还有任务在跑"这一条: 后端在 2026-09-21 之前
+ *   `findReadyTasks` 根本不看项目状态, 删了项目它的排队任务**照样被调度器捞去烧 LLM**
+ *   (已一并修好: 选任务与领取任务两处都加了项目状态闸)。用户此刻必须知道这一点。
+ */
+async function deleteCurrentProject() {
+  const pid = store.taskId;
+  if (!pid) { toast("当前没有项目", "warning"); return; }
+  // 标题取 project 上真实落库的那份 —— store.title 是 **input.title**(新建项目时为空),
+  //   直接用它会让确认层永远显示「当前项目」(实测踩到)。
+  let name = store.project.title || store.input.title || "";
+  try {
+    const r = await q<{ project?: { title?: string } }>(`/research/projects/${pid}`);
+    if (r.project?.title) name = r.project.title;
+  } catch { /* 取不到就用本地兜底 */ }
+  // 先问后端还有多少在跑的任务 —— 不猜
+  let running = 0;
+  try {
+    const r = await q<{ tasks?: Array<{ status?: string }> }>(`/research/tasks?projectId=${pid}`);
+    running = (r.tasks ?? []).filter((t) => ["queued", "running", "in-progress"].includes(String(t.status))).length;
+  } catch { /* 取不到就不提这一条, 不阻断删除 */ }
+  const extra = running ? `\n\n注意: 该项目还有 ${running} 个任务处于排队/运行中, 删除后不会再被调度执行。` : "";
+  // ⚠ 确认层是纯文本渲染(white-space: pre-wrap), **不解析 Markdown** —— 早先这里写了
+  //   `**软删**`, 界面上原样显示成两个星号(实测截图确认)。别在 message 里用 Markdown 语法。
+  const ok = await confirmDialog({
+    title: "删除项目",
+    message: `确定从列表移除「${name || "当前项目"}」?${extra}\n\n这是软删: 项目不再出现在列表里, 但数据(章节/素材/版本/历史)都保留。`,
+    okText: "删除", cancelText: "取消", danger: true,
+  });
+  if (!ok) return;
+  deleting.value = true;
+  try {
+    await q(`/research/projects/${pid}`, { method: "DELETE" });
+    toast("项目已移除", "success");
+    // 清指针再回列表页 —— 留着会在下一次挂载时把已删项目又拉回来
+    localStorage.removeItem("lastTask_workflow");
+    store.resetLocal();
+    router.push("/workflow");
+  } catch (e) {
+    toast(`删除失败: ${(e as Error).message}`, "error");
+  } finally { deleting.value = false; }
+}
+
 async function submitAnalysis() {
   if (submitting.value) return; // 防双击重复建项目
   if (!canSubmit.value) {
@@ -641,6 +689,22 @@ onMounted(async () => {
       >开始思考科研架构</button>
       <button type="button" class="btn-back" data-control="workflow:back" @click="router.push('/workflow')">返回</button>
     </div>
+
+    <!-- V419b: 删除当前项目。
+         在这之前**全站没有任何删项目入口**(写作舱/导航/设置都没有), 而后端 DELETE 路由
+         2026-09-21 才补上(软删 status='deleted')。入口放这一页是因为它是"项目起点",
+         用户要丢弃一个项目时最自然的落点就是回到这里。
+         文案写的是**软删的真实语义**: 不删数据、不再出现在列表里、历史仍可按 id 直查。 -->
+    <div class="proj-danger">
+      <button
+        type="button"
+        class="btn-danger-ghost"
+        :disabled="!store.taskId || deleting"
+        data-control="workflow:delete-project"
+        @click="deleteCurrentProject"
+      >{{ deleting ? "删除中…" : "删除当前项目" }}</button>
+      <span class="pd-hint">从项目列表移除(不删数据; 历史与版本仍可按 id 直查)</span>
+    </div>
   </div>
 </template>
 
@@ -817,6 +881,15 @@ onMounted(async () => {
    我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比闭源矮 8px。行高写死 20px 才与闭源等高。 */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
+/* V419b 删除项目: 与主操作行**分开**放在页面底部 —— 破坏性动作不该和"开始思考科研架构"挨着 */
+.proj-danger { display: flex; align-items: center; gap: 10px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #2A1C1C; }
+.btn-danger-ghost {
+  padding: 7px 16px; border: 1px solid #7f1d1d; border-radius: 8px;
+  background: transparent; color: #E88A8A; font-size: 12.5px; cursor: pointer;
+}
+.btn-danger-ghost:hover:not(:disabled) { background: #2A1C1C; }
+.btn-danger-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+.pd-hint { font-size: 11.5px; color: #7A8AA0; }
 .btn-back {
   padding: 10px 22px;
   border: 1px solid #222F44;

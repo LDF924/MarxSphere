@@ -48,6 +48,10 @@ export async function findReadyTasks(projectId?: string, userId?: string): Promi
           where d.id is null or d.status <> 'done'
         )
       )
+      and exists (
+        select 1 from research_projects p
+         where p.id = t.project_id and coalesce(p.status,'active') not in ('deleted','archived')
+      )
       order by t.created_at asc limit 10`,
     vals
   );
@@ -62,8 +66,15 @@ export async function findReadyTasks(projectId?: string, userId?: string): Promi
  */
 export async function markRunning(taskId: string): Promise<boolean> {
   const r = await pool.query(
-    `update research_tasks set status='running', updated_at=now()
-      where id=$1 and status='queued' returning id`,
+    // 项目已被软删/归档时不得起跑 —— 与 findReadyTasks 的过滤是**同一道闸**, 但这里在
+    //   "领取"那一刻再判一次: executeReadyTask 也能被手动调用(不经 findReadyTasks),
+    //   只在选任务时过滤等于留了一条后门。2026-09-21 加(补软删项目时顺带堵上)。
+    `update research_tasks t set status='running', updated_at=now()
+      where t.id=$1 and t.status='queued'
+        and exists (select 1 from research_projects p
+                     where p.id = t.project_id
+                       and coalesce(p.status,'active') not in ('deleted','archived'))
+      returning t.id`,
     [taskId]
   );
   return (r.rowCount ?? 0) > 0;

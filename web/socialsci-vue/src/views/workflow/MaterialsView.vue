@@ -106,6 +106,78 @@ const batchMode = ref(false);
 const picked = ref<Set<string>>(new Set());
 const batchBusy = ref(false);
 
+// ── V419b: 拖拽/上下移排序 ──
+// 后端 `POST /materials/reorder` 此前是**静默 no-op**(改 updated_at 而列表按 created_at 排),
+//   2026-09-21 修成真写 `sort_order` 且列表按它排 —— 这里把入口接上:
+//   HTML5 拖拽(桌面) + ↑↓ 按钮(触屏/键盘也能用, 拖拽在触屏上不可靠)。
+const sortMode = ref(false);
+const dragId = ref("");
+const dragOverId = ref("");
+const sortBusy = ref(false);
+
+function onDragStart(id: string, ev: DragEvent) {
+  dragId.value = id;
+  if (ev.dataTransfer) { ev.dataTransfer.effectAllowed = "move"; ev.dataTransfer.setData("text/plain", id); }
+}
+function onDragOver(id: string) { if (dragId.value && dragId.value !== id) dragOverId.value = id; }
+function onDragLeave(id: string) { if (dragOverId.value === id) dragOverId.value = ""; }
+function onDragEnd() { dragId.value = ""; dragOverId.value = ""; }
+function onDrop(catKey: string, toIdx: number) {
+  const from = dragId.value;
+  dragId.value = ""; dragOverId.value = "";
+  if (!from) return;
+  const list = matsOf(catKey);
+  const fromIdx = list.findIndex((m) => m.id === from);
+  if (fromIdx < 0 || fromIdx === toIdx) return;
+  const next = [...list];
+  const [moved] = next.splice(fromIdx, 1);
+  next.splice(toIdx, 0, moved);
+  void persistOrder(catKey, next);
+}
+/** ↑↓ 等价于把该项与相邻项互换 */
+function moveMat(catKey: string, idx: number, delta: number) {
+  const list = [...matsOf(catKey)];
+  const to = idx + delta;
+  if (to < 0 || to >= list.length) return;
+  [list[idx], list[to]] = [list[to], list[idx]];
+  void persistOrder(catKey, list);
+}
+
+/**
+ * 落库。**只发本类别的全部 id** —— 后端按数组下标写 1..n, 所以必须发**完整**序列,
+ *   只发被挪动的那几条会把别的素材的序号留成空洞。
+ * 与 batchDelete 不同, 这里做**乐观更新**(先改本地顺序再请求): 拖拽的反馈必须即时,
+ *   等一个往返再动会有明显的卡顿感; 失败则回滚成请求前的顺序并重拉。
+ */
+async function persistOrder(catKey: string, ordered: Material[]) {
+  if (sortBusy.value) return;
+  sortBusy.value = true;
+  const snapshot = materials.value.map((m) => m.id);
+  // 按新顺序重排 materials(只在本类别内换位, 其它类别相对位置不变)
+  const orderedIds = ordered.map((m) => m.id);
+  const rest = materials.value.filter((m) => !orderedIds.includes(m.id));
+  const inCat = new Set(orderedIds);
+  const merged: Material[] = [];
+  let ci = 0;
+  for (const m of materials.value) {
+    if (inCat.has(m.id)) merged.push(ordered[ci++] ?? m);
+  }
+  materials.value = [...merged, ...rest];
+  try {
+    await q("/research/materials/reorder", {
+      method: "POST",
+      body: { projectId: store.taskId, ids: orderedIds },
+    });
+    toast(`已保存「${CATS.find((c) => c.key === catKey)?.label ?? ""}」排序`, "success");
+  } catch (e) {
+    materials.value = materials.value
+      .slice()
+      .sort((a, b) => snapshot.indexOf(a.id) - snapshot.indexOf(b.id));
+    await loadMaterials().catch(() => null);
+    toast(`排序未保存: ${(e as Error).message}`, "error");
+  } finally { sortBusy.value = false; }
+}
+
 const filtering = computed(() => matQuery.value.trim().length > 0 || matFilter.value !== "all");
 
 /** 命中筛选的素材(不分类别), 供"全选当前"用 */
@@ -1449,6 +1521,16 @@ onMounted(async () => {
         data-control="workflow:mat-batch-toggle"
         @click="batchMode = !batchMode; if (!batchMode) picked.clear()"
       >{{ batchMode ? "退出批量" : "批量选择" }}</button>
+      <button
+        class="cat-inline-btn"
+        data-control="workflow:mat-sort-toggle"
+        :disabled="filtering"
+        :title="filtering ? '筛选状态下不能排序 —— 顺序会写进库, 看着动的是子集实际排的是全部' : ''"
+        @click="sortMode = !sortMode; if (!sortMode) dragId = ''"
+      >{{ sortMode ? "完成排序" : "排序" }}</button>
+      <template v-if="sortMode">
+        <span class="mat-picked">↑↓ 调顺序, 或拖动行</span>
+      </template>
       <template v-if="batchMode">
         <span class="mat-picked">已选 {{ picked.size }}</span>
         <button class="cat-inline-btn" data-control="workflow:mat-select-all" @click="selectAllShown">
@@ -1515,9 +1597,25 @@ onMounted(async () => {
         <div v-if="expandedCats.has(cat.key)" class="cat-body">
           <div v-if="!matsOf(cat.key).length" class="cat-empty">{{ filtering && catCount(cat.key) ? `筛选后无${cat.label}素材` : `暂无${cat.label}素材` }}</div>
           <div v-else class="mat-list">
-            <div v-for="m in matsOf(cat.key)" :key="m.id" class="mat-card" :class="{ 'mat-card--picked': picked.has(m.id) }">
-              <!-- 卡头: 批量勾选 + 章节徽标 + 标题 + hover 出现的编辑/删除 -->
+            <div
+              v-for="(m, mi) in matsOf(cat.key)" :key="m.id"
+              class="mat-card"
+              :class="{ 'mat-card--picked': picked.has(m.id), 'mat-card--drag': sortMode && dragId === m.id, 'is-dragover': sortMode && dragOverId === m.id }"
+              :draggable="sortMode"
+              @dragstart="onDragStart(m.id, $event)"
+              @dragover.prevent="onDragOver(m.id)"
+              @dragleave="onDragLeave(m.id)"
+              @drop.prevent="onDrop(cat.key, mi)"
+              @dragend="onDragEnd"
+            >
+              <!-- 卡头: 排序手柄 + 批量勾选 + 章节徽标 + 标题 + hover 出现的编辑/删除 -->
               <div class="mat-head">
+                <template v-if="sortMode">
+                  <span class="mat-handle" title="拖动排序">⣿</span>
+                  <span class="mat-ord">{{ mi + 1 }}</span>
+                  <button class="mat-op" :disabled="mi === 0" data-control="workflow:mat-move-up" @click.stop="moveMat(cat.key, mi, -1)">↑</button>
+                  <button class="mat-op" :disabled="mi === matsOf(cat.key).length - 1" data-control="workflow:mat-move-down" @click.stop="moveMat(cat.key, mi, 1)">↓</button>
+                </template>
                 <input
                   v-if="batchMode"
                   type="checkbox"
@@ -2161,6 +2259,12 @@ onMounted(async () => {
 .cat-inline-btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
 .mat-pick { margin-right: 2px; flex-shrink: 0; accent-color: #4D84CB; }
 .mat-card--picked { border-color: #3C5A85; background: #16233A; }
+/* V419b 排序态: 手柄 + 序号 + 上下移；拖动中的行半透明, 落点行加一道上边框 */
+.mat-handle { color: #6E7F96; font-size: 13px; cursor: grab; flex-shrink: 0; user-select: none; }
+.mat-handle:active { cursor: grabbing; }
+.mat-ord { font-size: 11px; color: #7A8AA0; min-width: 14px; text-align: right; flex-shrink: 0; }
+.mat-card--drag { opacity: 0.45; }
+.mat-card.is-dragover { border-color: #E8B54A; box-shadow: 0 -2px 0 #E8B54A inset; }
 .mat-list { display: flex; flex-direction: column; gap: 7px; }
 .mat-card {
   border: 1px solid #222F44; border-radius: 9px; padding: 11px 13px;
