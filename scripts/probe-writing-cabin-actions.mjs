@@ -205,8 +205,50 @@ try {
       rec("workspace", "generate-section(生成单章)", r1.apiReqs.length ? "ok" : "dead",
         r1.apiReqs.length ? `${r1.last?.method} ${short(r1.last?.url)} → ${r1.last?.status}` : "零请求");
       if (r1.apiReqs.length) {
-        const done = await waitFor(cdp, `(() => { const s = document.querySelector('.section-body,.content-html'); return s && s.innerText.length > 200; })()`, { timeout: 240000 });
-        rec("workspace", "单章产物回填", done ? "ok" : "skip", done ? "正文已写入" : "240s 内未产出");
+        /**
+         * ⚠ 2026-09-20 修正: 这条原先只等 `.content-html` —— 而它是**「预览」tab 的 v-else 分支**
+         *   (`WorkspaceView.vue:1176`), `mdTab` 默认是 `'write'`(`:405`), 所以页面加载后
+         *   DOM 里根本**没有** `.content-html`, 正文落在 `textarea.content-textarea`(`editText`)里。
+         *   结果是: 后端 40 秒就把正文写进了节点, 探针却等到 240 秒报"未产出"。
+         *
+         *   实测权威证据(绕开 DOM 直接查库): 任务 `status=done`,
+         *   `progress={stage:"批量完成", total:1, current:1}`, `research_nodes.sections`
+         *   的章节正文 **1268 字已落库** ⇒ **功能是好的, 是判据点错了地方**。
+         *
+         *   ⇒ 判据改为**两个 tab 任一成立**: 编辑 tab 的 textarea 值, 或预览 tab 的 HTML 文本。
+         *     这才是"正文已回填"在界面上真实的样子, 不依赖默认停在哪一个 tab。
+         */
+        const done = await waitFor(
+          cdp,
+          `(() => {
+             const ta = document.querySelector('textarea.content-textarea');
+             if (ta && (ta.value || '').trim().length > 200) return true;
+             const html = document.querySelector('.content-html');
+             if (html && (html.innerText || '').trim().length > 200) return true;
+             return false;
+           })()`,
+          { timeout: 240000 }
+        );
+        /**
+         * 诊断: 把"store 里有没有正文"和"编辑框里有没有"分开报。
+         *   · 页脚「N 字」来自 `store`(`activeWords`) ⇒ >0 说明 refreshSections 已把正文读回来了;
+         *   · textarea 值来自 `editText` ⇒ 空说明**编辑框没跟着回填**(2026-09-20 修的就是这条);
+         *     两者都 0 则说明根因在 refreshSections / 节点回读那一侧, 是另一个问题。
+         *   没有这条, 下次再失败只能知道"没看到", 分不清卡在哪一环。
+         */
+        const diag = await evalTop(
+          cdp,
+          `(() => {
+             const foot = document.querySelector('.md-foot');
+             const ta = document.querySelector('textarea.content-textarea');
+             return JSON.stringify({
+               footer: (foot ? foot.innerText : '').replace(/\\s+/g, ' ').trim().slice(0, 24),
+               textareaLen: ta ? ta.value.length : -1,
+             });
+           })()`
+        );
+        rec("workspace", "单章产物回填(编辑/预览两个 tab 任一)", done ? "ok" : "skip",
+          done ? "正文已回填到界面" : `240s 内两处都未见正文 | 诊断=${diag}`);
       }
     } else rec("workspace", "generate-section(生成单章)", "skip", "需真 LLM, 加 --all 才跑");
 
@@ -292,9 +334,29 @@ try {
     //   会让它真跑一次 LLM, 太重 —— 改由验证「节点里的 merged_* 能读回来」代替,
     //   而 mergeGenerated 的置位由下面 doMerge 的实跑断言覆盖(--all 时)。
     const pid5b = pid5;
+    /**
+     * ⚠ 这条断言此前是**错的**, 2026-09-20 按闭源规格改对(不是放宽, 是反过来)。
+     *
+     *   旧断言:「未合稿时不出现模式 tab」, 期望 `modes.length === 0`。
+     *   但它自己在上面几行把 `mergeGenerated` 播成了 `true` —— 这份"空态"根本不空,
+     *   于是必然报 ERR。而且方向也反了: 闭源 `FinalizeView.js` 的空态容器是
+     *   `!mergeGenerated && !mergeGenerating`, **模式按钮(node `qe`)就在那个容器内部** ——
+     *   空态本来就该显示「直接合稿 / 降AIGC合稿」, 用户得先选模式才能点「开始合并」。
+     *   我们实现 `FinalizeView.vue:941` 的 `finalize-empty` 与之逐字同构。
+     *   ⇒ 真正该锁的是**反过来的那半边**: 合稿完成后**不能**再出现空态的那组模式 tab
+     *     (那样界面会自相矛盾 —— 让人以为还没合稿)。
+     */
     const modes = await evalTop(cdp, `[...document.querySelectorAll('.mm-tab')].map(e => e.innerText.trim())`);
-    rec("finalize", "合稿空态(未合稿时不出现模式 tab)", Array.isArray(modes) && modes.length === 0 ? "ok" : "err",
-      `模式 tab=${JSON.stringify(modes)}(未合稿应为空)`);
+    const hasEmptyBox = await evalTop(cdp, `String(!!document.querySelector('.finalize-empty'))`);
+    rec("finalize", hasEmptyBox === "false"
+      ? "已合稿 → 不出现空态模式 tab(闭源: 空态容器 !mergeGenerated && !mergeGenerating)"
+      : "空态 → 模式 tab 就位(直接合稿/降AIGC合稿), 用户先选模式才能合并",
+      hasEmptyBox === "false"
+        ? (modes.length === 0 ? "ok" : "err")
+        : (modes.includes("直接合稿") && modes.includes("降AIGC合稿") ? "ok" : "err"),
+      hasEmptyBox === "false"
+        ? `空态容器不在; 模式 tab=${JSON.stringify(modes)}(已合稿应为空)`
+        : `空态容器在; 模式 tab=${JSON.stringify(modes)}`);
 
     // ── 回归: 终稿手改必须**刷新后仍在**(2026-09-16 修的核心缺陷) ──
     //   缺陷形态: 快照写得进、节点写不进 → 回读时节点/列赢 → 刷新回退。

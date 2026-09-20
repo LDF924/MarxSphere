@@ -50,6 +50,7 @@ async function selectSection(s: Section) {
   //   所以不要再动 mdTab; 切章只需换内容。
   // 解绑而不是写空串 —— 写空串会被防抖 watch 当成"用户把这一章清空了"(见 bindEditorTo 注释)
   editOwnerId = "";
+  editBaseline = "";           // 同步解绑基线, 免得回填 watch 拿旧基线误判"用户没动过"
   if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
   activeSecId.value = s.id;
 }
@@ -430,6 +431,12 @@ const editDirty = computed(() => {
 let bodyTimer: ReturnType<typeof setTimeout> | null = null;
 /** editText 当前承载的是哪一章的正文; 为空表示编辑框正在被重置, 此时的变更一律忽略 */
 let editOwnerId = "";
+/**
+ * 编辑框当前承载的**原始内容**(由 `bindEditorTo` 维护)。
+ * 用来判断"用户有没有真的动过编辑框" —— 判断依据必须是 `editText !== editBaseline`,
+ * **不能**用 `editDirty`(它拿 `sec.content` 比, 而生成回填改的正是 `sec.content`)。详见下方回填 watch。
+ */
+let editBaseline = "";
 watch(editText, (v) => {
   if (!editOwnerId) return;                     // 编辑框正在重置, 不是用户输入
   const sec = store.sections.find((s) => s.id === editOwnerId);
@@ -443,6 +450,7 @@ function bindEditorTo(sectionId: string, content: string) {
   if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
   editOwnerId = "";            // 先声明"这是重置", watch 里的那次回调会被丢弃
   editText.value = content;
+  editBaseline = content;      // 记下"编辑框当前承载的就是这个值"(见下方回填 watch)
   editOwnerId = sectionId;
 }
 async function persistBody(sectionId: string, next: string) {
@@ -684,6 +692,33 @@ watch(activeSecId, (id) => {
   bindEditorTo(id, String(activeSection.value?.content ?? ""));
   bindThinkTo(id, String(activeSection.value?.skill_prompt ?? ""));
 });
+
+/**
+ * 当前章的正文**在 store 里被更新后**, 编辑框必须跟着回填。
+ *
+ * ⚠ 2026-09-20 修的真缺陷(用户可见): `editText` 原先只有两个绑定时机 ——
+ *   `watch(activeSecId)`(切章)与初次挂载。而「执行智能体开始思考」生成完成后,
+ *   `pollTask` → `refreshSections()` 只更新了 `store.sections`, **`activeSecId` 没变**,
+ *   于是**编辑框不会被重新绑定**: 后端约 40 秒就把正文写进了 `research_nodes.sections`,
+ *   而界面上的正文框还是空的, 用户得先切到别的章再切回来才看得到。
+ *   (实测诊断: 页脚「1283 字 未保存 保存修改」= store 已有正文, 而 textarea 长度 0。)
+ *
+ * ⚠⚠ 判断"用户有没有在编辑"**不能用 `editDirty`** —— 它的定义是
+ *   `editText !== sec.content`, 而这里修改的正是 `sec.content`, 所以那一刻 `editDirty`
+ *   恰好变成 true, 守卫会把自己挡在门外(我第一版就是这么写的, 修了两次都没生效)。
+ *   正确的判据是拿**第三个数**做基线: `editBaseline` = "编辑框当前承载的是哪份内容",
+ *   由 `bindEditorTo` 维护。只有 `editText !== editBaseline` 才说明**用户真的动过**。
+ */
+watch(
+  () => activeSection.value?.content ?? "",
+  (next) => {
+    const id = activeSecId.value;
+    if (!id) return;
+    if (editText.value !== editBaseline) return; // 用户有未提交的输入 → 绝不覆盖
+    if (editText.value === next) return;         // 已经一致
+    bindEditorTo(id, next);
+  }
+);
 
 /**
  * 主控智能体思考(闭源: 每章一个可编辑的写作思路 textarea, 预填该章写作指导)。
