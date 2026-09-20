@@ -921,8 +921,13 @@ onMounted(async () => {
     :data-assistant-async-reason="mergeRunning ? '正在合并全文' : reviewRunning ? '正在全文审查' : reviseRunning ? '正在生成修订稿' : ''"
   >
     <PhaseProgressBar />
-    <h1 class="wf-h1">合稿定稿</h1>
-    <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
+    <!-- 页头。闭源是**居中**的: `mb-4 flex items-center justify-center text-center`
+         (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与闭源不是同一版式。
+         注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
+    <div class="wf-head-center">
+      <h1 class="wf-h1">合稿定稿</h1>
+      <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
+    </div>
 
     <!-- 项目失效常驻横幅: 指针指向已删项目时, 页面长得和正常一样, 只有点按钮才弹一个
          3.2 秒的 toast —— 用户看到的是"点了没反应"。这里给持续、可操作的提示。 -->
@@ -1252,8 +1257,10 @@ onMounted(async () => {
 <style scoped>
 
 .workflow-page { width: 100%; box-sizing: border-box; }
-.wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
+/* 页头(居中版式, 闭源 `mb-4 flex items-center justify-center text-center` + `text-sm mt-1`) */
+.wf-head-center { margin-bottom: 16px; text-align: center; }
+.wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: #E8EEF7; }
+.wf-sub { margin: 4px 0 0; font-size: 13px; color: #8B9BB1; }
 .rounds-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 /* 项目失效常驻横幅 */
 .gone-banner {
