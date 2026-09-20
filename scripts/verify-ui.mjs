@@ -79,6 +79,11 @@ const SUITES = [
   //   2026-09-20 首验现形: 版本列表恒空(q() 返回整个响应体却被当数组用)、恢复打 404、
   //   导入 Word 打 404。此套同时锁住"回档后正文真的变回旧版"与"导入后正文真的换掉"。
   { key: "editor-ver-import", file: "probe-editor-versions-import.mjs", desc: "编辑器版本历史(列表/恢复真回档)+ 导入 Word(真解析成正文)" },
+  // 写作舱 V419 三项加法(质量四检 / 语料库召回 / 素材筛选与批量)此前**零覆盖** ——
+  //   接上后若只验"按钮在", "点了没反应 / 打错端点 / 返回解析不出来"全会漏。
+  //   这套每条都验到副作用: 四检验 4 个请求全 200 且四张卡真渲染; 语料验真打端点;
+  //   筛选验列表真被筛短; 批量验选中态真变化。
+  { key: "writing-cabin-v419", file: "probe-writing-cabin-v419.mjs", desc: "写作舱加法: 质量四检/语料召回/素材筛选与批量" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },
   { key: "empirical-switch", file: "verify-empirical-project-switch.mjs", desc: "实证台课题切换与空态" },

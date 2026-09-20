@@ -107,6 +107,21 @@ export async function archiveProject(userId: string, projectId: string) {
   return r.rows[0] ?? null;
 }
 
+/**
+ * 项目删除(软删, status='deleted')—— 与 archiveProject 只差一个状态值。
+ *
+ * 与 archive 分开而不是共用一个函数: 语义不同, 合并会让调用方看不出删和归档的区别。
+ * 幂等: 已删的行再删仍返回 id(不报 404) —— 重复点删除不该报错。
+ */
+export async function deleteProject(userId: string, projectId: string) {
+  const r = await pool.query(
+    `update research_projects set status='deleted', updated_at=now()
+      where id=$1 and user_id=$2 returning id`,
+    [projectId, userId]
+  );
+  return r.rows[0] ?? null;
+}
+
 // ═══ 画布 CRUD(乐观锁: 提交带期望 canvas_version, 不符则 409) ═══
 export async function getCanvas(userId: string, projectId: string): Promise<{ canvas: CanvasState; canvasVersion: number } | null> {
   const p = await getProject(userId, projectId);

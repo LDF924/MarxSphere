@@ -97,6 +97,71 @@ const grouped = computed(() => {
 });
 const catCount = (key: string) => (grouped.value[key] ?? []).length;
 
+// ── V419 加法: 筛选 + 批量选择 ──
+// 筛选**纯前端**(列表已在内存, 不必往返)。命中判据: 标题或正文含关键词(大小写不敏感),
+//   再加可选的类别限定。空关键词 = 不筛。
+const matQuery = ref("");
+const matFilter = ref("all");
+const batchMode = ref(false);
+const picked = ref<Set<string>>(new Set());
+const batchBusy = ref(false);
+
+const filtering = computed(() => matQuery.value.trim().length > 0 || matFilter.value !== "all");
+
+/** 命中筛选的素材(不分类别), 供"全选当前"用 */
+const shownMats = computed(() => {
+  const q = matQuery.value.trim().toLowerCase();
+  return materials.value.filter((m) => {
+    if (matFilter.value !== "all" && catOf(String(m.kind ?? "")) !== matFilter.value) return false;
+    if (!q) return true;
+    return `${m.title ?? ""}\n${m.contentMd ?? ""}`.toLowerCase().includes(q);
+  });
+});
+const shownTotal = computed(() => shownMats.value.length);
+const shownIds = computed(() => shownMats.value.map((m) => m.id));
+/** 逐类别过滤后的分组 —— 空类别在筛选态下不渲染(否则满屏空壳) */
+const shownGrouped = computed(() => {
+  const out: Record<string, Material[]> = {};
+  for (const m of shownMats.value) {
+    const k = catOf(String(m.kind ?? ""));
+    (out[k] ??= []).push(m);
+  }
+  return out;
+});
+const shownCats = computed(() => (filtering.value ? CATS.filter((c) => (shownGrouped.value[c.key]?.length ?? 0) > 0) : CATS));
+const matsOf = (key: string) => (filtering.value ? (shownGrouped.value[key] ?? []) : (grouped.value[key] ?? []));
+
+function togglePick(id: string) {
+  const next = new Set(picked.value);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  picked.value = next;
+}
+function selectAllShown() {
+  picked.value = picked.value.size === shownIds.value.length ? new Set() : new Set(shownIds.value);
+}
+/** 批量删除: 逐条走既有的 DELETE(materials/:id), 汇总成败 —— 后端没有批量端点, 不自造 */
+async function batchDelete() {
+  const ids = [...picked.value];
+  if (!ids.length) return;
+  const ok = await confirmDialog({
+    message: `确定删除选中的 ${ids.length} 条素材? 此操作不可恢复。`,
+    title: "批量删除素材", danger: true, okText: "删除",
+  });
+  if (!ok) return;
+  batchBusy.value = true;
+  let done = 0; const failed: string[] = [];
+  try {
+    for (const id of ids) {
+      try { await q(`/research/materials/${id}`, { method: "DELETE" }); done += 1; }
+      catch (e) { failed.push(`${id.slice(0, 8)}: ${(e as Error).message}`); }
+    }
+    picked.value = new Set();
+    await loadMaterials().catch(() => null);   // 以服务端为准重拉, 不靠本地删减猜
+    toast(failed.length ? `已删 ${done} 条, ${failed.length} 条失败` : `已删除 ${done} 条素材`,
+      failed.length ? "warning" : "success");
+  } finally { batchBusy.value = false; }
+}
+
 function toggleCat(key: string) {
   const next = new Set(expandedCats.value);
   if (next.has(key)) next.delete(key);
@@ -1365,9 +1430,43 @@ onMounted(async () => {
 
     <h2 class="mat-section-title">已整理素材</h2>
 
+    <!-- V419 加法: 素材筛选 + 批量选择。
+         筛选是纯前端(列表已在内存, 不必往返)；批量删除走**已有**的 DELETE /research/materials/:id,
+         逐条删并汇总结果 —— 后端没有批量端点, 不自造一个。 -->
+    <div class="mat-toolbar">
+      <input
+        v-model="matQuery"
+        class="mat-search"
+        placeholder="按标题 / 内容筛选素材…"
+        data-control="workflow:mat-search"
+      />
+      <select v-model="matFilter" class="mat-select" data-control="workflow:mat-filter">
+        <option value="all">全部类别({{ materials.length }})</option>
+        <option v-for="c in CATS" :key="c.key" :value="c.key">{{ c.label }}({{ catCount(c.key) }})</option>
+      </select>
+      <button
+        class="cat-inline-btn"
+        data-control="workflow:mat-batch-toggle"
+        @click="batchMode = !batchMode; if (!batchMode) picked.clear()"
+      >{{ batchMode ? "退出批量" : "批量选择" }}</button>
+      <template v-if="batchMode">
+        <span class="mat-picked">已选 {{ picked.size }}</span>
+        <button class="cat-inline-btn" data-control="workflow:mat-select-all" @click="selectAllShown">
+          全选当前 {{ shownIds.length }}
+        </button>
+        <button
+          class="cat-inline-btn danger"
+          data-control="workflow:mat-batch-delete"
+          :disabled="!picked.size || batchBusy"
+          @click="batchDelete"
+        >{{ batchBusy ? "删除中…" : `删除所选(${picked.size})` }}</button>
+      </template>
+      <span v-if="filtering" class="mat-filtered">筛选中: 命中 {{ shownTotal }} / {{ materials.length }}</span>
+    </div>
+
     <!-- 分类手风琴 -->
     <div class="cat-list">
-      <section v-for="cat in CATS" :key="cat.key" class="cat-card">
+      <section v-for="cat in shownCats" :key="cat.key" class="cat-card">
         <!-- 头行: 图标块 + 标题 + 计数 + **行内操作按钮**(折叠态也可见) + caret -->
         <div class="cat-head">
           <span class="cat-icon-box" @click="toggleCat(cat.key)">
@@ -1375,7 +1474,7 @@ onMounted(async () => {
           </span>
           <div class="cat-title-wrap" @click="toggleCat(cat.key)">
             <span class="cat-name">{{ cat.label }}</span>
-            <span class="cat-count">{{ catCount(cat.key) }} 项</span>
+            <span class="cat-count">{{ matsOf(cat.key).length }} 项<template v-if="filtering && matsOf(cat.key).length !== catCount(cat.key)"> / {{ catCount(cat.key) }}</template></span>
           </div>
           <div class="cat-head-actions">
             <!-- 数据分析素材(闭源头行三个按钮: 上传图片 / 前往数据分析 / 前往科研绘图)。
@@ -1414,11 +1513,20 @@ onMounted(async () => {
           </div>
         </div>
         <div v-if="expandedCats.has(cat.key)" class="cat-body">
-          <div v-if="!catCount(cat.key)" class="cat-empty">暂无{{ cat.label }}素材</div>
+          <div v-if="!matsOf(cat.key).length" class="cat-empty">{{ filtering && catCount(cat.key) ? `筛选后无${cat.label}素材` : `暂无${cat.label}素材` }}</div>
           <div v-else class="mat-list">
-            <div v-for="m in grouped[cat.key]" :key="m.id" class="mat-card">
-              <!-- 卡头: 章节徽标 + 标题 + hover 出现的编辑/删除 -->
+            <div v-for="m in matsOf(cat.key)" :key="m.id" class="mat-card" :class="{ 'mat-card--picked': picked.has(m.id) }">
+              <!-- 卡头: 批量勾选 + 章节徽标 + 标题 + hover 出现的编辑/删除 -->
               <div class="mat-head">
+                <input
+                  v-if="batchMode"
+                  type="checkbox"
+                  class="mat-pick"
+                  :checked="picked.has(m.id)"
+                  :data-control="`workflow:mat-pick-${m.id}`"
+                  @click.stop
+                  @change="togglePick(m.id)"
+                />
                 <span v-if="sectionBadgeOf(m)" class="mat-sec-chip">{{ sectionBadgeOf(m) }}</span>
                 <strong class="mat-title">{{ m.title || "未命名素材" }}</strong>
                 <span class="mat-head-ops">
@@ -2036,6 +2144,23 @@ onMounted(async () => {
   border-radius: 7px; font-size: 12.5px; cursor: pointer;
 }
 .cat-empty { padding: 20px; text-align: center; color: #7A8AA0; font-size: 12.5px; }
+/* V419 筛选 + 批量选择 */
+.mat-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.mat-search {
+  flex: 1; min-width: 180px; background: #0E1626; border: 1px solid #24344E; border-radius: 7px;
+  color: #DCE6F2; font-size: 12px; padding: 6px 10px;
+}
+.mat-search:focus { outline: none; border-color: #3C5A85; }
+.mat-select {
+  background: #0E1626; border: 1px solid #24344E; border-radius: 7px;
+  color: #A9BBD0; font-size: 12px; padding: 6px 8px;
+}
+.mat-picked { font-size: 12px; color: #E8B54A; }
+.mat-filtered { font-size: 11.5px; color: #7A8AA0; }
+.cat-inline-btn.danger { border-color: #7f1d1d; color: #E88A8A; }
+.cat-inline-btn.danger:disabled { opacity: 0.45; cursor: not-allowed; }
+.mat-pick { margin-right: 2px; flex-shrink: 0; accent-color: #4D84CB; }
+.mat-card--picked { border-color: #3C5A85; background: #16233A; }
 .mat-list { display: flex; flex-direction: column; gap: 7px; }
 .mat-card {
   border: 1px solid #222F44; border-radius: 9px; padding: 11px 13px;

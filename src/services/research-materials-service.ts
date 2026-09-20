@@ -108,6 +108,7 @@ function mapMaterialRow<T extends Record<string, unknown>>(m: T) {
     tableData: m.table_data ?? {},
     analysisMethod: m.analysis_method ?? "",
     sectionId: m.section_id ?? "",
+    sortOrder: m.sort_order ?? 0,
     references: m.references_json ?? [],
     platformType: String(meta.platformType ?? m.source_type ?? ""),
     source: { sourceStatus: (meta.sourceStatus ?? source ?? {}) as Record<string, string> },
@@ -121,12 +122,18 @@ export async function listMaterials(userId: string, projectId?: string, kind?: s
   const vals: unknown[] = [userId];
   if (projectId) { vals.push(projectId); clauses.push(`project_id=$${vals.length}`); }
   if (kind) { vals.push(kind); clauses.push(`kind=$${vals.length}`); }
+  // 2026-09-21: sort_order 此前**建了列但两条链路都没接** —— 写入侧 reorderMaterials 改的是
+  //   updated_at(本查询不按它排), 读取侧这里用 created_at desc, 于是列恒为 0, 排序恒等于
+  //   "新建的在前"。前端拖拽调完拿到 200 却看不出任何变化, 是最难查的一类静默失效。
+  //   排序位 > 0 的排前面(升序), 未排序(null/0)的按创建时间倒序坠在后面。
   const r = await pool.query(
     `select id, project_id, kind, title, tags, source_ref, produced_by_dag_node, section_ids, usage_status,
             content_md, caption, summary, source_type, source_url, image_path, table_data, analysis_method,
-            section_id, references_json, meta, created_at, updated_at
+            section_id, references_json, meta, sort_order, created_at, updated_at
        from research_materials where ${clauses.join(" and ")}
-      order by created_at desc limit 200`,
+      order by (case when coalesce(sort_order,0) > 0 then 0 else 1 end),
+               sort_order asc, created_at desc
+      limit 200`,
     vals
   );
   // 富列 camelCase 映射(与单条 getMaterial 共用同一个 mapMaterialRow, 避免两处漂移)
@@ -196,22 +203,42 @@ export async function deleteMaterial(userId: string, materialId: string) {
   return r.rows[0] ?? null;
 }
 
-/** 素材排序重排(前端拖拽): 不落库排序位, 按 created_at; 预留接口语义 */
-export async function reorderMaterials(userId: string, ids: string[]) {
-  // 素材无独立排序字段, 用数组顺序更新时间戳(小写越前越新), 保持幂等
+/**
+ * 素材排序重排(前端拖拽): 把数组下标写进 sort_order, 由 listMaterials 按它排。
+ *
+ * 2026-09-21: 此前实现改的是 `updated_at`(注释自认"不落库排序位"), 而列表用 `created_at desc`
+ *   排 —— 两条链路根本没接上, 接口恒返回 `{ok:true}` 却一个像素都不动。前端拖完拿到 200
+ *   会以为存上了, 刷新就打回原样。现在改为真写 `sort_order`(迁移 125 早就有这列), 并让
+ *   `listMaterials` 按 `sort_order asc, created_at desc` 读。
+ *
+ * 排序位从 **1** 开始(数组下标 +1): 旧数据的 sort_order 恒为 0, 而"排在最前"恰好也是 0,
+ *   两者会撞语义。所以 0 专指"从未排过序", 1..n 才是拖拽结果, listMaterials 把 0 排到有序区之后。
+ */
+export async function reorderMaterials(userId: string, ids: string[], projectId?: string) {
   const client = await pool.connect();
   try {
     await client.query("begin");
+    // 归属校验放在**同一事务内**: 传进来的 id 必须全部属于该用户(带 projectId 时再收窄到该项目)。
+    //   有一条够不着就整批不动 —— 半截排序比不排序更难排查。非法 id 顺带在这一步被挡掉,
+    //   不必等 UPDATE 阶段才炸出 uuid 语法错。
+    const owned = await client.query(
+      projectId
+        ? `select id from research_materials where user_id=$1 and project_id=$2 and id = any($3::uuid[])`
+        : `select id from research_materials where user_id=$1 and id = any($2::uuid[])`,
+      projectId ? [userId, projectId, ids] : [userId, ids]
+    );
+    if (owned.rows.length !== new Set(ids).size) {
+      await client.query("rollback");
+      return null;
+    }
     for (let i = 0; i < ids.length; i++) {
-      const offset = Math.max(0, 200 - i); // 越靠前 updated_at 越近 now
       await client.query(
-        `update research_materials set updated_at=now() - ($2 || ' seconds')::interval
-          where id=$1 and user_id=$3`,
-        [ids[i], offset, userId]
+        `update research_materials set sort_order=$2, updated_at=now() where id=$1 and user_id=$3`,
+        [ids[i], i + 1, userId]
       );
     }
     await client.query("commit");
-    return { ok: true };
+    return { ok: true, count: ids.length };
   } catch (e) {
     await client.query("rollback");
     throw e;

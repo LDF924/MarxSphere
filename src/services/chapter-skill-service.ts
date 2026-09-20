@@ -169,7 +169,13 @@ export async function getWorkbenchSnapshot(userId: string, projectId: string) {
   if (!merged.mergedTitle && row.merged_title) merged.mergedTitle = row.merged_title;
   if (!merged.mergedAbstract && row.merged_abstract) merged.mergedAbstract = row.merged_abstract;
   if (!merged.mergedKeywords && row.merged_keywords) merged.mergedKeywords = row.merged_keywords;
-  merged.mergeGenerated = row.merge_generated ?? false;
+  // mergeGenerated 此前是无条件 `= row.merge_generated ?? false` —— 而这一列**只有引擎写**
+  //   (真跑 phase5 合稿时), 前端置位后没有任何地方落库 → 刷新就回 false, 而合稿页的渲染
+  //   以它为门(`v-if="!mergeGenerated && !mergeRunning"` 决定空态还是三轮卡)
+  //   → **刷新一次"已完成合稿"的现场就整个没了**。2026-09-20 实测复现。
+  //   修法与上面几个 merged_* 同口径(节点优先, 列只在节点没给该键时兜底), 不自造特例:
+  //   写成"两边任一为真"会破坏重置 —— 引擎写过列之后即使用户重置回 false 也读成 true。
+  if (merged.mergeGenerated === undefined) merged.mergeGenerated = row.merge_generated ?? false;
   if (row.english_abstract) merged._englishAbstract = row.english_abstract;
   return { snapshot: merged, englishAbstract: row.english_abstract ?? "" };
 }

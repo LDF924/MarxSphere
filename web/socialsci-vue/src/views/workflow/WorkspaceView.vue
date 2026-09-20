@@ -815,8 +815,59 @@ const aiDone = computed(() => {
   if (!store.sections.length) return false;
   return store.sections.filter((s) => s.aiSkill || s.skill_prompt).length >= store.level1Sections.length * 0.6;
 });
-function aiPanelOpenToggle() {
-  if (!store.level1Sections.length) {
+// ── V419 加法: 写作语料库召回 ──
+// 后端 POST /api/writing-corpus/recall 按 {q, writingModule, semanticGroups, limit} 召回
+//   四大子库(文本/概念/逻辑/句式), 之前写作舱零引用。这里用**当前章节标题+已有正文前 200 字**
+//   作召回词 —— 比用整篇论文更贴当前这一段。
+const corpus = ref<Array<{ key: string; kind: string; text: string }>>([]);
+const corpusBusy = ref(false);
+const corpusMsg = ref("");
+
+async function recallCorpus() {
+  const sec = activeSection.value;
+  if (!sec) { toast("先选一个章节", "warning"); return; }
+  corpusBusy.value = true;
+  corpusMsg.value = "";
+  try {
+    const qText = `${sec.title ?? ""} ${String(sec.content ?? "").slice(0, 200)}`.trim();
+    const r = await q<{ texts?: unknown[]; expressions?: unknown[]; logics?: unknown[]; concepts?: unknown[] }>(
+      "/writing-corpus/recall", { method: "POST", body: { q: qText.slice(0, 300), limit: 4 } }
+    );
+    // 四个子库字段名与内容形状各不相同: text 是长文, expression/logic/concept 是短条目。
+    // 统一压成 {kind, text} 供列表渲染 —— 取不到内容的条目直接丢掉, 不显示空壳。
+    const pick = (arr: unknown[] | undefined, kind: string, field: string) =>
+      (arr ?? []).map((x, i) => {
+        const o = (x ?? {}) as Record<string, unknown>;
+        const t = String(o[field] ?? o.text ?? o.content ?? o.name ?? o.term ?? "").trim();
+        return t ? { key: `${kind}-${i}`, kind, text: t.slice(0, 400) } : null;
+      }).filter(Boolean) as Array<{ key: string; kind: string; text: string }>;
+    const items = [
+      ...pick(r.texts, "文本", "text"),
+      ...pick(r.expressions, "句式", "expression"),
+      ...pick(r.logics, "逻辑", "logic"),
+      ...pick(r.concepts, "概念", "term"),
+    ];
+    corpus.value = items;
+    corpusMsg.value = items.length ? "" : "语料库里暂时没有与本章相关的条目（可去语料库面板补充）";
+    if (items.length) toast(`召回 ${items.length} 条语料`, "success");
+  } catch (e) {
+    corpusMsg.value = `召回失败: ${(e as Error).message}`;
+  } finally { corpusBusy.value = false; }
+}
+
+/** 插入到正文光标处 —— 走编辑器已有的插入通道(texarea 的 selectionStart) */
+function insertCorpus(c: { kind: string; text: string }) {
+  const ta = document.querySelector<HTMLTextAreaElement>("textarea.content-textarea");
+  if (!ta) { corpusMsg.value = "当前不在正文编辑态 — 切到「编辑」页签后再插入"; return; }
+  const at = ta.selectionStart ?? ta.value.length;
+  const add = (ta.value && !ta.value.endsWith("\n") ? "\n\n" : "") + c.text;
+  editText.value = ta.value.slice(0, at) + add + ta.value.slice(at);
+  ta.focus();
+  ta.setSelectionRange(at + add.length, at + add.length);
+  toast(`已插入${c.kind}语料`, "success");
+}
+
+function aiPanelOpenToggle() {  if (!store.level1Sections.length) {
     toast("请先确认章节清单, 再开始结构化分析", "warning");
     return;
   }
@@ -1126,6 +1177,32 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             <svg class="ai-bulb" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
             <p class="ai-idle-text">尚未进行结构化分析</p>
             <button class="ai-start" :disabled="busy" @click="runStructuredAnalysis" data-control="workflow:start-analysis">开始分析（变量、框架、写作指导）</button>
+          </div>
+
+          <!-- V419 加法: 写作语料库召回。
+               后端 /api/writing-corpus/recall 早就实现(四大子库: 文本/概念/逻辑/句式),
+               但写作舱**零引用**。按当前章节语义召回, 给出可插入正文的片段 ——
+               与"写作指导"(告诉你怎么写)互补: 这里是"给你可用的料"。
+               放在 .ai-panel-body **内部**: 面板是 absolute inset-0 的 flex 列(head + body),
+               放 body 外会跟着 head 一起被压扁。 -->
+          <div class="corpus-zone">
+            <div class="cz-head">
+              <strong>语料库</strong>
+              <span class="cz-sub">按当前章节召回可复用片段</span>
+              <button class="cz-btn" :disabled="corpusBusy || !activeSection" data-control="workflow:corpus-recall" @click="recallCorpus">
+                {{ corpusBusy ? "召回中…" : corpus.length ? "重新召回" : "召回语料" }}
+              </button>
+            </div>
+            <p v-if="corpusMsg" class="cz-msg">{{ corpusMsg }}</p>
+            <div v-if="corpus.length" class="cz-list">
+              <div v-for="c in corpus" :key="c.key" class="cz-item">
+                <div class="cz-item-head">
+                  <span class="cz-kind">{{ c.kind }}</span>
+                  <button class="cz-insert" data-control="workflow:corpus-insert" @click="insertCorpus(c)">插入到正文</button>
+                </div>
+                <p class="cz-text">{{ c.text }}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1566,6 +1643,25 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .ai-close { font-size: 12px; color: #8B9BB1; border: 0; background: none; cursor: pointer; }
 .ai-close:hover { color: #8B9BB1; }
 .ai-panel-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+/* V419 语料库召回区 */
+.corpus-zone { margin-top: 16px; padding-top: 14px; border-top: 1px solid #222F44; }
+.cz-head { display: flex; align-items: center; gap: 8px; }
+.cz-head strong { font-size: 13px; color: #E8EEF7; }
+.cz-sub { font-size: 11px; color: #7A8AA0; flex: 1; }
+.cz-btn {
+  border: 1px solid #2A3A55; border-radius: 7px; background: #16233A; color: #A9BBD0;
+  font-size: 11.5px; padding: 4px 11px; cursor: pointer;
+}
+.cz-btn:hover:not(:disabled) { background: #1E355C; color: #EAF2FC; }
+.cz-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cz-msg { margin: 8px 0 0; font-size: 11.5px; color: #7A8AA0; }
+.cz-list { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cz-item { border: 1px solid #222F44; border-radius: 9px; background: #11192C; padding: 9px 11px; }
+.cz-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cz-kind { font-size: 10.5px; color: #E8B54A; background: #2A2414; border-radius: 8px; padding: 1px 8px; }
+.cz-insert { border: 0; background: transparent; color: #759FD7; font-size: 11px; cursor: pointer; }
+.cz-insert:hover { text-decoration: underline; }
+.cz-text { margin: 6px 0 0; font-size: 12px; line-height: 1.65; color: #C7D2E0; white-space: pre-wrap; }
 .ai-spin-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #DCE6F2; margin-bottom: 14px; }
 .ai-spinner {
   width: 20px; height: 20px; border: 2.5px solid #94a3b8; border-top-color: transparent;

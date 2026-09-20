@@ -47,8 +47,13 @@ async function seed(token) {
       phase: 4, phaseLabel: "文本创作",
       input: { title: TITLE, outline: "", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] },
       sections, variables: [], hypotheses: [],
-      // ④ 要验「合稿模式 tab + 强度档」, 那组控件只在**已合稿态**出现(空态只有「开始合并」, 与闭源一致)
-      mergeGenerated: true,
+      // ⚠ 这里**不能**种 mergeGenerated: true。原注释写「④ 要验合稿模式 tab + 强度档,
+      //   那组控件只在已合稿态出现」—— 没错, 但那与第 ④ 组的第一条断言(未合稿时显示空态卡)
+      //   直接**互斥**, 且与闭源语义也不符: 闭源是 `!mergeGenerated && !mergeGenerating` 才渲染空态。
+      //   2026-09-20 之前它一直是绿的, 只因为 mergeGenerated 是**断了的一条链**
+      //   (前端置真不落库 → 读侧被列里的 false 覆盖) —— 种了等于没种。
+      //   那条链修好之后, 这个自相矛盾的播种立刻显形。
+      //   现在: 不种, 空态成立; ④ 里点「开始合并」跑通后自然进入已合稿态, 模式 tab / 强度档照样验得到。
       mergedTitle: TITLE, mergedAbstract: "摘要", mergedKeywords: "关键词",
       mergedFullText: "# 正文\n\n内容", mergedReferences: "[1] 张三. 测试[J]. 2021.",
     },

@@ -94,6 +94,16 @@ export const SNAPSHOT_NODE_MAP: readonly SnapshotNodeEntry[] = [
   // isFinalized 此前**整条链失效**: 前端设「已定稿」只写快照, 而读侧只从 finalize 节点读
   // → 节点永无此键 → 刷新后静默丢失, 进度条退回「待确认」。补进映射表后由同步兜住。
   { snapshotKey: "isFinalized", nodeKey: "finalize", policy: "merge", readGate: "defined" },
+  // mergeGenerated 与 isFinalized 是**同一个病**, 2026-09-20 才发现:
+  //   读侧 `getWorkbenchSnapshot` 取的是**专用列** `research_projects.merge_generated`,
+  //   而写它的只有后端合稿引擎(`research-exec-engine` 的 phase5 合稿路径)。
+  //   前端 `store.mergeGenerated` 在合稿页/探针里被置真后**没有任何地方落库** ——
+  //   刷新即回到 false, 而合稿页的渲染以它为门(`v-if="!store.mergeGenerated && !mergeRunning"`
+  //   决定显示空态还是三轮卡) → **刷新一次"已完成合稿"的现场就整个没了**。
+  //   实测: 只 PUT 快照 {mergedFullText, mergeGenerated:true} 再 GET, mergeGenerated 回 false。
+  //   进映射表后由同步写入节点, 读侧再兜底(见 chapter-skill-service 的 merged.mergeGenerated)。
+  //   用 nonEmpty 会有坑: false 不是"空", 但这里要的是**布尔真值**语义, 所以用 merge(浅合并不抹键)。
+  { snapshotKey: "mergeGenerated", nodeKey: "finalize", policy: "merge", readGate: "defined" },
 ];
 
 /** 某节点上会被同步的条目 */

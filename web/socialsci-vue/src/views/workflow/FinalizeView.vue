@@ -62,6 +62,98 @@ const mergeMessage = ref("");
 const streamContent = ref("");
 const reviewStream = ref("");
 const reviewReport = ref<Record<string, unknown> | null>(null);
+
+// ── V419 加法: 质量四检 ──
+// 后端 /api/quality/{concept,citation,logic,plagiarism} 早已实现(paper-quality-service),
+//   四条路由都在, 但**写作舱零引用** —— 这轮接进合稿页。
+// 解析策略: 四个检查的返回**字段名各不相同**(inconsistencies/confusions · issues/mismatches ·
+//   contradictions/circular/weakPoints/jumps · overlapVerdict/risks/citationNeeded), 逐个映射成
+//   一串可读文本。**不编造条目**: 拿不到就显示"未发现问题", 而不是凑一句安慰话。
+const QUALITY_KINDS = [
+  { key: "concept", label: "概念一致性", desc: "易混淆概念对照库 + LLM 判读" },
+  { key: "citation", label: "引文准确性", desc: "引文标记与参考文献列表是否对得上" },
+  { key: "logic", label: "逻辑自洽", desc: "循环论证 / 矛盾 / 跳跃 信号词检测" },
+  { key: "plagiarism", label: "学术不端风险", desc: "与素材源文本的 6-gram 重合度" },
+] as const;
+type QualityKey = typeof QUALITY_KINDS[number]["key"];
+
+const qualityRunning = ref(false);
+const qualityDone = ref(false);
+const qualityError = ref("");
+const quality = ref<Record<QualityKey, { count: number; items: string[] }>>({
+  concept: { count: 0, items: [] },
+  citation: { count: 0, items: [] },
+  logic: { count: 0, items: [] },
+  plagiarism: { count: 0, items: [] },
+});
+
+/** 把任意形状的返回压成一串可读文本 —— 只取真的存在的条目 */
+function toLines(v: unknown): string[] {
+  if (v === null || v === undefined) return [];
+  if (typeof v === "string") return v.trim() ? [v.trim()] : [];
+  if (Array.isArray(v)) return v.flatMap(toLines);
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    // 常见形态: {type/name/description} / {conceptA,conceptB,diff} / {paragraph,reason}
+    const parts = [o.type, o.name, o.term, o.concept, o.a, o.b, o.paragraph, o.quote, o.description, o.detail, o.reason, o.diff, o.message]
+      .filter((x) => typeof x === "string" && String(x).trim());
+    if (parts.length) return [parts.map(String).join(" ").replace(/\s+/g, " ").trim()];
+    const vals = Object.values(o).flatMap(toLines);
+    return vals.slice(0, 3);
+  }
+  return [String(v)];
+}
+const dedupe = (arr: string[]) => [...new Set(arr.map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean))];
+
+async function runQualityChecks() {
+  const text = store.mergedFullText ?? "";
+  if (!text.trim()) { toast("没有可检查的正文", "warning"); return; }
+  const refList = store.mergedReferences ?? "";
+  qualityRunning.value = true;
+  qualityError.value = "";
+  try {
+    // 四条**并行**(互不依赖), 任一条挂了不拖垮其余 —— 逐条 catch 后把错误汇总在 qualityError
+    const call = (p: string, body: Record<string, unknown>) =>
+      q<Record<string, unknown>>(p, { method: "POST", body }).catch((e) => ({ __err: (e as Error).message }) as Record<string, unknown>);
+    const [concept, citation, logic, plagiarism] = await Promise.all([
+      call("/quality/concept", { text }),
+      call("/quality/citation", { text, referenceList: refList }),
+      call("/quality/logic", { text }),
+      // 学术不端那条若传空 sourceText, 后端拿不到对照就只会给个低风险 —— 明确用参考文献作对照源
+      call("/quality/plagiarism", { text, sourceText: refList }),
+    ]);
+    const errs = [concept, citation, logic, plagiarism].filter((r) => r.__err).map((r) => String(r.__err));
+    if (errs.length) qualityError.value = `部分检查未完成: ${errs[0]}`;
+
+    const cLines = dedupe([...toLines(concept.inconsistencies), ...toLines(concept.confusions), ...toLines(concept.algorithmFlags)]);
+    const ciLines = dedupe([...toLines(citation.issues), ...toLines(citation.mismatches)]);
+    const cv = citation.stats as Record<string, unknown> | undefined;
+    if (cv?.quoteVerdict && String(cv.quoteVerdict) !== "引文标记正常") ciLines.push(String(cv.quoteVerdict));
+    const lLines = dedupe([...toLines(logic.contradictions), ...toLines(logic.circular), ...toLines(logic.weakPoints), ...toLines(logic.jumps), ...toLines(logic.algorithmFlags)]);
+    const pLines = dedupe([
+      ...(plagiarism.overlapVerdict ? [String(plagiarism.overlapVerdict)] : []),
+      ...toLines(plagiarism.longMatches),
+      ...toLines(plagiarism.risks),
+      ...toLines(plagiarism.citationNeeded),
+      ...toLines(plagiarism.unmarkedParagraphs),
+    ]);
+    quality.value = {
+      concept: { count: cLines.length, items: cLines },
+      citation: { count: ciLines.length, items: ciLines },
+      logic: { count: lLines.length, items: lLines },
+      plagiarism: { count: pLines.length, items: pLines },
+    };
+    qualityDone.value = true;
+    const total = cLines.length + ciLines.length + lLines.length + pLines.length;
+    toast(total ? `质量检查完成: ${total} 处待看` : "质量检查完成: 未发现问题", total ? "warning" : "success");
+  } catch (e) {
+    qualityError.value = `质量检查失败: ${(e as Error).message}`;
+    toast(qualityError.value, "error");
+  } finally {
+    qualityRunning.value = false;
+  }
+}
+
 /**
  * 待采用的修订稿。
  *
@@ -508,8 +600,14 @@ async function refreshMerged() {
       store.reviewResult = typeof p.review_result === "string" ? JSON.parse(p.review_result) : (p.review_result as Record<string, unknown>);
       reviewReport.value = store.reviewResult;
     }
-    // 这两项列是权威来源(引擎写列, 不上节点)
-    if (p.merge_generated !== undefined) store.mergeGenerated = Boolean(p.merge_generated);
+    // ⚠ 2026-09-20 删掉了这里原来的一行:
+    //     `if (p.merge_generated !== undefined) store.mergeGenerated = Boolean(p.merge_generated)`
+    //   注释写的是"这两项列是权威来源(引擎写列, 不上节点)" —— 而这个前提**已经不成立**:
+    //   workbench-sync 现在把 mergeGenerated 也写进 finalize 节点, 且后端 getWorkbenchSnapshot
+    //   已改成"节点优先、列兜底"。这行做的是**无条件覆盖**: loadProject 刚从节点读到 true,
+    //   紧接着就被列里的 false 顶掉 —— 于是"刷新后已合稿的现场整个消失"。
+    //   实测复现过一次(探针里四检按钮因为页面退回空态而取不到)。
+    //   现在列的值已由后端折进快照(节点没给该键时才兜底), 前端不必也不该再覆盖一遍。
     await store.saveProject();
   } catch { /* 容忍 */ }
 }
@@ -1112,6 +1210,42 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 质量四检轮(V419 加法)。
+           为什么另起一轮而不是塞进②: ②「全文审查」是 LLM 通读给一份报告(主观、整体),
+           这里是**四个确定性角度逐项查**(概念一致性/引文准确性/逻辑自洽/学术不端风险),
+           后端 paper-quality-service 早就实现、四条路由都在, 但写作舱**零引用**。
+           两者互补: 审查告诉你"这篇怎么样", 四检告诉你"具体哪几处对不上"。 -->
+      <div class="round-row">
+        <div class="round-head">
+          <span class="round-num">②·5</span>
+          <div class="round-info">
+            <strong>质量四检</strong>
+            <span>四个确定性角度逐项核查, 给出**具体位置**而非整体印象</span>
+          </div>
+          <button
+            class="btn-round"
+            :disabled="qualityRunning || !store.mergedFullText"
+            data-control="workflow:quality-check"
+            @click="runQualityChecks"
+          >{{ qualityRunning ? "检查中…" : qualityDone ? "重新检查" : "开始质量检查" }}</button>
+        </div>
+        <p v-if="qualityError" class="q-error">{{ qualityError }}</p>
+        <div v-if="qualityDone" class="q-grid">
+          <div v-for="k in QUALITY_KINDS" :key="k.key" class="q-card" :class="{ 'q-card--bad': quality[k.key].count > 0 }">
+            <div class="q-card-head">
+              <strong>{{ k.label }}</strong>
+              <span class="q-badge" :class="{ bad: quality[k.key].count > 0 }">
+                {{ quality[k.key].count > 0 ? `${quality[k.key].count} 处` : "未发现问题" }}
+              </span>
+            </div>
+            <p class="q-desc">{{ k.desc }}</p>
+            <ul v-if="quality[k.key].count > 0" class="q-list">
+              <li v-for="(it, i) in quality[k.key].items.slice(0, 6)" :key="i">{{ it }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       <!-- 修订轮 -->
       <div class="round-row">
         <div class="round-head">
@@ -1391,6 +1525,19 @@ onMounted(async () => {
   max-height: 220px; overflow-y: auto;
 }
 .review-result-card { margin-top: 10px; border: 1px solid #2E5C46; border-radius: 10px; background: #14281F; padding: 13px 16px; }
+/* V419 质量四检: 四张卡两列(窄屏塌成一列), 有问题的卡描边转红——一眼看出该看哪张 */
+.q-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+@media (max-width: 760px) { .q-grid { grid-template-columns: minmax(0, 1fr); } }
+.q-card { border: 1px solid #222F44; border-radius: 10px; background: #11192C; padding: 11px 13px; }
+.q-card--bad { border-color: #7f1d1d; background: #1C1416; }
+.q-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.q-card-head strong { font-size: 13px; color: #E8EEF7; }
+.q-badge { font-size: 11px; color: #7FE3BD; background: #14281F; border: 1px solid #2E5C46; border-radius: 9px; padding: 1px 9px; white-space: nowrap; }
+.q-badge.bad { color: #E88A8A; background: #2A1C1C; border-color: #7f1d1d; }
+.q-desc { margin: 5px 0 0; font-size: 11.5px; color: #7A8AA0; }
+.q-list { margin: 7px 0 0; padding-left: 17px; }
+.q-list li { font-size: 12px; line-height: 1.7; color: #C7D2E0; }
+.q-error { margin: 8px 0 0; font-size: 12.5px; color: #E88A8A; }
 .rr-head { display: flex; align-items: center; gap: 10px; }
 .rr-head strong { font-size: 14px; color: #166534; }
 .rr-score { font-size: 18px; font-weight: 800; color: #5FD0B4; }

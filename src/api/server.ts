@@ -9786,6 +9786,22 @@ except Exception as e:
     return { ok: true };
   });
 
+  // 删除项目 —— **软删**(status='deleted'), 与 archiveProject 同一套状态机。
+  // 2026-09-21: 此路由此前**不存在**(DELETE 恒 404「接口不存在」)。语义按既有约定取软删, 理由有三:
+  //   1) 114 迁移的列注释就写着 `active / archived / deleted`, 'deleted' 一直是预留值;
+  //   2) listProjects 早已在 `where status<>'deleted'` 过滤 —— 只差一个写入方, 是半截工程;
+  //   3) 硬删要级联 research_tasks / research_nodes / research_versions / research_materials,
+  //      但 research_tasks.project_id 与 research_materials.project_id 都是**裸 uuid 无外键**
+  //      (见 115/116 迁移), 库里没有 ON DELETE 可依赖, 硬删会留下一片取不到也删不掉的孤儿行。
+  // 所以这里不删数据, 只置灰: 项目列表不再出现, 历史/版本仍可按 id 直查。
+  app.delete("/api/research/projects/:projectId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchPipeline.deleteProject(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, deleted: true };
+  });
+
   // 画布(乐观锁: 提交带 expectedVersion)
   app.get("/api/research/projects/:projectId/canvas", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -10316,9 +10332,14 @@ except Exception as e:
 
   app.post("/api/research/materials/reorder", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { ids?: string[] };
+    // taskId 是闭源(及素材列表接口)对"项目"的叫法, 本项目其余路由叫 projectId —— 两者都收,
+    //   作为归属校验的收窄条件(闭源前端发 {taskId, ids}, 见 .claude/socialsci-probe/full/index-xpWAkSSw.js)。
+    const body = request.body as { ids?: string[]; projectId?: string; taskId?: string };
     if (!Array.isArray(body?.ids)) return reply.code(400).send({ error: "缺少 ids" });
-    return await researchMaterials.reorderMaterials(user.id, body.ids);
+    const projectId = body.projectId || body.taskId;
+    const r = await researchMaterials.reorderMaterials(user.id, body.ids, projectId);
+    if (!r) return reply.code(404).send({ error: "素材不存在或不属于该项目" });
+    return r;
   });
 
   // 素材上下文(写作节点注入预览)
