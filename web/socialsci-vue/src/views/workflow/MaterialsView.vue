@@ -1201,6 +1201,9 @@ onMounted(async () => {
     :data-assistant-async-reason="matAsyncReason"
   >
     <PhaseProgressBar />
+    <!-- 页头整体: 闭源是 `<div class="mb-8">` 把标题+副标题+统计行包成一块(下方 32px)。
+         我方原先是 h1 mb-4 / 统计 mt-10 mb-18 散着摆, 净距与闭源对不上。 -->
+    <div class="wf-head">
     <h1 class="wf-h1">素材准备</h1>
     <!-- 页头三行状态区(闭源: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
     <div class="mat-stats">
@@ -1209,6 +1212,7 @@ onMounted(async () => {
       <span>按流程完成素材整理后即可进入创作</span>
       <span class="ms-sep"></span>
       <span>{{ store.phase >= 4 ? "素材版本已发布" : "素材版本待发布" }}</span>
+    </div>
     </div>
 
     <!-- ═══ 补充素材来源(闭源整卡: 三主按钮 + 手动添加四格 + 从其他模块导入两格) ═══ -->
@@ -1919,17 +1923,19 @@ onMounted(async () => {
 .ci-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: #6B7A90; }
 .ci-note strong { color: #A9BBD0; }
  width: 100%; box-sizing: border-box; }
-.wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 0 0 16px; font-size: 13px; color: #8B9BB1; }
+/* 页头整块。闭源 `<div class="mb-8">` 包住标题+副标题+统计行(整块下方 32px) */
+.wf-head { margin-bottom: 32px; }
+.wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: #E8EEF7; }
+.wf-sub { margin: 4px 0 0; font-size: 13px; color: #8B9BB1; }
 /* 页头三行状态区(闭源: N | 说明 | 版本状态, 中间夹竖线) */
-.mat-stats { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: #8B9BB1; margin: 10px 0 18px; flex-wrap: wrap; }
+.mat-stats { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: #8B9BB1; margin: 12px 0 0; flex-wrap: wrap; }
 .ms-num { color: #E8EEF7; font-weight: 600; font-size: 13.5px; }
 .ms-sep { width: 1px; height: 12px; background: #46587A; display: inline-block; }
 
 /* 补充素材来源整卡 */
 .source-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 16px; /* 闭源 space-y-4=16px, p-4=16px */
+  padding: 16px 20px; margin-bottom: 32px; /* 闭源 mb-8=32px(页级留白); 卡内 space-y-4=16px */
 }
 .sc-title { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
 .sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -1975,7 +1981,7 @@ onMounted(async () => {
 .dc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: #8B9BB1; }
 .dc-head span { font-size: 13px; font-weight: 500; color: #DCE6F2; }
 .dc-body { margin: 0; font-size: 12.5px; color: #B9C6D8; line-height: 1.7; overflow-wrap: break-word; }
-.mat-section-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
+.mat-section-title { margin: 0 0 12px; /* 该 h2 在闭源也是 mb-8 块的一部分, 见下 .mat-section */ font-size: 16px; font-weight: 600; color: #E8EEF7; }
 
 .job-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 9px; margin-bottom: 12px; font-size: 13px; }
 .job-bar.running { background: #1E2A48; border: 1px solid #bfdbfe; color: #1d4ed8; }
@@ -1985,7 +1991,7 @@ onMounted(async () => {
   border-radius: 50%; animation: jspin 0.8s linear infinite;
 }
 @keyframes jspin { to { transform: rotate(360deg); } }
-.cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; } /* 闭源 space-y-2.5=10px */
+.cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; } /* 卡间 space-y-2.5=10px; 页级 mb-8=32px */
 .cat-card { background: #11192C; border: 1px solid #222F44; border-radius: 12px; overflow: hidden; }
 /* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(闭源如此) */
 .cat-head {
@@ -2129,8 +2135,17 @@ onMounted(async () => {
   border: 1px solid #3A3020; border-top: 0; border-radius: 0 0 9px 9px;
   font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; color: #DCE6F2;
 }
-.wf-actions { display: flex; gap: 10px; margin-top: 6px; }
+/* 动作行。闭源 `pt-6 border-t`(= 24px 上距 + 1px 分隔线; **无** mt-8, 与 sections 不同)。
+   原值 margin-top:6px 且无分隔线, 与闭源那道分界对不上。 */
+.wf-actions {
+  display: flex; gap: 12px;
+  margin-top: 0; padding-top: 24px;
+  border-top: 1px solid #222F44;
+}
 .wf-actions .btn-primary { flex: 1; }
+/* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
+.wf-actions .btn-primary,
+.wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {
   padding: 10px 22px; border: 1px solid #222F44; border-radius: 9px;
   background: #11192C; color: #8B9BB1; font-size: 14px; cursor: pointer;

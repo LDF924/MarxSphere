@@ -807,9 +807,16 @@ onMounted(async () => {
   padding: 7px 10px; border: 1px solid #222F44; border-radius: 7px;
   font-size: 12.5px; font-family: inherit; resize: vertical;
 }
-.wf-actions { display: flex; gap: 10px; margin-top: 6px; }
+/* 动作行。闭源 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
+   "开始思考科研架构 / 返回" 那对, 与 sections/materials 的 pt-6 + border-t 不同)。
+   原值 margin-top:6px 比闭源少 10px, 页面底部显得挤。 */
+.wf-actions { display: flex; gap: 12px; margin-top: 16px; }
 /* 主按钮占满剩余宽度(闭源 flex-1), 返回按钮固定宽在右 */
 .wf-actions .btn-primary { flex: 1; }
+/* 闭源按钮是 `px-6 py-3 text-sm` = 24/12 内边距 + **固定 20px 行高** + 边框 = 46px 高。
+   我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比闭源矮 8px。行高写死 20px 才与闭源等高。 */
+.wf-actions .btn-primary,
+.wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {
   padding: 10px 22px;
   border: 1px solid #222F44;

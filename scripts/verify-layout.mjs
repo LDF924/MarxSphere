@@ -110,6 +110,44 @@ try {
     }
   }
   await cdp("Emulation.clearDeviceMetricsOverride");
+
+  // ── 页级垂直节奏: 按闭源 DOM 实拍钉住(2026-09-20) ──
+  // 上面那批断言只证明"不溢出/不塌/不重叠", **证明不了间距对不对** —— 而"挤"正是
+  //   用户抱怨的那种问题: 改前 3 个视图的页级间距是 mb-4/14/16 混搭, 闭源统一是
+  //   mb-8(页头与卡片)/ mb-6(卡片之间)/ 动作行 pt-6+分隔线。这里把规格钉死,
+  //   免得日后有人顺手调样式又漂回去。
+  console.log("\n── 页级垂直节奏(闭源实拍规格) ──");
+  await openSoc(cdp, BASE, "/workflow/sections", tk, pid, 7500);
+  await dismissOverlays(cdp);
+  await sleep(1000);
+  const rhythm = await evalTop(cdp, `(() => {
+    const px = (el, prop) => el ? Math.round(parseFloat(getComputedStyle(el)[prop])) : null;
+    const h1 = document.querySelector('.wf-h1');
+    const head = h1 ? h1.closest('.wf-head') : null;
+    const banner = document.querySelector('.banner');
+    const card = document.querySelector('.tree-card');
+    const act = document.querySelector('.wf-actions');
+    const btn = act ? act.querySelector('button') : null;
+    const cs = act ? getComputedStyle(act) : null;
+    return {
+      headMb: px(head, 'marginBottom'),
+      bannerMb: px(banner, 'marginBottom'),
+      cardMb: px(card, 'marginBottom'),
+      actMt: px(act, 'marginTop'), actPt: px(act, 'paddingTop'),
+      actBorder: cs ? cs.borderTopWidth : null, actGap: cs ? Math.round(parseFloat(cs.columnGap || cs.gap)) : null,
+      btnH: btn ? Math.round(btn.getBoundingClientRect().height) : null,
+    };
+  })()`);
+  const R = rhythm ?? {};
+  const eq = (label, got, want) => rec("sections@节奏", label, got === want, `实测=${got} 闭源=${want}`);
+  eq("页头块下距 mb-8", R.headMb, 32);
+  eq("状态卡下距 mb-6", R.bannerMb, 24);
+  eq("框架卡下距 mb-6", R.cardMb, 24);
+  eq("动作行上距 mt-8", R.actMt, 32);
+  eq("动作行上内距 pt-6", R.actPt, 24);
+  eq("动作行有分隔线", R.actBorder, "1px");
+  eq("动作行按钮间距 gap-3", R.actGap, 12);
+  eq("按钮高 px-6py-3+20px行高", R.btnH, 46);
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {

@@ -537,10 +537,12 @@ onUnmounted(() => {
     :data-assistant-async-reason="analyzeMsg || (guidesBusy ? '正在生成写作指导' : '')"
   >
     <PhaseProgressBar />
-    <h1 class="wf-h1">科研架构</h1>
-    <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
-    <!-- 闭源原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
-    <p class="wf-stats">共 <span class="stats-num">{{ l1Count }}</span> 章<template v-if="childCount > 0">、{{ childCount }} 个子节</template></p>
+    <div class="wf-head">
+      <h1 class="wf-h1">科研架构</h1>
+      <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
+      <!-- 闭源原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
+      <p class="wf-stats">共 <span class="stats-num">{{ l1Count }}</span> 章<template v-if="childCount > 0">、{{ childCount }} 个子节</template></p>
+    </div>
 
     <!-- AI 分析横幅(3 态) -->
     <div v-if="analyzeFailed" class="banner banner-fail">
@@ -771,12 +773,17 @@ onUnmounted(() => {
 <style scoped>
 
 .workflow-page { width: 100%; box-sizing: border-box; }
-.wf-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 0; font-size: 13px; color: #8B9BB1; }
-.wf-stats { margin: 8px 0 16px; font-size: 12.5px; color: #8B9BB1; }
+/* 页头整体。闭源把 h1+p+统计行包在一个 `mb-8` 块里(= 整块下方 32px 留白)。
+   我方原先是 h1 mb-4 / sub mb-0 / 统计 mt-8 mb-16 拼出来, 净距只有 24px ——
+   比闭源少 8px, 而且 h1 与副标题之间被撑到 8px(闭源 text-sm mt-1 = 4px)。 */
+.wf-head { margin-bottom: 32px; }
+.wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: #E8EEF7; }
+.wf-sub { margin: 4px 0 0; font-size: 13px; color: #8B9BB1; }
+.wf-stats { margin: 12px 0 0; font-size: 12.5px; color: #8B9BB1; }
 .stats-num { color: #E8EEF7; font-weight: 600; }
 .fail-step { color: #E88A8A; font-weight: 600; margin-right: 2px; }
-.banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; }
+/* 闭源页面级块间距是 mb-6(24px); 原值 14px 明显更紧 */
+.banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
 .banner-fail { background: #2A1C1C; border: 1px solid #3A2323; }
 .banner-thinking { background: #1A2333; border: 1px solid #46587A; }
 .banner-done { background: #14281F; border: 1px solid #2E5C46; }
@@ -882,7 +889,7 @@ onUnmounted(() => {
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
 .tree-card {
   background: #11192C; border: 1px solid #222F44; border-radius: 12px;
-  padding: 16px 18px; margin-bottom: 14px;
+  padding: 16px 18px; margin-bottom: 24px;   /* 闭源 mb-6 = 24px(原 14px) */
 }
 .sec-title { margin: 0 0 10px; font-size: 15px; color: #E8EEF7; }
 .tree-empty { padding: 24px; text-align: center; color: #7A8AA0; font-size: 13px; }
@@ -935,8 +942,18 @@ onUnmounted(() => {
 .skill-block ul { margin: 4px 0 0; padding-left: 18px; }
 .skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: #8B9BB1; }
 .skill-pending.dim { color: #7A8AA0; }
-.wf-actions { display: flex; gap: 10px; margin-top: 6px; }
+/* 动作行。闭源 `mt-8 pt-6 border-t`(= 32+24 上距 + 一条 1px 分隔线, gap-3=12px)。
+   原值 margin-top:6px 且**无分隔线** —— 与「确认科研架构」上方那一大片内容连成一体,
+   少了闭源那道"这是页面级操作、不是内容"的视觉分界。 */
+.wf-actions {
+  display: flex; gap: 12px;
+  margin-top: 32px; padding-top: 24px;
+  border-top: 1px solid #222F44;
+}
 .wf-actions .btn-primary { flex: 1; }
+/* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
+.wf-actions .btn-primary,
+.wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {
   padding: 10px 22px; border: 1px solid #222F44; border-radius: 9px;
   background: #11192C; color: #8B9BB1; font-size: 14px; cursor: pointer;
