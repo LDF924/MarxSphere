@@ -115,6 +115,27 @@ const only = onlyArg ? new Set(String(onlyArg).replace(/^--only=/, "").split(","
 const chosen = SUITES.filter((s) => (only ? only.has(s.key) : wantAll || !s.data));
 if (!chosen.length) { console.error(`没有匹配的套件。可选: ${SUITES.map((s) => s.key).join(", ")}`); process.exit(1); }
 
+/**
+ * 环境哨兵先行 —— 几秒钟, 换掉"跑完十几分钟才发现验错了对象"。
+ *
+ * 由来(2026-09-22): 那一晚全量 25 套(约 33 分钟)里有 3 个失败落在与改动无关的套件上,
+ *   全是"在什么条件下跑"变了(cwd → .env 解析 → 数据根), 而不是代码回归。
+ *   这类问题**推不出影响面**, 只能直接测 —— 那就提前测。
+ *
+ * `--no-sentinel` 跳过(用于"我知道环境是脏的, 就是要这么跑"的场合, 例如故意跨树对比)。
+ */
+if (!argv.includes("--no-sentinel")) {
+  const { runSentinel } = await import("./env-sentinel.mjs");
+  const r = await runSentinel({ print: true });
+  if (!r.ok) {
+    console.error(`\n❌ 环境哨兵有 ${r.fail.length} 项不一致 —— 已中止, 没开始跑套件。`);
+    console.error(`   这些不一致会让门禁验的不是你在改的代码, 先按上面的提示修。`);
+    console.error(`   确实要这么跑: 加 --no-sentinel(或 SENTINEL_ALLOW_MISMATCH=1 把跨树降级为提醒)。\n`);
+    process.exit(1);
+  }
+  console.log("");
+}
+
 console.log(`UI 门禁: 跑 ${chosen.length}/${SUITES.length} 套` + (wantAll ? "(含数据依赖)" : "(默认组; 数据依赖的用 --all)"));
 console.log(`前置: ${BASE} 已起\n`);
 
