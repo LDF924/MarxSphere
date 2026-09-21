@@ -183,11 +183,30 @@ async function main() {
     if (tmpProjectId) {
       try {
         const pg = (await import("pg")).default;
-        const url = (await import("node:fs")).readFileSync(".env", "utf8").match(/^DATABASE_URL=(.*)$/m)[1].trim();
+        /**
+         * `.env` 的位置**不能假设**。
+         *
+         * ⚠ 2026-09-22 修: 原来写死 `readFileSync(".env")` —— 那是按 **cwd** 找。在主仓跑时
+         *   有 `.env` 所以一直没暴露; 在 worktree 里跑时那里没有, 直接 ENOENT, 清理被跳过,
+         *   临时课题一直留在库里(实测积了 2 个)。故障现象是一条**看起来无害**的
+         *   "清理临时课题失败(需手动删)", 于是没人管 —— 而这是"测试污染生产库"。
+         *   候选顺序: 环境变量 → cwd → 仓库根(worktree 结构是 <repo>/.claude/worktrees/<name>)。
+         */
+        const fs = await import("node:fs");
+        const pathMod = await import("node:path");
+        const candidates = [
+          process.env.SAG_ENV_FILE,
+          pathMod.join(process.cwd(), ".env"),
+          pathMod.join(process.cwd(), "..", "..", "..", ".env"),
+        ].filter(Boolean);
+        const envFile = candidates.find((p) => fs.existsSync(p));
+        if (!envFile) throw new Error(`找不到 .env(试过: ${candidates.join(", ")})`);
+        const url = fs.readFileSync(envFile, "utf8").match(/^DATABASE_URL=(.*)$/m)[1].trim();
+        // 顺手清掉**历次残留**: 只删自己这一次留下的, 早先被跳过的会永远留在库里
         const c = new pg.Client({ connectionString: url }); await c.connect();
-        const d = await c.query("delete from empirical_projects where id = $1 and title = $2", [tmpProjectId, "验证用临时空课题(可删)"]);
-        console.log(`
-清理临时课题: 删除 ${d.rowCount} 行`);
+        const d = await c.query("delete from empirical_projects where title = $2 or (id = $1 and title = $2)",
+          [tmpProjectId, "验证用临时空课题(可删)"]);
+        console.log(`\n清理临时课题: 删除 ${d.rowCount} 行(含历次残留)`);
         await c.end();
       } catch (e) { console.log("清理临时课题失败(需手动删): " + tmpProjectId + " — " + e.message); }
     }
