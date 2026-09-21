@@ -136,13 +136,19 @@ try {
       actMt: px(act, 'marginTop'), actPt: px(act, 'paddingTop'),
       actBorder: cs ? cs.borderTopWidth : null, actGap: cs ? Math.round(parseFloat(cs.columnGap || cs.gap)) : null,
       btnH: btn ? Math.round(btn.getBoundingClientRect().height) : null,
+      colGap: (() => { const c = document.querySelector('.sec-cols'); return c ? Math.round(parseFloat(getComputedStyle(c).columnGap || getComputedStyle(c).gap) || 0) : null; })(),
     };
   })()`);
   const R = rhythm ?? {};
   const eq = (label, got, want) => rec("sections@节奏", label, got === want, `实测=${got} 闭源=${want}`);
   eq("页头块下距 mb-8", R.headMb, 32);
   eq("状态卡下距 mb-6", R.bannerMb, 24);
-  eq("框架卡下距 mb-6", R.cardMb, 24);
+  // ⚠ 2026-09-21 两栏化之后, 框架卡与概览卡之间的**垂直间距改由列的 `gap` 提供**
+  //   (卡片自己的 margin 归零, 否则 gap 与 margin 会叠加成 24+24)。
+  //   所以这条断言从"卡片自己有 24px 下距"改成"两栏里的卡片不再自带下距, 间距交给 gap"——
+  //   **不是放宽, 是前提变了**: 断言的对象从"卡片的外边距"变成了"两栏的排布方式"。
+  eq("框架卡下距交给列 gap(自身归零)", R.cardMb, 0);
+  eq("两栏列间距 gap=20", R.colGap, 20);
   eq("动作行上距 mt-8", R.actMt, 32);
   eq("动作行上内距 pt-6", R.actPt, 24);
   eq("动作行有分隔线", R.actBorder, "1px");

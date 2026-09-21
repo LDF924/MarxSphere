@@ -639,6 +639,11 @@ onUnmounted(() => {
 
     <!-- 科研框架概览(闭源: 一张卡收拢 ①变量识别 ②研究假设 ③研究逻辑+方法, 各带编号圆徽与「共 N 个」计数)
          2026-09-15 前这里是三个互不相干的平级 section, 没有卡头、没有编号、没有计数。 -->
+    <!-- V424 两栏: 分析产物(左) + 章节结构(右)。
+         原先概览卡与章节树一上一下满屏宽堆叠; 两者是「看框架」与「看章节」的关系,
+         并排看才完整。与信息录入页、合稿页同一套两栏语言。 -->
+    <div class="sec-cols">
+      <div class="sec-col-left">
     <section v-if="hasOverview" class="overview-card">
       <div class="ov-head">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9">
@@ -703,8 +708,8 @@ onUnmounted(() => {
         </div>
       </div>
     </section>
-
-    <!-- 章节树 -->
+      </div>
+      <div class="sec-col-right">
     <section class="tree-card">
       <h3 class="sec-title">章节结构</h3>
       <EmptyState
@@ -776,6 +781,8 @@ onUnmounted(() => {
     </section>
 
     <!-- 底部操作 -->
+      </div>
+    </div>
     <div class="wf-actions">
       <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/input')">返回修改</button>
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
@@ -903,6 +910,12 @@ onUnmounted(() => {
 .hypo-text { padding-top: 1px; }
 .logic-flow { margin: 0 0 10px; font-size: 12.5px; color: #8BA4F0; line-height: 1.65; overflow-wrap: break-word; }
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
+/* V424 两栏: 分析产物(左) + 章节结构(右)。章节结构需要更多横向空间(树 + 每章的写作指导),
+   所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
+.sec-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+.sec-col-left, .sec-col-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sec-cols .overview-card, .sec-cols .tree-card { margin-bottom: 0; }
+@media (max-width: 1180px) { .sec-cols { grid-template-columns: minmax(0, 1fr); } }
 .tree-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
   padding: 16px 18px; margin-bottom: 24px;   /* 闭源 mb-6 = 24px(原 14px) */

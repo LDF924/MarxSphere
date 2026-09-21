@@ -1042,6 +1042,11 @@ onMounted(async () => {
       2026-09-16 修: 我方原先只有一个光秃秃的「开始合并」, 模式和档位只在合稿**之后**的轮次卡里 ——
       用户第一次合稿时根本选不到模式, 只能先合并再点「重新合稿」去切。闭源是合稿前就同屏可选。
     -->
+    <!-- V424 两栏: 轮次流(左) 与 终稿内容(右)。
+         原先这两块**纵向堆叠**、各自满屏宽, 要滚动才能互相看到 ——
+         而它们的用途是同时看的(盯进度 + 改正文)。与信息录入页同一套两栏语言。 -->
+    <div class="fin-cols">
+      <div class="fin-col-flow">
     <div v-if="!store.mergeGenerated && !mergeRunning" class="finalize-empty">
       <div class="fe-icon">
         <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1272,8 +1277,8 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-
-    <!-- ═══ 终稿编辑(mergeGenerated) ═══ -->
+      </div>
+      <div class="fin-col-doc">
     <div v-if="store.mergeGenerated" class="finale-card">
       <div class="finale-head">
         <span class="done-badge">合并完成</span>
@@ -1300,6 +1305,8 @@ onMounted(async () => {
           <label>参考文献</label>
           <textarea v-model="store.mergedReferences" class="f-area refs" rows="8" placeholder="[1] 作者.标题[J].期刊,年份." @input="onMetaInput"></textarea>
         </div>
+      </div>
+    </div>
       </div>
     </div>
 
@@ -1397,6 +1404,14 @@ onMounted(async () => {
 .wf-head-center { margin-bottom: 16px; text-align: center; }
 .wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
+/* V424 两栏: 轮次流(左, 略宽) + 终稿内容(右)。
+   左栏是**操作区**(四张轮次卡 + 模式/档位/时间轴), 右栏是**产物区**(标题/摘要/关键词/正文/参考文献)。
+   原先纵向堆叠时, 想边看进度边改正文必须反复滚动。窄屏(<1180)塌回单列。 */
+.fin-cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.fin-col-flow, .fin-col-doc { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.fin-cols .rounds-card { margin-bottom: 0; }
+.fin-cols .finale-card { margin-bottom: 0; }
+@media (max-width: 1180px) { .fin-cols { grid-template-columns: minmax(0, 1fr); } }
 .rounds-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 /* 项目失效常驻横幅 */
 .gone-banner {
