@@ -221,8 +221,10 @@ async function newProject() {
    原先内层也套了 overflow-x 并钉死 min-width:860px, 窄屏会出现双滚动条且内条不动。 */
 /* 闭源 .phase-progress-bar{position:relative;width:100%;height:100%} —— 限宽交给 .ppb-inner(1200px) */
 .phase-progress-bar { position: relative; width: 100%; height: 100%; }
-/* 闭源 .ppb-inner{justify-content:center;padding:0 20px;max-width:1200px;margin:0 auto;height:100%} */
-.ppb-inner { display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 20px; max-width: 1200px; margin: 0 auto; height: 100%; }
+/* V420: 去掉 `max-width:1200px`。闭源那个限宽是为了让进度条在它的文档页里居中;
+   我方页面已改全宽, 留着就是**在 1440 视口上左右各空 120px**, 进度条看着像被框住。
+   改成吃满可用宽度, 内部元素本来就 justify-content:center, 视觉仍居中。 */
+.ppb-inner { display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 20px; margin: 0 auto; height: 100%; width: 100%; }
 .ppb-topic {
   /* 闭源: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
   width: 280px; flex-shrink: 0; margin: 0 24px 0 0; min-width: 0;

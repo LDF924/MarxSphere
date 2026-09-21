@@ -1332,7 +1332,7 @@ onMounted(async () => {
 
 <template>
   <div
-    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16 h-full overflow-y-auto"
+    class="workflow-page wf-page"
     :data-assistant-material-count="String(materials.length)"
     :data-assistant-async-busy="matAsyncBusy ? 'true' : 'false'"
     :data-assistant-async-reason="matAsyncReason"
@@ -2197,7 +2197,15 @@ onMounted(async () => {
   border-radius: 50%; animation: jspin 0.8s linear infinite;
 }
 @keyframes jspin { to { transform: rotate(360deg); } }
-.cat-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; } /* 卡间 space-y-2.5=10px; 页级 mb-8=32px */
+/* V420: 全宽页里分类卡堆成一列会变成一条条很宽的横条, 右半屏全是空的。
+   改成自适应网格: 宽屏 2 列, 窄屏自动塌回 1 列。align-items:start 让展开高度不同的卡
+   各自贴顶, 不被同一行里最高的那张拉长。 */
+.cat-list {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 10px; align-items: start; margin-bottom: 32px;
+}
+/* 1024 下两列各只剩 ~480px, 卡片里的行内按钮会挤到换行 —— 单列反而更好读 */
+@media (max-width: 1180px) { .cat-list { grid-template-columns: minmax(0, 1fr); } }
 .cat-card { background: #11192C; border: 1px solid #222F44; border-radius: 12px; overflow: hidden; }
 /* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(闭源如此) */
 .cat-head {

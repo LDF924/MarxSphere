@@ -1014,7 +1014,7 @@ onMounted(async () => {
 
 <template>
   <div
-    class="workflow-page max-w-5xl mx-auto px-6 py-8 pb-16 h-full overflow-y-auto"
+    class="workflow-page wf-page"
     :data-assistant-async-busy="(mergeRunning || reviewRunning || reviseRunning) ? 'true' : 'false'"
     :data-assistant-async-reason="mergeRunning ? '正在合并全文' : reviewRunning ? '正在全文审查' : reviseRunning ? '正在生成修订稿' : ''"
   >
@@ -1526,8 +1526,8 @@ onMounted(async () => {
 }
 .review-result-card { margin-top: 10px; border: 1px solid #2E5C46; border-radius: 10px; background: #14281F; padding: 13px 16px; }
 /* V419 质量四检: 四张卡两列(窄屏塌成一列), 有问题的卡描边转红——一眼看出该看哪张 */
-.q-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
-@media (max-width: 760px) { .q-grid { grid-template-columns: minmax(0, 1fr); } }
+/* V420: 固定 2 列 → 自适应。全宽页里 4 张检查卡铺成 4 列, 一屏看完; 窄屏自动塌回单列 */
+.q-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
 .q-card { border: 1px solid #222F44; border-radius: 10px; background: #11192C; padding: 11px 13px; }
 .q-card--bad { border-color: #7f1d1d; background: #1C1416; }
 .q-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -326,13 +326,11 @@ try {
     await openSoc(cdp, BASE, "/workflow/finalize", token, pid5);
     await spyInstall(cdp);
 
-    // 合稿态的数据源契约(实测确认, 不是猜):
-    //   `mergeGenerated` 由后端从 **research_projects.merge_generated 列**读出
-    //   (chapter-skill-service.getWorkbenchSnapshot), 快照里那个键会被忽略 ——
-    //   列是后端合稿任务写的权威值。merged_* 正文则是**节点优先、列兜底**。
-    //   所以播种要写节点 + 真实走一次 merge 才会置位; 这里直接调 UI 的「开始合并」
-    //   会让它真跑一次 LLM, 太重 —— 改由验证「节点里的 merged_* 能读回来」代替,
-    //   而 mergeGenerated 的置位由下面 doMerge 的实跑断言覆盖(--all 时)。
+    // 合稿态的数据源契约(2026-09-21 更新):
+    //   这段原写着「`mergeGenerated` 只由列决定, 快照里那个键会被忽略」—— **那已经不对了**。
+    //   当时是一条断链(前端置位不落库 + 读侧被列覆盖), 修好后快照/节点也能置位, 见
+    //   workbench-sync 的 `mergeGenerated→finalize` 映射。所以上面播种 mergeGenerated:true
+    //   现在**真的会生效**, 页面直接进合稿态 —— 这正是下面那条断言要跟着改的原因。
     const pid5b = pid5;
     /**
      * ⚠ 这条断言此前是**错的**, 2026-09-20 按闭源规格改对(不是放宽, 是反过来)。
@@ -346,17 +344,32 @@ try {
      *   ⇒ 真正该锁的是**反过来的那半边**: 合稿完成后**不能**再出现空态的那组模式 tab
      *     (那样界面会自相矛盾 —— 让人以为还没合稿)。
      */
-    const modes = await evalTop(cdp, `[...document.querySelectorAll('.mm-tab')].map(e => e.innerText.trim())`);
+    /**
+     * ⚠ 2026-09-21 再次修正 —— 上一版**仍然写错了**, 只是当时看不出来。
+     *
+     *   上一版断言「已合稿 → 模式 tab 应为空(modes.length === 0)」。它一直是绿的,
+     *   但那是**假绿**: 当时播种 mergeGenerated 被静默忽略(那条断链), 页面其实停在**空态**,
+     *   于是走了 else 分支(空态 → 模式 tab 就位), if 分支从来没被真正执行过。
+     *
+     *   断链修好后播种生效, 页面真的进合稿态, if 分支这才第一次跑起来 —— 立刻报 ERR。
+     *   而它是**错的**: `mm-tab` 这个类在文件里出现**两次** ——
+     *     · FinalizeView.vue:1055 空态容器的 `.merge-mode`(选模式才能点「开始合并」)
+     *     · FinalizeView.vue:1110 合稿态第①轮的 `.merge-mode`(重新合稿时换模式/档位)
+     *   合稿完成后第①轮**本来就在页面上**, 它的模式 tab 自然也在 —— 断言 `modes.length === 0`
+     *   等于要求"已合稿的页面上不能出现模式选择", 与实现和闭源都不符。
+     *   ⇒ 真正该锁的是**空态容器**本身出没出现, 不是全页 `.mm-tab` 的多少。
+     */
+    const emptyTabs = await evalTop(cdp, `[...document.querySelectorAll('.finalize-empty .mm-tab')].map(e => e.innerText.trim())`);
     const hasEmptyBox = await evalTop(cdp, `String(!!document.querySelector('.finalize-empty'))`);
     rec("finalize", hasEmptyBox === "false"
-      ? "已合稿 → 不出现空态模式 tab(闭源: 空态容器 !mergeGenerated && !mergeGenerating)"
-      : "空态 → 模式 tab 就位(直接合稿/降AIGC合稿), 用户先选模式才能合并",
+      ? "已合稿 → 空态容器与它的模式 tab 都不出现"
+      : "空态 → 空态容器里的模式 tab 就位(直接合稿/降AIGC合稿), 用户先选模式才能合并",
       hasEmptyBox === "false"
-        ? (modes.length === 0 ? "ok" : "err")
-        : (modes.includes("直接合稿") && modes.includes("降AIGC合稿") ? "ok" : "err"),
+        ? (emptyTabs.length === 0 ? "ok" : "err")
+        : (emptyTabs.includes("直接合稿") && emptyTabs.includes("降AIGC合稿") ? "ok" : "err"),
       hasEmptyBox === "false"
-        ? `空态容器不在; 模式 tab=${JSON.stringify(modes)}(已合稿应为空)`
-        : `空态容器在; 模式 tab=${JSON.stringify(modes)}`);
+        ? `空态容器不在; 空态内模式 tab=${JSON.stringify(emptyTabs)}(应为空)`
+        : `空态容器在; 模式 tab=${JSON.stringify(emptyTabs)}`);
 
     // ── 回归: 终稿手改必须**刷新后仍在**(2026-09-16 修的核心缺陷) ──
     //   缺陷形态: 快照写得进、节点写不进 → 回读时节点/列赢 → 刷新回退。

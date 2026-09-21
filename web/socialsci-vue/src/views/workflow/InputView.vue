@@ -462,7 +462,7 @@ onMounted(async () => {
 
 <template>
   <div
-    class="workflow-page max-w-4xl mx-auto px-6 py-8 pb-16 min-w-0 h-full overflow-y-auto"
+    class="workflow-page wf-page"
     :data-assistant-async-busy="asyncBusy ? 'true' : 'false'"
     :data-assistant-async-reason="asyncReason"
   >
@@ -747,7 +747,8 @@ onMounted(async () => {
 .topic-main { flex: 1; min-width: 0; }
 .topic-wc { width: 144px; flex-shrink: 0; }
 .wf-note { margin: 6px 0 0; font-size: 11.5px; color: #8B9BB1; line-height: 1.5; }
-.method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* V420: 固定 3 列 → 自适应(窄屏自动塌) */
+.method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .src-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .src-item {
   display: flex; align-items: center; gap: 8px; padding: 7px 10px;

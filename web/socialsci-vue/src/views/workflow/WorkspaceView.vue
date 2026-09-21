@@ -1413,9 +1413,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
    移动端地址栏收起时 100vh 大于可视高度, 底栏会被推出视口 */
 .ws-page-root { height: 100vh; height: 100dvh; width: 100%; max-width: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
 .wf-layout { display: flex; gap: 0; flex: 1; min-height: 0; }
-/* 闭源两栏都是 `w-72`(288px) —— 我方原左 260 / 右 240, 各窄 28/48px */
+/* V420: 两栏改成**弹性宽度**。闭源是写死 `w-72`(288px) —— 在 1024 的窄屏上两栏就吃掉 56%
+   的可视宽, 中栏只剩 448px; 而在 1920 的宽屏上它又不跟着长, 显得空。
+   现在: 基准 288px, 随视口缩放, 并夹在 [240, 360] 之间 —— 窄屏不被栏吃掉, 宽屏栏也跟着舒展。 */
 .left-rail {
-  width: 288px; flex-shrink: 0; border-right: 1px solid #222F44;
+  width: clamp(240px, 19vw, 360px); flex-shrink: 0; border-right: 1px solid #222F44;
   display: flex; flex-direction: column; background: #11192C; overflow-y: auto;
 }
 .rail-head { display: flex; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #212C45; }
@@ -1458,7 +1460,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
  *   中文长行极难读(闭源用 896px 上限 + 居中)。
  */
 .center-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #11192C; padding: 16px 24px; overflow-y: auto; }
-.center-main > * { width: 100%; max-width: 896px; margin-left: auto; margin-right: auto; }
+/* V420: 原先 `max-width: 896px`(= 闭源的 max-w-4xl)把中栏内容压成一条窄带 —— 在 1440 视口下
+   左 288 + 右 288 之后中栏还有 800+ 可用, 却只用到 896 中的一部分, 编辑区两侧大片空着。
+   中栏是**编辑工作区**(章节标题 + 正文编辑框 + 动作按钮), 不是给人读长文的版面, 应该吃满。
+   只有正文这一块需要可读行宽 —— 由 `.content-textarea` 自己的行高/字号控制, 见其定义。 */
+.center-main > * { width: 100%; margin-left: auto; margin-right: auto; }
 .sec-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .sec-num-big {
   width: 30px; height: 30px; border-radius: 7px; background: #dc2626; color: #F1F5F9;
@@ -1496,7 +1502,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
 .summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
 .right-rail {
-  width: 288px; flex-shrink: 0; border-left: 1px solid #222F44;
+  width: clamp(240px, 19vw, 360px); flex-shrink: 0; border-left: 1px solid #222F44;
   display: flex; flex-direction: column; background: #141E33;
 }
 .mat-filter { margin: 8px 10px; padding: 5px 8px; border: 1px solid #222F44; border-radius: 7px; font-size: 12px; background: #11192C; }
@@ -1757,5 +1763,23 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .sec-words {
   font-size: 11px; color: #5FD0B4; background: #14281F; border: 1px solid #2E5C46;
   padding: 4px 10px; border-radius: 8px; align-self: center;
+}
+
+/* V420 断点。原先**一条媒体查询都没有** —— 1440 和 1024 用同一套固定栏宽。
+   < 1180px: 两栏收窄(栏不抢内容)
+   < 900px : 右栏(素材)隐藏 —— 三栏在窄屏必然挤, 素材可在素材页看, 不占创作台
+   这样创作台在 1024 的笔记本上仍是"导航 + 编辑"两栏, 而不是三栏硬挤。 */
+@media (max-width: 1180px) {
+  .left-rail { width: 224px; }
+  .center-main { padding: 14px 18px; }
+}
+/* ⚠ 断点定在 1100 而不是 900: 实测 1024 视口下 左240+右240 把中栏压到 544px,
+   编辑区明显变窄 —— 而 1440 时三栏都很宽。三栏的临界点在 1100 附近。 */
+@media (max-width: 1100px) {
+  .right-rail { display: none; }
+}
+@media (max-width: 900px) {
+  .left-rail { width: 200px; }
+  .center-main { padding: 12px 14px; }
 }
 </style>
