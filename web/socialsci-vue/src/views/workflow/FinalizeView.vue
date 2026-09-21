@@ -1578,11 +1578,14 @@ onMounted(async () => {
 .finale-fields { display: flex; flex-direction: column; gap: 12px; }
 .f-row { display: flex; flex-direction: column; gap: 5px; }
 .f-row label { font-size: 12.5px; font-weight: 600; color: #DCE6F2; }
-.f-title { font-size: 17px; font-weight: 700; padding: 6px 10px; border: 0; border-bottom: 1px solid #222F44; }
-.f-input { padding: 7px 10px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; }
+/* V420b: 全宽页里这些控件被拉到 1470px(约 200+ 字符一行)。标题/关键词是单行 → 68ch;
+   正文与参考文献是连续文字 → 86ch。卡片本身仍全宽, 只是控件不再无限伸展。 */
+.f-title { font-size: 17px; font-weight: 700; padding: 6px 10px; border: 0; border-bottom: 1px solid #222F44; max-width: 68ch; }
+.f-input { padding: 7px 10px; border: 1px solid #222F44; border-radius: 8px; font-size: 13px; max-width: 68ch; }
 .f-area {
   padding: 10px 12px; border: 1px solid #222F44; border-radius: 8px;
   font-size: 13.5px; line-height: 1.8; font-family: inherit; resize: vertical;
+  max-width: 86ch;
 }
 .f-area.body { font-size: 14px; min-height: 300px; }
 .f-area.refs { font-size: 12px; }

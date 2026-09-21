@@ -1487,6 +1487,11 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   flex: 1; resize: none; border: 1px solid #222F44; border-radius: 10px; padding: 14px;
   font-size: 14px; line-height: 1.9; font-family: inherit;
 }
+/* V420b: 中栏改成吃满之后, 正文编辑区在宽屏上会到 944px(约 151 字符/行) —— 太长。
+   限到 86ch 并把编辑区整体居中, 两侧留白比"一行拖到屏幕边"好读。 */
+.center-main .content-textarea, .center-main .md-preview {
+  max-width: 86ch; margin-inline: auto; width: 100%;
+}
 .content-view { flex: 1; overflow-y: auto; }
 .content-empty { padding: 60px 20px; text-align: center; color: #7A8AA0; font-size: 13px; }
 /* 渲染后的正文: 版口与编辑态一致, 表格/引用等由全局 .markdown-body 接管 */
@@ -1552,6 +1557,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   width: 100%; box-sizing: border-box; padding: 9px 12px;
   border: 1px solid #222F44; border-radius: 9px; background: #0E1729;
   color: #DCE6F2; font-size: 12.5px; line-height: 1.65; font-family: inherit;
+  max-width: 76ch;
   outline: none; resize: none;
 }
 .think-input:focus { border-color: #4B5E8C; }

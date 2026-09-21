@@ -322,7 +322,12 @@ const counter = computed(() => {
   background: none;
   cursor: pointer;
 }
-.oe-level1 { border-bottom: 1px solid #1A2333; }
+/* V420b: 一级章节改成两列网格 —— 原先每行都是一条横贯整页的长条(输入框被拉到 1200px+),
+   而章节名通常很短, 右半行全是空的。两列后一屏能看到双倍章节, 也省纵向滚动。
+   `grid-auto-rows` 不设, 让各行按自身内容高度; 折叠/展开时只影响自己那一格。 */
+.oe-tree { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0 18px; align-items: start; }
+@media (max-width: 1380px) { .oe-tree { grid-template-columns: minmax(0, 1fr); } }
+.oe-level1 { border-bottom: 1px solid #1A2333; min-width: 0; }
 .oe-level1:last-child { border-bottom: 0; }
 .oe-row {
   display: flex;
@@ -405,6 +410,8 @@ const counter = computed(() => {
 .oe-title-input {
   flex: 1;
   min-width: 0;
+  /* V420b: 全宽页里标题输入会被拉到 1293px(约 207 字符) —— 单行标题不需要那么宽 */
+  max-width: 68ch;
   border: 0;
   padding: 5px 2px;
   font-size: 13px;

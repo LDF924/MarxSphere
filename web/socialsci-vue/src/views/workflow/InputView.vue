@@ -508,6 +508,14 @@ onMounted(async () => {
       <p class="wf-note">字数估算仅计算正文整体工作量(不含摘要、关键词、参考文献等内容),AI 智能体将按此字数进行科研分配。</p>
     </section>
 
+    <!-- V420b: 卡片分组。原先 7 张卡单列纵向堆叠 —— 全宽页里每张卡都是一个横贯屏幕的长条,
+         右半屏基本空着, 而页面又长得要滚很久。按**内容亲缘**分成两列:
+           左列 = 大纲(需要整幅宽度编辑) + 额外要求
+           右列 = 研究方法 / 检索数据源 / 参考文件 / agent 引导
+         左列用 1.55fr 更宽(大纲编辑器要横向空间放标题与行内按钮)。
+         ⚠ 用 <template> 包不产生额外 DOM(不像 <div> 会多一层), 现有的 `> *` 类选择器不受影响。 -->
+    <div class="iv-cols">
+    <div class="iv-col-main">
     <!-- 大纲(OutlineEditor) -->
     <section class="wf-card">
       <label class="wf-label">
@@ -553,6 +561,8 @@ onMounted(async () => {
       <p v-if="researchMethodAuto" class="auto-detect-note">📎 已根据标题和目录自动识别: {{ methodAutoLabel }}</p>
     </section>
 
+    </div>
+    <div class="iv-col-side">
     <!-- V417 检索数据源: 素材准备阶段的文献检索从这里选库 -->
     <section class="wf-card">
       <label class="wf-label">检索数据源</label>
@@ -678,6 +688,9 @@ onMounted(async () => {
       </div>
     </section>
 
+    </div>
+    </div>
+
     <!-- 底部操作(闭源: 主按钮在左 flex-1, 返回在右) -->
     <div class="wf-actions">
       <button
@@ -744,8 +757,13 @@ onMounted(async () => {
 .opt-tag { font-weight: 400; font-size: 12px; color: #7A8AA0; }
 /* 主题 + 字数同行(闭源: 主题 flex-1 自适应, 字数固定 144px) */
 .topic-row { display: flex; align-items: flex-start; gap: 12px; }
-.topic-main { flex: 1; min-width: 0; }
+/* V420b: 研究主题是**单行**标题 —— 全宽页里它被拉到 1160px(约 100 个汉字一行)。
+   标题不需要那么宽, 限到 72ch(比正文宽一档, 标题略长是常态)。字数框跟着往左收,
+   不再被甩到屏幕最右端。 */
+.topic-main { flex: 1; min-width: 0; max-width: 72ch; }
 .topic-wc { width: 144px; flex-shrink: 0; }
+/* 额外要求是**多行** textarea —— 用正文档 86ch */
+.wf-textarea { max-width: 86ch; }
 .wf-note { margin: 6px 0 0; font-size: 11.5px; color: #8B9BB1; line-height: 1.5; }
 /* V420: 固定 3 列 → 自适应(窄屏自动塌) */
 .method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
@@ -882,6 +900,16 @@ onMounted(async () => {
    我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比闭源矮 8px。行高写死 20px 才与闭源等高。 */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
+
+/* V420b 两列卡片网格。窄屏(<1180)塌回单列 —— 两列挤在一把 1024 的屏幕上, 每列只剩
+   不到 480px, 大纲编辑器的行内按钮会换行成一团。 */
+.iv-cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.iv-col-main, .iv-col-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+/* 两列时卡片之间的间距由列的 gap 给, 卡片自己不再留底边距(否则会叠加) */
+.iv-cols .wf-card { margin-bottom: 0; }
+@media (max-width: 1180px) {
+  .iv-cols { grid-template-columns: minmax(0, 1fr); }
+}
 /* V419b 删除项目: 与主操作行**分开**放在页面底部 —— 破坏性动作不该和"开始思考科研架构"挨着 */
 .proj-danger { display: flex; align-items: center; gap: 10px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #2A1C1C; }
 .btn-danger-ghost {
