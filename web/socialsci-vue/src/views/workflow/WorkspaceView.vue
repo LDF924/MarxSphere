@@ -1088,6 +1088,9 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             >
               <span class="nav-num2">{{ i + 1 }}.{{ childrenOf(s.id).indexOf(c) + 1 }}</span>
               <span class="nav-title">{{ c.title || "未命名子节" }}</span>
+              <!-- V423 卡片信息密度: 一级有字数、二级没有 —— 而子节同样会被生成正文,
+                   用户在一级行上看不到"子节写完没有"。补上与一级同一口径(>50 字才显示)。 -->
+              <span v-if="c.content && c.content.length > 50" class="nav-words2">{{ c.content.replace(/\s/g, "").length }} 字</span>
               <span class="nav-dot" :class="secStatusDot(c).cls"></span>
             </div>
           </div>
@@ -1465,6 +1468,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .nav-l2 { display: flex; align-items: center; gap: 5px; padding: 3px 5px; border-radius: 5px; cursor: pointer; font-size: 12px; }
 .nav-l2:hover { background: var(--wf-line-soft); }
 .nav-l2.active { background: #2A1C1C; }
+.nav-words2 { font-size: var(--wf-f-xs); color: var(--wf-faint); flex-shrink: 0; }
 .nav-num2 { color: var(--wf-muted); font-size: 10.5px; min-width: 28px; }
 .rail-footer { padding: 10px; border-top: 1px solid var(--wf-line-soft); display: flex; flex-direction: column; gap: 7px; }
 .btn-back-sm { border: 0; background: var(--wf-raised); color: var(--wf-muted); padding: 7px; border-radius: 7px; font-size: 12px; cursor: pointer; text-align: left; }

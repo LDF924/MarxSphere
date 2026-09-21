@@ -1680,6 +1680,20 @@ onMounted(async () => {
                     </div>
                   </div>
                 </div>
+                <!-- V423 卡片信息密度: 文献卡原先**只有参考文献元信息**(标题/作者/期刊/年份),
+                     完全没有正文摘要 —— 用户看不出这篇素材讲了什么, 必须点开编辑层才知道。
+                     后端 `contentMd` 里存的就是摘要/正文, 只是这个分支从没渲染它。
+                     与通用分支同一套"默认截断 + 展开全文"语义, 不另造交互。 -->
+                <div v-if="m.contentMd && String(m.contentMd).trim()" class="mat-abstract">
+                  <div class="mat-abstract-label">内容摘要</div>
+                  <div class="mat-content">{{ expandedIds.has(m.id) ? String(m.contentMd) : String(m.contentMd).slice(0, 400) }}</div>
+                  <button
+                    v-if="String(m.contentMd).length > 400"
+                    class="mat-expand"
+                    :data-control="`workflow:expand-material-${m.id}`"
+                    @click.stop="toggleExpand(m.id)"
+                  >{{ expandedIds.has(m.id) ? "收起" : `展开全文（共 ${String(m.contentMd).length} 字）` }}</button>
+                </div>
               </template>
               <!-- 通用分支(表格/理论/附件等非文献类)。
                    2026-09-16 修: 原先硬截断 120 字 —— AI 生成的表格素材(contentMd 是
@@ -2333,6 +2347,9 @@ onMounted(async () => {
 .mat-op:hover { color: var(--wf-text); }
 .mat-op.danger:hover { color: #4D84CB; }
 .mat-kind { font-size: 10px; color: #4D84CB; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
+/* V423 文献卡的正文摘要: 与上方参考文献列表用一条虚线分隔, 免得两者混成一片 */
+.mat-abstract { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--wf-line-soft); }
+.mat-abstract-label { font-size: var(--wf-f-xs); color: var(--wf-faint); margin-bottom: 4px; letter-spacing: .02em; }
 .mat-content { font-size: 12px; color: var(--wf-muted); line-height: 1.55; white-space: pre-wrap; }
 .mat-more {
   margin-top: 4px; border: 0; background: transparent; color: #6FA8F5;
