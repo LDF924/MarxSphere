@@ -13,10 +13,12 @@
 //
 // 用法: node scripts/probe-authed-image.mjs   (需 4173 已起)
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 import { openSoc } from "./lib/probe-actions.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.WEB || "http://127.0.0.1:4173";
 const rows = [];
 function rec(action, kind, detail) {
   rows.push({ action, kind, detail });
@@ -40,9 +42,26 @@ try {
   // ⚠ Windows 上 `execFileSync("npx.cmd", ...)` 会 EINVAL(不能直接 spawn .cmd, 除非开 shell)。
   //   改走 **node 本体 + tsx 的 cli.mjs** —— 不经 shell, 路径与参数都不必转义, 也避开了
   //   "npx 在 Windows 上要先解析一层"的不确定性。
+  //
+  // ⚠ 2026-09-21 补 `--env-file`: 播种脚本 import 应用的 env.ts, 而那里只 `dotenv/config`,
+  //   它从 **当前工作目录** 找 `.env`。在**主仓**跑时主仓有 `.env`(库在 5540)所以一直没暴露;
+  //   在 worktree 里跑(本仓约定: worktree 不放 .env)会静默回落到 env.ts 的默认值
+  //   `localhost:5432` —— 连接被拒, 整条套件以一段 pg-pool 堆栈收场, 看起来像"图片链路坏了"。
+  //   `--env-file` 找不到文件时 tsx 会直接退出(不是忽略), 所以先判存在; 都没有就不加这个参数,
+  //   退回主仓那套"cwd 能找到 .env"的行为, 不改变在别处跑的方式。
+  //
+  //   层级是**三级**不是两级: cwd=<repo>/.claude/worktrees/<name> → ../../.. 才是仓库根
+  //   (写成两级会指向 .claude/.env —— 那里不存在, 静默找不到, 又是同一类坑)。
+  const envCandidates = [
+    process.env.SAG_ENV_FILE,
+    path.join(process.cwd(), ".env"),
+    path.join(process.cwd(), "..", "..", "..", ".env"),
+  ].filter(Boolean);
+  const envFile = envCandidates.find((p) => existsSync(p));
+  const envArgs = envFile ? [`--env-file=${envFile}`] : [];
   const seededOut = execFileSync(
     process.execPath,
-    ["node_modules/tsx/dist/cli.mjs", "scripts/lib/seed-viz-file.ts", `probe-authed-${Date.now()}.png`, "audit"],
+    ["node_modules/tsx/dist/cli.mjs", ...envArgs, "scripts/lib/seed-viz-file.ts", `probe-authed-${Date.now()}.png`, "audit"],
     { encoding: "utf-8" }
   );
   // tsx/npm 会往 stdout 混警告 —— 挑出形如 /api/... 的那一行, 别假设"最后一行就是"

@@ -130,13 +130,29 @@ try {
   }
 
   // ── ①b 草稿的**恢复**路径(只写不读 = 白写) ──
-  //   本页的草稿只在「没有已存项目输入」时恢复(见 onMounted 的 hasSaved 判据) ——
-  //   有已存项目时服务端快照优先, 否则旧草稿会覆盖掉服务端内容。
-  //   所以这里把指针清掉再刷新, 走"新项目"那条路径。
+  //
+  // 判据是「`hasSaved` 为假才会走草稿」:
+  //   `const hasSaved = !!store.taskId && !!(store.input.title || store.input.outline); if (!hasSaved) loadDraft()`
+  // 而 `store.taskId` 由 `loadProject()` 决定, 它的顺序是:
+  //   ① 消费历史深链指针 → ② 读 `lastTask_workflow` → ③ **都没有就 list 出模块内任一进行中的任务并采纳**。
+  //
+  // ⚠ 2026-09-21 改: 原断言只 `removeItem('lastTask_workflow')` 就刷新, 以为会落到"无项目"——
+  //   实际第 ③ 步会把**上一个探针留下的进行中项目**捡回来, taskId 非空且它有 input,
+  //   hasSaved 为真 → 草稿按设计**不该**被加载。所以这条长期报 ERR, 而代码是对的。
+  //   要真正走到草稿那条路, 必须让第 ③ 步也拿不到可用项目:
+  //   指针指向一个**刚被删掉**的项目 —— loadProject 采纳它 → getWorkbench 拿不到 → 早返回,
+  //   但 taskId 已非空而输入仍是空的, hasSaved 恰好为假。这既是"新项目"的真实形态,
+  //   也顺带锁住了"指针指向已删项目时不能把界面卡死"。
   console.log("\n═══ ①b 草稿恢复 ═══");
   {
+    const gone = await api(token, "/research/projects", "POST", { title: `草稿恢复-已删-${Date.now()}` });
+    // `api()` 在非 2xx 时返回 `{__status}`(没有 id 字段), 所以两种形状都要接住 ——
+    //   只写 `gone.id` 会让失败路径上 gonePid 变成 undefined, 指针被写成空串,
+    //   于是又退回第 ③ 步(采纳别的进行中任务), 草稿照旧不恢复。
+    const gonePid = gone.id ?? gone.data?.id;
+    if (gonePid) await api(token, `/research/projects/${gonePid}`, "DELETE");
     await evalTop(cdp, `localStorage.setItem('skf_draft', JSON.stringify({ title: '草稿恢复验证', outline: '一、草稿大纲', requirements: '草稿要求', researchMethod: 'mixed', totalWordCount: 33000, clarifyAnswers: {} }))`);
-    await evalTop(cdp, `localStorage.removeItem('lastTask_workflow')`);
+    await evalTop(cdp, `localStorage.setItem('lastTask_workflow', ${JSON.stringify(gonePid ?? "")})`);
     await cdp("Page.reload");
     await sleep(9000);
     const shown = await evalTop(cdp, `(() => ({

@@ -10,9 +10,11 @@ import { useWorkflowStore } from "./stores/workflow";
 import { createTask, getTask, mergeNode } from "@/shared/tasks";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
 import { toast, confirmDialog } from "@/shared/ui";
-import { q } from "@/shared/api";
+import { q, authedBlob } from "@/shared/api";
 import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
+import VersionHistoryPanel from "./VersionHistoryPanel.vue";
+import DeepAnalysisPanel from "./DeepAnalysisPanel.vue";
 
 const router = useRouter();
 
@@ -69,6 +71,33 @@ const reviewReport = ref<Record<string, unknown> | null>(null);
 // 解析策略: 四个检查的返回**字段名各不相同**(inconsistencies/confusions · issues/mismatches ·
 //   contradictions/circular/weakPoints/jumps · overlapVerdict/risks/citationNeeded), 逐个映射成
 //   一串可读文本。**不编造条目**: 拿不到就显示"未发现问题", 而不是凑一句安慰话。
+// ── V425 A1: 版本历史抽屉 ──
+// 抽屉可回滚的节点**只列写作舱真的会写的三个**: 输入/素材由 store 写, 章节与合稿由本页写。
+//   不列 analysis/dag 等 —— 那些节点的写入方是主控 Agent 与编排引擎, 用户在合稿页把它回滚掉,
+//   下一步引擎再跑一次就覆盖了, 属于"看着能点、点了没用"的假能力。
+const VH_NODES = [
+  // 顺序 = 抽屉打开时的默认选中优先级: 前三个是天天在改的, 「研究信息」只在录入完成时写过一次
+  { key: "sections", label: "章节与正文" },
+  { key: "materials", label: "素材" },
+  { key: "finalize", label: "合稿" },
+  { key: "input", label: "研究信息" },
+];
+const vhOpen = ref(false);
+
+/**
+ * 回滚了自己正在看的那个节点之后, 必须把 store 重新拉一遍 ——
+ *   否则界面还停在回滚**之前**的内容上(后端已经变了), 用户会以为回滚没生效,
+ *   然后在旧内容上继续编辑 → saveProject 把旧内容又写回去, 回滚被静默抵消。
+ * 这是"读改写"三种失效里最隐蔽的一种, 前后端都看不出来。
+ */
+async function onNodeRolledBack(nodeKey: string) {
+  try {
+    await store.loadProject();
+    if (nodeKey === "finalize") await refreshMerged();
+    toast("已按回滚后的内容刷新页面", "success");
+  } catch { /* loadProject 自身吞错; 刷新失败不该再弹一次 */ }
+}
+
 const QUALITY_KINDS = [
   { key: "concept", label: "概念一致性", desc: "易混淆概念对照库 + LLM 判读" },
   { key: "citation", label: "引文准确性", desc: "引文标记与参考文献列表是否对得上" },
@@ -194,6 +223,7 @@ const exportStatus = ref<"idle" | "running" | "completed" | "failed">("idle");
 const exportFmt = ref("md");
 const docxBusy = ref(false);
 const pptxBusy = ref(false);
+const bundleBusy = ref(false);
 const chapterBusy = ref("");
 const componentBusy = ref("");
 
@@ -261,8 +291,38 @@ function downloadBase64(base64: string, fileName: string, mime: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** 导出 Word(.docx) — 后端 python-docx 生成, 带大纲层级与已生成正文 */
-async function exportDocx() {
+/**
+ * 整包导出(V425 A3) —— 后端打一个 zip: 论文/章节/素材清单/版本沿革/研究信息/Word。
+ *
+ * 为什么走 authedBlob 而不是 q(): 端点是 `application/zip` 的二进制流, q() 只解析 JSON
+ *   (非 JSON 体直接返回 null)。二进制必须单独取, 而且这个 GET 要带 Authorization ——
+ *   不能用 `window.open(url)`, 那样浏览器不会带上 Bearer 头(本仓外部验证那套就踩过)。
+ *
+ * 文件名以**后端 Content-Disposition 里给的**为准(fallback 用本地标题):
+ *   后端做过非法字符清洗与长度截断, 前端再算一遍必然两套规则。
+ */
+async function exportBundle() {
+  if (!store.taskId) { toast("没有可导出的项目", "warning"); return; }
+  bundleBusy.value = true;
+  try {
+    const blob = await authedBlob(`/research/projects/${store.taskId}/export-bundle`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safeFileName(store.mergedTitle || store.title || store.input.title, "zip").replace(/\.zip$/, "") + "-整包.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("整包已导出(含论文/章节/素材清单/版本沿革)", "success");
+  } catch (e) {
+    toast(`整包导出失败: ${(e as Error).message}`, "error");
+  } finally {
+    bundleBusy.value = false;
+  }
+}
+
+/** 导出 Word(.docx) — 后端 python-docx 生成, 带大纲层级与已生成正文 */async function exportDocx() {
   const nodes = buildOutlineTree();
   if (!nodes.length) { toast("大纲为空, 无法导出", "error"); return; }
   docxBusy.value = true;
@@ -1020,6 +1080,18 @@ onMounted(async () => {
   >
     <PhaseProgressBar />
     <div class="wf-body">
+    <!-- 版本次级入口放在页头 —— 而不是塞进下面的导出卡。
+         导出卡整块带 `v-if="store.mergedFullText"`(没合稿时不渲染), 而"我上次合的那版哪去了"
+         恰恰最常发生在**合稿之前**; 而且只读节点历史(章节/素材的每次改动)与合稿无关。 -->
+    <div class="vh-entry">
+      <button class="vh-entry-btn" data-control="workflow:version-history" @click="vhOpen = true">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        版本历史
+      </button>
+    </div>
     <!-- 页头。闭源是**居中**的: `mb-4 flex items-center justify-center text-center`
          (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与闭源不是同一版式。
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
@@ -1252,6 +1324,16 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 深度分析七项(V425 A2) —— 与上面四检**互补**, 放在四检之后:
+           四检是"确定性角度逐项查"(概念/引文/逻辑/不端), 这里是"把成稿当研究对象再想一遍"
+           (前提/创新/跨学科/体系/联结/格式/溯源)。后者的结论不是"哪里错了", 而是"还能怎么写"。 -->
+      <DeepAnalysisPanel
+        :text="store.mergedFullText ?? ''"
+        :topic="store.mergedTitle || store.title || store.input.title"
+        :claim="store.project?.logicFlow || store.mergedAbstract || ''"
+        :section-titles="(store.sections ?? []).map((s) => s.title).filter(Boolean)"
+      />
+
       <!-- 修订轮 -->
       <div class="round-row">
         <div class="round-head">
@@ -1337,6 +1419,15 @@ onMounted(async () => {
           {{ pptxBusy ? "生成中…" : "PPT 汇报稿" }}
         </button>
       </div>
+      <!-- 整包导出(V425 A3): 单件导出给的是"成果", 整包给的是"当时做了什么" ——
+           章节、素材、版本沿革、研究信息全在里面。归档/交接/答辩留底用的是这一份。 -->
+      <div class="export-row">
+        <span>项目归档</span>
+        <button class="btn-preview" :disabled="bundleBusy" @click="exportBundle" data-control="workflow:export-bundle">
+          {{ bundleBusy ? "打包中…" : "导出整包(ZIP)" }}
+        </button>
+        <span class="export-note">含论文、各章、素材清单、版本沿革与研究信息</span>
+      </div>
       <!-- V417 出站: 终稿送学术文本工作台继续精修(写作舱↔编辑器的连接) -->
       <div class="export-row">
         <span>继续加工</span>
@@ -1394,6 +1485,16 @@ onMounted(async () => {
       </div>
     </div>
     </div>
+
+    <!-- 版本历史抽屉(V425 A1) —— 挂在页面根上, 与导出卡是否渲染无关:
+         合稿之前的版本也值得看(最常见的问题是"我上一版合稿哪去了")。 -->
+    <VersionHistoryPanel
+      :open="vhOpen"
+      :project-id="store.taskId"
+      :node-keys="VH_NODES"
+      @close="vhOpen = false"
+      @changed="onNodeRolledBack"
+    />
   </div>
 </template>
 
@@ -1402,6 +1503,16 @@ onMounted(async () => {
 .workflow-page { width: 100%; box-sizing: border-box; }
 /* 页头(居中版式, 闭源 `mb-4 flex items-center justify-center text-center` + `text-sm mt-1`) */
 .wf-head-center { margin-bottom: 16px; text-align: center; }
+/* 版本次级入口(V425 A1): 右对齐的轻量按钮, 压在页头上方 —— 它是"查看"不是"主流程",
+   所以不做成主按钮, 也不占用轮次行的位置。 */
+.vh-entry { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+.vh-entry-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 13px; border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
+  background: var(--wf-raised); color: var(--wf-muted); font-size: var(--wf-f-sm); cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.vh-entry-btn:hover { color: var(--wf-text); border-color: var(--wf-line-strong); background: var(--wf-surface); }
 .wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
 /* V424 两栏: 轮次流(左, 略宽) + 终稿内容(右)。
@@ -1622,6 +1733,8 @@ onMounted(async () => {
 .export-card > * + * { margin-top: 10px; }
 .export-row { display: flex; align-items: center; gap: 10px; width: 100%; flex-wrap: wrap; }
 .export-row > span { font-size: 13px; color: #DCE6F2; font-weight: 600; }
+/* 说明文字用次要层级 —— 它跟在按钮后面, 与行首的标签同字号同粗细会把"标签"和"注解"混成一体 */
+.export-note { font-size: var(--wf-f-sm) !important; color: var(--wf-faint) !important; font-weight: 400 !important; }
 .fmt-select { padding: 7px 10px; border: 1px solid var(--wf-line); border-radius: 8px; font-size: 13px; background: var(--wf-surface); }
 .btn-export { padding: 8px 22px; background: #5FD0B4; color: #F1F5F9; border: 0; border-radius: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .btn-export:disabled { opacity: 0.55; cursor: not-allowed; }

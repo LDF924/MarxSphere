@@ -217,6 +217,69 @@ export async function listNodes(projectId: string): Promise<Array<{ node_key: st
   return r.nodes ?? [];
 }
 
+// ═══ V425 A1: 版本历史域 ═══
+//
+// 由来: 写作舱**有发布动作却没有历史 UI** —— 素材页「确认并进入创作」、架构页「确认章节」、
+//   创作台「进入合稿」各发一次版(phase3_materials / phase2_architecture / phase4_text),
+//   后端 `research_versions` 一路记着, 页面却一处都读不到、也退不回去。四条路由
+//   (versions / nodes/:key/history / nodes/:key/rollback / versions/:ver/activate)全在后端躺着,
+//   前端引用数为 0。
+//
+// 契约形状(读后端 handler 逐个确认, 不照抄闭源):
+//   GET  versions                  → { versions: [{id, version, label, status, created_at}] }   (version desc)
+//   GET  nodes/:key/history        → { history: [{id, version, by_role, note, created_at}] }    (version desc)
+//   POST nodes/:key/rollback       → { ok, version }   body { historyId }       404 = 历史不存在
+//   POST versions/:ver/activate    → { ok, version }   404 = 版本不存在
+//   发布(已有调用点)                → POST publish { label }
+//
+// ⚠ 这里的 GET 都需要登录态: 后端在没读到 Authorization 时直接把整条路由重定向到 web 登录页
+//   (实测 listSources 就这么干过), q() 会拿到非 JSON 体。所以消费者必须能容忍空数组。
+
+/** 阶段版本列表(新 → 旧) */
+export async function listVersions(projectId: string): Promise<Array<{ id: string; version: number; label: string; status: string; createdAt: string }>> {
+  const r = await q<{ versions?: Array<Record<string, unknown>> }>(`/research/projects/${projectId}/versions`);
+  return (r.versions ?? []).map((v) => ({
+    id: String(v.id ?? ""),
+    version: Number(v.version ?? 0),
+    label: String(v.label ?? ""),
+    status: String(v.status ?? ""),
+    createdAt: String(v.created_at ?? ""),
+  }));
+}
+
+/** 某节点的历史记录(新 → 旧) */
+export interface NodeHistoryItem { id: string; version: number; byRole: string; note: string; createdAt: string }
+export async function listNodeHistory(projectId: string, nodeKey: string): Promise<NodeHistoryItem[]> {
+  const r = await q<{ history?: Array<Record<string, unknown>> }>(`/research/projects/${projectId}/nodes/${nodeKey}/history`);
+  return (r.history ?? []).map((h) => ({
+    id: String(h.id ?? ""),
+    version: Number(h.version ?? 0),
+    byRole: String(h.by_role ?? ""),
+    note: String(h.note ?? ""),
+    createdAt: String(h.created_at ?? ""),
+  }));
+}
+
+/** 回滚节点到某条历史 —— 会写一条新历史(回滚动作本身留痕), 不删任何东西 */
+export async function rollbackNode(projectId: string, nodeKey: string, historyId: string): Promise<void> {
+  await q(`/research/projects/${projectId}/nodes/${nodeKey}/rollback`, { method: "POST", body: { historyId } });
+}
+
+/** 激活阶段版本(置 published / 其余 superseded / 记 revision_of_version) */
+export async function activateVersion(projectId: string, version: number): Promise<void> {
+  await q(`/research/projects/${projectId}/versions/${version}/activate`, { method: "POST" });
+}
+
+/** 发布一个阶段版本, 返回新版本号(拿不到版本号时返回 null —— 调用方不该据此判成败) */
+export async function publishVersion(projectId: string, label: string): Promise<number | null> {
+  try {
+    const r = await q<{ version?: number }>(`/research/projects/${projectId}/publish`, { method: "POST", body: { label } });
+    return typeof r.version === "number" ? r.version : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── lastTask_workflow 持久化(闭源共享层语义) ──
 export function persistLastWorkflowTask(taskId: string): void {
   localStorage.setItem(K.lastTaskWorkflow, taskId);

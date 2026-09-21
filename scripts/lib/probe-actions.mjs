@@ -44,9 +44,11 @@ const INSTALL_SPY = `(() => {
  * @param {string} route 形如 /workflow/materials
  * @param {string} token Bearer token
  * @param {string} [pid] 写入 lastTask_workflow 的项目 id
+ * @param {string} [suffix] 入口路径后缀, 默认 "/soc/index.html"(4173 的静态产物);
+ *   开发期传 "/"(soc 子工程的 vite dev, 自带热更新)即可免去每改一行都重新 build。
  */
-export async function openSoc(cdp, base, route, token, pid, wait = 7000) {
-  await cdp("Page.navigate", { url: `${base}/soc/index.html#${route}` });
+export async function openSoc(cdp, base, route, token, pid, wait = 7000, suffix = "/soc/index.html") {
+  await cdp("Page.navigate", { url: `${base}${suffix}#${route}` });
   await sleep(wait);
   // token/pid 必须在 reload **之前**写好 —— reload 后才是我们要测的那次加载。
   //   顺序反了会让应用带着旧 localStorage 启动, 再用注入的值跑, 但已经发出的首屏请求是错的。

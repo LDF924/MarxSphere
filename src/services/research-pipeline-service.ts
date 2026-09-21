@@ -421,11 +421,21 @@ export async function rollbackNode(userId: string, projectId: string, nodeKey: s
     );
     if (!cur.rows.length) { await client.query("rollback"); return { ok: false as const, code: "NODE_NOT_FOUND" }; }
     const node = cur.rows[0];
-    // 当前进历史(回滚动作本身留痕)
+    /**
+     * 当前进历史(回滚动作本身留痕)。
+     *
+     * ⚠ 2026-09-21 修: 这条 INSERT 列了 5 个列却只绑了 4 个参数 —— `$1..$4` 之后直接跟
+     *   字面量 `'system'`, 第 5 个占位符 `$5` 没有任何值。PG 直接报
+     *   `bind message supplies 4 parameters, but prepared statement requires 5`,
+     *   **回滚从头到尾没成功过一次**。之所以一直没被发现: 这个端点此前零调用方
+     *   (前端没有回滚入口), 而 `by_role` 有默认值 `'user'`, 列数/值数不匹配在**静态**层面
+     *   也看不出来。接版本历史面板时由动作探针第一次真点出来。
+     *   修法: 字面量 'system' 挪进值列表, 占位符序号顺延。
+     */
     await client.query(
       `insert into research_node_history (node_id, version, payload, parent_version, by_role, note)
        values ($1,$2,$3,$4,'system','rollback to v'||$5)`,
-      [node.id, node.version, node.payload, hist.rows[0].from_version]
+      [node.id, node.version, node.payload, hist.rows[0].from_version, hist.rows[0].from_version]
     );
     await client.query(
       `update research_nodes set payload=$1, version=version+1, updated_at=now() where id=$2`,

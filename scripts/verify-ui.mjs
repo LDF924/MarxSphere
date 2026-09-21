@@ -16,7 +16,13 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const BASE = "http://127.0.0.1:4173";
+/**
+ * 门禁默认打 4173(生产产物)。要验**本 worktree** 的后端/前端时给 env:
+ *   API_BASE=http://127.0.0.1:4373 WEB=http://127.0.0.1:4373 node scripts/verify-ui.mjs
+ * 子进程**继承 process.env**(spawn 不传 env 时即为继承), 所以只有认这两个变量的套件会改向,
+ * 其余套件照旧打 4173 —— 于是"老套件回归 + 新套件打新代码"可以在同一次跑里完成。
+ */
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 
 /**
  * 每个条目单独一个子进程 —— 它们各自 spawn 浏览器 / 连 CDP / 清临时目录,
@@ -84,6 +90,17 @@ const SUITES = [
   //   这套每条都验到副作用: 四检验 4 个请求全 200 且四张卡真渲染; 语料验真打端点;
   //   筛选验列表真被筛短; 批量验选中态真变化。
   { key: "writing-cabin-v419", file: "probe-writing-cabin-v419.mjs", desc: "写作舱加法: 质量四检/语料召回/素材筛选与批量" },
+  // V425 第二批加法(A1/A2/A3)同样**零覆盖**:
+  //   A1 版本历史抽屉 —— 抽屉里的表格布局量不到, 只能真渲染; 且两条写动作(设为终稿/回滚)
+  //      必须验到**库里的状态变化**, 而不是"请求发出去了"(回滚那条就是这么查出后端
+  //      INSERT 少绑一个参数的 —— 端点存在但**从来没成功过一次**)。
+  { key: "version-history", file: "verify-version-history.mjs", desc: "版本历史: 抽屉/三页签/设为终稿真落库/回滚真落库+二次确认" },
+  // A2 深度分析七项 —— 真调 LLM 的断言会随模型波动且一分钟起步, 那是评测的事;
+  //   这条门禁固化的是**接线**: 七个 chip 的参数表随动+预填、请求打到对的端点、字段名对得上。
+  { key: "deep-analysis", file: "probe-deep-analysis.mjs", desc: "深度分析七项: 面板/chip 切换/参数预填/真打端点且字段名正确(拦请求不烧模型)" },
+  // A3 整包导出 —— 产出是**一个文件**, 所以让 Chromium 真下载再打开那个 zip 校验结构;
+  //   只看"请求 200"会漏掉 Content-Disposition 写错 / blob 没落盘 / 包里少章节。
+  { key: "project-bundle", file: "probe-project-bundle.mjs", desc: "整包导出: 真下载 zip + 解开校验条目/章节数/中文文件名" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },
   { key: "empirical-switch", file: "verify-empirical-project-switch.mjs", desc: "实证台课题切换与空态" },

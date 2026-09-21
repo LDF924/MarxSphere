@@ -10231,6 +10231,30 @@ except Exception as e:
     return { versions: await researchPipeline.listVersions(user.id, projectId) };
   });
 
+  /**
+   * 项目整包导出(V425 A3) —— ZIP, 内容: 论文/章节/素材清单/版本沿革/研究信息/Word。
+   *
+   * GET + 二进制流(而不是像 /paper-outline/export 那样返回 base64 JSON):
+   *   整包是**多文件**, 体积随素材量线性涨, base64 还要再多三分之一, 而前端拿到 base64 后
+   *   仍要再转一次 Blob。直接给 application/zip 让浏览器原生下载, 也省掉一次内存里的
+   *   双份拷贝(实测一个带 5 条素材的项目约几十 KB, 但素材多的项目会到 MB 级)。
+   *   文件名走 RFC 5987 的 filename* —— 中文名用普通 filename 会乱码(本仓导出链踩过)。
+   */
+  app.get("/api/research/projects/:projectId/export-bundle", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const { exportProjectBundle } = await import("../services/project-export-service.js");
+    const r = await exportProjectBundle(user.id, projectId);
+    if (!r.ok || !r.buffer) {
+      return reply.code(r.error === "PROJECT_NOT_FOUND" ? 404 : 500)
+        .send({ error: { code: r.error ?? "EXPORT_FAILED", message: r.error === "PROJECT_NOT_FOUND" ? "项目不存在" : "导出失败" } });
+    }
+    reply.header("Content-Type", "application/zip");
+    reply.header("Content-Disposition",
+      `attachment; filename="project-export.zip"; filename*=UTF-8''${encodeURIComponent(r.fileName ?? "project-export.zip")}`);
+    return reply.send(r.buffer);
+  });
+
   // P-A 终稿激活(闭源 phase5/version/:ver/activate 语义: 版本置 published + project.revision_of_version)
   app.post("/api/research/projects/:projectId/versions/:version/activate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
