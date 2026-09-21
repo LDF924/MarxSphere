@@ -467,6 +467,7 @@ onMounted(async () => {
     :data-assistant-async-reason="asyncReason"
   >
     <PhaseProgressBar />
+    <div class="wf-body">
     <!-- 闭源页头: `mb-8`(32px) 包住 h1.text-2xl(24px) + p.text-sm + `mt-1`(4px)。
          2026-09-16 修: 我方原先 h1 22px / 副文案 13px / 下间距 18px —— 整条阶梯都塌了一档。 -->
     <div class="wf-head">
@@ -717,6 +718,7 @@ onMounted(async () => {
         @click="deleteCurrentProject"
       >{{ deleting ? "删除中…" : "删除当前项目" }}</button>
       <span class="pd-hint">从项目列表移除(不删数据; 历史与版本仍可按 id 直查)</span>
+    </div>
     </div>
   </div>
 </template>

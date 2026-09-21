@@ -148,6 +148,41 @@ try {
   eq("动作行有分隔线", R.actBorder, "1px");
   eq("动作行按钮间距 gap-3", R.actGap, 12);
   eq("按钮高 px-6py-3+20px行高", R.btnH, 46);
+
+  // ── 吸顶进度条: 滚动时必须贴顶通栏(2026-09-21 修的那个"悬空架着") ──
+  // 踩过的坑: 顶部进度条是 position:sticky, 而 sticky 的约束矩形是**滚动容器的内容盒** ——
+  //   容器带 padding 时它就只能停在 padding 之内: 实测页面 padding-top 31px 时,
+  //   滚动 400 之后进度条 top 恒为 31、左右各露 34/49px, 内容从两侧穿过去。
+  //   修法是把内边距从滚动容器移到内层 .wf-body。这条断言锁住"它真的贴顶了"。
+  console.log("\n── 吸顶进度条 ──");
+  for (const [name, route] of [["materials", "/workflow/materials"], ["sections", "/workflow/sections"]]) {
+    await openSoc(cdp, BASE, route, tk, pid, 7000);
+    await dismissOverlays(cdp);
+    await sleep(800);
+    const before = await evalTop(cdp, `(() => {
+      const w = document.querySelector('.phase-progress-wrapper');
+      const p = document.querySelector('.wf-page');
+      if (!w || !p) return null;
+      return { pt: getComputedStyle(p).paddingTop, scrollable: p.scrollHeight > p.clientHeight + 8 };
+    })()`);
+    if (!before) { rec(`${name}@吸顶`, "进度条与滚动容器都在", false, "缺元素"); continue; }
+    rec(`${name}@吸顶`, "滚动容器自身无内边距", parseFloat(before.pt) === 0, `paddingTop=${before.pt}`);
+    // 滚到底(内容可能不够长, 滚不动就只验静态位置)
+    const after = await evalTop(cdp, `(() => {
+      const p = document.querySelector('.wf-page');
+      p.scrollTop = 400;
+      const w = document.querySelector('.phase-progress-wrapper');
+      const pw = p.getBoundingClientRect(), ww = w.getBoundingClientRect();
+      return { st: Math.round(p.scrollTop), top: Math.round(ww.top),
+               左露: Math.round(ww.left - pw.left), 右露: Math.round(pw.right - ww.right) };
+    })()`);
+    rec(`${name}@吸顶`, "滚动后仍然贴顶(无悬空)", after.top === 0,
+      `scrollTop=${after.st} 进度条top=${after.top}${after.top !== 0 ? "(悬空!)" : ""}`);
+    // 右露恒为 ~15px —— 那是**滚动条**占的宽(滚动容器自己滚动时内容宽度不含滚动条),
+    //   不是"露底"。所以容差放到 20px, 只拦真正的"两侧都露一大截"。
+    rec(`${name}@吸顶`, "通栏(只可能差一条滚动条宽)", after.左露 <= 1 && after.右露 <= 20,
+      `左露=${after.左露}px 右露=${after.右露}px(滚动条约 15px)`);
+  }
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {

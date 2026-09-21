@@ -1338,6 +1338,7 @@ onMounted(async () => {
     :data-assistant-async-reason="matAsyncReason"
   >
     <PhaseProgressBar />
+    <div class="wf-body">
     <!-- 页头整体: 闭源是 `<div class="mb-8">` 把标题+副标题+统计行包成一块(下方 32px)。
          我方原先是 h1 mb-4 / 统计 mt-10 mb-18 散着摆, 净距与闭源对不上。 -->
     <div class="wf-head">
@@ -2081,6 +2082,7 @@ onMounted(async () => {
         </div>
       </div>
     </Teleport>
+    </div>
   </div>
 </template>
 

@@ -1019,6 +1019,7 @@ onMounted(async () => {
     :data-assistant-async-reason="mergeRunning ? '正在合并全文' : reviewRunning ? '正在全文审查' : reviseRunning ? '正在生成修订稿' : ''"
   >
     <PhaseProgressBar />
+    <div class="wf-body">
     <!-- 页头。闭源是**居中**的: `mb-4 flex items-center justify-center text-center`
          (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与闭源不是同一版式。
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
@@ -1384,6 +1385,7 @@ onMounted(async () => {
           <pre>{{ store.mergedReferences }}</pre>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </template>

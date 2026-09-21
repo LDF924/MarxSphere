@@ -537,6 +537,7 @@ onUnmounted(() => {
     :data-assistant-async-reason="analyzeMsg || (guidesBusy ? '正在生成写作指导' : '')"
   >
     <PhaseProgressBar />
+    <div class="wf-body">
     <div class="wf-head">
       <h1 class="wf-h1">科研架构</h1>
       <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
@@ -766,6 +767,7 @@ onUnmounted(() => {
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
         确认科研架构, 进入素材准备
       </button>
+    </div>
     </div>
   </div>
 </template>

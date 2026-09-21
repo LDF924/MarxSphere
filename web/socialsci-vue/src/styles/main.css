@@ -212,20 +212,26 @@ select:disabled {
        (合稿正文、论文预览), 因为一行超长确实难读。默认 72ch 约等于 12~14 个汉字
        的舒适行宽; 用 ch 而不是 px, 缩放/换字号时跟着变。
    ══════════════════════════════════════════════════════════════════════════ */
+/* ⚠ V420c: 滚动容器**不能带内边距** —— 顶部进度条是 `position: sticky`, 而 sticky 的约束
+   矩形是容器的**内容盒**: 容器有 padding 时它就只能停在 padding 之内, 够不到顶也够不到边
+   (实测: 页面 padding-top 31px → 滚动时进度条恒停在 top=31, 左右各露 34/49px, 内容从两侧穿过
+    去 —— 就是"悬空架着"。见 .wf-body 注释)。
+   所以: 内边距移到内层的 .wf-body, .wf-page 只负责滚动。 */
 .wf-page {
   width: 100%;
   max-width: none;
   margin: 0;
   box-sizing: border-box;
-  /* 大屏给足呼吸, 小屏收敛 —— 用 clamp 而不是固定值, 免得宽屏上内容贴着屏幕边 */
-  padding: clamp(20px, 2.2vw, 40px) clamp(20px, 2.4vw, 48px) 64px;
   min-width: 0;
   height: 100%;
   overflow-y: auto;
 }
-/* 页头: 全宽页里标题与统计行不再挤在中缝 */
-.wf-page > .wf-head,
-.wf-page > .wf-head-center { width: 100%; }
+/* 内容层: 呼吸内边距在这一层。大屏给足, 小屏收敛 —— 用 clamp 而不是固定值 */
+.wf-body {
+  width: 100%;
+  box-sizing: border-box;
+  padding: clamp(20px, 2.2vw, 40px) clamp(20px, 2.4vw, 48px) 64px;
+}
 /* 长文列(仅用于连续正文)。默认 72ch, 用变量可覆盖 */
 .wf-doc-col {
   max-width: var(--wf-doc-col, 72ch);
