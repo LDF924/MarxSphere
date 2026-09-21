@@ -272,20 +272,20 @@ select:disabled {
 :root {
   /* ── 表面: 4 级(原先"背景色"有 #0a1120/#0E1729/#11192C/#141E33/#1A2333/#212C45 …) ── */
   --wf-bg:        #0B1322;   /* 页面底 */
-  --wf-surface:   #111A2C;   /* 卡片 */
-  --wf-surface-2: #16203348; /* 卡内分区(半透, 叠在卡片上仍是同一族) */
+  --wf-surface:   #11192C;   /* 卡片(与既有主流字面量一致, 替换才是视觉中性的) */
+  --wf-surface-2: #0E1729;   /* 卡内分区/输入框底 */
   --wf-raised:    #1A2333;   /* 抬起层: 弹层/头行/悬停 */
 
   /* ── 描边: 3 级(原先 6 种近色) ── */
-  --wf-line:        #1F2A40;  /* 常规分隔 */
+  --wf-line:        #222F44;  /* 常规描边(最常用, 86 处) */
   --wf-line-strong: #2A3A55;  /* 需要看清的框 */
-  --wf-line-soft:   #18223366;
+  --wf-line-soft:   #212C45;  /* 更弱一档的分隔 */
 
   /* ── 文字: 4 级(原先 5 个近色混用) ── */
-  --wf-text:   #E9EFF8;   /* 标题/正文主色 */
-  --wf-text-2: #B4C2D4;   /* 次要正文 */
-  --wf-muted:  #8494AA;   /* 说明/标签 */
-  --wf-faint:  #61708A;   /* 占位/禁用 */
+  --wf-text:   #E8EEF7;   /* 标题/正文主色 —— 收编 #F1F5F9/#DCE6F2 */
+  --wf-text-2: #A9BBD0;   /* 次要正文 —— 收编 #A3B3C8 */
+  --wf-muted:  #8B9BB1;   /* 说明/标签(85 处) */
+  --wf-faint:  #7A8AA0;   /* 占位/禁用(70 处) */
 
   /* ── 语义色: 主色用蓝(红色留给"危险/删除"), 每个配一个 12% 的底 ── */
   --wf-accent:      #4D84CB;
@@ -332,4 +332,43 @@ select:disabled {
   --wf-role-med: #D9A441;   /* 中介   —— 金 */
   --wf-role-mod: #9B7BE0;   /* 调节   —— 紫 */
   --wf-role-ctl: #8494AA;   /* 控制   —— 灰 */
+}
+
+/* ── V422 动效令牌 + 可复用的过渡类 ────────────────────────────────────────────
+   重构前全舱**零个 `<Transition>`**(唯一的动效是 8 处 `transition: all`),
+   于是所有开合/增删都是硬切 —— 面板"啪"地出现、列表项"啪"地多出来, 没有任何
+   空间关系的暗示。这不是"少点花哨", 而是**状态变化没有被表达出来**。
+
+   时长定得偏保守(120~220ms): 工具型界面里动效的作用是"说明发生了什么",
+   不是"表演"。超过 250ms 会开始显得迟钝。
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --wf-dur-fast: 120ms;   /* 悬停/按下 */
+  --wf-dur:      180ms;   /* 展开/收起/淡入 */
+  --wf-dur-slow: 240ms;   /* 面板/弹层 */
+  --wf-ease: cubic-bezier(.4, 0, .2, 1);        /* 标准 */
+  --wf-ease-out: cubic-bezier(0, 0, .2, 1);     /* 进场(快起慢停) */
+}
+/* 元素进出(列表增删 / 空态切换): 位移很小, 避免"飞进来"打断阅读 */
+.wf-fade-enter-active, .wf-fade-leave-active { transition: opacity var(--wf-dur) var(--wf-ease-out), transform var(--wf-dur) var(--wf-ease-out); }
+.wf-fade-enter-from { opacity: 0; transform: translateY(-4px); }
+.wf-fade-leave-to { opacity: 0; transform: translateY(-2px); }
+/* 展开/收起: 高度 + 透明度。
+   ⚠ 用 **v-if** 而不是 v-show —— 我一开始写了 v-show 并注释说"v-if 没有中间态", 那是错的:
+   Vue 的 <Transition> 对 v-if 原生就做离场动画(动画期间元素仍在 DOM, 结束后移除)。
+   而 v-show 会把**折叠的分类体也留在 DOM 里**, 于是 `querySelectorAll` 计数把隐藏元素
+   也算进去 —— 依赖"存在性"的门禁全部失真(实测把一条 skip 变成了 DEAD)。 */
+.wf-collapse-enter-active, .wf-collapse-leave-active { transition: opacity var(--wf-dur) var(--wf-ease-out), max-height var(--wf-dur) var(--wf-ease-out); overflow: hidden; }
+.wf-collapse-enter-from, .wf-collapse-leave-to { opacity: 0; max-height: 0; }
+.wf-collapse-enter-to, .wf-collapse-leave-from { opacity: 1; max-height: 1200px; }
+/* 弹层: 只在"出现"时表达方向感, 关闭直接快速淡出(用户已经决定关掉了, 不需要仪式感) */
+.wf-pop-enter-active { transition: opacity var(--wf-dur-slow) var(--wf-ease-out), transform var(--wf-dur-slow) var(--wf-ease-out); }
+.wf-pop-leave-active { transition: opacity var(--wf-dur-fast) var(--wf-ease); }
+.wf-pop-enter-from { opacity: 0; transform: translateY(8px) scale(.985); }
+.wf-pop-leave-to { opacity: 0; }
+/* 尊重系统设置: 开了"减少动态效果"就全部关掉。这不是可选礼貌 —— 前庭敏感的用户会不适 */
+@media (prefers-reduced-motion: reduce) {
+  .wf-fade-enter-active, .wf-fade-leave-active,
+  .wf-collapse-enter-active, .wf-collapse-leave-active,
+  .wf-pop-enter-active, .wf-pop-leave-active { transition-duration: 1ms !important; }
 }

@@ -285,14 +285,14 @@ const counter = computed(() => {
   border: 1px solid #46587A;
   border-radius: 10px;
   overflow: hidden;
-  background: #11192C;
+  background: var(--wf-surface);
 }
 .oe-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 9px 12px;
-  border-bottom: 1px solid #1A2333;
+  border-bottom: 1px solid var(--wf-raised);
   background: #141E33;
   flex-wrap: wrap;
 }
@@ -301,19 +301,19 @@ const counter = computed(() => {
   font-size: 12px;
   border: 1px solid #46587A;
   border-radius: 6px;
-  background: #11192C;
+  background: var(--wf-surface);
   /* V417: 原为 #374151(近黑)压深蓝黑底, 对比度 ≈1.7:1, 文字几乎不可见 —— 深色化时漏改。
-     取 #C7D2E0 与同目录 .oe-count(#8B9BB1) 同一色系但更亮, 对比度 ≈11:1(WCAG AA 要求 4.5:1)。 */
+     取 #C7D2E0 与同目录 .oe-count(var(--wf-muted)) 同一色系但更亮, 对比度 ≈11:1(WCAG AA 要求 4.5:1)。 */
   color: #C7D2E0;
   cursor: pointer;
 }
 /* 闭源三个工具按钮同款白底描边; 「清除目录」文字更淡(破坏性操作用弱视觉) */
-.oe-btn.dim { color: #7A8AA0; }
+.oe-btn.dim { color: var(--wf-faint); }
 .oe-sep { color: #46587A; font-size: 11px; }
 .oe-btn:hover { filter: brightness(0.97); }
-.oe-count { margin-left: auto; font-size: 11px; color: #8B9BB1; }
+.oe-count { margin-left: auto; font-size: 11px; color: var(--wf-muted); }
 .oe-empty { padding: 34px 16px; text-align: center; }
-.oe-empty p { margin: 0 0 10px; color: #8B9BB1; font-size: 13px; }
+.oe-empty p { margin: 0 0 10px; color: var(--wf-muted); font-size: 13px; }
 .oe-empty-link {
   color: #4D84CB;
   font-size: 13px;
@@ -327,7 +327,7 @@ const counter = computed(() => {
    `grid-auto-rows` 不设, 让各行按自身内容高度; 折叠/展开时只影响自己那一格。 */
 .oe-tree { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0 18px; align-items: start; }
 @media (max-width: 1380px) { .oe-tree { grid-template-columns: minmax(0, 1fr); } }
-.oe-level1 { border-bottom: 1px solid #1A2333; min-width: 0; }
+.oe-level1 { border-bottom: 1px solid var(--wf-raised); min-width: 0; }
 .oe-level1:last-child { border-bottom: 0; }
 .oe-row {
   display: flex;
@@ -335,7 +335,7 @@ const counter = computed(() => {
   gap: 7px;
   padding: 5px 12px;
 }
-.oe-row.l1 { background: #11192C; }
+.oe-row.l1 { background: var(--wf-surface); }
 .oe-row.l2 { padding-left: 44px; background: #161F33; }
 .oe-index {
   flex-shrink: 0;
@@ -351,7 +351,7 @@ const counter = computed(() => {
 }
 .oe-index.sub {
   background: transparent;
-  color: #8B9BB1;
+  color: var(--wf-muted);
   font-size: 11px;
   font-weight: 600;
   min-width: 34px;
@@ -368,7 +368,7 @@ const counter = computed(() => {
   position: relative;
   margin-left: 28px;
   padding-left: 20px;
-  border-left: 1.5px solid #1A2333;
+  border-left: 1.5px solid var(--wf-raised);
 }
 .oe-row.l2.tree-child { position: relative; padding-top: 6px; padding-bottom: 6px; }
 /* 水平连接短线(从竖线连到子节行) */
@@ -379,7 +379,7 @@ const counter = computed(() => {
   top: 50%;
   width: 16px;
   height: 1.5px;
-  background: #1A2333;
+  background: var(--wf-raised);
 }
 /* 末行: 用背景色遮住竖线的下半段, 让树"收住"(闭源 tree-child-last 语义) */
 .oe-row.l2.tree-child:last-child::after {
@@ -389,7 +389,7 @@ const counter = computed(() => {
   bottom: 0;
   width: 3px;
   height: 50%;
-  background: #11192C;
+  background: var(--wf-surface);
   pointer-events: none;
 }
 /* 闭源常显小组: 两个 `w-6 h-6 rounded` 图标钮(蓝 hover), 与悬停才出的 .op-btn 分开 */
@@ -400,7 +400,7 @@ const counter = computed(() => {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #8B9BB1;
+  color: var(--wf-muted);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -428,7 +428,7 @@ const counter = computed(() => {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #8B9BB1;
+  color: var(--wf-muted);
   font-size: 12px;
   cursor: pointer;
 }
@@ -446,7 +446,7 @@ const counter = computed(() => {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #8B9BB1;
+  color: var(--wf-muted);
   font-size: 10px;
   cursor: pointer;
   white-space: nowrap;

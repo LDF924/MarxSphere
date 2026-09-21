@@ -212,7 +212,7 @@ async function newProject() {
 <style scoped>
 /* 闭源 .phase-progress-wrapper{height:90px;...;display:flex;align-items:center} —— 我方实测 78px */
 .phase-progress-wrapper {
-  background: #11192C; border-bottom: 1px solid #222F44;
+  background: var(--wf-surface); border-bottom: 1px solid var(--wf-line);
   position: sticky; top: 0; z-index: 30;
   height: 90px; display: flex; align-items: center;
   max-width: 100%; overflow-x: auto;
@@ -229,23 +229,23 @@ async function newProject() {
   /* 闭源: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
   width: 280px; flex-shrink: 0; margin: 0 24px 0 0; min-width: 0;
   padding: 8px 12px; box-sizing: border-box;
-  border: 1px solid #222F44; border-radius: 7px; background: #1A2333;
+  border: 1px solid var(--wf-line); border-radius: 7px; background: var(--wf-raised);
   cursor: pointer;
 }
 .ppb-topic:hover { border-color: #B06A6A; }
 .ppb-topic-heading { display: flex; align-items: center; gap: 7px; }
-.ppb-topic-label { font-size: 11px; color: #8B9BB1; font-weight: 600; }
-.ppb-topic-status { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #7A8AA0; }
+.ppb-topic-label { font-size: 11px; color: var(--wf-muted); font-weight: 600; }
+.ppb-topic-status { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--wf-faint); }
 .ppb-topic-status.is-success { color: #5FD0B4; }
 .ppb-topic-status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
 .ppb-topic-title {
-  display: block; font-size: 12px; font-weight: 600; color: #E8EEF7; margin-top: 3px;
+  display: block; font-size: 12px; font-weight: 600; color: var(--wf-text); margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* 闭源 .ppb-line-wrap{width:40px} —— 我方原 26px, 连接线过短 */
 .ppb-line-wrap { width: 40px; flex-shrink: 0; display: flex; align-items: center; }
 /* 闭源 .ppb-line{width:100%;height:2.5px;border-radius:2px} */
-.ppb-line { width: 100%; height: 2.5px; background: #222F44; border-radius: 2px; transition: background .35s ease; }
+.ppb-line { width: 100%; height: 2.5px; background: var(--wf-line); border-radius: 2px; transition: background .35s ease; }
 .ppb-line.done { background: #5FD0B4; }
 .ppb-line.viewing { background: #4D84CB; }
 /*
@@ -260,13 +260,13 @@ async function newProject() {
   min-width: 72px; position: relative; flex-shrink: 0;
   transition: all .25s ease;
 }
-.ppb-node:hover { background: #1A2333; }
+.ppb-node:hover { background: var(--wf-raised); }
 /* 闭源 .ppb-circle{width:32px;height:32px;font-size:12px} —— 我方原 24px */
 .ppb-circle {
   width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; flex-shrink: 0; position: relative;
   transition: all .35s ease;
-  background: #222F44; color: #7A8AA0; border: 2px solid #2A3A55;
+  background: var(--wf-line); color: var(--wf-faint); border: 2px solid #2A3A55;
 }
 .ppb-circle.done { background: #16a34a; color: #F1F5F9; border: none; box-shadow: 0 2px 8px #16a34a40; }
 .ppb-circle.active { background: #4D84CB; color: #F1F5F9; border: none; box-shadow: 0 0 0 4px #1E2A48, 0 2px 8px #00000014; }
@@ -275,18 +275,18 @@ async function newProject() {
 .ppb-num { font-size: 13px; font-weight: 700; line-height: 1; }
 /* 闭源 .ppb-label{font-size:11px;font-weight:600;text-align:center;white-space:nowrap} —— 我方原 13px */
 .ppb-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; text-align: center; }
-.ppb-label-text { font-size: 11px; font-weight: 600; color: #7A8AA0; letter-spacing: .02em; }
+.ppb-label-text { font-size: 11px; font-weight: 600; color: var(--wf-faint); letter-spacing: .02em; }
 .ppb-label.active .ppb-label-text { color: #759FD7; }
 .ppb-label.done .ppb-label-text { color: #5FD0B4; }
 .ppb-label.viewing .ppb-label-text { color: #6FA8F5; }
-.ppb-label.pending .ppb-label-text { color: #7A8AA0; }
+.ppb-label.pending .ppb-label-text { color: var(--wf-faint); }
 /* 闭源 .ppb-metric{font-size:9.5px;display:block;margin-top:1px;opacity:.85} —— 我方原是带底色的胶囊 */
 .ppb-metric {
   font-size: 9.5px; font-weight: 500; display: block; margin-top: 1px; opacity: .85;
-  color: #8B9BB1; background: none; padding: 0;
+  color: var(--wf-muted); background: none; padding: 0;
 }
 .ppb-label.active .ppb-metric, .ppb-label.viewing .ppb-metric { color: #6FA8F5; }
-.ppb-new-btn:hover { border-color: #B06A6A; color: #E8EEF7; }
+.ppb-new-btn:hover { border-color: #B06A6A; color: var(--wf-text); }
 
 /*
  * 窄屏紧凑化 —— 逐条对照闭源 @media(max-width:600px):

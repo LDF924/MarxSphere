@@ -149,6 +149,51 @@ try {
   eq("动作行按钮间距 gap-3", R.actGap, 12);
   eq("按钮高 px-6py-3+20px行高", R.btnH, 46);
 
+  // ── 空态与动效(2026-09-21 V422) ──
+  // 这两条都**不影响任何文案/结构断言**, 却正是用户看到的: 空态只有一行灰字、
+  //   开合是硬切。不钉住就会悄悄回退。
+  console.log("\n── 空态与动效 ──");
+  await openSoc(cdp, BASE, "/workflow/materials", tk, pid, 7000);
+  await dismissOverlays(cdp);
+  await sleep(800);
+  // ⚠ 折叠体的内容是 v-if 懒渲染的(不在 DOM 里), 必须**先点开**才有空态。
+  //   而且点击后等一帧 —— 展开过渡期间 DOM 已插入但布局未完成(实测 0 处)。
+  await evalTop(cdp, `(() => {
+    for (const h of document.querySelectorAll('.cat-head .cat-icon-box')) h.click();
+    return 1;
+  })()`);
+  await sleep(600);
+  const empty = await evalTop(cdp, `(() => {
+    const es = [...document.querySelectorAll('.es')];
+    return es.map(e => ({
+      hasIcon: !!e.querySelector('.es-icon'),
+      hasTitle: !!e.querySelector('.es-title'),
+      hintLen: (e.querySelector('.es-hint')?.textContent || '').trim().length,
+      hasAction: !!e.querySelector('.es-action'),
+    }));
+  })()`);
+  rec("materials@空态", "空态渲染(应有多处)", (empty?.length ?? 0) > 0, `${empty?.length ?? 0} 处`);
+  if (empty?.length) {
+    rec("materials@空态", "每处都有图示", empty.every((x) => x.hasIcon), "");
+    rec("materials@空态", "每处都有标题", empty.every((x) => x.hasTitle), "");
+    // 「一行灰字」的判据: 引导语要有实义长度, 不是「暂无X素材」那种
+    rec("materials@空态", "引导语有实义(>12 字, 不是一行灰字)", empty.every((x) => x.hintLen > 12),
+      `最短 ${Math.min(...empty.map((x) => x.hintLen))} 字`);
+  }
+  // 动效: 展开时真的在过渡(120ms 处读到的 opacity/高度应处于中间态)
+  const mid = await evalTop(cdp, `(async () => {
+    const h = document.querySelector('.cat-head .cat-icon-box');
+    if (!h) return null;
+    h.click();
+    await new Promise(r => setTimeout(r, 120));
+    const b = document.querySelector('.cat-body');
+    if (!b) return null;
+    const cs = getComputedStyle(b);
+    return { prop: cs.transitionProperty, op: parseFloat(cs.opacity) };
+  })()`);
+  rec("materials@动效", "展开不是硬切(过渡属性生效)", mid && /opacity/.test(mid.prop || ""),
+    mid ? `transition-property=${mid.prop} 过渡中 opacity=${mid.op}` : "取不到过渡态");
+
   // ── 吸顶进度条: 滚动时必须贴顶通栏(2026-09-21 修的那个"悬空架着") ──
   // 踩过的坑: 顶部进度条是 position:sticky, 而 sticky 的约束矩形是**滚动容器的内容盒** ——
   //   容器带 padding 时它就只能停在 padding 之内: 实测页面 padding-top 31px 时,

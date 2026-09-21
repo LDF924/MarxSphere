@@ -727,8 +727,8 @@ onMounted(async () => {
 
 .workflow-page { width: 100%; box-sizing: border-box; }
 .wf-head { margin-bottom: 32px; }
-.wf-h1 { margin: 0; font-size: 24px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 4px 0 0; font-size: 14px; color: #8B9BB1; }
+.wf-h1 { margin: 0; font-size: 24px; font-weight: 700; color: var(--wf-text); }
+.wf-sub { margin: 4px 0 0; font-size: 14px; color: var(--wf-muted); }
 /* 闭源各卡之间是 `space-y-6`(24px), 卡内 `p-5`(20px) —— 我方原 14px / 16px18px */
 .wf-card {
   /* V421: 用令牌 + 加一层**极轻阴影**。原先整个 tab 只有 8 处阴影, 所有卡片都贴在同一个
@@ -744,7 +744,7 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 .wf-card:hover { border-color: var(--wf-line-strong); box-shadow: var(--wf-el-2); }
-.wf-label { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: #E8EEF7; margin-bottom: 8px; }
+.wf-label { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--wf-text); margin-bottom: 8px; }
 .req-star { color: #dc2626; }
 .wf-input {
   width: 100%;
@@ -753,17 +753,17 @@ onMounted(async () => {
   border: 1px solid #46587A;
   border-radius: 8px;
   font-size: 13.5px;
-  background: #11192C;
+  background: var(--wf-surface);
   outline: none;
 }
 .wf-input:focus, .wf-textarea:focus { border-color: #6FA8E8; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12); }
 .wf-textarea {
   width: 100%; box-sizing: border-box; padding: 9px 12px;
   border: 1px solid #46587A; border-radius: 8px;
-  font-size: 13.5px; font-family: inherit; background: #11192C; outline: none;
+  font-size: 13.5px; font-family: inherit; background: var(--wf-surface); outline: none;
   resize: none; line-height: 1.6;
 }
-.opt-tag { font-weight: 400; font-size: 12px; color: #7A8AA0; }
+.opt-tag { font-weight: 400; font-size: 12px; color: var(--wf-faint); }
 /* 主题 + 字数同行(闭源: 主题 flex-1 自适应, 字数固定 144px) */
 .topic-row { display: flex; align-items: flex-start; gap: 12px; }
 /* V420b: 研究主题是**单行**标题 —— 全宽页里它被拉到 1160px(约 100 个汉字一行)。
@@ -773,38 +773,38 @@ onMounted(async () => {
 .topic-wc { width: 144px; flex-shrink: 0; }
 /* 额外要求是**多行** textarea —— 用正文档 86ch */
 .wf-textarea { max-width: 86ch; }
-.wf-note { margin: 6px 0 0; font-size: 11.5px; color: #8B9BB1; line-height: 1.5; }
+.wf-note { margin: 6px 0 0; font-size: 11.5px; color: var(--wf-muted); line-height: 1.5; }
 /* V420: 固定 3 列 → 自适应(窄屏自动塌) */
 .method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .src-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .src-item {
   display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-  background: #11192C; border: 1px solid #222F44; border-radius: 8px;
+  background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 8px;
   color: #DCE6F2; font-size: 13px; cursor: pointer; text-align: left;
 }
 .src-item.selected { border-color: #2563eb; background: #14213D; }
 .src-check { width: 14px; color: #5FD0B4; font-weight: 700; }
 .src-name { flex: 1; }
-.src-count { font-size: 11.5px; color: #8B9BB1; }
+.src-count { font-size: 11.5px; color: var(--wf-muted); }
 /* E2 自动识别提示 */
 .auto-detect-note {
-  margin: 6px 0 0; font-size: 12px; color: #E8B54A; background: #11192C;
+  margin: 6px 0 0; font-size: 12px; color: #E8B54A; background: var(--wf-surface);
   border: 1px dashed #C9A23C; border-radius: 7px; padding: 6px 10px;
 }
 
 .method-card {
   padding: 14px;
-  border: 2px solid #1A2333;
+  border: 2px solid var(--wf-raised);
   border-radius: 12px;
-  background: #11192C;
+  background: var(--wf-surface);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 4px;
   text-align: left;
 }
-.method-card strong { font-size: 14px; color: #E8EEF7; }
-.method-card small { font-size: 11.5px; color: #8B9BB1; }
+.method-card strong { font-size: 14px; color: var(--wf-text); }
+.method-card small { font-size: 11.5px; color: var(--wf-muted); }
 .method-card.selected { border-color: #4D84CB; background: #2A1C1C; box-shadow: 0 1px 4px rgba(220, 38, 38, 0.1); }
 .drop-zone {
   border: 2px dashed #46587A;
@@ -815,33 +815,33 @@ onMounted(async () => {
   transition: all 0.15s;
 }
 .drop-zone.dragover { border-color: #4D84CB; background: #2A1C1C; }
-.drop-zone p { margin: 0; font-size: 13px; color: #8B9BB1; }
+.drop-zone p { margin: 0; font-size: 13px; color: var(--wf-muted); }
 .drop-zone .drop-line { color: #B9C6D8; }
-.drop-zone .drop-sub { margin-top: 4px; font-size: 11.5px; color: #7A8AA0; }
+.drop-zone .drop-sub { margin-top: 4px; font-size: 11.5px; color: var(--wf-faint); }
 .file-list { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
 .file-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; border: 1px solid #222F44; border-radius: 7px; font-size: 12.5px;
+  padding: 6px 10px; border: 1px solid var(--wf-line); border-radius: 7px; font-size: 12.5px;
 }
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #DCE6F2; }
-.file-size { color: #7A8AA0; font-size: 11px; }
+.file-size { color: var(--wf-faint); font-size: 11px; }
 .file-status.ok { color: #5FD0B4; font-size: 11.5px; }
 .file-remove { border: 0; background: none; color: #dc2626; font-size: 12px; cursor: pointer; }
 /* 引导提问: 折叠头 + 展开体(闭源是手风琴, 默认收起) */
 .clarify-card { padding: 0; overflow: hidden; }
 .clarify-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  padding: 13px 18px; background: #0E1729; border: 0; cursor: pointer;
+  padding: 13px 18px; background: var(--wf-surface-2); border: 0; cursor: pointer;
   color: #DCE6F2; font-size: 13.5px; font-weight: 500;
 }
-.clarify-head:hover { background: #1A2333; }
+.clarify-head:hover { background: var(--wf-raised); }
 .ch-left { display: flex; align-items: center; gap: 8px; }
 .ch-title { font-weight: 500; }
-.ch-arrow { color: #8B9BB1; transition: transform 0.18s; }
+.ch-arrow { color: var(--wf-muted); transition: transform 0.18s; }
 .ch-arrow.open { transform: rotate(180deg); }
 .clarify-body { padding: 4px 18px 16px; }
 .clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty { text-align: center; padding: 14px 0; }
-.clarify-idle p, .clarify-loading p, .clarify-error p, .clarify-done-empty p { font-size: 12px; color: #8B9BB1; margin: 8px 0 0; }
+.clarify-idle p, .clarify-loading p, .clarify-error p, .clarify-done-empty p { font-size: 12px; color: var(--wf-muted); margin: 8px 0 0; }
 .clarify-error p { color: #dc2626; }
 /* 生成引导问题的主按钮(闭源红底实心, 与页面其它主行动一致) */
 .btn-clarify-run {
@@ -851,9 +851,9 @@ onMounted(async () => {
 .btn-clarify-run:hover { background: #b91c1c; }
 .btn-secondary {
   padding: 7px 16px;
-  border: 1px solid #222F44;
+  border: 1px solid var(--wf-line);
   border-radius: 8px;
-  background: #11192C;
+  background: var(--wf-surface);
   color: #DCE6F2;
   font-size: 13px;
   cursor: pointer;
@@ -861,13 +861,13 @@ onMounted(async () => {
 .mini-spinner {
   display: inline-block;
   width: 18px; height: 18px;
-  border: 2px solid #222F44; border-top-color: #4D84CB;
+  border: 2px solid var(--wf-line); border-top-color: #4D84CB;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .clarify-list { display: flex; flex-direction: column; gap: 10px; }
-.clarify-item { border: 1px solid #222F44; border-radius: 10px; padding: 12px; }
+.clarify-item { border: 1px solid var(--wf-line); border-radius: 10px; padding: 12px; }
 .cq-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .cq-cat {
   font-size: 10.5px; padding: 2px 9px; border-radius: 9px;
@@ -881,10 +881,10 @@ onMounted(async () => {
 .cq-cat.cat-cyan { background: #0F2A2E; color: #4FC9D6; }
 .cq-cat.cat-pink { background: #33172A; color: #EF7FBF; }
 .cq-cat.cat-indigo { background: #1B1F42; color: #8C93F0; }
-.cq-cat.cat-gray { background: #1A2333; color: #A8B4C4; }
+.cq-cat.cat-gray { background: var(--wf-raised); color: #A8B4C4; }
 .cq-imp { font-size: 10px; padding: 2px 7px; background: #3A2323; color: #4D84CB; border-radius: 8px; font-weight: 600; }
-.cq-question { margin: 0 0 4px; font-size: 13.5px; color: #E8EEF7; font-weight: 600; }
-.cq-guidance { margin: 0 0 8px; font-size: 12px; color: #8B9BB1; }
+.cq-question { margin: 0 0 4px; font-size: 13.5px; color: var(--wf-text); font-weight: 600; }
+.cq-guidance { margin: 0 0 8px; font-size: 12px; color: var(--wf-muted); }
 /* 总体分析(后端每次都会回, 原先被丢弃) —— 0 问时它是用户唯一能看到的结论 */
 .cq-analysis {
   margin: 0 0 10px; padding: 9px 12px; font-size: 12.5px; line-height: 1.7;
@@ -892,11 +892,11 @@ onMounted(async () => {
 }
 /* 第二轮追加入口 */
 .clarify-next { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.clarify-next-hint { font-size: 11.5px; color: #7A8AA0; }
+.clarify-next-hint { font-size: 11.5px; color: var(--wf-faint); }
 .btn-clarify-run:disabled { opacity: .5; cursor: not-allowed; }
 .cq-input {
   width: 100%; box-sizing: border-box;
-  padding: 7px 10px; border: 1px solid #222F44; border-radius: 7px;
+  padding: 7px 10px; border: 1px solid var(--wf-line); border-radius: 7px;
   font-size: 12.5px; font-family: inherit; resize: vertical;
 }
 /* 动作行。闭源 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
@@ -927,13 +927,13 @@ onMounted(async () => {
 }
 .btn-danger-ghost:hover:not(:disabled) { background: #2A1C1C; }
 .btn-danger-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
-.pd-hint { font-size: 11.5px; color: #7A8AA0; }
+.pd-hint { font-size: 11.5px; color: var(--wf-faint); }
 .btn-back {
   padding: 10px 22px;
-  border: 1px solid #222F44;
+  border: 1px solid var(--wf-line);
   border-radius: 9px;
-  background: #11192C;
-  color: #8B9BB1;
+  background: var(--wf-surface);
+  color: var(--wf-muted);
   font-size: 14px;
   cursor: pointer;
 }

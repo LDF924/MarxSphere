@@ -13,6 +13,7 @@ import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
+import EmptyState from "./EmptyState.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -687,7 +688,13 @@ onUnmounted(() => {
           <strong>研究逻辑</strong>
         </div>
         <p v-if="store.project.logicFlow" class="logic-flow">{{ store.project.logicFlow }}</p>
-        <p v-else class="logic-empty">待分析完成后展示</p>
+        <EmptyState
+          v-else
+          size="sm"
+          icon="⌘"
+          title="研究逻辑待生成"
+          hint="分析完成后，这里会展示变量之间的关系路径（自变量 → 中介 → 因变量），以及每章的论证主线。"
+        />
         <div class="method-line">
           <span class="logic-label">研究方法</span>
           <span class="method-pill">{{ methodPill.label }}</span>
@@ -700,7 +707,14 @@ onUnmounted(() => {
     <!-- 章节树 -->
     <section class="tree-card">
       <h3 class="sec-title">章节结构</h3>
-      <div v-if="!store.sections.length" class="tree-empty">暂无章节 — 请先在信息录入填写大纲</div>
+      <EmptyState
+        v-if="!store.sections.length"
+        icon="⊞"
+        title="还没有章节结构"
+        hint="回到「信息录入」填写研究框架（一级章节 + 二级子节），提交后这里会自动解析出章节树。"
+        action="去填研究框架"
+        @action="router.push('/workflow/input')"
+      />
       <div v-for="(s, i) in store.level1Sections" :key="s.id" class="level1-row">
         <div class="l1-head">
           <span class="l1-num">{{ sectionNumber(i) }}</span>
@@ -779,50 +793,50 @@ onUnmounted(() => {
    我方原先是 h1 mb-4 / sub mb-0 / 统计 mt-8 mb-16 拼出来, 净距只有 24px ——
    比闭源少 8px, 而且 h1 与副标题之间被撑到 8px(闭源 text-sm mt-1 = 4px)。 */
 .wf-head { margin-bottom: 32px; }
-.wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: #E8EEF7; }
-.wf-sub { margin: 4px 0 0; font-size: 13px; color: #8B9BB1; }
-.wf-stats { margin: 12px 0 0; font-size: 12.5px; color: #8B9BB1; }
-.stats-num { color: #E8EEF7; font-weight: 600; }
+.wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
+.wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
+.wf-stats { margin: 12px 0 0; font-size: 12.5px; color: var(--wf-muted); }
+.stats-num { color: var(--wf-text); font-weight: 600; }
 .fail-step { color: #E88A8A; font-weight: 600; margin-right: 2px; }
 /* 闭源页面级块间距是 mb-6(24px); 原值 14px 明显更紧 */
 .banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
 .banner-fail { background: #2A1C1C; border: 1px solid #3A2323; }
-.banner-thinking { background: #1A2333; border: 1px solid #46587A; }
+.banner-thinking { background: var(--wf-raised); border: 1px solid #46587A; }
 .banner-done { background: #14281F; border: 1px solid #2E5C46; }
-.banner-idle { background: #11192C; border: 1px solid #222F44; }
+.banner-idle { background: var(--wf-surface); border: 1px solid var(--wf-line); }
 .banner-head { display: flex; justify-content: space-between; align-items: center; }
 .banner-head strong { font-size: 15px; }
 .banner-fail .banner-head strong { color: #dc2626; }
 .banner-thinking .banner-head strong { color: #DCE6F2; }
 .banner-done .banner-head strong { color: #5FD0B4; }
-.banner-body { font-size: 13px; color: #8B9BB1; margin: 6px 0; line-height: 1.6; }
+.banner-body { font-size: 13px; color: var(--wf-muted); margin: 6px 0; line-height: 1.6; }
 .banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.banner-cancel { border: 0; background: #212C45; color: #8B9BB1; padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.banner-cancel { border: 0; background: var(--wf-line-soft); color: var(--wf-muted); padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .btn-red { padding: 7px 18px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-red-sm { padding: 4px 14px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 7px; font-size: 12px; cursor: pointer; }
 .step-progress { display: flex; gap: 8px; margin: 12px 0; }
 .step-item { display: flex; align-items: center; gap: 6px; }
 .step-circle {
   width: 22px; height: 22px; border-radius: 50%;
-  background: #222F44; color: #7A8AA0;
+  background: var(--wf-line); color: var(--wf-faint);
   display: grid; place-items: center; font-size: 11px;
 }
 .step-item.active .step-circle { background: #4D84CB; color: #F1F5F9; }
 .step-item.done .step-circle { background: #5FD0B4; color: #F1F5F9; }
 /* 当前步转圈: 让"正在跑"和"还没到"一眼可分 */
 .step-circle.spinning { background: #4D84CB; color: #F1F5F9; box-shadow: 0 0 0 3px #1E2A48; }
-.step-label { font-size: 12px; color: #8B9BB1; }
-.step-item.active .step-label { color: #E8EEF7; font-weight: 600; }
+.step-label { font-size: 12px; color: var(--wf-muted); }
+.step-item.active .step-label { color: var(--wf-text); font-weight: 600; }
 .thinking-area { margin-top: 8px; }
-.thinking-title { font-size: 12px; color: #8B9BB1; margin-bottom: 4px; }
+.thinking-title { font-size: 12px; color: var(--wf-muted); margin-bottom: 4px; }
 .thinking-text {
-  margin: 0; padding: 10px; background: #212C45; border-radius: 8px;
+  margin: 0; padding: 10px; background: var(--wf-line-soft); border-radius: 8px;
   font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.6;
   color: #DCE6F2; white-space: pre-wrap; max-height: 140px; overflow-y: auto;
 }
-.thinking-empty { font-size: 12px; color: #7A8AA0; font-style: italic; padding: 10px; }
+.thinking-empty { font-size: 12px; color: var(--wf-faint); font-style: italic; padding: 10px; }
 .warn-bar {
-  background: #11192C; border: 1px solid #3A3020; color: #E8B54A;
+  background: var(--wf-surface); border: 1px solid #3A3020; color: #E8B54A;
   padding: 9px 14px; border-radius: 9px; font-size: 12.5px; margin-bottom: 14px;
   display: flex; align-items: center; gap: 10px;
 }
@@ -843,7 +857,7 @@ onUnmounted(() => {
 
 /* 科研框架概览卡(闭源: 一张卡收 ①变量 ②假设 ③逻辑+方法) */
 .overview-card {
-  background: #11192C; border: 1px solid #2B2F52; border-radius: 12px;
+  background: var(--wf-surface); border: 1px solid #2B2F52; border-radius: 12px;
   overflow: hidden; margin-bottom: 14px;
 }
 .ov-head {
@@ -862,23 +876,23 @@ onUnmounted(() => {
 }
 .ov-num.blue { background: #16243F; color: #6FA8F5; }
 .ov-num.purple { background: #241A3A; color: #B08CF0; }
-.ov-count { font-size: 11.5px; color: #7A8AA0; }
+.ov-count { font-size: 11.5px; color: var(--wf-faint); }
 .var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .var-card {
-  background: #0E1729; border: 1px solid #222F44; border-radius: 10px; padding: 11px;
+  background: var(--wf-surface-2); border: 1px solid var(--wf-line); border-radius: 10px; padding: 11px;
   display: flex; flex-direction: column; gap: 6px;
 }
 .var-card:hover { border-color: #4B5E8C; box-shadow: 0 1px 4px rgba(99, 102, 241, 0.12); }
 .var-top { display: flex; align-items: center; gap: 8px; }
 .var-role { color: #F1F5F9; font-size: 10.5px; padding: 2px 9px; border-radius: 8px; flex-shrink: 0; font-weight: 600; }
-.var-name { font-size: 13.5px; color: #E8EEF7; }
-.var-card p { margin: 0; font-size: 12px; color: #8B9BB1; line-height: 1.5; }
+.var-name { font-size: 13.5px; color: var(--wf-text); }
+.var-card p { margin: 0; font-size: 12px; color: var(--wf-muted); line-height: 1.5; }
 /* 描述两行截断(闭源 line-clamp-2) —— 全量展开会把卡片撑成高矮不齐的一片 */
 .var-desc {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.var-measure { color: #7A8AA0 !important; font-size: 11.5px !important; }
+.var-measure { color: var(--wf-faint) !important; font-size: 11.5px !important; }
 .hypo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .hypo-item { display: flex; gap: 8px; font-size: 12.5px; color: #C6D2E4; align-items: flex-start; line-height: 1.55; }
 .hypo-badge {
@@ -890,12 +904,12 @@ onUnmounted(() => {
 .logic-flow { margin: 0 0 10px; font-size: 12.5px; color: #8BA4F0; line-height: 1.65; overflow-wrap: break-word; }
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
 .tree-card {
-  background: #11192C; border: 1px solid #222F44; border-radius: 12px;
+  background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
   padding: 16px 18px; margin-bottom: 24px;   /* 闭源 mb-6 = 24px(原 14px) */
 }
-.sec-title { margin: 0 0 10px; font-size: 15px; color: #E8EEF7; }
-.tree-empty { padding: 24px; text-align: center; color: #7A8AA0; font-size: 13px; }
-.level1-row { border-bottom: 1px solid #212C45; padding: 10px 0; }
+.sec-title { margin: 0 0 10px; font-size: 15px; color: var(--wf-text); }
+.tree-empty { padding: 24px; text-align: center; color: var(--wf-faint); font-size: 13px; }
+.level1-row { border-bottom: 1px solid var(--wf-line-soft); padding: 10px 0; }
 .level1-row:last-child { border-bottom: 0; }
 .l1-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* 编号块(闭源: 一级 bg-red-100 text-red-700 浅红底红字, 二级 bg-gray-100 text-gray-600 灰底灰字;
@@ -906,28 +920,28 @@ onUnmounted(() => {
   display: grid; place-items: center; font-size: 13px; font-weight: 700;
   flex-shrink: 0;
 }
-.l1-head strong { font-size: 14px; color: #E8EEF7; }
+.l1-head strong { font-size: 14px; color: var(--wf-text); }
 .skill-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border-radius: 8px; }
 .skill-badge.sm { font-size: 10px; padding: 1px 6px; }
 .wc-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; }
-.l2-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 6px; border-left: 2px solid #212C45; }
+.l2-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 6px; border-left: 2px solid var(--wf-line-soft); }
 .l2-row { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 10px; flex-wrap: wrap; }
 /* 二级编号块: 与一级同尺寸但灰底灰字(闭源 bg-gray-100 text-gray-600) */
 .l2-num {
   width: 40px; height: 32px; border-radius: 8px;
-  background: #1A2333; color: #A8B4C4;
+  background: var(--wf-raised); color: #A8B4C4;
   display: grid; place-items: center; font-size: 11.5px; font-weight: 600;
   flex-shrink: 0; font-variant-numeric: tabular-nums;
 }
 .l2-title { font-size: 13px; color: #C6D2E4; }
 .skill-detail { margin: 8px 0 0 34px; display: flex; flex-direction: column; gap: 6px; }
-/* 2026-09-16: 补三处。原先 .fs-row.amber 的背景写成 `#11192Cbeb` —— 8 位 hex 多打了 "beb",
+/* 2026-09-16: 补三处。原先 .fs-row.amber 的背景写成 `var(--wf-surface)beb` —— 8 位 hex 多打了 "beb",
    浏览器按非法值丢弃整条声明, 等于"框架来源"卡一直没有底色。 */
 .skill-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.skill-source-tag { font-size: 12px; font-weight: 600; color: #8B9BB1; }
+.skill-source-tag { font-size: 12px; font-weight: 600; color: var(--wf-muted); }
 .skill-type-badge {
   font-size: 10.5px; padding: 2px 8px; border-radius: 8px;
-  background: #1A2333; color: #9B8BD7; border: 1px solid #3A3355;
+  background: var(--wf-raised); color: #9B8BD7; border: 1px solid #3A3355;
 }
 /* 草稿预览(闭源绿框): 与"框架来源"琥珀框并列, 视觉上是两块独立信息 */
 .draft-box {
@@ -936,29 +950,29 @@ onUnmounted(() => {
 }
 .draft-box strong { color: #5FD0B4; display: block; margin-bottom: 2px; }
 .draft-box p { margin: 0; white-space: pre-wrap; }
-.cs-aim { color: #8B9BB1; }
-.fs-row.amber { background: #11192C; border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }
+.cs-aim { color: var(--wf-muted); }
+.fs-row.amber { background: var(--wf-surface); border: 1px solid #3A3020; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #E8B54A; }
 .fs-row.amber p { margin: 2px 0 0; color: #DCE6F2; }
 .skill-block { font-size: 12.5px; color: #DCE6F2; line-height: 1.6; }
-.skill-block strong { color: #E8EEF7; }
+.skill-block strong { color: var(--wf-text); }
 .skill-block ul { margin: 4px 0 0; padding-left: 18px; }
-.skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: #8B9BB1; }
-.skill-pending.dim { color: #7A8AA0; }
+.skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: var(--wf-muted); }
+.skill-pending.dim { color: var(--wf-faint); }
 /* 动作行。闭源 `mt-8 pt-6 border-t`(= 32+24 上距 + 一条 1px 分隔线, gap-3=12px)。
    原值 margin-top:6px 且**无分隔线** —— 与「确认科研架构」上方那一大片内容连成一体,
    少了闭源那道"这是页面级操作、不是内容"的视觉分界。 */
 .wf-actions {
   display: flex; gap: 12px;
   margin-top: 32px; padding-top: 24px;
-  border-top: 1px solid #222F44;
+  border-top: 1px solid var(--wf-line);
 }
 .wf-actions .btn-primary { flex: 1; }
 /* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {
-  padding: 10px 22px; border: 1px solid #222F44; border-radius: 9px;
-  background: #11192C; color: #8B9BB1; font-size: 14px; cursor: pointer;
+  padding: 10px 22px; border: 1px solid var(--wf-line); border-radius: 9px;
+  background: var(--wf-surface); color: var(--wf-muted); font-size: 14px; cursor: pointer;
 }
 .btn-primary {
   padding: 10px 26px; border: 0; border-radius: 9px;
