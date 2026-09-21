@@ -315,7 +315,7 @@ const counter = computed(() => {
 .oe-empty { padding: 34px 16px; text-align: center; }
 .oe-empty p { margin: 0 0 10px; color: #8B9BB1; font-size: 13px; }
 .oe-empty-link {
-  color: #dc2626;
+  color: #4D84CB;
   font-size: 13px;
   text-decoration: underline;
   border: 0;
@@ -432,7 +432,7 @@ const counter = computed(() => {
   font-size: 12px;
   cursor: pointer;
 }
-.op-btn:hover:not(:disabled) { background: #2A1C1C; color: #dc2626; }
+.op-btn:hover:not(:disabled) { background: #2A1C1C; color: #4D84CB; }
 .op-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 /* 闭源 .op-btn-sm{width:18px;height:18px;font-size:10px} —— 2026-09-16 修:
    我方原先是 `padding:1px 6px` 的文字按钮, 尺寸随文案变。现在只用于子节行的 ✕,
@@ -452,6 +452,6 @@ const counter = computed(() => {
   white-space: nowrap;
   transition: all 0.15s;
 }
-.op-btn-sm:hover { background: #2A1C1C; color: #dc2626; }
+.op-btn-sm:hover { background: #2A1C1C; color: #4D84CB; }
 .op-btn-danger:hover { color: #dc2626; }
 </style>

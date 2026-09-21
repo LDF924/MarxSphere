@@ -128,9 +128,9 @@ const DONE_STEPS = ["变量识别", "框架分析", "Skill 生成"];
 const roleColor = (role: string): string => {
   const r = String(role ?? "");
   const qn: Record<string, string> = {
-    "自变量": "#2563eb", "因变量": "#dc2626", "中介": "#E8B54A", "调节": "#7c3aed", "控制": "#6b7280",
-    "x": "#2563eb", "y": "#dc2626", "mediator": "#E8B54A", "moderator": "#7c3aed", "control": "#6b7280",
-    "影响因素": "#2563eb", "结果表现": "#dc2626", "中间机制": "#E8B54A", "情境条件": "#7c3aed", "背景因素": "#6b7280"
+    "自变量": "#4D84CB", "因变量": "#E0714F", "中介": "#D9A441", "调节": "#9B7BE0", "控制": "#8494AA",
+    "x": "#4D84CB", "y": "#E0714F", "mediator": "#D9A441", "moderator": "#9B7BE0", "control": "#8494AA",
+    "影响因素": "#4D84CB", "结果表现": "#E0714F", "中间机制": "#D9A441", "情境条件": "#9B7BE0", "背景因素": "#8494AA"
   };
   return qn[r] ?? "#2563eb";
 };
@@ -807,7 +807,7 @@ onUnmounted(() => {
   background: #222F44; color: #7A8AA0;
   display: grid; place-items: center; font-size: 11px;
 }
-.step-item.active .step-circle { background: #dc2626; color: #F1F5F9; }
+.step-item.active .step-circle { background: #4D84CB; color: #F1F5F9; }
 .step-item.done .step-circle { background: #5FD0B4; color: #F1F5F9; }
 /* 当前步转圈: 让"正在跑"和"还没到"一眼可分 */
 .step-circle.spinning { background: #4D84CB; color: #F1F5F9; box-shadow: 0 0 0 3px #1E2A48; }
@@ -962,7 +962,7 @@ onUnmounted(() => {
 }
 .btn-primary {
   padding: 10px 26px; border: 0; border-radius: 9px;
-  background: #dc2626; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
+  background: #4D84CB; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .btn-primary:disabled { background: #46587A; cursor: not-allowed; }
 </style>

@@ -731,12 +731,19 @@ onMounted(async () => {
 .wf-sub { margin: 4px 0 0; font-size: 14px; color: #8B9BB1; }
 /* 闭源各卡之间是 `space-y-6`(24px), 卡内 `p-5`(20px) —— 我方原 14px / 16px18px */
 .wf-card {
-  background: #11192C;
-  border: 1px solid #222F44;
-  border-radius: 12px;
+  /* V421: 用令牌 + 加一层**极轻阴影**。原先整个 tab 只有 8 处阴影, 所有卡片都贴在同一个
+     平面上 —— 这正是"简陋/平"的来源。这里给卡片一个 `--wf-el-1`(1px 贴地),
+     悬停时抬到 `--wf-el-2` + 描边变亮, 让"这一块是一张卡"读得出来。
+     ⚠ 只加"贴地"这一档, 不加大投影 —— 表单页里的卡片不需要漂浮感。 */
+  background: var(--wf-surface);
+  border: 1px solid var(--wf-line);
+  border-radius: var(--wf-r);
+  box-shadow: var(--wf-el-1);
+  transition: border-color .15s, box-shadow .15s;
   padding: 20px;
   margin-bottom: 24px;
 }
+.wf-card:hover { border-color: var(--wf-line-strong); box-shadow: var(--wf-el-2); }
 .wf-label { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: #E8EEF7; margin-bottom: 8px; }
 .req-star { color: #dc2626; }
 .wf-input {
@@ -749,7 +756,7 @@ onMounted(async () => {
   background: #11192C;
   outline: none;
 }
-.wf-input:focus, .wf-textarea:focus { border-color: #E67E7E; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12); }
+.wf-input:focus, .wf-textarea:focus { border-color: #6FA8E8; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12); }
 .wf-textarea {
   width: 100%; box-sizing: border-box; padding: 9px 12px;
   border: 1px solid #46587A; border-radius: 8px;
@@ -798,7 +805,7 @@ onMounted(async () => {
 }
 .method-card strong { font-size: 14px; color: #E8EEF7; }
 .method-card small { font-size: 11.5px; color: #8B9BB1; }
-.method-card.selected { border-color: #dc2626; background: #2A1C1C; box-shadow: 0 1px 4px rgba(220, 38, 38, 0.1); }
+.method-card.selected { border-color: #4D84CB; background: #2A1C1C; box-shadow: 0 1px 4px rgba(220, 38, 38, 0.1); }
 .drop-zone {
   border: 2px dashed #46587A;
   border-radius: 10px;
@@ -807,7 +814,7 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.15s;
 }
-.drop-zone.dragover { border-color: #dc2626; background: #2A1C1C; }
+.drop-zone.dragover { border-color: #4D84CB; background: #2A1C1C; }
 .drop-zone p { margin: 0; font-size: 13px; color: #8B9BB1; }
 .drop-zone .drop-line { color: #B9C6D8; }
 .drop-zone .drop-sub { margin-top: 4px; font-size: 11.5px; color: #7A8AA0; }
@@ -839,7 +846,7 @@ onMounted(async () => {
 /* 生成引导问题的主按钮(闭源红底实心, 与页面其它主行动一致) */
 .btn-clarify-run {
   padding: 9px 22px; border: 0; border-radius: 8px;
-  background: #dc2626; color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
+  background: #4D84CB; color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .btn-clarify-run:hover { background: #b91c1c; }
 .btn-secondary {
@@ -854,7 +861,7 @@ onMounted(async () => {
 .mini-spinner {
   display: inline-block;
   width: 18px; height: 18px;
-  border: 2px solid #222F44; border-top-color: #dc2626;
+  border: 2px solid #222F44; border-top-color: #4D84CB;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -875,7 +882,7 @@ onMounted(async () => {
 .cq-cat.cat-pink { background: #33172A; color: #EF7FBF; }
 .cq-cat.cat-indigo { background: #1B1F42; color: #8C93F0; }
 .cq-cat.cat-gray { background: #1A2333; color: #A8B4C4; }
-.cq-imp { font-size: 10px; padding: 2px 7px; background: #3A2323; color: #dc2626; border-radius: 8px; font-weight: 600; }
+.cq-imp { font-size: 10px; padding: 2px 7px; background: #3A2323; color: #4D84CB; border-radius: 8px; font-weight: 600; }
 .cq-question { margin: 0 0 4px; font-size: 13.5px; color: #E8EEF7; font-weight: 600; }
 .cq-guidance { margin: 0 0 8px; font-size: 12px; color: #8B9BB1; }
 /* 总体分析(后端每次都会回, 原先被丢弃) —— 0 问时它是用户唯一能看到的结论 */
@@ -934,7 +941,7 @@ onMounted(async () => {
   padding: 10px 26px;
   border: 0;
   border-radius: 9px;
-  background: #dc2626;
+  background: #4D84CB;
   color: #F1F5F9;
   font-size: 14px;
   font-weight: 600;

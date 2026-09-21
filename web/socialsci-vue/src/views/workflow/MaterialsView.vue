@@ -700,9 +700,9 @@ function openAdd(kind: string) {
 /** 变量角色色(SectionsView/WorkspaceView 同款 5 色) —— 文献弹层的「研究变量参考」chips 用 */
 function roleColor(role: string): string {
   const qn: Record<string, string> = {
-    "自变量": "#2563eb", "因变量": "#dc2626", "中介": "#E8B54A", "调节": "#7c3aed", "控制": "#6b7280",
-    x: "#2563eb", y: "#dc2626", mediator: "#E8B54A", moderator: "#7c3aed", control: "#6b7280",
-    "影响因素": "#2563eb", "结果表现": "#dc2626", "中间机制": "#E8B54A", "情境条件": "#7c3aed", "背景因素": "#6b7280",
+    "自变量": "#4D84CB", "因变量": "#E0714F", "中介": "#D9A441", "调节": "#9B7BE0", "控制": "#8494AA",
+    x: "#2563eb", y: "#4D84CB", mediator: "#E8B54A", moderator: "#7c3aed", control: "#6b7280",
+    "影响因素": "#4D84CB", "结果表现": "#E0714F", "中间机制": "#D9A441", "情境条件": "#9B7BE0", "背景因素": "#8494AA",
   };
   return qn[String(role ?? "")] ?? "#2563eb";
 }
@@ -2148,13 +2148,13 @@ onMounted(async () => {
 .sc-title { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: #E8EEF7; }
 .sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
 .sc-btn-primary {
-  padding: 8px 18px; border: 0; border-radius: 9px; background: #dc2626;
+  padding: 8px 18px; border: 0; border-radius: 9px; background: #4D84CB;
   color: #F1F5F9; font-size: 13px; font-weight: 500; cursor: pointer;
 }
 .sc-btn-primary:hover { background: #b91c1c; }
 .sc-btn-outline {
   padding: 8px 18px; border-radius: 9px; background: #11192C;
-  border: 1px solid #dc2626; color: #E88A8A; font-size: 13px; cursor: pointer;
+  border: 1px solid #4D84CB; color: #E88A8A; font-size: 13px; cursor: pointer;
 }
 .sc-btn-outline:hover { background: #2A1C1C; }
 .sc-btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -2179,7 +2179,7 @@ onMounted(async () => {
   display: grid; place-items: center; flex-shrink: 0;
 }
 .sc-arrow { color: #7A8AA0; font-size: 18px; flex-shrink: 0; }
-.sc-tile:hover .sc-arrow { color: #dc2626; }
+.sc-tile:hover .sc-arrow { color: #4D84CB; }
 
 /* 设计思路卡 */
 .design-card {
@@ -2193,7 +2193,7 @@ onMounted(async () => {
 
 .job-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 9px; margin-bottom: 12px; font-size: 13px; }
 .job-bar.running { background: #1E2A48; border: 1px solid #bfdbfe; color: #1d4ed8; }
-.job-bar.failed { background: #2A1C1C; border: 1px solid #3A2323; color: #dc2626; }
+.job-bar.failed { background: #2A1C1C; border: 1px solid #3A2323; color: #4D84CB; }
 .job-spinner {
   width: 14px; height: 14px; border: 2px solid #93c5fd; border-top-color: #1d4ed8;
   border-radius: 50%; animation: jspin 0.8s linear infinite;
@@ -2243,7 +2243,7 @@ onMounted(async () => {
 }
 .cat-more:hover { border-color: #B06A6A; color: #E8EEF7; }
 .btn-ai {
-  padding: 6px 14px; background: #dc2626; color: #F1F5F9; border: 0;
+  padding: 6px 14px; background: #4D84CB; color: #F1F5F9; border: 0;
   border-radius: 7px; font-size: 12.5px; font-weight: 500; cursor: pointer;
 }
 .btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -2305,8 +2305,8 @@ onMounted(async () => {
   border: 0; background: none; color: #8B9BB1; font-size: 11.5px; cursor: pointer; padding: 1px 4px;
 }
 .mat-op:hover { color: #E8EEF7; }
-.mat-op.danger:hover { color: #dc2626; }
-.mat-kind { font-size: 10px; color: #dc2626; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
+.mat-op.danger:hover { color: #4D84CB; }
+.mat-kind { font-size: 10px; color: #4D84CB; background: #2A1C1C; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
 .mat-content { font-size: 12px; color: #8B9BB1; line-height: 1.55; white-space: pre-wrap; }
 .mat-more {
   margin-top: 4px; border: 0; background: transparent; color: #6FA8F5;
@@ -2391,11 +2391,11 @@ onMounted(async () => {
 }
 .btn-ghost-red {
   padding: 10px 18px; border: 1px solid #B06A6A; border-radius: 9px;
-  background: #11192C; color: #dc2626; font-size: 13px; cursor: pointer;
+  background: #11192C; color: #4D84CB; font-size: 13px; cursor: pointer;
 }
 .btn-primary {
   padding: 10px 26px; border: 0; border-radius: 9px;
-  background: #dc2626; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
+  background: #4D84CB; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .btn-primary:disabled { background: #46587A; cursor: not-allowed; }
 .modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
@@ -2496,11 +2496,11 @@ onMounted(async () => {
 
 /* B3 素材编排(闭源 MaterialAllocationDialog) */
 .mat-alloc {
-  border: 0; background: none; color: #dc2626; font-size: 11.5px; cursor: pointer; margin-left: 4px;
+  border: 0; background: none; color: #4D84CB; font-size: 11.5px; cursor: pointer; margin-left: 4px;
 }
 .btn-alloc-cta {
   padding: 10px 18px; border: 1px solid #B06A6A; border-radius: 9px;
-  background: #11192C; color: #dc2626; font-size: 13px; cursor: pointer;
+  background: #11192C; color: #4D84CB; font-size: 13px; cursor: pointer;
 }
 .btn-alloc-cta:disabled { opacity: 0.5; cursor: not-allowed; }
 .alloc-mask { background: rgba(0, 0, 0, 0.55); }
@@ -2512,7 +2512,7 @@ onMounted(async () => {
 .alloc-list { display: flex; flex-direction: column; gap: 8px; }
 .alloc-item { display: flex; align-items: flex-start; gap: 12px; padding: 11px 13px; border: 1px solid #222F44; border-radius: 9px; }
 .alloc-item:hover { background: #1A2333; }
-.alloc-check { margin-top: 3px; accent-color: #dc2626; }
+.alloc-check { margin-top: 3px; accent-color: #4D84CB; }
 .alloc-main { flex: 1; min-width: 0; }
 .alloc-title { margin: 0; font-size: 13.5px; font-weight: 600; color: #E8EEF7; }
 .alloc-hint { margin: 3px 0 0; font-size: 11.5px; color: #8B9BB1; }
@@ -2521,7 +2521,7 @@ onMounted(async () => {
   flex-shrink: 0; max-width: 200px; font-size: 12px; color: #DCE6F2;
   border: 1px solid #222F44; border-radius: 7px; padding: 4px 8px; outline: none;
 }
-.alloc-select:focus { border-color: #E67E7E; }
+.alloc-select:focus { border-color: #6FA8E8; }
 .alloc-select:disabled { background: #212C45; color: #8B9BB1; }
 
 /* B4 单类生成弹层(闭源 MaterialGenerateDialog) */
@@ -2538,8 +2538,8 @@ onMounted(async () => {
   width: 16px; height: 16px; border-radius: 50%; border: 2px solid #46587A;
   display: flex; align-items: center; justify-content: center;
 }
-.radio-dot.radio-on { border-color: #dc2626; }
-.radio-dot i { width: 6px; height: 6px; border-radius: 50%; background: #dc2626; display: block; }
+.radio-dot.radio-on { border-color: #4D84CB; }
+.radio-dot i { width: 6px; height: 6px; border-radius: 50%; background: #4D84CB; display: block; }
 .gen-preview-box { border: 1px solid #222F44; border-radius: 9px; overflow: hidden; }
 .gen-preview-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -2580,7 +2580,7 @@ onMounted(async () => {
 }
 .src-blue { background: #1E2A48; color: #2563eb; border-color: #bfdbfe; }
 .src-gray { background: #212C45; color: #8B9BB1; border-color: #222F44; }
-.src-red { background: #2A1C1C; color: #dc2626; border-color: #3A2323; }
+.src-red { background: #2A1C1C; color: #4D84CB; border-color: #3A2323; }
 .src-plain { background: #1A2333; color: #8B9BB1; border-color: #222F44; }
 
 </style>

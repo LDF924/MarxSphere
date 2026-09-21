@@ -74,9 +74,9 @@ function cnOf(i: number): string {
 /** 变量角色色(SectionsView 同款 5 色) */
 function roleColor(role: string): string {
   const qn: Record<string, string> = {
-    "自变量": "#2563eb", "因变量": "#dc2626", "中介": "#E8B54A", "调节": "#7c3aed", "控制": "#6b7280",
-    "x": "#2563eb", "y": "#dc2626", "mediator": "#E8B54A", "moderator": "#7c3aed", "control": "#6b7280",
-    "影响因素": "#2563eb", "结果表现": "#dc2626", "中间机制": "#E8B54A", "情境条件": "#7c3aed", "背景因素": "#6b7280"
+    "自变量": "#4D84CB", "因变量": "#E0714F", "中介": "#D9A441", "调节": "#9B7BE0", "控制": "#8494AA",
+    "x": "#4D84CB", "y": "#E0714F", "mediator": "#D9A441", "moderator": "#9B7BE0", "control": "#8494AA",
+    "影响因素": "#4D84CB", "结果表现": "#E0714F", "中间机制": "#D9A441", "情境条件": "#9B7BE0", "背景因素": "#8494AA"
   };
   return qn[String(role ?? "")] ?? "#2563eb";
 }
@@ -1425,16 +1425,18 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .rail-count { font-size: 11px; color: #7A8AA0; background: #212C45; padding: 2px 8px; border-radius: 9px; }
 /* 左栏进度条(闭源 h-1.5 圆角) */
 .rail-progress { height: 6px; background: #212C45; border-radius: 999px; overflow: hidden; }
-.rail-progress-fill { height: 100%; background: #dc2626; border-radius: 999px; transition: width 0.4s; }
+.rail-progress-fill { height: 100%; background: #4D84CB; border-radius: 999px; transition: width 0.4s; }
 .rail-empty { padding: 26px 14px; text-align: center; color: #7A8AA0; font-size: 12px; }
 .nav-list { flex: 1; padding: 6px; overflow-y: auto; }
 .nav-l1 { border-radius: 7px; padding: 5px 7px; cursor: pointer; }
 .nav-l1:hover { background: #1A2333; }
-.nav-l1.active { background: #2A1C1C; border-left: 2px solid #dc2626; }
+.nav-l1.active { background: #1B2C4A; border-left: 2px solid #6FA8E8; }
+/* V421: 选中态原先是红棕底(#2A1C1C) + 蓝左边条 —— 两个语义撞在一起。
+   改成主色蓝底, 与全站主色一致; 左边条保留作「当前」的强指示。 */
 .nav-row { display: flex; align-items: center; gap: 6px; }
 .nav-toggle { width: 16px; height: 16px; border: 0; background: none; color: #7A8AA0; font-size: 8px; cursor: pointer; padding: 0; }
 .nav-num {
-  width: 20px; height: 20px; border-radius: 5px; background: #dc2626; color: #F1F5F9;
+  width: 20px; height: 20px; border-radius: 5px; background: #4D84CB; color: #F1F5F9;
   display: grid; place-items: center; font-size: 11px; font-weight: 600; flex-shrink: 0;
 }
 .nav-title { flex: 1; font-size: 12.5px; color: #DCE6F2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1467,7 +1469,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .center-main > * { width: 100%; margin-left: auto; margin-right: auto; }
 .sec-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .sec-num-big {
-  width: 30px; height: 30px; border-radius: 7px; background: #dc2626; color: #F1F5F9;
+  width: 30px; height: 30px; border-radius: 7px; background: #4D84CB; color: #F1F5F9;
   display: grid; place-items: center; font-size: 14px; font-weight: 700; flex-shrink: 0; margin-top: 2px;
 }
 .sec-title-box { flex: 1; min-width: 0; }
@@ -1516,7 +1518,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   position: relative; overflow: hidden; padding: 0;
   background: #11192C; border: 1px solid #212C45; border-radius: 9px;
 }
-.mat-mini:hover { border-color: #B06A6A; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.05); }
+.mat-mini:hover { border-color: #3C5A85; box-shadow: 0 6px 18px -6px rgba(0,0,0,.45); }
 /* 顶色条(按素材类型 9 色) */
 .mat-mini-bar { height: 3px; width: 100%; }
 .mat-mini-inner { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; }
@@ -1541,7 +1543,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   border: 0; border-radius: 6px; background: transparent; color: #8B9BB1; cursor: pointer;
 }
 .mat-op-icon:hover { background: #212C45; color: #E8EEF7; }
-.mat-op-icon.danger:hover { background: #2A1C1C; color: #dc2626; }
+.mat-op-icon.danger:hover { background: #2A1C1C; color: #4D84CB; }
 .rail-footer-col { padding: 9px; border-top: 1px solid #222F44; display: flex; flex-direction: column; gap: 6px; }
 .btn-rollback-keep {
   padding: 6px; border: 1px solid #1E3A5F; border-radius: 7px; background: #0F2137;
@@ -1613,7 +1615,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 }
 .btn-think-all:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-finalize-all {
-  padding: 8px; border: 0; border-radius: 7px; background: #dc2626; color: #F1F5F9;
+  padding: 8px; border: 0; border-radius: 7px; background: #4D84CB; color: #F1F5F9;
   font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .btn-finalize-all:disabled { background: #212C45; color: #7A8AA0; cursor: not-allowed; }
@@ -1639,7 +1641,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   font-weight: 500; cursor: pointer; text-align: left;
 }
 .rail-ai-toggle:hover { border-color: #B06A6A; }
-.rail-ai-toggle.on { background: #2A1C1C; border-color: #B06A6A; color: #dc2626; }
+.rail-ai-toggle.on { background: #2A1C1C; border-color: #B06A6A; color: #4D84CB; }
 .ai-panel {
   position: absolute; inset: 0; z-index: 20; background: #1A2333;
   display: flex; flex-direction: column; overflow: hidden;
@@ -1693,7 +1695,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   font-size: 11px; background: currentColor; color: #F1F5F9; flex-shrink: 0;
 }
 .ai-step.done .ai-step-mark { background: #16a34a; }
-.ai-step.current .ai-step-mark { background: #dc2626; }
+.ai-step.current .ai-step-mark { background: #4D84CB; }
 .ai-step.todo .ai-step-mark { background: transparent; color: inherit; border: 1px solid #46587A; }
 .ai-step-detail { margin-left: auto; font-size: 11px; opacity: 0.8; }
 .ai-partial { border-top: 1px dashed #222F44; padding-top: 12px; }
@@ -1714,7 +1716,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .guide-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 10px; }
 .guide-title { font-size: 13px; font-weight: 600; color: #E8EEF7; }
 .guide-type {
-  font-size: 10px; color: #dc2626; background: #2A1C1C; padding: 1.5px 8px; border-radius: 8px; flex-shrink: 0;
+  font-size: 10px; color: #4D84CB; background: #2A1C1C; padding: 1.5px 8px; border-radius: 8px; flex-shrink: 0;
 }
 .guide-goal { margin: 0; font-size: 12px; color: #8B9BB1; line-height: 1.6; }
 .guide-points { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
@@ -1724,7 +1726,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .ai-bulb { width: 48px; height: 48px; color: #222F44; margin-bottom: 8px; }
 .ai-idle-text { font-size: 14px; color: #8B9BB1; margin-bottom: 14px; }
 .ai-start {
-  padding: 9px 18px; border: 0; border-radius: 8px; background: #dc2626; color: #F1F5F9;
+  padding: 9px 18px; border: 0; border-radius: 8px; background: #4D84CB; color: #F1F5F9;
   font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
 .ai-start:disabled { background: #46587A; cursor: not-allowed; }
@@ -1751,7 +1753,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .gen-err { margin: 0; font-size: 12px; color: #dc2626; }
 .gen-actions { display: flex; gap: 10px; }
 .gen-run {
-  flex: 1; padding: 9px 0; border: 0; border-radius: 8px; background: #dc2626;
+  flex: 1; padding: 9px 0; border: 0; border-radius: 8px; background: #4D84CB;
   color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .gen-run:disabled { background: #46587A; cursor: not-allowed; }
