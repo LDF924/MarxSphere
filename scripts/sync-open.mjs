@@ -9,13 +9,62 @@
 //   node scripts/sync-open.mjs --dry-run # 只显示差异不复制
 //   node scripts/sync-open.mjs --push    # 同步+提交, 跳过 push
 import { execSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, statSync, appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.resolve(__dirname, "..");
 const OPEN = process.env.SAG_OPEN_ROOT || path.resolve(__dirname, "..", "..", "SAG-open-source");
+
+/**
+ * 运行留痕(`--log <文件>` 或 `SAG_SYNC_LOG`)。
+ *
+ * 由来(2026-09-21 用户问"今晚 22:30 怎么没跑"): 同步**每天都在跑**, 但计划任务的 stdout
+ *   没有落盘 —— 于是"跑了但零差异"与"根本没启动"在事后**完全无法区分**。那次我只能靠
+ *   open 仓的提交时间戳反推, 而"零差异"的那几次天然不留任何提交。
+ *   所以把每次运行的结论追加成一行(不是覆盖): 有没有差异、复制了几个、提交哈希、推没推成。
+ *
+ * 为什么用 `appendFileSync` 而不是写 stdout 让调用方重定向: 重定向要改计划任务的动作,
+ *   而"这次跑的结果"恰恰是运行**内部**才知道的事(退出码表达不了"零差异"与"没启动"的区别)。
+ * 为什么 `--log` 是参数而不是写死路径: 写死会指向主仓, 但脚本自己可能在别处被调用
+ *   (worktree / 其它副本), 落点应由调用方决定。
+ */
+const LOG_FLAG = process.argv.indexOf("--log");
+const LOG_FILE = LOG_FLAG > -1 ? process.argv[LOG_FLAG + 1] : process.env.SAG_SYNC_LOG || "";
+/** 本次运行的账 —— 各处只填事实, 最后**恰好写一次**(见 finish) */
+const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, commit: "", pushed: false };
+/**
+ * 收尾: 写日志 + 按原语义退出。
+ *
+ * ⚠ 日志写在**唯一出口**, 且 `writeLog` 自己吞掉异常 —— 留痕绝不能反过来把同步搞挂;
+ *   写不进去只是少一条记录, 同步本身该成功还是成功。
+ */
+function finish(code, note) {
+  writeLog(code, note);
+  process.exit(code);
+}
+function writeLog(code, note) {
+  if (!LOG_FILE) return;
+  const secs = ((Date.now() - run.t0) / 1000).toFixed(1);
+  const parts = [
+    // ISO 只到秒(zip 里见过 toISOString() 带毫秒, 这里不需要)
+    new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    `exit=${code}`,
+    `${DRY ? "dry-run" : "sync"}`,
+    `差异=${run.changed}改+${run.added}增`,
+    run.commit ? `提交=${run.commit}` : "提交=无",
+    run.pushed ? "push=ok" : (NO_PUSH ? "push=跳过" : "push=未执行"),
+    `残留=${run.ghosts}`,
+    `${secs}s`,
+  ];
+  if (note) parts.push(note);
+  try {
+    appendFileSync(LOG_FILE, parts.join(" | ") + "\n");
+  } catch (e) {
+    console.error(`[sync-open] 写日志失败(${LOG_FILE}): ${String(e?.message || e).slice(0, 120)}`);
+  }
+}
 const DRY = process.argv.includes("--dry-run");
 const NO_PUSH = process.argv.includes("--push");
 // 自定义提交消息: 默认 "sync: 自动同步 main → open (日期)"; 功能提交用 --msg "feat(xxx): ..."
@@ -23,7 +72,19 @@ const MSG_FLAG = process.argv.indexOf("--msg");
 const CUSTOM_MSG = MSG_FLAG > -1 ? process.argv[MSG_FLAG + 1] : "";
 const COMMIT_MSG = CUSTOM_MSG || `sync: 自动同步 main → open (${new Date().toISOString().slice(0, 10)})`;
 
-if (!existsSync(OPEN)) { console.error(`[sync-open] open-source 不存在: ${OPEN}`); process.exit(1); }
+/**
+ * open 仓找不到 → 立刻失败, 并**留痕**。
+ *
+ * ⚠ 这条必须放在 CLI 参数解析之后: 本文件的 `const DRY`/`const NO_PUSH` 在**声明前**被
+ *   `writeLog` 引用 —— 上面用 `--dry-run` 冒烟时因为这一段被删掉、脚本一路跑下去,
+ *   把 open 仓不存在当成"1411 个文件全是新增", 打印出一个**看起来正常的差异报告**。
+ *   那正是"静默地把失败说成成功"。所以这里既要有守卫, 也不能把它挪到声明之前。
+ */
+if (!existsSync(OPEN)) {
+  console.error(`[sync-open] open-source 不存在: ${OPEN}`);
+  finish(1, "open-source 不存在");
+}
+
 
 // ─── 同步目录(与 sync-repos.mjs 的 EXCLUDE 对齐) ───
 // ⚠ 2026-09-12 修复: 原来只列了 "web/src", 而 collect() 不会跨进未列出的兄弟目录 ——
@@ -88,6 +149,8 @@ for (const rel of files) {
   if (!existsSync(dst)) { added.push(rel); continue; }
   if (!sameContent(src, dst)) changed.push(rel);
 }
+run.changed = changed.length;
+run.added = added.length;
 console.log(`[sync-open] 差异: ${changed.length} 修改 + ${added.length} 新增 = ${changed.length + added.length} 文件`);
 for (const f of changed.slice(0, 15)) console.log(`  M ${f}`);
 for (const f of added.slice(0, 10)) console.log(`  A ${f}`);
@@ -112,6 +175,7 @@ try {
   openTracked = out.split("\n").map((s) => s.trim()).filter(Boolean);
 } catch { /* open 仓无 git / 读不到 → 跳过检测 */ }
 const ghosts = openTracked.filter((rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)));
+run.ghosts = ghosts.length;
 // 有残留时用独立退出码, 让外部脚本/CI 能感知(原来无论如何都返回 0, 警告只打在
 // stdout —— 不盯着终端就等于静默, 2026-09-12 讨论确认这是真实风险)。
 // 2 = "同步成功但有残留待人工清理", 与 1 = "同步失败" 区分; 同步本身仍照常完成。
@@ -134,8 +198,8 @@ const GHOST_NOTE = ghosts.length
     + (ghosts.length > 10 ? "\n  … 等 " + ghosts.length + " 个" : "")
   : "";
 
-if (DRY) { console.log("[sync-open] --dry-run: 未复制"); process.exit(ghosts.length ? GHOST_EXIT : 0); }
-if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新(无新增/修改)"); process.exit(ghosts.length ? GHOST_EXIT : 0); }
+if (DRY) { console.log("[sync-open] --dry-run: 未复制"); finish(ghosts.length ? GHOST_EXIT : 0, "dry-run"); }
+if (changed.length + added.length === 0) { console.log("[sync-open] ✅ open-source 已是最新(无新增/修改)"); finish(ghosts.length ? GHOST_EXIT : 0, "无差异"); }
 
 // ─── 复制 ───
 for (const rel of files) {
@@ -157,19 +221,22 @@ try {
     // 后者消息里的换行会被 shell 当字面字符传进 git, 多行提示会显示成一行,
     // 留痕形同失效(2026-09-12 实测)。stdin 方式换行才真的生效。
     execSync(`git commit -F -`, { cwd: OPEN, input: COMMIT_MSG + GHOST_NOTE, stdio: ["pipe", "inherit", "inherit"] });
+    // 记短哈希进日志 —— 事后靠它在 open 仓里直接定位这次同步的内容
+    run.commit = execSync(`git rev-parse --short HEAD`, { cwd: OPEN, encoding: "utf8" }).trim();
     console.log(`[sync-open] 已提交 open-source: ${COMMIT_MSG}`);
   }
   if (!NO_PUSH) {
     execSync(`git push origin main`, { cwd: OPEN, stdio: "inherit" });
+    run.pushed = true;
     console.log("[sync-open] 已 push origin main");
   } else {
     console.log("[sync-open] --push: 跳过 push");
   }
 } catch (e) {
   console.error(`[sync-open] git 操作失败: ${String(e?.message || e).slice(0, 200)}`);
-  process.exit(1);
+  finish(1, `git 失败: ${String(e?.message || e).slice(0, 80).replace(/\s+/g, " ")}`);
 }
 console.log(ghosts.length
   ? `[sync-open] ⚠️ 同步完成, 但有 ${ghosts.length} 个残留待人工清理(退出码 ${GHOST_EXIT})`
   : "[sync-open] ✅ 同步完成");
-process.exit(ghosts.length ? GHOST_EXIT : 0);
+finish(ghosts.length ? GHOST_EXIT : 0);
