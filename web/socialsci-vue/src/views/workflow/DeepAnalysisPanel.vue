@@ -28,9 +28,8 @@
  *   而不是渲染成一个空结果让人以为"分析完了没结论"。
  */
 import { ref, computed, watch } from "vue";
-import { q } from "@/shared/api";
 import { toast } from "@/shared/ui";
-import { editorApi } from "@/shared/editorApi";
+import { q } from "@/shared/api";
 import EmptyState from "./EmptyState.vue";
 
 const props = defineProps<{
@@ -76,6 +75,10 @@ type Cap = {
    *   否则就只能继续"后端有、前端零引用"(它们此前正是这个状态)。
    */
   needsDoc?: boolean;
+  /** 需要**多篇**文档(互文对照要 ≥2 篇才成对照, 后端会 400) */
+  needsDocs?: boolean;
+  /** HTTP 方法 —— argument-tree 是 GET(query 参数), 其余是 POST */
+  method?: "GET" | "POST";
 };
 
 const CAPS: Cap[] = [
@@ -127,21 +130,15 @@ const CAPS: Cap[] = [
   },
   {
     id: "argstruct", label: "论证结构拆解", path: "/classical/argument-structure", needsDoc: true,
-    desc: "拆解指定文档的论证结构：核心论点、支撑论据、推理链条。选一篇知识库文档。",
+    desc: "拆解指定语料文档的论证结构：核心论点、支撑论据、推理链条。选一篇知识库里的文档。",
     fields: [],
   },
   {
-    id: "argtree", label: "论证树", path: "/classical/argument-tree", needsDoc: true,
-    desc: "把论证展开成一棵树（论点 → 分论点 → 论据），适合看清一篇文章的骨架。",
-    fields: [],
-  },
-  {
-    id: "intertextual", label: "互文对照", path: "/classical/intertextual",
-    desc: "围绕研究主题检索相关文本，做跨文本的互文对照（哪些说法彼此呼应/相左）。依赖知识库检索。",
+    id: "intertextual", label: "互文对照", path: "/classical/intertextual", needsDocs: true,
+    desc: "跨文本对照同一主题的说法（哪些彼此呼应、哪些相左）。**必须选至少 2 篇** —— 一篇没法对照。",
     fields: [
       { key: "topic", label: "对照主题", type: "text", fill: () => props.topic },
     ],
-    body: (v) => ({ topic: v.topic, perDoc: 3 }),
   },
   {
     id: "exegesis", label: "晦涩段阐释", path: "/classical/exegesis",
@@ -199,6 +196,8 @@ const ready = computed(() => {
   const v = valsOf(cap);
   // 文档型能力没选文档就是没输入 —— 直接禁用按钮, 而不是打一个必然 400 的请求
   if (cap.needsDoc && !docId.value) return false;
+  // 互文对照后端要求 ≥2 篇(实测 1 篇 -> 400 "需要 topic 和至少 2 个 documentIds")
+  if (cap.needsDocs && docIds.value.length < 2) return false;
   if (cap.id === "system") return splitLines(v.propositions).length >= 2;
   if (cap.id === "concept") return !!v.concept?.trim();
   if (cap.fields.some((f) => f.key === "claim")) return !!v.claim?.trim();
@@ -209,18 +208,39 @@ const ready = computed(() => {
 const docs = ref<Array<{ id: string; title: string }>>([]);
 const docsLoaded = ref(false);
 const docId = ref("");
+/** 多篇能力用的选择(互文对照要 ≥2 篇) */
+const docIds = ref<string[]>([]);
+const toggleDoc = (id: string) => {
+  const i = docIds.value.indexOf(id);
+  if (i >= 0) docIds.value = docIds.value.filter((x) => x !== id);
+  else docIds.value = [...docIds.value, id];
+};
 
 /**
  * 懒加载文档列表 —— 只在切到 needsDoc 的能力时才拉。
  * 合稿页平时不需要它, 每次进来都查一遍是白花一次请求。
  * 拉不到(网络/权限)就留空列表, 界面会提示"没有可选文档", 不阻断其它能力。
  */
+/**
+ * 拉**语料文档**(source_chunks 系), 不是编辑器文档。
+ *
+ * ⚠ 2026-09-22 修, 踩了两个坑:
+ *   ① 我第一版用的是 `editorApi.listDocs()` —— 那是「学术文本工作台」的编辑器文档,
+ *      而 argument-structure / argument-tree 读的是 `source_chunks`(知识库入库的语料)。
+ *      两份文档集毫无关系, 结果选出来的 id 后端的 getDocChunks 一条都查不到,
+ *      返回"未找到该文档的章节内容";
+ *   ② 列表要**先有 source 再列它的文档**(/api/sources/:id/documents) —— 语料是按库组织的。
+ * 修法: 先取可用数据源, 再取第一个源下的文档。
+ */
 async function ensureDocs() {
   if (docsLoaded.value) return;
   docsLoaded.value = true;
   try {
-    const r = await editorApi.listDocs(1, 100);
-    docs.value = (r.data?.items ?? []).map((d) => ({ id: d.id, title: d.title || "未命名文档" }));
+    const sr = await q<{ sources?: Array<{ id: string; name?: string }> }>("/research/available-sources");
+    const src = sr.sources?.[0];
+    if (!src) { docs.value = []; return; }
+    const dr = await q<{ documents?: Array<{ id: string; title?: string }> }>(`/sources/${src.id}/documents`);
+    docs.value = (dr.documents ?? []).map((d) => ({ id: d.id, title: d.title || "未命名文档" }));
     if (docs.value.length && !docId.value) docId.value = docs.value[0].id;
   } catch { docs.value = []; }
 }
@@ -237,8 +257,10 @@ async function run() {
     const base = cap.body ? cap.body(v) : { topic: props.topic, text: props.text, ...v };
     // 文档型能力把选中的文档并进去 —— 后端要 documentId(documentIds 那项用数组包一下)
     const body = cap.needsDoc
-      ? (cap.id === "intertextual" ? { ...base, documentIds: docId.value ? [docId.value] : [] } : { ...base, documentId: docId.value })
-      : base;
+      ? { ...base, documentId: docId.value }
+      : cap.needsDocs
+        ? { ...base, documentIds: docIds.value, perDoc: 3 }
+        : base;
     const r = await q<Record<string, unknown>>(cap.path, { method: "POST", body });
     result.value = r ?? {};
     /**
@@ -322,8 +344,21 @@ function isObjList(v: unknown): boolean {
             <option v-for="d in docs" :key="d.id" :value="d.id">{{ d.title }}</option>
           </select>
           <p v-else class="da-hint">
-            没有可选文档 —— 这一项要读**知识库里的文章**，请先在「学术文本工作台」里导入文档。
+            没有可选文档 —— 这一项读的是**知识库入库的语料**（不是编辑器里的稿件），
+            请先在「知识库 / 文献处理」里导入并处理文档。
           </p>
+        </div>
+
+        <!-- 多篇: 勾选(互文对照要至少 2 篇) -->
+        <div v-if="active.needsDocs" class="da-field">
+          <label class="da-label">对照文档（已选 {{ docIds.length }} 篇）</label>
+          <div v-if="docs.length" class="da-doclist">
+            <label v-for="d in docs" :key="d.id" class="da-docitem" :class="{ on: docIds.includes(d.id) }">
+              <input type="checkbox" :checked="docIds.includes(d.id)" @change="toggleDoc(d.id)" />
+              <span>{{ d.title }}</span>
+            </label>
+          </div>
+          <p v-else class="da-hint">没有可选文档 —— 请先在「知识库 / 文献处理」里导入并处理文档。</p>
         </div>
         <div v-for="f in active.fields" :key="f.key" class="da-field">
           <label class="da-label">{{ f.label }}</label>
@@ -411,6 +446,10 @@ function isObjList(v: unknown): boolean {
 }
 .da-area { resize: vertical; line-height: 1.6; }
 .da-hint { font-size: var(--wf-f-sm); color: var(--wf-faint); line-height: 1.6; }
+.da-doclist { max-height: 190px; overflow-y: auto; border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm); background: var(--wf-raised); }
+.da-docitem { display: flex; align-items: center; gap: 7px; padding: 5px 9px; font-size: var(--wf-f-sm); color: var(--wf-text-2); cursor: pointer; }
+.da-docitem:hover { background: var(--wf-surface); }
+.da-docitem.on { color: var(--wf-text); background: var(--wf-accent-soft); }
 .da-run-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 .da-run {
   padding: 8px 18px; border: 1px solid var(--wf-accent); border-radius: var(--wf-r-sm);
