@@ -25,7 +25,18 @@ const store = useWorkflowStore();
 const router = useRouter();
 
 // ── 左侧项目栏 ──
-const railOpen = ref(localStorage.getItem("skf_proj_rail") !== "0");
+/**
+ * 默认展开 —— 但**窄屏默认收起**。
+ *
+ * ⚠ 2026-09-22 修: 窄屏(≤1100px)下这条栏是 `position:absolute` 的**覆盖层**(见样式),
+ *   默认展开就会压住主区内容。实测在 1024 下, 覆盖层里的项目条目与主区的按钮整片重叠
+ *   (布局门禁的"按钮无重叠"如实报了出来)。
+ *   覆盖层本该是"要看才拉出来"的东西, 默认摊开既遮内容又没必要。
+ *   用户手动开合过就以他的选择为准(localStorage 里有记录时不覆盖)。
+ */
+const NARROW = "(max-width: 1100px)";
+const railSaved = localStorage.getItem("skf_proj_rail");
+const railOpen = ref(railSaved !== null ? railSaved !== "0" : !window.matchMedia(NARROW).matches);
 function toggleRail() {
   railOpen.value = !railOpen.value;
   try { localStorage.setItem("skf_proj_rail", railOpen.value ? "1" : "0"); } catch { /* 隐私模式 */ }
@@ -55,6 +66,14 @@ const visible = computed(() => {
     .filter((p) => (showArchived.value ? true : p.status !== "archived"))
     .filter((p) => !q || p.title.toLowerCase().includes(q) || (p.topic ?? "").toLowerCase().includes(q));
 });
+
+/**
+ * 被"含已归档"开关挡掉的数量。
+ *
+ * 归档之后项目栏会变空, 而用户的第一反应是"我的项目没了" —— 空态里直接点出"另有 N 个已归档"
+ * 比一句"还没有项目"诚实得多。归档是收起来, 不是删掉, 这一层得让人看得见。
+ */
+const hiddenArchived = computed(() => projects.value.filter((p) => p.status === "archived").length);
 
 const STATUS_LABEL: Record<string, string> = { active: "进行中", "in-progress": "进行中", archived: "已归档", done: "已完成" };
 const PHASE_LABEL = ["", "信息录入", "科研架构", "素材准备", "文本创作", "合稿定稿"];
@@ -245,8 +264,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
             v-if="projLoaded && !visible.length"
             size="sm"
             icon="⬚"
-            :title="query ? '没有匹配的项目' : '还没有其它项目'"
-            :hint="query ? '换个关键词试试。' : '在下方进度条点「＋ 新项目」开始一个。'"
+            :title="query ? '没有匹配的项目' : (hiddenArchived ? '没有进行中的项目' : '还没有项目')"
+            :hint="query ? '换个关键词试试。'
+              : hiddenArchived ? `另有 ${hiddenArchived} 个已归档项目 —— 勾选上面的「含已归档」可以看到。`
+              : '在下方进度条点「＋ 新项目」开始一个。'"
           />
           <p v-if="!projLoaded" class="wfs-loading">加载中…</p>
         </div>

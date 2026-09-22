@@ -60,15 +60,33 @@ export async function createProject(input: {
   return { id: r.rows[0].id };
 }
 
+/**
+ * 项目列表(写作舱左侧项目栏的数据源)。
+ *
+ * ⚠ 2026-09-22 修(我自己引入的回归): 原先是一条 `order by updated_at desc limit 100`。
+ *   批量归档测试项目后实测**项目栏整个空了** —— 因为 765 条已归档的 updated_at 更新(刚被改),
+ *   全排在前 100 名里, 把真正的项目挤出了窗口。**归档的语义是"收起来", 不是"消失"**,
+ *   让它与活跃项目抢同一个 100 条窗口, 等于"归档一次就把别的项目顶掉一个"。
+ *   修法不是把 limit 调大(那只是把墙推远), 而是**分两次查**:
+ *   · 活跃(非 archived): 全给 —— 用户最多几十个, 且这才是他真正在做的;
+ *   · 归档: 只取最近 100 条 —— 归档是历史, 有上限是合理的, 但**不能占用活跃的名额**。
+ */
 export async function listProjects(userId: string) {
-  const r = await pool.query(
+  const active = await pool.query(
     `select id, title, topic, phase, phase_label, status, current_task_id,
             published_version, canvas, updated_at
-       from research_projects where user_id=$1 and status<>'deleted'
+       from research_projects where user_id=$1 and status<>'deleted' and status<>'archived'
+      order by updated_at desc`,
+    [userId]
+  );
+  const archived = await pool.query(
+    `select id, title, topic, phase, phase_label, status, current_task_id,
+            published_version, canvas, updated_at
+       from research_projects where user_id=$1 and status='archived'
       order by updated_at desc limit 100`,
     [userId]
   );
-  return r.rows;
+  return [...active.rows, ...archived.rows];
 }
 
 export async function getProject(userId: string, projectId: string) {

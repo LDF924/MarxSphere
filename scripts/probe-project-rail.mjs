@@ -145,9 +145,21 @@ try {
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {
-  // 还原指针(探针切了项目, 不能把用户的当前项目留在别的项目上)
+  /**
+   * 还原现场 —— 两步都要做, 只写 localStorage 是不够的。
+   *
+   * ⚠ 2026-09-22 修: 原来只把 lastTask_workflow 写回去就结束了。但页面**已经加载了**
+   *   探针切过去的那个项目(B)的快照, 而 B 紧接着就被删掉 —— 于是用户回到页面时看到的是
+   *   "当前项目"指向一个已删 id、内容还是 B 的。**测试改了用户状态却没还干净**,
+   *   比"多留一个测试项目"更糟, 因为它会让人以为自己的项目被换掉了。
+   *   现在写回指针之后重新载入一次, 让界面与指针一致。
+   */
   if (originalPointer) {
     await evalTop(cdp, `localStorage.setItem('lastTask_workflow', ${JSON.stringify(originalPointer)})`).catch(() => null);
+    // 重新载入: store 由各页的 onMounted 自动按指针恢复, 所以重载一步就够 ——
+    //   不需要(也没有)什么"手动恢复"的钩子。
+    await cdp("Page.navigate", { url: `${BASE}/soc/index.html#/workflow/input` }).catch(() => null);
+    await sleep(4000);
   }
   try { await api(tk, `/research/projects/${idA}`, "DELETE"); } catch { /* 忽略 */ }
   try { await api(tk, `/research/projects/${idB}`, "DELETE"); } catch { /* 忽略 */ }

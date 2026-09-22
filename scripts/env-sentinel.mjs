@@ -257,6 +257,42 @@ function stalenessCheck() {
   }
 }
 
+/**
+ * 测试数据的健康度。
+ *
+ * 由来(2026-09-22, 用户问"为什么页面有 2 个上下滑动的"): 查下去发现项目栏内滚 6315px,
+ *   因为 audit 名下积了 **768 个未删项目**。门禁的探针各自删自己建的项目, 但
+ *   (a) 历史上有些删失败了(实证台那条"清理被跳过"就是), (b) **有些探针的种子压根没写清理**。
+ *   这类东西不会报错、不会让门禁变红 —— 只会让界面越来越难用, 属于"跑得越久越糟"的慢性问题。
+ *   所以给它一条读数: 超阈值时说清"这是测试数据", 而不是让人以为产品坏了。
+ *
+ * 走子进程 + 独立脚本(不在这里拼 shell 字符串 —— 试过, 被转义搞坏过);
+ * 连不上(输出 -1)就跳过, 这条不该让哨兵整体失败。
+ */
+/**
+ * 从 .env 读库连接串(测试数据量那条要用)。
+ * 候选顺序与探针一致: 环境变量 → cwd → 仓库根。
+ */
+const DB_URL = (() => {
+  const cands = [process.env.SAG_ENV_FILE, path.join(process.cwd(), ".env"), path.join(process.cwd(), "..", "..", "..", ".env")].filter(Boolean);
+  const hit = cands.find((x) => existsSync(x));
+  if (!hit) return "";
+  const m = readFileSync(hit, "utf8").match(/^DATABASE_URL=(.*)$/m);
+  return m ? m[1].trim() : "";
+})();
+
+function testDataCheck() {
+  if (!DB_URL) return;
+  const out = sh(`node "${path.join(process.cwd(), "scripts/lib/db-count-projects.mjs")}" audit`, { env: { ...process.env, DATABASE_URL: DB_URL } });
+  const n = Number(out.split(String.fromCharCode(10)).pop());
+  if (!Number.isFinite(n) || n < 0) return;
+  if (n > 300) {
+    add("warn", "测试数据量", `audit 名下有 ${n} 个未删项目(探针每次建一个, 有的没清干净) —— 它会让左侧项目栏内滚很长。按标题前缀批量清理即可, 不是产品问题。`);
+  } else {
+    add("ok", "测试数据量", `audit 名下 ${n} 个未删项目`);
+  }
+}
+
 // ── ⑧ dev 端口占用(5174 上可能是另一个树的 vite) ──
 // 实测踩过: worktree 的 vite 监听 127.0.0.1:5174、主仓的监听 [::1]:5174, **两个都叫 5174**
 //   且互不冲突 —— 谁解析 localhost 到 ::1 就把主仓那份前端当成 worktree 的看。
@@ -282,6 +318,7 @@ backendFreshnessCheck(apiPid);
 envCheck();
 stalenessCheck();
 devPortCheck();
+testDataCheck();
 
 // ── 输出 ──
 const ICON = { ok: "  ok  ", warn: " warn ", fail: "FAIL  " };
