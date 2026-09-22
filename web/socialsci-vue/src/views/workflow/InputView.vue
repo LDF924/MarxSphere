@@ -513,9 +513,12 @@ onMounted(async () => {
 
     <!-- V420b: 卡片分组。原先 7 张卡单列纵向堆叠 —— 全宽页里每张卡都是一个横贯屏幕的长条,
          右半屏基本空着, 而页面又长得要滚很久。按**内容亲缘**分成两列:
-           左列 = 大纲(需要整幅宽度编辑) + 额外要求
-           右列 = 研究方法 / 检索数据源 / 参考文件 / agent 引导
+           左列 = 大纲(要整幅宽度编辑) + 研究方法(三张卡要排成一行)
+           右列 = 检索数据源 / 参考文件 / 额外要求 / agent 引导
          左列用 1.55fr 更宽(大纲编辑器要横向空间放标题与行内按钮)。
+         ⚠ V425 调过一次分组: 「额外要求」原在左栏, 导致左栏比右栏高 356px(右下角一大块空)。
+         它与右栏的"参考文件"同属**补充说明类**输入, 挪过去后两栏基本齐平;
+         而「研究方法」**不能**挪 —— 三张卡在右栏只能排 2 列, 会破成 2+1。
          ⚠ 用 <template> 包不产生额外 DOM(不像 <div> 会多一层), 现有的 `> *` 类选择器不受影响。 -->
     <div class="iv-cols">
     <div class="iv-col-main">
@@ -528,18 +531,6 @@ onMounted(async () => {
       <OutlineEditor v-model="store.input.outline" />
       <!-- sr-only 同步真源(DOM 自动化/爬虫可见) -->
       <textarea class="sr-only" :value="store.input.outline" data-control="workflow:outline" tabindex="-1" aria-hidden="true" style="position: absolute; width: 1px; height: 1px; opacity: 0"></textarea>
-    </section>
-
-    <!-- 额外要求(闭源此处是 textarea, 不是单行 input —— 长要求写不进一行) -->
-    <section class="wf-card">
-      <label class="wf-label">额外要求<span class="opt-tag">(可选)</span></label>
-      <textarea
-        v-model="store.input.requirements"
-        class="wf-textarea"
-        rows="3"
-        placeholder="例如: 近3年文献 / 实证方法 / 8000-10000字 / 江苏省中小企业"
-        data-control="workflow:requirements"
-      ></textarea>
     </section>
 
     <!-- 研究方法 -->
@@ -626,7 +617,23 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- agent 引导提问(闭源: 默认折叠的手风琴, 标题栏带「（推荐）」) -->
+        <!-- 额外要求(闭源此处是 textarea, 不是单行 input —— 长要求写不进一行)。
+         ⚠ V425 从左栏移到右栏: 原先左栏三张卡(大纲/额外要求/研究方法)比右栏高 356px,
+         右下角空出一大块。挪过来后两栏底边只差个位数。
+         为什么不挪「研究方法」: 它的 method-grid 是 repeat(auto-fit, minmax(190px,1fr)) ——
+         在右栏(493px)只能排 2 列, 3 张方法卡会变成 2+1 的破行; 左栏(764px)才排得下 3 列。 -->
+    <section class="wf-card">
+      <label class="wf-label">额外要求<span class="opt-tag">(可选)</span></label>
+      <textarea
+        v-model="store.input.requirements"
+        class="wf-textarea"
+        rows="3"
+        placeholder="例如: 近3年文献 / 实证方法 / 8000-10000字 / 江苏省中小企业"
+        data-control="workflow:requirements"
+      ></textarea>
+    </section>
+
+<!-- agent 引导提问(闭源: 默认折叠的手风琴, 标题栏带「（推荐）」) -->
     <section class="wf-card clarify-card">
       <button
         type="button"
@@ -768,12 +775,21 @@ onMounted(async () => {
 }
 .opt-tag { font-weight: 400; font-size: 12px; color: var(--wf-faint); }
 /* 主题 + 字数同行(闭源: 主题 flex-1 自适应, 字数固定 144px) */
-.topic-row { display: flex; align-items: flex-start; gap: 12px; }
+/**
+ * 顶部卡的两列。
+ *
+ * ⚠ 2026-09-22 修: 原先是 flex + `.topic-main { flex:1; max-width:72ch }` + `.topic-wc { width:144px }`
+ *   的组合, 实测在 1276px 宽的卡里: 主题框 676px / 字数框 144px, **中间缝只有 12px** ——
+ *   两栏挨在一起、右端还空出 381px, 看着就是"没排好"。
+ *   根因是三个宽度各自为政(flex:1 / max-width:72ch / 定宽144)互相打架。
+ *   改成**内容驱动的网格**: 主题 2fr(长输入) + 字数 1fr(短数字), 间距用页面统一的 20px。
+ *   两侧仍是表单控件的自然长度, 但比例与缝宽都是确定的, 不再互相打架。
+ */
+.topic-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr); gap: 20px; align-items: start; }
 /* V420b: 研究主题是**单行**标题 —— 全宽页里它被拉到 1160px(约 100 个汉字一行)。
    标题不需要那么宽, 限到 72ch(比正文宽一档, 标题略长是常态)。字数框跟着往左收,
    不再被甩到屏幕最右端。 */
-.topic-main { flex: 1; min-width: 0; max-width: 72ch; }
-.topic-wc { width: 144px; flex-shrink: 0; }
+.topic-main, .topic-wc { min-width: 0; }
 /* 额外要求是**多行** textarea —— 用正文档 86ch */
 .wf-textarea { max-width: 86ch; }
 .wf-note { margin: 6px 0 0; font-size: 11.5px; color: var(--wf-muted); line-height: 1.5; }
@@ -905,9 +921,13 @@ onMounted(async () => {
 /* 动作行。闭源 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
    "开始思考科研架构 / 返回" 那对, 与 sections/materials 的 pt-6 + border-t 不同)。
    原值 margin-top:6px 比闭源少 10px, 页面底部显得挤。 */
-.wf-actions { display: flex; gap: 12px; margin-top: 16px; }
+/**
+ * 动作行。⚠ 主按钮原先 `flex:1` 会横贯整幅(实测 1276px 里的 1186px) —— 一个"提交"按钮
+ * 拉这么长既不美观也不像按钮。改成内容宽度, 并把整行右对齐(退路按钮在最右)。
+ */
+.wf-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: flex-end; }
 /* 主按钮占满剩余宽度(闭源 flex-1), 返回按钮固定宽在右 */
-.wf-actions .btn-primary { flex: 1; }
+.wf-actions .btn-primary { min-width: 200px; }
 /* 闭源按钮是 `px-6 py-3 text-sm` = 24/12 内边距 + **固定 20px 行高** + 边框 = 46px 高。
    我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比闭源矮 8px。行高写死 20px 才与闭源等高。 */
 .wf-actions .btn-primary,

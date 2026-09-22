@@ -105,9 +105,37 @@ const MEASURE = `(() => {
    *   (我第一版就是这么测的, 修完仍报 68 —— 测的是"能不能被程序滚动", 不是"用户能不能滚")。
    */
   const winScrollBar = de.offsetWidth - de.clientWidth;
+  /**
+   * 两栏底部落差 —— **刻意不做成断言**, 只留一段说明。
+   *
+   * 2026-09-22 试过, 结论是这条在这个仓里做不可靠: 每个两栏页都有一栏是**可变高**的 ——
+   *   · 信息录入页左栏是**大纲编辑器**, 实测 1440 下高 485px、1600 下只有 363px
+   *     (窄了要换行), 而右栏三张卡在两种宽度下**完全一样**;
+   *   · 合稿页右栏是整篇正文(一个 finale-card), 高度随稿件任意长;
+   *   · 科研架构页两栏都装长度不定的树与指导。
+   * 于是"两栏齐平"这条判据的噪声(23%)与真正要拦的信号(32%)只差 9 个百分点, 宽度一变就翻。
+   * **没有可靠判据的检查不如不写** —— 写了只会变成需要反复调阈值的假失败来源。
+   *
+   * 但那 356px 的落差是真问题(在 1600 下肉眼可见), 修法是内容重排:
+   *   把「额外要求」从左栏挪到右栏(它与右栏的"参考文件"同属补充说明类输入),
+   *   实测 1600 下落差 356px → 8px。这类判断只能靠**看**, 靠不了断言。
+   */
+  /**
+   * 行内两栏的**缝宽**。
+   *   顶部卡原先 flex + max-width:72ch + 定宽144 三套宽度互相打架, 实测缝只有 12px
+   *   (与全页统一用的 20px 不一致), 看着就是"没排好"。这里要求行内栅格的 column-gap
+   *   与页面一致; 拿不到栅格就跳过(不是所有页都有这种行)。
+   */
+  const rowGap = (() => {
+    const tr = document.querySelector('.topic-row');
+    if (!tr) return null;
+    const cs = getComputedStyle(tr);
+    if (cs.display !== 'grid' && cs.display !== 'flex') return null;
+    return Math.round(parseFloat(cs.columnGap || cs.gap) || 0);
+  })();
   const contentH = pg ? pg.scrollHeight : 0;
   return {
-    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed, winScrollBar,
+    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed, winScrollBar, rowGap,
     page: r('.workflow-page'), nav: r('.sec-nav,.ws-nav,aside'), main: r('main,.ws-main'),
     topic: r('.ppb-topic'), inner: r('.ppb-inner'),
     contentH, needScroll: contentH > de.clientHeight + 8, scroller,
@@ -151,6 +179,10 @@ try {
       // 窗口级滚动条 = 页面出现"第二条滚动条", 且滚动它会顶掉吸顶元素
       rec(`${name}@${w}`, "无窗口级滚动条", (m.winScrollBar ?? 0) <= 0,
         (m.winScrollBar ?? 0) > 0 ? `窗口滚动条宽 ${m.winScrollBar}px —— 页面会多出一条上下滑动` : "");
+      // 行内多列控件的缝宽要与页面统一(12px 那种"挨在一起"就是不规整)
+      if (m.rowGap !== null && m.rowGap !== undefined) {
+        rec(`${name}@${w}`, "行内多列缝宽 = 页面栅格间距", m.rowGap === 20, `实测 ${m.rowGap}px(期望 20)`);
+      }
     }
   }
   await cdp("Emulation.clearDeviceMetricsOverride");
