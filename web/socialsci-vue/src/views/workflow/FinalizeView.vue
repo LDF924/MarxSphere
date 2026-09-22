@@ -1754,14 +1754,26 @@ onMounted(async () => {
 .finale-fields { display: flex; flex-direction: column; gap: 12px; }
 .f-row { display: flex; flex-direction: column; gap: 5px; }
 .f-row label { font-size: 12.5px; font-weight: 600; color: #DCE6F2; }
-/* V420b: 全宽页里这些控件被拉到 1470px(约 200+ 字符一行)。标题/关键词是单行 → 68ch;
-   正文与参考文献是连续文字 → 86ch。卡片本身仍全宽, 只是控件不再无限伸展。 */
-.f-title { font-size: 17px; font-weight: 700; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--wf-line); max-width: 68ch; }
-.f-input { padding: 7px 10px; border: 1px solid var(--wf-line); border-radius: 8px; font-size: 13px; max-width: 68ch; }
+/**
+ * 终稿区的行宽 —— **按列宽定, 不按"字符数上限"定**。
+ *
+ * ⚠ 2026-09-22 修。这三个 `<textarea>` 只有 `max-width: 68ch/86ch`, **没有 `width: 100%`**,
+ *   也没有 `cols`。textarea 的宽度在两者皆无时会回落到**自动尺寸**, 于是同一张卡里的三个字段
+ *   各缩各的 —— 实测在 734px 宽的列里:
+ *     摘要 681px · 正文 696px · 参考文献 605px(右空 515~591px)
+ *   三行右边缘互不相同。这是"版式不合理、有空缺"里最刺眼的一处, 而它只是**缺一个 width**。
+ *
+ *   现在: `width: 100%` 撑满列 + `--wf-field-max`(120ch)兜底 —— 那个上限只在单栏大屏
+ *   (列宽超过约 1670px)时才会触发, 两栏下永远够不到。
+ *   (同一天 InputView 的 `.wf-textarea`、OutlineEditor 的 `.oe-title-input` 也把各自那条
+ *   够不到的 ch 上限收进了同一个令牌 —— 那两处**行为不变**, 只是不再各写各的。)
+ */
+.f-title { font-size: 17px; font-weight: 700; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--wf-line); max-width: var(--wf-field-max, 120ch); }
+.f-input { padding: 7px 10px; border: 1px solid var(--wf-line); border-radius: 8px; font-size: 13px; max-width: var(--wf-field-max, 120ch); }
 .f-area {
-  padding: 10px 12px; border: 1px solid var(--wf-line); border-radius: 8px;
+  width: 100%; padding: 10px 12px; border: 1px solid var(--wf-line); border-radius: 8px;
   font-size: 13.5px; line-height: 1.8; font-family: inherit; resize: vertical;
-  max-width: 86ch;
+  max-width: var(--wf-field-max, 120ch);
 }
 .f-area.body { font-size: 14px; min-height: 300px; }
 .f-area.refs { font-size: 12px; }

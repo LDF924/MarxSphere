@@ -410,8 +410,10 @@ const counter = computed(() => {
 .oe-title-input {
   flex: 1;
   min-width: 0;
-  /* V420b: 全宽页里标题输入会被拉到 1293px(约 207 字符) —— 单行标题不需要那么宽 */
-  max-width: 68ch;
+  /* 这条 `68ch` 上限与 InputView 那条同病: 它是给全宽页写的, 而本控件有 `flex: 1`,
+     已经撑满剩余的 500px(实测) —— 914px 的上限够不到, 属于死规则。
+     收进令牌只为统一口径, 行为不变。 */
+  max-width: var(--wf-field-max, 120ch);
   border: 0;
   padding: 5px 2px;
   font-size: 13px;

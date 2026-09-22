@@ -93,7 +93,13 @@ if (!existsSync(OPEN)) {
 //   即 open 仓库的 `npm run build` 一直是坏的; 更严重的是**审稿/统计/viz/编辑器四个
 //   工作台的全部前端代码都不在开源仓库里**。
 //   现在补上 web/socialsci-vue 与其构建配置; web/dist 等产物仍由 EXCLUDE_DIR 排除。
-const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config", "script-archive"];
+//
+// ⚠ 2026-09-23 补 `.github`: 它与上面那次是**同一个病** —— 不在列表里就永远同步不过去。
+//   实测后果: open 仓的 `.github/workflows/ci.yml` 停在 9-1(99 行), 而 main 侧已改到
+//   124 行 —— 9-14 加的「UI 视图门禁(真浏览器)」**从没在 CI 上跑过**, 一直是 open 仓
+//   那份 99 行的旧版在跑(它那一步还是空转的 `npx playwright test`)。
+//   同目录下的 release.yml 也一样。**改了 CI 配置却看不到效果的, 先查这里。**
+const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config", "script-archive", ".github"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
 const EXCLUDE_FILE = [/^\.env/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\.json$/, /^gold_dataset.*\.json$/, /^judge_results\.json$/, /^isolated_entities\.csv$/, /^batch-ingest-log/, /^cognee_entities_dump\.json$/, /^entity_(id|norm)_map\.json$/, /^paper_id_map\.json$/, /^run-eval-one-by-one/, /^start(_sag|-web)\./, /^compact-vhdx/, /^memory-settings\.json$/, /^node_modules\.zip$/];

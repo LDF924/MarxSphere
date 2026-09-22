@@ -1435,11 +1435,25 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
    移动端地址栏收起时 100vh 大于可视高度, 底栏会被推出视口 */
 .ws-page-root { height: 100vh; height: 100dvh; width: 100%; max-width: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
 .wf-layout { display: flex; gap: 0; flex: 1; min-height: 0; }
-/* V420: 两栏改成**弹性宽度**。闭源是写死 `w-72`(288px) —— 在 1024 的窄屏上两栏就吃掉 56%
-   的可视宽, 中栏只剩 448px; 而在 1920 的宽屏上它又不跟着长, 显得空。
-   现在: 基准 288px, 随视口缩放, 并夹在 [240, 360] 之间 —— 窄屏不被栏吃掉, 宽屏栏也跟着舒展。 */
+/**
+ * 左右两条侧栏的宽度。
+ *
+ * 闭源写死 `w-72`(288px): 1024 窄屏上两栏吃掉 56% 可视宽 —— 于是 2026-09-21 改成
+ * `clamp(240px, 19vw, 360px)`, 只解决"窄屏太胖"。
+ *
+ * ⚠ 2026-09-22 **试过"直接取 `--wf-aside`"来消除跨页跳变, 结果是错的**: 本页是**三栏**,
+ *   而另外四页是两栏。`--wf-aside` 在 1536 下是 461px, 两条就是 922px ——
+ *   把 1304px 的可用宽切完之后, 中栏只剩 **382px**。那不是"统一", 是把主区挤没了。
+ *   (实测: 中栏 720 → 382, 正文编辑区随之塌成半屏宽。已回退。)
+ *
+ *   侧栏宽度不能脱离栏数谈, 所以这里保留 vw 方案, 只把上限 360 → 400
+ *   (只在视口超过约 2100px 时才生效 —— 纯粹是让超宽屏下侧栏跟得上, 不改常规表现)。
+ *
+ *   **跨页跳变仍在**(本页 292px ↔ 另外四页 461px), 记入台账: 真要收掉它, 得先决定
+ *   "侧栏算导航还是算内容" —— 那是版式决定, 不是一行 CSS。
+ */
 .left-rail {
-  width: clamp(240px, 19vw, 360px); flex-shrink: 0; border-right: 1px solid var(--wf-line);
+  width: clamp(240px, 19vw, 400px); flex-shrink: 0; border-right: 1px solid var(--wf-line);
   display: flex; flex-direction: column; background: var(--wf-surface); overflow-y: auto;
 }
 .rail-head { display: flex; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--wf-line-soft); }
@@ -1512,10 +1526,21 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   flex: 1; resize: none; border: 1px solid var(--wf-line); border-radius: 10px; padding: 14px;
   font-size: 14px; line-height: 1.9; font-family: inherit;
 }
-/* V420b: 中栏改成吃满之后, 正文编辑区在宽屏上会到 944px(约 151 字符/行) —— 太长。
-   限到 86ch 并把编辑区整体居中, 两侧留白比"一行拖到屏幕边"好读。 */
+/**
+ * 中栏的子块**撑满中栏** —— 包括 `.content-textarea` 与 `.md-preview`。
+ *
+ * ⚠ 2026-09-22 修。原先给这两个加了 `max-width: 86ch; margin-inline: auto`, 写于 2026-09-21,
+ *   当时中栏是"吃满剩余宽度"(944px)才需要限宽。同一天中栏改成了
+ *   `flex: 1` 夹在左右 292px 的导航之间 —— 实测 1536 视口下中栏 **720px**,
+ *   而 86ch 在 14px 字号下算出来是 **672px**。
+ *   于是每一个子块都比容器窄 48px 且左右各居中 24px: 中栏**整块**看着像被缩了一号,
+ *   左右各空一条, 与上下别的卡片的左边缘对不齐。
+ *   (用户说的"版式不合理/空间规划不好"里, 这是最容易被看见却最难说清的一处。)
+ *
+ *   现在: 撑满中栏, 兜底上限交给 `--wf-field-max`(默认 120ch, 只在极宽屏才起作用)。
+ */
 .center-main .content-textarea, .center-main .md-preview {
-  max-width: 86ch; margin-inline: auto; width: 100%;
+  max-width: var(--wf-field-max, 120ch); margin-inline: 0; width: 100%;
 }
 .content-view { flex: 1; overflow-y: auto; }
 .content-empty { padding: 60px 20px; text-align: center; color: var(--wf-faint); font-size: 13px; }
@@ -1532,7 +1557,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
 .summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
 .right-rail {
-  width: clamp(240px, 19vw, 360px); flex-shrink: 0; border-left: 1px solid var(--wf-line);
+  width: clamp(240px, 19vw, 400px); flex-shrink: 0; border-left: 1px solid var(--wf-line);
   display: flex; flex-direction: column; background: #141E33;
 }
 .mat-filter { margin: 8px 10px; padding: 5px 8px; border: 1px solid var(--wf-line); border-radius: 7px; font-size: 12px; background: var(--wf-surface); }

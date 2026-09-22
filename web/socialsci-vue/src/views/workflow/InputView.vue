@@ -786,12 +786,12 @@ onMounted(async () => {
  *   两侧仍是表单控件的自然长度, 但比例与缝宽都是确定的, 不再互相打架。
  */
 .topic-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr); gap: 20px; align-items: start; }
-/* V420b: 研究主题是**单行**标题 —— 全宽页里它被拉到 1160px(约 100 个汉字一行)。
-   标题不需要那么宽, 限到 72ch(比正文宽一档, 标题略长是常态)。字数框跟着往左收,
-   不再被甩到屏幕最右端。 */
 .topic-main, .topic-wc { min-width: 0; }
-/* 额外要求是**多行** textarea —— 用正文档 86ch */
-.wf-textarea { max-width: 86ch; }
+/* 额外要求 textarea —— **这条原本就是死规则, 只是收进令牌**。
+   V420b 写的 `max-width: 86ch`(14px 字号下 680px)是给**全宽页**用的; 改成两栏后它所在的
+   右栏只有 461px, 而它本身有 `width: 100%` —— 上限永远够不到。实测改前改后都是 419px
+   (卡内容宽 421px)。留在这里是为了统一口径: 各处的行宽兜底都走 `--wf-field-max`。 */
+.wf-textarea { max-width: var(--wf-field-max, 120ch); }
 .wf-note { margin: 6px 0 0; font-size: 11.5px; color: var(--wf-muted); line-height: 1.5; }
 /* V420: 固定 3 列 → 自适应(窄屏自动塌) */
 .method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }

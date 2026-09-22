@@ -321,6 +321,68 @@ function devPortCheck() {
   add("warn", "dev 端口占用", `5174 上有 ${pids.length} 个 vite: ${details.join(", ")} —— 本次门禁打 ${origin(WEB)} 不受影响, 但任何指向 localhost:5174 的检查会拿到不确定的那一份`);
 }
 
+/**
+ * 远端 CI 的结论。
+ *
+ * ⚠ 2026-09-23 加, 由来很直接: 用户某天问"仓库显示 CI 是失败的", 一查 —— **从 9-11 起
+ *   连续红了 13 天**, 中间这个会话的所有提交也都是红的, 而没人知道。
+ *   本地门禁那时是全绿的, 于是没有任何一个信号提示"远端已经垮了"。
+ *
+ * 为什么是 **warn 不是 fail**: 本地门禁验的是"我改的这棵树", 远端 CI 验的是"推上去之后";
+ *   两者是**两个事件**。因为远端红就禁止本地跑门禁, 会把"上游坏了自己也没法验证"变成常态
+ *   (CI 修好之前什么都干不了)。所以这里只把事实摆出来, 不拦路。
+ *
+ * 无 token 限流 60 次/小时/ip, 每次跑门禁查一次完全够; 取不到(离线/限流)就静默跳过 ——
+ *   这条不该让哨兵整体失败, 也不该在没网时刷屏。
+ */
+async function ciStatusCheck() {
+  if (process.env.SENTINEL_SKIP_CI === "1") return;
+  const repo = process.env.SENTINEL_GH_REPO || "LDF924/MarxSphere";
+  try {
+    const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=100`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "sag-env-sentinel" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return;                       // 限流 / 私有仓 → 静默
+    const d = await r.json();
+    const runs = (d.workflow_runs ?? []).filter((x) => x.name === "CI");
+    if (!runs.length) return;
+    const last = runs[0];
+    const ageH = Math.round((Date.now() - Date.parse(last.created_at)) / 3600000);
+    if (last.conclusion === "success") {
+      add("ok", "远端 CI", `最近一次 CI 通过(${last.head_sha.slice(0, 8)} · ${ageH} 小时前)`);
+      return;
+    }
+    if (last.status === "in_progress" || last.status === "queued") {
+      add("warn", "远端 CI", `最近一次 CI 还在跑(${last.head_sha.slice(0, 8)}) —— 稍后再看`);
+      return;
+    }
+    // 往回找最近一次成功的。
+    // ⚠ 两个坑都踩过, 写在这里:
+    //   ① **不能只看这 100 条** —— CI 真坏起来是连着几十上百条全红(实测 13 天一条绿的都没有),
+    //      成功那次被挤出窗口 → `since` 恒为 null → 恰好把最有信息量的那句丢掉;
+    //   ② **不能查 `/actions/runs?status=success`** —— 那是**全仓所有 workflow** 的最近成功,
+    //      实测返回的是 "pages build and deployment"(9-22), 拿它当 CI 的成功时间会算出
+    //      "距上次成功 0 天"这种**看着精确、其实错得离谱**的数字。
+    //      必须按 workflow 文件查: `/actions/workflows/ci.yml/runs?status=success`。
+    let okRun = runs.find((x) => x.conclusion === "success");
+    if (!okRun) {
+      try {
+        const r2 = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/ci.yml/runs?status=success&per_page=1`, {
+          headers: { Accept: "application/vnd.github+json", "User-Agent": "sag-env-sentinel" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (r2.ok) okRun = ((await r2.json()).workflow_runs ?? [])[0];
+      } catch { /* 取不到就算了 */ }
+    }
+    const since = okRun ? Math.round((Date.parse(last.created_at) - Date.parse(okRun.created_at)) / 86400000) : null;
+    add("warn", "远端 CI",
+      `最近一次 CI **失败**(提交 ${last.head_sha.slice(0, 8)}「${String(last.display_title ?? "").slice(0, 30)}」· ${ageH} 小时前)`
+      + (since !== null ? `, 距上一次成功已 ${since} 天` : "")
+      + `。本地门禁验的是本树, CI 验的是推上去之后 —— 两者不是一回事。看: https://github.com/${repo}/actions`);
+  } catch { /* 离线 / 超时 → 跳过 */ }
+}
+
 let apiPid = "";
 if (repoRoot) {
   await checkServedFrontend();
@@ -332,6 +394,7 @@ envCheck();
 stalenessCheck();
 devPortCheck();
 testDataCheck();
+await ciStatusCheck();
 
 // ── 输出 ──
 const ICON = { ok: "  ok  ", warn: " warn ", fail: "FAIL  " };

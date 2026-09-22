@@ -28,7 +28,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # ⚠ 必须是 22, 不能是 20。2026-09-23 定位: CI 从 9-11 起连续红了 13 天,
+          #   其中一条根因就是这里 —— `pdfjs-dist@6`(9-15 引入) 的 engines 写着
+          #   `node >=22.13.0 || >=24`, 它内部用了 `Promise.withResolvers()`,
+          #   而那是 Node 22 才有的 API。在 Node 20 上表现为:
+          #     TypeError: Promise.withResolvers is not a function
+          #   版本号要与 package.json 的 engines 以及本地保持一致(本地实测 v24 通过)。
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -49,7 +55,13 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install python deps
-        run: pip install pandas scipy requests
+        # ⚠ statsmodels 必须有。2026-09-23 定位: CI 连续红了 13 天, 另一条根因就是它 ——
+        #   `scripts/empirical_runner.py` 的 ologit 分支 `from statsmodels.miscmodels.ordinal_model
+        #   import OrderedModel`, 少了这个包 → ImportError → 被外层 `except Exception` 吞掉 →
+        #   `result["tables"]` 为空 → 用例挂在 `expected 0 to be greater than 0`。
+        #   报错信息完全看不出是"缺依赖"(它长得像断言失败), 所以在这里写清楚。
+        #   (本地之所以能过: .env 的 EMPIRICAL_PYTHON 指向的 venv 里装了 statsmodels。)
+        run: pip install pandas scipy requests statsmodels
 
       - name: Unit tests (154)
         env:
@@ -59,8 +71,13 @@ jobs:
           SKIP_NETWORK_TESTS: "1"
         run: npm test
 
-      - name: Frontend build
-        run: npx vite build
+      - name: Frontend build (React 外壳 + Vue 子应用)
+        run: |
+          npx vite build
+          # Vue 子应用必须单独构建, 产物落 web/dist/soc —— 根 vite build 不含它。
+          # 少了这步, 外壳里那 5 个 FusionPanel 的 iframe 会指向不存在的 /soc/index.html,
+          # 下面的 UI 门禁(fusion-tabs)必然失败。
+          npm run build:socialsci-vue
 
       - name: Start server for E2E
         env:
@@ -93,7 +110,27 @@ jobs:
           name: server-log
           path: /tmp/server-fail.log
 
-      - name: E2E smoke tests (Playwright)
+      - name: UI 视图门禁 (真浏览器)
+        env:
+          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
+          HTTP_PORT: 4173
         run: |
+          # 原先这里是 `npx playwright test` —— 仓库里既没有 playwright.config.* 也没有 e2e 目录,
+          # 命令找到 0 个测试却 exit 0(而且它按 *.test.ts 把 vitest 的文件捞进来解析失败),
+          # 所以这一步一直是**空转的绿灯**。换成真正有内容的 UI 门禁。
+          #
+          # 前置: 服务由上面的 "Start server for E2E" 步骤在**同一个 job 的后台**起着
+          # (那个步骤跑完就返回, 进程还在)。这里先确认 4173 仍然可达, 免得门禁在
+          # "服务没起来"时报出一堆莫名其妙的视图断言失败。
+          # 默认组是"配置面"断言(视图是否挂对子应用 / 页签与动作卡是否齐全), 不依赖历史数据;
+          # 需要往期审稿等真实数据的套件用 `npm run verify:ui:all` 跑。
+          for i in $(seq 1 12); do
+            curl -sf http://localhost:4173/health >/dev/null && break
+            echo "等 4173… ($i)"; sleep 5
+          done
+          curl -sf http://localhost:4173/health >/dev/null || { echo "4173 不可达, UI 门禁无法运行"; exit 1; }
+          # 门禁脚本自己 spawn 浏览器并连 DevTools 协议。原先是 `npx playwright test` 顺带
+          # install 的; 现在那条命令去掉了, 这里显式装一次。
           npx playwright install --with-deps chromium
-          npx playwright test
+          npm run verify:ui
+        shell: bash
