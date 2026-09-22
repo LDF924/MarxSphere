@@ -93,9 +93,21 @@ const MEASURE = `(() => {
     const cols = parent ? getComputedStyle(parent).gridTemplateColumns.split(' ').filter(Boolean).length : 1;
     if (cols > 1 && b.width > 0 && b.width < 240) squeezed.push(sel + '=' + Math.round(b.width) + 'px');
   }
+  /**
+   * 窗口级滚动条是否存在 —— 用**可见事实**判, 不看它是怎么实现的。
+   *
+   * 2026-09-22 用户报"信息录入页有两个上下滑动": 实拍确认文档比视口高 68px, 窗口因此
+   *   多出一条滚动条, 而滚动它会**把吸顶的进度条一起顶上去**(实测 top 0 → -68)。
+   *   「根元素 offsetWidth - clientWidth > 0」正是"渲染出了竖向滚动条"这个事实,
+   *   与用 overflow:hidden 还是别的手段无关。
+   *
+   * 注意别用 「window.scrollTo()「 去测: 程序化滚动**不受 overflow:hidden 限制**
+   *   (我第一版就是这么测的, 修完仍报 68 —— 测的是"能不能被程序滚动", 不是"用户能不能滚")。
+   */
+  const winScrollBar = de.offsetWidth - de.clientWidth;
   const contentH = pg ? pg.scrollHeight : 0;
   return {
-    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed,
+    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed, winScrollBar,
     page: r('.workflow-page'), nav: r('.sec-nav,.ws-nav,aside'), main: r('main,.ws-main'),
     topic: r('.ppb-topic'), inner: r('.ppb-inner'),
     contentH, needScroll: contentH > de.clientHeight + 8, scroller,
@@ -136,6 +148,9 @@ try {
       // 两栏布局里某一栏被挤到读不了 —— 视口够宽也照样发生(面板受限于它所在列的宽)
       rec(`${name}@${w}`, "无被压瘪的栏(≥240px)", (m.squeezed ?? []).length === 0,
         (m.squeezed ?? []).length ? `过窄: ${m.squeezed.join(", ")}` : "");
+      // 窗口级滚动条 = 页面出现"第二条滚动条", 且滚动它会顶掉吸顶元素
+      rec(`${name}@${w}`, "无窗口级滚动条", (m.winScrollBar ?? 0) <= 0,
+        (m.winScrollBar ?? 0) > 0 ? `窗口滚动条宽 ${m.winScrollBar}px —— 页面会多出一条上下滑动` : "");
     }
   }
   await cdp("Emulation.clearDeviceMetricsOverride");

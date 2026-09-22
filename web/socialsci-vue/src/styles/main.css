@@ -20,10 +20,33 @@
   --ade-doc-first-line-indent: 2em;
 }
 
+/**
+ * ⚠ `#app` 必须显式占满且**锁住滚动** —— 不能只靠链上的 `height:100%` 一路继承。
+ *
+ * 2026-09-22 用户报"信息录入页有两个上下滑动": 实拍确认了第二条 —— 文档比视口高 68px,
+ *   于是窗口自己多出一条滚动条, 而滚动它会**把吸顶的进度条一起推上去 68px**
+ *   (实测滚动后 phase-progress-wrapper 的 top 从 0 变成 -68, 吸顶失效)。
+ *   链条 html/body/#app/.soc-shell/.wfs-root 每环都报 height:100%, 静态找不出那 68px 从哪来;
+ *   试过逐元素消融也自相矛盾(隐藏任何子元素高度不变, 隐藏 .wfs-root 却降回视口高)。
+ *
+ * 所以这里不追具体那 68px, 而是**把不变式钉死**: 应用外壳永远不超过视口, 滚动只发生在
+ * 内部的滚动容器里(wf-page / wfs-list / 各弹层)。这样"窗口级滚动"在结构上不可能出现,
+ * 属于哪一环出问题都不会再复现。真正的可视化滚动条由 verify-layout 的新断言盯着。
+ */
 html,
 body {
   height: 100%;
   margin: 0;
+  overflow: hidden;   /* 窗口级不滚动 —— 滚动只发生在内部容器 */
+}
+
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+html,
+body {
   background: #0a1120; /* Marx 深空底 */
   color: #e8eef7;
   font-family: PingFang SC, Microsoft YaHei, -apple-system, sans-serif;
