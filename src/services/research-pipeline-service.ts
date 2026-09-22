@@ -398,6 +398,28 @@ export async function listNodeHistory(userId: string, projectId: string, nodeKey
   return r.rows;
 }
 
+/**
+ * 取**某一条历史**的完整 payload(V425 D3 章节级版本对比的前置)。
+ *
+ * 由来: 历史列表此前只返回元信息(id/version/by_role/note/created_at), 而唯一会碰 payload 的
+ *   操作是 rollback —— **覆盖当前**。于是"看看上一版写了什么"只能靠回滚, 而回滚会改数据,
+ *   用户不可能为了对比先滚一版。没有只读通道, 版本历史就只是一个"覆盖按钮"。
+ *   对比必须能读到旧内容, 所以补这一条。
+ *
+ * 归属校验走 project + node_key 两级(与 listNodeHistory 同一套), 不额外信任 historyId 本身。
+ */
+export async function getNodeHistoryDetail(userId: string, projectId: string, nodeKey: string, historyId: string) {
+  const r = await pool.query(
+    `select h.id, h.version, h.by_role, h.note, h.created_at, h.payload
+       from research_node_history h
+       join research_nodes n on n.id = h.node_id
+       join research_projects p on p.id = n.project_id
+      where h.id=$1 and n.project_id=$2 and n.node_key=$3 and p.user_id=$4`,
+    [historyId, projectId, nodeKey, userId]
+  );
+  return r.rows[0] ?? null;
+}
+
 /** 回滚: 取历史 payload 回写当前(version+1 新历史行) */
 export async function rollbackNode(userId: string, projectId: string, nodeKey: string, historyId: string) {
   const client = await pool.connect();

@@ -497,7 +497,7 @@ const nodeColor = (n: Node) => {
   letter-spacing: 0.04em;
 }
 :deep(.vue-flow__background) { background: #0D1626; }
-:deep(.vue-flow__minimap) { right: 12px; bottom: 12px; border: 1px solid #46587A; border-radius: 5px; }
+:deep(.vue-flow__minimap) { right: 12px; bottom: 12px; border: 1px solid var(--wf-line-hard); border-radius: 5px; }
 :deep(.vue-flow__controls-button) { width: 26px; height: 26px; border-bottom-color: #e4e8f0; background: #11192C; }
 :deep(.vue-flow__node) { cursor: grab; }
 /**

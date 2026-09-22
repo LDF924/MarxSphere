@@ -981,7 +981,7 @@ onUnmounted(() => {
 .quick-chip {
   padding: 5px 12px;
   font-size: 11.5px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 14px;
   background: #11192C;
   color: #A3B3C8;
@@ -1028,7 +1028,7 @@ onUnmounted(() => {
   min-height: 26px;
   padding: 3px 7px;
   border: 0;
-  background: #161F33;
+  background: var(--wf-sunken);
   color: #A3B3C8;
   font-size: 11px;
   text-align: left;
@@ -1042,7 +1042,7 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 5px 8px 7px;
   border-top: 1px solid #e5e8ec;
-  background: #161F33;
+  background: var(--wf-sunken);
   border-radius: 0 0 6px 6px;
 }
 .thinking-entry {
@@ -1094,7 +1094,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 5px 10px;
   background: #1e293b;
-  color: #46587A;
+  color: var(--wf-line-hard);
   font-size: 11px;
 }
 .code-head button {
@@ -1128,7 +1128,7 @@ onUnmounted(() => {
   color: #8B9BB1;
   font-family: ui-monospace, SFMono-Regular, monospace;
 }
-.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: #46587A; flex: 0 0 auto; }
+.tool-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wf-line-hard); flex: 0 0 auto; }
 .tool-running .tool-dot { background: #4D84CB; animation: pulse 1s infinite; }
 .tool-done .tool-dot { background: #5FD0B4; }
 .tool-failed .tool-dot { background: #d75e5e; }
@@ -1256,7 +1256,7 @@ onUnmounted(() => {
   width: 34px;
   height: 2px;
   border-radius: 1px;
-  background: #46587A;
+  background: var(--wf-line-hard);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -1288,7 +1288,7 @@ onUnmounted(() => {
   min-width: 0;
   max-width: 260px;
   padding: 3px 8px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 6px;
   background: #1A2333;
   color: #DCE6F2;
@@ -1301,7 +1301,7 @@ onUnmounted(() => {
 .legend-row.skills { flex-wrap: wrap; }
 .skill-chip {
   padding: 3px 10px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 13px;
   background: #1A2333;
   color: #A3B3C8;
@@ -1320,7 +1320,7 @@ onUnmounted(() => {
   gap: 7px;
   padding: 6px 12px;
   border-top: 1px solid #222F44;
-  background: #161F33;
+  background: var(--wf-sunken);
   font-size: 11px;
   min-height: 30px;
 }
@@ -1331,7 +1331,7 @@ onUnmounted(() => {
 .data-meta { color: #7A8AA0; flex: 0 0 auto; }
 .data-btn {
   margin-left: auto;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 6px;
   background: #11192C;
   color: #A3B3C8;
@@ -1359,7 +1359,7 @@ onUnmounted(() => {
   cursor: pointer;
   text-align: left;
 }
-.spec-toggle:hover { background: #161F33; }
+.spec-toggle:hover { background: var(--wf-sunken); }
 .chev { transition: transform 0.15s; display: inline-block; }
 .chev.open { transform: rotate(90deg); }
 .spec-now { margin-left: auto; color: #7A8AA0; font-size: 10px; }
@@ -1367,7 +1367,7 @@ onUnmounted(() => {
 .spec-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
 .spec-label { font-size: 10px; color: #7A8AA0; flex: 0 0 30px; }
 .spec-chip {
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 12px;
   background: #1A2333;
   color: #A3B3C8;
@@ -1380,7 +1380,7 @@ onUnmounted(() => {
 .spec-num { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: #8B9BB1; }
 .spec-num input {
   width: 52px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 5px;
   background: #1A2333;
   color: #E8EEF7;

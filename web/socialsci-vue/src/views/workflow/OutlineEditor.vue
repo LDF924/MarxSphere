@@ -282,7 +282,7 @@ const counter = computed(() => {
 
 <style scoped>
 .outline-editor {
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 10px;
   overflow: hidden;
   background: var(--wf-surface);
@@ -299,7 +299,7 @@ const counter = computed(() => {
 .oe-btn {
   padding: 4px 11px;
   font-size: 12px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 6px;
   background: var(--wf-surface);
   /* V417: 原为 #374151(近黑)压深蓝黑底, 对比度 ≈1.7:1, 文字几乎不可见 —— 深色化时漏改。
@@ -309,7 +309,7 @@ const counter = computed(() => {
 }
 /* 闭源三个工具按钮同款白底描边; 「清除目录」文字更淡(破坏性操作用弱视觉) */
 .oe-btn.dim { color: var(--wf-faint); }
-.oe-sep { color: #46587A; font-size: 11px; }
+.oe-sep { color: var(--wf-line-hard); font-size: 11px; }
 .oe-btn:hover { filter: brightness(0.97); }
 .oe-count { margin-left: auto; font-size: 11px; color: var(--wf-muted); }
 .oe-empty { padding: 34px 16px; text-align: center; }
@@ -336,7 +336,7 @@ const counter = computed(() => {
   padding: 5px 12px;
 }
 .oe-row.l1 { background: var(--wf-surface); }
-.oe-row.l2 { padding-left: 44px; background: #161F33; }
+.oe-row.l2 { padding-left: 44px; background: var(--wf-sunken); }
 .oe-index {
   flex-shrink: 0;
   min-width: 22px;

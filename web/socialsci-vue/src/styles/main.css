@@ -30,29 +30,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 深色统一: vue-flow 库主题变量(theme-default 白节点/黑字 → 深) */
+/**
+ * 深色统一: vue-flow 库主题变量(theme-default 白节点/黑字 → 深)。
+ *
+ * 2026-09-22: 这里原先是一整套**独立字面量**, 与设计令牌是两份平行的值 ——
+ *   改令牌不会影响画布, 于是画布会慢慢与全站跑偏(而且没人会注意到, 因为没有断言盯着它)。
+ *   现在改成**引用令牌**: 值不变(视觉中性), 但从此只有一处真源。
+ *   仍然保留字面量的只有两个: `--vf-handle-border`(#0A1120, 令牌里没有这一档)和
+ *   两个 rgba 阴影 —— 它们是**带透明度的叠加色**, 不是表面色, 不该硬塞进令牌。
+ */
 .vue-flow {
-  --vf-node-bg: #11192C;
-  --vf-node-text: #E8EEF7;
-  --vf-node-border: #2A3A55;
-  --vf-connection-path: #4D84CB;
-  --vf-connectionline: #4D84CB;
-  --vf-handle-bg: #4D84CB;
+  --vf-node-bg: var(--wf-surface);
+  --vf-node-text: var(--wf-text);
+  --vf-node-border: var(--wf-line-strong);
+  --vf-connection-path: var(--wf-accent);
+  --vf-connectionline: var(--wf-accent);
+  --vf-handle-bg: var(--wf-accent);
   --vf-handle-border: #0A1120;
-  --vf-edge-stroke: #46587A;
-  --vf-edge-stroke-selected: #4D84CB;
-  --vf-edge-text: #8B9BB1;
-  --vf-edge-text-bg: #161F33;
+  --vf-edge-stroke: var(--wf-line-hard);
+  --vf-edge-stroke-selected: var(--wf-accent);
+  --vf-edge-text: var(--wf-muted);
+  --vf-edge-text-bg: var(--wf-sunken);
   --vf-selection: rgba(77, 132, 203, 0.25);
-  --vf-selection-stroke: #4D84CB;
+  --vf-selection-stroke: var(--wf-accent);
   --vf-node-boxshadow-hover: 0 0 0 3px rgba(77, 132, 203, 0.25), 0 6px 18px rgba(0, 0, 0, 0.35);
   --vf-node-boxshadow-selected: 0 0 0 3px rgba(77, 132, 203, 0.35);
 }
 .vue-flow__minimap {
-  background-color: #161F33 !important;
+  background-color: var(--wf-sunken) !important;
 }
 .vue-flow__minimap svg rect {
-  fill: #161F33;
+  fill: var(--wf-sunken);
 }
 .vue-flow__controls-button {
   background: #1A2333 !important;
@@ -65,10 +73,10 @@ body {
 }
 .vue-flow__attribution {
   background: transparent !important;
-  color: #46587A !important;
+  color: var(--wf-line-hard) !important;
 }
 .vue-flow__edge-textbg {
-  fill: #161F33;
+  fill: var(--wf-sunken);
 }
 .vue-flow__minimap-node {
   fill: #5A6C85;
@@ -106,7 +114,7 @@ select:disabled {
   width: 100%;
   color: #dce6f2;
 }
-.three-line-table thead { border-top: 2px solid #46587A; border-bottom: 1.5px solid #46587A; }
+.three-line-table thead { border-top: 2px solid var(--wf-line-hard); border-bottom: 1.5px solid var(--wf-line-hard); }
 .three-line-table th {
   padding: 6px 10px;
   text-align: left;
@@ -119,7 +127,7 @@ select:disabled {
   color: #dce6f2;
   border: none;
 }
-.three-line-table tbody { border-bottom: 2px solid #46587A; }
+.three-line-table tbody { border-bottom: 2px solid var(--wf-line-hard); }
 .three-line-table tbody tr:hover {
   background: #1a2333;
 }
@@ -276,10 +284,15 @@ select:disabled {
   --wf-surface-2: #0E1729;   /* 卡内分区/输入框底 */
   --wf-raised:    #1A2333;   /* 抬起层: 弹层/头行/悬停 */
 
-  /* ── 描边: 3 级(原先 6 种近色) ── */
+  /* ── 描边: 4 级(原先 6 种近色) ── */
   --wf-line:        #222F44;  /* 常规描边(最常用, 86 处) */
   --wf-line-strong: #2A3A55;  /* 需要看清的框 */
+  --wf-line-hard:   #46587A;  /* 最强一级: 表格框线/焦点环/滚动条滑块 —— 用在"必须一眼看出边界"的地方 */
   --wf-line-soft:   #212C45;  /* 更弱一档的分隔 */
+
+  /* ── 下沉面: 比 raised 更深、比 surface 更"凹"的一档 ──
+     用在代码块/表格斑马纹/预览纸面的底 —— 它不是"卡片", 所以不复用 --wf-surface。 */
+  --wf-sunken: #161F33;
 
   /* ── 文字: 4 级(原先 5 个近色混用) ── */
   --wf-text:   #E8EEF7;   /* 标题/正文主色 —— 收编 #F1F5F9/#DCE6F2 */

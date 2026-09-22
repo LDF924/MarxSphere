@@ -1830,7 +1830,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
   margin-top: 8px;
   width: 100%;
   padding: 7px;
-  border: 1px dashed #2A3A55;
+  border: 1px dashed var(--wf-line-strong);
   border-radius: 8px;
   background: transparent;
   color: #8B9BB1;
@@ -1851,7 +1851,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
   cursor: pointer;
 }
 .primary-btn:hover { background: #5D94DB; }
-.primary-btn:disabled { background: #46587A; cursor: not-allowed; }
+.primary-btn:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 .history-block {
   background: #11192C;
   border: 1px solid #222F44;
@@ -1904,7 +1904,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .h-act.danger { border-color: #3A2528; background: #1D1517; color: #A4656A; }
 .history-item:hover .h-act.danger { border-color: #5A2E32; color: #E2686A; }
 .h-act.danger:hover { border-color: #E2686A; color: #F0A0A2; }
-.h-chevron { color: #46587A; font-size: 16px; line-height: 1; transition: color .15s, transform .15s; }
+.h-chevron { color: var(--wf-line-hard); font-size: 16px; line-height: 1; transition: color .15s, transform .15s; }
 .h-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .hs-done, .hs-completed { background: #5FD0B4; }
 .hs-failed { background: #dc2626; }
@@ -2236,7 +2236,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .std-empty { font-size: 12px; color: #7A8AA0; }
 .std-opt {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-  border: 1px solid #2A3A55; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--wf-line-strong); border-radius: 14px; cursor: pointer;
   font-size: 12.5px; color: #C7D3E3; transition: all .15s;
 }
 .std-opt:hover { border-color: #4D84CB; }
@@ -2260,7 +2260,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
   border: 1px solid rgba(95, 208, 180, .3); font-size: 12px; color: #9FE6D2;
 }
 .mp-chip.off {
-  background: transparent; border-color: #2A3A55; color: #5C6B80;
+  background: transparent; border-color: var(--wf-line-strong); color: #5C6B80;
   text-decoration: line-through;
 }
 .mp-w { font-size: 10.5px; color: #7A8AA0; }
@@ -2270,7 +2270,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .preset-bar {
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
   padding: 9px 12px; margin-bottom: 12px;
-  border: 1px dashed #2A3A55; border-radius: 9px; background: rgba(77, 132, 203, .04);
+  border: 1px dashed var(--wf-line-strong); border-radius: 9px; background: rgba(77, 132, 203, .04);
 }
 .preset-label { font-size: 12.5px; font-weight: 600; color: #A9BBD3; }
 .preset-chip {
@@ -2349,7 +2349,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .rv-label { font-size: 11.5px; color: #8B9BB1; white-space: nowrap; flex-shrink: 0; }
 .rv-btn {
   padding: 3px 11px; font-size: 12px; border-radius: 13px; cursor: pointer;
-  border: 1px solid #2A3A55; background: transparent; color: #A9BBD3; transition: all .15s;
+  border: 1px solid var(--wf-line-strong); background: transparent; color: #A9BBD3; transition: all .15s;
   white-space: nowrap; flex-shrink: 0;
 }
 .rv-btn:hover { border-color: #4D84CB; }

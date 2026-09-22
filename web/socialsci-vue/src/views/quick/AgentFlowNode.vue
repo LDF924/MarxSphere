@@ -109,7 +109,7 @@ defineProps<{
   max-height: 224px;
   overflow: hidden;
   padding: 11px 12px 10px;
-  border: 1px solid #2A3A55;
+  border: 1px solid var(--wf-line-strong);
   border-radius: 7px;
   background: #11192C;
   color: #E8EEF7;

@@ -93,7 +93,7 @@ async function remove(id: string, title: string) {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #46587A transparent;
+  scrollbar-color: var(--wf-line-hard) transparent;
 }
 .ade-document-entry {
   position: relative;

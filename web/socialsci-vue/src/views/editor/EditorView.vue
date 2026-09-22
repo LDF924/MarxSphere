@@ -570,7 +570,7 @@ onUnmounted(() => {
 }
 .ade-toolbar-btn:hover {
   background: #1E2A48;
-  border-color: #2A3A55;
+  border-color: var(--wf-line-strong);
 }
 .ade-toolbar-divider {
   width: 1px;
@@ -659,13 +659,13 @@ onUnmounted(() => {
 }
 .tiptap :deep(th),
 .tiptap :deep(td) {
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   padding: 5px 9px;
   text-align: left;
   vertical-align: top;
 }
 .tiptap :deep(blockquote) {
-  border-left: 3px solid #46587A;
+  border-left: 3px solid var(--wf-line-hard);
   margin: 8px 0;
   padding: 2px 0 2px 12px;
   color: #8B9BB1;
@@ -680,7 +680,7 @@ onUnmounted(() => {
 }
 .tiptap :deep(hr) {
   border: 0;
-  border-top: 1px solid #46587A;
+  border-top: 1px solid var(--wf-line-hard);
   margin: 18px 0;
 }
 .ade-statusbar {

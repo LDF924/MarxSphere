@@ -784,7 +784,7 @@ watch(() => props.taskId, () => {
   color: #759FD7;
   cursor: pointer;
 }
-.btn-new-stats:hover { background: #161F33; }
+.btn-new-stats:hover { background: var(--wf-sunken); }
 .statistics-workspace {
   display: flex;
   gap: 0;
@@ -835,7 +835,7 @@ watch(() => props.taskId, () => {
   transform: translateY(-1px);
 }
 .method-item.active {
-  background: #161F33 !important;
+  background: var(--wf-sunken) !important;
   border-color: #9bb8d8 !important;
   color: #759FD7 !important;
   box-shadow: none !important;
@@ -1042,7 +1042,7 @@ watch(() => props.taskId, () => {
 .btn-run-mb:hover,
 .btn-report-mb:hover,
 .btn-pdf-mb:hover {
-  background: #161F33 !important;
+  background: var(--wf-sunken) !important;
   border-color: #759FD7 !important;
   color: #173a6a !important;
 }

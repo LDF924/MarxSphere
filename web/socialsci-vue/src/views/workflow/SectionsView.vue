@@ -12,6 +12,7 @@ import { listSkillCards, batchGenerateSkillCards, createTask, getTask } from "@/
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
+import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
 
@@ -531,6 +532,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <WorkflowShell>
   <div
     class="workflow-page wf-page"
     :data-assistant-phase2-sections-count="String(l1Count)"
@@ -791,6 +793,7 @@ onUnmounted(() => {
     </div>
     </div>
   </div>
+</WorkflowShell>
 </template>
 
 <style scoped>
@@ -808,7 +811,7 @@ onUnmounted(() => {
 /* 闭源页面级块间距是 mb-6(24px); 原值 14px 明显更紧 */
 .banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
 .banner-fail { background: #2A1C1C; border: 1px solid #3A2323; }
-.banner-thinking { background: var(--wf-raised); border: 1px solid #46587A; }
+.banner-thinking { background: var(--wf-raised); border: 1px solid var(--wf-line-hard); }
 .banner-done { background: #14281F; border: 1px solid #2E5C46; }
 .banner-idle { background: var(--wf-surface); border: 1px solid var(--wf-line); }
 .banner-head { display: flex; justify-content: space-between; align-items: center; }
@@ -991,5 +994,5 @@ onUnmounted(() => {
   padding: 10px 26px; border: 0; border-radius: 9px;
   background: #4D84CB; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
-.btn-primary:disabled { background: #46587A; cursor: not-allowed; }
+.btn-primary:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 </style>

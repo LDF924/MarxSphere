@@ -1603,7 +1603,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 
 <style scoped>
 .quick-view {
-  --ink: #E8EEF7; --muted: #8B9BB1; --line: #222F44; --soft: #161F33; --blue: #4D84CB;
+  --ink: #E8EEF7; --muted: #8B9BB1; --line: #222F44; --soft: var(--wf-sunken); --blue: #4D84CB;
   height: 100%; min-height: 0; width: 100%; margin: 0; box-sizing: border-box;
   display: flex; flex-direction: column;
   /* V415: 原来是 overflow:hidden —— 窗口/iframe 一矮, 三个区被压扁且**整页滚不动**,
@@ -1644,19 +1644,19 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .agent-chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 10px; padding: 3px 9px; border-radius: 10px; cursor: pointer;
-  background: #1F2430; color: #8B9BB1; border: 1px solid #2A3A55; white-space: nowrap;
+  background: #1F2430; color: #8B9BB1; border: 1px solid var(--wf-line-strong); white-space: nowrap;
 }
 .agent-chip:hover { border-color: #4D84CB; color: #DCE6F2; }
 .agent-chip.is-on { background: #14281F; color: #5FD0B4; border-color: #2F6B55; }
 .agent-dot { width: 6px; height: 6px; border-radius: 50%; background: #6E7F96; }
 .agent-chip.is-on .agent-dot { background: #5FD0B4; box-shadow: 0 0 0 2px rgba(95, 208, 180, 0.2); }
 .hdr-select {
-  border: 1px solid #2A3A55; border-radius: 7px; background: #161F33; color: #DCE6F2;
+  border: 1px solid var(--wf-line-strong); border-radius: 7px; background: var(--wf-sunken); color: #DCE6F2;
   font-size: 11px; padding: 5px 8px; font-family: inherit; outline: none; max-width: 190px;
 }
 .hdr-select:disabled { opacity: 0.55; }
 .hdr-btn {
-  border: 1px solid #2A3A55; border-radius: 7px; background: transparent; color: #A3B3C8;
+  border: 1px solid var(--wf-line-strong); border-radius: 7px; background: transparent; color: #A3B3C8;
   font-size: 11px; padding: 5px 11px; cursor: pointer;
 }
 .hdr-btn:hover:not(:disabled) { background: #1A2333; color: #DCE6F2; }
@@ -1719,7 +1719,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .plan-check { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; font-size: 9px; border: 1px solid #3A4A66; color: transparent; }
 .plan-check.is-done { background: #5FD0B4; border-color: #5FD0B4; color: #0A1120; }
 .artifact-card { display: flex; gap: 10px; align-items: flex-start; background: #11192C; border: 1px solid #222F44; border-radius: 9px; padding: 9px 11px; min-width: 210px; margin: 3px 0; }
-.artifact-icon { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; font-size: 15px; background: #1C2740; border: 1px solid #2A3A55; }
+.artifact-icon { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; font-size: 15px; background: #1C2740; border: 1px solid var(--wf-line-strong); }
 .artifact-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .artifact-body strong { font-size: 12.5px; }
 .artifact-body p { margin: 0; font-size: 11px; color: #93A5BC; }
@@ -1727,7 +1727,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .composer textarea {
   flex: 1; resize: none; border: 1px solid #222F44; border-radius: 10px; padding: 8px 11px;
   font-size: 12.5px; font-family: inherit; line-height: 1.5; outline: none;
-  background: #161F33; color: #E8EEF7;
+  background: var(--wf-sunken); color: #E8EEF7;
 }
 .send-button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--blue); color: #F1F5F9; font-size: 14px; cursor: pointer; }
 .send-button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1818,7 +1818,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   border: 1px solid #1E2A42; border-radius: 10px; padding: 7px; background: #0A1220;
 }
 .dag-scroll::-webkit-scrollbar { width: 8px; }
-.dag-scroll::-webkit-scrollbar-thumb { background: #2A3A55; border-radius: 4px; }
+.dag-scroll::-webkit-scrollbar-thumb { background: var(--wf-line-strong); border-radius: 4px; }
 /* 画布通栏: 给足高度让 DAG 画得开(原来挤在右栏里只有半宽)。
    0.62 视口比 + 下限 520 —— 上排变高后画布也要跟着变高, 不是被挤掉。 */
 .canvas-band { flex: none; height: clamp(560px, 68vh, 1000px); }
@@ -1853,7 +1853,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 /* V415: 这里**不要**再限高/自己滚 —— 加了 max-height:260 之后, 澄清表单的提交按钮被算在
    260px 之外(实测按钮布局在 y=579 而面板底在 y=507), 被自己的小框裁掉: 用户得先在这个小框里
    滚动才找得到按钮, 自动化探针则直接点穿到下层元素。滚动只留 .dag-panel 一处。 */
-.ms-run { border: 1px solid #2A3A55; border-radius: 10px; background: #0E1626; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.ms-run { border: 1px solid var(--wf-line-strong); border-radius: 10px; background: #0E1626; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .ms-run-head { display: flex; align-items: center; gap: 8px; }
 .ms-tag { font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 9px; background: #1E2A48; color: #6FA6E8; }
 .ms-tag.is-demo { background: #2A2414; color: #E8B54A; }
@@ -1884,7 +1884,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .ctx-backdrop { position: absolute; inset: 0; z-index: 19; }
 
 .input-overlay { position: absolute; inset: 0; z-index: 25; display: grid; place-items: center; background: rgba(4, 8, 16, 0.6); backdrop-filter: blur(1px); }
-.input-card { width: min(460px, 90%); background: #141D33; border: 1px solid #2A3A55; border-radius: 12px; overflow: hidden; }
+.input-card { width: min(460px, 90%); background: #141D33; border: 1px solid var(--wf-line-strong); border-radius: 12px; overflow: hidden; }
 .input-card header { padding: 12px 16px 9px; border-bottom: 1px solid #222F44; }
 .input-card header strong { display: block; font-size: 13px; color: #E8EEF7; }
 .input-card header span { font-size: 10.5px; color: #7A8AA0; }
@@ -1895,7 +1895,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .workspace-panel {
   position: absolute; width: 340px; max-height: calc(100% - 24px); z-index: 9;
   display: flex; flex-direction: column;
-  background: #11192C; border: 1px solid #2A3A55; border-radius: 12px;
+  background: #11192C; border: 1px solid var(--wf-line-strong); border-radius: 12px;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5); overflow: hidden;
 }
 .workspace-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 13px 15px 11px; border-bottom: 1px solid #222F44; cursor: grab; }
@@ -1916,7 +1916,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .workspace-field span { font-size: 10.5px; color: #A3B3C8; }
 .workspace-field span b { color: #E8B54A; }
 .workspace-field input, .workspace-field textarea {
-  border: 1px solid #2A3A55; border-radius: 8px; background: #161F33;
+  border: 1px solid var(--wf-line-strong); border-radius: 8px; background: var(--wf-sunken);
   color: #E8EEF7; font-size: 12px; padding: 8px 10px; font-family: inherit; outline: none;
 }
 .workspace-field textarea { resize: vertical; min-height: 62px; }
@@ -1928,7 +1928,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .workspace-primary { border: 0; background: #4D84CB; color: #F1F5F9; }
 .workspace-primary:disabled, .workspace-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 .workspace-primary:hover:not(:disabled) { background: #3771BE; }
-.workspace-secondary { border: 1px solid #2A3A55; background: transparent; color: #A3B3C8; }
+.workspace-secondary { border: 1px solid var(--wf-line-strong); background: transparent; color: #A3B3C8; }
 .workspace-secondary:hover { background: #1A2333; }
 .workspace-secondary.danger { color: #F08A8A; border-color: #5A2A34; }
 .node-panel-detail { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 15px; }
@@ -1950,7 +1950,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .param-tip code { background: #1A2438; padding: 1px 4px; border-radius: 4px; color: #9FC0E8; }
 .panel-advanced summary { font-size: 10.5px; color: #7A8AA0; cursor: pointer; margin-top: 4px; }
 .json-editor {
-  width: 100%; min-height: 110px; margin-top: 6px; border: 1px solid #2A3A55; border-radius: 8px;
+  width: 100%; min-height: 110px; margin-top: 6px; border: 1px solid var(--wf-line-strong); border-radius: 8px;
   background: #0F172A; color: #C3D2E5; font-family: Consolas, monospace; font-size: 10.5px;
   padding: 8px; outline: none; resize: vertical;
 }
@@ -1962,7 +1962,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 
 /* 弹层 */
 .modal-shell { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(4, 8, 16, 0.72); backdrop-filter: blur(2px); }
-.modal-card { width: min(560px, 92%); max-height: 82vh; display: flex; flex-direction: column; background: #131C30; border: 1px solid #2A3A55; border-radius: 12px; overflow: hidden; }
+.modal-card { width: min(560px, 92%); max-height: 82vh; display: flex; flex-direction: column; background: #131C30; border: 1px solid var(--wf-line-strong); border-radius: 12px; overflow: hidden; }
 .modal-card.wide { width: min(860px, 94%); }
 .modal-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #222F44; }
 .modal-head strong { font-size: 13px; color: #E8EEF7; white-space: nowrap; }
@@ -2029,7 +2029,7 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
 .switch.is-disabled { opacity: 0.45; cursor: not-allowed; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider {
-  position: absolute; inset: 0; border-radius: 22px; background: #2A3A55; transition: background 0.2s;
+  position: absolute; inset: 0; border-radius: 22px; background: var(--wf-line-strong); transition: background 0.2s;
 }
 .slider::before {
   content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;

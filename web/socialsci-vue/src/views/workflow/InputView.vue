@@ -12,6 +12,7 @@ import { toast, confirmDialog } from "@/shared/ui";
 import { q } from "@/shared/api";
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { putNode, createTask } from "@/shared/tasks";
+import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 
 const router = useRouter();
@@ -461,6 +462,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <WorkflowShell>
   <div
     class="workflow-page wf-page"
     :data-assistant-async-busy="asyncBusy ? 'true' : 'false'"
@@ -721,6 +723,7 @@ onMounted(async () => {
     </div>
     </div>
   </div>
+</WorkflowShell>
 </template>
 
 <style scoped>
@@ -750,7 +753,7 @@ onMounted(async () => {
   width: 100%;
   box-sizing: border-box;
   padding: 9px 12px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 8px;
   font-size: 13.5px;
   background: var(--wf-surface);
@@ -759,7 +762,7 @@ onMounted(async () => {
 .wf-input:focus, .wf-textarea:focus { border-color: #6FA8E8; box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12); }
 .wf-textarea {
   width: 100%; box-sizing: border-box; padding: 9px 12px;
-  border: 1px solid #46587A; border-radius: 8px;
+  border: 1px solid var(--wf-line-hard); border-radius: 8px;
   font-size: 13.5px; font-family: inherit; background: var(--wf-surface); outline: none;
   resize: none; line-height: 1.6;
 }
@@ -807,7 +810,7 @@ onMounted(async () => {
 .method-card small { font-size: 11.5px; color: var(--wf-muted); }
 .method-card.selected { border-color: #4D84CB; background: #2A1C1C; box-shadow: 0 1px 4px rgba(220, 38, 38, 0.1); }
 .drop-zone {
-  border: 2px dashed #46587A;
+  border: 2px dashed var(--wf-line-hard);
   border-radius: 10px;
   padding: 22px;
   text-align: center;
@@ -948,6 +951,6 @@ onMounted(async () => {
   cursor: pointer;
 }
 .btn-primary:hover { background: #E06B6B; }
-.btn-primary:disabled { background: #46587A; cursor: not-allowed; }
+.btn-primary:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 .sr-only { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 </style>

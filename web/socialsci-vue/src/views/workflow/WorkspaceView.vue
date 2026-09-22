@@ -13,6 +13,7 @@ import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridg
 import { toast, confirmDialog } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
 import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
+import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
 
@@ -1048,6 +1049,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 </script>
 
 <template>
+  <WorkflowShell>
   <div
     class="ws-page-root"
     :data-assistant-async-busy="(generating || aiThinking) ? 'true' : 'false'"
@@ -1425,6 +1427,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
     </Teleport>
     </div>
   </div>
+</WorkflowShell>
 </template>
 
 <style scoped>
@@ -1640,7 +1643,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 }
 .btn-finalize-all:disabled { background: var(--wf-line-soft); color: var(--wf-faint); cursor: not-allowed; }
 .mini-spinner {
-  width: 12px; height: 12px; border: 2px solid #46587A; border-top-color: #F1F5F9;
+  width: 12px; height: 12px; border: 2px solid var(--wf-line-hard); border-top-color: #F1F5F9;
   border-radius: 50%; display: inline-block; animation: mspin 0.8s linear infinite;
 }
 @keyframes mspin { to { transform: rotate(360deg); } }
@@ -1683,7 +1686,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .cz-head strong { font-size: 13px; color: var(--wf-text); }
 .cz-sub { font-size: 11px; color: var(--wf-faint); flex: 1; }
 .cz-btn {
-  border: 1px solid #2A3A55; border-radius: 7px; background: #16233A; color: var(--wf-text-2);
+  border: 1px solid var(--wf-line-strong); border-radius: 7px; background: #16233A; color: var(--wf-text-2);
   font-size: 11.5px; padding: 4px 11px; cursor: pointer;
 }
 .cz-btn:hover:not(:disabled) { background: #1E355C; color: #EAF2FC; }
@@ -1716,7 +1719,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 }
 .ai-step.done .ai-step-mark { background: #16a34a; }
 .ai-step.current .ai-step-mark { background: #4D84CB; }
-.ai-step.todo .ai-step-mark { background: transparent; color: inherit; border: 1px solid #46587A; }
+.ai-step.todo .ai-step-mark { background: transparent; color: inherit; border: 1px solid var(--wf-line-hard); }
 .ai-step-detail { margin-left: auto; font-size: 11px; opacity: 0.8; }
 .ai-partial { border-top: 1px dashed var(--wf-line); padding-top: 12px; }
 .ai-partial-label { font-size: 12px; font-weight: 600; color: #DCE6F2; margin-bottom: 8px; }
@@ -1749,7 +1752,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   padding: 9px 18px; border: 0; border-radius: 8px; background: #4D84CB; color: #F1F5F9;
   font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
-.ai-start:disabled { background: #46587A; cursor: not-allowed; }
+.ai-start:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 .center-main { position: relative; }
 
 /* C3 素材生成弹窗 + C4 字数徽标 */
@@ -1758,9 +1761,9 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   border: 1px solid #9bb8d8; background: var(--wf-surface); color: #759FD7;
   font-size: 11px; padding: 2px 9px; border-radius: 7px; cursor: pointer;
 }
-.mat-gen-btn:hover { background: #161F33; }
+.mat-gen-btn:hover { background: var(--wf-sunken); }
 .mat-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.rail-empty-sub { font-size: 11px; color: #46587A; margin: 3px 0 0; }
+.rail-empty-sub { font-size: 11px; color: var(--wf-line-hard); margin: 3px 0 0; }
 .modal-mask { position: fixed; inset: 0; z-index: 90; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 480px; max-width: 94vw; background: var(--wf-surface); border-radius: 14px; padding: 18px 22px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
@@ -1768,16 +1771,16 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .modal-body { display: flex; flex-direction: column; gap: 13px; }
 .f-row { display: flex; flex-direction: column; gap: 5px; }
 .f-label { font-size: 13px; font-weight: 600; color: #DCE6F2; }
-.f-input { padding: 8px 12px; border: 1px solid #46587A; border-radius: 8px; font-size: 13px; }
-.f-textarea { padding: 8px 12px; border: 1px solid #46587A; border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; }
+.f-input { padding: 8px 12px; border: 1px solid var(--wf-line-hard); border-radius: 8px; font-size: 13px; }
+.f-textarea { padding: 8px 12px; border: 1px solid var(--wf-line-hard); border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; }
 .gen-err { margin: 0; font-size: 12px; color: #dc2626; }
 .gen-actions { display: flex; gap: 10px; }
 .gen-run {
   flex: 1; padding: 9px 0; border: 0; border-radius: 8px; background: #4D84CB;
   color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
 }
-.gen-run:disabled { background: #46587A; cursor: not-allowed; }
-.gen-cancel { padding: 9px 18px; border: 1px solid #46587A; border-radius: 8px; background: var(--wf-surface); color: var(--wf-muted); font-size: 13px; cursor: pointer; }
+.gen-run:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
+.gen-cancel { padding: 9px 18px; border: 1px solid var(--wf-line-hard); border-radius: 8px; background: var(--wf-surface); color: var(--wf-muted); font-size: 13px; cursor: pointer; }
 .gen-result { border-top: 1px solid var(--wf-line-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 9px; }
 .gen-result-body {
   margin: 0; padding: 11px 13px; background: var(--wf-raised); border: 1px solid var(--wf-line); border-radius: 8px;

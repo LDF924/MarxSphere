@@ -23,9 +23,20 @@ import { ref, computed, watch } from "vue";
 import { listVersions, listNodeHistory, rollbackNode, activateVersion, type NodeHistoryItem } from "@/shared/tasks";
 import { toast, confirmDialog } from "@/shared/ui";
 import EmptyState from "./EmptyState.vue";
+import NodeDiffView from "./NodeDiffView.vue";
 
-const props = defineProps<{ open: boolean; projectId: string; nodeKeys: Array<{ key: string; label: string }> }>();
-const emit = defineEmits<{ (e: "close"): void; (e: "changed", nodeKey: string): void }>();
+const props = defineProps<{
+  open: boolean;
+  projectId: string;
+  nodeKeys: Array<{ key: string; label: string }>;
+  /**
+   * 当前节点的内容 —— 由**调用方**读好传进来。
+   * 本组件不自己查: "当前态"在写作舱里来自 store(前端权威), 而不是再向后端要一遍,
+   * 后端拿到的是最近一次落库的快照, 可能比界面上看到的旧。
+   */
+  currentNodePayload?: Record<string, unknown> | null;
+}>();
+const emit = defineEmits<{ (e: "close"): void; (e: "changed", nodeKey: string): void; (e: "node-change", nodeKey: string): void }>();
 
 type Tab = "versions" | "history" | "rollback";
 const tab = ref<Tab>("versions");
@@ -47,6 +58,12 @@ const history = ref<NodeHistoryItem[]>([]);
 const loadingHistory = ref(false);
 const historyErr = ref("");
 const busy = ref(""); // 正在进行的动作标识, 防止连点
+
+/** 正在对比的历史(null = 没开) —— 只读, 不改任何数据 */
+const diffTarget = ref<{ id: string; version: number } | null>(null);
+function openDiff(h: { id: string; version: number }) {
+  diffTarget.value = { id: h.id, version: h.version };
+}
 
 /** 阶段标签是**机器标签**(phase3_materials), 直接摊给用户看等于让人读代码 */
 const LABELS: Record<string, string> = {
@@ -130,7 +147,7 @@ watch(
     history.value = pick >= 0 ? await listNodeHistory(props.projectId, activeNode.value).catch(() => []) : [];
   }
 );
-watch(activeNode, () => { void loadHistory(); });
+watch(activeNode, (k) => { void loadHistory(); emit("node-change", k); });
 
 function switchTab(t: Tab) {
   tab.value = t;
@@ -247,7 +264,7 @@ async function doRollback(h: NodeHistoryItem) {
                 <thead>
                   <tr>
                     <th class="vh-c-num">版本</th><th>来源</th><th>备注</th><th class="vh-c-time">时间</th>
-                    <th v-if="tab === 'rollback'" class="vh-c-act">操作</th>
+                    <th class="vh-c-act">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -256,8 +273,14 @@ async function doRollback(h: NodeHistoryItem) {
                     <td>{{ h.byRole }}</td>
                     <td class="vh-note">{{ h.note || "—" }}</td>
                     <td class="vh-time">{{ fmt(h.createdAt) }}</td>
-                    <td v-if="tab === 'rollback'">
-                      <button class="vh-btn" :disabled="!!busy" @click="doRollback(h)">
+                    <td class="vh-acts">
+                      <!-- 对比是**只读**动作, 所以两个页签都给; 回滚会改数据, 只在「恢复」页签出现。
+                           此前"看上一版写了什么"的唯一途径就是回滚(覆盖当前) —— 那不是对比。 -->
+                      <button
+                        class="vh-btn" :data-control="`workflow:vh-diff-${h.id}`"
+                        @click="openDiff(h)"
+                      >对比</button>
+                      <button v-if="tab === 'rollback'" class="vh-btn" :disabled="!!busy" @click="doRollback(h)">
                         {{ busy === `rb-${h.id}` ? "回滚中…" : "回滚到此" }}
                       </button>
                     </td>
@@ -275,6 +298,17 @@ async function doRollback(h: NodeHistoryItem) {
             </template>
           </div>
         </aside>
+
+        <NodeDiffView
+          :open="!!diffTarget"
+          :project-id="projectId"
+          :node-key="activeNode"
+          :node-label="nodeKeys.find((n) => n.key === activeNode)?.label ?? activeNode"
+          :history-id="diffTarget?.id ?? ''"
+          :history-version="diffTarget?.version ?? 0"
+          :current-payload="currentNodePayload ?? null"
+          @close="diffTarget = null"
+        />
       </div>
     </Transition>
   </Teleport>
@@ -314,7 +348,8 @@ async function doRollback(h: NodeHistoryItem) {
 .vh-c-num { width: 58px; }
 .vh-c-st { width: 84px; }
 .vh-c-time { width: 116px; }
-.vh-c-act { width: 92px; }
+.vh-c-act { width: 128px; }
+.vh-acts { display: flex; gap: 6px; flex-wrap: wrap; }
 .vh-num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--wf-text); white-space: nowrap; }
 .vh-raw { display: block; margin-top: 2px; font-size: 11px; color: var(--wf-faint); font-family: ui-monospace, monospace; }
 .vh-note { max-width: 30ch; word-break: break-word; }

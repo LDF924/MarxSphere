@@ -43,11 +43,18 @@ const MEASURE = `(() => {
     const b = e.getBoundingClientRect();
     if (b.height > 0 && b.height < 40 && e.scrollHeight > 60) collapsed.push((e.className || e.tagName).toString().slice(0, 40));
   }
-  // 重叠: 关键操作元素之间是否互相压住
+  // 重叠: 关键操作元素之间是否互相压住。
+  // ⚠ 2026-09-22 修: 必须排除**祖孙关系**。容器上也可能带 data-control(如项目栏里
+  //   每一项 workflow:proj-<id> 是个 div, 里面装着「归档」按钮) —— 孙子当然落在祖辈的
+  //   矩形里, 那是包含不是重叠。不排除的话, 每当项目栏里多出一行就多报一条假重叠
+  //   (实测 15 条全红, 而真实的按钮重叠一条都没有)。
+  //   仍然要看的是**兄弟/远亲**之间的压盖: 那才是"点这个却点到那个"的真问题。
   const overlap = [];
   const els = [...document.querySelectorAll('button, [data-control]')].filter(e => e.getClientRects().length);
+  const related = (a, b) => a.contains(b) || b.contains(a);
   for (let i = 0; i < Math.min(els.length, 40); i++) {
     for (let j = i + 1; j < Math.min(els.length, 40); j++) {
+      if (related(els[i], els[j])) continue;
       const a = els[i].getBoundingClientRect(), c = els[j].getBoundingClientRect();
       const ox = Math.min(a.right, c.right) - Math.max(a.left, c.left);
       const oy = Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top);

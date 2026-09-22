@@ -266,7 +266,7 @@ async function newProject() {
   width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; flex-shrink: 0; position: relative;
   transition: all .35s ease;
-  background: var(--wf-line); color: var(--wf-faint); border: 2px solid #2A3A55;
+  background: var(--wf-line); color: var(--wf-faint); border: 2px solid var(--wf-line-strong);
 }
 .ppb-circle.done { background: #16a34a; color: #F1F5F9; border: none; box-shadow: 0 2px 8px #16a34a40; }
 .ppb-circle.active { background: #4D84CB; color: #F1F5F9; border: none; box-shadow: 0 0 0 4px #1E2A48, 0 2px 8px #00000014; }

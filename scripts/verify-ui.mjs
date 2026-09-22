@@ -101,6 +101,9 @@ const SUITES = [
   // A3 整包导出 —— 产出是**一个文件**, 所以让 Chromium 真下载再打开那个 zip 校验结构;
   //   只看"请求 200"会漏掉 Content-Disposition 写错 / blob 没落盘 / 包里少章节。
   { key: "project-bundle", file: "probe-project-bundle.mjs", desc: "整包导出: 真下载 zip + 解开校验条目/章节数/中文文件名" },
+  // B2/D2: 左侧项目栏(切项目/搜索/归档)与快捷键。**真的会切项目指针**, 所以脚本自己
+  //   记下原值并在收尾还原 —— 门禁不该改用户当前项目。
+  { key: "project-rail", file: "probe-project-rail.mjs", desc: "项目栏: 列表/搜索/切项目/折叠 + Alt+数字快捷键(含越级拦截)" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },
   { key: "empirical-switch", file: "verify-empirical-project-switch.mjs", desc: "实证台课题切换与空态" },

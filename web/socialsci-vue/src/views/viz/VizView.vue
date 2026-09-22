@@ -725,7 +725,7 @@ const chartTabList = computed(() => figures.value.map((f, i) => ({ i, label: f.l
   color: #759FD7;
   cursor: pointer;
 }
-.viz-btn:hover { background: #161F33; }
+.viz-btn:hover { background: var(--wf-sunken); }
 .viz-btn.danger { border-color: #3A2323; color: #dc2626; }
 .viz-btn.danger.armed { background: #dc2626; color: #F1F5F9; }
 .viz-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -867,7 +867,7 @@ const chartTabList = computed(() => figures.value.map((f, i) => ({ i, label: f.l
   width: 34px;
   height: 2px;
   border-radius: 1px;
-  background: #46587A;
+  background: var(--wf-line-hard);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -895,7 +895,7 @@ const chartTabList = computed(() => figures.value.map((f, i) => ({ i, label: f.l
 .info-actions button {
   padding: 3px 9px;
   font-size: 10.5px;
-  border: 1px solid #46587A;
+  border: 1px solid var(--wf-line-hard);
   border-radius: 6px;
   background: #11192C;
   color: #A3B3C8;
@@ -1038,7 +1038,7 @@ const chartTabList = computed(() => figures.value.map((f, i) => ({ i, label: f.l
   overflow-y: auto;
   padding: 16px;
   scrollbar-width: thin;
-  scrollbar-color: #46587A transparent;
+  scrollbar-color: var(--wf-line-hard) transparent;
 }
 .task-loading, .task-empty {
   padding: 60px;

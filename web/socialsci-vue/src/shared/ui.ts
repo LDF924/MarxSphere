@@ -107,13 +107,13 @@ export const ConfirmHost = {
       //   整站都是 #0a1120/#11192C 一族, 这里对齐; 确认键用同族蓝, 危险动作用低饱和红。
       const D = {
         overlay: "position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(8,13,24,.62);backdrop-filter:blur(2px)",
-        card: "background:#11192C;border:1px solid #2A3A55;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.55);width:440px;max-width:92vw;overflow:hidden",
+        card: "background:#11192C;border:1px solid var(--wf-line-strong);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.55);width:440px;max-width:92vw;overflow:hidden",
         head: "padding:16px 20px;border-bottom:1px solid #222F44;display:flex;justify-content:space-between;align-items:center",
         title: "margin:0;font-size:15px;font-weight:700;color:#E8EEF7",
         close: "border:0;background:none;font-size:18px;color:#7A8AA0;cursor:pointer;line-height:1",
         body: "padding:18px 20px;font-size:13.5px;color:#A9BBD0;line-height:1.7;white-space:pre-wrap",
         foot: "padding:14px 20px;border-top:1px solid #222F44;display:flex;justify-content:flex-end;gap:10px",
-        cancel: "padding:7px 18px;border:1px solid #2A3A55;border-radius:8px;background:#16233A;color:#A9BBD0;font-size:13px;cursor:pointer",
+        cancel: "padding:7px 18px;border:1px solid var(--wf-line-strong);border-radius:8px;background:#16233A;color:#A9BBD0;font-size:13px;cursor:pointer",
       };
       const okStyle = `padding:7px 18px;border:0;border-radius:8px;color:#F1F5F9;font-size:13px;cursor:pointer;background:${confirmState.danger ? "#B4453F" : "#4D84CB"}`;
       return h("div", { style: D.overlay }, [

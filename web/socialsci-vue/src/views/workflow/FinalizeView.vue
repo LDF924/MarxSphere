@@ -12,6 +12,7 @@ import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridg
 import { toast, confirmDialog } from "@/shared/ui";
 import { q, authedBlob } from "@/shared/api";
 import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
+import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import VersionHistoryPanel from "./VersionHistoryPanel.vue";
 import DeepAnalysisPanel from "./DeepAnalysisPanel.vue";
@@ -83,6 +84,37 @@ const VH_NODES = [
   { key: "input", label: "研究信息" },
 ];
 const vhOpen = ref(false);
+
+/**
+ * 供版本对比用的"当前内容"。
+ *
+ * 从 **store** 现取, 而不是向后端再查一遍 —— 界面上看到的才是权威(后端拿的是最近一次
+ * 落库的快照, 用户刚敲的字可能还没落盘, 那样对比出来的"当前"是错的)。
+ * 形状必须与历史 payload 一致, 否则 diff 会把每个字段都当成"变了":
+ *   · sections 节点 → `{sections: [...]}`(与写入时的形状相同)
+ *   · finalize  节点 → 合稿那几个字段(与 mergeNode 写进去的键同名)
+ * 输入/素材节点不在这里给(null), 对比视图会如实显示"没有可对比的内容" ——
+ * 给一个空对象会让它显示成"全部删除了", 那是误导。
+ */
+const currentPayloadForDiff = computed<Record<string, unknown> | null>(() => {
+  switch (activeVhNode.value) {
+    case "sections":
+      return { sections: store.sections ?? [] };
+    case "finalize":
+      return {
+        mergedTitle: store.mergedTitle ?? "",
+        mergedAbstract: store.mergedAbstract ?? "",
+        mergedKeywords: store.mergedKeywords ?? "",
+        mergedFullText: store.mergedFullText ?? "",
+        mergedReferences: store.mergedReferences ?? "",
+      };
+    default:
+      return null;
+  }
+});
+
+/** 抽屉里当前选中的节点 —— 对比要知道"拿哪一份当前态来比" */
+const activeVhNode = ref("sections");
 
 /**
  * 回滚了自己正在看的那个节点之后, 必须把 store 重新拉一遍 ——
@@ -1073,6 +1105,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <WorkflowShell>
   <div
     class="workflow-page wf-page"
     :data-assistant-async-busy="(mergeRunning || reviewRunning || reviseRunning) ? 'true' : 'false'"
@@ -1492,10 +1525,13 @@ onMounted(async () => {
       :open="vhOpen"
       :project-id="store.taskId"
       :node-keys="VH_NODES"
+      :current-node-payload="currentPayloadForDiff"
       @close="vhOpen = false"
       @changed="onNodeRolledBack"
+      @node-change="activeVhNode = $event"
     />
   </div>
+</WorkflowShell>
 </template>
 
 <style scoped>
@@ -1551,7 +1587,7 @@ onMounted(async () => {
 .merge-steps-preview { margin: 28px auto 0; max-width: 448px; text-align: left; display: flex; flex-direction: column; gap: 12px; }
 .msp-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--wf-faint); }
 .msp-num {
-  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #2A3A55;
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--wf-line-strong);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   font-size: 12px; font-weight: 600; color: var(--wf-faint);
 }
@@ -1625,7 +1661,7 @@ onMounted(async () => {
   display: flex; align-items: center; justify-content: center;
   transition: all 0.5s;
 }
-.merge-timeline__marker.is-pending { background: var(--wf-raised); border: 2px solid #2A3A55; color: var(--wf-faint); }
+.merge-timeline__marker.is-pending { background: var(--wf-raised); border: 2px solid var(--wf-line-strong); color: var(--wf-faint); }
 .merge-timeline__marker.is-done { background: #E8B54A; color: #F1F5F9; box-shadow: 0 3px 10px #E8B54A40; }
 .merge-timeline__marker.is-active { background: #E8B54A; color: #F1F5F9; }
 .mt-spin { width: 16px; height: 16px; animation: mt-rotate 1.1s linear infinite; }

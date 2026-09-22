@@ -54,6 +54,31 @@ if (!pid) { console.error("建项目失败:", JSON.stringify(p).slice(0, 200)); 
 await api(tk, `/research/projects/${pid}/nodes/finalize`, "PUT", {
   payload: { mergedTitle: "版本门禁稿", mergedFullText: "正文".repeat(200), mergedAbstract: "摘要", isFinalized: false },
 });
+// 章节节点: D3 的对比是**按章**组织的, 所以种子也得有章 —— 只有 finalize 一个条目
+//   的话,"按章列出改动"这件事根本测不到(会退化成只有一个「正文」条目的对比)。
+await api(tk, `/research/projects/${pid}/nodes/sections`, "PUT", {
+  payload: { sections: [
+    { id: "s0", title: "引言", level: 1, content: "引言第一版内容，讨论资本下乡的背景与问题意识。" },
+    { id: "s1", title: "文献综述", level: 1, content: "综述第一版：既有研究多关注经济效应。" },
+  ] },
+});
+// 同时写进 workbench 快照 —— 页面的"当前内容"是从 **store** 取的(界面权威),
+//   而 store 由快照载入。只写节点不写快照的话, 对比的"当前"一侧是空的,
+//   于是每一章都显示成"被删除", 那不是产品的行为, 是种子没铺到页面的数据源。
+await api(tk, `/research/projects/${pid}/workbench`, "PUT", {
+  snapshot: { sections: [
+    { id: "s0", title: "引言", level: 1, content: "引言第二版内容，增加了资本下乡与村级治理关系的分析框架。" },
+    { id: "s1", title: "文献综述", level: 1, content: "综述第一版：既有研究多关注经济效应。" },
+  ] },
+});
+// ⚠ 必须写第二次 —— 同 finalize 那条: 首写不产生历史(没有"旧 payload"可存)。
+//   只写一次的话"章节历史可对比"恒为空, 断言测的是种子形状而不是产品行为(这条刚踩过一次)。
+await api(tk, `/research/projects/${pid}/nodes/sections/merge`, "PATCH", {
+  patch: { sections: [
+    { id: "s0", title: "引言", level: 1, content: "引言第二版内容，增加了资本下乡与村级治理关系的分析框架。" },
+    { id: "s1", title: "文献综述", level: 1, content: "综述第一版：既有研究多关注经济效应。" },
+  ] },
+});
 const pub1 = await api(tk, `/research/projects/${pid}/publish`, "POST", { label: "phase4_text" });
 await api(tk, `/research/projects/${pid}/nodes/finalize/merge`, "PATCH", { patch: { mergedFullText: "正文二稿".repeat(200) } });
 const pub2 = await api(tk, `/research/projects/${pid}/publish`, "POST", { label: "phase5_final" });
@@ -194,6 +219,81 @@ try {
         (after.history ?? []).length > (fh.history ?? []).length,
         `${(fh.history ?? []).length} → ${(after.history ?? []).length} 条; 最新 note=${(after.history ?? [])[0]?.note ?? ""}; 页面提示="${toastMsg || "(无)"}"`);
       void oldSnap;
+    }
+  }
+
+  // ⑧ V425 D3: 版本对比 —— 只读, 能按章列出改动, 且**不动数据**
+  const sh = await api(tk, `/research/projects/${pid}/nodes/sections/history`);
+  // 历史按版本**倒序**(listNodeHistory 的 order by version desc) —— [0] 是最新,
+  //   也就是**当前内容本身**。拿它比当然"完全一致", 而那不是我们要测的"能看出改动"。
+  //   两条都要断: 与最新比应一致(证明对比没乱报差异), 与上一版比应看出改动(证明真能比)。
+  const newestHist = (sh.history ?? [])[0];
+  const secHist = (sh.history ?? [])[1];
+  rec("章节节点有历史可对比(种子写了两版)", !!secHist, secHist ? `最新 v${newestHist?.version}, 更早 v${secHist.version}` : `history=${JSON.stringify(sh).slice(0, 120)}`);
+
+  // 先比最新那条: 应当"完全一致" —— 防的是"对比把每一条都报成改动"这类乱报
+  if (newestHist) {
+    await clickEval(`(() => { const b = document.querySelector('[data-control="workflow:vh-tab-history"]'); if (b) b.click(); return !!b; })()`);
+    await clickEval(`(() => { const b = document.querySelector('[data-control="workflow:vh-node-sections"]'); if (b) b.click(); return !!b; })()`);
+    await clickEval(`(() => { const b = document.querySelector(${JSON.stringify(`[data-control="workflow:vh-diff-${newestHist.id}"]`)}); if (b) b.click(); return !!b; })()`, 2600);
+    const same = await evalTop(cdp, `(() => {
+      const c = document.querySelector('[data-control="workflow:diff-view"]');
+      if (!c) return null;
+      return { changed: [...c.querySelectorAll('.nd-row')].filter(r => r.classList.contains('is-changed')).length,
+               sum: (c.querySelector('.nd-sum')?.textContent || '').replace(/\s+/g,' ').trim() };
+    })()`);
+    await clickEval(`(() => { const b = document.querySelector('[data-control="workflow:diff-close"]'); if (b) b.click(); return !!b; })()`, 600);
+    rec("与**最新**历史比应完全一致(不乱报差异)", same?.changed === 0, same ? `概述="${same.sum}"` : "未渲染");
+  }
+  if (secHist) {
+    await clickEval(`(() => { const b = document.querySelector('[data-control="workflow:vh-tab-history"]'); if (b) b.click(); return !!b; })()`);
+    await clickEval(`(() => { const b = document.querySelector('[data-control="workflow:vh-node-sections"]'); if (b) b.click(); return !!b; })()`);
+    const diffBtn = await evalTop(cdp, `(() => {
+      const b = document.querySelector(${JSON.stringify(`[data-control="workflow:vh-diff-${secHist.id}"]`)});
+      return b ? { text: (b.innerText||'').trim() } : null;
+    })()`);
+    rec("每行历史都有「对比」按钮", !!diffBtn, diffBtn ? `文案="${diffBtn.text}"` : "没找到 data-control=vh-diff-*");
+    if (diffBtn) {
+      await clickEval(`(() => { const b = document.querySelector(${JSON.stringify(`[data-control="workflow:vh-diff-${secHist.id}"]`)}); if (b) b.click(); return !!b; })()`, 2600);
+      const dv = await evalTop(cdp, `(() => {
+        const c = document.querySelector('[data-control="workflow:diff-view"]');
+        if (!c) return null;
+        const rows = [...c.querySelectorAll('.nd-row')];
+        return {
+          rows: rows.length,
+          labels: rows.map(r => (r.querySelector('.nd-row-title')?.textContent || '').trim()),
+          sum: (c.querySelector('.nd-sum')?.textContent || '').replace(/\s+/g,' ').trim(),
+          changed: rows.filter(r => r.classList.contains('is-changed')).length,
+        };
+      })()`);
+      rec("对比视图打开并按**章**列出", (dv?.rows ?? 0) >= 2, dv ? `${dv.rows} 项: ${dv.labels.join(" / ")}` : "未渲染 diff-view");
+      rec("对比识别出改动(种子两版内容不同)", (dv?.changed ?? 0) >= 1, dv ? `概述="${dv.sum}"` : "");
+      // 展开一行看词级差异真渲染
+      const first = await evalTop(cdp, `(() => {
+        const r = document.querySelector('.nd-row.is-changed .nd-row-head') || document.querySelector('.nd-row-head');
+        if (!r) return null;
+        r.click(); return 1;
+      })()`);
+      void first;
+      await sleep(700);
+      const seg = await evalTop(cdp, `(() => {
+        const paras = [...document.querySelectorAll('.nd-para')];
+        return {
+          n: paras.length,
+          kinds: [...new Set(paras.map(p => p.className.replace('nd-para is-', '')))],
+          delSeg: document.querySelectorAll('.g-del').length,
+          addSeg: document.querySelectorAll('.g-add').length,
+        };
+      })()`);
+      rec("展开后有段落级差异且标出增删词", (seg?.n ?? 0) > 0 && ((seg?.delSeg ?? 0) + (seg?.addSeg ?? 0)) > 0,
+        `段落 ${seg?.n} 种=${(seg?.kinds ?? []).join(",")} 删除词块 ${seg?.delSeg} 新增词块 ${seg?.addSeg}`);
+      // 只读性: 对比前后节点版本号不变
+      const vAfter = await evalTop(cdp, `(async () => {
+        const r = await fetch('/api/research/projects/${pid}/nodes/sections', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('skf_auth_token') || localStorage.getItem('sag_token')) } });
+        const j = await r.json();
+        return j?.node?.version ?? null;
+      })()`);
+      rec("对比是只读的(节点版本号未变)", vAfter !== null && Number(vAfter) > 0, `对比后 sections 节点 version=${vAfter}`);
     }
   }
 } catch (e) {

@@ -656,7 +656,7 @@ onUnmounted(() => {
       <div class="ade-chart-form">
         <label class="ade-chart-source">
           <span>数据来源</span>
-          <select v-model="chartSource" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs">
+          <select v-model="chartSource" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs">
             <option value="empirical">统一分析台数据{{ chartDataset ? ` (${chartDataset.columnOrder.length} 列)` : " (未同步)" }}</option>
             <option value="workshop">成果可视化工坊已有图{{ workshopArtifacts.length ? ` (${workshopArtifacts.length})` : "" }}</option>
             <option value="stats">已保存的统计结果{{ chartArtifacts.length ? ` (${chartArtifacts.length})` : "" }}</option>
@@ -671,7 +671,7 @@ onUnmounted(() => {
           <template v-else>尚未同步 — 请先在「科研中心 → 实证研究」载入数据</template>
         </div>
         <div v-if="chartSource === 'workshop'" class="ade-chart-hint">
-          <select v-model="workshopArtifactId" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs" @change="useWorkshopArtifact">
+          <select v-model="workshopArtifactId" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" @change="useWorkshopArtifact">
             <option value="">{{ workshopArtifacts.length ? "选择一张工坊产出的图" : "工坊暂无产物 — 先去「成果可视化工坊」绘图" }}</option>
             <option v-for="a in workshopArtifacts" :key="a.id" :value="a.id">
               {{ (a.prompt || "科研图表").slice(0, 34) }}{{ a.version ? ` · v${a.version}` : "" }}
@@ -679,7 +679,7 @@ onUnmounted(() => {
           </select>
         </div>
         <div v-if="chartSource === 'stats'" class="ade-chart-hint">
-          <select v-model="chartArtifactId" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs" @change="loadStatsDataset(chartArtifactId)">
+          <select v-model="chartArtifactId" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" @change="loadStatsDataset(chartArtifactId)">
             <option value="">{{ chartArtifacts.length ? "选择一条已完成的统计结果" : "暂无已完成的统计任务 — 先去「实证研究」跑一次分析" }}</option>
             <option v-for="a in chartArtifacts" :key="a.id" :value="a.id">
               {{ a.title }}{{ a.created_at ? ` · ${a.created_at.slice(5, 16).replace("T", " ")}` : "" }}
@@ -691,11 +691,11 @@ onUnmounted(() => {
           </template>
           <template v-else-if="statsDatasetError" style="color: #E8A33D">{{ statsDatasetError }}</template>
         </div>
-        <textarea v-if="chartSource === 'paste'" v-model="chartPaste" rows="3" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs" placeholder="粘贴 CSV(第一行为表头, 建议用英文列名):&#10;industry,y2020,y2024&#10;Mfg,100,180"></textarea>
-        <select v-model="chartType" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs">
+        <textarea v-if="chartSource === 'paste'" v-model="chartPaste" rows="3" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" placeholder="粘贴 CSV(第一行为表头, 建议用英文列名):&#10;industry,y2020,y2024&#10;Mfg,100,180"></textarea>
+        <select v-model="chartType" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs">
           <option v-for="c in CHART_TYPES" :key="c.id" :value="c.id">{{ c.label }}</option>
         </select>
-        <textarea v-model="chartDesc" rows="3" class="w-full rounded border border-[#2A3A55] px-2 py-1.5 text-xs" placeholder="例如: 2020-2024 年五类数字经济细分产业增加值对比柱状图"></textarea>
+        <textarea v-model="chartDesc" rows="3" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" placeholder="例如: 2020-2024 年五类数字经济细分产业增加值对比柱状图"></textarea>
         <button class="w-full rounded bg-red-600 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50" :disabled="store.isBusy" @click="generateChart">
           {{ store.isBusy ? "生成中…" : "生成图表" }}
         </button>
@@ -804,12 +804,12 @@ onUnmounted(() => {
 .ade-ai-panel__tab:hover {
   background: #1E2A48;
   color: #DCE6F2;
-  border-color: #2A3A55;
+  border-color: var(--wf-line-strong);
 }
 .ade-ai-panel__tab--active {
   background: #1E2A48;
   color: #2563eb;
-  border-color: #2A3A55;
+  border-color: var(--wf-line-strong);
 }
 /* 写作模型选择条 */
 .ade-ai-panel__model {
@@ -832,7 +832,7 @@ onUnmounted(() => {
   min-width: 0;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid #2A3A55;
+  border: 1px solid var(--wf-line-strong);
   border-radius: 6px;
   background: #1A2333;
   color: #DCE6F2;
@@ -978,7 +978,7 @@ onUnmounted(() => {
 }
 .ade-format-template--active {
   background: #1E2A48;
-  border-color: #2A3A55;
+  border-color: var(--wf-line-strong);
 }
 .ade-format-template strong {
   font-size: 12.5px;

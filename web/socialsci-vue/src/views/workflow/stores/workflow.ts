@@ -57,6 +57,16 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const skillStep = ref(0);
   const skillError = ref<Record<string, unknown> | null>(null);
   const project = ref<{ title: string; logicFlow?: string }>({ title: "" });
+  /**
+   * 指针指向的项目是否**可读**(存在且有快照)。
+   *
+   * 由来(2026-09-22): 各页的 onMounted 里写着
+   *   `const hasSaved = !!store.taskId && !!(store.input.title || store.input.outline)`
+   * —— 拿**载入结果**代替"已存项目"判定。于是"指针指向不存在的项目"与"新项目"两种情况
+   * 长得一模一样; 门禁里那条"刷新后从草稿恢复"的断言也因此长期误报(实际代码是对的)。
+   * 现在把判定收进 store: 指针指向的项目读不出来, 就是**没有**已存项目, 与空项目同义。
+   */
+  const hasSavedProject = ref(false);
   // ── 版本链(闭源 getCurrent 校验 stale) ──
   const inputVersionId = ref("");
   const phase2VersionId = ref("");
@@ -168,6 +178,30 @@ export const useWorkflowStore = defineStore("workflow", () => {
     } catch { /* 409/锁容忍 */ }
   }
 
+  /**
+   * 判定"当前指针是否已指向一个可读项目" —— 载入后、载入前都要用。
+   *
+   * 抽出来是因为切项目时也要判同一件事: 若只在 loadProject 里判, 切完项目后
+   * `hasSavedProject` 仍是切之前算的旧值, 页面会按旧结论渲染。
+   */
+  async function refreshHasSavedProject(pid: string): Promise<boolean> {
+    if (!pid) { hasSavedProject.value = false; return false; }
+    try {
+      const snap = await getWorkbench(pid);
+      const ok = !!snap && Object.keys(snap).length > 0;
+      hasSavedProject.value = ok;
+      return ok;
+    } catch { hasSavedProject.value = false; return false; }
+  }
+
+  /** 切到指定项目(项目栏点击用)。与 loadProject 的区别: 它**认指针**, 这里认你点的那一个 */
+  async function switchProject(pid: string): Promise<void> {
+    if (!pid) return;
+    taskId.value = pid;
+    persistPointer(pid);
+    await loadProject();
+  }
+
   async function loadProject(): Promise<void> {
     // 只恢复已有项目(绝不创建 — 创建发生在用户提交时)
     //
@@ -195,10 +229,11 @@ export const useWorkflowStore = defineStore("workflow", () => {
         localStorage.setItem("lastTask_workflow", hit.projectId);
       }
     }
-    if (!taskId.value) return;
+    if (!taskId.value) { hasSavedProject.value = false; return; }
     try {
       const snap = await getWorkbench(taskId.value);
-      if (!snap || !Object.keys(snap).length) return;
+      if (!snap || !Object.keys(snap).length) { hasSavedProject.value = false; return; }
+      hasSavedProject.value = true;
       if (typeof snap.phase === "number") phase.value = snap.phase;
       if (snap.phaseLabel) phaseLabel.value = String(snap.phaseLabel);
       if (snap.input) input.value = { ...input.value, ...(snap.input as WfInput) };
@@ -294,6 +329,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
    */
   function resetLocal(): void {
     taskId.value = "";
+    hasSavedProject.value = false;
     phase.value = 0;
     phaseLabel.value = "";
     // totalWordCount 重置回 8000 而不是 0 —— 闭源的 store 重置用的是**初值**(1e4),
@@ -326,6 +362,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     mergedFullText, mergedTitle, mergedAbstract, mergedKeywords, mergedReferences,
     mergeGenerated, isFinalized, reviewResult, exportStatus, exportFormat, exportedAt,
     title, level1Sections, activeSection, totalWordCount,
-    ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto, setPhase, resetLocal
+    ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto, setPhase, resetLocal,
+    hasSavedProject, refreshHasSavedProject, switchProject
   };
 });

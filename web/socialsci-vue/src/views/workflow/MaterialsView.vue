@@ -12,6 +12,7 @@ import { toast, confirmDialog } from "@/shared/ui";
 import { putNode } from "@/shared/tasks";
 import { claimHandoff } from "@/shared/workflow-bridge";
 import { renderMd } from "@/shared/markdown";
+import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
 
@@ -1347,6 +1348,7 @@ onMounted(async () => {
 </script>
 
 <template>
+  <WorkflowShell>
   <div
     class="workflow-page wf-page"
     :data-assistant-material-count="String(materials.length)"
@@ -2124,6 +2126,7 @@ onMounted(async () => {
     </Teleport>
     </div>
   </div>
+</WorkflowShell>
 </template>
 
 <style scoped>
@@ -2133,9 +2136,9 @@ onMounted(async () => {
 .lit-search { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid var(--wf-line); border-radius: 8px; background: var(--wf-surface); }
 .ls-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ls-srcs { display: flex; gap: 4px; }
-.ls-src { padding: 4px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 12px; cursor: pointer; }
+.ls-src { padding: 4px 10px; border: 1px solid var(--wf-line-strong); border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 12px; cursor: pointer; }
 .ls-src.on { border-color: #4D84CB; background: #1B2C4A; color: var(--wf-text); }
-.ls-input { flex: 1; min-width: 160px; padding: 5px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #0D1526; color: var(--wf-text); font-size: 12px; }
+.ls-input { flex: 1; min-width: 160px; padding: 5px 10px; border: 1px solid var(--wf-line-strong); border-radius: 6px; background: #0D1526; color: var(--wf-text); font-size: 12px; }
 .ls-go { padding: 5px 14px; border: 0; border-radius: 6px; background: #4D84CB; color: #F1F5F9; font-size: 12px; cursor: pointer; }
 .ls-go:disabled { opacity: 0.5; cursor: default; }
 .ls-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; }
@@ -2144,7 +2147,7 @@ onMounted(async () => {
 .ls-note.info { color: #6B7A90; }
 .ls-meta { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 6px; font-size: 11px; color: var(--wf-faint); }
 .ls-filter { color: #6FD08C; }
-.ls-import { padding: 4px 12px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 11px; cursor: pointer; }
+.ls-import { padding: 4px 12px; border: 1px solid var(--wf-line-strong); border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 11px; cursor: pointer; }
 .ls-import:disabled { opacity: 0.45; cursor: default; }
 .ls-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .ls-item { display: flex; gap: 8px; padding: 8px 10px; border: 1px solid #1E2A40; border-radius: 6px; background: #0D1526; cursor: pointer; }
@@ -2157,7 +2160,7 @@ onMounted(async () => {
 /* 文献库身份卡 */
 .cnki-identity { margin: 6px 0 12px; padding: 10px 12px; border: 1px solid var(--wf-line); border-radius: 8px; background: var(--wf-surface); }
 .ci-modes { display: flex; gap: 6px; margin-bottom: 8px; }
-.ci-mode { padding: 4px 12px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 12px; cursor: pointer; }
+.ci-mode { padding: 4px 12px; border: 1px solid var(--wf-line-strong); border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 12px; cursor: pointer; }
 .ci-mode.on { border-color: #4D84CB; background: #1B2C4A; color: var(--wf-text); }
 .ci-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .ci-label { color: var(--wf-faint); }
@@ -2166,7 +2169,7 @@ onMounted(async () => {
 .ci-badge { margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 10px; }
 .ci-badge.inst { background: #1B3A2A; color: #6FD08C; }
 .ci-badge.personal { background: #1B2C4A; color: #7FB2EC; }
-.ci-refresh { margin-left: auto; padding: 3px 10px; border: 1px solid #2A3A55; border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 11px; cursor: pointer; }
+.ci-refresh { margin-left: auto; padding: 3px 10px; border: 1px solid var(--wf-line-strong); border-radius: 6px; background: #16233A; color: var(--wf-text-2); font-size: 11px; cursor: pointer; }
 .ci-refresh:disabled { opacity: 0.5; cursor: default; }
 .ci-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: #6B7A90; }
 .ci-note strong { color: var(--wf-text-2); }
@@ -2178,7 +2181,7 @@ onMounted(async () => {
 /* 页头三行状态区(闭源: N | 说明 | 版本状态, 中间夹竖线) */
 .mat-stats { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--wf-muted); margin: 12px 0 0; flex-wrap: wrap; }
 .ms-num { color: var(--wf-text); font-weight: 600; font-size: 13.5px; }
-.ms-sep { width: 1px; height: 12px; background: #46587A; display: inline-block; }
+.ms-sep { width: 1px; height: 12px; background: var(--wf-line-hard); display: inline-block; }
 
 /* 补充素材来源整卡 */
 .source-card {
@@ -2278,7 +2281,7 @@ onMounted(async () => {
 .cat-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .cat-more {
   margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px;
-  background: transparent; border: 1px dashed #46587A; color: var(--wf-muted);
+  background: transparent; border: 1px dashed var(--wf-line-hard); color: var(--wf-muted);
   font-size: 12px; cursor: pointer;
 }
 .cat-more:hover { border-color: #B06A6A; color: var(--wf-text); }
@@ -2322,7 +2325,7 @@ onMounted(async () => {
 }
 .mat-card:hover { border-color: #B06A6A; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.06); }
 .mat-src-btn {
-  margin-left: 6px; padding: 1px 7px; border: 1px solid #46587A; border-radius: 5px;
+  margin-left: 6px; padding: 1px 7px; border: 1px solid var(--wf-line-hard); border-radius: 5px;
   background: var(--wf-surface); color: #C7D2E0; font-size: 10px; cursor: pointer;
 }
 .src-row { padding: 6px 0; border-bottom: 1px solid var(--wf-line); }
@@ -2402,13 +2405,13 @@ onMounted(async () => {
  *   所以顶/栏目线**同时**挂在 thead 上(与闭源一致), 底线挂 tbody。
  */
 .three-line-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
-.three-line-table thead { border-top: 2px solid #46587A; border-bottom: 1.5px solid #46587A; }
+.three-line-table thead { border-top: 2px solid var(--wf-line-hard); border-bottom: 1.5px solid var(--wf-line-hard); }
 .three-line-table th {
   padding: 5px 9px; text-align: left; color: var(--wf-text); white-space: nowrap;
   border: none;
 }
 .three-line-table td { padding: 4px 9px; color: #DCE6F2; border: none; }
-.three-line-table tbody { border-bottom: 2px solid #46587A; }
+.three-line-table tbody { border-bottom: 2px solid var(--wf-line-hard); }
 .three-line-table tbody tr:hover { background: var(--wf-raised); }
 .review-report { margin-bottom: 14px; }
 .report-head { font-size: 13.5px; font-weight: 600; color: var(--wf-text); cursor: pointer; padding: 9px 13px; background: var(--wf-surface); border: 1px solid #3A3020; border-radius: 9px; }
@@ -2440,7 +2443,7 @@ onMounted(async () => {
   padding: 10px 26px; border: 0; border-radius: 9px;
   background: #4D84CB; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
-.btn-primary:disabled { background: #46587A; cursor: not-allowed; }
+.btn-primary:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 .modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 520px; max-width: 95vw; background: var(--wf-surface); border-radius: 16px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
@@ -2578,7 +2581,7 @@ onMounted(async () => {
 .gen-table-type { display: flex; gap: 22px; align-items: center; }
 .radio-item { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; color: #DCE6F2; }
 .radio-dot {
-  width: 16px; height: 16px; border-radius: 50%; border: 2px solid #46587A;
+  width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--wf-line-hard);
   display: flex; align-items: center; justify-content: center;
 }
 .radio-dot.radio-on { border-color: #4D84CB; }
@@ -2597,7 +2600,7 @@ onMounted(async () => {
 }
 .gen-foot { align-items: center; }
 .gen-start { min-width: 130px; }
-.gen-start:disabled { background: #46587A; cursor: not-allowed; }
+.gen-start:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
 
 /* B5 图片素材卡 + 全屏预览 + 来源徽章 */
 .mat-img { margin-top: 2px; }

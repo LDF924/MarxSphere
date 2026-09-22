@@ -128,7 +128,7 @@ async function handleDelete() {
               <label class="mb-1.5 block text-sm font-medium text-[#C3D2E5]">文档标题</label>
               <input data-control="editor:new-title"
                 v-model="newTitle"
-                class="w-full rounded-lg border border-[#2A3A55] px-3 py-2 text-sm focus:border-[#4D84CB] focus:outline-none"
+                class="w-full rounded-lg border border-[var(--wf-line-strong)] px-3 py-2 text-sm focus:border-[#4D84CB] focus:outline-none"
                 placeholder="例如: 数字经济与中小企业融资约束研究"
                 @keydown.enter="handleCreate"
               />
@@ -244,7 +244,7 @@ async function handleDelete() {
 }
 .ade-topbar__action-btn:hover {
   background: #1E2A48;
-  border-color: #2A3A55;
+  border-color: var(--wf-line-strong);
   color: #2563eb;
 }
 .ade-topbar__status {

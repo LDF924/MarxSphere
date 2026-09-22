@@ -260,6 +260,25 @@ export async function listNodeHistory(projectId: string, nodeKey: string): Promi
   }));
 }
 
+/**
+ * 取某条历史的完整 payload(只读)。
+ *
+ * 为什么需要它: 历史列表只给元信息, 而唯一碰 payload 的操作是**回滚**(覆盖当前)。
+ *   于是"看看上一版写了什么"只能先回滚 —— 对比本来是个只读动作, 不该改数据。
+ *
+ * 返回的 payload 形状随节点而变(sections 节点是 `{sections: [...]}`, finalize 是
+ *   `{mergedFullText, mergedTitle, ...}`), 所以这里原样透出, 由调用方按节点解读。
+ */
+export async function getNodeHistoryPayload(projectId: string, nodeKey: string, historyId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const r = await q<{ history?: { payload?: Record<string, unknown> } }>(
+      `/research/projects/${projectId}/nodes/${nodeKey}/history/${historyId}`);
+    return r.history?.payload ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** 回滚节点到某条历史 —— 会写一条新历史(回滚动作本身留痕), 不删任何东西 */
 export async function rollbackNode(projectId: string, nodeKey: string, historyId: string): Promise<void> {
   await q(`/research/projects/${projectId}/nodes/${nodeKey}/rollback`, { method: "POST", body: { historyId } });
@@ -303,6 +322,42 @@ export async function ensureModuleTask(module: SocModule, title: string, taskId?
   if (hit) return { taskId: hit.id, projectId: hit.projectId, created: false };
   const t = await createTask({ title, module, status: "in-progress", phase: 0, phaseLabel: "" });
   return { taskId: t.id, projectId: t.projectId, created: true };
+}
+
+// ── 项目列表(V425 B2) ──
+//
+// 由来: 写作舱**没有项目切换入口** —— 工作台里只能看到 `lastTask_workflow` 指针指向的那一个,
+//   要换项目得退回外壳的「历史记录」。后端 listProjects(按 updated_at 倒序、排除已删)
+//   与 archiveProject 一直就绪, 前端引用数为 0。
+//
+// 契约: GET /research/projects → { projects: [...] }(注意是**对象包着数组**, 不是裸数组)
+export interface SocProject {
+  id: string;
+  title: string;
+  topic?: string;
+  phase: number;
+  phaseLabel?: string;
+  status: string;
+  updatedAt?: string;
+}
+
+export async function listProjects(): Promise<SocProject[]> {
+  const r = await q<{ projects?: Array<Record<string, unknown>> }>("/research/projects");
+  return (r.projects ?? []).map((p) => ({
+    id: String(p.id ?? ""),
+    title: String(p.title ?? "") || "未命名项目",
+    topic: p.topic ? String(p.topic) : undefined,
+    phase: Number(p.phase ?? 0),
+    phaseLabel: p.phase_label ? String(p.phase_label) : undefined,
+    status: String(p.status ?? "active"),
+    // 后端返回的是 updated_at(snake), 不是 updatedAt
+    updatedAt: p.updated_at ? String(p.updated_at) : undefined,
+  }));
+}
+
+/** 归档项目(软删, status='archived'; 列表随之不再返回它) */
+export async function archiveProject(projectId: string): Promise<void> {
+  await q(`/research/projects/${projectId}/archive`, { method: "POST" });
 }
 
 /** 任务模块中文标签 */

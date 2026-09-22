@@ -1191,8 +1191,8 @@ onMounted(() => {
   font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .primary-btn:hover { background: #5D94DB; }
-.primary-btn:disabled { background: #46587A; cursor: not-allowed; }
-.primary-btn:disabled:hover { background: #46587A; }
+.primary-btn:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
+.primary-btn:disabled:hover { background: var(--wf-line-hard); }
 .ghost-btn {
   padding: 7px 14px; border: 1px solid #222F44; border-radius: 8px; background: #11192C;
   color: #8B9BB1; font-size: 13px; cursor: pointer;
@@ -1353,13 +1353,13 @@ a.mini-btn { text-decoration: none; display: inline-flex; align-items: center; }
 /* ── 学科模板 + 标准导入导出(2026-09-12) ── */
 .tpl-strip {
   display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
-  margin: 0 0 14px; padding: 10px 12px; border: 1px dashed #2A3A55;
+  margin: 0 0 14px; padding: 10px 12px; border: 1px dashed var(--wf-line-strong);
   border-radius: 9px; background: rgba(77, 132, 203, .04);
 }
 .tpl-label { font-size: 12px; color: #8B9BB1; }
 .tpl-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
-  border: 1px solid #2A3A55; border-radius: 14px; background: #162034;
+  border: 1px solid var(--wf-line-strong); border-radius: 14px; background: #162034;
   color: #C7D3E3; font-size: 12.5px; cursor: pointer; transition: all .15s;
 }
 .tpl-chip:hover { border-color: #4D84CB; color: #7EB0E8; }

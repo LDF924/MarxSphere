@@ -10205,6 +10205,19 @@ except Exception as e:
     return { history: await researchPipeline.listNodeHistory(user.id, projectId, nodeKey) };
   });
 
+  /**
+   * 取某条历史的完整 payload(只读) —— 版本对比的前置。
+   * 放在 rollback 之前是刻意的: 两者读同一张表, 但这条**不改任何数据**,
+   * 顺序上让"看"在"改"前面, 读代码时不容易把两者混为一谈。
+   */
+  app.get("/api/research/projects/:projectId/nodes/:nodeKey/history/:historyId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, nodeKey, historyId } = request.params as { projectId: string; nodeKey: string; historyId: string };
+    const h = await researchPipeline.getNodeHistoryDetail(user.id, projectId, nodeKey, historyId);
+    if (!h) return reply.code(404).send({ error: { code: "HISTORY_NOT_FOUND", message: "历史版本不存在" } });
+    return { history: h };
+  });
+
   app.post("/api/research/projects/:projectId/nodes/:nodeKey/rollback", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId, nodeKey } = request.params as { projectId: string; nodeKey: string };
