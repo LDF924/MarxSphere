@@ -349,8 +349,18 @@ function isObjList(v: unknown): boolean {
 /* 键名压暗、值正常: 结果里同一层级字段名重复出现, 压暗后正文才读得下去 */
 .da-kv { display: block; }
 .da-kv em { font-style: normal; color: var(--wf-faint); margin-right: 6px; }
-/* 窄屏: 参数表与结果纵向堆叠(横向挤成两栏时结果宽度不够读) */
-@media (max-width: 1080px) {
+/**
+ * 窄了就纵向堆叠 —— 用**容器查询**而不是视口媒体查询。
+ *
+ * ⚠ 2026-09-22 修(实测踩到): 原来写的是 `@media (max-width: 1080px)`, 判的是**视口宽**,
+ *   可这个面板实际受限于**它所在那一列的宽度**。合稿页是两栏, 左栏在 1280 视口下只有 509px ——
+ *   断点根本不触发, 于是结果栏被挤成 **141px**(实测 grid-template-columns: "300px 140.969px"),
+ *   结论文本已经完全没法读; 1600 视口下反而是正常的 304px。
+ *   **视口宽不等于容器宽**, 这类"断点永远不在需要时触发"的错很容易整片漏过去。
+ *   容器查询直接按"我拿到多宽"决定, 与父级怎么排无关。
+ */
+.da-card { container-type: inline-size; }
+@container (max-width: 620px) {
   .da-body { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 }
 </style>

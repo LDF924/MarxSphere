@@ -74,9 +74,28 @@ const MEASURE = `(() => {
       e = e.parentElement;
     }
   }
+  /**
+   * 容器内两栏的**结果侧**是否被压瘪。
+   *
+   * 2026-09-22 加: 实测踩到一类"断点永远不在需要时触发"的错 —— 深度分析面板内部两栏
+   *   原本用媒体查询(视口宽 1080)判宽窄, 可它实际受限于**所在列的宽**。
+   *   合稿页两栏布局下, 1280 视口时左栏只有 509px, 面板结果栏被挤成 **141px**(文本没法读),
+   *   而断点毫无反应(视口没到 1080)。已改成容器查询; 这条断言把"结果侧要么够宽、
+   *   要么已经塌成单栏"钉住。
+   */
+  const squeezed = [];
+  for (const sel of ['.da-result', '.fin-col-doc', '.sec-col-right']) {
+    const e = document.querySelector(sel);
+    if (!e) continue;
+    const b = e.getBoundingClientRect();
+    // 单栏(全宽)时不算被压瘪; 只在"同排还有别的栏"且自己很窄时报
+    const parent = e.parentElement;
+    const cols = parent ? getComputedStyle(parent).gridTemplateColumns.split(' ').filter(Boolean).length : 1;
+    if (cols > 1 && b.width > 0 && b.width < 240) squeezed.push(sel + '=' + Math.round(b.width) + 'px');
+  }
   const contentH = pg ? pg.scrollHeight : 0;
   return {
-    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5),
+    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed,
     page: r('.workflow-page'), nav: r('.sec-nav,.ws-nav,aside'), main: r('main,.ws-main'),
     topic: r('.ppb-topic'), inner: r('.ppb-inner'),
     contentH, needScroll: contentH > de.clientHeight + 8, scroller,
@@ -114,6 +133,9 @@ try {
         m.needScroll ? `内容${m.contentH}px>视口${m.vh}px, 滚动容器=${m.scroller ?? "无(底部不可达)"}` : "内容未超出, 无需滚动");
       rec(`${name}@${w}`, "无塌陷容器", m.collapsed.length === 0, m.collapsed.length ? JSON.stringify(m.collapsed) : "");
       rec(`${name}@${w}`, "按钮无重叠", m.overlap.length === 0, m.overlap.length ? JSON.stringify(m.overlap) : "");
+      // 两栏布局里某一栏被挤到读不了 —— 视口够宽也照样发生(面板受限于它所在列的宽)
+      rec(`${name}@${w}`, "无被压瘪的栏(≥240px)", (m.squeezed ?? []).length === 0,
+        (m.squeezed ?? []).length ? `过窄: ${m.squeezed.join(", ")}` : "");
     }
   }
   await cdp("Emulation.clearDeviceMetricsOverride");
