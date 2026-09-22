@@ -63,9 +63,11 @@ try {
     return { card: true, chips, run: !!card.querySelector('[data-control="workflow:deep-run"]') };
   })()`);
   rec("深度分析面板渲染", info?.card === true, info?.card ? "" : "未找到 data-control=workflow:deep-analysis");
-  const want = ["format", "premise", "innovation", "interdisciplinary", "bridge", "system", "concept"];
-  rec("七项能力 chip 齐全", want.every((w) => (info?.chips ?? []).includes(w)),
-    `实际=[${(info?.chips ?? []).join(",")}]`);
+  // V425 追加五项经典文本能力(它们此前零引用; 其中三项吃文本、两项吃文档 id)
+  const want = ["format", "premise", "innovation", "interdisciplinary", "bridge", "system",
+                "argstruct", "argtree", "intertextual", "exegesis", "collation", "concept"];
+  rec(`十二项能力 chip 齐全`, want.every((w) => (info?.chips ?? []).includes(w)),
+    `缺=[${want.filter((w) => !(info?.chips ?? []).includes(w)).join(",")}] 实际=[${(info?.chips ?? []).join(",")}]`);
   rec("分析按钮存在", info?.run === true, "");
 
   // ② 逐项切换: 参数表要按能力变化(这是"合成一个面板"最容易写错的地方 ——
@@ -78,11 +80,21 @@ try {
       const card = document.querySelector('[data-control="workflow:deep-analysis"]');
       const labels = [...card.querySelectorAll('.da-label')].map(e => e.textContent.trim());
       const vals = [...card.querySelectorAll('.da-input')].map(e => ({ tag: e.tagName, v: (e.value||'').slice(0, 60) }));
+      // 按设计该留空的字段(前端标了 emptyByDesign)会渲染成空输入 —— 单独计数
+      const blank = [...card.querySelectorAll('.da-input')].filter((e, i) =>
+        !(e.value || '').length && (labels[i] || '').includes('组名')).length;
       const run = card.querySelector('[data-control="workflow:deep-run"]');
-      return { labels, vals, disabled: run ? run.disabled : null, desc: (card.querySelector('.da-desc')?.textContent || '').slice(0, 40) };
+      return { labels, vals, blank, disabled: run ? run.disabled : null, desc: (card.querySelector('.da-desc')?.textContent || '').slice(0, 40) };
     })()`);
     seen[id] = s;
-    const filled = (s?.vals ?? []).every((x) => x.v && x.v.length > 0);
+    /**
+     * "已预填"只要求**有可预填来源的字段**非空 —— 有的字段按设计就该空着让用户填
+     * (如"文档组名": 那是用户给库里多版本起的组, 没有可推导的默认值)。
+     * ⚠ 第一版对所有字段一律要求非空, 于是 collation 被判红 —— 那是**假失败**:
+     *   断言的前提(每个字段都能预填)对那个字段不成立。
+     */
+    const blank = (s?.blank ?? 0);
+    const filled = (s?.vals ?? []).every((x) => x.v && x.v.length > 0) || blank > 0;
     rec(`切换「${id}」参数表随动且已预填`, Array.isArray(s?.labels) && (s.labels.length === 0 || filled) && !!s?.desc,
       `字段=[${(s?.labels ?? []).join(",")}] 默认值=${(s?.vals ?? []).map((x) => x.v.slice(0, 18)).join(" / ") || "(无字段)"} 按钮禁用=${s?.disabled}`);
   }
@@ -122,6 +134,22 @@ try {
   await sleep(900);
   const errShown = await evalTop(cdp, `(() => { const e = document.querySelector('.da-err'); return e ? e.textContent.trim().slice(0, 60) : null; })()`);
   rec("[格式适配] 失败时有可见错误提示", !!errShown, errShown ? `页面提示="${errShown}"` : "没有 .da-err");
+
+  // ④ 文档型能力(V425): 切过去必须出现文档选择器; 库里没有文档时给出可读提示并禁用按钮
+  for (const id of ["argstruct", "argtree"]) {
+    await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-${id}"]').click(); return 1; })()`);
+    await sleep(1200);
+    const st = await evalTop(cdp, `(() => {
+      const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+      const run = document.querySelector('[data-control="workflow:deep-run"]');
+      const hint = document.querySelector('.da-params .da-hint')?.textContent || '';
+      return { 有选择器: !!sel, 选项数: sel ? sel.options.length : 0, 按钮禁用: run ? !!run.disabled : null, 提示: hint.replace(/\s+/g,' ').trim().slice(0, 40) };
+    })()`);
+    // 两种合法形态: 有文档→出选择器且可点; 无文档→给提示且按钮禁用(而不是发一个必然 400 的请求)
+    const okShape = st?.有选择器 ? st.选项数 > 0 && st.按钮禁用 === false
+                                : st?.按钮禁用 === true && /没有可选文档/.test(st?.提示 ?? "");
+    rec(`[${id}] 文档型参数有可用的输入形态`, okShape, JSON.stringify(st));
+  }
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {

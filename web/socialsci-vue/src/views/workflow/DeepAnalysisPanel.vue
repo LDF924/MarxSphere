@@ -27,9 +27,10 @@
  *   `{stages: [], error: "知识库中未检索到该概念相关文本"}` —— 这时必须把这句话原样显示,
  *   而不是渲染成一个空结果让人以为"分析完了没结论"。
  */
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { q } from "@/shared/api";
 import { toast } from "@/shared/ui";
+import { editorApi } from "@/shared/editorApi";
 import EmptyState from "./EmptyState.vue";
 
 const props = defineProps<{
@@ -51,6 +52,12 @@ type Field = {
   options?: string[];
   /** 默认值来源 —— 从项目现状取, 而不是写死一串常量 */
   fill: () => string;
+  /**
+   * 有意留空: 这一项**没有**可预填的来源(如"文档组名"是用户自己给库里的多版本起的组),
+   * 必须手填。标出来是为了让探针能区分"忘了预填"与"按设计要手填" ——
+   * 否则它会报一条假失败(实测: collation 就是这么被判红的)。
+   */
+  emptyByDesign?: boolean;
 };
 type Cap = {
   id: string;
@@ -60,6 +67,15 @@ type Cap = {
   fields: Field[];
   /** 参数值 → 请求体(默认就是同名字段; 需要改名的在这里做) */
   body?: (v: Record<string, string>) => Record<string, unknown>;
+  /**
+   * 需要用户先挑一份**知识库文档**(argument-tree / argument-structure 要 documentId,
+   * intertextual 要 documentIds)。
+   *
+   * 为什么要这个开关: 这两项的输入不是"当前正文", 而是库里的某篇文章 ——
+   *   合稿页手上只有合成稿, 拿不到 documentId。所以面板得自己把文档列出来让用户选,
+   *   否则就只能继续"后端有、前端零引用"(它们此前正是这个状态)。
+   */
+  needsDoc?: boolean;
 };
 
 const CAPS: Cap[] = [
@@ -110,6 +126,40 @@ const CAPS: Cap[] = [
     body: (v) => ({ propositions: splitLines(v.propositions), topic: props.topic }),
   },
   {
+    id: "argstruct", label: "论证结构拆解", path: "/classical/argument-structure", needsDoc: true,
+    desc: "拆解指定文档的论证结构：核心论点、支撑论据、推理链条。选一篇知识库文档。",
+    fields: [],
+  },
+  {
+    id: "argtree", label: "论证树", path: "/classical/argument-tree", needsDoc: true,
+    desc: "把论证展开成一棵树（论点 → 分论点 → 论据），适合看清一篇文章的骨架。",
+    fields: [],
+  },
+  {
+    id: "intertextual", label: "互文对照", path: "/classical/intertextual",
+    desc: "围绕研究主题检索相关文本，做跨文本的互文对照（哪些说法彼此呼应/相左）。依赖知识库检索。",
+    fields: [
+      { key: "topic", label: "对照主题", type: "text", fill: () => props.topic },
+    ],
+    body: (v) => ({ topic: v.topic, perDoc: 3 }),
+  },
+  {
+    id: "exegesis", label: "晦涩段阐释", path: "/classical/exegesis",
+    desc: "对正文里读不通的段落做逐句阐释（结合知识库检索到的相关文本）。",
+    fields: [
+      { key: "text", label: "待阐释文本", type: "textarea", hint: "默认取当前正文；可只贴读不通的那一段。", fill: () => props.text.slice(0, 1200) },
+    ],
+    body: (v) => ({ text: v.text }),
+  },
+  {
+    id: "collation", label: "版本校勘", path: "/classical/collation",
+    desc: "按**文档组名**比对同一文本的多个版本，列出异文。需要库里存在分组的多版本（如某书的多个译本）。",
+    fields: [
+      { key: "documentGroup", label: "文档组名", type: "text", hint: "库里给同一文本的多版本起的组名；库里没有分组时会查不到。", fill: () => "", emptyByDesign: true },
+    ],
+    body: (v) => ({ documentGroup: v.documentGroup }),
+  },
+  {
     id: "concept", label: "概念溯源", path: "/classical/concept-trace",
     desc: "从知识库检索该概念的文本片段，按思想史归纳语义演变阶段。**依赖知识库内容**，库空时查不到是正常的。",
     fields: [
@@ -147,11 +197,34 @@ function switchTo(id: string) {
 const ready = computed(() => {
   const cap = active.value;
   const v = valsOf(cap);
+  // 文档型能力没选文档就是没输入 —— 直接禁用按钮, 而不是打一个必然 400 的请求
+  if (cap.needsDoc && !docId.value) return false;
   if (cap.id === "system") return splitLines(v.propositions).length >= 2;
   if (cap.id === "concept") return !!v.concept?.trim();
   if (cap.fields.some((f) => f.key === "claim")) return !!v.claim?.trim();
   return true;
 });
+
+// ── 知识库文档(只有 needsDoc 的能力需要) ──
+const docs = ref<Array<{ id: string; title: string }>>([]);
+const docsLoaded = ref(false);
+const docId = ref("");
+
+/**
+ * 懒加载文档列表 —— 只在切到 needsDoc 的能力时才拉。
+ * 合稿页平时不需要它, 每次进来都查一遍是白花一次请求。
+ * 拉不到(网络/权限)就留空列表, 界面会提示"没有可选文档", 不阻断其它能力。
+ */
+async function ensureDocs() {
+  if (docsLoaded.value) return;
+  docsLoaded.value = true;
+  try {
+    const r = await editorApi.listDocs(1, 100);
+    docs.value = (r.data?.items ?? []).map((d) => ({ id: d.id, title: d.title || "未命名文档" }));
+    if (docs.value.length && !docId.value) docId.value = docs.value[0].id;
+  } catch { docs.value = []; }
+}
+watch(() => active.value.needsDoc, (need) => { if (need) void ensureDocs(); }, { immediate: true });
 
 async function run() {
   const cap = active.value;
@@ -161,7 +234,11 @@ async function run() {
   result.value = null;
   try {
     const v = valsOf(cap);
-    const body = cap.body ? cap.body(v) : { topic: props.topic, text: props.text, ...v };
+    const base = cap.body ? cap.body(v) : { topic: props.topic, text: props.text, ...v };
+    // 文档型能力把选中的文档并进去 —— 后端要 documentId(documentIds 那项用数组包一下)
+    const body = cap.needsDoc
+      ? (cap.id === "intertextual" ? { ...base, documentIds: docId.value ? [docId.value] : [] } : { ...base, documentId: docId.value })
+      : base;
     const r = await q<Record<string, unknown>>(cap.path, { method: "POST", body });
     result.value = r ?? {};
     /**
@@ -237,6 +314,17 @@ function isObjList(v: unknown): boolean {
     <div class="da-body">
       <div class="da-params">
         <p class="da-desc">{{ active.desc }}</p>
+
+        <!-- 文档型能力: 先选一篇知识库文档(它的输入不是当前正文, 是库里的文章) -->
+        <div v-if="active.needsDoc" class="da-field">
+          <label class="da-label">知识库文档</label>
+          <select v-if="docs.length" v-model="docId" class="da-input" data-control="workflow:deep-doc">
+            <option v-for="d in docs" :key="d.id" :value="d.id">{{ d.title }}</option>
+          </select>
+          <p v-else class="da-hint">
+            没有可选文档 —— 这一项要读**知识库里的文章**，请先在「学术文本工作台」里导入文档。
+          </p>
+        </div>
         <div v-for="f in active.fields" :key="f.key" class="da-field">
           <label class="da-label">{{ f.label }}</label>
           <select v-if="f.type === 'select'" v-model="valsOf(active)[f.key]" class="da-input">
