@@ -145,6 +145,61 @@ try {
   rec("折叠后栏变窄且列表收起", collapsed?.cls === true && collapsed.w < 60, `宽 ${collapsed?.w}px`);
 
   /**
+   * ⑥b **控件的常驻性** —— 用户问"全部的前端都常驻吗, 就是不用生成后才出现的"。
+   *
+   * 用**受控对照**验: 两个项目都**有章节**, 只差"合没合稿"。这样比"全空 vs 全有"干净 ——
+   *   后者两个变量一起变, 分不清某个控件是被"没数据"挡还是被"没合稿"挡(我第一版就是这么比的)。
+   *
+   * 判据不是"一律常驻"(有些控件**该**被数据依赖挡住: 没有章节就没有「生成本章正文」),
+   *   而是**门不能比控件需要的东西更强**:
+   *   · 「全文审查」审视的是已合稿那一篇(含合并轮产出的摘要/关键词/参考文献)→ 可以留门;
+   *   · 「四检 / 深度分析 / 修订 / 大纲导出 / 整包导出 / 送编辑器 / 返回工作台」只需要
+   *     "一篇文本"或"章节"或"只是个导航" → **不该**被"是否合稿"挡住。
+   *   实测前这些在未合稿时**全都不渲染**, 13 项能力要先把稿合了才看得见。
+   */
+  {
+    const mk = async (title, merged) => {
+      const r = await api(tk, "/research/projects", "POST", { title });
+      const id = r.json?.id;
+      if (!id) return "";
+      const secs = [
+        { id: "s0", title: "引言", level: 1, order: 0, status: "generated", content: "资本下乡是近年乡村研究的重要议题。".repeat(6) },
+        { id: "s1", title: "综述", level: 1, order: 1, status: "generated", content: "既有研究分为两派。".repeat(6) },
+      ];
+      await api(tk, `/research/projects/${id}/workbench`, "PUT", { snapshot: {
+        phase: 4, input: { title, outline: "一、引言", totalWordCount: 9000, researchMethod: "mixed", requirements: "", sampleFiles: [] },
+        sections: secs, mergeGenerated: merged,
+        ...(merged ? { mergedTitle: title, mergedAbstract: "摘要", mergedKeywords: "关键词",
+          mergedFullText: secs.map((x) => `## ${x.title}\n\n${x.content}`).join("\n\n"),
+
+          mergedReferences: "[1] 张三. 文[J]. 刊, 2020." } : {}),
+      } });
+      return id;
+    };
+    const idNo = await mk(`常驻-未合稿-${Date.now()}`, false);
+    const idYes = await mk(`常驻-已合稿-${Date.now()}`, true);
+    const probe = async (pid) => {
+      await openSoc(cdp, BASE, "/workflow/finalize", tk, pid, 6500);
+      await dismissOverlays(cdp);
+      await sleep(1600);
+      return evalTop(cdp, `(() => {
+        const has = (c) => !!document.querySelector('[data-control="' + c + '"]');
+        return { 四检: has('workflow:quality-check'), 深度分析: has('workflow:deep-analysis'),
+                 修订: has('workflow:revise'), 大纲导出: has('workflow:export-docx'),
+                 整包: has('workflow:export-bundle'), 送编辑器: has('workflow:send-to-editor'),
+                 返回工作台: has('workflow:back'), 版本历史: has('workflow:version-history') };
+      })()`);
+    };
+    if (idNo && idYes) {
+      const A = await probe(idNo), B = await probe(idYes);
+      for (const k of Object.keys(A)) {
+        rec(`未合稿也能看到「${k}」`, A[k] === true, `未合稿=${A[k]} 已合稿=${B[k]}`);
+      }
+    }
+    for (const pid of [idNo, idYes]) { if (pid) { try { await api(tk, `/research/projects/${pid}`, "DELETE"); } catch { /* 忽略 */ } } }
+  }
+
+  /**
    * ⑦ **空项目也能进四个后续阶段** —— 这是"拆掉阶段门禁"的核心证据, 必须钉住。
    *
    * 拆门的理由是"页面自己接得住": 四页在什么都没填时都有空态 + 引导按钮。

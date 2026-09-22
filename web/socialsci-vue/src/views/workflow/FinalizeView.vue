@@ -20,6 +20,27 @@ import DeepAnalysisPanel from "./DeepAnalysisPanel.vue";
 const router = useRouter();
 
 /** 终稿预览: 原先按空行切段塞 <p>, 正文里的表格/公式/小标题全被压成纯段落 */
+/**
+ * 供**分析与检查**用的正文。
+ *
+ * ⚠ V425: 原先四检/深度分析直接读 `store.mergedFullText`, 而它们在合稿前根本没渲染 ——
+ *   因为要"一篇文本"。但**合稿前章节拼起来就是一篇文本**: 先把稿合了再发现问题,
+ *   不如先检查完再决定要不要合。所以这 13 项改为读这里: 有合稿用合稿, 没有就拼章节。
+ *
+ * 与 ②「全文审查」的区别是刻意的: 审查要的是**合稿产物**(含合并轮生成的摘要/关键词/参考文献),
+ *   拼装稿没有那些, 审出来的报告会缺一半依据 —— 所以那一轮仍然只在合稿后可点。
+ */
+const analysisText = computed(() => {
+  const merged = String(store.mergedFullText ?? "");
+  if (merged.trim()) return merged;
+  return (store.sections ?? [])
+    .filter((sec) => String(sec.content ?? "").trim())
+    .map((sec) => `## ${sec.title ?? ""}\n\n${sec.content}`)
+    .join("\n\n");
+});
+/** 拼装稿是否为"无来源"(连章节正文都没有) —— 那才是真的没东西可分析 */
+const analysisTextEmpty = computed(() => !analysisText.value.trim());
+
 const mergedHtml = computed(() => renderMdWithLatex(String(store.mergedFullText ?? "")));
 const refsHtml = computed(() => renderMdWithLatex(String(store.mergedReferences ?? "")));
 
@@ -167,8 +188,11 @@ function toLines(v: unknown): string[] {
 const dedupe = (arr: string[]) => [...new Set(arr.map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean))];
 
 async function runQualityChecks() {
-  const text = store.mergedFullText ?? "";
-  if (!text.trim()) { toast("没有可检查的正文", "warning"); return; }
+  // V425: 合稿前检查的是"章节拼装稿" —— 先把稿合了再发现问题, 不如先检查完再决定合不合
+  const assembled = !(store.mergedFullText ?? "").trim();
+  const text = analysisText.value;
+  if (!text.trim()) { toast("没有可检查的正文（合稿前会拼装各章正文）", "warning"); return; }
+  if (assembled) toast("尚未合稿，本次检查的是各章正文的拼装稿", "warning");
   const refList = store.mergedReferences ?? "";
   qualityRunning.value = true;
   qualityError.value = "";
@@ -1142,66 +1166,28 @@ onMounted(async () => {
       <span>当前项目已不存在（可能已被删除）。请点左下角「新项目」重新开始，或从「历史记录」回到其它项目。</span>
     </div>
 
-    <!--
-      未合稿空态(闭源: 大图标 + 「准备合并定稿」 + 说明 + **合并模式/强度档** + 开始合并 + 五步预览)。
-      2026-09-16 修: 我方原先只有一个光秃秃的「开始合并」, 模式和档位只在合稿**之后**的轮次卡里 ——
-      用户第一次合稿时根本选不到模式, 只能先合并再点「重新合稿」去切。闭源是合稿前就同屏可选。
-    -->
     <!-- V424 两栏: 轮次流(左) 与 终稿内容(右)。
          原先这两块**纵向堆叠**、各自满屏宽, 要滚动才能互相看到 ——
          而它们的用途是同时看的(盯进度 + 改正文)。与信息录入页同一套两栏语言。 -->
     <div class="fin-cols">
       <div class="fin-col-flow">
-    <div v-if="!store.mergeGenerated && !mergeRunning" class="finalize-empty">
-      <div class="fe-icon">
-        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </div>
-      <h3>准备合并定稿</h3>
-      <p>AI 将把所有章节合并为一篇完整的学术论文，并进行语言优化、格式统一和参考文献整理。</p>
-      <div class="merge-mode fe-modes" role="tablist">
-        <button
-          v-for="m in MERGE_MODES" :key="m.value"
-          class="mm-tab" :class="{ on: mergeMode === m.value }" role="tab"
-          :aria-pressed="mergeMode === m.value"
-          :data-control="m.control"
-          @click="mergeMode = m.value; if (m.value === 'deAIGC') mergeTier = 'medium'"
-        >{{ m.label }}</button>
-      </div>
-      <div v-if="mergeMode === 'deAIGC'" class="tier-row fe-tiers">
-        <span class="tier-label">强度：</span>
-        <button
-          v-for="t in DEAI_TIERS" :key="t.value"
-          class="tier-btn" :class="{ on: mergeTier === t.value }"
-          :title="t.hint"
-          :data-control="`workflow:aigc-tier-${t.value}`"
-          @click="mergeTier = t.value"
-        >{{ t.label }}</button>
-        <span class="tier-warn">降重可能会影响整体论文质量，请自行斟酌</span>
-      </div>
-      <button class="btn-round fe-start" data-control="workflow:phase5-merge" @click="doMerge()">
-        {{ mergeMode === "deAIGC" ? "降AIGC中…" : "开始合并" }}
-      </button>
-      <!-- 五步预览(闭源常显, 灰底圆 + 两位序号) -->
-      <div class="merge-steps-preview">
-        <div v-for="(st, i) in MERGE_STEPS" :key="st.title" class="msp-item">
-          <span class="msp-num">{{ String(i + 1).padStart(2, "0") }}</span>
-          <span class="msp-text">
-            <strong>{{ st.title }}</strong>
-            <small>{{ st.desc }}</small>
-          </span>
-        </div>
-      </div>
-      <!-- 2026-09-18: 空态此前**没有任何返回路径** —— 返回键只长在"已合稿"那半个分支里,
-           于是新项目来到合稿页(第一眼看到的就是这个空态)只能靠浏览器后退。
-           其余四个阶段页的返回都是**全状态可见**的, 这里补齐, 与它们同一口径。 -->
-      <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
-    </div>
 
     <!-- ═══ 三轮主流程 ═══ -->
-    <div v-else class="rounds-card">
-      <!-- 合并轮 -->
+
+    <!-- ═══ 轮次区(常驻) ═══
+         ⚠ V425 改: 原先整块是 `v-else` —— 只有 mergeGenerated 为真(合已合稿)才渲染,
+         于是**四检、深度分析、修订、导出**这些"对文本做事"的能力在合稿前全都不可见。
+         而它们要的其实是"一篇文本", 合稿前**章节拼起来就是一篇文本**。
+         现在: ① 合并轮常驻(没合稿时按钮就是「开始合稿」); ② ②·5 / 深度分析 / ③ 修订常驻;
+         ③ 只有 ②「全文审查」留在 `mergeGenerated` 门内 —— 它审查的是**已合稿的那一篇**
+         (合并轮自己会摘要/关键词/参考文献), 拿拼装稿去审不是它的语义。 -->
+    <div class="rounds-card">
+      <!-- 合并轮(① 常驻)。
+           ⚠ V425: 原先它与 ②③ 一起被 `v-else` 挡住, 只有合过稿才渲染 —— 而"选合并模式/强度档"
+           恰恰是**合稿前**就要做的决定(先合并、再点「重新合稿」去切是反的)。现在常驻,
+           未合稿时按钮就是「开始合并」, 模式与档位同屏可选。
+           2026-09-16 那条"空态里补模式 tab"的修补随之退役: 空态卡与这一轮本就重复,
+           合并成一处后页面上不会再看两组 tab(实测那正是 4 个 .mm-tab 的来源)。 -->
       <div class="round-row">
         <div class="round-head">
           <span class="round-num">①</span>
@@ -1278,8 +1264,9 @@ onMounted(async () => {
         <div v-if="mergeRunning && mergeMessage" class="merge-msg">{{ mergeMessage }}</div>
       </div>
 
-      <!-- 审查轮 -->
-      <div class="round-row">
+      <!-- 审查轮: **唯一留在门内的一轮** —— 它审查的是"已合稿的那一篇"
+           (合并轮会摘要/关键词/参考文献), 拿章节拼装稿去审不是它的语义。 -->
+      <div v-if="store.mergeGenerated" class="round-row">
         <div class="round-head">
           <span class="round-num">②</span>
           <div class="round-info">
@@ -1335,7 +1322,7 @@ onMounted(async () => {
           </div>
           <button
             class="btn-round"
-            :disabled="qualityRunning || !store.mergedFullText"
+            :disabled="qualityRunning || analysisTextEmpty"
             data-control="workflow:quality-check"
             @click="runQualityChecks"
           >{{ qualityRunning ? "检查中…" : qualityDone ? "重新检查" : "开始质量检查" }}</button>
@@ -1361,7 +1348,7 @@ onMounted(async () => {
            四检是"确定性角度逐项查"(概念/引文/逻辑/不端), 这里是"把成稿当研究对象再想一遍"
            (前提/创新/跨学科/体系/联结/格式/溯源)。后者的结论不是"哪里错了", 而是"还能怎么写"。 -->
       <DeepAnalysisPanel
-        :text="store.mergedFullText ?? ''"
+        :text="analysisText"
         :topic="store.mergedTitle || store.title || store.input.title"
         :claim="store.project?.logicFlow || store.mergedAbstract || ''"
         :section-titles="(store.sections ?? []).map((s) => s.title).filter(Boolean)"
@@ -1426,8 +1413,24 @@ onMounted(async () => {
     </div>
 
     <!-- ═══ 导出 ═══ -->
-    <div v-if="store.mergedFullText" class="export-card">
+    <!-- ═══ 导出/归档(常驻) ═══
+         ⚠ V425 改: 原先整卡 `v-if="store.mergedFullText"`, 于是**没合稿就没有任何导出入口**,
+         连「返回工作台」这个纯导航按钮都被内容条件挡住了。逐行看它们到底要什么:
+           · 「导出论文」要合稿正文 → 留门(它导的就是那一篇);
+           · 「按大纲导出」(Word 大纲版 / PPT)只需要**章节树** → 有章节就能导;
+           · 「项目归档(整包 ZIP)」连合稿都不要 —— 后端在没合稿时会把各章拼成一篇写进包里,
+             并在 README 注明"尚未合稿"(见 project-export-service), 门与实现本来就不一致。
+         门从"卡片级"收到"行级", 是同一个道理的第三次应用:
+         控件不该被**比它需要的东西更强**的条件挡住。 -->
+    <div v-if="store.taskId" class="export-card">
       <div class="export-row">
+        <span>继续加工</span>
+        <button class="btn-preview" data-control="workflow:send-to-editor" @click="sendToEditor">
+          送学术文本工作台
+        </button>
+        <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
+      </div>
+      <div v-if="store.mergedFullText" class="export-row">
         <span>导出格式</span>
         <select v-model="exportFmt" class="fmt-select" data-control="workflow:export-format">
           <option value="md">Markdown</option>
@@ -1439,11 +1442,10 @@ onMounted(async () => {
           {{ exportStatus === "running" ? "导出中…" : "导出论文" }}
         </button>
         <button class="btn-preview" @click="store.exportFormat = 'preview'">预览全文</button>
-        <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
       </div>
       <!-- 后端按大纲树出文件(与上面的"拼文本"路径互补): Word 带大纲层级 + PPT 逐节点成片。
            这两个能力原先只有被弃用的 React 大纲面板在用, 搬到这里才有界面入口。 -->
-      <div class="export-row">
+      <div v-if="store.sections?.length" class="export-row">
         <span>按大纲导出</span>
         <button class="btn-preview" :disabled="docxBusy" @click="exportDocx" data-control="workflow:export-docx">
           {{ docxBusy ? "生成中…" : "Word(大纲版)" }}
@@ -1459,15 +1461,11 @@ onMounted(async () => {
         <button class="btn-preview" :disabled="bundleBusy" @click="exportBundle" data-control="workflow:export-bundle">
           {{ bundleBusy ? "打包中…" : "导出整包(ZIP)" }}
         </button>
-        <span class="export-note">含论文、各章、素材清单、版本沿革与研究信息</span>
+        <span class="export-note">
+          含论文、各章、素材清单、版本沿革与研究信息{{ store.mergedFullText ? "" : "（尚未合稿，包内正文为各章拼装稿）" }}
+        </span>
       </div>
-      <!-- V417 出站: 终稿送学术文本工作台继续精修(写作舱↔编辑器的连接) -->
-      <div class="export-row">
-        <span>继续加工</span>
-        <button class="btn-preview" data-control="workflow:send-to-editor" @click="sendToEditor">
-          送学术文本工作台
-        </button>
-      </div>
+
     </div>
 
     <!-- ═══ 逐章生成 / 论文要件(原先只有被弃用的 React 大纲面板有, 2026-09-13 搬过来) ═══ -->

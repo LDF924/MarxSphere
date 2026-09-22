@@ -198,20 +198,23 @@ try {
     let empty = null;
     for (let i = 0; i < 25; i++) {
       empty = await onPage(`(() => {
-        const el = document.querySelector('.finalize-empty');
+        const el = document.querySelector('.rounds-card');
         return { has: !!el, text: el ? el.innerText.replace(/\s+/g,' ').trim() : '',
                  modes: document.querySelectorAll('.mm-tab').length,
-                 tiers: document.querySelectorAll('.finalize-empty .tier-btn').length };
+                 tiers: document.querySelectorAll('.rounds-card .tier-btn').length };
       })()`);
       if (empty?.has || empty?.modes) break;
       await sleep(1000);
     }
-    t("未合稿时显示空态卡", !!empty?.has && /准备合并定稿/.test(empty.text), empty ? empty.text.slice(0, 46) : "—");
-    // 2026-09-16 改: 空态**现在就该有**模式 tab —— 闭源未合稿空态里「直接合稿/降AIGC合稿」
-    //   与「开始合并」同屏(见 FinalizeView 空态注释)。此前的断言是 `modes === 0`, 那是在
-    //   给我方缺失的形态背书: 用户第一次合稿根本选不到模式, 只能先合并再点「重新合稿」去切。
-    t("空态下模式 tab 可选(合稿前就能选模式)", empty?.modes === 2, `模式 tab=${empty?.modes}`);
-    t("空态下默认不出现强度档(仅降AIGC 模式才出)", empty?.tiers === 0, `档位按钮=${empty?.tiers}`);
+    /**
+     * ⚠ V425: 未合稿不再有**独立的空态卡** —— 它整块与"① 合并轮"重复(同样的模式 tab、
+     *   同样的「开始合并」、同样的五步预览), 两处同时渲染的结果是页面上出现**两组 tab**(实测 4 个)。
+     *   现在合并轮常驻, 空态卡已删除; 下面三条断言的对象随之从 `.finalize-empty` 换成 `.rounds-card`。
+     *   **不是放宽**: 要验的性质没变(未合稿时模式可选、强度档默认不出现), 换的是承载它的元素。
+     */
+    t("未合稿时合并轮已渲染(不再是只有空态)", !!empty?.has && /合并正文/.test(empty.text), empty ? empty.text.slice(0, 46) : "—");
+    t("合稿前就能选模式(且只有一组 tab)", empty?.modes === 2, `模式 tab=${empty?.modes}(期望 2)`);
+    t("默认不出现强度档(仅降AIGC 模式才出)", empty?.tiers === 0, `档位按钮=${empty?.tiers}`);
 
     // 指针必须是我播的项目: loadProject() 在 localStorage 为空时会**兜底挑一个 in-progress
     //   的项目并写回 localStorage** —— 门禁首次开页时那会覆盖我播的 pid, 之后 doMerge 拿到
@@ -227,9 +230,14 @@ try {
     t("快照里的一级章节没被前序步骤覆盖空", wbSecs.length === 2,
       `一级章节=${wbSecs.length} 正文字数=${JSON.stringify(wbSecs.map((x) => String(x.content || "").length))}`);
 
-    // ⚠ 必须点名「开始合并」: `.finalize-empty button` 命中的是 DOM 里第一个 button,
-    //   空态加了模式 tab 之后那是「直接合稿」—— 点了它只会切模式, 不发起合稿(实测踩到)。
-    const clicked = await clickInFrame(cdp, null, ".finalize-empty .fe-start");  // null frameId = 顶层
+    /**
+     * ⚠ 必须**点名**「开始合并」那个按钮, 不能按位置取。
+     *   历史: 空态里加模式 tab 之后, `.finalize-empty button` 命中的是「直接合稿」,
+     *   点了只切模式、不发起合稿(实测踩到)。
+     * V425: 空态卡整块已删除(与常驻的 ① 合并轮重复), 合并按钮现在只有一个 ——
+     *   用 `workflow:phase5-merge` 这个 data-control 点名, 比按类名更稳(它跟着按钮走)。
+     */
+    const clicked = await clickInFrame(cdp, null, '[data-control="workflow:phase5-merge"]');  // null frameId = 顶层
     let modes = [], why = "";
     for (let i = 0; i < 120 && clicked; i++) {
       await sleep(1500);
