@@ -91,17 +91,18 @@ try {
 
   // ④ 快捷键门禁: 在 A(phase=1) 上测 —— 往前只能一格, 往回自由。
   //    刻意放在"切到 B"之前: B 是新项目(phase=0), 在它上面 Alt+3 本来就该被拦。
+  /**
+   * ⚠ V425 **反向断言**: 从前这里是"Alt+3 越级被拦", 现在必须**放行**。
+   *
+   * 那道门禁站不住(详见 PhaseProgressBar 的 goNode 注释): 它不是技术限制 ——
+   * 拿空项目直接用 URL 访问四页全部正常渲染; 判据 `store.phase` 记的是"你点到哪儿了"
+   * 而不是"你做完了什么"; 真正的依赖检查在各页按钮上, 本来就是准的; 闭源也没有这道门。
+   * 所以这条断言必须跟着翻过来 —— 否则它会把正确的改动当成回归挡住。
+   */
   await evalTop(cdp, `(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '3', altKey: true, bubbles: true })); return 1; })()`);
-  await sleep(1200);
-  // ⚠ 只验"hash 没变到素材页"**证明不了被拦下** —— 快捷键没生效时 hash 同样不变
-  //   (实测: 我第一版漏了 router.push, 这条断言照样绿)。所以要求**同时**有拦下的提示。
-  const blocked = await evalTop(cdp, `(() => {
-    const fixed = [...document.querySelectorAll('div')].filter(d => /position/.test(d.getAttribute('style') || ''));
-    return { hash: location.hash, toast: fixed.map(d => d.innerText || '').join(' ').slice(0, 80) };
-  })()`);
-  rec("Alt+3 越级被拦(不跳 + 有明确提示)",
-    !String(blocked?.hash).includes("/workflow/materials") && /请先完成前面的阶段/.test(String(blocked?.toast)),
-    `hash=${blocked?.hash} 提示="${blocked?.toast}"`);
+  await sleep(1600);
+  const jumped = await evalTop(cdp, `location.hash`);
+  rec("Alt+3 可直达后面阶段(不再被拦)", String(jumped).includes("/workflow/materials"), `hash=${jumped}`);
 
   await evalTop(cdp, `(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '2', altKey: true, bubbles: true })); return 1; })()`);
   await sleep(1600);
@@ -142,6 +143,38 @@ try {
     return { cls: r.className.includes('is-collapsed'), w: Math.round(r.getBoundingClientRect().width) };
   })()`);
   rec("折叠后栏变窄且列表收起", collapsed?.cls === true && collapsed.w < 60, `宽 ${collapsed?.w}px`);
+
+  /**
+   * ⑦ **空项目也能进四个后续阶段** —— 这是"拆掉阶段门禁"的核心证据, 必须钉住。
+   *
+   * 拆门的理由是"页面自己接得住": 四页在什么都没填时都有空态 + 引导按钮。
+   * 如果哪天有人把某页改成"没有数据就白屏/崩", 那道门就该重新讨论 —— 所以这条要一直验。
+   * 判据是"**渲染出实质内容 + 有可点的引导**, 且没有 JS 报错", 不是"页面能打开"
+   * (白屏也能打开)。
+   */
+  {
+    const empty = await api(tk, "/research/projects", "POST", { title: `空项目-${Date.now()}` });
+    const eid = empty.json?.id;
+    if (!eid) { rec("空项目可进四页", false, "建空项目失败"); }
+    else {
+      for (const [name, route] of [["科研架构", "/workflow/sections"], ["素材准备", "/workflow/materials"],
+                                   ["文本创作", "/workflow/workspace"], ["合稿定稿", "/workflow/finalize"]]) {
+        await openSoc(cdp, BASE, route, tk, eid, 6500);
+        await dismissOverlays(cdp);
+        await sleep(1200);
+        const st = await evalTop(cdp, `(() => {
+          const txt = (document.body.innerText || '').replace(/\s+/g, '');
+          const btns = [...document.querySelectorAll('button')]
+            .filter(b => b.getBoundingClientRect().width > 60 && !b.disabled)
+            .map(b => (b.innerText || '').trim()).filter(Boolean);
+          return { 字数: txt.length, 可点按钮: btns.slice(0, 4) };
+        })()`);
+        rec(`空项目可进「${name}」且出空态`, (st?.字数 ?? 0) > 120 && (st?.可点按钮 ?? []).length > 0,
+          `${st?.字数 ?? 0} 字 · 可点: ${(st?.可点按钮 ?? []).join(" / ")}`);
+      }
+      try { await api(tk, `/research/projects/${eid}`, "DELETE"); } catch { /* 忽略 */ }
+    }
+  }
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {

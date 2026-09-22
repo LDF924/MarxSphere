@@ -59,23 +59,31 @@ function nodeState(n: { ph: number }) {
   return "pending";
 }
 /** 节点点击: 已完成/当前可达, 未完成阶段门禁提示(由后续视图按钮承担推进) */
+/**
+ * 点阶段节点 —— **一律可进**, 不再拦。
+ *
+ * ⚠ V425 改。原先这里写着 `if (n.ph <= cur) 进 else toast("请先完成XX")`, 也就是
+ * "没走过就不能看"。查下来那个门禁**站不住**:
+ *
+ *  · **不是技术限制**: 拿一个全新空项目直接用 URL 访问这四页, 全部正常渲染,
+ *    四页各自都有空态与引导按钮("开始科研架构分析" / "去填研究框架" / "智能生成素材"…),
+ *    没有路由守卫、没有报错。拦住用户的只是这个判断;
+ *  · **判据是错的对象**: `store.phase` 是个标量, 只在四个「确认」按钮里 +1 ——
+ *    它记的是"你点到哪儿了", 不是"你做完了什么"。于是"阶段 3 不可达"的真实含义
+ *    只是"你还没按过阶段 2 底部那个确认按钮", 哪怕你已经在素材页填了半天;
+ *  · **真正的依赖检查在各页的按钮上, 而且本来就是准的**:
+ *    创作台「进入合稿」查 `pendingCount > 0`, 输入页「开始思考」查标题与大纲。
+ *    进度条这道门是同一结论的**粗糙近似** —— 它不看内容, 只看你按没按过按钮。
+ *  · **闭源也没有这道门**: 实拍它的进度条 DOM, 节点只有 done / active / pending 三态
+ *    (已走过 / 正在看 / 还没到), 没有 disabled 的视觉表达。这道门是我方自己加严的。
+ *
+ * 新规则: **"看"不是破坏性操作** —— 可以自由进入任何阶段查看, 页面已有空态接住;
+ * 真正会消费上一步产物的动作由各页已有的校验拦。这样新用户能先看看后面长什么样,
+ * 而不是被一个 3 秒就消失的 toast 挡在门外。
+ */
 function goNode(n: { ph: number; path: string }) {
-  const cur = Math.max(1, Math.min(5, store.phase || 1));
-  if (n.ph <= cur) {
-    viewing.value = n.ph;
-    void router.push(n.path);
-    return;
-  }
-  const labels: Record<number, string> = { 1: "信息录入", 2: "科研架构", 3: "素材准备", 4: "文本创作" };
-  const tip: Record<number, string> = {
-    2: "请先完成信息录入并提交研究主题",
-    3: "请先在科研架构中生成章节与写作指导",
-    4: "请先在素材准备中整理素材并发布",
-    5: "请先在文本创作中完成全部章节生成"
-  };
-  const t = tip[n.ph] ?? "";
-  toast(t || "请按流程逐步完成前置阶段", "warning");
-  void labels;
+  viewing.value = n.ph;
+  void router.push(n.path);
 }
 
 /**
@@ -261,6 +269,30 @@ async function newProject() {
   transition: all .25s ease;
 }
 .ppb-node:hover { background: var(--wf-raised); }
+/**
+ * ⚠ V425: 节点**仍然标注 pending, 但已经可以点进去**。
+ *
+ * 闭源只有 done / active / pending 三态, 没有 disabled 的视觉表达; 我方此前把 pending
+ * 做成了"拦住的"——点它弹一个 3 秒就消失的 toast。现在改成: 三态只表达**进度**
+ * (已走过 / 正在看 / 还没到), 不再暗示"不可点"。
+ *
+ * 于是 pending 态必须与可点状态**一致**: 去掉 `cursor:not-allowed` 与降透明度的写法,
+ * 保留 hover 反馈 —— 否则用户看到的就是"看着能点、点了没反应"。
+ * 悬停时给一个轻提示, 说明"这一步还没走, 但可以先看看"。
+ */
+.ppb-node.pending { cursor: pointer; }
+.ppb-node.pending:hover { background: var(--wf-raised); }
+/* 悬停提示: 让"我还没走到这里"在**按之前**就看得出来, 而不是按了才知道 */
+.ppb-node.pending::after {
+  content: "尚未进行到这一步, 可先查看";
+  position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; font-size: 10px; color: var(--wf-faint);
+  background: var(--wf-raised); border: 1px solid var(--wf-line);
+  border-radius: var(--wf-r-sm); padding: 2px 7px;
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
+  z-index: 5;
+}
+.ppb-node.pending:hover::after { opacity: 1; }
 /* 闭源 .ppb-circle{width:32px;height:32px;font-size:12px} —— 我方原 24px */
 .ppb-circle {
   width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
