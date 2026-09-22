@@ -1554,7 +1554,21 @@ onMounted(async () => {
 /* V424 两栏: 轮次流(左, 略宽) + 终稿内容(右)。
    左栏是**操作区**(四张轮次卡 + 模式/档位/时间轴), 右栏是**产物区**(标题/摘要/关键词/正文/参考文献)。
    原先纵向堆叠时, 想边看进度边改正文必须反复滚动。窄屏(<1180)塌回单列。 */
-.fin-cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+/**
+ * V425 版式统一: **正文在左(主栏), 轮次流在右(侧栏)**。
+ *
+ * 此前是 1.15:1 —— 控制列(轮次按钮)比**论文正文**还宽(672 / 584), 等于把用户真正要读、
+ * 要改的那一栏挤窄了。现在按"主栏=内容产物, 侧栏=控制/流程"统一:
+ * 侧栏用共享的 --wf-aside, 正文吃掉剩余。
+ *
+ * ⚠ 用 `order` 换位而**不是**重排 DOM: 我第一次是手工搬标记块, 结果把两栏的闭合标签
+ *   拼错位(多出一个 </div>), 第二栏被吞进第一栏 —— 构建与类型检查全过, 只有真渲染才看得出。
+ *   `order` 是纯样式, 碰不到标记; 代价是 DOM 顺序与视觉顺序不一致(读屏用户先听到轮次流),
+ *   对"同一页内的两个并列区域"这个代价可以接受, 而搬标记的出错率明显更高。
+ */
+.fin-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, var(--wf-aside)); gap: 20px; align-items: start; }
+.fin-col-doc { order: 1; }
+.fin-col-flow { order: 2; }
 .fin-col-flow, .fin-col-doc { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .fin-cols .rounds-card { margin-bottom: 0; }
 .fin-cols .finale-card { margin-bottom: 0; }

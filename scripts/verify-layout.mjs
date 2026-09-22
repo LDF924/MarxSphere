@@ -133,9 +133,32 @@ const MEASURE = `(() => {
     if (cs.display !== 'grid' && cs.display !== 'flex') return null;
     return Math.round(parseFloat(cs.columnGap || cs.gap) || 0);
   })();
+  /**
+   * 两栏页的**侧栏宽度** —— 五个页面此前各用各的比例(实测 1.55:1 / 1.15:1 / 1:1.25),
+   *   同一角色的一栏在三个页面里宽度不同, 页面之间就读不成"一套东西";
+   *   更糟的是合稿页把**论文正文**挤得比按钮列还窄(672/584)。
+   * 现在统一走 「--wf-aside「 令牌: 同一视口下, 任何两栏页的侧栏宽度必须**完全相等**。
+   * 这条能钉住"有人又给某一页写死一个比例"。
+   */
+  /**
+   * 每一对(内容栏, 侧栏)的宽度 —— 判据是**内容栏不得窄于侧栏**。
+   *
+   * ⚠ 第一版我把"所有两栏页的侧栏"放进一个数组比相等, 那是错的: 同一页里
+   *   「.sec-col-left「 是内容栏、「.sec-col-right「 才是侧栏, 把两者一起比就会自己跟自己打架
+   *   (实测在 sections 页报出 [432, 672] 的假失败)。真要跨页比得在 Node 侧汇总,
+   *   而这里能诚实判的是**页内的主侧关系** —— 那也正是修掉的那个缺陷。
+   */
+  const colPairs = [];
+  for (const [content, aside] of [['.iv-col-main', '.iv-col-side'], ['.fin-col-doc', '.fin-col-flow'], ['.sec-col-left', '.sec-col-right']]) {
+    const a = document.querySelector(content), b = document.querySelector(aside);
+    if (!a || !b) continue;
+    const aw = Math.round(a.getBoundingClientRect().width), bw = Math.round(b.getBoundingClientRect().width);
+    if (aw < 100 || bw < 100) continue;
+    colPairs.push({ content, aside, aw, bw });
+  }
   const contentH = pg ? pg.scrollHeight : 0;
   return {
-    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed, winScrollBar, rowGap,
+    vw: de.clientWidth, vh: de.clientHeight, hOverflow, collapsed, overlap: overlap.slice(0, 5), squeezed, winScrollBar, rowGap, colPairs,
     page: r('.workflow-page'), nav: r('.sec-nav,.ws-nav,aside'), main: r('main,.ws-main'),
     topic: r('.ppb-topic'), inner: r('.ppb-inner'),
     contentH, needScroll: contentH > de.clientHeight + 8, scroller,
@@ -182,6 +205,11 @@ try {
       // 行内多列控件的缝宽要与页面统一(12px 那种"挨在一起"就是不规整)
       if (m.rowGap !== null && m.rowGap !== undefined) {
         rec(`${name}@${w}`, "行内多列缝宽 = 页面栅格间距", m.rowGap === 20, `实测 ${m.rowGap}px(期望 20)`);
+      }
+      // 内容栏不得窄于侧栏 —— "控制列比正文还宽"那类版式倒置
+      for (const cp of (m.colPairs ?? [])) {
+        rec(`${name}@${w}`, `内容栏不窄于侧栏(${cp.content} ≥ ${cp.aside})`, cp.aw >= cp.bw,
+          `实测 内容 ${cp.aw}px / 侧栏 ${cp.bw}px`);
       }
     }
   }

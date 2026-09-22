@@ -934,7 +934,13 @@ onUnmounted(() => {
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
 /* V424 两栏: 分析产物(左) + 章节结构(右)。章节结构需要更多横向空间(树 + 每章的写作指导),
    所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
-.sec-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
+/**
+ * V425 版式统一: **左栏是内容产物, 右栏是参考**。
+ * 此前是 `1fr 1.25fr` —— 右栏(章节树)比左栏(科研框架概览)还宽, 而概览里装着变量卡、
+ * 假设列表、研究逻辑, 才是用户要读的东西; 章节树是索引。现在左栏吃掉剩余、右栏用共享的 --wf-aside,
+ * 与信息录入页、合稿页同一套比例。
+ */
+.sec-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, var(--wf-aside)); gap: 20px; align-items: start; }
 .sec-col-left, .sec-col-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .sec-cols .overview-card, .sec-cols .tree-card { margin-bottom: 0; }
 @media (max-width: 1180px) { .sec-cols { grid-template-columns: minmax(0, 1fr); } }

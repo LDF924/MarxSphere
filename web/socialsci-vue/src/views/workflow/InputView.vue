@@ -935,7 +935,8 @@ onMounted(async () => {
 
 /* V420b 两列卡片网格。窄屏(<1180)塌回单列 —— 两列挤在一把 1024 的屏幕上, 每列只剩
    不到 480px, 大纲编辑器的行内按钮会换行成一团。 */
-.iv-cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+/* V425 版式统一: 主栏吃掉剩余, 侧栏用共享的 --wf-aside(原先写死 1.55:1, 与另两页的比例都不一样) */
+.iv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, var(--wf-aside)); gap: 20px; align-items: start; }
 .iv-col-main, .iv-col-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 /* 两列时卡片之间的间距由列的 gap 给, 卡片自己不再留底边距(否则会叠加) */
 .iv-cols .wf-card { margin-bottom: 0; }
