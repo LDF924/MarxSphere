@@ -559,10 +559,11 @@ onUnmounted(() => {
         <span class="fail-step">Step {{ Math.max(1, analyzeStep) }} {{ analyzeCancelled ? "已取消" : "执行失败" }}</span>{{ analyzeError ? `：${analyzeError}` : "" }}
       </p>
       <div class="banner-actions">
-        <button class="btn-red-sm" data-control="workflow:retry-guides" :disabled="guidesBusy" @click="retryGuides">
+        <!-- 同上: 这是**失败后重试**, 不是危险动作。红色留给删除类。 -->
+        <button class="btn-primary-sm" data-control="workflow:retry-guides" :disabled="guidesBusy" @click="retryGuides">
           {{ guidesBusy ? "正在生成写作指导…" : "只重试生成写作指导" }}
         </button>
-        <button class="btn-red-sm" @click="startAnalysis(true)" data-control="workflow:regen-sections">重新生成</button>
+        <button class="btn-back-sm" @click="startAnalysis(true)" data-control="workflow:regen-sections">重新生成</button>
       </div>
     </div>
 
@@ -620,16 +621,22 @@ onUnmounted(() => {
         {{ l1Count && !skillComplete ? `已有 ${l1Count} 章结构, 还差 ${missingCount} 章写作指导。` : "AI 将识别研究变量/因素、分析框架并生成每章写作指导。" }}
       </p>
       <div class="banner-actions">
+        <!-- ⚠ V425 改色: 这两个原先都是 `.btn-red`(纯红 #dc2626)。
+             它们在**正常状态**(AI 分析的空态横幅)里出现, 而红色在全站是"危险/删除"语义 ——
+             用户看到的是"系统出问题了", 实际这是推荐下一步。
+             现在按代价分档: 推荐的低代价路径(只补缺失的写作指导, 不动章节结构)用主色;
+             更重的"重新分析(含章节结构)"用次级描边按钮 —— 两者本来就不该长得一样重。
+             红色只留给**真危险**的动作(删除项目等)。 -->
         <button
           v-if="l1Count && !skillComplete"
-          class="btn-red"
+          class="btn-primary"
           data-control="workflow:retry-guides"
           :disabled="guidesBusy"
           @click="retryGuides"
         >
           {{ guidesBusy ? "正在生成写作指导…" : `只生成写作指导(缺 ${missingCount} 章)` }}
         </button>
-        <button class="btn-red" @click="startAnalysis()" data-control="workflow:start-analysis-2">{{ l1Count && !skillComplete ? "重新分析(含章节结构)" : "开始科研架构分析" }}</button>
+        <button class="btn-back" @click="startAnalysis()" data-control="workflow:start-analysis-2">{{ l1Count && !skillComplete ? "重新分析(含章节结构)" : "开始科研架构分析" }}</button>
       </div>
     </div>
 
@@ -822,8 +829,20 @@ onUnmounted(() => {
 .banner-body { font-size: 13px; color: var(--wf-muted); margin: 6px 0; line-height: 1.6; }
 .banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .banner-cancel { border: 0; background: var(--wf-line-soft); color: var(--wf-muted); padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
-.btn-red { padding: 7px 18px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.btn-red-sm { padding: 4px 14px; background: #dc2626; color: #F1F5F9; border: 0; border-radius: 7px; font-size: 12px; cursor: pointer; }
+/**
+ * ⚠ V425 **删除**了 `.btn-red` / `.btn-red-sm`(原来的实心红 #dc2626)。
+ *
+ * 它们被用在"只生成写作指导 / 重新分析 / 重试"这类**构造性**动作上, 而红色在全站是
+ * "危险/删除"语义 —— 用户看到横幅里一片红, 第一反应是"系统出问题了"。
+ * 改后: 推荐路径用主色, 更重的动作用次级描边; 实心红只留给**真危险**(删除项目走
+ * `.btn-danger-ghost`)。
+ * 删样式而不是留着: 留着一定会有人再抄回去(那时红按钮会重新长满横幅)。
+ */
+/* 横幅内的小号按钮(与 .btn-primary / .btn-back 同色系, 只是尺寸小一档) */
+.btn-primary-sm { padding: 4px 14px; border: 0; border-radius: 7px; background: #4D84CB; color: #F1F5F9; font-size: 12px; font-weight: 600; cursor: pointer; }
+.btn-primary-sm:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
+.btn-back-sm { padding: 4px 14px; border: 1px solid var(--wf-line-strong); border-radius: 7px; background: var(--wf-surface); color: var(--wf-text-2); font-size: 12px; cursor: pointer; }
+.btn-back-sm:hover { color: var(--wf-text); }
 .step-progress { display: flex; gap: 8px; margin: 12px 0; }
 .step-item { display: flex; align-items: center; gap: 6px; }
 .step-circle {
@@ -982,7 +1001,9 @@ onUnmounted(() => {
   margin-top: 32px; padding-top: 24px;
   border-top: 1px solid var(--wf-line);
 }
-.wf-actions .btn-primary { flex: 1; }
+/* 主按钮不横贯整幅(与信息录入页统一): 实测原先 flex:1 让它撑到 1156px, 而动作行才 1274px */
+.wf-actions { justify-content: flex-end; }
+.wf-actions .btn-primary { min-width: 200px; }
 /* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }

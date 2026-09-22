@@ -2427,7 +2427,9 @@ onMounted(async () => {
   margin-top: 0; padding-top: 24px;
   border-top: 1px solid var(--wf-line);
 }
-.wf-actions .btn-primary { flex: 1; }
+/* 主按钮不横贯整幅(与信息录入/科研架构页统一): 实测原先 flex:1 让它撑到 1113px, 动作行才 1259px */
+.wf-actions { justify-content: flex-end; }
+.wf-actions .btn-primary { min-width: 200px; }
 /* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
