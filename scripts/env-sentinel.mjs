@@ -286,10 +286,23 @@ function testDataCheck() {
   const out = sh(`node "${path.join(process.cwd(), "scripts/lib/db-count-projects.mjs")}" audit`, { env: { ...process.env, DATABASE_URL: DB_URL } });
   const n = Number(out.split(String.fromCharCode(10)).pop());
   if (!Number.isFinite(n) || n < 0) return;
-  if (n > 300) {
-    add("warn", "测试数据量", `audit 名下有 ${n} 个未删项目(探针每次建一个, 有的没清干净) —— 它会让左侧项目栏内滚很长。按标题前缀批量清理即可, 不是产品问题。`);
+  /**
+   * 两级阈值。
+   *
+   * 单级 FAIL 是错的选择: 这条 FAIL 会把**整轮 30 套门禁**挡在门外, 而它只是一个数据卫生条件 ——
+   *   不该让"跑不了门禁"成为清理测试数据的惩罚。
+   * 单级 warn 也不够: 2026-09-22 那次就是这么爬到 768 的, 而 warn 没人看
+   *   ——「看着无害的警告等于没有警告」。
+   * 所以分两级: 正常漂移(一次会话的探针 ≈ 几十条)只提醒; 到 400 说明又积了一轮量级, 那时 FAIL
+   *   才是对的信号(它意味着要么有探针不收尾, 要么清理链又断了)。
+   */
+  const WARN_AT = 100, FAIL_AT = 400;
+  if (n >= FAIL_AT) {
+    add("fail", "测试数据量", `audit 名下有 ${n} 个未删项目(阈值 ${FAIL_AT}) —— 已到上一轮失控的量级(768)。先查探针收尾是不是又断了, 再按标题清理。`);
+  } else if (n >= WARN_AT) {
+    add("warn", "测试数据量", `audit 名下有 ${n} 个未删项目(提醒线 ${WARN_AT}) —— 常态漂移, 再涨一个量级就会 FAIL。`);
   } else {
-    add("ok", "测试数据量", `audit 名下 ${n} 个未删项目`);
+    add("ok", "测试数据量", `audit 名下 ${n} 个未删项目(提醒线 ${WARN_AT} / 阻断线 ${FAIL_AT})`);
   }
 }
 
