@@ -11,7 +11,19 @@ import { resolveBrowser } from "./lib/find-browser.mjs";
 import { resolveCdpPort } from "./lib/cdp-port.mjs";
 import { loginToken } from "./lib/cdp-editor.mjs";
 
-const BASE = "http://localhost:4173";
+/**
+ * ⚠ 用 **127.0.0.1 而不是 localhost** —— 2026-09-23 改, 这是 CI 上唯一的差异点。
+ *
+ * 症状: 本探针在 CI 上 5/5 全红, 诊断是 `iframe 数=0` 且**连导航按钮都找不到**
+ *   —— 说明页面压根没加载成应用; 而本机(同款 chromium、同款命令)5/5 全过。
+ * 排查到最后, 剩下的差别只有这一个: **本仓库所有别的探针都用 `127.0.0.1:4173`,
+ *   只有这一个用 `localhost:4173`**(实测 grep 过一遍)。而 CI 的 runner 上
+ *   `localhost` 的解析顺序不一定先给 IPv4 —— 若解析到 `::1` 而服务只监听 `0.0.0.0`,
+ *   页面就是打不开(正好是"什么都没有"的样子)。
+ * 改成与其余探针一致, 把这条不确定性去掉 —— 无论 `localhost` 在 CI 上是否会解析成 `::1`,
+ *   显式写 IPv4 都更稳(本机两种解析都验过, 均 5/5)。
+ */
+const BASE = "http://127.0.0.1:4173";
 let CDP_PORT = 31007; // 起点值; 真实端口由 resolveCdpPort 探测(见下)
 const userData = mkdtempSync(path.join(tmpdir(), "edge-fusion-"));
 
@@ -140,9 +152,9 @@ async function main() {
           };
         })()`);
         console.log(`      诊断: iframe 数=${diag?.iframes} 尺寸=[${diag?.sizes}] src=[${diag?.srcs}]`);
-        console.log(`             点击「${t.label}」: 匹配=${diag?.click?.matched ?? '?'} 可见=${diag?.click?.visible ?? '?'} 已点=${clicked}`);
-        console.log(`             按钮里有该标签=${diag?.hasLabel} · 页面首段="${diag?.bodyHead}"`);
-        console.log(`             当前可见按钮: ${diag?.tabs}`);
+        console.log(`      诊断: 点击「${t.label}」 匹配=${diag?.click?.matched ?? '?'} 可见=${diag?.click?.visible ?? '?'} 已点=${clicked}`);
+        console.log(`      诊断: 按钮里有该标签=${diag?.hasLabel} · 页面首段="${diag?.bodyHead}"`);
+        console.log(`      诊断: 当前可见按钮: ${diag?.tabs}`);
       }
     }
     const bad = results.filter((x) => !x).length;
