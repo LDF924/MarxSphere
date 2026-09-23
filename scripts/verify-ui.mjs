@@ -187,11 +187,13 @@ function runOne(suite) {
       console.log(`${bad ? "❌" : "✅"} ${suite.key.padEnd(20)} ${secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}`);
       if (bad && out.trim()) {
         // 失败时把有意义的行挖出来, 免得只看到一行总结无从下手。
-        // ⚠ 2026-09-23 补 `FAIL` 与 `DEAD`: 各脚本的失败标记**本来就不统一** ——
-        //   assistant-coverage 用 `FAIL  `, 几个 probe 用 ` DEAD `, 其余用 `❌` / `ERR`。
-        //   原先只匹配后两个, 于是 `通过 11 / 失败 4` 那套**四条失败一条都看不到**
-        //   (CI 日志里就只躺着一行汇总)。判据统一不了, 至少把已知的四种都收进来。
-        const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时/.test(l)).slice(0, 6);
+        // ⚠ 2026-09-23 补 `FAIL` 与 `DEAD` 与 `诊断`: 各脚本的失败标记**本来就不统一** ——
+        //   assistant-coverage 用 `FAIL  `, 几个 probe 用 ` DEAD `, 其余用 `❌` / `ERR`;
+        //   而 `诊断:` 是我给 fusion-tabs 加的自诊断行(`src=null` 那种摘要说明不了原因)。
+        //   原先只匹配 ❌/ERR 两个, 于是 `通过 11 / 失败 4` 那套**四条失败一条都看不到**
+        //   (CI 日志里就只躺着一行汇总), 新加的诊断也一起被吞掉 —— **加了等于没加**。
+        //   判据统一不了, 至少把已知的这几种都收进来。
+        const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时|诊断/.test(l)).slice(0, 8);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
       resolve({ key: suite.key, code, bad, secs });
