@@ -30,7 +30,17 @@ const VIEWS = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask"
 // 有动作埋点的主功能页（断言这些页助手里必须列出动作）。
 // review-lab / policy 不在列: 它们唯一的主动作(开始审稿 / 检索)在初始状态下是 **disabled** 的,
 // 而"禁用按钮不进列表"是刻意行为 —— 把它们放进来会变成断言错误的行为。禁用过滤另测。
-const WITH_ACTIONS = ["ask", "literature", "paper-outline", "dag-workbench", "plot-agent",
+//
+// ⚠ 2026-09-23 **ask 也移出** —— 它与上面那两个是**同一种情况, 当初漏判了**:
+//   ask 唯一的动作 `ask:run` 的 disabled 是 `running || !query.trim() || !selectedProjectId`,
+//   **初始状态必然禁用**(查询框是空的, 还要先选检索库)。于是"助手里必须列出动作"这条
+//   对 ask 恒为假 —— 断言的是错误的行为。
+//   为什么以前一直过: 本地 4173 的 localStorage 里存着上次选过的库, `selectedProjectId` 有值;
+//   CI 是干净环境 → 面板里一个可点动作都没有 → ① 缺 ask、②-7/③ "没有可点的动作" 一起红。
+//   **这是"本地有历史状态撑着所以看起来是对的"的又一例。**
+//   判据(下次往这个列表加页签时照这个问): **这一页在不带任何历史状态的干净会话里,
+//   初始就有一个"可见且未禁用"的动作吗?** 没有 → 放 WITH_ACTIONS 就是错的。
+const WITH_ACTIONS = ["literature", "paper-outline", "dag-workbench", "plot-agent",
   "editor", "empirical-research", "eval", "structure", "truth", "dream", "skills", "jupyter"];
 
 const browser = await chromium.launch({ headless: true, executablePath: resolveBrowser({ envVar: "UI_VERIFY_BROWSER", label: "node scripts/verify-assistant-coverage.mjs" }) });
@@ -48,14 +58,32 @@ page.on("pageerror", (e) => {
   errors.push(msg);
 });
 
+/**
+ * 点「科研助手」FAB —— **点第一个可见的, 不是第一个匹配的**。
+ *
+ * ⚠ 2026-09-23 修。原实现是 `.find(文本匹配)` 后直接 `.click()`, 不看可见性:
+ *   只要**第一个**同文案的按钮不可见(FAB 在展开态是隐藏的; 窄屏下有汉堡菜单里的副本),
+ *   这一下就点在空气上 → 面板打不开 → 后面一串断言全废, 而报错只写"没找到动作按钮"。
+ *   CI 上那 4 条 FAIL 正是这个形态(本机全过, CI 上"面板可能已关")。
+ *   改成先过滤可见再取第一个, 与"人只会点到看得见的东西"一致;
+ *   同时把命中情况记到 window.__lastFab, 让失败诊断能直接说出"匹配几个/可见几个"。
+ */
+const CLICK_FAB = `(() => {
+  const all = [...document.querySelectorAll('button')].filter((b) => /科研助手/.test(b.textContent || ''));
+  const vis = all.filter((e) => !!(e.offsetWidth || e.offsetHeight));
+  window.__lastFab = { matched: all.length, visible: vis.length };
+  if (vis.length) { vis[0].click(); return true; }
+  return false;
+})()`;
+
 /** 打开视图并读助手面板内容 */
 async function read(view) {
   await page.goto("about:blank");
   await page.goto(`${BASE}/#${view}`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(3200);
   return page.evaluate(() => {
-    const fab = [...document.querySelectorAll("button")].find((b) => /科研助手/.test(b.textContent || ""));
-    if (fab) fab.click();
+    // 点可见的那个(见 CLICK_FAB 注释)
+    void (() => { const all = [...document.querySelectorAll("button")].filter((b) => /科研助手/.test(b.textContent || "")); const vis = all.filter((e) => !!(e.offsetWidth || e.offsetHeight)); window.__lastFab = { matched: all.length, visible: vis.length }; if (vis.length) vis[0].click(); })();
     return new Promise((res) => setTimeout(() => {
       // 2026-09-15: 展开时 FAB 已隐藏(用户要求去掉重复的「收起」按钮), 不能再靠按钮文案
       //   反查容器 —— 直接从面板本身往上找 fixed 宿主。
@@ -121,10 +149,10 @@ console.log("\n═══ ②·5 展开态只有一个关闭入口 ═══");
   //   修复前 FAB 展开时会变成「✕ 收起」, 与面板头部的 ✕ 重复。
   //   这里钉住"展开期间 FAB 隐藏", 免得以后又把第二个关闭入口加回来。
   await page.goto("about:blank");
-  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(`${BASE}/#literature`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(3200);
   const closedFab = await page.evaluate(() => [...document.querySelectorAll("button")].some((b) => /科研助手/.test(b.textContent || "")));
-  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
+  await page.evaluate((expr) => { void eval(expr); }, CLICK_FAB);
   await page.waitForTimeout(1500);
   const r = await page.evaluate(() => {
     const all = [...document.querySelectorAll("button")];
@@ -166,7 +194,7 @@ console.log("\n═══ ②-6 拖动自由度(不能被「给面板预留空间
   //   根因是拿展开态的尺寸去限制收起态的移动范围。现在改为"不限制移动, 面板自己找放得下的一侧",
   //   这里钉住: 必须能拖到屏幕最右(按钮右缘贴屏)。
   await page.goto("about:blank");
-  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(`${BASE}/#literature`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(3200);
   await page.evaluate(() => localStorage.removeItem("marx:assistant:pos:v1"));
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -197,14 +225,14 @@ console.log("\n═══ ②-7 整卡可拖 + 内部元素不受影响 ═══
   //   会让内部按钮全部失灵(正是前一版"✕ 点不动"的成因), 而卡片里全是按钮/链接。
   //   这里同时钉住两件相反的事: 空白处能拖, 按钮仍能点。
   await page.goto("about:blank");
-  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(`${BASE}/#literature`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(3200);
   await page.evaluate(() => {
     localStorage.setItem("marx:assistant:pos:v1", JSON.stringify({ x: 320, y: 200 }));
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3600);
-  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
+  await page.evaluate((expr) => { void eval(expr); }, CLICK_FAB);
   await page.waitForTimeout(1400);
 
   const readPos = () => page.evaluate(() => JSON.parse(localStorage.getItem("marx:assistant:pos:v1") || "null"));
@@ -254,9 +282,9 @@ console.log("\n═══ ③ 点助手动作真的驱动页面 ═══");
   const posts = [];
   page.on("request", (req) => { if (req.method() === "POST") posts.push(req.url().replace(BASE, "")); });
   await page.goto("about:blank");
-  await page.goto(`${BASE}/#ask`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(`${BASE}/#literature`, { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.waitForTimeout(3200);
-  await page.evaluate(() => { const b = [...document.querySelectorAll("button")].find((x) => /科研助手/.test(x.textContent || "")); if (b) b.click(); });
+  await page.evaluate((expr) => { void eval(expr); }, CLICK_FAB);
   await page.waitForTimeout(1200);
   const clicked = await page.evaluate(() => {
     const panelEl = document.querySelector('[data-assistant-panel]');

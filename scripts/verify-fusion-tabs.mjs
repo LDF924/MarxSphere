@@ -78,7 +78,26 @@ async function main() {
     const token = await loginToken("audit", "audit123456"); // 不存在则自动注册(CI 空库)
     await cdp("Page.navigate", { url: BASE }); await sleep(2200);
     if (token) { await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`); await cdp("Page.reload"); await sleep(2800); }
-    await ev(`window.clickByText=function(l){const v=(e)=>!!(e&&(e.offsetWidth||e.offsetHeight));const el=Array.from(document.querySelectorAll('button,[role=button],a')).find(b=>(b.innerText||'').trim()===l);if(el&&v(el)){el.click();return true;}return false;};true;`);
+    /**
+     * 按文本点击 —— **要点的是第一个"可见"的匹配项, 不是第一个匹配项**。
+     *
+     * ⚠ 2026-09-23 修。原先是 `.find(文本匹配)` 之后再判可见: 只要**第一个**同文本的元素
+     *   恰好不可见(被折叠、在 `display:none` 的容器里、或零尺寸的汉堡菜单里),
+     *   直接就返回 false —— **哪怕后面还有一模一样的可见按钮**。
+     *   CI 上那 5 条 `src=null` + `iframe 数=0`(点了等于没点)与这个行为完全吻合:
+     *   本机与 CI 的元素顺序/可见性只要有一点不同, 结果就从"全过"翻成"全挂"。
+     *   改成先过滤可见再取第一个 —— 与"用户的点击"语义一致(人只会点到看得见的东西)。
+     *
+     *   同时把命中情况记到 `window.__lastClick`(点了几个匹配 / 可见几个 / 打没打中),
+     *   失败诊断里直接带出来 —— 免得下次又是"点了但没效果"这种没法下手的状态。
+     */
+    await ev(`window.clickByText=function(l){
+      const all=Array.from(document.querySelectorAll('button,[role=button],a')).filter(b=>(b.innerText||'').trim()===l);
+      const vis=all.filter(e=>!!(e.offsetWidth||e.offsetHeight));
+      window.__lastClick={label:l, matched:all.length, visible:vis.length};
+      if(vis.length){vis[0].click();return true;}
+      return false;
+    };true;`);
     await ev(`(async()=>{window.clickByText('科研中心');await new Promise(r=>setTimeout(r,700));})()`);
 
     for (const t of TABS) {
@@ -117,10 +136,12 @@ async function main() {
             bodyHead: (document.body.innerText||'').replace(/\\s+/g,' ').slice(0, 120),
             hasLabel: tabs.includes(${JSON.stringify(t.label)}),
             tabs: tabs.slice(0, 24).join(' / '),
+            click: window.__lastClick ?? null,
           };
         })()`);
         console.log(`      诊断: iframe 数=${diag?.iframes} 尺寸=[${diag?.sizes}] src=[${diag?.srcs}]`);
-        console.log(`             按钮里有「${t.label}」=${diag?.hasLabel} · 页面首段="${diag?.bodyHead}"`);
+        console.log(`             点击「${t.label}」: 匹配=${diag?.click?.matched ?? '?'} 可见=${diag?.click?.visible ?? '?'} 已点=${clicked}`);
+        console.log(`             按钮里有该标签=${diag?.hasLabel} · 页面首段="${diag?.bodyHead}"`);
         console.log(`             当前可见按钮: ${diag?.tabs}`);
       }
     }
