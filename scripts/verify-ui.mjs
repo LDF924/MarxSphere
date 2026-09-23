@@ -193,7 +193,11 @@ function runOne(suite) {
         //   原先只匹配 ❌/ERR 两个, 于是 `通过 11 / 失败 4` 那套**四条失败一条都看不到**
         //   (CI 日志里就只躺着一行汇总), 新加的诊断也一起被吞掉 —— **加了等于没加**。
         //   判据统一不了, 至少把已知的这几种都收进来。
-        const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时|诊断/.test(l)).slice(0, 8);
+        // ⚠ 行数上限别设太小。踩过一次: fusion-tabs 失败时每个 tab 打 3 行诊断
+        //   (结论 + iframe 数/尺寸/src + 按钮列表), 5 个 tab 共 15 行, 而这里是 8 ——
+        //   结果我在 CI 日志里只看到前 3 行, 误以为"诊断没触发", 白跑了一轮 40 分钟的 CI。
+        //   **加诊断的时候要一起想: 它会不会被这里截掉。**
+        const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时|诊断/.test(l)).slice(0, 30);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
       resolve({ key: suite.key, code, bad, secs });
