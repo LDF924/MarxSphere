@@ -96,7 +96,33 @@ async function main() {
       const wantOk = t.want.test(info?.inner ?? "");
       const pass = clicked === true && srcOk && notReact && wantOk;
       check(`${t.label.padEnd(8)}`, pass, `src=${srcOk ? "ok" : info?.src} 非React=${notReact} 内容命中=${wantOk}`);
-      if (!pass) console.log(`      内首段: ${(info?.inner || "(空)").slice(0, 130)}`);
+      if (!pass) {
+        console.log(`      内首段: ${(info?.inner || "(空)").slice(0, 130)}`);
+        /**
+         * ⚠ 2026-09-23 加: 失败时把**为什么**也带出来。
+         *
+         * 起因: CI 上这 5 条全是 `src=null`(找不到可见 iframe), 而本机 5/5 全过 ——
+         *   日志里只有那一行摘要, 完全看不出是"点没点中"、"面板没挂"还是"iframe 没可见"。
+         *   这三种原因的修法完全不同, 只报 src=null 等于什么也没说。
+         *   这里把可判定的三件事分别打出来, 让下一次在 CI 上的失败**自带结论**。
+         */
+        const diag = await ev(`(() => {
+          const all = Array.from(document.querySelectorAll('iframe'));
+          const tabs = Array.from(document.querySelectorAll('button,[role=button],a'))
+            .map(b => (b.innerText||'').trim()).filter(Boolean);
+          return {
+            iframes: all.length,
+            sizes: all.map(f => f.offsetWidth + 'x' + f.offsetHeight).join(' '),
+            srcs: all.map(f => f.getAttribute('src') ?? '(无)').join(' | '),
+            bodyHead: (document.body.innerText||'').replace(/\\s+/g,' ').slice(0, 120),
+            hasLabel: tabs.includes(${JSON.stringify(t.label)}),
+            tabs: tabs.slice(0, 24).join(' / '),
+          };
+        })()`);
+        console.log(`      诊断: iframe 数=${diag?.iframes} 尺寸=[${diag?.sizes}] src=[${diag?.srcs}]`);
+        console.log(`             按钮里有「${t.label}」=${diag?.hasLabel} · 页面首段="${diag?.bodyHead}"`);
+        console.log(`             当前可见按钮: ${diag?.tabs}`);
+      }
     }
     const bad = results.filter((x) => !x).length;
     console.log(bad ? `\n  ❌ ${results.length - bad}/${results.length} 通过` : `\n  ✅ ${results.length}/${results.length} 全部通过`);

@@ -49,14 +49,21 @@ const SUITES = [
   { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "信息录入 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
   //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
-  { key: "sections-banners", file: "probe-sections-banners.mjs", desc: "科研架构 失败/分析中横幅: 取消→失败态→补指导/重跑" },
+  //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
+  //     "analyze 是真调 LLM 的, 所以本探针按需手跑, **不进默认门禁**",
+  //     可 SUITES 里没标 data, 于是它被默认组带上, 在 CI(LLM key 是 dummy)必然红。
+  //     结果就是"一个自称不该进默认门的套件, 天天在 CI 上红着" —— 红久了就没人看了。
+  { key: "sections-banners", file: "probe-sections-banners.mjs", desc: "科研架构 失败/分析中横幅: 取消→失败态→补指导/重跑", data: true },
   // 要件生成是**同步** LLM 接口, 真跑一次要烧额度 → 默认组不带, 需要时 `--only=finalize-gen`
   // 或手动 `node scripts/probe-finalize-component-gen.mjs`。
   { key: "finalize-gen", file: "probe-finalize-component-gen.mjs", desc: "论文要件生成: 参数/并回章节/刷新后仍在/缺标题门禁", data: true },
   // 支撑视图(不在写作舱主流程): DAG 编排 / 数据台 / 绘图台 / 审稿台。
   //   审稿那四个动作(retry/export-html/export-word/send-to-workflow)只在**已有审稿结果**后渲染 ——
   //   不真跑一次审稿它们根本不出现, 所以带 LLM 的那段归 --all。
-  { key: "support-views", file: "probe-support-views-actions.mjs", desc: "QuickMode/Statistics/Viz/Review 的 12 个动作" },
+  //   ⚠ 2026-09-23 加 `data: true`: 与 sections-banners 同因 —— 上面这句注释说"归 --all",
+  //     但条目上没有 data 标记, 默认组照样带上它, 于是在 CI 上红。
+  //     **注释说的和条目标的是两回事 —— 以后改这里请对着条目看, 别只看注释。**
+  { key: "support-views", file: "probe-support-views-actions.mjs", desc: "QuickMode/Statistics/Viz/Review 的 12 个动作", data: true },
   // 数据分析台的 .xlsx 上传: 台账长期记的是「后端仅 csv/tsv」, 实际早有 xlsx→CSV 通道 ——
   //   但套件里**从来没有 xlsx 用例**(只验过 csv), 所以这条是真跑一遍端到端。
   //   xlsx 在 node 侧用 fflate 现造(最小 OOXML, openpyxl 能读), 不往仓库塞二进制样本。
@@ -179,8 +186,12 @@ function runOne(suite) {
       const bad = suiteFailed(code, out);
       console.log(`${bad ? "❌" : "✅"} ${suite.key.padEnd(20)} ${secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}`);
       if (bad && out.trim()) {
-        // 失败时把有意义的行挖出来(❌ / ERR), 免得只看到一行总结无从下手
-        const detail = out.split("\n").filter((l) => /❌|ERR|JSERR|超时/.test(l)).slice(0, 6);
+        // 失败时把有意义的行挖出来, 免得只看到一行总结无从下手。
+        // ⚠ 2026-09-23 补 `FAIL` 与 `DEAD`: 各脚本的失败标记**本来就不统一** ——
+        //   assistant-coverage 用 `FAIL  `, 几个 probe 用 ` DEAD `, 其余用 `❌` / `ERR`。
+        //   原先只匹配后两个, 于是 `通过 11 / 失败 4` 那套**四条失败一条都看不到**
+        //   (CI 日志里就只躺着一行汇总)。判据统一不了, 至少把已知的四种都收进来。
+        const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时/.test(l)).slice(0, 6);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
       resolve({ key: suite.key, code, bad, secs });
