@@ -88,8 +88,25 @@ async function main() {
     await cdp("Page.enable"); await cdp("Runtime.enable");
 
     const token = await loginToken("audit", "audit123456"); // 不存在则自动注册(CI 空库)
+    /**
+     * ⚠ 把界面语言**钉成中文** —— 这个探针按中文标签找 tab, 而外壳默认跟随浏览器语言。
+     *
+     * 2026-09-23 定位到的真根因(此前猜过库/浏览器/账号/可见性, 都不是):
+     *   `web/src/i18n.tsx` 的 `detectBrowserLanguage()`:
+     *     `languages.some(l => l.startsWith("zh")) ? "zh" : "en"`
+     *   **CI runner 的 chromium 没有中文 locale** → 整个界面渲染成英文
+     *   ("MarxSphere / Humanities & social sciences AI research hub / Reasoning / Knowledge Archive / Tools")
+     *   → 本探针要找的「研途写作舱」「课题流程编排」… 一个都不存在 → 5 个 tab 全部 `匹配=0`。
+     *   本机浏览器带 `zh-CN`, 所以一直全过 —— **同一份代码, 两种语言, 天壤之别的结论。**
+     *
+     * 这里要验的是**路由与 iframe 接线**(iframe 指向 /soc/index.html#route、里面是 Vue 不是 React 兜底),
+     *   **与语言无关**。所以把语言固定成中文, 让断言对象稳定 —— 不是放宽断言, 是去掉一个
+     *   与断言无关的变量。存进 localStorage 后 reload, 与 `sag_token` 同一手法。
+     */
     await cdp("Page.navigate", { url: BASE }); await sleep(2200);
-    if (token) { await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`); await cdp("Page.reload"); await sleep(2800); }
+    await ev(`localStorage.setItem('sag:language-preference:v1', 'zh');`);
+    if (token) { await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`); }
+    await cdp("Page.reload"); await sleep(2800);
     /**
      * 按文本点击 —— **要点的是第一个"可见"的匹配项, 不是第一个匹配项**。
      *
