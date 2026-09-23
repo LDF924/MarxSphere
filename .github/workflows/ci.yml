@@ -132,5 +132,18 @@ jobs:
           # 门禁脚本自己 spawn 浏览器并连 DevTools 协议。原先是 `npx playwright test` 顺带
           # install 的; 现在那条命令去掉了, 这里显式装一次。
           npx playwright install --with-deps chromium
-          npm run verify:ui
+          # ⚠ 输出同时落盘一份: 这个动作的日志**需要仓库 admin 权限**才能从 API 拉,
+          #   而失败时 annotation 只给一句"Process completed with exit code 1" —— 没有断言行号,
+          #   等于"知道红了, 不知道红在哪"。写成文件后由下面的 artifact 步骤带走, 谁都能下。
+          set -o pipefail
+          npm run verify:ui 2>&1 | tee /tmp/verify-ui.log
         shell: bash
+
+      # 门禁失败时把**门禁自己的输出**也带出来(与上面的 server-log 同理)
+      - name: Upload gate log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-ui-log
+          path: /tmp/verify-ui.log
+          if-no-files-found: ignore
