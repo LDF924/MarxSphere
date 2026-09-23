@@ -55,13 +55,21 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install python deps
-        # ⚠ statsmodels 必须有。2026-09-23 定位: CI 连续红了 13 天, 另一条根因就是它 ——
-        #   `scripts/empirical_runner.py` 的 ologit 分支 `from statsmodels.miscmodels.ordinal_model
-        #   import OrderedModel`, 少了这个包 → ImportError → 被外层 `except Exception` 吞掉 →
-        #   `result["tables"]` 为空 → 用例挂在 `expected 0 to be greater than 0`。
-        #   报错信息完全看不出是"缺依赖"(它长得像断言失败), 所以在这里写清楚。
-        #   (本地之所以能过: .env 的 EMPIRICAL_PYTHON 指向的 venv 里装了 statsmodels。)
-        run: pip install pandas scipy requests statsmodels
+        # ⚠ 这份清单要能覆盖 **CI 真跑到的每一条 python 路径**, 否则失败会以别种面貌出现。
+        #   2026-09-23 系统排查(CI 连续红了 13 天)把每一处挖出来对了一遍:
+        #     · statsmodels      — scripts/empirical_runner.py 的 ologit 分支
+        #                          (`from statsmodels.miscmodels.ordinal_model import OrderedModel`)。
+        #                          少了它 → ImportError 被外层 except 吞掉 → tables 为空 →
+        #                          用例挂在 `expected 0 to be greater than 0` —— **长得像断言失败**。
+        #     · openpyxl         — scripts/xlsx2csv.py。少了它 → /api/files/upload 对 .xlsx
+        #                          返回 400「xlsx 解析失败」→ 统计台的上传整条链断掉。
+        #     · python-docx      — scripts/empirical_table_docx.py 与 review_annotations.py
+        #                          (`from docx import Document`)。少了它 → /paper-outline/export
+        #                          抛 Python traceback / 502 → 编辑器导出 Word 与导入 Word 双双失败。
+        #     · matplotlib       — scripts/jupyter_runner.py 与 viz_runner.py(绘图)。
+        #   本地之所以全过: .env 的 EMPIRICAL_PYTHON 指向一个装了全套的 venv —— **那只对本机成立**,
+        #   CI 用的是 setup-python 的干净解释器。**改这里的清单时, 请对着上面的脚本再核一遍。**
+        run: pip install pandas scipy requests numpy statsmodels openpyxl python-docx matplotlib
 
       - name: Unit tests (154)
         env:

@@ -16,7 +16,7 @@ async function main() {
   const { ev, cdp, close } = await startCdp({ preferredPort: 31003, label: "scripts/editor-ai6-verify.mjs", tmpPrefix: "edge-cdp-ai6" });
   try {
     const token = await loginToken();
-    if (!token) { console.error("ERR 登录失败(admin/admin123) —— 无法验证"); process.exit(1); }
+    if (!token) { console.error("ERR 登录失败(默认账号 verify/verify123456) —— 无法验证"); process.exit(1); }
     const frameId = await openEditorWithAiPanel(ev, cdp, token);
     if (!frameId) { console.error("ERR 编辑器 iframe 未挂载(/soc/)"); process.exit(1); }
 

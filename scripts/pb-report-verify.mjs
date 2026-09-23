@@ -19,7 +19,7 @@ async function main() {
   const { ev, cdp, close } = await startCdp({ preferredPort: 31005, label: "scripts/pb-report-verify.mjs", tmpPrefix: "edge-cdp-pb" });
   try {
     const token = await loginToken();
-    if (!token) { console.error("ERR 登录失败(admin/admin123)"); process.exit(1); }
+    if (!token) { console.error("ERR 登录失败(默认账号 verify/verify123456)"); process.exit(1); }
 
     // 先落在同源页面上把 token 写进 localStorage, 再直达审稿页(它会带出往期记录)
     await cdp("Page.navigate", { url: `${BASE}/` });

@@ -74,10 +74,23 @@ export async function startCdp({ preferredPort, label, tmpPrefix = "edge-cdp", w
 }
 
 /**
- * 登录取 token。账号不存在就**自动注册**(CI 里是空库, 没有 admin)。
+ * 登录取 token。账号不存在就**自动注册**(CI 里是空库)。
+ *
+ * ⚠ 2026-09-23 修: 默认账号从 `admin/admin123` 换成 `verify/verify123456`。
+ *   原先这个默认值在 **CI 上永远登不上**, 而 5 个脚本用的是无参 `loginToken()`,
+ *   于是它们一上来就 `ERR 登录失败(admin/admin123)` —— 0.8 秒退出, 一项都没验。
+ *   根因不是"空库没有 admin"(注释原本是这么假设的), 恰恰相反:
+ *     · 迁移 `043_commercial_auth.sql` **播种**了一行 `admin`, 但 password_hash 是占位符
+ *       `INIT_PENDING`, 注释写着"密码在 auth-service 初始化时设置";
+ *     · `authService.login` 对 `INIT_PENDING` 的分支要求 `ADMIN_INIT_PASSWORD` 环境变量才肯初始化,
+ *       而 CI 没设 → 直接返回"管理员初始密码未设置";
+ *     · 于是自动注册兜底也救不了 —— `register("admin")` 撞唯一键, 返回"用户名已存在"。
+ *   也就是说: **只要库里播种过 admin, 这个账号在 CI 上就注册不了也登不上。**
+ *   换成一个不会与播种冲突的名字即可, 不改后端语义。
+ *
  * 都失败返回空串, 由调用方决定怎么报 —— 不在这里静默兜底成"游客"。
  */
-export async function loginToken(username = "admin", password = "admin123") {
+export async function loginToken(username = "verify", password = "verify123456") {
   const post = async (path, body) => {
     try {
       const r = await fetch(`${BASE}/api/auth/${path}`, {

@@ -18,7 +18,7 @@ async function main() {
   const results = [];
   try {
     const token = await loginToken();
-    if (!token) { console.error("ERR 登录失败(admin/admin123)"); process.exit(1); }
+    if (!token) { console.error("ERR 登录失败(默认账号 verify/verify123456)"); process.exit(1); }
 
     await cdp("Page.navigate", { url: `${BASE}/` });
     await sleep(3000);

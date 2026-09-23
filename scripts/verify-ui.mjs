@@ -142,6 +142,29 @@ if (!argv.includes("--no-sentinel")) {
 console.log(`UI 门禁: 跑 ${chosen.length}/${SUITES.length} 套` + (wantAll ? "(含数据依赖)" : "(默认组; 数据依赖的用 --all)"));
 console.log(`前置: ${BASE} 已起\n`);
 
+/**
+ * 这个套件到底算不算失败。
+ *
+ * ⚠ 2026-09-23 修, 起因是 CI 上看到这一行:
+ *     ✅ fusion-tabs           58.1s  ❌ 0/5 通过
+ *   **红着标了绿勾** —— 因为原先只看退出码(`code === 0`), 而有几个套件
+ *   (`verify-fusion-tabs` 是其中之一)**自己算出失败却仍然 exit 0**。
+ *   于是汇总行会撒谎: 总表说"全部通过", 逐行里却躺着 0/5。
+ *   这类假绿比真红危险 —— 它让人以为门禁全都验过了。
+ *
+ * 判据改成**退出码 或 它自己打印的结论**:
+ *   · 退出码非 0 → 失败(脚本崩了 / 自己 exit 1);
+ *   · 退出码 0 但结论行以 ❌ 开头 → **也算失败** —— 这一条专治"算了但不退出"那种;
+ *   · 结论行里出现 ERR → 失败(有些脚本用 ERR 标"动作没做成"),
+ *     但**排除 "0 个 ERR" 这种把 ERR 当名词统计的句子**, 否则会把干净输出判成失败。
+ */
+function suiteFailed(code, out) {
+  if (code !== 0) return true;
+  const tail = out.trim().split("\n").filter((l) => l.trim()).slice(-1)[0] ?? "";
+  if (tail.trim().startsWith("❌")) return true;
+  return /ERR/.test(tail) && !/0\s*(个|项)?\s*ERR|ERR\s*[:=]?\s*0/i.test(tail);
+}
+
 function runOne(suite) {
   return new Promise((resolve) => {
     const started = Date.now();
@@ -153,13 +176,14 @@ function runOne(suite) {
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       // 只回显最后一行结论 —— 各脚本自己已经打印了逐项 ✅/❌
       const tail = out.trim().split("\n").filter((l) => l.trim()).slice(-1)[0] ?? "(无输出)";
-      console.log(`${code === 0 ? "✅" : "❌"} ${suite.key.padEnd(20)} ${secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}`);
-      if (code !== 0 && out.trim()) {
+      const bad = suiteFailed(code, out);
+      console.log(`${bad ? "❌" : "✅"} ${suite.key.padEnd(20)} ${secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}`);
+      if (bad && out.trim()) {
         // 失败时把有意义的行挖出来(❌ / ERR), 免得只看到一行总结无从下手
         const detail = out.split("\n").filter((l) => /❌|ERR|JSERR|超时/.test(l)).slice(0, 6);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
-      resolve({ key: suite.key, code, secs });
+      resolve({ key: suite.key, code, bad, secs });
     });
   });
 }
@@ -168,10 +192,14 @@ function runOne(suite) {
 const results = [];
 for (const s of chosen) results.push(await runOne(s));
 
-const failed = results.filter((r) => r.code !== 0);
+// ⚠ 用 `bad` 而不是 `code`: 有的套件 exit 0 却自己算出失败(见 suiteFailed 的注释)。
+//    这里曾经只认退出码, 于是汇总行会说"全部通过"而逐行躺着 ❌ 0/5。
+const failed = results.filter((r) => r.bad);
 console.log(`\n${failed.length ? `❌ ${results.length - failed.length}/${results.length} 套通过` : `✅ ${results.length}/${results.length} 套全部通过`}`);
 if (failed.length) {
   console.log(`失败: ${failed.map((f) => f.key).join(", ")}`);
+  const silent = failed.filter((f) => f.code === 0);
+  if (silent.length) console.log(`  (其中 ${silent.map((f) => f.key).join(", ")} 是**退出码 0 但自报失败** —— 脚本该补 exit 1)`);
   console.log(`单跑排查: node scripts/<文件>.mjs  (对应关系见本文件 SUITES)`);
   process.exit(1);
 }

@@ -100,6 +100,10 @@ async function main() {
     }
     const bad = results.filter((x) => !x).length;
     console.log(bad ? `\n  ❌ ${results.length - bad}/${results.length} 通过` : `\n  ✅ ${results.length}/${results.length} 全部通过`);
+    // ⚠ 2026-09-23 补: 原先这里只打结论、**从不设置退出码**, 于是失败也 exit 0。
+    //   后果实测过一次 —— CI 上出现 `✅ fusion-tabs  58.1s  ❌ 0/5 通过`:
+    //   红着标了绿勾, 而汇总行("全部通过")跟着一起撒谎。**假绿比真红危险**。
+    if (bad) process.exitCode = 1;
   } finally {
     try { ws?.close(); } catch { /* ignore */ }
     edge.kill();
