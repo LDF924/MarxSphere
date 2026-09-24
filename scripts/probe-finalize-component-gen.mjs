@@ -63,7 +63,7 @@ async function secLen(token, pid, title) {
 /** 播种: 已合稿的终稿(要件按钮需要 store.sections 非空 + 有标题) */
 async function seed(token, { withTitle = true } = {}) {
   const TITLE = withTitle ? `要件探针-${Date.now()}` : "";
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE || "未命名", status: "in-progress", phase: 5, phaseLabel: "合稿定稿" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE || "未命名", status: "in-progress", phase: 5, phaseLabel: "统稿定稿" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const INPUT = { title: TITLE, outline: "一、引言\n二、文献综述", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
@@ -74,7 +74,7 @@ async function seed(token, { withTitle = true } = {}) {
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 5, phaseLabel: "合稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 5, phaseLabel: "统稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   // 合稿态(要件卡只在 sections 非空时渲染; mergeGenerated 影响导出区, 这里不需要)
   // ⚠ withTitle:false 时必须把 mergedTitle 也留**空** —— 若回落成"未命名", `topic` 就非空,

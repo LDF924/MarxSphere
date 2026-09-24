@@ -522,7 +522,7 @@ export async function publishVersion(userId: string, projectId: string, label: s
     );
     /**
      * ⚠ 2026-09-18: 这里原来还把 `label` 写进 `research_projects.phase_label`。
-     *   而那个列是**阶段名**的列(PATCH /projects/:id 写的是「合稿定稿」这种中文阶段名,
+     *   而那个列是**阶段名**的列(PATCH /projects/:id 写的是「统稿定稿」这种中文阶段名,
      *   前端 syncPhaseToProject 也在写它)。`label` 却是**版本标签**(`phase4_text`),
      *   两个写入方挤在同一列、语义不同 —— 谁后到谁赢, 阶段名会被覆成英文标签。
      *   该列目前**没有用户可见的读路径**(历史面板读的是 `research_tasks.phase_label`,
@@ -815,7 +815,7 @@ ${roundPrompt}`, undefined, 4000);
 export async function runMainAgentAnalysis(userId: string, projectId: string, opts: { taskId?: string } = {}) {
   const project = await getProject(userId, projectId);
   if (!project) return { ok: false as const, code: "NOT_FOUND" };
-  const ans = await llmJson(`你是科研架构分析专家(主控智能体)。基于研究主题生成科研架构, 输出 JSON(R3 闭源 SectionsView 对齐: 定性方法用定性变量角色):
+  const ans = await llmJson(`你是框架设计分析专家(主控智能体)。基于研究主题生成框架设计, 输出 JSON(R3 闭源 SectionsView 对齐: 定性方法用定性变量角色):
 {"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"quantitative 时: dependent|independent|mediator|moderator|control; qualitative 时: influence|outcome|mechanism|context|background","description":"该变量的操作化语义描述(含为何作此角色)"}]},
  "hypotheses":[{"id":"H1","type":"main|mediation|moderation","text":"完整假设表述","theory":"基于 XX 理论/假说+机制解释"}],
  "chapterPlan":[{"title":"章节标题","level":1,"requirements":"该章写作要求(一句话)","skillType":"intro|literature|theory|method|result|conclusion","wordCount":按总字数比例的该章目标字数}],

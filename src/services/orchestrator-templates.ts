@@ -39,15 +39,15 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
   {
     id: "tpl_five_stage",
     name: "标准五阶段论文",
-    description: "信息录入 → 科研架构 → 素材准备 → 文本创作 → 合稿定稿",
+    description: "选题界定 → 框架设计 → 文献与资料 → 章节写作 → 统稿定稿",
     scenario: "从零写一篇完整的政策/理论分析论文",
     cost: "heavy",
     graph: {
       id: "five-stage", name: "标准五阶段论文",
       description: "经典论文生产线: 先定题, 再搭骨架, 再备料, 再写正文, 最后合稿",
       nodes: [
-        { id: "intake", capabilityId: "io:clarify", title: "信息录入(澄清主题/对象/方法)" },
-        { id: "analyze", capabilityId: "tool:llm_write", title: "科研架构", params: { topic: "为题目《{{outputs.intake}}》设计 5 章详细论证架构, 每章给标题与要点", length: "中" } },
+        { id: "intake", capabilityId: "io:clarify", title: "选题界定(澄清主题/对象/方法)" },
+        { id: "analyze", capabilityId: "tool:llm_write", title: "框架设计", params: { topic: "为题目《{{outputs.intake}}》设计 5 章详细论证架构, 每章给标题与要点", length: "中" } },
         { id: "materials", capabilityId: "tool:sag_search", title: "素材检索", params: { query: "{{outputs.intake}}", topK: 20 } },
         { id: "material_plan", capabilityId: "tool:llm_write", title: "素材消化与分配", params: { topic: "把检索结果映射到各章节, 标出每章可用素材与缺口:\n{{outputs.materials}}", length: "长" } },
         { id: "draft", capabilityId: "tool:llm_write", title: "章节正文创作", params: { topic: "按架构逐章撰写正文(每章 800 字以上, 带论证与出处):\n架构: {{outputs.analyze}}\n素材: {{outputs.material_plan}}", length: "长" } },

@@ -1,8 +1,8 @@
-// scripts/probe-materials-actions.mjs — 素材准备页「动作打通」探针(第二轮: 上一轮未覆盖的 23 个动作)
+// scripts/probe-materials-actions.mjs — 文献与资料页「动作打通」探针(第二轮: 上一轮未覆盖的 23 个动作)
 //
 // 由来(2026-09-17): 上一轮探针只覆盖了写作舱 93 个动作里的 19 个(全在 workflow 主干)。
 //   合稿页那批缺陷(采用修订稿是空操作)就是补第二轮覆盖时挖出来的 —— 覆盖表之外的地方
-//   没有信号。本探针补的是素材准备页: **23 个动作**, 此前一个都没验过。
+//   没有信号。本探针补的是文献与资料页: **23 个动作**, 此前一个都没验过。
 //
 // 与 verify-writing-cabin.mjs 的分工不变:
 //   verify-*: 状态断言("长什么样"); probe-*: 动作打通("点下去做没做事", 真点 + 拦 fetch)
@@ -62,7 +62,7 @@ const confirmState = (cdp) => evalTop(cdp, `(() => {
 /** 播种: 项目 + 章节 + input 节点 + 两条素材(一条挂章、一条不挂) */
 async function seed(token) {
   const TITLE = `素材探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 3, phaseLabel: "素材准备" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 3, phaseLabel: "文献与资料" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const INPUT = { title: TITLE, outline: "一、引言\n  1.1 研究背景\n二、文献综述\n  2.1 已有研究", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
@@ -75,13 +75,13 @@ async function seed(token) {
   /**
    * ⚠ 必须**单独补一个 `sections` 节点** —— `/materials/allocate` 只认它
    *   (`select payload->'sections' from research_nodes where node_key='sections'`),
-   *   既不看 input 节点也不看 workbench 快照。不播的话接口返 **422「请先完成科研架构(生成章节清单)」**,
+   *   既不看 input 节点也不看 workbench 快照。不播的话接口返 **422「请先完成框架设计(生成章节清单)」**,
    *   而界面上按钮明明可点 —— 探针会把它读成"点了没反应"(实测踩到, 白追了一轮)。
    *   真实流程里 SectionsView 确认章节时会写这个节点, 所以不是产品缺陷, 是播种不全。
    */
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 3, phaseLabel: "素材准备", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 3, phaseLabel: "文献与资料", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   const a = await api(token, "/research/materials", "POST", { projectId: pid, kind: "theory", title: "探针理论A", contentMd: "理论内容A", sectionIds: ["sec_0"] });
   const b = await api(token, "/research/materials", "POST", { projectId: pid, kind: "citation", title: "探针文献B", contentMd: "文献内容B" });

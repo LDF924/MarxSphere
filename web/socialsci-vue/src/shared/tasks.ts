@@ -360,6 +360,18 @@ export async function archiveProject(projectId: string): Promise<void> {
   await q(`/research/projects/${projectId}/archive`, { method: "POST" });
 }
 
+/**
+ * **删除**项目 —— 与归档是两件事。
+ *
+ * 后端 `DELETE /research/projects/:id` 走的是 `deleteProject`(硬删, 404 表示不存在)。
+ * 项目栏把两者并排提供给用户, 文案里写死了区别: 归档可从「历史记录」找回, 删除不能。
+ * (选题界定页底部也有一个「删除当前项目」, 它走的是同一套后端 —— 这条只是把入口
+ *  放到项目栏, 免得"想删一个不想要的项目"要先切过去再翻到页面底部。)
+ */
+export async function deleteProject(projectId: string): Promise<void> {
+  await q(`/research/projects/${projectId}`, { method: "DELETE" });
+}
+
 /** 任务模块中文标签 */
 export function moduleLabel(m: string): string {
   return MODULE_LABELS[m as SocModule] ?? m;

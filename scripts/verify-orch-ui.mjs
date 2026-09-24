@@ -86,7 +86,7 @@ try {
   const titles = await page.locator(".vue-flow__node .node-title-row strong").allInnerTexts();
   t("模板已载入画布(节点 > 3)", nodeCount > 3, `${nodeCount} 节点`);
   t("渲染了依赖连线", edgeCount > 0, `${edgeCount} 条`);
-  t("节点标题来自能力注册表(非旧写死的 phrase)", titles.some((x) => /信息录入|科研架构|素材|正文|质量门|澄清/.test(x)), titles.slice(0, 6).join(" | "));
+  t("节点标题来自能力注册表(非旧写死的 phrase)", titles.some((x) => /选题界定|框架设计|素材|正文|质量门|澄清/.test(x)), titles.slice(0, 6).join(" | "));
 
   // ── 4. 加节点 ──
   const before = nodeCount;

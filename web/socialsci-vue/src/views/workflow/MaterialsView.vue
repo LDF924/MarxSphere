@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * MaterialsView(Phase3 素材准备) — 还原自闭源 MaterialsView-CW_9_w3K.js(10 组件, 核心形态还原)
+ * MaterialsView(Phase3 文献与资料) — 还原自闭源 MaterialsView-CW_9_w3K.js(10 组件, 核心形态还原)
  * 5 分类手风琴(文献检索/表格素材/理论素材/数据分析素材/附件素材) + AI 生成 + 手动添加 + 发布版本
  * 数据: 后端 research_materials CRUD + 素材节点; kind: citation/theory/data_result/figure/file
  */
@@ -42,6 +42,35 @@ const materials = ref<Material[]>([]);
 const expandedCats = ref<Set<string>>(new Set(["literature"]));
 const publishing = ref(false);
 const editDialog = ref<{ open: boolean; kind: string; material: Material }>({ open: false, kind: "literature", material: {} as Material });
+
+/**
+ * 「手动添加 X」弹层的**标题栏拖拽**(2026-09-24 你要求)。
+ *
+ * 为什么用 JS 位移而不是 CSS `resize`/`position` 那套: 弹层是 `modal-mask`(fixed inset-0
+ * 的遮罩)+ 居中的 `modal-card`, 拖动只该动卡片。给卡片加个 `transform: translate(dx,dy)` 最省事,
+ * **不碰遮罩、不碰关闭逻辑**(`@click.self` 仍然只认"点遮罩空白处")。
+ *
+ * ⚠ 为什么监听挂在 window 而不是在标题栏上: 指针移出标题栏(甚至移出窗口)时事件就不再落到标题栏上,
+ *   拖动会中途卡住。挂 window 的 pointermove/pointerup 才跟得住, 用完立刻摘掉。
+ * ⚠ 拖到一半关掉弹层要**复位** —— 否则下次打开会带着上次的位移出现在角落(实测过这种"弹层自己跑偏")。
+ */
+const editDrag = ref({ dx: 0, dy: 0 });
+const editDragging = ref(false);
+function startEditDrag(e: PointerEvent) {
+  // 点在关闭按钮上时不启动拖动(否则"想关"变成"拖走")
+  if ((e.target as HTMLElement)?.closest("button")) return;
+  e.preventDefault();
+  const sx = e.clientX - editDrag.value.dx, sy = e.clientY - editDrag.value.dy;
+  editDragging.value = true;
+  const move = (ev: PointerEvent) => { editDrag.value = { dx: ev.clientX - sx, dy: ev.clientY - sy }; };
+  const up = () => {
+    editDragging.value = false;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
 
 // ── 5 分类定义(闭源 ze L4419-4468) ──
 const CATS = [
@@ -331,7 +360,7 @@ async function createMaterial(body: Record<string, unknown>): Promise<Material |
 // ── AI 生成(走 phase3 后台 job → 泵执行 → 产物为 citation/theory/data_result 素材; 单类弹层见 B4) ──
 async function aiGenerate(catKey: string) {
   if (!store.taskId) {
-    toast("请先完成信息录入", "warning");
+    toast("请先完成选题界定", "warning");
     return;
   }
   // B4: 单类生成进阶弹层(闭源 MaterialGenerateDialog: 关联章节 select + 表类型 radio + 流式预览)
@@ -376,7 +405,7 @@ const genPlaceholder = computed(() =>
       : "如: 信息不对称理论在中小企业融资中的适用性");
 
 function openGenDialog(catKey: string) {
-  if (!store.level1Sections.length) { toast("请先完成科研架构", "warning"); return; }
+  if (!store.level1Sections.length) { toast("请先完成框架设计", "warning"); return; }
   // 先停掉可能残留的轮询并复位 —— 否则"上次异常退出(接口挂了/generating 没复位)"会带进来,
   //   新打开时次按钮直接显示成「取消」, 用户以为还在生成(实测: busy 标志就是这么卡住的)
   stopGenDialogPoll();
@@ -437,7 +466,7 @@ async function runGenStart() {
       jobKind,
       goal: store.input.title,
       phase: 3,
-      phaseLabel: "素材准备",
+      phaseLabel: "文献与资料",
       inputSnapshot: {
         sectionId: d.sectionId,
         sectionTitle: secTitle,
@@ -758,6 +787,8 @@ function gotoModule(mod: "statistics" | "viz") {
 }
 function closeAdd() {
   editDialog.value.open = false;
+  // 关掉时把拖动位移复位 —— 否则下次打开会带着上次的位移出现在角落
+  editDrag.value = { dx: 0, dy: 0 };
 }
 async function saveManual() {
   const m = editDialog.value.material;
@@ -1057,14 +1088,14 @@ const matAsyncReason = computed(() => {
 let planJobId = ref("");
 
 async function generatePlan() {
-  if (!store.taskId) { toast("请先完成信息录入", "warning"); return; }
+  if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
   planDialog.value = { open: true, state: "running", msg: "正在分析论文框架, 生成执行计划..." };
   try {
     const { createTask } = await import("@/shared/tasks");
     const t = await createTask({
       title: "素材生成计划",
       projectId: store.taskId, module: "workflow", jobKind: "material-plan",
-      goal: store.input.title, phase: 3, phaseLabel: "素材准备",
+      goal: store.input.title, phase: 3, phaseLabel: "文献与资料",
       inputSnapshot: {
         l1Sections: store.level1Sections.map((s) => ({ id: s.id, title: s.title })),
         variables: store.variables.map((v) => ({ name: v.name, role: v.role })),
@@ -1138,20 +1169,20 @@ async function executePlan() {
   try {
     // 文献组(可并发后端 job; 逐条跑保序)
     for (const item of enabled.lit) {
-      const t = await createTask({ title: `文献检索: ${item.sectionTitle ?? ""}`, projectId: store.taskId, module: "workflow", jobKind: "literature-search", goal: store.input.title, phase: 3, phaseLabel: "素材准备",
+      const t = await createTask({ title: `文献检索: ${item.sectionTitle ?? ""}`, projectId: store.taskId, module: "workflow", jobKind: "literature-search", goal: store.input.title, phase: 3, phaseLabel: "文献与资料",
         inputSnapshot: { sectionId: item.sectionId ?? "", sectionTitle: item.sectionTitle ?? "", keywords: item.keywords ?? [], count: item.count ?? 5 } });
       await waitJobDone(t.id).then((ok) => { if (ok) okLit++; });
     }
     // 表格组
     for (const item of enabled.tab) {
-      const t = await createTask({ title: `表格: ${item.title ?? ""}`, projectId: store.taskId, module: "workflow", jobKind: "table-generate", goal: store.input.title, phase: 3, phaseLabel: "素材准备",
+      const t = await createTask({ title: `表格: ${item.title ?? ""}`, projectId: store.taskId, module: "workflow", jobKind: "table-generate", goal: store.input.title, phase: 3, phaseLabel: "文献与资料",
         inputSnapshot: { sectionId: item.sectionId ?? "", sectionTitle: item.sectionTitle ?? "", title: item.title ?? "", prompt: `为「${store.input.title}」设计表格: ${item.title ?? ""}`, tableType: "text" } });
       await waitJobDone(t.id).then((ok) => { if (ok) okTab++; });
     }
     // 数据分析组(闭源 plan.dataAnalysis 段; 执行器 data-analysis 产方案素材)
     for (const item of enabled.ana) {
       const it = item as PlanItem & { analysisType?: string; variables?: string[]; methods?: string[] };
-      const t = await createTask({ title: `分析: ${String(it.analysisType ?? "描述统计")}`, projectId: store.taskId, module: "workflow", jobKind: "data-analysis", goal: store.input.title, phase: 3, phaseLabel: "素材准备",
+      const t = await createTask({ title: `分析: ${String(it.analysisType ?? "描述统计")}`, projectId: store.taskId, module: "workflow", jobKind: "data-analysis", goal: store.input.title, phase: 3, phaseLabel: "文献与资料",
         inputSnapshot: { sectionId: item.sectionId ?? "", sectionTitle: item.sectionTitle ?? "", analysisType: it.analysisType ?? "descriptive", variables: (it.variables ?? []).map((v) => ({ name: v })), methods: it.methods ?? [] } });
       await waitJobDone(t.id).then((ok) => { if (ok) okAna++; });
     }
@@ -1198,10 +1229,10 @@ const allocSelected = computed(() => allocDialog.value.suggestions.filter((s) =>
 const allocSectionTitle = (id: string | null | undefined) =>
   (store.sections.find((s) => s.id === id)?.title) || "";
 
-/** 编排: 请求 AI 建议(仅未关联素材) → 弹层确认(闭源 ee(): 无章节→"请先完成科研架构"; 全已关联→info; 无建议→warning) */
+/** 编排: 请求 AI 建议(仅未关联素材) → 弹层确认(闭源 ee(): 无章节→"请先完成框架设计"; 全已关联→info; 无建议→warning) */
 async function runAllocate() {
-  if (!store.taskId) { toast("请先完成信息录入", "warning"); return; }
-  if (!store.level1Sections.length) { toast("请先完成科研架构", "warning"); return; }
+  if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
+  if (!store.level1Sections.length) { toast("请先完成框架设计", "warning"); return; }
   if (!materials.value.length) { toast("请先添加素材", "warning"); return; }
   if (!materials.value.some((m) => !m.sectionId && !(m as { sectionIds?: string[] }).sectionIds?.length)) {
     toast("所有素材已关联章节", "info");
@@ -1314,7 +1345,7 @@ async function publishAndEnter() {
     store.phase2VersionId = String((st2.phase2Version as { id?: string } | null)?.id ?? "");
     store.phase2Stale = Boolean(st2.phase2Stale);
     if (st2.phase2Stale) {
-      toast("科研架构版本已失效(确认后又改动过), 请返回 Phase 2 重新确认后再发布素材", "warning");
+      toast("框架设计版本已失效(确认后又改动过), 请返回 Phase 2 重新确认后再发布素材", "warning");
       return;
     }
   }
@@ -1326,7 +1357,7 @@ async function publishAndEnter() {
     //   后端认不出, phase3Version 永远是 null。
     await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase3_materials" } }).catch(() => null);
     store.setPhase(4);
-    toast("素材版本已发布, 进入文本创作", "success");
+    toast("素材版本已发布, 进入章节写作", "success");
     void router.push("/workflow/workspace");
   } catch {
     toast("发布失败", "error");
@@ -1360,7 +1391,7 @@ onMounted(async () => {
     <!-- 页头整体: 闭源是 `<div class="mb-8">` 把标题+副标题+统计行包成一块(下方 32px)。
          我方原先是 h1 mb-4 / 统计 mt-10 mb-18 散着摆, 净距与闭源对不上。 -->
     <div class="wf-head">
-    <h1 class="wf-h1">素材准备</h1>
+    <h1 class="wf-h1">文献与资料</h1>
     <!-- 页头三行状态区(闭源: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
     <div class="mat-stats">
       <span><span class="ms-num">{{ materials.length }}</span></span>
@@ -2042,8 +2073,12 @@ onMounted(async () => {
     <!-- 手动添加弹层 -->
     <Teleport to="body">
       <div v-if="editDialog.open" class="modal-mask" @click.self="closeAdd">
-        <div class="modal-card">
-          <div class="modal-head">
+        <div
+          class="modal-card modal-card--draggable"
+          :class="{ 'is-dragging': editDragging }"
+          :style="{ transform: `translate(${editDrag.dx}px, ${editDrag.dy}px)` }"
+        >
+          <div class="modal-head modal-head--drag" title="按住可拖动" @pointerdown="startEditDrag">
             <h3>手动添加{{ CATS.find((c) => c.key === editDialog.kind)?.label }}</h3>
             <button class="modal-x" @click="closeAdd">×</button>
           </div>
@@ -2427,7 +2462,7 @@ onMounted(async () => {
   margin-top: 0; padding-top: 24px;
   border-top: 1px solid var(--wf-line);
 }
-/* 主按钮不横贯整幅(与信息录入/科研架构页统一): 实测原先 flex:1 让它撑到 1113px, 动作行才 1259px */
+/* 主按钮不横贯整幅(与选题界定/框架设计页统一): 实测原先 flex:1 让它撑到 1113px, 动作行才 1259px */
 .wf-actions { justify-content: flex-end; }
 .wf-actions .btn-primary { min-width: 200px; }
 /* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
@@ -2449,6 +2484,9 @@ onMounted(async () => {
 .modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 520px; max-width: 95vw; background: var(--wf-surface); border-radius: 16px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
+/* 可拖拽弹层: 标题栏当抓手。`touch-action:none` 是必须的 —— 否则触屏上按下会在拖动前触发滚动 */
+.modal-head--drag { cursor: grab; touch-action: none; user-select: none; }
+.modal-card--draggable.is-dragging .modal-head--drag { cursor: grabbing; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--wf-line); }
 .modal-head h3 { margin: 0; font-size: 16px; color: var(--wf-text); }
 .modal-x { border: 0; background: none; font-size: 20px; color: var(--wf-muted); cursor: pointer; }

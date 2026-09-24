@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * InputView(Phase1 信息录入) — 还原自闭源 InputView-DwlhRWpv.js(L616-1471)
+ * InputView(Phase1 选题界定) — 还原自闭源 InputView-DwlhRWpv.js(L616-1471)
  * 主题/字数预估/大纲 OutlineEditor/额外要求/方法 3 卡/参考文件/agent 引导提问手风琴 → submitAnalysis
  * 提交链: 校验 → 建项目(template five-stage) → 写 input 节点 → phase=2 → /workflow/sections
  */
@@ -237,7 +237,13 @@ const clarifyRound = ref(0);
 let clarifyAbort: AbortController | null = null;
 
 /** 引导提问手风琴(闭源默认收起; 生成完/有答案时自动展开, 免得结果藏在折叠里没人看见) */
-const clarifyOpen = ref(false);
+/**
+ * ⚠ 2026-09-24 改成**默认展开**(你要求"保持一直打开")。
+ *   原来是 `false`(折叠), 只在"引导问题已生成"时才自动展开 —— 也就是**没跑过的人永远看不到它**,
+ *   而它恰恰是给"还没想清楚研究问题"的人用的。默认展开后, 新用户第一眼就能看到这个入口。
+ *   折叠能力保留(标题栏仍可点开合), 只是初始状态改了。
+ */
+const clarifyOpen = ref(true);
 watch(
   () => clarify.value.state,
   (s) => { if (s === "done") clarifyOpen.value = true; }
@@ -424,7 +430,7 @@ async function submitAnalysis() {
     // V417: 把选了的数据源绑定到项目(没有它, 文献检索回退到默认公共库 → 搜出不相干文献)
     await persistSources(pid);
     localStorage.removeItem("skf_draft");
-    toast("提交成功, 进入科研架构分析", "success");
+    toast("提交成功, 进入框架设计分析", "success");
     void router.push("/workflow/sections");
   } catch (e) {
     toast(`提交失败: ${(e as Error).message}`, "error");
@@ -473,8 +479,8 @@ onMounted(async () => {
     <!-- 闭源页头: `mb-8`(32px) 包住 h1.text-2xl(24px) + p.text-sm + `mt-1`(4px)。
          2026-09-16 修: 我方原先 h1 22px / 副文案 13px / 下间距 18px —— 整条阶梯都塌了一档。 -->
     <div class="wf-head">
-      <h1 class="wf-h1">信息录入</h1>
-      <p class="wf-sub">请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划科研架构</p>
+      <h1 class="wf-h1">选题界定</h1>
+      <p class="wf-sub">请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划框架设计</p>
     </div>
 
     <!-- 研究主题 + 字数预估(闭源同一行: 主题 flex-1 + 字数 w-36, 都带红色 *) -->
@@ -557,7 +563,7 @@ onMounted(async () => {
 
     </div>
     <div class="iv-col-side">
-    <!-- V417 检索数据源: 素材准备阶段的文献检索从这里选库 -->
+    <!-- V417 检索数据源: 文献与资料阶段的文献检索从这里选库 -->
     <section class="wf-card">
       <label class="wf-label">检索数据源</label>
       <p v-if="sourcesLoading" class="wf-note">正在读取可用数据源…</p>
@@ -654,7 +660,7 @@ onMounted(async () => {
       </button>
       <div v-if="clarifyOpen" class="clarify-body">
         <div v-if="clarify.state === 'idle'" class="clarify-idle">
-          <p>AI智能体将根据你已填写的信息提出针对性问题，回答后将自动纳入科研架构分析。</p>
+          <p>AI 将根据你已填写的信息提出针对性问题，回答会纳入框架设计分析。</p>
           <button type="button" class="btn-clarify-run" @click="runClarify(false)" data-control="workflow:clarify">AI 分析我的研究</button>
         </div>
         <div v-else-if="clarify.state === 'loading'" class="clarify-loading">
@@ -692,7 +698,7 @@ onMounted(async () => {
               data-control="workflow:clarify-next-round"
               @click="runClarify(true)"
             >{{ clarifyRound >= 2 ? "追问已达上限" : (clarifyRound === 0 ? "基于我的回答再问一轮" : `再追加一轮追问（已 ${clarifyRound} 轮）`) }}</button>
-            <span class="clarify-next-hint">回答后自动纳入科研架构分析</span>
+            <span class="clarify-next-hint">回答后自动纳入框架设计分析</span>
           </div>
         </div>
       </div>
@@ -709,7 +715,7 @@ onMounted(async () => {
         :disabled="!canSubmit"
         data-control="workflow:submit-analysis"
         @click="submitAnalysis"
-      >开始思考科研架构</button>
+      >开始思考框架设计</button>
       <button type="button" class="btn-back" data-control="workflow:back" @click="router.push('/workflow')">返回</button>
     </div>
 
@@ -859,7 +865,18 @@ onMounted(async () => {
 .ch-arrow { color: var(--wf-muted); transition: transform 0.18s; }
 .ch-arrow.open { transform: rotate(180deg); }
 .clarify-body { padding: 4px 18px 16px; }
-.clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty { text-align: center; padding: 14px 0; }
+/*
+ * ⚠ 2026-09-24: 从 `text-align: center` 改成左对齐。
+ *   居中时那句话(48 字)在卡片里断成了两行, 且把"分析。"单独甩到第二行 —— 因为居中排版下
+ *   两端剩余空间相等, 断点位置完全由字数决定, 读起来像被腰斩。
+ *   (我先试过加 `max-width: 46ch` —— **那是错的**: `ch` 是"0"的宽度(约 6px), 不是汉字宽度,
+ *    46ch 只有约 23 个汉字, 反而让文字更早换行。已撤掉, 这句现在靠**缩短文案**放进一行。)
+ *   ⚠ 副作用(特意保留): `text-align` 会被**子块里的 inline-flex/inline-block 按钮继承**,
+ *   所以底部那个主按钮也跟着靠左了。这正是想要的 —— 文字与按钮同一条左基线, 比"文字靠左、
+ *   按钮居中"更整齐。(我第一版注释写成"按钮仍居中", 那是错的: text-align 会继承。)
+ */
+.clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty { text-align: left; padding: 14px 0; }
+
 .clarify-idle p, .clarify-loading p, .clarify-error p, .clarify-done-empty p { font-size: 12px; color: var(--wf-muted); margin: 8px 0 0; }
 .clarify-error p { color: #dc2626; }
 /* 生成引导问题的主按钮(闭源红底实心, 与页面其它主行动一致) */
@@ -919,7 +936,7 @@ onMounted(async () => {
   font-size: 12.5px; font-family: inherit; resize: vertical;
 }
 /* 动作行。闭源 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
-   "开始思考科研架构 / 返回" 那对, 与 sections/materials 的 pt-6 + border-t 不同)。
+   "开始思考框架设计 / 返回" 那对, 与 sections/materials 的 pt-6 + border-t 不同)。
    原值 margin-top:6px 比闭源少 10px, 页面底部显得挤。 */
 /**
  * 动作行。⚠ 主按钮原先 `flex:1` 会横贯整幅(实测 1276px 里的 1186px) —— 一个"提交"按钮
@@ -943,7 +960,7 @@ onMounted(async () => {
 @media (max-width: 1180px) {
   .iv-cols { grid-template-columns: minmax(0, 1fr); }
 }
-/* V419b 删除项目: 与主操作行**分开**放在页面底部 —— 破坏性动作不该和"开始思考科研架构"挨着 */
+/* V419b 删除项目: 与主操作行**分开**放在页面底部 —— 破坏性动作不该和"开始思考框架设计"挨着 */
 .proj-danger { display: flex; align-items: center; gap: 10px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #2A1C1C; }
 .btn-danger-ghost {
   padding: 7px 16px; border: 1px solid #7f1d1d; border-radius: 8px;

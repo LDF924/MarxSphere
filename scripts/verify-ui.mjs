@@ -46,14 +46,14 @@ const SUITES = [
   //   都活了很久没有任何信号。
   { key: "materials-actions", file: "probe-materials-actions.mjs", desc: "素材页 20 动作: 增删改/来源/审视/编排/文献结构化" },
   { key: "workspace-actions", file: "probe-workspace-actions.mjs", desc: "创作台 16 动作: 面板/编辑/保存/素材/阶段门禁(不含 LLM)" },
-  { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "信息录入 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
+  { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "选题界定 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
   //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
   //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
   //     "analyze 是真调 LLM 的, 所以本探针按需手跑, **不进默认门禁**",
   //     可 SUITES 里没标 data, 于是它被默认组带上, 在 CI(LLM key 是 dummy)必然红。
   //     结果就是"一个自称不该进默认门的套件, 天天在 CI 上红着" —— 红久了就没人看了。
-  { key: "sections-banners", file: "probe-sections-banners.mjs", desc: "科研架构 失败/分析中横幅: 取消→失败态→补指导/重跑", data: true },
+  { key: "sections-banners", file: "probe-sections-banners.mjs", desc: "框架设计 失败/分析中横幅: 取消→失败态→补指导/重跑", data: true },
   // 要件生成是**同步** LLM 接口, 真跑一次要烧额度 → 默认组不带, 需要时 `--only=finalize-gen`
   // 或手动 `node scripts/probe-finalize-component-gen.mjs`。
   { key: "finalize-gen", file: "probe-finalize-component-gen.mjs", desc: "论文要件生成: 参数/并回章节/刷新后仍在/缺标题门禁", data: true },

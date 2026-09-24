@@ -400,7 +400,7 @@ export async function allocateMaterialsToSections(userId: string, projectId: str
   const list = (sections.rows[0]?.secs ?? []) as Array<{ id: string; title: string; level: number }>;
   const top = list.filter((s) => s.level === 1);
   if (!mats.rows.length) return { ok: true as const, suggestions: [] };
-  if (!top.length) return { ok: false as const, error: "请先完成科研架构(生成章节清单)" };
+  if (!top.length) return { ok: false as const, error: "请先完成框架设计(生成章节清单)" };
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
   const res = await fetchLlm({
     url: ep.url, key: ep.key, model: ep.model,

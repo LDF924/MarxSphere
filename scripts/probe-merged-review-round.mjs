@@ -36,7 +36,7 @@ try {
 
   // ── 播种: 建项目 + 章节(带正文) + input 节点 + workbench 快照 ──
   const TITLE = `审查轮探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 5, phaseLabel: "合稿定稿" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 5, phaseLabel: "统稿定稿" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) throw new Error("建项目失败");
 
@@ -49,7 +49,7 @@ try {
   const INPUT = { title: TITLE, outline: "一、引言\n二、实证分析", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 5, phaseLabel: "合稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 5, phaseLabel: "统稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   console.log(`项目 ${pid}\n`);
 

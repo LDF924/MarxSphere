@@ -36,7 +36,7 @@ const short = (u) => String(u ?? "").replace(BASE, "").replace("/api/research", 
  */
 async function seed(token, { withMaterials = true } = {}) {
   const TITLE = `创作探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 4, phaseLabel: "文本创作" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 4, phaseLabel: "章节写作" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const INPUT = { title: TITLE, outline: "一、引言\n  1.1 研究背景\n二、文献综述\n  2.1 已有研究", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
@@ -48,7 +48,7 @@ async function seed(token, { withMaterials = true } = {}) {
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 4, phaseLabel: "文本创作", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 4, phaseLabel: "章节写作", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   let matId = "";
   if (withMaterials) {

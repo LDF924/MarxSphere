@@ -285,7 +285,7 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
     order += 1;
   }
   if (!out.length && topic) out.push({ id: "sec_0", title: topic.slice(0, 60), level: 1 });
-  // 少于 5 节 → 默认模板补足(闭源"标准流程 Phase1-5"信息录入默认 outline)
+  // 少于 5 节 → 默认模板补足(闭源"标准流程 Phase1-5"选题界定默认 outline)
   if (out.length < 5) {
     const defaults = ["引言", "文献综述与分析框架", "现状描述或案例呈现", "问题分析与对策建议", "结语"];
     for (const d of defaults) {
@@ -298,7 +298,7 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
 }
 
 /**
- * analyze 执行器 — 科研架构阶段(闭源 phase2 createPhase2 + publishPhase2 语义):
+ * analyze 执行器 — 框架设计阶段(闭源 phase2 createPhase2 + publishPhase2 语义):
  * 结构三段: ①节点快照大纲(结构源自项目 input 节点 outline 或任务 goal 解析) ②LLM 架构分析(变量/方法/逻辑)
  *   ③sections 节点落库(status=pending) → phrase4/5 消费; 无 LLM 时快照段兜底仍产出
  */
@@ -315,7 +315,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   const sections = snapSecs.length
     ? snapSecs.map((s, i) => ({ id: String(s.id ?? `sec_${i}`), title: String(s.title ?? `章节 ${i + 1}`), level: Number(s.level ?? 1) }))
     : parseGoalToSections(await outline);
-  if (!sections.length) throw new Error("缺少论文主题/大纲, 无法生成科研架构");
+  if (!sections.length) throw new Error("缺少论文主题/大纲, 无法生成框架设计");
   // ② LLM 架构分析(非硬依赖: 失败仅记 result 不阻塞节点落库)
   let variables: unknown[] = [];
   let logicFlow = "";
@@ -339,7 +339,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
     const ep = getLlmEndpoint({ model: getRoleModel("reason") });
     const res = await fetchLlm({
       url: ep.url, key: ep.key, model: ep.model,
-      messages: [{ role: "user", content: `你是社科研究架构分析专家。为论文生成科研架构, 输出 JSON:
+      messages: [{ role: "user", content: `你是社科研究架构分析专家。为论文生成框架设计, 输出 JSON:
 {"variables":[{"name":"变量名","role":"自变量|因变量|中介|调节|控制","description":"界定","measurement":"测度"}],
  "logicFlow":"研究主线逻辑(120字内)",
  "step2Text":"研究思路与分析框架说明(400字内)",
@@ -363,7 +363,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
       `select id, payload from research_nodes where project_id=$1 and node_key='sections' for update`, [projectId]);
     // V417: **合并**而不是覆盖。sections 里的 s 只来自 input_snapshot(id/title/level),
     //   直接 `{...s, status:"pending"}` 会把节点里已有的 content/aiSkill 全部抹掉 ——
-    //   实测: 用户在「科研架构」点任一个「重新分析」(该页有 4 个入口且都无确认),
+    //   实测: 用户在「框架设计」点任一个「重新分析」(该页有 4 个入口且都无确认),
     //   已生成的一整批正文与写作指导就没了, status 还退回 pending。
     //   结构以新的为准(id/title/level), 正文与写作指导按 id 从旧节点继承。
     const prevList = Array.isArray((node.rows[0]?.payload as { sections?: unknown } | undefined)?.sections)
@@ -460,9 +460,14 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   } finally {
     client.release();
   }
-  await setStage("Skill 生成", 3);
+  // ⚠ 2026-09-24: 从 `"Skill 生成"` 改成 `"逐章写作指导"`(用户要求去掉英文术语)。
+  //   注意这是**前后端契约**: 前端 SectionsView 靠 `progress.stage` 的关键词匹配推进第 3 步,
+  //   所以改这里必须同步改那边的匹配式(那边已改成同时认新旧, 免得混版本时第 3 步卡住)。
+  //   (另: 闭源原文就叫 "Skill 生成" —— 见 .claude/reverse-engineering/.../deep/sections-dom.txt,
+  //    所以这是一次**刻意偏离逆向对象**的改动, 不是"还原"。)
+  await setStage("逐章写作指导", 3);
   return {
-    text: `科研架构完成: ${sections.length} 个章节, ${variables.length} 个变量`,
+    text: `框架设计完成: ${sections.length} 个章节, ${variables.length} 个变量`,
     structured: {
       sections: sections.map((s) => ({ id: s.id, title: s.title, level: s.level })),
       variables, logicFlow, stepAnalysisTexts: stepTexts,
@@ -1062,7 +1067,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     ? snapshot.chapterContents as string[]
     : nodeSections.map((s) => s.content ?? "").filter((c) => c && c.trim().length > 20));
   if (kind === "merge") {
-    // V417: 用户在「合稿定稿」勾的「降 AIGC」此前写到 input_snapshot 就断了(没人读),
+    // V417: 用户在「统稿定稿」勾的「降 AIGC」此前写到 input_snapshot 就断了(没人读),
     //   等于开关是摆设。现在把它透到摘要/关键词生成, 真正影响产出。
     // 2026-09-15: 扩成三档; 且档位现在**也作用于正文**(此前只影响摘要/关键词,
     //   用户勾了"降AIGC合稿"拿到的还是同一份章节原文)
@@ -1278,7 +1283,7 @@ ${fulltext}
    *   我们这儿 activateVersion 也依赖 research_versions 里真有这一行, 否则 404。
    *
    * 为什么不复用 publishVersion(): 它会顺带 `phase_label = 传入的 label`,
-   *   把"合稿定稿"覆盖成 `phase5_revision`, 进度条上的阶段名会跟着变。
+   *   把"统稿定稿"覆盖成 `phase5_revision`, 进度条上的阶段名会跟着变。
    *   这里只建版本 + 推进 published_version 指针 —— 指针不推的话, 下一次 publishVersion
    *   会算出同一个 nextVer, 撞 (project_id, version) 唯一键。
    */

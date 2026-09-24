@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * SectionsView(Phase2 科研架构) — 还原自闭源 SectionsView-C4lM9Tih.js(L212-1595, 单组件纯消费页)
+ * SectionsView(Phase2 框架设计) — 还原自闭源 SectionsView-C4lM9Tih.js(L212-1595, 单组件纯消费页)
  * 页头统计/AI 分析横幅 3 态/3 步进度+打字机思考/变量卡+假设/章节树(aiSkill 写作指导)
  * 数据源: workbench 快照恢复 + skill-cards(后端 aiSkill 生成)轮询
  */
@@ -113,7 +113,7 @@ const isQual = computed(() => store.input.researchMethod === "qualitative" || (s
 const steps = computed(() => [
   { key: 1, label: isQual.value ? "因素识别" : "变量识别" },
   { key: 2, label: "框架分析" },
-  { key: 3, label: "Skill 生成" }
+  { key: 3, label: "逐章写作指导" }
 ]);
 
 // ── 派生统计(闭源 k/L/C/D/H/$) ──
@@ -123,8 +123,15 @@ const withSkill = computed(() => store.level1Sections.filter((s) => s.aiSkill ||
 const skillComplete = computed(() => withSkill.value > 0 && withSkill.value >= l1Count.value);
 const missingCount = computed(() => Math.max(0, l1Count.value - withSkill.value));
 const canConfirm = computed(() => !analyzing.value && l1Count.value > 0 && withSkill.value >= l1Count.value);
-/** 完成态的三步骤(闭源固定三项: 变量识别 / 框架分析 / Skill 生成) */
-const DONE_STEPS = ["变量识别", "框架分析", "Skill 生成"];
+/**
+ * 完成态的三步骤。
+ *
+ * ⚠ 2026-09-24: 第三步从 "Skill 生成" 改成 "逐章写作指导" —— **刻意偏离闭源**
+ *   (闭源原文就是 "Skill 生成", DOM 实拍里可见)。理由: 全站其余地方都说中文
+ *   (工作台那套是"识别研究变量/构建研究框架/生成写作指导"), 只有这里露着英文术语,
+ *   用户看不懂 "Skill" 指什么。改后与工作台的说法一致。
+ */
+const DONE_STEPS = ["变量识别", "框架分析", "逐章写作指导"];
 
 // ── 变量角色色(闭源 K L355-368 定量 5 色/定性词表) ──
 const roleColor = (role: string): string => {
@@ -157,13 +164,13 @@ async function startAnalysis(force = false) {
     await store.saveProject();
     // 创建 analyze 任务(后端泵执行) — 结果 structured 回填需后端 analyze 执行器产 skills
     const t = await createTask({
-      title: store.input.title || "科研架构分析",
+      title: store.input.title || "框架设计分析",
       projectId: store.taskId,
       module: "workflow",
       jobKind: "analyze",
-      goal: store.input.title || "科研架构分析",
+      goal: store.input.title || "框架设计分析",
       phase: 2,
-      phaseLabel: "科研架构"
+      phaseLabel: "框架设计"
     });
     activeJobId.value = t.id;
     pollJob();
@@ -178,7 +185,7 @@ async function startAnalysis(force = false) {
  * 取消分析: 停轮询 + 后端任务 cancel(防旧 job 泵执行完覆盖; 刷新/重进时恢复续显)。
  *
  * ⚠ 2026-09-17 修: 这里原来只 `analyzing = false` —— 横幅于是**退回了 idle**,
- *   而失败横幅里那句「科研架构分析已取消。可直接重试生成写作指导…」是**死代码**
+ *   而失败横幅里那句「框架设计分析已取消。可直接重试生成写作指导…」是**死代码**
  *   (只有 pollJob 收到 status='cancelled' 才会走到, 但取消时轮询已经被我们自己停了)。
  *   结果是用户点了取消 → 只弹个 toast 就回到"开始分析"的空态, 看不到"接下来能做什么":
  *   已经拿到的变量/章节结构还在, 却没有"只补写作指导"这个入口。
@@ -255,7 +262,7 @@ function pollJob() {
         await generateWritingGuides();
         await store.loadProject();
         analyzing.value = false;
-        toast("科研架构分析完成", "success");
+        toast("框架设计分析完成", "success");
       } else if (t.status === "failed" || t.status === "cancelled") {
         stopPoll();
         analyzing.value = false;
@@ -271,7 +278,9 @@ function pollJob() {
         if (progress?.stage) {
           if (progress.stage.includes("变量") || progress.stage.includes("因素")) analyzeStep.value = 1;
           else if (progress.stage.includes("框架")) analyzeStep.value = 2;
-          else if (progress.stage.includes("Skill") || progress.stage.includes("skill")) analyzeStep.value = 3;
+          // 第 3 步的**关键词匹配**。同时认新旧两种 stage 文案 —— 后端换文案而服务没重启时,
+      // 只认新词会让进度条卡在第 2 步(静默, 界面上只会"不动"), 认两种就没有这个窗口期。
+      else if (/逐章写作指导|写作指导|Skill|skill/.test(progress.stage)) analyzeStep.value = 3;
           analyzeMsg.value = String(progress.stage);
         } else {
           analyzeStep.value = analyzeStep.value || 1;
@@ -334,7 +343,7 @@ function describeJobError(t: unknown): string {
 /** 只生成写作指导(不动章节结构) — analyze 失败/取消后仍可补齐, 否则 skillComplete 永久为假 */
 async function retryGuides() {
   if (guidesBusy.value) return;
-  if (!store.taskId) { toast("请先完成信息录入", "warning"); return; }
+  if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
   if (!store.level1Sections.length) { toast("暂无章节, 请先重新分析生成章节结构", "warning"); return; }
   guidesBusy.value = true;
   try {
@@ -342,7 +351,7 @@ async function retryGuides() {
     await store.loadProject();
     if (skillComplete.value) {
       analyzeFailed.value = false;
-      toast("写作指导已补齐, 可以进入素材准备了", "success");
+      toast("写作指导已补齐, 可以进入文献与资料了", "success");
     } else if (guidesResult.value.ok === 0) {
       // V417: 一条都没生成成功 → 说清原因, 别让用户反复点"重试"却不知道是模型/余额的问题
       toast(`写作指导生成失败${guidesResult.value.error ? `: ${guidesResult.value.error}` : "(模型不可用或余额不足)"}`, "error");
@@ -407,14 +416,14 @@ async function loadSkillCards() {
   } catch { /* 容忍 */ }
 }
 
-// ── 确认进入素材准备(闭源 Z() 门禁) ──
+// ── 确认进入文献与资料(闭源 Z() 门禁) ──
 async function confirmSections() {
   if (!l1Count.value) {
     toast("请至少添加一个章节", "warning");
     return;
   }
   if (!skillComplete.value) {
-    toast("科研架构尚未生成完整, 请先重新分析", "warning");
+    toast("框架设计尚未生成完整, 请先重新分析", "warning");
     return;
   }
   // 2026-09-16: 确认架构时**发布 phase2_architecture 版本**。
@@ -513,7 +522,7 @@ onMounted(async () => {
     activeJobId.value = active.id;
     analyzing.value = true;
     analyzeStep.value = 1;
-    analyzeMsg.value = "正在继续上次的科研架构分析...";
+    analyzeMsg.value = "正在继续上次的框架设计分析...";
     pollJob();
     return;
   }
@@ -542,8 +551,8 @@ onUnmounted(() => {
     <PhaseProgressBar />
     <div class="wf-body">
     <div class="wf-head">
-      <h1 class="wf-h1">科研架构</h1>
-      <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认科研架构后进入创作工作台。</p>
+      <h1 class="wf-h1">框架设计</h1>
+      <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认框架设计后进入创作工作台。</p>
       <!-- 闭源原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
       <p class="wf-stats">共 <span class="stats-num">{{ l1Count }}</span> 章<template v-if="childCount > 0">、{{ childCount }} 个子节</template></p>
     </div>
@@ -551,7 +560,7 @@ onUnmounted(() => {
     <!-- AI 分析横幅(3 态) -->
     <div v-if="analyzeFailed" class="banner banner-fail">
       <div class="banner-head">
-        <strong>{{ analyzeCancelled ? "科研架构分析已取消" : "科研架构生成失败" }}</strong>
+        <strong>{{ analyzeCancelled ? "框架设计分析已取消" : "框架设计生成失败" }}</strong>
       </div>
       <!-- 闭源: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步。
            取消不是"失败", 前缀按状态换, 免得用户以为系统坏了。 -->
@@ -594,7 +603,8 @@ onUnmounted(() => {
 
     <div v-else-if="skillComplete" class="banner banner-done">
       <!-- 2026-09-15: 完成态原先只有一句"分析完成", 三步骤进度条做完就消失。
-           闭源源: 绿头横幅 + 一行三个带 ✓ 的步骤(变量识别/框架分析/Skill 生成) + 「章节分析完成」。 -->
+           闭源源: 绿头横幅 + 一行三个带 ✓ 的步骤(变量识别/框架分析/逐章写作指导) + 「章节分析完成」。
+           第三步闭源原名是 "Skill 生成", 我方改成中文(见 DONE_STEPS 的注释)。 -->
       <div class="banner-head">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6">
           <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
@@ -636,13 +646,13 @@ onUnmounted(() => {
         >
           {{ guidesBusy ? "正在生成写作指导…" : `只生成写作指导(缺 ${missingCount} 章)` }}
         </button>
-        <button class="btn-back" @click="startAnalysis()" data-control="workflow:start-analysis-2">{{ l1Count && !skillComplete ? "重新分析(含章节结构)" : "开始科研架构分析" }}</button>
+        <button class="btn-back" @click="startAnalysis()" data-control="workflow:start-analysis-2">{{ l1Count && !skillComplete ? "重新分析(含章节结构)" : "开始框架设计分析" }}</button>
       </div>
     </div>
 
     <!-- 缺失警告 -->
     <div v-if="missingCount > 0 && !analyzing" class="warn-bar">
-      ⚠ 还有 {{ missingCount }} 章缺少写作指导, 当前科研架构尚未生成完整。
+      ⚠ 还有 {{ missingCount }} 章缺少写作指导, 当前框架设计尚未生成完整。
       <button class="btn-warn" @click="startAnalysis(true)" data-control="workflow:reanalyze">重新分析</button>
     </div>
 
@@ -650,10 +660,10 @@ onUnmounted(() => {
          2026-09-15 前这里是三个互不相干的平级 section, 没有卡头、没有编号、没有计数。 -->
     <!-- V424 两栏: 分析产物(左) + 章节结构(右)。
          原先概览卡与章节树一上一下满屏宽堆叠; 两者是「看框架」与「看章节」的关系,
-         并排看才完整。与信息录入页、合稿页同一套两栏语言。 -->
+         并排看才完整。与选题界定页、合稿页同一套两栏语言。 -->
     <!-- 科研框架概览 + 章节结构 —— **纵向堆叠的单栏**。
          ⚠ 2026-09-23 从两栏改回单栏。原先这里是 `.sec-cols`(概览左 / 章节树右)。
-         核对逆向对象后改了: 闭源科研架构页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
+         核对逆向对象后改了: 闭源框架设计页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
          正文只有三个纵向堆叠的块(标题 / AI分析横幅 / 科研框架概览 / 章节结构 / 底部操作),
          **没有侧栏**(见 .claude/reverse-engineering/socialsci-com/deep/sections-dom.txt 的真实 DOM 实拍)。
          我们那套两栏是 2026-09-21 自己加的, 没有对照依据 —— 现在按你的要求改回来:
@@ -728,7 +738,7 @@ onUnmounted(() => {
         v-if="!store.sections.length"
         icon="⊞"
         title="还没有章节结构"
-        hint="回到「信息录入」填写研究框架（一级章节 + 二级子节），提交后这里会自动解析出章节树。"
+        hint="回到「选题界定」填写研究框架（一级章节 + 二级子节），提交后这里会自动解析出章节树。"
         action="去填研究框架"
         @action="router.push('/workflow/input')"
       />
@@ -796,7 +806,7 @@ onUnmounted(() => {
     <div class="wf-actions">
       <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/input')">返回修改</button>
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
-        确认科研架构, 进入素材准备
+        确认框架设计, 进入文献与资料
       </button>
     </div>
     </div>
@@ -941,7 +951,7 @@ onUnmounted(() => {
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
 /* V424 两栏: 分析产物(左) + 章节结构(右)。章节结构需要更多横向空间(树 + 每章的写作指导),
    所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
-/* ⚠ 2026-09-23: `.sec-cols` / `.sec-col-left` / `.sec-col-right` 已删除 —— 科研架构页改回**单栏**,
+/* ⚠ 2026-09-23: `.sec-cols` / `.sec-col-left` / `.sec-col-right` 已删除 —— 框架设计页改回**单栏**,
    章节结构直接排在科研框架概览下方(与闭源顺序一致)。那套两栏是 2026-09-21 自己加的,
    核对逆向对象发现闭源是 `max-w-5xl mx-auto` 单栏(见 .claude/reverse-engineering/.../sections-dom.txt)。
    单栏之后两栏那套 grid / 列内 gap 都不需要了, 卡片的垂直间距回到**卡片自己的 margin**。 */
@@ -1005,14 +1015,14 @@ onUnmounted(() => {
 .skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: var(--wf-muted); }
 .skill-pending.dim { color: var(--wf-faint); }
 /* 动作行。闭源 `mt-8 pt-6 border-t`(= 32+24 上距 + 一条 1px 分隔线, gap-3=12px)。
-   原值 margin-top:6px 且**无分隔线** —— 与「确认科研架构」上方那一大片内容连成一体,
+   原值 margin-top:6px 且**无分隔线** —— 与「确认框架设计」上方那一大片内容连成一体,
    少了闭源那道"这是页面级操作、不是内容"的视觉分界。 */
 .wf-actions {
   display: flex; gap: 12px;
   margin-top: 32px; padding-top: 24px;
   border-top: 1px solid var(--wf-line);
 }
-/* 主按钮不横贯整幅(与信息录入页统一): 实测原先 flex:1 让它撑到 1156px, 而动作行才 1274px */
+/* 主按钮不横贯整幅(与选题界定页统一): 实测原先 flex:1 让它撑到 1156px, 而动作行才 1274px */
 .wf-actions { justify-content: flex-end; }
 .wf-actions .btn-primary { min-width: 200px; }
 /* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */

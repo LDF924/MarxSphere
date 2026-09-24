@@ -111,7 +111,7 @@ try {
 
   await spyInstall(cdp);
   // 断言用 `.ppb-topic-title`(进度条上的项目名)而**不是输入框** —— 上面 Alt+2 已经把我们带到了
-  // 科研架构页, 那一页没有 `workflow:research-title` 这个输入框, 读出来恒为空串。
+  // 框架设计页, 那一页没有 `workflow:research-title` 这个输入框, 读出来恒为空串。
   // 进度条在五页都在, 用它才不依赖"发快捷键之前先回到哪一页"。
   const topicBefore = await evalTop(cdp, `(document.querySelector('.ppb-topic-title')?.textContent || '').trim()`);
   await evalTop(cdp, `(() => { const it = document.querySelector(${JSON.stringify(`[data-control="workflow:proj-${idB}"]`)}); if (it) it.click(); return !!it; })()`);
@@ -212,8 +212,8 @@ try {
     const eid = empty.json?.id;
     if (!eid) { rec("空项目可进四页", false, "建空项目失败"); }
     else {
-      for (const [name, route] of [["科研架构", "/workflow/sections"], ["素材准备", "/workflow/materials"],
-                                   ["文本创作", "/workflow/workspace"], ["合稿定稿", "/workflow/finalize"]]) {
+      for (const [name, route] of [["框架设计", "/workflow/sections"], ["文献与资料", "/workflow/materials"],
+                                   ["章节写作", "/workflow/workspace"], ["统稿定稿", "/workflow/finalize"]]) {
         await openSoc(cdp, BASE, route, tk, eid, 6500);
         await dismissOverlays(cdp);
         await sleep(1200);

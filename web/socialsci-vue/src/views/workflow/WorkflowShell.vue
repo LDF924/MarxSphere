@@ -17,7 +17,7 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
-import { listProjects, archiveProject, type SocProject } from "@/shared/tasks";
+import { listProjects, archiveProject, deleteProject, type SocProject } from "@/shared/tasks";
 import { toast, confirmDialog } from "@/shared/ui";
 import EmptyState from "./EmptyState.vue";
 
@@ -76,7 +76,7 @@ const visible = computed(() => {
 const hiddenArchived = computed(() => projects.value.filter((p) => p.status === "archived").length);
 
 const STATUS_LABEL: Record<string, string> = { active: "进行中", "in-progress": "进行中", archived: "已归档", done: "已完成" };
-const PHASE_LABEL = ["", "信息录入", "科研架构", "素材准备", "文本创作", "合稿定稿"];
+const PHASE_LABEL = ["", "选题界定", "框架设计", "文献与资料", "章节写作", "统稿定稿"];
 
 function fmtDay(iso?: string): string {
   if (!iso) return "";
@@ -108,6 +108,36 @@ async function pick(p: SocProject) {
  * 归档是**软删**(status='archived'), 列表随之不再返回它 —— 对用户就是"不见了"。
  * 所以必须二次确认, 并把"怎么找回来"讲清楚: 归档的项目要回外壳的历史记录里找。
  */
+/**
+ * 删除项目 —— 与「归档」是**两件不同的事**, 所以文案必须把区别说死:
+ *   · 归档 = 软删(`status='archived'`), 数据保留, 列表不再返回, 可在外壳「历史记录」找回;
+ *   · 删除 = 后端 `DELETE`, 项目从列表消失且**不能按原样找回**。
+ * 这里用 `danger: true` 的二次确认, 并把"无法找回"写进正文 —— 这是本页唯一不可逆的操作。
+ */
+async function doDelete(p: SocProject) {
+  const ok = await confirmDialog({
+    title: "删除项目",
+    message: `「${p.title}」将被删除，且无法从「历史记录」找回。
+(只想让它从列表里消失、日后还能找回 → 用「归档」)`,
+    okText: "删除",
+    cancelText: "取消",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await deleteProject(p.id);
+    toast(`已删除「${p.title}」`, "success");
+    await loadProjects();
+    if (p.id === store.taskId) {
+      const next = visible.value[0];
+      if (next) await store.switchProject(next.id);
+      else store.resetLocal();
+    }
+  } catch (e) {
+    toast(`删除失败: ${(e as Error).message}`, "error");
+  }
+}
+
 async function doArchive(p: SocProject) {
   const ok = await confirmDialog({
     title: "归档项目",
@@ -144,11 +174,11 @@ async function doArchive(p: SocProject) {
  * `ph` 用的是 1..5 的阶段号, 与 `store.phase` 同一套取值。
  */
 const STEPS = [
-  { key: "1", ph: 1, route: "/workflow/input", title: "信息录入" },
-  { key: "2", ph: 2, route: "/workflow/sections", title: "科研架构" },
-  { key: "3", ph: 3, route: "/workflow/materials", title: "素材准备" },
-  { key: "4", ph: 4, route: "/workflow/workspace", title: "文本创作" },
-  { key: "5", ph: 5, route: "/workflow/finalize", title: "合稿定稿" },
+  { key: "1", ph: 1, route: "/workflow/input", title: "选题界定" },
+  { key: "2", ph: 2, route: "/workflow/sections", title: "框架设计" },
+  { key: "3", ph: 3, route: "/workflow/materials", title: "文献与资料" },
+  { key: "4", ph: 4, route: "/workflow/workspace", title: "章节写作" },
+  { key: "5", ph: 5, route: "/workflow/finalize", title: "统稿定稿" },
 ];
 
 const helpOpen = ref(false);
@@ -257,6 +287,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
               title="归档(数据保留，可在外壳历史记录里找回)"
               @click.stop="doArchive(p)"
             >归档</button>
+            <button
+              class="wfs-del" :disabled="!!switching"
+              :data-control="`workflow:proj-delete-${p.id}`"
+              title="删除(不可找回；只想从列表移除请用「归档」)"
+              @click.stop="doDelete(p)"
+            >删</button>
           </div>
 
           <EmptyState
@@ -347,8 +383,18 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .wfs-badge.is-archived { color: var(--wf-faint); }
 .wfs-dot { opacity: .5; }
 /* 归档按钮 hover 才出现 —— 常驻会让列表看起来全是操作按钮, 反而看不出哪个是当前项目 */
-.wfs-archive {
+/* 两个操作并排: 归档在左、删除在右(删除更危险, 放最右且 hover 才出现, 避免误点) */
+.wfs-del {
   position: absolute; right: 6px; bottom: 6px; opacity: 0;
+  padding: 1px 7px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
+  background: var(--wf-surface); color: var(--wf-faint);
+}
+.wfs-item:hover .wfs-del { opacity: 1; }
+.wfs-del:hover:not(:disabled) { color: #E1756B; border-color: #B06A6A; }
+.wfs-del:disabled { cursor: not-allowed; }
+.wfs-archive {
+  position: absolute; right: 42px; bottom: 6px; opacity: 0;
   padding: 1px 7px; font-size: 11px; cursor: pointer;
   border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
   background: var(--wf-surface); color: var(--wf-faint);

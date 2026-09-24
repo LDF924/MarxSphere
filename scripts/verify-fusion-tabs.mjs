@@ -46,7 +46,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 2026-09-13 编排画布重写后, 原来的「可视化DAG编排模式|标准工作流|科研 Agent」全被替换,
 // 这条门禁就误报失败 —— 但它要验的是"iframe 里是本子应用而非 React 兜底", 与具体文案无关。
 const TABS = [
-  { label: "研途写作舱", route: "/workflow/input", want: /信息录入|科研架构|素材|工作流/ },
+  { label: "研途写作舱", route: "/workflow/input", want: /选题界定|框架设计|素材|工作流/ },
   { label: "课题流程编排", route: "/workbench/quick", want: /课题流程编排|能力节点|可用能力/ },
   { label: "论文质量评审", route: "/review", want: /审稿|评审|期刊|标准/ },
   { label: "成果可视化工坊", route: "/viz", want: /绘图|图表|可视化/ },

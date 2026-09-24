@@ -9744,7 +9744,7 @@ except Exception as e:
     return { id };
   });
 
-  // V417: 改项目绑定的数据源(写作舱"信息录入"页可改)
+  // V417: 改项目绑定的数据源(写作舱"选题界定"页可改)
   app.put("/api/research/projects/:projectId/sources", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId } = request.params as { projectId: string };

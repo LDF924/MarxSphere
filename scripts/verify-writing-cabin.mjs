@@ -32,7 +32,7 @@ async function api(token, path, method = "GET", body) {
 
 /** 播种一个处于 Phase4、含二级子节、素材分挂两章的项目 */
 async function seed(token) {
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 4, phaseLabel: "文本创作" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 4, phaseLabel: "章节写作" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const sections = [
@@ -44,7 +44,7 @@ async function seed(token) {
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
     snapshot: {
-      phase: 4, phaseLabel: "文本创作",
+      phase: 4, phaseLabel: "章节写作",
       input: { title: TITLE, outline: "", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] },
       sections, variables: [], hypotheses: [],
       // ⚠ 这里**不能**种 mergeGenerated: true。原注释写「④ 要验合稿模式 tab + 强度档,
@@ -290,7 +290,7 @@ try {
 
   console.log("\n═══ ⑤ 对齐批次的结构断言(2026-09-15 B1-B4) ═══");
   {
-    // 素材准备: 「补充素材来源」整卡 + 手风琴头行内按钮 + 页头三行状态
+    // 文献与资料: 「补充素材来源」整卡 + 手风琴头行内按钮 + 页头三行状态
     const fid = await goto("/workflow/materials");
     const r = fid ? await inFrame(fid, `(() => {
       const tiles = [...document.querySelectorAll('.sc-tile .sc-tile-text')].map(e => e.innerText.trim());
@@ -352,13 +352,13 @@ try {
     t("一级编号有色块", !!sec && sec.l1bg !== null && !/rgba\\(0, 0, 0, 0\\)/.test(sec.l1bg), sec ? `l1bg=${sec.l1bg}` : "—");
 
     // 进度条 metric: 闭源条件是 `(done||active||viewing) && metrics` —— 渲染与否看**有没有数据**,
-    //   不是看状态。旧断言写死"active 必须有 metric"是错的: 本会话项目在 phase4(文本创作),
-    //   active 那个节点是"文本创作", 它有值; 但换个 phase, active 节点(如素材准备)素材为 0 时
+    //   不是看状态。旧断言写死"active 必须有 metric"是错的: 本会话项目在 phase4(章节写作),
+    //   active 那个节点是"章节写作", 它有值; 但换个 phase, active 节点(如文献与资料)素材为 0 时
     //   metric 本就该为空 —— 那是正确行为, 不是缺陷。所以验"有数据的节点渲染了 metric"。
     const p = fid ? await inFrame(fid, `(() => {
-      // 科研架构节点一旦有章节就必须出「N 章节」(它是 done 态, 与 active 同属"该渲染"的集合)
+      // 框架设计节点一旦有章节就必须出「N 章节」(它是 done 态, 与 active 同属"该渲染"的集合)
       const nodes = [...document.querySelectorAll('.ppb-node')];
-      const secNode = nodes.find(n => /科研架构/.test(n.innerText));
+      const secNode = nodes.find(n => /框架设计/.test(n.innerText));
       return {
         metrics: [...document.querySelectorAll('.ppb-metric')].map(e => e.innerText.trim()),
         secHasMetric: !!(secNode && secNode.querySelector('.ppb-metric')),
@@ -366,10 +366,10 @@ try {
         nodeStates: nodes.map(n => ({ cls: [n.className].flat().join(' '), hasMetric: !!n.querySelector('.ppb-metric'), text: n.innerText.replace(/\s+/g,' ').trim().slice(0, 14) })),
       };
     })()`) : null;
-    // 有 2 个一级章节 → 科研架构节点必须显示「2 章节」; 且 metric 不能只出现在 done 上
+    // 有 2 个一级章节 → 框架设计节点必须显示「2 章节」; 且 metric 不能只出现在 done 上
     t("有数据的节点渲染 metric(非只 done 态)",
       !!p?.secHasMetric && /2 章节/.test(p?.secMetricText ?? ""),
-      p ? `科研架构=${p.secMetricText} 全部=[${p.metrics.join(" | ")}]` : "—");
+      p ? `框架设计=${p.secMetricText} 全部=[${p.metrics.join(" | ")}]` : "—");
   }
 
   console.log("\n═══ ⑦ 无 JS 错误 ═══");

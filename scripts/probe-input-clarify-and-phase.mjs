@@ -1,4 +1,4 @@
-// scripts/probe-input-clarify-and-phase.mjs — 信息录入页「澄清轮」+ 阶段推进条 动作探针
+// scripts/probe-input-clarify-and-phase.mjs — 选题界定页「澄清轮」+ 阶段推进条 动作探针
 //
 // 覆盖表第四轮: 这两处此前一个动作都没验过。
 //   输入页: 主题/字数/研究方法/参考来源 四个输入 + 澄清轮四态(idle/loading/error/done)
@@ -41,7 +41,7 @@ try {
 
   // ── 播种: 含研究方法与参考来源的完整输入 ──
   const TITLE = `输入探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 1, phaseLabel: "信息录入" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 1, phaseLabel: "选题界定" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) throw new Error("建项目失败");
   const INPUT = {
@@ -51,7 +51,7 @@ try {
   const sections = [{ id: "sec_0", title: "引言", level: 1, order: 0, status: "pending" }];
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 1, phaseLabel: "信息录入", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 1, phaseLabel: "选题界定", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   console.log(`项目 ${pid}\n`);
 
@@ -172,13 +172,30 @@ try {
   // ── ② 澄清轮(手风琴 + 四态) ──
   console.log("\n═══ ② 澄清轮 ═══");
   {
-    const toggle = await probeAction(cdp, '[data-control="workflow:clarify-toggle"]', { wait: 900 });
-    const opened = await evalTop(cdp, `(() => {
+    /**
+     * ⚠ 2026-09-24: 断言改成**按当前状态驱动**, 不再假设"初始是折叠的"。
+     *
+     * 起因: 手风琴的默认状态从折叠改成了**展开**(用户要求"保持一直打开")。
+     *   原断言是"点一下 → 应该变成展开", 于是在新默认下, 点一下反而把它**折叠**了,
+     *   探针如实报 DEAD —— 那是**断言前提过期**, 不是功能坏了。
+     *
+     * 现在要验的是"这个手风琴**能开合**", 与初始状态无关:
+     *   先读当前是否展开 → 点 → 断言状态**翻转**了 → 再点回来(把页面还原, 后面的步骤还等着用)。
+     *   断言的对象没变(手风琴可开合), 只是不再把它钉死在某一个初始状态上。
+     */
+    const readOpen = () => evalTop(cdp, `(() => {
       const b = document.querySelector('.clarify-body');
       return { open: !!b, hasRun: !!document.querySelector('[data-control="workflow:clarify"]') };
     })()`);
-    rec("clarify-toggle(展开手风琴)", toggle.clicked && opened?.open ? "ok" : "DEAD",
-      `点击=${toggle.clicked} 展开=${opened?.open} 有「AI 分析我的研究」=${opened?.hasRun}`);
+    const before = await readOpen();
+    const toggle = await probeAction(cdp, '[data-control="workflow:clarify-toggle"]', { wait: 900 });
+    const after = await readOpen();
+    const flipped = !!before?.open !== !!after?.open;
+    rec("clarify-toggle(手风琴可开合)", toggle.clicked && flipped ? "ok" : "DEAD",
+      `初始展开=${before?.open} → 点击后展开=${after?.open}(应翻转) 有「AI 分析我的研究」=${after?.hasRun}`);
+    // 还原成"展开"态, 后面的步骤要在这个状态下继续
+    if (!after?.open) await probeAction(cdp, '[data-control="workflow:clarify-toggle"]', { wait: 900 });
+    const opened = await readOpen();
 
     if (ALL && opened?.hasRun) {
       const run = await probeAction(cdp, '[data-control="workflow:clarify"]', { wait: 3500 });
@@ -240,7 +257,7 @@ try {
     rec("new-project 确认后真建项目并切指针",
       clicked && !!afterPtr && afterPtr !== beforePtr && freshOk ? "ok" : "ERR",
       `指针 ${String(beforePtr).slice(0, 8)} → ${String(afterPtr).slice(0, 8)} 该项目可读=${freshOk} hash=${hash}`);
-    rec("新项目落回信息录入页", /\/workflow\/input/.test(hash ?? "") ? "ok" : "ERR", `hash=${hash}`);
+    rec("新项目落回选题界定页", /\/workflow\/input/.test(hash ?? "") ? "ok" : "ERR", `hash=${hash}`);
   }
 
   console.log("\n════════ 汇总 ════════");

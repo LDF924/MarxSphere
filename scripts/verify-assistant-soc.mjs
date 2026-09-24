@@ -28,7 +28,7 @@ const api = async (token, path, method = "GET", body) => {
 
 const token = await loginToken("audit", "audit123456");
 if (!token) { console.error("登录失败, 无法播种"); process.exit(1); }
-const proj = await api(token, "/research/projects", "POST", { title: `助手门禁-${Date.now()}`, status: "in-progress", phase: 3, phaseLabel: "素材准备" });
+const proj = await api(token, "/research/projects", "POST", { title: `助手门禁-${Date.now()}`, status: "in-progress", phase: 3, phaseLabel: "文献与资料" });
 const pid = (proj?.data ?? proj)?.id;
 await api(token, `/research/projects/${pid}/nodes/input`, "PUT", {
   payload: {

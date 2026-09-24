@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * FinalizeView(Phase5 合稿定稿) — 还原自闭源 FinalizeView-Br8-MIOb.js(L172-1748)
+ * FinalizeView(Phase5 统稿定稿) — 还原自闭源 FinalizeView-Br8-MIOb.js(L172-1748)
  * 合稿三轮(merge→review→revise) + 时间轴 + 终稿元数据编辑 + 导出 md/html(Word 走前端 docx 构建)
  * 后端: jobKind merge/phase5_review/phase5_revise → 泵 → project merged_* 列 + review_result 回读
  */
@@ -551,7 +551,7 @@ async function doMerge() {
       jobKind: "merge",
       goal: store.input.title,
       phase: 5,
-      phaseLabel: "合稿定稿",
+      phaseLabel: "统稿定稿",
       inputSnapshot: {
         sections: l1.map((s) => ({ title: s.title })),
         chapterContents: l1.map((s) => s.content ?? ""),
@@ -594,7 +594,7 @@ async function doReview() {
       jobKind: "phase5_review",
       goal: store.input.title,
       phase: 5,
-      phaseLabel: "合稿定稿",
+      phaseLabel: "统稿定稿",
       inputSnapshot: {}
     });
     pollTask(t.id, "review", async () => {
@@ -624,7 +624,7 @@ async function doRevise() {
       jobKind: "phase5_revise",
       goal: store.input.title,
       phase: 5,
-      phaseLabel: "合稿定稿",
+      phaseLabel: "统稿定稿",
       inputSnapshot: {}
     });
     pollTask(t.id, "revise", async () => {
@@ -1153,7 +1153,7 @@ onMounted(async () => {
          (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与闭源不是同一版式。
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
     <div class="wf-head-center">
-      <h1 class="wf-h1">合稿定稿</h1>
+      <h1 class="wf-h1">统稿定稿</h1>
       <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
     </div>
 
@@ -1168,14 +1168,14 @@ onMounted(async () => {
 
     <!-- V424 两栏: 轮次流(左) 与 终稿内容(右)。
          原先这两块**纵向堆叠**、各自满屏宽, 要滚动才能互相看到 ——
-         而它们的用途是同时看的(盯进度 + 改正文)。与信息录入页同一套两栏语言。 -->
-    <!-- 合稿定稿正文区 —— **纵向堆叠的单栏**: 终稿内容(标题/摘要/正文/参考文献/导出) 在前,
+         而它们的用途是同时看的(盯进度 + 改正文)。与选题界定页同一套两栏语言。 -->
+    <!-- 统稿定稿正文区 —— **纵向堆叠的单栏**: 终稿内容(标题/摘要/正文/参考文献/导出) 在前,
          三轮主流程(合并/审查/四检/深度分析/修订) 在后。
          ⚠ 2026-09-24 从两栏改回单栏(按你的要求)。**这里要说清一件事, 免得日后有人又"修回去"**:
          闭源合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
          左列 `lg:col-span-2`(2/3, 流程) + 右列(1/3)。**但容器上限是 max-w-7xl(1280), 不是别页的 max-w-5xl**。
          (依据: .claude/reverse-engineering/socialsci-com/FinalizeView.js 的渲染函数)
-         所以单栏是**你的取舍**, 不是"对齐闭源" —— 与科研架构页那次(闭源本就是单栏)不是一回事。 -->
+         所以单栏是**你的取舍**, 不是"对齐闭源" —— 与框架设计页那次(闭源本就是单栏)不是一回事。 -->
 
     <!-- ═══ 三轮主流程 ═══ -->
 

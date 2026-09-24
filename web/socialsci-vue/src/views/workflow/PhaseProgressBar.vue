@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * PhaseProgressBar(阶段进度条) — 还原自闭源 phase-progress(6 节点 ppb-* 语义, DeepDive-DOM-DECODED §阶段进度条)
- * 节点: 研究主题 → 1信息录入 → 2科研架构 → 3素材准备 → 4文本创作 → 5合稿定稿
+ * 节点: 研究主题 → 1选题界定 → 2框架设计 → 3文献与资料 → 4章节写作 → 5统稿定稿
  * 形态: ppb-topic 研究主题卡(已完成绿点) + ppb-node(done ✓/active 序号+metric/pending 灰)+ ppb-line 连接线
  * 点击导航: 已完成/当前阶段可达; 向后阶段需按顺序推进(门禁提示在本组件 goNode 内)
  */
@@ -18,13 +18,13 @@ const store = useWorkflowStore();
 const wrapperRef = ref<HTMLElement | null>(null);
 
 const NODES = [
-  { ph: 1, key: "input", title: "信息录入", path: "/workflow/input" },
-  { ph: 2, key: "sections", title: "科研架构", path: "/workflow/sections" },
-  { ph: 3, key: "materials", title: "素材准备", path: "/workflow/materials" },
-  { ph: 4, key: "workspace", title: "文本创作", path: "/workflow/workspace" },
-  { ph: 5, key: "finalize", title: "合稿定稿", path: "/workflow/finalize" }
+  { ph: 1, key: "input", title: "选题界定", path: "/workflow/input" },
+  { ph: 2, key: "sections", title: "框架设计", path: "/workflow/sections" },
+  { ph: 3, key: "materials", title: "文献与资料", path: "/workflow/materials" },
+  { ph: 4, key: "workspace", title: "章节写作", path: "/workflow/workspace" },
+  { ph: 5, key: "finalize", title: "统稿定稿", path: "/workflow/finalize" }
 ];
-/** 研究主题步(未完成过信息录入 → 主题未成; 视为 done 态当 phase>0 或有标题) */
+/** 研究主题步(未完成过选题界定 → 主题未成; 视为 done 态当 phase>0 或有标题) */
 const topicDone = computed(() => store.phase >= 1 || !!store.input.title.trim() || !!store.taskId);
 
 /**
@@ -51,7 +51,7 @@ const routePh = computed(() => {
 watch(routePh, (v) => { if (v) viewing.value = v; }, { immediate: true });
 
 function nodeState(n: { ph: number }) {
-  // store.phase 编号: 1=信息录入 2=科研架构 3=素材准备 4=文本创作 5=合稿定稿
+  // store.phase 编号: 1=选题界定 2=框架设计 3=文献与资料 4=章节写作 5=统稿定稿
   const cur = Math.max(1, Math.min(5, store.phase || 1));
   if (n.ph < cur) return "done";
   if (n.ph === cur) return "active";
@@ -66,7 +66,7 @@ function nodeState(n: { ph: number }) {
  * "没走过就不能看"。查下来那个门禁**站不住**:
  *
  *  · **不是技术限制**: 拿一个全新空项目直接用 URL 访问这四页, 全部正常渲染,
- *    四页各自都有空态与引导按钮("开始科研架构分析" / "去填研究框架" / "智能生成素材"…),
+ *    四页各自都有空态与引导按钮("开始框架设计分析" / "去填研究框架" / "智能生成素材"…),
  *    没有路由守卫、没有报错。拦住用户的只是这个判断;
  *  · **判据是错的对象**: `store.phase` 是个标量, 只在四个「确认」按钮里 +1 ——
  *    它记的是"你点到哪儿了", 不是"你做完了什么"。于是"阶段 3 不可达"的真实含义
@@ -116,8 +116,8 @@ function isSectionGenerated(s: { status?: string; content?: string }): boolean {
 
 /**
  * 节点 metric(逐字对照闭源 index-main.js 的 5 个节点定义):
- *   科研架构 `N 章节` / 素材准备 `N 条` / 文本创作 `已生成/总数` / 合稿定稿 `已定稿|待确认`
- * 2026-09-15 修: 原实现里素材写成「N 素材」、文本创作写成「N 章节」, 且合稿节点的 metric 完全没做。
+ *   框架设计 `N 章节` / 文献与资料 `N 条` / 章节写作 `已生成/总数` / 统稿定稿 `已定稿|待确认`
+ * 2026-09-15 修: 原实现里素材写成「N 素材」、章节写作写成「N 章节」, 且合稿节点的 metric 完全没做。
  */
 function nodeMetric(n: { key: string }): string {
   if (n.key === "sections") return store.level1Sections.length ? `${store.level1Sections.length} 章节` : "";
@@ -231,8 +231,14 @@ async function newProject() {
 .phase-progress-bar { position: relative; width: 100%; height: 100%; }
 /* V420: 去掉 `max-width:1200px`。闭源那个限宽是为了让进度条在它的文档页里居中;
    我方页面已改全宽, 留着就是**在 1440 视口上左右各空 120px**, 进度条看着像被框住。
-   改成吃满可用宽度, 内部元素本来就 justify-content:center, 视觉仍居中。 */
-.ppb-inner { display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 20px; margin: 0 auto; height: 100%; width: 100%; }
+   改成吃满可用宽度。
+   ⚠ 2026-09-24 再改: 原先 `justify-content:center` —— 在 1536 视口下实测**左空 181px、右空 196px**,
+   而中间的主题卡与节点已经排到 1325px(条宽 1289), 加上"新项目"按钮又把内容挤得更紧。
+   改成**左对齐**: 主题卡贴左边, "新项目"用 `margin-left:auto` 推到最右 —— 这样两头都用上了,
+   中间的空白变成"节点与按钮之间的弹性间距", 而不是两边各空一块。
+   (闭源无此问题: 它的进度条挂在 max-w-5xl 的文档页里, 本来就不会这么宽。) */
+.ppb-inner { display: flex; align-items: center; justify-content: flex-start; gap: 0; padding: 0 20px; margin: 0 auto; height: 100%; width: 100%; }
+.ppb-new-btn { margin-left: auto; }
 .ppb-topic {
   /* 闭源: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
   width: 280px; flex-shrink: 0; margin: 0 24px 0 0; min-width: 0;
@@ -318,6 +324,18 @@ async function newProject() {
   color: var(--wf-muted); background: none; padding: 0;
 }
 .ppb-label.active .ppb-metric, .ppb-label.viewing .ppb-metric { color: #6FA8F5; }
+/*
+ * ⚠ 2026-09-24: 补**基础规则** —— 此前这里**只有 `:hover`**, 没有任何基础样式。
+ *   后果实测: 按钮宽 48px, 里面的 svg(13px) 与「新项目」三个字按 inline 排不下 → **换行**,
+ *   渲染成"加号在上、新项目在下"两行(截图确认)。
+ *   补成 inline-flex + nowrap: 图标与文字同一行, 且按钮不再被压窄。
+ */
+.ppb-new-btn {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  flex-shrink: 0; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--wf-line); background: var(--wf-raised);
+  color: var(--wf-muted); font-size: 13px; font-weight: 600; font-family: inherit;
+}
 .ppb-new-btn:hover { border-color: #B06A6A; color: var(--wf-text); }
 
 /*

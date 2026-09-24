@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * WorkspaceView(Phase4 文本创作) — 还原自闭源 WorkspaceView-Baf0x_1H.js(L735-2706, scope data-v-2b778b5d)
+ * WorkspaceView(Phase4 章节写作) — 还原自闭源 WorkspaceView-Baf0x_1H.js(L735-2706, scope data-v-2b778b5d)
  * 三栏: 左章节导航(SectionNavItem 递归)/中正文编辑器+生成控制/右素材卡(MaterialCard)
  * 生成: 单节/批量 phase4_batch job → 泵 → 800ms 轮询 → nodes/sections 回读 content
  */
@@ -155,7 +155,7 @@ async function generateSection() {
       jobKind: "phase4_batch",
       goal: store.input.title,
       phase: 4,
-      phaseLabel: "文本创作",
+      phaseLabel: "章节写作",
       inputSnapshot: {
         sections: store.sections.filter((s) => targets.includes(s.id)).map((s) => ({
           id: s.id, title: s.title, level: s.level,
@@ -203,7 +203,7 @@ async function generateAll() {
       jobKind: "phase4_batch",
       goal: store.input.title,
       phase: 4,
-      phaseLabel: "文本创作",
+      phaseLabel: "章节写作",
       inputSnapshot: {
         sections: store.sections.map((s) => ({
           id: s.id, title: s.title, level: s.level,
@@ -882,7 +882,7 @@ function stopAiPoll() {
 
 /** 开始/重新分析(闭源 ue()=generateSkillsForSections): analyze job 泵 → 变量/框架/写作指导回填 */
 async function runStructuredAnalysis() {
-  if (!store.taskId) { toast("请先完成信息录入", "warning"); return; }
+  if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
   if (!store.level1Sections.length) { toast("请先确认章节清单", "warning"); return; }
   if (aiThinking.value) return;
   aiThinking.value = true;
@@ -898,7 +898,7 @@ async function runStructuredAnalysis() {
       jobKind: "analyze",
       goal: store.input.title || "结构化分析",
       phase: 2,
-      phaseLabel: "科研架构"
+      phaseLabel: "框架设计"
     });
     aiJobId.value = t.id;
     pollAnalyzeJob(t.id);
@@ -1069,7 +1069,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         size="sm"
         icon="⊞"
         title="还没有章节"
-        hint="章节来自「信息录入」里填的目录。填好目录并跑一次科研架构分析，这里就会出现可逐章创作的章节树。"
+        hint="章节来自「选题界定」里填的目录。填好目录并跑一次框架设计分析，这里就会出现可逐章创作的章节树。"
       />
       <div v-else class="nav-list">
         <div v-for="(s, i) in l1List" :key="s.id" class="nav-l1" :class="{ active: activeSecId === s.id }" @click="selectSection(s)">
@@ -1112,7 +1112,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             ? `生成中 (${genProgress.current ?? 0}/${genProgress.total ?? 0})`
             : l1List.length && pendingCount === 0 ? "重新生成全部" : "智能全局思考" }}
         </button>
-        <button class="btn-back-sm" data-control="workflow:back" @click="router.push('/workflow/materials')">返回素材准备</button>
+        <button class="btn-back-sm" data-control="workflow:back" @click="router.push('/workflow/materials')">返回文献与资料</button>
         <!-- 闭源: 未全部完成时不可进入合稿, 文案带未完成章数 -->
         <button
           class="btn-finalize-all"

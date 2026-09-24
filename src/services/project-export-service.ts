@@ -248,7 +248,7 @@ function versionsSection(
   histories: Array<{ nodeKey: string; items: Array<{ version: number; by_role: string; note: string; created_at: unknown }> }>,
 ): string {
   const LABEL: Record<string, string> = {
-    phase2_architecture: "科研架构确认", phase3_materials: "素材版本",
+    phase2_architecture: "框架设计确认", phase3_materials: "素材版本",
     phase4_text: "正文生成完成", phase5_final: "终稿", phase5_revision: "修订稿",
   };
   const ts = (v: unknown) => (v ? new Date(String(v)).toLocaleString("zh-CN") : "");

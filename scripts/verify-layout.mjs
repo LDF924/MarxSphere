@@ -16,7 +16,7 @@ const api = async (tk, path, method = "GET", body) => {
   return r.ok ? r.json().catch(() => ({})) : { __status: r.status };
 };
 const tk = await loginToken("audit", "audit123456");
-const p = await api(tk, "/research/projects", "POST", { title: `布局实测-${Date.now()}`, status: "in-progress", phase: 4, phaseLabel: "文本创作" });
+const p = await api(tk, "/research/projects", "POST", { title: `布局实测-${Date.now()}`, status: "in-progress", phase: 4, phaseLabel: "章节写作" });
 const pid = p.id ?? p.data?.id;
 await api(tk, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: { title: "布局实测研究", outline: "一、引言\n  1.1 背景\n二、综述", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] }, sections: [] } });
 await api(tk, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections: [
@@ -99,7 +99,7 @@ const MEASURE = `(() => {
   /**
    * 窗口级滚动条是否存在 —— 用**可见事实**判, 不看它是怎么实现的。
    *
-   * 2026-09-22 用户报"信息录入页有两个上下滑动": 实拍确认文档比视口高 68px, 窗口因此
+   * 2026-09-22 用户报"选题界定页有两个上下滑动": 实拍确认文档比视口高 68px, 窗口因此
    *   多出一条滚动条, 而滚动它会**把吸顶的进度条一起顶上去**(实测 top 0 → -68)。
    *   「根元素 offsetWidth - clientWidth > 0」正是"渲染出了竖向滚动条"这个事实,
    *   与用 overflow:hidden 还是别的手段无关。
@@ -112,10 +112,10 @@ const MEASURE = `(() => {
    * 两栏底部落差 —— **刻意不做成断言**, 只留一段说明。
    *
    * 2026-09-22 试过, 结论是这条在这个仓里做不可靠: 每个两栏页都有一栏是**可变高**的 ——
-   *   · 信息录入页左栏是**大纲编辑器**, 实测 1440 下高 485px、1600 下只有 363px
+   *   · 选题界定页左栏是**大纲编辑器**, 实测 1440 下高 485px、1600 下只有 363px
    *     (窄了要换行), 而右栏三张卡在两种宽度下**完全一样**;
    *   · 合稿页右栏是整篇正文(一个 finale-card), 高度随稿件任意长;
-   *   · 科研架构页两栏都装长度不定的树与指导。
+   *   · 框架设计页两栏都装长度不定的树与指导。
    * 于是"两栏齐平"这条判据的噪声(23%)与真正要拦的信号(32%)只差 9 个百分点, 宽度一变就翻。
    * **没有可靠判据的检查不如不写** —— 写了只会变成需要反复调阈值的假失败来源。
    *
@@ -153,10 +153,10 @@ const MEASURE = `(() => {
    */
   const colPairs = [];
   // ⚠ 2026-09-23: 去掉 sections 那一对(该页已改单栏)。
-  // ⚠ 2026-09-24: 再去掉 finalize 那一对(合稿页也改单栏)。**现在只剩信息录入页是两栏**。
+  // ⚠ 2026-09-24: 再去掉 finalize 那一对(合稿页也改单栏)。**现在只剩选题界定页是两栏**。
   //   (⚠ 本段在模板串内部: 别写反引号, 它会闭合模板串 —— 本文件已因此踩坑多次)
   //   这条断言随两栏页一起减少是**对的行为**: 它验的是「内容栏不得窄于侧栏」,
-  //   单栏页没有这个关系可验。等哪天信息录入页也改单栏, 它就该整体退役。
+  //   单栏页没有这个关系可验。等哪天选题界定页也改单栏, 它就该整体退役。
   for (const [content, aside] of [['.iv-col-main', '.iv-col-side']]) {
     const a = document.querySelector(content), b = document.querySelector(aside);
     if (!a || !b) continue;
@@ -237,7 +237,7 @@ try {
     const h1 = document.querySelector('.wf-h1');
     const head = h1 ? h1.closest('.wf-head') : null;
     const banner = document.querySelector('.banner');
-    // ⚠ 2026-09-23: 量 **overview-card** 而不是 tree-card。科研架构页改回单栏后,
+    // ⚠ 2026-09-23: 量 **overview-card** 而不是 tree-card。框架设计页改回单栏后,
     //   tree-card 是**最后一个块**, 下距归零交给页面底部; 夹在中间、真正需要下距的是概览卡。
     //   (两栏时两者都归零、间距由列的 gap 提供 —— 现在没有列了, 间距回到卡片自己的 margin。)
     const card = document.querySelector('.overview-card');
@@ -258,7 +258,7 @@ try {
   const eq = (label, got, want) => rec("sections@节奏", label, got === want, `实测=${got} 闭源=${want}`);
   eq("页头块下距 mb-8", R.headMb, 32);
   eq("状态卡下距 mb-6", R.bannerMb, 24);
-  // ⚠ 2026-09-23 再变一次: 科研架构页**从两栏改回单栏**(对齐闭源), 列的 gap 不存在了 ——
+  // ⚠ 2026-09-23 再变一次: 框架设计页**从两栏改回单栏**(对齐闭源), 列的 gap 不存在了 ——
   //   卡片之间的垂直间距回到**卡片自己的 margin**(概览卡 14px)。
   //   这条断言的对象与 2026-09-21 那次是同一个(卡片外边距), 只是值随版式而变:
   //     两栏 → 0(交给 gap) · 单栏 → 14(自己承担)。**判断依据没变: 它必须有个来源, 且不能叠加。**

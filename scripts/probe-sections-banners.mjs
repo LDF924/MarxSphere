@@ -1,4 +1,4 @@
-// scripts/probe-sections-banners.mjs — 科研架构页 横幅态动作探针(失败态 / 分析中 / 引导补齐)
+// scripts/probe-sections-banners.mjs — 框架设计页 横幅态动作探针(失败态 / 分析中 / 引导补齐)
 //
 // 覆盖表第六轮。**为什么要专门验这一页**: SectionsView 的 6 个动作**全部**长在
 //   `analyzeFailed` / `analyzing` / `missingCount>0` 三种横幅里 —— 正常路径的门禁
@@ -47,7 +47,7 @@ const bannerState = (cdp) => evalTop(cdp, `(() => {
 /** 播种: 有章节结构但**没有**写作指导(skill 不全) → 天然落在 idle 横幅的补齐入口 */
 async function seed(token) {
   const TITLE = `架构横幅探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 2, phaseLabel: "科研架构" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 2, phaseLabel: "框架设计" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const INPUT = { title: TITLE, outline: "一、引言\n  1.1 研究背景\n二、文献综述\n  2.1 已有研究", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
@@ -60,16 +60,24 @@ async function seed(token) {
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 2, phaseLabel: "科研架构", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 2, phaseLabel: "框架设计", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   return { pid };
 }
 
 const { cdp, ev, close } = await startCdp({ preferredPort: 31063, label: "probe-sections-banners" });
+/** 播种出来的项目 id —— **必须在 finally 里删掉**。
+ *  ⚠ 2026-09-24 补: 本探针一直**建项目却从不删**(同目录的 project-rail / materials-actions 都成对删)。
+ *  后果是每跑一次门禁就在生产库里留一个「架构横幅探针-<时间戳>」, 几十轮排查后积了一堆 ——
+ *  用户看到项目栏里全是这种名字, 以为自己的项目被污染了。测试产物就该由测试自己收尾。 */
+let seededPid = "";
+let token = "";   // ⚠ 必须在 try 外 —— finally 的清理要用它(第一版漏了, 结果 ReferenceError 被 catch 吞掉)
+
 try {
-  const token = await loginToken("audit", "audit123456");
+  token = await loginToken("audit", "audit123456");
   if (!token) throw new Error("登录失败");
   const s = await seed(token);
+  seededPid = s?.pid ?? "";
   if (!s?.pid) throw new Error("播种失败");
   console.log(`项目 ${s.pid}(有章节、无写作指导)\n`);
 
@@ -201,5 +209,17 @@ try {
   console.error("探针异常:", e.message, e.stack?.split("\n")[1] ?? "");
   process.exitCode = 1;
 } finally {
+  // 收尾: 删掉本次播的项目 —— 别再往生产库里积测试数据
+  if (seededPid) {
+    try {
+      const r = await api(token, `/research/projects/${seededPid}`, "DELETE");
+      // ⚠ 也要看返回码: api() 失败时**不抛错**, 而是返回 `{__status}` —— 只 try/catch 会漏掉"请求发出但被拒"
+      if (r && r.__status && r.__status >= 400) console.error(`  (清理临时项目被拒 HTTP ${r.__status}, 需手动删: ${seededPid})`);
+    } catch (e) {
+      // ⚠ 错误信息**必须打出来**: 第一版这里 catch 了却只写"失败", 把 ReferenceError(token 不在作用域)
+      //   吞成了一句无信息量的话, 我为此白跑一轮才发现真因。
+      console.error(`  (清理临时项目失败: ${e?.message ?? e} — 需手动删: ${seededPid})`);
+    }
+  }
   await close();
 }

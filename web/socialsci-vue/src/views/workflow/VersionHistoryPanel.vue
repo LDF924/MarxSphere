@@ -48,7 +48,7 @@ const versionsErr = ref("");
 /**
  * 当前选中的节点, 先给个初值, 打开时再按**真实历史条数**改选。
  *
- * 初值不能直接取 nodeKeys[0]: 那会恒落在「研究信息」上 —— 而 input 节点只在信息录入完成时
+ * 初值不能直接取 nodeKeys[0]: 那会恒落在「研究信息」上 —— 而 input 节点只在选题界定完成时
  * 写过一次,**首写不产生历史**(见下方空态文案), 所以它长期是 0 条; 章节/素材/合稿才是
  * 天天在改的那几个。用户一进来就看到"这里没有历史记录", 而隔壁标签里躺着几十条 ——
  * 这是"抽屉打开时该选谁"的问题, 不是数据问题。
@@ -67,7 +67,7 @@ function openDiff(h: { id: string; version: number }) {
 
 /** 阶段标签是**机器标签**(phase3_materials), 直接摊给用户看等于让人读代码 */
 const LABELS: Record<string, string> = {
-  phase2_architecture: "科研架构确认",
+  phase2_architecture: "框架设计确认",
   phase3_materials: "素材版本",
   phase4_text: "正文生成完成",
   phase5_final: "终稿",
@@ -243,7 +243,7 @@ async function doRollback(h: NodeHistoryItem) {
                 size="sm"
                 icon="⧉"
                 title="还没有发布过版本"
-                hint="在科研架构页确认章节、或在素材页点「确认并进入创作」时，会自动发布一个版本。"
+                hint="在框架设计页确认章节、或在素材页点「确认并进入创作」时，会自动发布一个版本。"
               />
               <p v-if="loadingVersions" class="vh-loading">加载中…</p>
             </template>

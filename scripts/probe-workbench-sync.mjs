@@ -32,7 +32,7 @@ const api = async (token, path, method = "GET", body) => {
 /** 播种: 一个到合稿阶段的完整项目 */
 async function seed(token) {
   const TITLE = `同步探针-${Date.now()}`;
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 5, phaseLabel: "合稿定稿" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase: 5, phaseLabel: "统稿定稿" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const INPUT = { title: TITLE, outline: "一、引言\n二、结论", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] };
@@ -43,7 +43,7 @@ async function seed(token) {
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/nodes/sections`, "PUT", { payload: { sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase: 5, phaseLabel: "合稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase: 5, phaseLabel: "统稿定稿", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   await api(token, `/research/projects/${pid}/nodes/finalize`, "PUT", {
     payload: { mergedTitle: TITLE, mergedAbstract: "", mergedKeywords: "", mergedFullText: "合稿正文。", mergedReferences: "" },
@@ -67,7 +67,7 @@ try {
   {
     // 直接走前端那条路: 改本地 + saveProject(不手写节点 —— 那正是要验的"服务端替我同步")
     const wrote = await api(token, `/research/projects/${s.pid}/workbench`, "PUT", {
-      snapshot: { phase: 5, phaseLabel: "合稿定稿", isFinalized: true },
+      snapshot: { phase: 5, phaseLabel: "统稿定稿", isFinalized: true },
     });
     rec("PUT /workbench 接受提交", wrote?.ok ? "ok" : "ERR", `syncedNodes=${JSON.stringify(wrote?.syncedNodes ?? null)}`);
 
@@ -99,7 +99,7 @@ try {
   {
     const fakeId = `file_probe_${Date.now()}`;
     await api(token, `/research/projects/${s.pid}/workbench`, "PUT", {
-      snapshot: { phase: 5, phaseLabel: "合稿定稿", statisticsFileId: fakeId },
+      snapshot: { phase: 5, phaseLabel: "统稿定稿", statisticsFileId: fakeId },
     });
     // 刷新页面(走前端 loadProject 那条路), 再读接口 —— 两边都该有
     await cdp("Page.reload");
@@ -125,7 +125,7 @@ try {
       { id: "sec_1", title: "结论", level: 1, order: 1, status: "pending", content: "" },
     ];
     await api(token, `/research/projects/${s.pid}/workbench`, "PUT", {
-      snapshot: { phase: 5, phaseLabel: "合稿定稿", sections: staleSections },
+      snapshot: { phase: 5, phaseLabel: "统稿定稿", sections: staleSections },
     });
     const node = await api(token, `/research/projects/${s.pid}/nodes/sections`);
     const secs = node?.node?.payload?.sections ?? [];
@@ -136,7 +136,7 @@ try {
     // 但编辑性字段要跟着走
     const renamed = [{ id: "sec_0", title: "引言(改过标题)", level: 1, order: 0 }];
     await api(token, `/research/projects/${s.pid}/workbench`, "PUT", {
-      snapshot: { phase: 5, phaseLabel: "合稿定稿", sections: renamed },
+      snapshot: { phase: 5, phaseLabel: "统稿定稿", sections: renamed },
     });
     const node2 = await api(token, `/research/projects/${s.pid}/nodes/sections`);
     const secs2 = node2?.node?.payload?.sections ?? [];
@@ -153,7 +153,7 @@ try {
     const before = (await api(token, `/research/projects/${s.pid}/nodes/sections`))?.node?.version ?? -1;
     for (let i = 0; i < 3; i++) {
       await api(token, `/research/projects/${s.pid}/workbench`, "PUT", {
-        snapshot: { phase: 5, phaseLabel: "合稿定稿", sections: [
+        snapshot: { phase: 5, phaseLabel: "统稿定稿", sections: [
           { id: "sec_0", title: "引言(改过标题)", level: 1, order: 0 },
           { id: "sec_1", title: "结论", level: 1, order: 1 },
         ] },

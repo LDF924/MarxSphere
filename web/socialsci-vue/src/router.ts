@@ -11,11 +11,11 @@ export const router = createRouter({
     { path: "/", redirect: "/workflow/input" },
     // —— M5 在线科研工作流(双产品线 A: 传统分步) ——
     { path: "/workflow", component: PlaceholderView, meta: { title: "工作流" } },
-    { path: "/workflow/input", component: () => import("./views/workflow/InputView.vue"), meta: { title: "信息录入", fixedLayout: true } },
-    { path: "/workflow/sections", component: () => import("./views/workflow/SectionsView.vue"), meta: { title: "科研架构", fixedLayout: true } },
-    { path: "/workflow/materials", component: () => import("./views/workflow/MaterialsView.vue"), meta: { title: "素材准备", fixedLayout: true } },
-    { path: "/workflow/workspace", component: () => import("./views/workflow/WorkspaceView.vue"), meta: { title: "文本创作", fixedLayout: true } },
-    { path: "/workflow/finalize", component: () => import("./views/workflow/FinalizeView.vue"), meta: { title: "合稿定稿", fixedLayout: true } },
+    { path: "/workflow/input", component: () => import("./views/workflow/InputView.vue"), meta: { title: "选题界定", fixedLayout: true } },
+    { path: "/workflow/sections", component: () => import("./views/workflow/SectionsView.vue"), meta: { title: "框架设计", fixedLayout: true } },
+    { path: "/workflow/materials", component: () => import("./views/workflow/MaterialsView.vue"), meta: { title: "文献与资料", fixedLayout: true } },
+    { path: "/workflow/workspace", component: () => import("./views/workflow/WorkspaceView.vue"), meta: { title: "章节写作", fixedLayout: true } },
+    { path: "/workflow/finalize", component: () => import("./views/workflow/FinalizeView.vue"), meta: { title: "统稿定稿", fixedLayout: true } },
     // —— M6 可视化 DAG(产品线 B) ——
     { path: "/workbench/quick", component: () => import("./views/quick/QuickModeView.vue"), meta: { title: "可视化DAG编排模式", quickAgent: true } },
     // —— M3 数据分析 ——

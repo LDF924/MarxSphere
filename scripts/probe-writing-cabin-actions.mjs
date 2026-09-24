@@ -54,7 +54,7 @@ async function seedFresh(token, phase = 1, over = {}) {
     totalWordCount: 8000, researchMethod: over.researchMethod ?? "quantitative",
     requirements: "", sampleFiles: [],
   };
-  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase, phaseLabel: phase === 1 ? "信息录入" : "素材准备" });
+  const proj = await api(token, "/research/projects", "POST", { title: TITLE, status: "in-progress", phase, phaseLabel: phase === 1 ? "选题界定" : "文献与资料" });
   const pid = (proj?.data ?? proj)?.id;
   if (!pid) return null;
   const sections = [
@@ -63,7 +63,7 @@ async function seedFresh(token, phase = 1, over = {}) {
   ];
   await api(token, `/research/projects/${pid}/nodes/input`, "PUT", { payload: { input: INPUT, sections } });
   await api(token, `/research/projects/${pid}/workbench`, "PUT", {
-    snapshot: { phase, phaseLabel: phase === 1 ? "信息录入" : "素材准备", input: INPUT, sections, variables: [], hypotheses: [] },
+    snapshot: { phase, phaseLabel: phase === 1 ? "选题界定" : "文献与资料", input: INPUT, sections, variables: [], hypotheses: [] },
   });
   return pid;
 }
@@ -74,7 +74,7 @@ try {
   token = await loginToken("audit", "audit123456");
   if (!token) throw new Error("登录失败");
 
-  // ═══ 1. 信息录入: 提交研究主题(整条流水线的入口) ═══
+  // ═══ 1. 选题界定: 提交研究主题(整条流水线的入口) ═══
   console.log("\n═══ /workflow/input ═══");
   {
     pid = await seedFresh(token, 1);
@@ -96,13 +96,13 @@ try {
     // 提交研究主题: 建/更新任务 + 写 input 节点 + 跳 sections
     const r = await probeAction(cdp, '[data-control="workflow:submit-analysis"]', { wait: 8000 });
     const wrote = r.apiReqs.filter((x) => /nodes\/input|workbench|research\/tasks/.test(x.url));
-    rec("input", "submit-analysis(提交主题→科研架构)", wrote.length ? "ok" : "dead",
+    rec("input", "submit-analysis(提交主题→框架设计)", wrote.length ? "ok" : "dead",
       wrote.length
         ? wrote.map((x) => `${x.method} ${short(x.url)}→${x.status}`).join(" ")
         : `点击后零写请求 (全部请求=${r.apiReqs.length}) toast=${r.toast.slice(0, 60)}`);
   }
 
-  // ═══ 2. 科研架构: 开始分析 / 确认章节 ═══
+  // ═══ 2. 框架设计: 开始分析 / 确认章节 ═══
   console.log("\n═══ /workflow/sections ═══");
   {
     const pid2 = await seedFresh(token, 2);
@@ -111,13 +111,13 @@ try {
 
     if (ALL) {
       const r = await probeAction(cdp, '[data-control="workflow:start-analysis-2"]', { wait: 6000 });
-      rec("sections", "start-analysis(开始科研架构分析)", r.apiReqs.length ? "ok" : "dead",
+      rec("sections", "start-analysis(开始框架设计分析)", r.apiReqs.length ? "ok" : "dead",
         r.apiReqs.length ? `${r.last?.method} ${short(r.last?.url)} → ${r.last?.status}` : "点击后零请求");
       if (r.apiReqs.length) {
         const done = await waitFor(cdp, `document.querySelectorAll('.var-card').length > 0`, { timeout: 180000 });
         rec("sections", "分析产物回填(变量卡)", done ? "ok" : "skip", done ? "变量卡已渲染" : "180s 内未产出(模型慢/失败)");
       }
-    } else rec("sections", "start-analysis(开始科研架构分析)", "skip", "需真 LLM, 加 --all 才跑");
+    } else rec("sections", "start-analysis(开始框架设计分析)", "skip", "需真 LLM, 加 --all 才跑");
 
     // 确认章节 → 推进 phase(写快照 + 推进阶段)
     //
@@ -127,7 +127,7 @@ try {
     //   「门禁正确拦截」类断言覆盖, 两个门禁各管一件事。
     const canConfirm = await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="workflow:confirm-sections"]'); return b ? !b.disabled : null; })()`);
     const r = await probeAction(cdp, '[data-control="workflow:confirm-sections"]', { wait: 4000 });
-    rec("sections", "confirm-sections(确认→素材准备)",
+    rec("sections", "confirm-sections(确认→文献与资料)",
       canConfirm === false ? "gated" : (r.apiReqs.length ? "ok" : "dead"),
       canConfirm === false
         ? "按钮禁用态(章节尚未生成写作指导) —— 门禁生效, 不算缺陷"
@@ -142,7 +142,7 @@ try {
     }
   }
 
-  // ═══ 3. 素材准备: 编排 / 智能生成计划 / 手动添加 / 发布门禁 ═══
+  // ═══ 3. 文献与资料: 编排 / 智能生成计划 / 手动添加 / 发布门禁 ═══
   console.log("\n═══ /workflow/materials ═══");
   {
     const pid3 = await seedFresh(token, 3);
@@ -184,7 +184,7 @@ try {
       `toast=${gate.toast.slice(0, 80)} hash=${gotoWorkspace}`);
   }
 
-  // ═══ 4. 文本创作: 生成/保存/插入素材 ═══
+  // ═══ 4. 章节写作: 生成/保存/插入素材 ═══
   console.log("\n═══ /workflow/workspace ═══");
   {
     const pid4 = await seedFresh(token, 4);
@@ -302,7 +302,7 @@ try {
     rec("workspace", "insert-material(插入素材到章节)", hasMat ? "skip" : "skip", `素材卡 ${hasMat} 个(需先有挂本章素材才能点)`);
   }
 
-  // ═══ 5. 合稿定稿: 导出类动作 ═══
+  // ═══ 5. 统稿定稿: 导出类动作 ═══
   console.log("\n═══ /workflow/finalize ═══");
   {
     const pid5 = await seedFresh(token, 5);
@@ -314,7 +314,7 @@ try {
     });
     await api(token, `/research/projects/${pid5}/workbench`, "PUT", {
       snapshot: {
-        phase: 5, phaseLabel: "合稿定稿",
+        phase: 5, phaseLabel: "统稿定稿",
         input: { title: "探针合稿", outline: "", totalWordCount: 8000, researchMethod: "quantitative", requirements: "", sampleFiles: [] },
         sections: [{ id: "sec_0", title: "引言", level: 1, order: 0, status: "done", content: "引言的正文内容。".repeat(20) }],
         variables: [], hypotheses: [],

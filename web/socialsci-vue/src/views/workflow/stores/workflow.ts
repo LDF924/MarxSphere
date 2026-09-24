@@ -48,7 +48,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
     title: "", outline: "", totalWordCount: 10000, researchMethod: "",
     requirements: "", sampleFiles: [], clarifyAnswers: {}
   });
-  // ── Phase2 科研架构 ──
+  // ── Phase2 框架设计 ──
   const sections = ref<Section[]>([]);
   const variables = ref<Array<{ name: string; role: string; description?: string; measurement?: string }>>([]);
   const hypotheses = ref<string[]>([]);
@@ -126,7 +126,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
       return hit.projectId;
     }
     // 3) 建全新项目
-    const created = await createTask({ title: title || "未命名科研任务", module: "workflow", status: "in-progress", phase: 1, phaseLabel: "信息录入" });
+    const created = await createTask({ title: title || "未命名科研任务", module: "workflow", status: "in-progress", phase: 1, phaseLabel: "选题界定" });
     const pid = created.projectId ?? "";
     taskId.value = pid;
     persistPointer(pid);
@@ -229,10 +229,15 @@ export const useWorkflowStore = defineStore("workflow", () => {
         localStorage.setItem("lastTask_workflow", hit.projectId);
       }
     }
-    if (!taskId.value) { hasSavedProject.value = false; return; }
+    if (!taskId.value) { hasSavedProject.value = false; clearContent(); return; }
     try {
       const snap = await getWorkbench(taskId.value);
-      if (!snap || !Object.keys(snap).length) { hasSavedProject.value = false; return; }
+      // ⚠ 2026-09-24: 快照为空时**必须清空内容**再返回。
+      //   原先这里直接 `return` —— 于是"切到一个还没有工作流快照的项目"时, store 里**还留着
+      //   上一个项目的标题/大纲/章节**, 界面看起来就是"点了没反应/项目名没变"。
+      //   (实测: 两个都有快照的项目之间切换是**正常**的, 所以这个 bug 只在切到空项目时暴露,
+      //    平时不容易碰到 —— 而新建的项目在跑到选题界定之前正好是空的。)
+      if (!snap || !Object.keys(snap).length) { hasSavedProject.value = false; clearContent(); return; }
       hasSavedProject.value = true;
       if (typeof snap.phase === "number") phase.value = snap.phase;
       if (snap.phaseLabel) phaseLabel.value = String(snap.phaseLabel);
@@ -310,10 +315,10 @@ export const useWorkflowStore = defineStore("workflow", () => {
     } catch { /* 旧后端不认这两个字段时跳过, 快照路径不受影响 */ }
   }
 
-  /** 阶段推进的唯一入口 —— phase 与 phaseLabel 必须成对更新, 否则会出现"第 4 步 · 素材准备"这种错配 */
+  /** 阶段推进的唯一入口 —— phase 与 phaseLabel 必须成对更新, 否则会出现"第 4 步 · 文献与资料"这种错配 */
   function setPhase(ph: number): void {
     phase.value = ph;
-    phaseLabel.value = ph === 1 ? "信息录入" : ph === 2 ? "科研架构" : ph === 3 ? "素材准备" : ph === 4 ? "文本创作" : "合稿定稿";
+    phaseLabel.value = ph === 1 ? "选题界定" : ph === 2 ? "框架设计" : ph === 3 ? "文献与资料" : ph === 4 ? "章节写作" : "统稿定稿";
     void saveProject();
     void syncPhaseToProject();
   }
@@ -327,13 +332,16 @@ export const useWorkflowStore = defineStore("workflow", () => {
    * pinia 的 setup 风格 store **没有** $reset(那是 options 风格才有的), 所以显式写一个:
    * 漏掉任何一个字段, 下一个项目就会带着上一个项目的残留(实测最容易漏的是 sections 与 merged*)。
    */
-  function resetLocal(): void {
-    taskId.value = "";
-    hasSavedProject.value = false;
+  /**
+   * 清空"当前项目的内容", 但**保留 taskId 与 lastTask_workflow 指针**。
+   *
+   * 与 `resetLocal()` 的区别: 那是"整个工作区重置"(连指针一起抹掉, 用于"没有其它项目了"),
+   * 这里是"换了个项目, 把上一个项目的内容倒掉" —— 指针必须留着, 否则切过去就丢了。
+   * 从 resetLocal 里抽出来的同一套字段, 两处共用, 免得以后加了新字段只改一边。
+   */
+  function clearContent(): void {
     phase.value = 0;
     phaseLabel.value = "";
-    // totalWordCount 重置回 8000 而不是 0 —— 闭源的 store 重置用的是**初值**(1e4),
-    //   置 0 会让「字数预估」输入框在清空项目后变成空格子, 用户还得自己想填多少(2026-09-16 修)。
     input.value = { title: "", outline: "", totalWordCount: 8000, researchMethod: "", requirements: "", sampleFiles: [], clarifyAnswers: {} };
     sections.value = [];
     variables.value = [];
@@ -349,6 +357,13 @@ export const useWorkflowStore = defineStore("workflow", () => {
     reviewResult.value = null;
     activeSectionId.value = "";
     textFlow.value = { status: "" };
+  }
+
+  function resetLocal(): void {
+    taskId.value = "";
+    hasSavedProject.value = false;
+    // 清空内容的部分与"切项目"共用一份实现(见 clearContent)
+    clearContent();
     localStorage.removeItem(K.lastTaskWorkflow);
   }
 
@@ -363,6 +378,6 @@ export const useWorkflowStore = defineStore("workflow", () => {
     mergeGenerated, isFinalized, reviewResult, exportStatus, exportFormat, exportedAt,
     title, level1Sections, activeSection, totalWordCount,
     ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto, setPhase, resetLocal,
-    hasSavedProject, refreshHasSavedProject, switchProject
+    hasSavedProject, refreshHasSavedProject, switchProject, clearContent
   };
 });

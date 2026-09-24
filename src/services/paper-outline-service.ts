@@ -188,7 +188,7 @@ export async function generateChapter(input: {
   citationPool?: string;  // SocialSci R3: 真实引用池(素材引文编号清单, 供正文[ N ]引用)
   /**
    * V417: 本章的目标字数。来自用户填的「字数预估」按章分配的配额。
-   * 此前这个参数不存在 —— 用户在「信息录入」填的 totalWordCount 一路到此断掉,
+   * 此前这个参数不存在 —— 用户在「选题界定」填的 totalWordCount 一路到此断掉,
    * 而界面却写着"AI 智能体将按此字数进行科研分配"(InputView 的字数预估卡),
    * prompt 里还写死 800-1500 字。现在由 runChapterBatch 按章均分后传进来。
    */
@@ -196,7 +196,7 @@ export async function generateChapter(input: {
   /**
    * 用户上传的参考样例(闭源 `buildSampleContent()`: 把每个文件拼成 `=== 文件名 ===\n内容`, 截 8000 字)。
    *
-   * 2026-09-16: 此前这个参数**不存在**, 于是「信息录入」页上传的参考文件只喂给了澄清提问那一处,
+   * 2026-09-16: 此前这个参数**不存在**, 于是「选题界定」页上传的参考文件只喂给了澄清提问那一处,
    * **从不进入章节生成** —— 用户在界面上传了 3 个 PDF 当写作范式, 生成的正文跟它们毫无关系。
    */
   sampleContent?: string;
@@ -249,7 +249,7 @@ export async function generateComponent(input: {
   chapterContents?: string[]; // 各章正文(摘要需要全貌)
   model?: string;
   /**
-   * V417: 降 AI 痕迹。用户在「合稿定稿」勾了「降 AIGC」后, 这条开关此前一路写到
+   * V417: 降 AI 痕迹。用户在「统稿定稿」勾了「降 AIGC」后, 这条开关此前一路写到
    * input_snapshot 就断了 —— runPhase5 从不读它, 用户选的档位对产出零影响。
    * 打开时在提示词里加反模板化要求。
    * 2026-09-15: 扩成三档(轻/中/重), 摘要/关键词按档位给不同强度的指令; 正文的降重
