@@ -14,7 +14,21 @@ import { dataPath } from "./storage-paths.js";
 import { execFile } from "node:child_process";
 import { pool } from "../db/pool.js";
 
-const PYTHON = process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "";
+/**
+ * Python 解释器 —— **必须有兜底**。
+ *
+ * ⚠ 2026-09-24 修: 原先这里是 `|| ""`, 两个环境变量都没设时得到空串,
+ *   而 `execFile("", …)` 会**同步抛出** `ERR_INVALID_ARG_VALUE: The argument 'file'
+ *   cannot be empty` —— 它抛在 spawn 内部, **回调里的错误处理根本来不及接管**,
+ *   整个统计任务直接秒失败。
+ *
+ *   本机之所以一直没暴露: `.env` 里有 `EMPIRICAL_PYTHON=<某个 venv>`;
+ *   但 **CI 没有 .env**(env.ts 靠 dotenv 从 cwd 读), 于是 CI 上**所有统计任务都秒失败** ——
+ *   而这条一直没有断言去碰(写作舱的"分析结果回流"是第一个真跑 regression 的探针)。
+ *   兜底成 `"python"`(走 PATH): 装了依赖就能跑, 没装会以"command not found"的形式
+ *   落在回调里(可归属、可显示), 而不是一个静默的同步异常。
+ */
+const PYTHON = process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python";
 const RUNNER = `${process.env.SAG_ROOT || process.cwd()}/scripts/statistics_runner.py`;
 const TTL_MS = 5 * 60 * 1000;
 

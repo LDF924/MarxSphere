@@ -2881,7 +2881,7 @@ export function buildHttpServer() {
     engineIngestProcs.set(engine, { startedAt: new Date().toISOString(), running: true });
     // 后台执行
     const { spawn } = await import("node:child_process");
-    const py = process.env.COGNEE_PYTHON || "";
+    const py = process.env.COGNEE_PYTHON || "python";   // ⚠ 别用 "" —— spawn("") 同步抛错
     const child = spawn(py, ["scripts/orchestrate_ingest.py", `--${engine}`], {
       cwd: rootDir,
       windowsHide: true,

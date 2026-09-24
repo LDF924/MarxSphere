@@ -1419,7 +1419,7 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
           fs.mkdirSync(sandboxDir, { recursive: true });
           const copyTarget = path.join(sandboxDir, "audio" + ext);
           fs.copyFileSync(target, copyTarget);
-          const PYTHON = process.env.COGNEE_PYTHON || "";
+          const PYTHON = process.env.COGNEE_PYTHON || "python";   // ⚠ 别用 "" —— execFile("") 同步抛错
           try {
             const { stdout } = await execFileAsync(PYTHON, ["-c", code, copyTarget], { timeout: 300000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
             return `【音频转写】${rel} (${sizeKB}KB)\n${(stdout || "").trim().slice(0, 3000)}`;

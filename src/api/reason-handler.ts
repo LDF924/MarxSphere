@@ -33,7 +33,9 @@ export const getReasonTaskSchema = z.object({
 
 // ─── 统一 Python 解释器为项目 venv（桌面端可用 COGNEE_PYTHON 环境变量覆盖）───
 const SAG_ROOT = process.env.SAG_ROOT || process.cwd();
-const PYTHON = process.env.COGNEE_PYTHON || "";
+// ⚠ 兜底 "python" 不能省: `spawn("")`/`execFile("")` 会同步抛 ERR_INVALID_ARG_VALUE,
+//   回调里的错误处理接不到(同类问题在 statistics-job-service 上实测秒失败)。
+const PYTHON = process.env.COGNEE_PYTHON || "python";
 const GRAPHITI_RUNNER = path.join(SAG_ROOT, "scripts", "mcp_graphiti_runner.py");
 const COGNEE_RUNNER = path.join(SAG_ROOT, "scripts", "mcp_cognee_runner.py");
 const MCP_CONNECT_TIMEOUT_MS = 120_000; // 120s 建连超时
