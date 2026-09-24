@@ -110,6 +110,11 @@ const SUITES = [
   { key: "project-bundle", file: "probe-project-bundle.mjs", desc: "整包导出: 真下载 zip + 解开校验条目/章节数/中文文件名" },
   // B2/D2: 左侧项目栏(切项目/搜索/归档)与快捷键。**真的会切项目指针**, 所以脚本自己
   //   记下原值并在收尾还原 —— 门禁不该改用户当前项目。
+  // V425 第二批加法(八项)的接线门禁 —— 全部不调 LLM(引文核验是 Crossref/OpenAlex 查证),
+  //   所以进默认组。验的都是"接了没有"这类静默失败: 期刊库真加载、方法目录真拉到、
+  //   正文里的 [n] 真被抽出来并真打端点、查重在没源文本时真禁用。
+  //   脚本自带测试课题与收尾清理(首跑踩过: 造了数据却没让被测对象看见 → 三条假失败)。
+  { key: "writing-cabin-v425b", file: "probe-writing-cabin-v425b.mjs", desc: "写作舱八项加法: 选题论证/研究设计/数据收集/引文核查/文献矩阵/投稿检查" },
   { key: "project-rail", file: "probe-project-rail.mjs", desc: "项目栏: 列表/搜索/切项目/折叠 + Alt+数字快捷键(含越级拦截)" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },

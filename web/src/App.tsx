@@ -94,7 +94,7 @@ const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
     title: "研途写作舱",
     vueRoute: "/workflow/input",
-    hint: "阶段化论文研究: 信息录入 → 科研架构 → 素材准备 → 文本创作 → 合稿定稿",
+    hint: "阶段化论文研究: 选题界定 → 框架设计 → 文献与资料 → 章节写作 → 统稿定稿",
   },
   dag: {
     title: "课题流程编排",
@@ -243,6 +243,23 @@ function AppShell() {
   const pendingVizSeedRef = useRef<{ title: string; csv: string; columnOrder: string[]; message: string } | null>(null);
   // V417: 各模块「送入研途写作舱」待投递的素材(落到写作舱的 research_materials)
   const pendingWorkflowMaterialRef = useRef<{ kind: string; title: string; markdown: string } | null>(null);
+  /**
+   * 从别的模块跳进写作舱时记下来源 —— 用来渲染「← 返回 XX」。
+   *
+   * 由来(2026-09-24): 写作舱资料页跳「数据分析/科研绘图」是**单程票** —— 外壳切走了,
+   * 但写作舱不在那里, 用户只能自己从左侧导航重新找回来。跳转消息现在自带来源,
+   * 这里存下来, FusionPanel 就有一键回程。
+   */
+  const [leaveOrigin, setLeaveOrigin] = useState<{ view: WorkspaceView; label: string } | null>(null);
+  /**
+   * 写作舱 iframe 当前停在哪一页。
+   *
+   * 外壳**读不到**它: FusionPanel 的保活池让 iframe 常驻, 而 `src` 属性只在首次创建时写过
+   * 一次(实测 FusionPanel.tsx 全文只有一处 `iframe.src =`), 之后切页只改 hash;
+   * 跨源又读不了 contentWindow。所以由 iframe 自己上报(见 reportSocRoute 的注释)。
+   * 用于"从数据分析返回写作舱时落回原来那一页"。
+   */
+  const [workflowSubPath, setWorkflowSubPath] = useState("");
 
   // V414: 判断 iframe 内的子应用**监听器是否已就绪**。
   //   这里踩过两级坑, 记下来免得后人重犯:
@@ -635,10 +652,15 @@ function AppShell() {
   //   点"查看产物"只弹 toast, 人停在原地(悬空协议)。写作舱要"送编辑器"也得靠它。
   useEffect(() => {
     const onNavigate = (e: MessageEvent) => {
-      const d = e.data as { source?: string; type?: string; view?: string } | null;
+      const d = e.data as { source?: string; type?: string; view?: string; from?: { view?: string; label?: string } } | null;
       if (d?.source !== "marxsphere-soc" || d.type !== "navigate") return;
       const view = String(d.view ?? "");
       if (!validViews.includes(view as WorkspaceView)) return;
+      // 目标就是写作舱时, 把"从哪来"记下来 —— 写作舱内会有个「← 返回 XX」用得上。
+      // (path 那半段是给"离开写作舱再回来"用的, 由下面的 route 上报维护)
+      if (view === "paper-outline" && d.from?.view && validViews.includes(d.from.view as WorkspaceView)) {
+        setLeaveOrigin({ view: d.from.view as WorkspaceView, label: String(d.from.label || "上一页") });
+      }
       // 必须走 navigateView: 它同时更新 hash。只 setWorkspaceView 会切了视图但地址栏不动,
       // 刷新后弹回原页(实测)。
       navigateView(view as WorkspaceView);
@@ -646,6 +668,21 @@ function AppShell() {
     window.addEventListener("message", onNavigate);
     return () => window.removeEventListener("message", onNavigate);
   }, [navigateView]);
+
+  // ── 写作舱上报"当前停在哪一页"(2026-09-24) ──
+  //   外壳读不到被保活的 iframe 的真实 hash(见 workflowSubPath 的注释), 只能由它自己说。
+  //   这条同时解决"从数据分析回来落回原页": 回来后要给 iframe 发一条 workflow-route,
+  //   而发之前得先知道原来停在哪。
+  useEffect(() => {
+    const onRoute = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string; view?: string; path?: string } | null;
+      if (d?.source !== "marxsphere-soc" || d.type !== "route") return;
+      if (d.view !== "workflow" || !d.path) return;
+      setWorkflowSubPath(String(d.path));
+    };
+    window.addEventListener("message", onRoute);
+    return () => window.removeEventListener("message", onRoute);
+  }, []);
 
   // V417: 子应用(iframe 里的 soc 视图, 如评审页)请求把内容送给别的模块 —— soc 不能直接投递给另一个 iframe,
   //   由外壳中转。`route` 决定送写作舱(素材)还是送编辑器(文档)。
@@ -714,6 +751,41 @@ function AppShell() {
     }, 50);
     return () => clearInterval(timer);
   }, [workspaceView]);
+
+  /**
+   * 「← 返回研途写作舱」—— 从数据分析/科研绘图回到写作舱**离开时的那一页**。
+   *
+   * 为什么要投这条消息而不是直接 navigateView("paper-outline"):
+   *   写作舱回来时外壳的 `navigateView` 会因为"目标视图已经是 paper-outline"直接 early-return
+   *   (那是刻意的, 防止重复 push 历史)。而在**离开**的时候, `leaveOrigin` 里已经记下了
+   *   当时停在 `#/workflow/materials`; 本条负责让 iframe 真的 `router.push` 回去。
+   *
+   * 为什么不能读 iframe 的 hash: 保活池里的 iframe 常驻, `src` 属性自创建后没再变过
+   *   (FusionPanel.tsx 只有一处 `iframe.src =`), 真实位置只存在于 contentWindow.location.hash,
+   *   而跨源读它会抛 SecurityError。所以位置由 iframe 自己上报(workflowSubPath), 这里消费。
+   */
+  const returnToWorkflow = () => {
+    if (!leaveOrigin) return;
+    const path = workflowSubPath || FUSION_TABS.paperOutline.vueRoute;
+    navigateView("paper-outline");
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      const iframe = document.querySelector('iframe[title="研途写作舱"], iframe[src*="/workflow"]') as HTMLIFrameElement | null;
+      if (subAppReady(iframe, "workflow")) {
+        try {
+          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "workflow-route", path }, "*");
+          clearInterval(timer);
+          return;
+        } catch { /* 跨域忽略 */ }
+      }
+      // 子应用没醒: 把指令留在 localStorage, 它挂载时会自己取(App.vue 里安装的桥)
+      if (tries > 200) {
+        clearInterval(timer);
+        try { localStorage.setItem("skf_wf_pending_route", path); } catch { /* 忽略 */ }
+      }
+    }, 50);
+  };
 
   // 统一分析台数据集变更 → 广播给编辑器 iframe(图表 tab 复用同一份数据, 免重传)
   useEffect(() => {
@@ -1894,6 +1966,19 @@ function AppShell() {
               onChange={(view) => navigateView(view)}
             />
           )}
+          {/* 回程: 写作舱跳出去过(资料页 → 数据分析/科研绘图), 就留一条一键回来的路。
+              只在这些视图里显示 —— 平时不给顶栏添东西。 */}
+          {leaveOrigin && (workspaceView === "empirical-research" || workspaceView === "plot-agent") ? (
+            <button
+              type="button"
+              onClick={returnToWorkflow}
+              title={`回到离开时的那一页`}
+              className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent/40"
+            >
+              <ChevronLeft size={13} />
+              返回{leaveOrigin.label}
+            </button>
+          ) : null}
           {/* V399: 运行模式按钮（项目左侧；弹出健康+切换菜单） */}
           {modeBadge ? (
             <div className="relative shrink-0">

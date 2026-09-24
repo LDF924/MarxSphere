@@ -323,9 +323,32 @@ export async function exportOutlineDocx(input: {
   fontName?: string; // R7(闭源 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
   fontSize?: number; // R7: 正文字号(pt), 同样来自预览预设; 缺省走 python 侧默认
   references?: ReferenceListInfo; // V417: 参考文献 + 著录完整性(补录提醒)
+  /** V425: 目标体例 —— 决定行距与页边距(见下方 LAYOUT 表) */
+  formatTarget?: "期刊论文" | "学位论文" | "党校期刊" | "高校学报";
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
   const fontName = input.fontName || "SimSun";
+  /**
+   * 体例 → 版式参数(V425 新增)。
+   *
+   * 由来(2026-09-24): 这段脚本原先**从不设置行距和页边距** —— python-docx 新建 Document
+   *   拿到的是 Word 模板默认值(页边距 2.54/3.17cm, **单倍行距**), 导出的稿子与
+   *   "按目标期刊体例"没有任何关系, 用户还得自己调。这里把 FORMAT_RULES
+   *   (paper-quality-service) 里那几条**可机读**的规则真正落到文件上:
+   *     期刊论文 行距 1.5 倍; 学位论文 1.5 倍; 党校期刊 1.5 倍; 高校学报 **固定值 20 磅**。
+   *   ⚠ 字体/字号那两条**不在这里做**: 它们已经由 fontName/fontSize 从前端预设传进来了,
+   *     再按体例覆盖一遍会把用户自己选的字号顶掉。此处只补原先**完全没人管**的两项。
+   *   页边距四档暂无权威出处(paper-quality-service 只给了行距与字体), 故统一用学术论文
+   *     通行的 2.54/3.17cm —— 即 Word 默认值, **显式写出来**是为了让它成为有意为之的取值,
+   *     而不是"没人设所以恰好是默认"。
+   */
+  const LAYOUT: Record<string, { spacingMode: "multiple" | "exact"; spacingValue: number }> = {
+    "期刊论文": { spacingMode: "multiple", spacingValue: 1.5 },
+    "学位论文": { spacingMode: "multiple", spacingValue: 1.5 },
+    "党校期刊": { spacingMode: "multiple", spacingValue: 1.5 },
+    "高校学报": { spacingMode: "exact", spacingValue: 20 },
+  };
+  const layout = LAYOUT[input.formatTarget ?? ""] ?? { spacingMode: "multiple" as const, spacingValue: 1.5 };
   // 字号: 之前只传字体不传字号 —— 预设里 docxFontSize 4 档(10.5/10.5/12/11)在导出时被整个丢掉。
   //   0 / 未传 → python 侧保持原默认(不改既有行为)
   const bodyFontSize = Number(input.fontSize) > 0 ? Number(input.fontSize) : 0;
@@ -343,6 +366,9 @@ body_size = ${bodyFontSize > 0 ? bodyFontSize : "None"}
 references_text = ${JSON.stringify(refs.text ?? "")}
 refs_needs_manual = ${refs.needsManual ? "True" : "False"}
 refs_sources = ${JSON.stringify(refs.sources ?? [])}
+# V425: 体例决定的行距(见服务端 LAYOUT 表的注释)
+spacing_mode = ${JSON.stringify(layout.spacingMode)}
+spacing_value = ${layout.spacingValue}
 
 def set_run(r, size=None):
     r.font.name = font_name
@@ -351,8 +377,17 @@ def set_run(r, size=None):
     if size:
         r.font.size = Pt(size)
 
+def set_spacing(par):
+    """给段落套上体例行距。原先**整篇没有任何行距设置** —— python-docx 建的空文档是单倍行距,
+    与 FORMAT_RULES 里写的 1.5 倍对不上, 导出结果就不是"按体例"的。"""
+    pf = par.paragraph_format
+    if spacing_mode == "exact":
+        pf.line_spacing = Pt(spacing_value)
+    else:
+        pf.line_spacing = spacing_value
+
 doc = Document()
-# 页边距(默认模板)
+# 页边距: 显式写出(值同 Word 默认, 但从此是**有意为之**而不是"没人设所以恰好如此")
 for section in doc.sections:
     section.top_margin = Cm(2.54)
     section.bottom_margin = Cm(2.54)
@@ -362,6 +397,7 @@ for section in doc.sections:
 # 论文标题
 h = doc.add_paragraph()
 h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+set_spacing(h)
 r = h.add_run(paper_title)
 r.bold = True
 set_run(r, 16)
@@ -375,6 +411,7 @@ for it in items:
         ph = doc.add_heading(it["title"], level=2)
     else:
         ph = doc.add_heading(it["title"], level=3)
+    set_spacing(ph)
     for run in ph.runs:
         set_run(run)
     # 正文
@@ -385,23 +422,28 @@ for it in items:
             continue
         if p.startswith("# "):
             ph2 = doc.add_heading(p[2:], level=2)
+            set_spacing(ph2)
             for run in ph2.runs:
                 set_run(run)
         elif p.startswith("## "):
             ph3 = doc.add_heading(p[3:], level=3)
+            set_spacing(ph3)
             for run in ph3.runs:
                 set_run(run)
         elif p.startswith("### "):
             ph4 = doc.add_heading(p[4:], level=4)
+            set_spacing(ph4)
             for run in ph4.runs:
                 set_run(run)
         else:
             pp = doc.add_paragraph(p)
+            set_spacing(pp)
             for run in pp.runs:
                 set_run(run, body_size)
 
 # ── 参考文献(V417): 有真实条目就落列表; 没有就显式标注"需人工补录", 不伪造 ──
 refh = doc.add_heading("参考文献", level=1)
+set_spacing(refh)
 for run in refh.runs:
     set_run(run)
 if references_text.strip():
@@ -410,10 +452,12 @@ if references_text.strip():
         if not line:
             continue
         p = doc.add_paragraph(line)
+        set_spacing(p)
         for run in p.runs:
             set_run(run)
     if refs_needs_manual:
         note = doc.add_paragraph("（部分条目仅有标题、缺作者/年份等著录信息，请按投稿要求人工补全。）")
+        set_spacing(note)
         for run in note.runs:
             set_run(run, 10)
 else:

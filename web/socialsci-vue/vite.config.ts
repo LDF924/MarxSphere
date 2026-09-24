@@ -29,6 +29,17 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL("../dist/soc", import.meta.url)), // web/dist/soc
     emptyOutDir: true,
+    /**
+     * ⚠ 2026-09-24: 用 esbuild 压 CSS, 换掉默认的 lightningcss。
+     *
+     * 起因: `npm run build:socialsci-vue`(CI 里也会跑)在 main 上就是红的 ——
+     *   lightningcss 对 Tailwind 扫描器从一行正则里误提取出的规则
+     *   `.\[-\:\|\\s\]{ -: |\s; }` 直接报 `Unexpected token Semicolon` 并中断整个构建。
+     *   根因那半已由 tailwind.config.js 的 blocklist 治掉(不再生成该规则); 这里留一层兜底 ——
+     *   将来若别的文件再生成这类怪规则, 压缩器不该把整个产物干掉。
+     *   选 esbuild 而不是关掉压缩: 同一依赖树里已有(零新依赖), 且对未知属性比 lightningcss 宽容。
+     */
+    cssMinify: "esbuild",
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {

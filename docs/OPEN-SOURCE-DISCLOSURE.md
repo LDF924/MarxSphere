@@ -16,7 +16,7 @@
 | MCP 服务 | `npm run mcp` | 标准 I/O MCP Server（10 个工具：检索/入库/执行/grep/大纲/文档/chunk 等） |
 | OpenAI 兼容 | `POST /api/openai/chat/completions` | 外部 OpenAI 客户端把本地知识库当"模型"调用（含 citations） |
 | 备份 | `npx tsx scripts/backup-now.ts` | 知识库轻量备份 .sagbak（PG + Graphiti/Cognee 图谱 + 清单校验） |
-| 测试 | `npm test` | 1053 项单元测试 |
+| 测试 | `npm test` | 1080 项单元测试 |
 | 数据库 | `npm run db:setup` | 迁移 + 种子数据 |
 
 ### 依赖说明
@@ -258,7 +258,7 @@
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义
 - `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
-- 1053 项单元测试（`npm test`）
+- 1080 项单元测试（`npm test`）
 - 53 题双轨评测（规则评分 + LLM judge）overall 0.884（`scripts/eval-32-metrics.ts`）
 
 ---

@@ -15,7 +15,15 @@ const ALL = process.argv.includes("--all");
 const rows = [];
 function rec(action, kind, detail) {
   rows.push({ action, kind, detail });
-  const tag = kind === "ok" ? "  ok  " : kind === "dead" ? " DEAD " : kind === "gated" ? " gated" : kind === "err" ? " ERR  " : " skip ";
+  /**
+   * ⚠ 2026-09-24: 加 `FAIL` 这一档。
+   *   原先映射表里只有 ok/dead/gated/err, 没有 FAIL —— 而 `kind` 传的是自由字符串,
+   *   传了未知值就**落到 `skip`**(兜底分支)。后果: 一条真失败在逐行输出里读作 `skip`,
+   *   只有最后的汇总行知道它失败了。**把失败显示成"跳过", 是比不显示更坏的一种谎**。
+   *   (实测: 我把 max-width 改回 52ch 复现缺陷, 逐行打的是 `skip ... 行数=2(应为 1)`。)
+   */
+  const TAG = { ok: "  ok  ", fail: " FAIL ", FAIL: " FAIL ", dead: " DEAD ", DEAD: " DEAD ", gated: " gated", err: " ERR  ", ERR: " ERR  " };
+  const tag = TAG[kind] ?? " skip ";
   console.log(`${tag} ${action} — ${detail}`);
 }
 const api = async (token, path, method = "GET", body) => {
@@ -197,6 +205,73 @@ try {
     if (!after?.open) await probeAction(cdp, '[data-control="workflow:clarify-toggle"]', { wait: 900 });
     const opened = await readOpen();
 
+    /**
+     * 「AI 分析我的研究」按钮**真的居中**(左右余量相等)。
+     *
+     * 由来(2026-09-24 用户反馈): 按钮黏在卡片左边缘、右边空一大片。
+     *   根因是 `.clarify-idle` 上的 `text-align: left` 被 inline-block 的按钮继承 ——
+     *   那条 left 当初是为了修"提示语换行断点难看"加的, 而换行问题后来是靠**缩短文案**解决的,
+     *   留下的 text-align 就不再保护任何东西, 只是把主按钮推到角上。
+     *
+     * 为什么必须进探针: 这类"位置偏了"**没有任何报错**, 界面上看就是有点别扭;
+     *   而它极易被下一次排版调整带回来(改个 padding / 改个 display 就够了)。
+     *   判据用**左右余量之差**而不是具体像素 —— 卡片宽度随视口变, 写死数字必然过期。
+     *   容差 4px: 子像素舍入, 不是布局问题。
+     */
+    const centerInfo = await evalTop(cdp, `(() => {
+      const b = document.querySelector('.clarify-body .btn-clarify-run');
+      if (!b) return { missing: true };
+      const bb = b.getBoundingClientRect();
+      // 参照系取按钮所在的**状态块**(.clarify-idle 等). 取不到就退到父元素,
+      // 免得将来加新状态时这条断言因为选择器过期而假红。
+      const box = b.closest('.clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty') || b.parentElement;
+      if (!box) return { missing: true };
+      const xb = box.getBoundingClientRect();
+      const ctr = (e) => { const r = e.getBoundingClientRect(); return r.left + r.width / 2; };
+      const boxCtr = ctr(box);
+      // 提示语: 取块里**第一个** p。带底色的 .cq-analysis 是正文块, 按设计不参与居中, 排除。
+      const p = [...box.querySelectorAll('p')].find((e) => !e.classList.contains('cq-analysis')) || null;
+      return {
+        btnOffset: Math.round(ctr(b) - boxCtr),
+        btnW: Math.round(bb.width), boxW: Math.round(xb.width),
+        textOffset: p ? Math.round(ctr(p) - boxCtr) : null,
+        textLines: (() => { if (!p) return null; const lh = parseFloat(getComputedStyle(p).lineHeight) || 16; return Math.round(p.getBoundingClientRect().height / lh * 10) / 10; })(),
+        gap: p ? Math.round(bb.top - p.getBoundingClientRect().bottom) : null,
+        // 折叠状态下量出来的盒子是"幽灵盒"(点不到), 那种不算
+        hittable: (() => { const t = document.elementFromPoint(Math.round(bb.left + bb.width / 2), Math.round(bb.top + bb.height / 2)); return !!t && (t === b || b.contains(t)); })(),
+      };
+    })()`);
+    if (centerInfo?.missing) {
+      rec("clarify 主按钮居中", "skip", "未渲染(可能尚未生成问题) —— 这条只在 idle/error/空结果态适用");
+    } else if (!centerInfo.hittable) {
+      rec("clarify 主按钮居中", "skip", "按钮不可命中(折叠中), 不量 —— 那是幽灵盒");
+    } else {
+      // 判据用**与中轴的偏移**而不是左右余量之差: 前者直接就是"居中没有"的定义,
+      // 且块内 padding 左右不等时也不会误判。容差 4px = 子像素舍入, 不是布局问题。
+      rec("clarify 主按钮居中", Math.abs(centerInfo.btnOffset) <= 4 ? "ok" : "FAIL",
+        `偏离中轴=${centerInfo.btnOffset}px(容差 4) 卡片宽=${centerInfo.boxW} 按钮宽=${centerInfo.btnW}`);
+      /**
+       * 提示语也要居中, 且**不能被挤成两行**。
+       *
+       * 这两点都是用户 2026-09-24 直接反馈的:
+       *   ① "这句话也没居中" —— 当时按钮已居中而文字靠左, 一条竖线上半左半中;
+       *   ② 我第一版修这题时给段落写了 `max-width: 52ch` —— **ch 是数字"0"的宽度(约 6px),
+       *      不是汉字宽度**, 52ch 只有约 312px, 那句 33 字的话直接被折成两行。本仓已经踩过
+       *      这个坑并写在 InputView 的注释里, 我照样又踩了一次 —— 所以必须进断言。
+       */
+      if (centerInfo.textOffset === null) {
+        rec("clarify 提示语居中", "skip", "本状态块里没有提示语段落");
+      } else {
+        rec("clarify 提示语居中", Math.abs(centerInfo.textOffset) <= 4 ? "ok" : "FAIL",
+          `偏离中轴=${centerInfo.textOffset}px(容差 4)`);
+        rec("clarify 提示语不被挤成两行", centerInfo.textLines !== null && centerInfo.textLines <= 1.2 ? "ok" : "FAIL",
+          `行数=${centerInfo.textLines}(应为 1)`);
+      }
+      // 文案与按钮之间要有呼吸 —— 用户反馈"挨得太近", 原来是 0px(p 只设了 margin-top, 下边距为 0)。
+      rec("clarify 提示语与按钮有间距", centerInfo.gap !== null && centerInfo.gap >= 8 ? "ok" : "FAIL",
+        `间距=${centerInfo.gap}px(应 >= 8)`);
+    }
+
     if (ALL && opened?.hasRun) {
       const run = await probeAction(cdp, '[data-control="workflow:clarify"]', { wait: 3500 });
       rec("clarify(生成引导问题)", run.apiReqs.length ? "ok" : "DEAD",
@@ -261,9 +336,12 @@ try {
   }
 
   console.log("\n════════ 汇总 ════════");
-  const bad = rows.filter((r) => r.kind === "ERR" || r.kind === "DEAD");
-  for (const r of rows) console.log(`${r.kind.padEnd(6)} ${r.action}`);
-  console.log(bad.length ? `\n❌ ${bad.length} 项异常` : `\n✅ ${rows.length} 项全部通过`);
+  // ⚠ 判"失败"必须把 FAIL 也算上 —— 原先只认 ERR/DEAD, 而失败就是失败, 叫什么名字都得算。
+  //   (同 rec() 的 TAG 表: 「失败显示成跳过 / 失败不计入退出码」是同一类谎, 一次修掉两处。)
+  const BAD = new Set(["ERR", "DEAD", "FAIL"]);
+  const bad = rows.filter((r) => BAD.has(String(r.kind).toUpperCase()));
+  for (const r of rows) console.log(`${String(r.kind).padEnd(6)} ${r.action}`);
+  console.log(bad.length ? `\n❌ ${bad.length} 项异常: ${bad.map((r) => r.action).join(", ")}` : `\n✅ ${rows.length} 项全部通过`);
   if (bad.length) process.exitCode = 1;
 } catch (e) {
   console.error("探针异常:", e.message, e.stack?.split("\n")[1] ?? "");

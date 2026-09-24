@@ -161,6 +161,14 @@ export const useWorkflowStore = defineStore("workflow", () => {
         phase5Stale: phase5Stale.value,
         materialAllocation: materialAllocation.value,
         materialReviewReport: materialReviewReport.value,
+        /**
+         * ⚠ 2026-09-24 补: 这个键此前**只读不写** —— `loadProject` 有回读(见下),
+         *   `saveProject` 却没有它。于是它只是靠服务端 workbench-sync 把节点同步回快照才勉强活着;
+         *   一旦同步路径不覆盖(如从别的树的旧后端读), 就会出现"上传了数据文件, 刷新后没了",
+         *   而素材计划里的数据分析段跟着一起空掉(hasDataFile 判它)。
+         *   同一份注释在 loadProject 那边写着"与 saveProject 保存的键对齐"——当时并没有对齐。
+         */
+        statisticsFileId: statisticsFileId.value,
         mergedFullText: mergedFullText.value,
         mergedTitle: mergedTitle.value,
         mergedAbstract: mergedAbstract.value,
@@ -349,6 +357,9 @@ export const useWorkflowStore = defineStore("workflow", () => {
     materials.value = [];
     materialAllocation.value = {};
     materialReviewReport.value = "";
+    // 数据文件是"这个课题的", 切项目必须一起清 —— 否则新项目会带着上一个课题的 fileId,
+    // 于是它的"分析结果"列表里会出现别的课题跑的分析
+    statisticsFileId.value = "";
     stepAnalysisTexts.value = { 1: "", 2: "", 3: "" };
     project.value = { title: "" };
     mergedFullText.value = ""; mergedTitle.value = ""; mergedAbstract.value = "";

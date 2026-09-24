@@ -16,6 +16,7 @@ import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import VersionHistoryPanel from "./VersionHistoryPanel.vue";
 import DeepAnalysisPanel from "./DeepAnalysisPanel.vue";
+import SubmissionCheckPanel from "./SubmissionCheckPanel.vue";
 
 const router = useRouter();
 
@@ -277,6 +278,14 @@ const showDiff = ref(false);
 const diffText = ref("");
 const exportStatus = ref<"idle" | "running" | "completed" | "failed">("idle");
 const exportFmt = ref("md");
+/**
+ * Word 导出的目标体例(V425) —— 决定后端设的行距(高校学报固定 20 磅, 其余 1.5 倍)。
+ * 与「投稿前检查」里选的那个口径一致(FORMAT_RULES 的四个键), 但这里**独立可改**:
+ * 用户可能只想知道"按期刊体例排出来什么样", 还没决定投哪家。
+ * 空字符串 = 不指定, 后端按 1.5 倍兜底。
+ */
+const docxFormatTarget = ref("");
+const FORMAT_TARGETS = ["期刊论文", "学位论文", "党校期刊", "高校学报"];
 const docxBusy = ref(false);
 const pptxBusy = ref(false);
 const bundleBusy = ref(false);
@@ -386,7 +395,9 @@ async function exportBundle() {
   try {
     const r = await q<{ ok: boolean; base64?: string }>("/paper-outline/export", {
       method: "POST",
-      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock() },
+      // V425: 带上投稿前检查里选的目标体例 —— 后端据此设行距(高校学报是固定 20 磅, 其余 1.5 倍)。
+      //   不传则后端按 1.5 倍兜底; 传了才是"按体例导出"这句话成立的前提。
+      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock(), formatTarget: docxFormatTarget.value || undefined },
     });
     if (!r.base64) throw new Error("后端未返回文档内容");
     downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -856,9 +867,31 @@ async function postProcessMerged() {
   }
 }
 
+// ── 投稿前检查要用的"可比对文献"(V425 加法) ──
+// 后端的查重是**文本对文本**(没有全网语料库), 所以必须给一份源文本。
+// 取库里 literature/citation 素材的正文 —— 那是这个课题真正参考过的东西,
+// 比让用户从别处粘一段更贴近"我的稿子有没有抄到我自己看的那几篇"。
+const citationSources = ref<Array<{ id: string; title: string; text: string }>>([]);
+async function loadCitationSources() {
+  if (!store.taskId) return;
+  try {
+    const r = await q<{ materials?: Array<Record<string, unknown>> }>(`/research/materials?projectId=${store.taskId}`);
+    const out: Array<{ id: string; title: string; text: string }> = [];
+    for (const m of r.materials ?? []) {
+      // ⚠ 判"文献类"要同时认 citation 与 literature —— 后端只接受 citation
+      //   (server.ts 的 kind 白名单), literature 只是前端 CATS 的输入键。
+      //   认错这里, 查重的比对源恒空, 那一格会永远显示"库里还没有可比对的文献正文"。
+      if (m.kind !== "citation" && m.kind !== "literature") continue;
+      const body = String(m.contentMd ?? "").trim();
+      // 太短的(只有一条著录、没有正文)拿去比对没有意义, 反而会算出虚高的重合率
+      if (body.length < 200) continue;
+      out.push({ id: String(m.id ?? ""), title: String(m.title ?? "未命名文献"), text: body.slice(0, 120_000) });
+    }
+    citationSources.value = out;
+  } catch { /* 读不到就不给比对源 —— 查重那格会显示"库里还没有可比对的文献正文" */ }
+}
+
 // ── 引用/表格重编号(闭源 fe()/xe() 语义 L8840-9400) ──
-// fe(): 正文 §REF_a_b§ → 首次出现序 [n](去重); 素材池(literature/citation references[].gbRef 依素材序)
-//       的 a 位即素材池位置 → 正文出现序 + 池位置双映射拼 "[n] gbRef" 表
 async function rebuildCitationsAndRefs(fulltext: string, refsProvided: string) {
   const raw = String(fulltext ?? "");
   // 无占位符 → 干净文本原样保留(不重排已有正文/参考文献)
@@ -1124,6 +1157,7 @@ onMounted(async () => {
   await store.loadProject().catch(() => null);
   await refreshMerged().catch(() => null);
   await loadPendingRevision().catch(() => null);
+  void loadCitationSources();
   void checkProjectAlive();
 });
 </script>
@@ -1154,7 +1188,7 @@ onMounted(async () => {
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
     <div class="wf-head-center">
       <h1 class="wf-h1">统稿定稿</h1>
-      <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 修订定稿 → 导出。</p>
+      <p class="wf-sub">{{ store.title }} — 合并正文 → 全文审查 → 质量四检 → 修订定稿 → 投稿前检查 → 导出。</p>
     </div>
 
     <!-- 项目失效常驻横幅: 指针指向已删项目时, 页面长得和正常一样, 只有点按钮才弹一个
@@ -1383,6 +1417,17 @@ onMounted(async () => {
           <button class="btn-close-diff" @click="showDiff = false">关闭</button>
         </div>
       </div>
+
+      <!-- 投稿前检查(V425 加法, 位置 2026-09-24 修正) —— 排在 ④ 之后、导出之前。
+           ⚠ 原先我把它插在 ③ 质量四检 与 ④ 修订定稿 **之间** —— 那是错的位置:
+             它自己的内容带 1/2/3 三段编号(选刊/格式/查重), 夹在编号轮次中间,
+             读起来就像流程里凭空多出一轮(页头的"→ 导出"也跟着对不上)。
+             按真实科研顺序, 它就该在"改完稿"之后、"投出去/导出"之前。 -->
+      <SubmissionCheckPanel
+        :text="analysisText"
+        :topic="store.mergedTitle || store.title || store.input.title"
+        :sources="citationSources"
+      />
     </div>
     <div v-if="store.mergeGenerated" class="finale-card">
       <div class="finale-head">
@@ -1448,6 +1493,12 @@ onMounted(async () => {
            这两个能力原先只有被弃用的 React 大纲面板在用, 搬到这里才有界面入口。 -->
       <div v-if="store.sections?.length" class="export-row">
         <span>按大纲导出</span>
+        <!-- V425: 体例选择器 —— 决定 Word 的行距(高校学报固定 20 磅, 其余 1.5 倍)。
+             不选则按 1.5 倍兜底。放这里而不是藏进设置: 导 Word 时正是要选它的时刻。 -->
+        <select v-model="docxFormatTarget" class="fmt-select" data-control="workflow:docx-format-target" title="按哪个体例排版">
+          <option value="">体例：默认(1.5 倍行距)</option>
+          <option v-for="t in FORMAT_TARGETS" :key="t" :value="t">体例：{{ t }}</option>
+        </select>
         <button class="btn-preview" :disabled="docxBusy" @click="exportDocx" data-control="workflow:export-docx">
           {{ docxBusy ? "生成中…" : "Word(大纲版)" }}
         </button>

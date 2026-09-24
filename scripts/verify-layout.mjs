@@ -49,8 +49,28 @@ const MEASURE = `(() => {
   //   矩形里, 那是包含不是重叠。不排除的话, 每当项目栏里多出一行就多报一条假重叠
   //   (实测 15 条全红, 而真实的按钮重叠一条都没有)。
   //   仍然要看的是**兄弟/远亲**之间的压盖: 那才是"点这个却点到那个"的真问题。
+  //
+  // ⚠ 2026-09-24 再修: 还要能**点到**才算。
+  //   起因: 素材页在 1024 视口报了一条重叠, 查下去是**自己新加的折叠块**里的 input。
+  //   那些 input 在**闭合的 details** 里 —— 用户看不到、也点不到, 但 Chromium **仍然
+  //   为它们保留最后一次的布局盒**(实测该 input 的 getBoundingClientRect() 有完整的
+  //   829x30, 而 elementFromPoint(它的中心) 返回 **null**; 同页一个真按钮作对照则命中它自己)。
+  //   于是"折叠内容里只要有个宽控件横跨某行"就会不停误报。
+  //   ⚠ 写这段注释时又踩了一次: MEASURE 本身是模板串, 注释里用反引号会**提前闭合它**
+  //     (SyntaxError)。本文件的历史注释里已经记过这个坑, 照样会踩 —— 这里不要用反引号。
+  //
+  //   判据改成**用户视角**: 命中测试打不到的元素之间不存在重叠 —— 跟真实用户一致
+  //   (人只能点到看得见的东西)。这是**收紧**而不是放宽: 它只排除掉"结构上不可能被点到"的
+  //   那些, 真压盖照样报。
   const overlap = [];
-  const els = [...document.querySelectorAll('button, [data-control]')].filter(e => e.getClientRects().length);
+  const canHit = (e) => {
+    const b = e.getBoundingClientRect();
+    if (b.width < 1 || b.height < 1) return false;
+    const t = document.elementFromPoint(Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2));
+    return !!t && (t === e || e.contains(t));
+  };
+  const els = [...document.querySelectorAll('button, [data-control]')]
+    .filter(e => e.getClientRects().length && canHit(e));
   const related = (a, b) => a.contains(b) || b.contains(a);
   for (let i = 0; i < Math.min(els.length, 40); i++) {
     for (let j = i + 1; j < Math.min(els.length, 40); j++) {

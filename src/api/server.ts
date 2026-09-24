@@ -709,6 +709,12 @@ export function buildHttpServer() {
     "/api/writing/",        // 写作场景
     "/api/classical/",      // 经典文本
     "/api/theory/",         // 理论思辨
+    // 2026-09-24 补: 文献提取矩阵**之前不在闸门里** —— 而它是全仓单次调用最贵的端点
+    //   (literature-matrix-service 对最多 30 篇**逐篇**调一次 LLM, 每次 12k 字符 prompt,
+    //    240s 超时)。写作舱要把它接进资料页, 接上以后再漏就等于"用户点一下烧 30 次调用且不记账"。
+    //   ⚠ 只列这一条路径而不是整个 `/api/literature/`: 那个前缀下还有文献检索等接口,
+    //   一刀切会重演 2026-09-13 那次"额度用尽后整页空白"的事故(见 budget-gate.ts 文件头)。
+    "/api/literature/matrix",
   ];
   app.addHook("preHandler", async (request: any, reply: any) => {
     // 2026-09-13: 不再整段前缀一刀切 —— 纯读的期刊库/评审标准/统计/规则常量等不计费接口放行,
@@ -1353,6 +1359,35 @@ export function buildHttpServer() {
     return paperQualityService.plagiarismRiskCheck(body.text, body.sourceText ?? "", { model: body.model });
   });
 
+  /**
+   * 对**平台文献库**查重 —— 与上面那条互补, 不是替换。
+   *
+   * 上面那条要求调用方自带 `sourceText`(text-vs-text), 所以写作舱里必须先挑一篇文献才能查;
+   * 但平台其实有一个真语料: `documents` 表(本机 504 篇, 全有正文, 平均 1.3 万字)。
+   * 这条就是拿它当比对库 —— **不需要用户挑任何东西**。
+   *
+   * 与上面那条的分工:
+   *   · 这条: 确定性字面重合(6-gram + 最长连续命中), **不调 LLM**, 秒级, 可反复跑;
+   *   · 上面那条: 带 LLM, 能识别"改写过的不当引用"这类字面查不出来的问题。
+   * 两条都返回, 由用户判断看哪条 —— 不做成"一键合并", 因为它们的判据与误报特性完全不同。
+   */
+  const corpusPlagiarismSchema = z.object({
+    text: z.string().min(50).max(200_000),
+    limit: z.number().int().min(1).max(5000).optional(),
+    /** 只回报最长连续命中达到该字数的文献(默认 0 = 全报, 由前端排序) */
+    minRun: z.number().int().min(0).max(10_000).optional(),
+  });
+  app.post("/api/quality/plagiarism-corpus", async (request, reply) => {
+    const parsed = corpusPlagiarismSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: "BAD_REQUEST", message: "需要 text(50 字以上)" } });
+    }
+    const { corpusPlagiarismService } = await import("../services/corpus-plagiarism-service.js");
+    return corpusPlagiarismService.checkAgainstCorpus(parsed.data.text, {
+      limit: parsed.data.limit, minRun: parsed.data.minRun,
+    });
+  });
+
   // ─── 理论思辨拓展 API（S61-S65）───
   // 理论前提反思: POST { claim, text, model? }
   app.post("/api/theory/premise", async (request, reply) => {
@@ -1546,6 +1581,15 @@ export function buildHttpServer() {
     fontName: z.string().max(60).optional(),
     // R7: 字号来自编辑器预览预设(闭源 formatPresets.docxFontSize) —— 与 fontName 配套
     fontSize: z.number().min(6).max(36).optional(),
+    /**
+     * V425: 目标体例 —— 让导出的 docx 带上该体例的行距与页边距。
+     *
+     * 由来(2026-09-24): 导出脚本里的页边距与行距原先**全是从 Word 模板继承的默认值**
+     *   (python-docx 建空 Document 就是 2.54/3.17cm + 单倍行距), 从未显式设置过 ——
+     *   于是"按目标期刊体例导出"这句话在 Word 文件上**根本不成立**, 用户拿到手还得自己调。
+     *   取值就是 `/api/quality/format` 那四档(FORMAT_RULES 的键), 两处保持一致。
+     */
+    formatTarget: z.enum(["期刊论文", "学位论文", "党校期刊", "高校学报"]).optional(),
     // V417: 参考文献块。缺省时按"没接出可引文献"处理 → 文档里显式提醒人工补录(不伪造)
     references: z.object({
       text: z.string().max(200_000).optional(),
@@ -1558,6 +1602,7 @@ export function buildHttpServer() {
     const { exportOutlineDocx } = await import("../services/paper-outline-service.js");
     const result = await exportOutlineDocx({
       paperTitle: body.paperTitle, nodes: body.nodes as never[], fontName: body.fontName, fontSize: body.fontSize,
+      formatTarget: body.formatTarget,
       references: body.references
         ? { text: body.references.text ?? "", needsManual: body.references.needsManual ?? false, sources: body.references.sources ?? [] }
         : undefined,
@@ -9368,6 +9413,33 @@ except Exception as e:
     scanDir: literatureService.scanDir
   }));
 
+  /**
+   * 引用网络(文献耦合 + 共被引) —— 现算, 不落库。
+   *
+   * 由来(2026-09-24): `citation-graph-service` 一直是"算法参考实现, 全仓零调用",
+   *   因为它头部写着数据源接入等"方案A批量入库 vs 方案B接Neo4j"的决定(用户暂缓)。
+   *   但图上要的东西**不需要先做那个决定**: 库里 210 篇已经解析出参考文献表(共 2477 条),
+   *   现读现算就能连出边(本机 threshold 0.05 → 60 节点 / 71 边)。
+   *   所以这条路线只做"取数据 + 调算法", 不碰入库方案; Neo4j 那条将来若做, 是另一条路。
+   *
+   * ⚠ 路径必须排在 `/:id` **之前** —— 否则 "network" 会被当成文献 id 吃掉(本仓踩过这类)。
+   *   放在 catalog 后面正合适。
+   */
+  app.get("/api/literature/network", async (request) => {
+    const qq = request.query as { seedId?: string; threshold?: string; nodeMax?: string; edgeMax?: string };
+    const num = (v: string | undefined, d: number, lo: number, hi: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : d;
+    };
+    const { citationNetworkService } = await import("../services/citation-network-service.js");
+    return citationNetworkService.buildCitationNetwork({
+      seedId: qq.seedId && /^[\w-]{1,64}$/.test(qq.seedId) ? qq.seedId : undefined,
+      threshold: num(qq.threshold, 0.08, 0.001, 1),
+      nodeMax: num(qq.nodeMax, 60, 5, 300),
+      edgeMax: num(qq.edgeMax, 150, 5, 2000),
+    });
+  });
+
   app.get("/api/literature/:id", async (request, reply) => {
     const params = request.params as { id: string };
     const detail = literatureService.getDetail(params.id);
@@ -11524,6 +11596,115 @@ ${dataBlock}
       error: j.error ?? undefined, sourceTaskId: j.sourceTaskId,
       stage: j.stage ?? null
     } };
+  });
+
+  /**
+   * 「本课题跑过的分析」—— 写作舱 ↔ 统计台之间**唯一**的连接点。
+   *
+   * 连接规则(全仓仅此一处, 见源由): 写作舱快照里的 `statisticsFileId`(形如 `file_<uuid>`)
+   *   → `stats_jobs.input->>'fileId'`(同一个串) → 这次分析就是在这个课题的数据上跑的。
+   *   索引见 migrations/153_stats_file_index.sql。
+   *
+   * ⚠ 前缀两侧都要归一: 快照里存的是**带 `file_` 前缀**的串(server.ts 上传路由返回的就是它),
+   *   而 statistics-job-service 取数据前会 `replace(/^file_/,"")`。所以这里两种写法都查一次,
+   *   否则会出现"明明跑过分析却一条都列不出来"这种查半天查不出的静默空。
+   *
+   * 只返回表格元信息, 不带完整 result —— 列表可能几十条, 把每个 job 的 tables/charts 全带上
+   *   响应会很大; 真正要插入时再按 jobId 取那一条。
+   */
+  app.get("/api/research/projects/:projectId/analyses", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const snap = await pool.query<{ workbench_snapshot: Record<string, unknown> | null }>(
+      `select workbench_snapshot from research_projects where id=$1 and user_id=$2`, [projectId, user.id]);
+    if (!snap.rows.length) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "课题不存在" } });
+    const rawId = String((snap.rows[0].workbench_snapshot ?? {}).statisticsFileId ?? "").trim();
+    if (!rawId) return { analyses: [], statisticsFileId: "", reason: "本课题还没有上传数据文件" };
+    const bare = rawId.replace(/^file_/, "");
+    const r = await pool.query<{ id: string; tool: string; status: string; created_at: string; has_table: boolean }>(
+      `select id, tool, status, created_at,
+              (jsonb_typeof(result -> 'tables') = 'array' and jsonb_array_length(result -> 'tables') > 0) as has_table
+         from stats_jobs
+        where user_id = $1 and input ->> 'fileId' in ($2, $3)
+        order by created_at desc
+        limit 50`,
+      [user.id, rawId, bare]);
+    return {
+      statisticsFileId: rawId,
+      analyses: r.rows.map((row) => ({
+        id: row.id,
+        tool: row.tool,
+        status: row.status,
+        createdAt: row.created_at,
+        /** 有没有可直接插入的表格 —— 前端只给"可插入"的显示按钮, 免得点了才报错 */
+        hasTable: row.has_table,
+      })),
+    };
+  });
+
+  /**
+   * 分析结果 → 写作舱素材(「把回归表写进正文」的数据通道)。
+   *
+   * 由来(2026-09-24): 写作舱第 3 步可以跳去「数据分析」跑回归, 但结果是**回不来的** ——
+   *   两边根本不在一个 id 空间里: 写作舱用 `research_projects.id`, 统计台的结果按 `user_id`
+   *   存在 stats_jobs 里, **没有任何一列把它们连起来**(全仓 grep `research_project_id` 零命中)。
+   *   于是用户只能看着结果手动抄进正文。
+   *
+   * 这里补的就是那座桥 —— 与 `POST /api/viz/artifacts/:id/to-materials` 同一形态
+   *   (产物 → research_materials), 只是产物类型从图表换成统计表。
+   *
+   * 为什么走 materials 而不是直接写章节:
+   *   ① 素材是写作舱既有的、已接好的通道 —— `research_materials.kind='table'` + `tableData`
+   *      在 MaterialsView/WorkspaceView 里本来就渲染成真表格;
+   *   ② 出稿后再改章节正文是不可逆的, 而素材可以删、可以改、可以自己选在哪一章用。
+   *      (`sectionIds` 直接带上用户选的那一章, 省得他再挂一次。)
+   *
+   * 表格取值刻意保守: 只取 `result.tables[0]`, 且必须是 `{columns[], rows[][]}` 的形状 ——
+   *   不同统计工具的 result 结构差别很大, 猜错了会把一张乱表插进论文里, 比不插更糟。
+   *   取不到就 400 说清楚, 前端据此提示"这个结果没有可插入的表格, 请用截图/图表通道"。
+   */
+  const statsToMaterialSchema = z.object({
+    projectId: z.string().min(1),
+    sectionId: z.string().max(128).optional(),
+  });
+  app.post("/api/statistics-jobs/:jobId/to-materials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { jobId } = request.params as { jobId: string };
+    const parsed = statsToMaterialSchema.safeParse(request.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: { code: "INVALID_INPUT", message: "缺少 projectId" } });
+    const { projectId, sectionId } = parsed.data;
+    const { statsJobService: svc } = await import("../services/statistics-job-service.js");
+    const job = await svc.getStatsJobAsync(user.id, jobId);
+    if (!job) return reply.code(404).send({ error: { code: "NOT_FOUND", message: "统计任务不存在" } });
+
+    const tables = (job.result as { tables?: unknown } | undefined)?.tables;
+    const first = Array.isArray(tables) ? (tables[0] as Record<string, unknown> | undefined) : undefined;
+    const columns = first && Array.isArray(first.columns) ? (first.columns as unknown[]) : null;
+    const rows = first && Array.isArray(first.rows) ? (first.rows as unknown[]) : null;
+    if (!columns || !rows) {
+      return reply.code(400).send({
+        error: {
+          code: "NO_TABLE",
+          message: "该分析结果里没有可直接插入的统计表 —— 图表类结果请用「科研绘图」的插图通道",
+        },
+      });
+    }
+
+    const title = String((first as { title?: unknown }).title ?? "").trim()
+      || String((job as { tool?: string }).tool ?? "统计分析") + "结果表";
+    const mid = randomUUID();
+    await pool.query(
+      `insert into research_materials
+         (id, project_id, user_id, kind, title, content_md, table_data, section_ids, source_ref, meta)
+       values ($1,$2,$3,'table',$4,$5,$6,$7,$8,$9)`,
+      [
+        mid, projectId, user.id, title, "",
+        JSON.stringify({ columns, rows }),
+        JSON.stringify(sectionId ? [sectionId] : []),
+        jobId,
+        JSON.stringify({ fromStatsJob: jobId, tool: (job as { tool?: string }).tool ?? null }),
+      ]);
+    return { id: mid, title, columns: columns.length, rows: rows.length };
   });
 
   /**

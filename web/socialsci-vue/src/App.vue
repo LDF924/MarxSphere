@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { onBeforeUnmount, onMounted, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { ToastHost, ConfirmHost } from "./shared/ui";
 import { collectDomActions, onActionInvoked, reportActions } from "./shared/actions-bridge";
-import { HANDOFF_KEY } from "./shared/workflow-bridge";
+import { HANDOFF_KEY, installWorkflowRouteBridge, reportSocRoute } from "./shared/workflow-bridge";
 
 // ── 当前页可执行动作 → 上报 React 外壳的科研助手(V416) ──
 // 全站一处接线: 只要按钮带 data-control 就会被自动收集上报, 各视图不用各自写桥接代码。
@@ -75,8 +75,22 @@ onMounted(() => {
   // 只过滤 disabled 而不是全属性: class/style 变动太频繁, 全监听会一直重扫。
   mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
   window.addEventListener("message", onExternalMaterial as unknown as EventListener);
+  /**
+   * 每次路由变化把"当前停在哪一页"上报外壳（2026-09-24 加）。
+   *
+   * 外壳要回答两个问题："离开这个工作台时它停在哪"、"回来时怎么恢复"。
+   * 而 FusionPanel 的单例保活池让 iframe 常驻 —— 外壳**读不到**它的真实 hash
+   * （跨源 contentWindow 访问会抛 SecurityError，FusionPanel.tsx 里已经踩过），
+   * 于是只能由 iframe 自己说。放在这里而不是 main.ts：App.vue 是 RouterView 的宿主，
+   * useRoute 的 watcher 拿到的 path 与用户看到的一页一一对应。
+   */
+  const stopRouteWatch = watch(() => route.path, (p) => { if (p) reportSocRoute("workflow", p); }, { immediate: true });
+  // 外壳的下行路由指令(「返回研途写作舱」): iframe 自己 push —— 见 installWorkflowRouteBridge 的由来说明
+  const stopRouteBridge = installWorkflowRouteBridge(router);
   push();
   onBeforeUnmount(() => {
+    stopRouteWatch();
+    stopRouteBridge();
     stop();
     mo?.disconnect();
     window.clearTimeout(timer);

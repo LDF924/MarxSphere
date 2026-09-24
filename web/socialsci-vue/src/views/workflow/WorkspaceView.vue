@@ -16,6 +16,7 @@ import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
+import CitationCheckPanel from "./CitationCheckPanel.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -519,6 +520,50 @@ async function loadMaterials() {
     materials.value = [];
   }
 }
+
+/**
+ * 引文核查要用的参考文献表 —— **序号即 `[n]` 里的 n**。
+ *
+ * 来源按科研流程的先后取两处:
+ *   ① 合稿页整理的参考文献(如果已经写过) —— 那是最终要投出去的那份, 顺序最权威;
+ *   ② 否则用资料库里**文献类素材**的 `references[]`。
+ * 之所以不用"素材的先后顺序": 素材可以随意增删编排, 它的顺序与正文 `[n]` 所指的第 n 条
+ *   没有必然关系; 而参考文献列表是用户自己排的序。
+ *
+ * ⚠ 判"是不是文献类"必须认 `citation` —— 后端只接受
+ *   `note/citation/data_result/figure/file/theory/table` 这七种 kind(见 server.ts 的
+ *   `POST /api/research/materials`), 写作舱检索入库发的也是 `citation`。
+ *   `literature` 只是在**前端 categorizer** 里当输入键用(见 MaterialsView 的 CATS,
+ *   与 `catOfKind` 的中文注释"后端 history 里的那个键"也早就对不上了)。
+ *   只认 literature 的话这里恒空 → 正文里的 `[1]` 永远配不到第 1 条。
+ */
+const storeReferences = computed<Array<Record<string, string>>>(() => {
+  const fromMerged = (store.mergedReferences ?? "").trim();
+  if (fromMerged) {
+    // 合稿那栏是文本形式的参考文献表, 每行一条(用户可能写成 `[1] 作者. 题名…`)
+    return fromMerged
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const body = line.replace(/^\[\d+\]\s*/, "");
+        const doi = body.match(/10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i)?.[0] ?? "";
+        const year = body.match(/[（(]?((?:19|20)\d{2})[）)]?/)?.[1] ?? "";
+        return { title: body, ...(doi ? { doi } : {}), ...(year ? { year } : {}) };
+      });
+  }
+  const out: Array<Record<string, string>> = [];
+  for (const m of materials.value) {
+    // 归一化后是 "citation" 才是文献类 —— 见上面 storeReferences 的注释(kind 真源)
+    if (catOfKind(String(m.kind ?? "")) !== "citation") continue;
+    const refs = m.references;
+    if (!Array.isArray(refs)) continue;
+    for (const r of refs) {
+      if (r && typeof r === "object") out.push(r as Record<string, string>);
+    }
+  }
+  return out;
+});
 async function insertMaterialContent(m: Record<string, unknown>) {
   const sec = activeSection.value;
   if (!sec) return;
@@ -1323,6 +1368,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             </div>
           </details>
         </div>
+
+        <!-- 引文核查(V425 加法): 就放在正文下面 —— 核的是"你正在写的这一章"。
+             后端 /api/citations/verify 早就有了(外壳"引文核验"视图在用), 只是写作舱一直没接;
+             而引用对不对, 恰恰只有写到这里才看得出来。不调 LLM, 纯 Crossref/OpenAlex 查证。 -->
+        <details class="cite-box" open>
+          <summary>引文核查（本章正文）</summary>
+          <CitationCheckPanel :text="activeSection.content ?? ''" :refs="storeReferences" />
+        </details>
       </template>
       <div v-else class="center-empty">
         <p>← 从左侧选择章节开始创作</p>
@@ -1556,6 +1609,12 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .summary-block { margin-top: 8px; }
 .summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
 .summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
+/* 引文核查块 —— 与上方"写作要点速览"同一形态, 免得两种折叠块长得不一样 */
+.cite-box {
+  margin: 10px 0 0; border: 1px solid var(--wf-line); border-radius: 8px;
+  background: var(--wf-surface); padding: 8px 12px;
+}
+.cite-box > summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); margin-bottom: 8px; }
 .right-rail {
   width: clamp(240px, 19vw, 400px); flex-shrink: 0; border-left: 1px solid var(--wf-line);
   display: flex; flex-direction: column; background: #141E33;

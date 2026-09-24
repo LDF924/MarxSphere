@@ -23,7 +23,7 @@ Fixes #（填写 issue 编号）
 ## 验证（Testing）
 
 - [ ] `npm run typecheck` 通过
-- [ ] `npm test`（1053 项）通过
+- [ ] `npm test`（1080 项）通过
 - [ ] 手动验证了相关功能
 
 验证步骤说明：

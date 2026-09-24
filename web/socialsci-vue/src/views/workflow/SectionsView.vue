@@ -15,6 +15,7 @@ import { q, describeTaskError } from "@/shared/api";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
+import ResearchDesignPanel from "./ResearchDesignPanel.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -732,6 +733,16 @@ onUnmounted(() => {
         </div>
       </div>
     </section>
+
+    <!-- 研究设计(V425 加法): 框架设计不只是章节结构 —— 还要定**怎么做**。
+         方法选型 / 因果识别 / 数据来源 / 伦理。放在"科研框架概览"之后、章节结构之前:
+         先想清楚怎么研究, 再定分几章写。 -->
+    <section class="design-card-wrap">
+      <details class="design-box" open>
+        <summary>研究设计（方法 / 因果识别 / 数据来源 / 伦理）</summary>
+        <ResearchDesignPanel :research-method="store.input.researchMethod" />
+      </details>
+    </section>
     <section class="tree-card">
       <h3 class="sec-title">章节结构</h3>
       <EmptyState
@@ -963,6 +974,14 @@ onUnmounted(() => {
      现在那层没了, 归零写在原地。 */
   margin-bottom: 0;
 }
+/* 研究设计块(V425 加法) */
+.design-card-wrap { margin-top: 16px; }
+.design-box {
+  background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
+  padding: 14px 18px;
+}
+.design-box > summary { cursor: pointer; font-size: 15px; color: var(--wf-text); }
+.design-box[open] > summary { margin-bottom: var(--wf-s3); }
 .sec-title { margin: 0 0 10px; font-size: 15px; color: var(--wf-text); }
 .tree-empty { padding: 24px; text-align: center; color: var(--wf-faint); font-size: 13px; }
 .level1-row { border-bottom: 1px solid var(--wf-line-soft); padding: 10px 0; }

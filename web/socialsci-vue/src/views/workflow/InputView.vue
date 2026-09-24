@@ -14,6 +14,7 @@ import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { putNode, createTask } from "@/shared/tasks";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
+import DesignRationalePanel from "./DesignRationalePanel.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -559,6 +560,14 @@ onMounted(async () => {
       </div>
       <p class="wf-note">如不确定可跳过, 系统将根据标题和目录自动识别。</p>
       <p v-if="researchMethodAuto" class="auto-detect-note">📎 已根据标题和目录自动识别: {{ methodAutoLabel }}</p>
+
+      <!-- 选题论证(V425 加法): 真实流程的第一步不是"填个题", 而是论证这题能不能做。
+           表述与范围两项是**本地纯函数**, 改题即重算; 创新性与编辑标准要调模型, 手动触发。
+           后端 cjournal-service 早有这一整套, 写作舱此前零引用。 -->
+      <details class="rationale-box" open>
+        <summary>选题论证（表述 / 范围 / 编辑标准 / 研究主线）</summary>
+        <DesignRationalePanel :topic="store.input.title" />
+      </details>
     </section>
 
     </div>
@@ -831,6 +840,13 @@ onMounted(async () => {
 .method-card strong { font-size: 14px; color: var(--wf-text); }
 .method-card small { font-size: 11.5px; color: var(--wf-muted); }
 .method-card.selected { border-color: #4D84CB; background: #2A1C1C; box-shadow: 0 1px 4px rgba(220, 38, 38, 0.1); }
+/* 选题论证块(V425 加法) —— 与其它折叠块同一形态 */
+.rationale-box {
+  margin-top: 12px; border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
+  background: var(--wf-surface-2); padding: 9px 12px;
+}
+.rationale-box > summary { cursor: pointer; font-size: var(--wf-f-sm); color: var(--wf-text-2); }
+.rationale-box[open] > summary { margin-bottom: var(--wf-s3); }
 .drop-zone {
   border: 2px dashed var(--wf-line-hard);
   border-radius: 10px;
@@ -866,19 +882,50 @@ onMounted(async () => {
 .ch-arrow.open { transform: rotate(180deg); }
 .clarify-body { padding: 4px 18px 16px; }
 /*
- * ⚠ 2026-09-24: 从 `text-align: center` 改成左对齐。
- *   居中时那句话(48 字)在卡片里断成了两行, 且把"分析。"单独甩到第二行 —— 因为居中排版下
- *   两端剩余空间相等, 断点位置完全由字数决定, 读起来像被腰斩。
- *   (我先试过加 `max-width: 46ch` —— **那是错的**: `ch` 是"0"的宽度(约 6px), 不是汉字宽度,
- *    46ch 只有约 23 个汉字, 反而让文字更早换行。已撤掉, 这句现在靠**缩短文案**放进一行。)
- *   ⚠ 副作用(特意保留): `text-align` 会被**子块里的 inline-flex/inline-block 按钮继承**,
- *   所以底部那个主按钮也跟着靠左了。这正是想要的 —— 文字与按钮同一条左基线, 比"文字靠左、
- *   按钮居中"更整齐。(我第一版注释写成"按钮仍居中", 那是错的: text-align 会继承。)
+ * ⚠ 2026-09-24 第三版(用户两次反馈后才定下来, 前两版都只对了一半)。
+ *
+ * 第一版 `text-align: center` —— 提示语(48 字)在这个宽度下断成两行, 把"分析。"甩到第二行,
+ *   看着像被腰斩。当时把它归因于"居中排版断点不可控", 改成左对齐。
+ * 第二版 `text-align: left` —— 换行倒是好了, 但两个副作用各被用户抓到一次:
+ *   ① `text-align` 被 inline-block 的 `<button>` 继承 → 「AI 分析我的研究」黏在左边缘
+ *      (实测 1440 下左边距 0、右边空 249px);
+ *   ② 提示语自己靠左, 而按钮居中, 一条竖线上一半左一半中 —— 更乱。
+ *
+ * 前两版都在**给段落设对齐**上打转, 而真正该做的是**换布局**:
+ * 这正是 `EmptyState` 那个全舱统一空态组件的形状 —— "一句说明 + 一个动作按钮",
+ * 用**列向 flex + 居中 + gap**。既解决了按钮位置, 又让文字与按钮同一条中轴,
+ * 而且不必再和 `text-align` 的继承斗智。
+ *
+ * 间距是用户明确提的第二点("和点击按钮挨得太近")。原来 p 只设了 `margin-top: 8px`,
+ * **下边距是 0** → 文案与按钮直接贴住。改成 flex `gap` 而不是给 p 加 margin-bottom,
+ * 这样块里不论有几个子元素, 间距都由同一个值决定(与 EmptyState 的 gap: 4px 同源)。
  */
-.clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty { text-align: left; padding: 14px 0; }
-
-.clarify-idle p, .clarify-loading p, .clarify-error p, .clarify-done-empty p { font-size: 12px; color: var(--wf-muted); margin: 8px 0 0; }
+.clarify-idle, .clarify-loading, .clarify-error, .clarify-done-empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 12px; padding: 16px 0;
+}
+/*
+ * 提示语限宽。⚠ **用 em 不要用 ch**: 汉字是全角, 宽度≈1em; 而 `ch` 是**数字"0"的宽度**
+ *   (12px 字号下约 6px), 用 `52ch` 只有约 312px —— 那句话 33 个汉字需要约 400px,
+ *   于是被硬生生折成两行。(我这次就先写了 `52ch`, 实测行数=2 才发现, 又踩一遍同一个坑:
+ *   本文件上面那段注释里早就记着这个教训。)
+ *   40em ≈ 40 个汉字一行 —— 短句不受影响(它本来就不到 40 字), 长段落也不会拉成一条长线。
+ */
+.clarify-idle p, .clarify-loading p, .clarify-error p, .clarify-done-empty p {
+  font-size: 12px; color: var(--wf-muted); margin: 0; line-height: 1.6; max-width: 40em;
+}
 .clarify-error p { color: #dc2626; }
+
+/*
+ * 「总体分析」是一整段带底色的正文块 —— **不参与居中**(整段居中很难读, 左对齐是正文的常规)。
+ * 它只在 0 问的空结果态出现, 与上面的提示语/按钮同处一个 flex 列里, 所以单独放行。
+ */
+.clarify-done-empty .cq-analysis { text-align: left; align-self: stretch; max-width: none; }
+/*
+ * 同理: 存在总体分析时, 旁边那句"AI 未发现需要补充的引导问题。"也回左对齐 ——
+ * 跟着正文块走, 不要一半左一半中。
+ */
+.clarify-done-empty:has(.cq-analysis) > p { text-align: left; align-self: stretch; max-width: none; }
 /* 生成引导问题的主按钮(闭源红底实心, 与页面其它主行动一致) */
 .btn-clarify-run {
   padding: 9px 22px; border: 0; border-radius: 8px;

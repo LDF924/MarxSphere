@@ -80,13 +80,13 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   },
   "paper-outline": {
     label: "研途写作舱",
-    hint: "阶段化论文研究：信息录入 → 科研架构 → 素材准备 → 文本创作 → 合稿定稿",
+    hint: "阶段化论文研究：选题界定 → 框架设计 → 文献与资料 → 章节写作 → 统稿定稿",
     steps: [
-      { key: "input", label: "研究信息", purpose: "填写主题/方法/字数/目录" },
-      { key: "sections", label: "科研架构", purpose: "确认结构/变量/章节指导" },
-      { key: "materials", label: "素材准备", purpose: "生成/审视/编排素材" },
-      { key: "workspace", label: "正文创作", purpose: "逐章生成并核对正文" },
-      { key: "finalize", label: "合稿审阅", purpose: "合并/审阅/导出终稿" },
+      { key: "input", label: "选题界定", purpose: "填写主题/方法/字数/目录" },
+      { key: "sections", label: "框架设计", purpose: "确认结构/变量/章节指导" },
+      { key: "materials", label: "文献与资料", purpose: "生成/审视/编排素材" },
+      { key: "workspace", label: "章节写作", purpose: "逐章生成并核对正文" },
+      { key: "finalize", label: "统稿定稿", purpose: "合并/审阅/导出终稿" },
     ],
   },
   "dag-workbench": {

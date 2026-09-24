@@ -5,18 +5,22 @@
  * 数据: 后端 research_materials CRUD + 素材节点; kind: citation/theory/data_result/figure/file
  */
 import { ref, computed, watch, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { q, describeTaskError } from "@/shared/api";
 import { toast, confirmDialog } from "@/shared/ui";
 import { putNode } from "@/shared/tasks";
-import { claimHandoff } from "@/shared/workflow-bridge";
+import { claimHandoff, gotoWorkbenchModule } from "@/shared/workflow-bridge";
 import { renderMd } from "@/shared/markdown";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
+import LiteratureMatrixPanel from "./LiteratureMatrixPanel.vue";
+import DataCollectionPanel from "./DataCollectionPanel.vue";
+import CitationNetworkPanel from "./CitationNetworkPanel.vue";
 
 const router = useRouter();
+const route = useRoute();
 const store = useWorkflowStore();
 
 /** 素材审视报告: 后端返回的是 markdown, 原先用 <pre> 直出源码 */
@@ -774,17 +778,96 @@ function wordCountOf(m: Material): number {
   return t.replace(/\s/g, "").length;
 }
 
-/** 前往其它模块 —— 走外壳既有的 navigate 协议(不带 markdown, 是纯导航) */
+/**
+ * 前往其它模块 —— 走外壳既有的 navigate 协议(不带 markdown, 是纯导航)。
+ *
+ * 2026-09-24: 改走 `gotoWorkbenchModule` 并带上 `path`。
+ *   原先是裸 `{type:"navigate", view}`, **只有视图名没有路径** ——
+ *   用户在资料页跳去数据分析, 回来时落在写作舱第 1 步(外壳的 iframe src 写死 input),
+ *   第 3 步的位置结构上就丢了; 而且回来这一步得自己找路(外壳没有"返回写作舱"的入口)。
+ *   现在外壳会显示「← 返回研途写作舱」, 且恢复到你离开时的那一页。
+ */
 function gotoModule(mod: "statistics" | "viz") {
   const view = mod === "statistics" ? "empirical-research" : "plot-agent";
-  try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ source: "marxsphere-soc", type: "navigate", view }, "*");
-      return;
-    }
-  } catch { /* 跨源拿不到 parent */ }
+  // 用 route.path 而不是写死 "/workflow/materials": 这组按钮在资料页的几个分区里都渲染,
+  //   将来若挪到别的页, 上报的仍是当时真实的路径
+  if (gotoWorkbenchModule(view, { label: "研途写作舱 · 文献与资料", path: route.path })) return;
   toast("请从左侧导航进入对应模块", "warning");
 }
+// ── 分析结果回流(V425 加法) ──
+// 本课题的数据文件在统计台跑过哪些分析, 以及把某条结果转成素材插进章节。
+interface AnalysisRow {
+  id: string;
+  tool: string;
+  status: string;
+  createdAt: string;
+  hasTable: boolean;
+}
+const analyses = ref<AnalysisRow[]>([]);
+const analysesNote = ref("");
+const insertingId = ref("");
+
+/** 工具 id → 中文名(统计台 17 法)。表里没有的原样显示 —— 不编一个像样的名字糊弄 */
+const TOOL_LABELS: Record<string, string> = {
+  descriptive: "描述统计",
+  frequency: "频数分析",
+  crosstab: "交叉表",
+  ttest: "t 检验",
+  anova: "方差分析",
+  correlation: "相关分析",
+  ols: "OLS 回归",
+  logit: "Logit 回归",
+  ologit: "有序 Logit",
+  probit: "Probit 回归",
+  panel: "面板回归",
+  iv: "工具变量",
+  mediation: "中介效应",
+  moderation: "调节效应",
+  reliability: "信度分析",
+  validity: "效度分析",
+  factor: "因子分析",
+};
+function fmtTime(iso: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch { return ""; }
+}
+
+async function loadAnalyses() {
+  if (!store.taskId) { analyses.value = []; analysesNote.value = ""; return; }
+  try {
+    const r = await q<{ analyses?: AnalysisRow[]; reason?: string }>(`/research/projects/${store.taskId}/analyses`);
+    analyses.value = Array.isArray(r.analyses) ? r.analyses : [];
+    // 后端给了原因就照实说(如"本课题还没有上传数据文件")—— 比显示一个空列表有用
+    analysesNote.value = r.reason ?? "";
+  } catch {
+    analyses.value = [];
+    analysesNote.value = "";
+  }
+}
+
+/** 把一条分析结果转成 table 素材并挂到当前章节 */
+async function insertAnalysis(a: AnalysisRow) {
+  if (!store.taskId) { toast("请先创建课题", "warning"); return; }
+  const target = store.level1Sections[0];
+  if (!target) { toast("还没有章节结构，请先在「框架设计」里确认章节", "warning"); return; }
+  insertingId.value = a.id;
+  try {
+    const r = await q<{ id?: string; title?: string }>(`/statistics-jobs/${a.id}/to-materials`, {
+      method: "POST",
+      body: { projectId: store.taskId, sectionId: target.id },
+    });
+    toast(`已插入「${r.title ?? "统计结果"}」到《${target.title}》`, "success");
+    await loadMaterials();
+  } catch (e) {
+    toast(`插入失败：${(e as Error).message}`, "error");
+  } finally {
+    insertingId.value = "";
+  }
+}
+
 function closeAdd() {
   editDialog.value.open = false;
   // 关掉时把拖动位移复位 —— 否则下次打开会带着上次的位移出现在角落
@@ -1370,6 +1453,8 @@ onMounted(async () => {
   void loadCnkiIdentity();
   await store.loadProject().catch(() => null);
   await loadMaterials();
+  // 本课题在统计台跑过的分析(靠 statisticsFileId 连过去; 没有数据文件时后端会给 reason)
+  void loadAnalyses();
   // V417: 接外部模块投递的素材(文献库检索结果/论文评审意见/统计结果/图表), 落 research_materials
   await importExternalMaterials();
   // 默认展开非空分类(闭源默认)
@@ -1539,6 +1624,32 @@ onMounted(async () => {
           <span class="sc-arrow">›</span>
         </button>
       </div>
+
+      <!-- 分析结果回流(V425 加法): 跳去数据分析跑完的回归/统计, 原先**回不来** ——
+           两边不在一个 id 空间(写作舱 research_projects / 统计台 stats_jobs),
+           唯一的连接点是本课题上传的数据文件。后端按它列分析, 一键把表格转成素材。
+           没有数据文件、或还没跑过分析时, 这段不渲染 —— 不给用户看一个永远空的面板。 -->
+      <template v-if="analyses.length || analysesNote">
+        <h3 class="sc-group">本课题跑过的分析</h3>
+        <p v-if="analysesNote" class="ab-note">{{ analysesNote }}</p>
+        <ul v-else class="ab-list">
+          <li v-for="a in analyses" :key="a.id" class="ab-item">
+            <div class="ab-item-main">
+              <span class="ab-tool">{{ TOOL_LABELS[a.tool] ?? a.tool }}</span>
+              <span class="ab-time">{{ fmtTime(a.createdAt) }}</span>
+              <span v-if="a.status !== 'completed'" class="ab-badge">{{ a.status === "failed" ? "失败" : "进行中" }}</span>
+            </div>
+            <button
+              v-if="a.hasTable"
+              class="ab-btn"
+              :data-control="`workflow:insert-analysis-${a.id}`"
+              :disabled="insertingId === a.id"
+              @click="insertAnalysis(a)"
+            >{{ insertingId === a.id ? "插入中…" : "插入到当前章节" }}</button>
+            <span v-else class="ab-note">该结果没有可直接插入的统计表（图表类请走「科研绘图」插图）</span>
+          </li>
+        </ul>
+      </template>
     </section>
 
     <!-- 设计思路(闭源: 研究逻辑全文卡) -->
@@ -1551,6 +1662,30 @@ onMounted(async () => {
     </div>
 
     <h2 class="mat-section-title">已整理素材</h2>
+
+    <!-- 文献提取矩阵(V425 加法): 把已整理的文献摆成对照表 —— 写文献综述那一步最需要它。
+         后端 /api/literature/matrix 与外壳的面板早就有, 写作舱一直没接。
+         ⚠ 贵: 后端对每篇各调一次 LLM(上限 30 篇), 所以放在这里而不是自动跑。 -->
+    <details v-if="materials.some((m) => Array.isArray(m.references) && m.references.length)" class="matrix-box">
+      <summary>文献提取矩阵（把已整理文献摆成对照表）</summary>
+      <LiteratureMatrixPanel :materials="materials as Array<Record<string, unknown>>" />
+    </details>
+
+    <!-- 数据收集(V425 加法): 真实流程里"素材准备"之后接的是"回收数据" —— 问卷从哪来。
+         后端 empirical-questionnaire-service 早就有(生成/识别/落库), 写作舱一直没接。 -->
+    <details class="matrix-box">
+      <summary>数据收集（生成问卷 / 识别已有问卷）</summary>
+      <DataCollectionPanel :topic="store.input.title || store.title" />
+    </details>
+
+    <!-- 引用网络(V425 加法): 库内文献的文献耦合 + 共被引图。
+         citation-graph-service 此前全仓零调用 —— 它的头部写着"数据源接入等入库方案决定(暂缓)",
+         但那个暂缓针对的是"要不要批量落库/接 Neo4j", 而现算并不需要那个决定:
+         库里已有 210 篇解析出参考文献表。默认收起(要读 500 个文件, 约一两秒)。 -->
+    <details class="matrix-box">
+      <summary>引用网络（库内文献的共引关系图）</summary>
+      <CitationNetworkPanel />
+    </details>
 
     <!-- V419 加法: 素材筛选 + 批量选择。
          筛选是纯前端(列表已在内存, 不必往返)；批量删除走**已有**的 DELETE /research/materials/:id,
@@ -2237,6 +2372,38 @@ onMounted(async () => {
 .sc-btn-outline:hover { background: #2A1C1C; }
 .sc-btn-outline:disabled { opacity: 0.45; cursor: not-allowed; }
 .sc-group { margin: 0 0 10px; font-size: 11px; font-weight: 500; color: var(--wf-faint); letter-spacing: 0.06em; }
+/* 分析结果回流 + 文献矩阵(V425 加法) */
+.ab-note { margin: 0; font-size: var(--wf-f-sm); color: var(--wf-muted); line-height: 1.7; }
+.matrix-box {
+  margin: 0 0 var(--wf-s4); border: 1px solid var(--wf-line); border-radius: var(--wf-r);
+  background: var(--wf-surface); padding: 10px 14px;
+}
+.matrix-box > summary { cursor: pointer; font-size: var(--wf-f-md); color: var(--wf-text-2); }
+.matrix-box[open] > summary { margin-bottom: var(--wf-s3); }
+/* 条目里那个"无可插表格"的说明靠右对齐 —— 与有按钮时的按钮同位置, 两种行看起来才是一列 */
+.ab-item .ab-note { margin-left: auto; font-size: var(--wf-f-xs); color: var(--wf-faint); }
+.ab-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ab-item {
+  display: flex; align-items: center; gap: var(--wf-s3);
+  border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
+  background: var(--wf-surface); padding: 7px 11px;
+}
+.ab-item-main { display: flex; align-items: center; gap: var(--wf-s2); min-width: 0; }
+.ab-tool { font-size: var(--wf-f-sm); color: var(--wf-text); }
+.ab-time { font-size: var(--wf-f-xs); color: var(--wf-faint); }
+.ab-badge {
+  font-size: var(--wf-f-xs); color: var(--wf-warn);
+  border: 1px solid var(--wf-warn); border-radius: var(--wf-r-pill); padding: 0 6px;
+}
+.ab-btn {
+  margin-left: auto; flex-shrink: 0; cursor: pointer;
+  border: 1px solid var(--wf-accent); border-radius: var(--wf-r-sm);
+  background: transparent; color: var(--wf-accent-hi);
+  padding: 3px 10px; font-size: var(--wf-f-xs);
+  transition: background var(--wf-dur-fast) var(--wf-ease);
+}
+.ab-btn:hover:not(:disabled) { background: var(--wf-accent-soft); }
+.ab-btn:disabled { opacity: .5; cursor: not-allowed; }
 .sc-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
 .sc-grid-2 { display: grid; grid-template-columns: 1fr; gap: 10px; }
 @media (min-width: 768px) {
