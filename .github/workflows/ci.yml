@@ -143,8 +143,22 @@ jobs:
           # ⚠ 输出同时落盘一份: 这个动作的日志**需要仓库 admin 权限**才能从 API 拉,
           #   而失败时 annotation 只给一句"Process completed with exit code 1" —— 没有断言行号,
           #   等于"知道红了, 不知道红在哪"。写成文件后由下面的 artifact 步骤带走, 谁都能下。
+          #
+          # ⚠⚠ 2026-09-24 补一道**更可靠的兜底**: artifact 要鉴权才能下载(匿名 401),
+          #   而失败日志曾经只有 1.6KB(那是 `process.exit(1)` 丢掉未冲刷 stdout 所致, 已修)。
+          #   但即便修了, 想让"失败原因"稳定地到达人眼前, 最稳的还是把它**打进 annotation** ——
+          #   annotations 是**匿名可读**的(实测), 一条 `::error::` 里塞进最后若干行日志,
+          #   在 PR/commit 页面上直接看得到, 不用下载任何东西。
+          #   这里只加观测, 不加时长。
           set -o pipefail
           npm run verify:ui 2>&1 | tee /tmp/verify-ui.log
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=UI 门禁失败::$(grep -E '❌|失败:|套通过|套全部通过' /tmp/verify-ui.log | tail -8 | tr '\n' '~')"
+            # 逐套结论那一段单独再打一条, 便于定位是哪几个套件
+            echo "::error title=逐套结论::$(grep -E '^(✅|❌) ' /tmp/verify-ui.log | tail -30 | tr '\n' '~')"
+          fi
+          exit $rc
         shell: bash
 
       # 门禁失败时把**门禁自己的输出**也带出来(与上面的 server-log 同理)

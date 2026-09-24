@@ -128,7 +128,7 @@ const onlyArg = argv.find((a) => a.startsWith("--only=")) ?? (argv.includes("--o
 const only = onlyArg ? new Set(String(onlyArg).replace(/^--only=/, "").split(",").map((s) => s.trim()).filter(Boolean)) : null;
 
 const chosen = SUITES.filter((s) => (only ? only.has(s.key) : wantAll || !s.data));
-if (!chosen.length) { console.error(`没有匹配的套件。可选: ${SUITES.map((s) => s.key).join(", ")}`); process.exit(1); }
+if (!chosen.length) { console.error(`没有匹配的套件。可选: ${SUITES.map((s) => s.key).join(", ")}`); await exitAfterFlush(1); }
 
 /**
  * 环境哨兵先行 —— 几秒钟, 换掉"跑完十几分钟才发现验错了对象"。
@@ -139,14 +139,40 @@ if (!chosen.length) { console.error(`没有匹配的套件。可选: ${SUITES.ma
  *
  * `--no-sentinel` 跳过(用于"我知道环境是脏的, 就是要这么跑"的场合, 例如故意跨树对比)。
  */
+/**
+ * 退出前**显式冲刷 stdout** —— 不能用裸 `process.exit(1)`。
+ *
+ * ⚠ 2026-09-24 修。CI 里跑的是 `npm run verify:ui 2>&1 | tee /tmp/verify-ui.log`:
+ *   管道是异步的, 而 `process.exit()` 立刻终止进程、**不等 stdout 写出去** ——
+ *   于是失败时上传的工件只有 **1.6KB**(哨兵那几行 + 一行汇总),
+ *   逐套的 ✅/❌ 与失败诊断**整段没进文件**。实测两次 CI 失败都是这个大小。
+ *   等于当初加 artifact 想解决的"知道红了, 不知道红在哪"**根本没解决**, 只是看着像解决了。
+ *
+ * `process.stdout.write("", cb)` 的回调在缓冲区排空后才触发 —— 等它再退, 内容就丢不了。
+ * (stdout 不是管道/文件时 cb 也会被调用, 所以这条在任何环境都安全。)
+ */
+async function exitAfterFlush(code) {
+  process.exitCode = code;
+  await new Promise((res) => { try { process.stdout.write("", res); } catch { res(); } });
+  await new Promise((res) => { try { process.stderr.write("", res); } catch { res(); } });
+  process.exit(code);
+}
+
 if (!argv.includes("--no-sentinel")) {
+  /**
+   * ⚠ 2026-09-24 另修一处"说了但没做": 这里一直**没把 `SENTINEL_ALLOW_MISMATCH` 传给哨兵**,
+   *   尽管下面的提示语写着"加 SENTINEL_ALLOW_MISMATCH=1 把跨树降级为提醒" ——
+   *   照提示做也不生效, 用的人只会以为是自己写错了。现在真的传下去。
+   *   (哨兵自己读的是 `process.env.SENTINEL_ALLOW_MISMATCH` 与 `--allow-mismatch`。)
+   */
+  if (argv.includes("--allow-mismatch")) process.env.SENTINEL_ALLOW_MISMATCH = "1";
   const { runSentinel } = await import("./env-sentinel.mjs");
   const r = await runSentinel({ print: true });
   if (!r.ok) {
     console.error(`\n❌ 环境哨兵有 ${r.fail.length} 项不一致 —— 已中止, 没开始跑套件。`);
     console.error(`   这些不一致会让门禁验的不是你在改的代码, 先按上面的提示修。`);
-    console.error(`   确实要这么跑: 加 --no-sentinel(或 SENTINEL_ALLOW_MISMATCH=1 把跨树降级为提醒)。\n`);
-    process.exit(1);
+    console.error(`   确实要这么跑: 加 --no-sentinel, 或 SENTINEL_ALLOW_MISMATCH=1 把跨树降级为提醒。\n`);
+    await exitAfterFlush(1);
   }
   console.log("");
 }
@@ -223,5 +249,5 @@ if (failed.length) {
   const silent = failed.filter((f) => f.code === 0);
   if (silent.length) console.log(`  (其中 ${silent.map((f) => f.key).join(", ")} 是**退出码 0 但自报失败** —— 脚本该补 exit 1)`);
   console.log(`单跑排查: node scripts/<文件>.mjs  (对应关系见本文件 SUITES)`);
-  process.exit(1);
+  await exitAfterFlush(1);
 }
