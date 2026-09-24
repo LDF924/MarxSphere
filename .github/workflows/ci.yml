@@ -151,12 +151,21 @@ jobs:
           #   在 PR/commit 页面上直接看得到, 不用下载任何东西。
           #   这里只加观测, 不加时长。
           set -o pipefail
+          # ⚠ 必须 `set +e` 包住这一句: GitHub Actions 的 `run` 默认是 `bash -e`,
+          #   不加的话 `npm run verify:ui | tee` 一失败**脚本立刻终止** ——
+          #   下面取退出码与打 annotation 的几行**根本执行不到**。
+          #   实测: 前一版就这么写, 失败时 annotation 里只有 GitHub 自己那句
+          #   "Process completed with exit code 1", 我想补的那两条一条都没出现。
+          set +e
           npm run verify:ui 2>&1 | tee /tmp/verify-ui.log
-          rc=$?
+          rc=${PIPESTATUS[0]}
+          set -e
           if [ "$rc" -ne 0 ]; then
-            echo "::error title=UI 门禁失败::$(grep -E '❌|失败:|套通过|套全部通过' /tmp/verify-ui.log | tail -8 | tr '\n' '~')"
-            # 逐套结论那一段单独再打一条, 便于定位是哪几个套件
-            echo "::error title=逐套结论::$(grep -E '^(✅|❌) ' /tmp/verify-ui.log | tail -30 | tr '\n' '~')"
+            # 尽量把**失败原因**塞进 annotation(匿名可读, 不用下载任何东西)。
+            # ⚠ grep 必须覆盖 `FAIL` —— 环境哨兵的失败行就是 `FAIL  <中文名> — <详情>`,
+            #   不含 ❌; 只 grep ❌ 会把"哨兵拦下了"这种最可能的失败整段漏掉。
+            echo "::error title=UI 门禁失败::$(grep -E 'FAIL|❌|失败:|套通过|套全部通过|项异常' /tmp/verify-ui.log | tail -10 | tr '\n' '~' | cut -c1-6000)"
+            echo "::error title=逐套结论::$(grep -E '^(✅|❌) ' /tmp/verify-ui.log | tail -30 | tr '\n' '~' | cut -c1-6000)"
           fi
           exit $rc
         shell: bash
