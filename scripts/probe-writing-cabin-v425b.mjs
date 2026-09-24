@@ -13,9 +13,15 @@
 //   ⑤ 数据收集   两个模式可切 + 「生成问卷」真打端点(拦截态)
 //   ⑥ 文献矩阵   有文献条目时才出现 + 「开始提取」真打 /api/literature/matrix
 //   ⑦ 分析回流   真跑一次 regression → 列表出现 → **点按钮 → table 素材真落库**
-//   ⑧ 引用网络   接口有边 + **面板真画出 60 circle/71 line 且力导向把节点摆开**
+//   ⑧ 引用网络   面板真渲染 + 力导向把节点摆开(**库非空时**)
 //   ⑨ 库查重     拿**库内真实文本**去查必须命中自己 + 比例不超过 1（分子不去重会算出 >1）
 //   ⑩ Word 导出  解开 docx 的 zip 看 document.xml: 期刊论文 1.5 倍、高校学报固定 20 磅
+//
+// ⚠⚠ ⑧ 与 ⑨ **依赖文献库**, 而 `data/` 是 gitignore 的 —— 本机 500 篇, **CI / 新部署 0 篇**。
+//   这两条**必须**分情况: 库空时 skip 并说明"无验证对象", 库非空时必须真验。
+//   2026-09-24 实测教训: 我一开始写成了无条件断言, 本地全绿、**推上去 CI 当场红**
+//   (本地另起一个 LITERATURE_DIR 指向空目录的后端即可复现)。
+//   这不是"放宽断言": 库为空时这条断言没有验证对象, 硬要求"有边"是在验环境而不是验代码。
 //
 // ⚠ 写这个探针时反复踩到的两类坑(都会造成**假红**, 与产品无关):
 //   ① **观测时机**: 拦截器装晚了(改题重算是防抖触发的, 装完再等 600ms+)、
@@ -291,9 +297,24 @@ async function main() {
     //   和"接错了数据源"长得一模一样。
     const net = await apiCall("GET", "/literature/network?threshold=0.05", token);
     const netNodes = (net?.nodes ?? []).length, netEdges = (net?.edges ?? []).length;
-    check("引用网络-接口返回图且**有边**", netEdges > 0, `节点 ${netNodes} 边 ${netEdges}`);
     check("引用网络-统计字段齐(库/有参考文献/库内互引)", typeof net?.stats?.papers === "number" && typeof net?.stats?.withRefs === "number" && typeof net?.stats?.inLibraryRefs === "number",
       JSON.stringify(net?.stats ?? {}));
+    /**
+     * ⚠ 「有边」这条**不能无条件断言** —— 引用网络依赖文献库, 而 `data/` 是 gitignore 的。
+     *   本机库里 500 篇(有边), **CI / 新部署里是 0 篇(没边)**。
+     *   无条件断言的后果: 推上去 CI 立刻红(2026-09-24 实测; 本地另起空库后端复现过)。
+     *   这不是"放宽断言" —— 库为空时这条**没有验证对象**, 正确做法是 skip 并说明原因;
+     *   库非空时必须真有边, 那才有意义。
+     */
+    const libEmpty = (net?.stats?.papers ?? 0) === 0;
+    const libNoRefs = (net?.stats?.withRefs ?? 0) === 0;
+    if (libEmpty) {
+      check("引用网络-接口返回图且**有边**", "skip", "文献库为空(CI/新部署就是这个状态) —— 无验证对象");
+    } else if (libNoRefs) {
+      check("引用网络-接口返回图且**有边**", "skip", `库有 ${net.stats.papers} 篇但都没解析出参考文献 —— 无验证对象`);
+    } else {
+      check("引用网络-接口返回图且**有边**", netEdges > 0, `节点 ${netNodes} 边 ${netEdges}`);
+    }
 
     // ═══ ⑦ 库查重 —— 拿库内真实正文当查询, 必须能查出它自己 ═══
     // 这是**唯一**能证明查重真在工作的方法: 用**确定来自库内**的文本去查, 必须命中。
@@ -318,7 +339,10 @@ async function main() {
       check("库查重-比例不超过 1", topRatio <= 1, `最高 ${topRatio}`);
       check("库查重-确有连续命中(不是只擦到几个 gram)", topRun >= 20, `最长连续 ${topRun} 字`);
     } else {
-      check("库查重-查得出来(库内文本能被命中)", "FAIL", "扫了 40 篇都没有可用的引文条目 —— 这条失去了验证对象, 按失败处理(不是 skip)");
+      // 这里原先写成 check(名, "FAIL", 说明) —— **字符串是 truthy, 于是显示成 ✅**,
+      // 而详情里还写着"按失败处理"。假绿比假红更坏: 它让"没验到"看起来像"验过了"。
+      // 改成 skip 并把原因写清楚 —— 库为空是环境事实, 不是产品缺陷。
+      check("库查重-查得出来(库内文本能被命中)", "skip", "文献库为空(CI/新部署就是这个状态) —— 无验证对象");
     }
 
     // ═══ ⑧ Word 导出带体例行距 —— 解开 docx 的 zip, 逐字节看 document.xml ═══
@@ -446,9 +470,17 @@ async function main() {
       const spread = xs.length ? Math.round(Math.max(...xs) - Math.min(...xs)) : 0;
       return { circles, lines, w: Math.round(box.width), h: Math.round(box.height), spread };
     })()`);
-    check("引用网络-面板真画出 SVG 节点与边", (svgInfo?.circles ?? 0) > 0 && (svgInfo?.lines ?? 0) > 0,
-      `circle=${svgInfo?.circles} line=${svgInfo?.lines} spread=${svgInfo?.spread}px 容器=${svgInfo?.w}x${svgInfo?.h}`);
-    check("引用网络-节点被真正摆开(力导向跑过)", (svgInfo?.spread ?? 0) > 50, `x 方向跨度 ${svgInfo?.spread}px(>50 才算排开)`);
+    // 面板这条同样分情况: 库空时改验"空态有没有把原因说清楚", 不硬要求画点
+    if (libEmpty || libNoRefs) {
+      const emptyText = await ev("(() => { const e = document.querySelector('.cnp-empty'); return e ? e.innerText.replace(/\\s+/g, ' ').trim() : ''; })()");
+      check("引用网络-空库时说的是原因(不是一句「没有数据」)",
+        /文献库还是空的|没有一篇解析出参考文献/.test(String(emptyText)),
+        `空态文案="${String(emptyText).slice(0, 72)}"`);
+    } else {
+      check("引用网络-面板真画出 SVG 节点与边", (svgInfo?.circles ?? 0) > 0 && (svgInfo?.lines ?? 0) > 0,
+        `circle=${svgInfo?.circles} line=${svgInfo?.lines} spread=${svgInfo?.spread}px 容器=${svgInfo?.w}x${svgInfo?.h}`);
+      check("引用网络-节点被真正摆开(力导向跑过)", (svgInfo?.spread ?? 0) > 50, `x 方向跨度 ${svgInfo?.spread}px(>50 才算排开)`);
+    }
 
     // ═══ ⑪ 「插入到当前章节」按钮 —— 真点一次, 并验素材真落库 ═══
     //

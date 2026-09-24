@@ -153,7 +153,22 @@ const isolated = computed(() => layout.value.filter((n) => n.degree === 0).lengt
           <text :x="n.x" :y="n.y - n.r - 4" class="cnp-text">{{ n.title.length > 12 ? n.title.slice(0, 12) + "…" : n.title }}</text>
         </g>
       </svg>
-      <p v-if="!layout.length" class="cnp-empty">这个阈值下没有连出任何边 —— 调低阈值试试。</p>
+      <!-- 空态的两种原因**必须分开说** —— 它们的下一步完全不同:
+           库本身是空的(去导入文献) vs 有文献但都不够相似(调阈值)。
+           混成一句"没有数据"会让人在错的方向上试。
+           ⚠ 库为空这条不是假想: CI / 新部署里 `data/` 是 gitignore 的, 文献库就是 0 篇。 -->
+      <p v-if="!layout.length" class="cnp-empty">
+        <template v-if="!net.stats.papers">
+          文献库还是空的 —— 先在「文献管理」里导入论文，库里有文献才谈得上引用关系。
+        </template>
+        <template v-else-if="!net.stats.withRefs">
+          库里有 {{ net.stats.papers }} 篇，但没有一篇解析出参考文献表 ——
+          引用网络靠参考文献建立，原文里没有参考文献块就无从连边。
+        </template>
+        <template v-else>
+          这个阈值下没有连出任何边 —— 库存 {{ net.stats.withRefs }} 篇有参考文献，调低阈值试试。
+        </template>
+      </p>
     </div>
     <p v-else-if="!loading && !err" class="cnp-empty">还没有数据。</p>
 
