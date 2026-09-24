@@ -84,7 +84,10 @@ const MEASURE = `(() => {
    *   要么已经塌成单栏"钉住。
    */
   const squeezed = [];
-  for (const sel of ['.da-result', '.fin-col-doc', '.sec-col-right']) {
+  // ⚠ 2026-09-24: 只剩 .da-result —— .sec-col-right(sections) 与 .fin-col-doc(finalize)
+  //   都随各自单栏化移除。这条检查的对象是「同排还有别的栏时自己却被压瘪」,
+  //   单栏页没有「同排」, 所以那两页不再适用(不是放过它们, 是没有这个对象了)。
+  for (const sel of ['.da-result']) {
     const e = document.querySelector(sel);
     if (!e) continue;
     const b = e.getBoundingClientRect();
@@ -149,7 +152,12 @@ const MEASURE = `(() => {
    *   而这里能诚实判的是**页内的主侧关系** —— 那也正是修掉的那个缺陷。
    */
   const colPairs = [];
-  for (const [content, aside] of [['.iv-col-main', '.iv-col-side'], ['.fin-col-doc', '.fin-col-flow'], ['.sec-col-left', '.sec-col-right']]) {
+  // ⚠ 2026-09-23: 去掉 sections 那一对(该页已改单栏)。
+  // ⚠ 2026-09-24: 再去掉 finalize 那一对(合稿页也改单栏)。**现在只剩信息录入页是两栏**。
+  //   (⚠ 本段在模板串内部: 别写反引号, 它会闭合模板串 —— 本文件已因此踩坑多次)
+  //   这条断言随两栏页一起减少是**对的行为**: 它验的是「内容栏不得窄于侧栏」,
+  //   单栏页没有这个关系可验。等哪天信息录入页也改单栏, 它就该整体退役。
+  for (const [content, aside] of [['.iv-col-main', '.iv-col-side']]) {
     const a = document.querySelector(content), b = document.querySelector(aside);
     if (!a || !b) continue;
     const aw = Math.round(a.getBoundingClientRect().width), bw = Math.round(b.getBoundingClientRect().width);
@@ -229,7 +237,10 @@ try {
     const h1 = document.querySelector('.wf-h1');
     const head = h1 ? h1.closest('.wf-head') : null;
     const banner = document.querySelector('.banner');
-    const card = document.querySelector('.tree-card');
+    // ⚠ 2026-09-23: 量 **overview-card** 而不是 tree-card。科研架构页改回单栏后,
+    //   tree-card 是**最后一个块**, 下距归零交给页面底部; 夹在中间、真正需要下距的是概览卡。
+    //   (两栏时两者都归零、间距由列的 gap 提供 —— 现在没有列了, 间距回到卡片自己的 margin。)
+    const card = document.querySelector('.overview-card');
     const act = document.querySelector('.wf-actions');
     const btn = act ? act.querySelector('button') : null;
     const cs = act ? getComputedStyle(act) : null;
@@ -247,12 +258,12 @@ try {
   const eq = (label, got, want) => rec("sections@节奏", label, got === want, `实测=${got} 闭源=${want}`);
   eq("页头块下距 mb-8", R.headMb, 32);
   eq("状态卡下距 mb-6", R.bannerMb, 24);
-  // ⚠ 2026-09-21 两栏化之后, 框架卡与概览卡之间的**垂直间距改由列的 `gap` 提供**
-  //   (卡片自己的 margin 归零, 否则 gap 与 margin 会叠加成 24+24)。
-  //   所以这条断言从"卡片自己有 24px 下距"改成"两栏里的卡片不再自带下距, 间距交给 gap"——
-  //   **不是放宽, 是前提变了**: 断言的对象从"卡片的外边距"变成了"两栏的排布方式"。
-  eq("框架卡下距交给列 gap(自身归零)", R.cardMb, 0);
-  eq("两栏列间距 gap=20", R.colGap, 20);
+  // ⚠ 2026-09-23 再变一次: 科研架构页**从两栏改回单栏**(对齐闭源), 列的 gap 不存在了 ——
+  //   卡片之间的垂直间距回到**卡片自己的 margin**(概览卡 14px)。
+  //   这条断言的对象与 2026-09-21 那次是同一个(卡片外边距), 只是值随版式而变:
+  //     两栏 → 0(交给 gap) · 单栏 → 14(自己承担)。**判断依据没变: 它必须有个来源, 且不能叠加。**
+  eq("单栏下概览卡自带下距 14", R.cardMb, 14);
+  eq("已无两栏容器(列间距为空)", R.colGap, null);
   eq("动作行上距 mt-8", R.actMt, 32);
   eq("动作行上内距 pt-6", R.actPt, 24);
   eq("动作行有分隔线", R.actBorder, "1px");

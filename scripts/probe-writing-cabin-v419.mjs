@@ -1,7 +1,7 @@
 // scripts/probe-writing-cabin-v419.mjs — 写作舱 V419 三项「加法」的真链路探针
 //
 // 这三项都是**后端能力早已就绪、写作舱零引用**的现成料, 这轮才接上:
-//   ① 质量四检  POST /api/quality/{concept,citation,logic,plagiarism}  → 合稿页第 ②·5 轮
+//   ① 质量四检  POST /api/quality/{concept,citation,logic,plagiarism}  → 合稿页第 ③ 轮
 //   ② 语料库    POST /api/writing-corpus/recall                        → 创作台助手面板
 //   ③ 素材筛选与批量(纯前端筛选 + 复用已有 DELETE /research/materials/:id)
 //
@@ -67,7 +67,7 @@ try {
   }
   rec("播种素材(2 条分类 + 3 条同类别供排序)", mats.status < 400 ? "ok" : "err", `HTTP ${mats.status}`);
 
-  // ══ ① 质量四检(合稿页 ②·5 轮) ══
+  // ══ ① 质量四检(合稿页 ③ 轮) ══
   console.log("\n═══ ① 质量四检 /workflow/finalize ═══");
   await openSoc(cdp, BASE, "/workflow/finalize", token, pid, 7500);
   await spyInstall(cdp);

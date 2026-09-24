@@ -1169,8 +1169,13 @@ onMounted(async () => {
     <!-- V424 两栏: 轮次流(左) 与 终稿内容(右)。
          原先这两块**纵向堆叠**、各自满屏宽, 要滚动才能互相看到 ——
          而它们的用途是同时看的(盯进度 + 改正文)。与信息录入页同一套两栏语言。 -->
-    <div class="fin-cols">
-      <div class="fin-col-flow">
+    <!-- 合稿定稿正文区 —— **纵向堆叠的单栏**: 终稿内容(标题/摘要/正文/参考文献/导出) 在前,
+         三轮主流程(合并/审查/四检/深度分析/修订) 在后。
+         ⚠ 2026-09-24 从两栏改回单栏(按你的要求)。**这里要说清一件事, 免得日后有人又"修回去"**:
+         闭源合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
+         左列 `lg:col-span-2`(2/3, 流程) + 右列(1/3)。**但容器上限是 max-w-7xl(1280), 不是别页的 max-w-5xl**。
+         (依据: .claude/reverse-engineering/socialsci-com/FinalizeView.js 的渲染函数)
+         所以单栏是**你的取舍**, 不是"对齐闭源" —— 与科研架构页那次(闭源本就是单栏)不是一回事。 -->
 
     <!-- ═══ 三轮主流程 ═══ -->
 
@@ -1178,7 +1183,7 @@ onMounted(async () => {
          ⚠ V425 改: 原先整块是 `v-else` —— 只有 mergeGenerated 为真(合已合稿)才渲染,
          于是**四检、深度分析、修订、导出**这些"对文本做事"的能力在合稿前全都不可见。
          而它们要的其实是"一篇文本", 合稿前**章节拼起来就是一篇文本**。
-         现在: ① 合并轮常驻(没合稿时按钮就是「开始合稿」); ② ②·5 / 深度分析 / ③ 修订常驻;
+         现在: ① 合并轮常驻(没合稿时按钮就是「开始合稿」); ② / ③ / 深度分析 / ④ 修订常驻;
          ③ 只有 ②「全文审查」留在 `mergeGenerated` 门内 —— 它审查的是**已合稿的那一篇**
          (合并轮自己会摘要/关键词/参考文献), 拿拼装稿去审不是它的语义。 -->
     <div class="rounds-card">
@@ -1315,7 +1320,7 @@ onMounted(async () => {
            两者互补: 审查告诉你"这篇怎么样", 四检告诉你"具体哪几处对不上"。 -->
       <div class="round-row">
         <div class="round-head">
-          <span class="round-num">②·5</span>
+          <span class="round-num">③</span>
           <div class="round-info">
             <strong>质量四检</strong>
             <span>四个确定性角度逐项核查, 给出**具体位置**而非整体印象</span>
@@ -1357,7 +1362,7 @@ onMounted(async () => {
       <!-- 修订轮 -->
       <div class="round-row">
         <div class="round-head">
-          <span class="round-num">③</span>
+          <span class="round-num">④</span>
           <div class="round-info">
             <strong>修订定稿</strong>
             <span>根据审查报告生成修订稿(当前合稿不会被替换, 确认后采用)</span>
@@ -1379,8 +1384,6 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-      </div>
-      <div class="fin-col-doc">
     <div v-if="store.mergeGenerated" class="finale-card">
       <div class="finale-head">
         <span class="done-badge">合并完成</span>
@@ -1407,8 +1410,6 @@ onMounted(async () => {
           <label>参考文献</label>
           <textarea v-model="store.mergedReferences" class="f-area refs" rows="8" placeholder="[1] 作者.标题[J].期刊,年份." @input="onMetaInput"></textarea>
         </div>
-      </div>
-    </div>
       </div>
     </div>
 
@@ -1564,13 +1565,12 @@ onMounted(async () => {
  *   `order` 是纯样式, 碰不到标记; 代价是 DOM 顺序与视觉顺序不一致(读屏用户先听到轮次流),
  *   对"同一页内的两个并列区域"这个代价可以接受, 而搬标记的出错率明显更高。
  */
-.fin-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, var(--wf-aside)); gap: 20px; align-items: start; }
-.fin-col-doc { order: 1; }
-.fin-col-flow { order: 2; }
-.fin-col-flow, .fin-col-doc { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.fin-cols .rounds-card { margin-bottom: 0; }
-.fin-cols .finale-card { margin-bottom: 0; }
-@media (max-width: 1180px) { .fin-cols { grid-template-columns: minmax(0, 1fr); } }
+/* ⚠ 2026-09-24: `.fin-cols` / `.fin-col-flow` / `.fin-col-doc` 已删除 —— 合稿页改**单栏**,
+   终稿内容与三轮主流程纵向堆叠(顺序见模板注释)。
+   原先是 `1fr / minmax(320px,--wf-aside)` 两栏 + `order` 换位(`order` 是为了让**终稿内容**
+   在视觉上排到轮次流前面, 而又不用重排 DOM)。
+   单栏之后 `order` 也没用了 —— 视觉顺序 = DOM 顺序, 读屏用户听到的与看到的一致了
+   (两栏时那条注释里承认过"DOM 顺序与视觉顺序不一致"这个代价, 现在没有了)。 */
 .rounds-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 /* 项目失效常驻横幅 */
 .gone-banner {

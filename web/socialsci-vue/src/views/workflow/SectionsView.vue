@@ -651,8 +651,13 @@ onUnmounted(() => {
     <!-- V424 两栏: 分析产物(左) + 章节结构(右)。
          原先概览卡与章节树一上一下满屏宽堆叠; 两者是「看框架」与「看章节」的关系,
          并排看才完整。与信息录入页、合稿页同一套两栏语言。 -->
-    <div class="sec-cols">
-      <div class="sec-col-left">
+    <!-- 科研框架概览 + 章节结构 —— **纵向堆叠的单栏**。
+         ⚠ 2026-09-23 从两栏改回单栏。原先这里是 `.sec-cols`(概览左 / 章节树右)。
+         核对逆向对象后改了: 闭源科研架构页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
+         正文只有三个纵向堆叠的块(标题 / AI分析横幅 / 科研框架概览 / 章节结构 / 底部操作),
+         **没有侧栏**(见 .claude/reverse-engineering/socialsci-com/deep/sections-dom.txt 的真实 DOM 实拍)。
+         我们那套两栏是 2026-09-21 自己加的, 没有对照依据 —— 现在按你的要求改回来:
+         章节结构放在科研框架概览**下方**, 与闭源顺序一致。 -->
     <section v-if="hasOverview" class="overview-card">
       <div class="ov-head">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9">
@@ -717,8 +722,6 @@ onUnmounted(() => {
         </div>
       </div>
     </section>
-      </div>
-      <div class="sec-col-right">
     <section class="tree-card">
       <h3 class="sec-title">章节结构</h3>
       <EmptyState
@@ -790,8 +793,6 @@ onUnmounted(() => {
     </section>
 
     <!-- 底部操作 -->
-      </div>
-    </div>
     <div class="wf-actions">
       <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/input')">返回修改</button>
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
@@ -906,7 +907,13 @@ onUnmounted(() => {
 .ov-num.blue { background: #16243F; color: #6FA8F5; }
 .ov-num.purple { background: #241A3A; color: #B08CF0; }
 .ov-count { font-size: 11.5px; color: var(--wf-faint); }
-.var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+/* ⚠ 2026-09-23: 从 `auto-fill minmax(200px,1fr)` 改成**定 3 列**, 对齐闭源。
+   闭源的变量卡网格是 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`(见逆向资料的 DOM 实拍)。
+   我们那套 auto-fill 在 1230px 的单栏里会铺出 **5 条窄卡**(每张刚过 200px),
+   而闭源在同样的宽度下是 3 列 —— 卡片一窄, 里面的「变量名 + 测量方式」就挤成两三行。
+   单栏化之前右列只有 461px, auto-fill 恰好只出 2 列, 所以这个偏差一直没暴露。 */
+.var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+@media (min-width: 1100px) { .var-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .var-card {
   background: var(--wf-surface-2); border: 1px solid var(--wf-line); border-radius: 10px; padding: 11px;
   display: flex; flex-direction: column; gap: 6px;
@@ -934,19 +941,17 @@ onUnmounted(() => {
 .method-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid #1E2438; }
 /* V424 两栏: 分析产物(左) + 章节结构(右)。章节结构需要更多横向空间(树 + 每章的写作指导),
    所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
-/**
- * V425 版式统一: **左栏是内容产物, 右栏是参考**。
- * 此前是 `1fr 1.25fr` —— 右栏(章节树)比左栏(科研框架概览)还宽, 而概览里装着变量卡、
- * 假设列表、研究逻辑, 才是用户要读的东西; 章节树是索引。现在左栏吃掉剩余、右栏用共享的 --wf-aside,
- * 与信息录入页、合稿页同一套比例。
- */
-.sec-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, var(--wf-aside)); gap: 20px; align-items: start; }
-.sec-col-left, .sec-col-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.sec-cols .overview-card, .sec-cols .tree-card { margin-bottom: 0; }
-@media (max-width: 1180px) { .sec-cols { grid-template-columns: minmax(0, 1fr); } }
+/* ⚠ 2026-09-23: `.sec-cols` / `.sec-col-left` / `.sec-col-right` 已删除 —— 科研架构页改回**单栏**,
+   章节结构直接排在科研框架概览下方(与闭源顺序一致)。那套两栏是 2026-09-21 自己加的,
+   核对逆向对象发现闭源是 `max-w-5xl mx-auto` 单栏(见 .claude/reverse-engineering/.../sections-dom.txt)。
+   单栏之后两栏那套 grid / 列内 gap 都不需要了, 卡片的垂直间距回到**卡片自己的 margin**。 */
 .tree-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
-  padding: 16px 18px; margin-bottom: 24px;   /* 闭源 mb-6 = 24px(原 14px) */
+  padding: 16px 18px;
+  /* 闭源是 mb-6(24px), 但那是**卡片夹在中间**时的下距。单栏下它是最后一个块,
+     下距交给页面底部(60px) —— 两栏时这条被 `.sec-cols .tree-card{margin-bottom:0}` 覆盖,
+     现在那层没了, 归零写在原地。 */
+  margin-bottom: 0;
 }
 .sec-title { margin: 0 0 10px; font-size: 15px; color: var(--wf-text); }
 .tree-empty { padding: 24px; text-align: center; color: var(--wf-faint); font-size: 13px; }
