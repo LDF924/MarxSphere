@@ -598,7 +598,7 @@ onUnmounted(() => {
     <div class="wf-head">
       <h1 class="wf-h1">框架设计</h1>
       <p class="wf-sub">{{ store.title || "未命名项目" }} — 确认框架设计后进入创作工作台。</p>
-      <!-- 闭源原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
+      <!-- 参考产品原文: 「共 」+ N + 「 章 」+ (有子节 ? 「、N 个子节」)。无子节时不渲染后半段。 -->
       <p class="wf-stats">共 <span class="stats-num">{{ l1Count }}</span> 章<template v-if="childCount > 0">、{{ childCount }} 个子节</template></p>
     </div>
 
@@ -607,7 +607,7 @@ onUnmounted(() => {
       <div class="banner-head">
         <strong>{{ analyzeCancelled ? "框架设计分析已取消" : "框架设计生成失败" }}</strong>
       </div>
-      <!-- 闭源: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步。
+      <!-- 参考产品: 「Step N 执行失败」+ detail —— 没有 Step 编号时用户不知道卡在哪一步。
            取消不是"失败", 前缀按状态换, 免得用户以为系统坏了。 -->
       <p class="banner-body">
         <span class="fail-step">Step {{ Math.max(1, analyzeStep) }} {{ analyzeCancelled ? "已取消" : "执行失败" }}</span>{{ analyzeError ? `：${analyzeError}` : "" }}
@@ -627,7 +627,7 @@ onUnmounted(() => {
         <button class="banner-cancel" data-control="workflow:cancel-analysis" @click="cancelAnalysis">取消</button>
       </div>
       <div class="step-progress">
-        <!-- 圆三态(闭源 X()/Y() 语义): 已完成 ✓ / **当前步转圈** / 未到 数字。
+        <!-- 圆三态(参考产品同名函数 语义): 已完成 ✓ / **当前步转圈** / 未到 数字。
              2026-09-16 修: 原先只有 ✓ 与数字两态 —— 当前正在跑的那一步长得跟没到的一模一样,
              用户看不出"现在卡在哪一步"、也看不出它还在动。 -->
         <div v-for="(s, i) in steps" :key="s.key" class="step-item" :class="{ active: analyzeStep >= s.key, done: analyzeStep > s.key }">
@@ -648,8 +648,8 @@ onUnmounted(() => {
 
     <div v-else-if="skillComplete" class="banner banner-done">
       <!-- 2026-09-15: 完成态原先只有一句"分析完成", 三步骤进度条做完就消失。
-           闭源源: 绿头横幅 + 一行三个带 ✓ 的步骤(变量识别/框架分析/逐章写作指导) + 「章节分析完成」。
-           第三步闭源原名是 "Skill 生成", 我方改成中文(见 DONE_STEPS 的注释)。 -->
+           参考产品源: 绿头横幅 + 一行三个带 ✓ 的步骤(变量识别/框架分析/逐章写作指导) + 「章节分析完成」。
+           第三步参考产品原名是 "Skill 生成", 我方改成中文(见 DONE_STEPS 的注释)。 -->
       <div class="banner-head">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.6">
           <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
@@ -701,18 +701,18 @@ onUnmounted(() => {
       <button class="btn-warn" @click="startAnalysis(true)" data-control="workflow:reanalyze">重新分析</button>
     </div>
 
-    <!-- 科研框架概览(闭源: 一张卡收拢 ①变量识别 ②研究假设 ③研究逻辑+方法, 各带编号圆徽与「共 N 个」计数)
+    <!-- 科研框架概览(参考产品: 一张卡收拢 ①变量识别 ②研究假设 ③研究逻辑+方法, 各带编号圆徽与「共 N 个」计数)
          2026-09-15 前这里是三个互不相干的平级 section, 没有卡头、没有编号、没有计数。 -->
     <!-- V424 两栏: 分析产物(左) + 章节结构(右)。
          原先概览卡与章节树一上一下满屏宽堆叠; 两者是「看框架」与「看章节」的关系,
          并排看才完整。与选题界定页、合稿页同一套两栏语言。 -->
     <!-- 科研框架概览 + 章节结构 —— **纵向堆叠的单栏**。
          ⚠ 2026-09-23 从两栏改回单栏。原先这里是 `.sec-cols`(概览左 / 章节树右)。
-         核对逆向对象后改了: 闭源框架设计页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
+         核对逆向对象后改了: 参考产品框架设计页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
          正文只有三个纵向堆叠的块(标题 / AI分析横幅 / 科研框架概览 / 章节结构 / 底部操作),
          **没有侧栏**(按参考产品的 DOM 实拍)。
          我们那套两栏是 2026-09-21 自己加的, 没有对照依据 —— 现在按你的要求改回来:
-         章节结构放在科研框架概览**下方**, 与闭源顺序一致。 -->
+         章节结构放在科研框架概览**下方**, 与参考产品顺序一致。 -->
     <section v-if="hasOverview" class="overview-card">
       <div class="ov-head">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9">
@@ -855,7 +855,7 @@ onUnmounted(() => {
             <span v-if="wordCountBadge(c)" class="wc-badge">{{ wordCountBadge(c) }}</span>
           </li>
         </ul>
-        <!-- 写作指导详情(逐字对照闭源 SectionsView-C4lM9Tih.js 的展开区 8 项):
+        <!-- 写作指导详情(逐字对照参考产品 框架页 的展开区 8 项):
              标签+type 徽 / 字数徽 / 框架来源(四子字段) / 草稿预览 / 写作目标 / 要点 / 衔接 / 注意 -->
         <div v-if="s.aiSkill" class="skill-detail">
           <div class="skill-head">
@@ -865,7 +865,7 @@ onUnmounted(() => {
           </div>
           <!--
             ⚠ 2026-09-16 修: frameworkSource 是**对象**(四子字段), 原先当字符串插值 →
-              渲染出 [object Object]。闭源逐子字段渲染: 文件 / 原文结构 / 变量替换 / 分析框架。
+              渲染出 [object Object]。参考产品逐子字段渲染: 文件 / 原文结构 / 变量替换 / 分析框架。
           -->
           <template v-if="fsOf(s.aiSkill)">
             <div class="fs-row amber">
@@ -876,7 +876,7 @@ onUnmounted(() => {
               <p v-if="fsOf(s.aiSkill)?.extractedModel">分析框架：{{ fsOf(s.aiSkill)?.extractedModel }}</p>
             </div>
           </template>
-          <!-- 草稿预览(闭源: 独立绿框, 与其它字段分开; 原先完全不渲染) -->
+          <!-- 草稿预览(参考产品: 独立绿框, 与其它字段分开; 原先完全不渲染) -->
           <div v-if="s.aiSkill.chapterDraft" class="draft-box">
             <strong>草稿预览</strong>
             <p>{{ s.aiSkill.chapterDraft }}</p>
@@ -886,7 +886,7 @@ onUnmounted(() => {
             <strong>要点</strong>
             <ul><li v-for="(k, ki) in s.aiSkill.keyPoints" :key="ki">{{ k }}</li></ul>
           </div>
-          <!-- 子节规划(闭源: 子节标题 + 任务说明; 原先完全不渲染) -->
+          <!-- 子节规划(参考产品: 子节标题 + 任务说明; 原先完全不渲染) -->
           <div v-if="childSecsOf(s.aiSkill).length" class="skill-block">
             <strong>子节规划</strong>
             <ul><li v-for="(cs, ci) in childSecsOf(s.aiSkill)" :key="ci">{{ cs.title }}<span v-if="cs.aim" class="cs-aim"> — {{ cs.aim }}</span></li></ul>

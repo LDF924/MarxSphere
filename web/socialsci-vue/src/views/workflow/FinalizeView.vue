@@ -1183,8 +1183,8 @@ onMounted(async () => {
         版本历史
       </button>
     </div>
-    <!-- 页头。闭源是**居中**的: `mb-4 flex items-center justify-center text-center`
-         (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与闭源不是同一版式。
+    <!-- 页头。参考产品是**居中**的: `mb-4 flex items-center justify-center text-center`
+         (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与参考产品不是同一版式。
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
     <div class="wf-head-center">
       <h1 class="wf-h1">统稿定稿</h1>
@@ -1206,10 +1206,10 @@ onMounted(async () => {
     <!-- 统稿定稿正文区 —— **纵向堆叠的单栏**: 终稿内容(标题/摘要/正文/参考文献/导出) 在前,
          三轮主流程(合并/审查/四检/深度分析/修订) 在后。
          ⚠ 2026-09-24 从两栏改回单栏(按你的要求)。**这里要说清一件事, 免得日后有人又"修回去"**:
-         闭源合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
+         参考产品合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
          左列 `lg:col-span-2`(2/3, 流程) + 右列(1/3)。**但容器上限是 max-w-7xl(1280), 不是别页的 max-w-5xl**。
          (依据: 参考产品的渲染函数)
-         所以单栏是**你的取舍**, 不是"对齐参考产品" —— 与框架设计页那次(闭源本就是单栏)不是一回事。 -->
+         所以单栏是**你的取舍**, 不是"对齐参考产品" —— 与框架设计页那次(参考产品本就是单栏)不是一回事。 -->
 
     <!-- ═══ 三轮主流程 ═══ -->
 
@@ -1267,7 +1267,7 @@ onMounted(async () => {
           <span class="tier-hint">{{ DEAI_TIERS.find((t) => t.value === mergeTier)?.hint }}</span>
           <span class="tier-warn">降重可能会影响整体论文质量，请自行斟酌</span>
         </div>
-        <!-- 时间轴: 闭源是 **之字形**(1 左 2 右 3 左 4 右 5 左, 轨道居中, 标记 36px) -->
+        <!-- 时间轴: 参考产品是 **之字形**(1 左 2 右 3 左 4 右 5 左, 轨道居中, 标记 36px) -->
         <div v-if="mergeRunning || mergeStep >= 5" class="merge-timeline">
           <div class="merge-timeline__track"></div>
           <div class="merge-timeline__progress" :style="{ height: (mergeStep / (MERGE_STEPS.length - 1)) * 100 + '%' }"></div>
@@ -1280,7 +1280,7 @@ onMounted(async () => {
                 class="merge-timeline__marker"
                 :class="stepStarted(i) ? (mergeStep === i ? 'is-active' : 'is-done') : 'is-pending'"
               >
-                <!-- 闭源三态: 进行中=转圈 / 已完成=对勾 / 未开始=两位序号 -->
+                <!-- 参考产品三态: 进行中=转圈 / 已完成=对勾 / 未开始=两位序号 -->
                 <svg v-if="mergeStep === i" class="mt-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                   <circle cx="12" cy="12" r="10" class="opacity-20" />
                   <path d="M12 2a10 10 0 019.95 9" stroke-linecap="round" />
@@ -1292,7 +1292,7 @@ onMounted(async () => {
               </div>
               <div class="merge-timeline__content">
                 <p class="mt-label" :class="{ on: stepStarted(i) }">{{ st.title }}</p>
-                <!-- 闭源: active 步显示实时 stage 文案(缺省「处理中...」), 其余步显示固定 desc -->
+                <!-- 参考产品: active 步显示实时 stage 文案(缺省「处理中...」), 其余步显示固定 desc -->
                 <p class="mt-desc" :class="{ on: stepActive === i }">
                   {{ stepActive === i ? (mergeMessage || "处理中...") : st.desc }}
                 </p>
@@ -1548,7 +1548,7 @@ onMounted(async () => {
     <!-- 预览全文(简化版式) -->
     <div v-if="store.exportFormat === 'preview'" class="preview-card">
       <button class="preview-close" @click="store.exportFormat = 'md'">×</button>
-      <!-- 结构逐条对齐闭源 PaperPreview: paper-header / paper-abstract / paper-keywords / paper-body / paper-references。
+      <!-- 结构逐条对齐参考产品 PaperPreview: paper-header / paper-abstract / paper-keywords / paper-body / paper-references。
            ⚠ 正文容器**不再挂 `.markdown-body`** —— 那个全局类会把颜色设成浅色(深色主题用的),
            压在白色纸面上同样读不了(与标题那个 `#111 on var(--wf-surface)` 是同一个病的两面)。 -->
       <div class="preview-paper">
