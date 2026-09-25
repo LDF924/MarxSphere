@@ -86,7 +86,7 @@ import { StructurePanel } from "./components/StructurePanel";
 import { AgentConsole } from "./components/AgentConsole";
 import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream 巩固
 
-// ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开闭源原名, 单一完整形态) ──
+// ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
 const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
 

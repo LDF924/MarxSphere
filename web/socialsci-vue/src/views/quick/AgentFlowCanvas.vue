@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * AgentFlowCanvas — 还原自闭源 AgentFlowCanvas(L13526-14200, data-v-0bebca05)
- * 用 npm @vue-flow/core(闭源 L1-13472 即库本体); 布局: 顺序横排 + module 类节点下排
+ * AgentFlowCanvas — 还原自参考产品 AgentFlowCanvas(, data-v-0bebca05)
+ * 用 npm @vue-flow/core(参考产品 L1-13472 即库本体); 布局: 顺序横排 + module 类节点下排
  * 三色边体系: agent-edge-(自动链)/manual-edge-(用户拖); active 目标 → #7184f5 2.4px animated
  */
 import { ref, computed, provide, watch, onMounted } from "vue";
@@ -120,7 +120,7 @@ function buildLayout() {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const agentNodeTypes = { agent: AgentFlowNode } as any;
 
-// ── 右键菜单(闭源: pane 空白右键 → 模块列表; node 右键 → 详情/删除) ──
+// ── 右键菜单(参考产品: pane 空白右键 → 模块列表; node 右键 → 详情/删除) ──
 const canvasEl = ref<HTMLElement | null>(null);
 /**
  * 屏幕坐标 → 画布容器内坐标(定位右键菜单用)。
@@ -156,7 +156,7 @@ function onNodeContextMenu(ev: MouseEvent, biz: BizNode) {
 
 // ── 节点上的 ••• 菜单 / → 展开 ──
 /**
- * 这两个标记在 AgentFlowNode 的模板里(闭源里它们是可点入口), 之前点了完全没反应。
+ * 这两个标记在 AgentFlowNode 的模板里(参考产品里它们是可点入口), 之前点了完全没反应。
  *
  * 关键坑: 自定义节点是 VueFlow **内部**渲染的, 它 emit 的事件只会传给 VueFlow 的节点包装器,
  * **到不了我在 <VueFlow> 上写的 @node-menu 监听**(Vue 的 emit 只向直接父组件投递)。

@@ -62,7 +62,7 @@ interface TaskRecord {
   userMessage?: string;
 }
 
-// C3(闭源 StatisticsView it() 翻译表): Python 异常串 → 用户可读中文
+// C3(参考产品 StatisticsView 同名函数 翻译表): Python 异常串 → 用户可读中文
 export function translatePyError(raw: string): string {
   const s = String(raw ?? "");
   const has = (...re: RegExp[]) => re.some((r) => r.test(s));
@@ -295,7 +295,7 @@ export async function spawnPythonTask(
         rec.error = error
           ? `${String(error.message).slice(0, 300)}${stderrTail ? `\n${stderrTail}` : ""}`
           : "执行失败(无结果文件)";
-        // C3(闭源 StatisticsView Python 异常→中文翻译表): 附加用户可读提示
+        // C3(参考产品 StatisticsView Python 异常→中文翻译表): 附加用户可读提示
         rec.userMessage = translatePyError(String(stderr ?? "") + "\n" + String(error?.message ?? ""));
         cleanup();
       };
@@ -674,7 +674,7 @@ export async function exportProjectReport(input: {
   }
 }
 
-/** C4(闭源三线表 Word 导出): 同步 execFile 跑 empirical_table_docx.py → 读 table.docx → base64 */
+/** C4(参考产品三线表 Word 导出): 同步 execFile 跑 empirical_table_docx.py → 读 table.docx → base64 */
 export async function exportTableDocx(table: { title?: string; cols?: string[]; rows?: unknown[][]; notes?: string }): Promise<{ ok: boolean; base64?: string; fileName?: string; error?: string }> {
   const taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "emp-table-"));
   try {

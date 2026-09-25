@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * FinalizeView(Phase5 统稿定稿) — 还原自闭源 FinalizeView-Br8-MIOb.js(L172-1748)
+ * FinalizeView(Phase5 统稿定稿) — 还原自参考产品 FinalizeView-Br8-MIOb.js(
  * 合稿三轮(merge→review→revise) + 时间轴 + 终稿元数据编辑 + 导出 md/html(Word 走前端 docx 构建)
  * 后端: jobKind merge/phase5_review/phase5_revise → 泵 → project merged_* 列 + review_result 回读
  */
@@ -58,7 +58,7 @@ const DEAI_TIERS = [
   { value: "heavy" as const, label: "重度降重", hint: "重组表达路径与段落切分，事实数据引文冻结" },
 ];
 
-/** 合稿五步(闭源固定文案, 每步带说明) */
+/** 合稿五步(参考产品固定文案, 每步带说明) */
 const MERGE_STEPS = [
   { title: "合并正文", desc: "将各章节合并为连贯的全文" },
   { title: "语言润色", desc: "优化表达，消除 AI 痕迹" },
@@ -67,14 +67,14 @@ const MERGE_STEPS = [
   { title: "完成", desc: "论文合并完成" },
 ];
 /**
- * 某一步是否已**开始**执行 —— 闭源用的是 `w >= o + 1`(w 为 1-based 的 currentStep)。
+ * 某一步是否已**开始**执行 —— 参考产品用的是 `w >= o + 1`(w 为 1-based 的 currentStep)。
  *
  * 其推进链是 `H(Math.min(I,4)) → w = I`, 而 `I > 0` 才 H, 所以合并中 w∈[1,4],
  * 第 5 步永远不会变成 active, 它只在完成时被 `H(5)` 一次性推到 done。
  * 我方 mergeStep 是 0-based, 故等价式是 `mergeStep >= i`。
  */
 function stepStarted(i: number) { return mergeStep.value >= i; }
-/** 当前正在执行的步(= 第一个还没开始的步), 闭源 w === o + 1 */
+/** 当前正在执行的步(= 第一个还没开始的步), 参考产品 w === o + 1 */
 const stepActive = computed(() => Math.min(mergeStep.value, MERGE_STEPS.length - 1));
 const store = useWorkflowStore();
 
@@ -498,7 +498,7 @@ async function genChapter(sectionId: string) {
 
 let poll: ReturnType<typeof setInterval> | null = null;
 
-// ── 合稿门禁(闭源 ge()) ──
+// ── 合稿门禁(参考产品同名函数) ──
 /**
  * 当前项目是否已失效(被删/不属于本用户)。
  * 2026-09-16 补: 指针指向已删项目时, 页面长得和正常一样, 点合稿只会弹一个 3.2 秒的 toast
@@ -534,7 +534,7 @@ async function doMerge() {
     toast(`还有 ${l1.length - withContent.length} 个一级章节未完成, 不能合稿`, "warning");
     return;
   }
-  // 闭源第 ④ 条: 正文节点比已发布的 Phase 4 版本新 → 版本已过期, 先重新发布再合稿。
+  // 参考产品第 ④ 条: 正文节点比已发布的 Phase 4 版本新 → 版本已过期, 先重新发布再合稿。
   //   2026-09-15 接通 —— 此前 phase4Version/Stale 是后端写死的 null/false, 这条门禁等于不存在,
   //   用户改了正文后直接合稿会拿到与当前内容不符的版本快照。
   try {
@@ -578,7 +578,7 @@ async function doMerge() {
       mergeRunning.value = false;
       mergeStep.value = 5;
       await refreshMerged();
-      // D1/D2 后处理(闭源 Z(): fe 重建引用 → xe 表格重编号 → 落 store)
+      // D1/D2 后处理(参考产品同名函数: fe 重建引用 → xe 表格重编号 → 落 store)
       await postProcessMerged();
       mergeMessage.value = "论文合并完成";
       toast("论文合并完成", "success");
@@ -678,7 +678,7 @@ function pollTask(taskId: string, kind: "merge" | "review" | "revise", onDone: (
       if (!t) return;
       const prog = (t.progress ?? {}) as { stage?: string; current?: number; total?: number; step?: number };
       mergeMessage.value = prog.stage ?? "";
-      // 闭源用后端的 phase5.merge_status.step 驱动时间轴(H(Math.min(I,4))), 不是由 current 反推。
+      // 参考产品用后端的 phase5.merge_status.step 驱动时间轴(H(Math.min(I,4))), 不是由 current 反推。
       //   后端没报 step 的旧任务回落到 current-1, 免得时间轴卡在第 1 步。
       mergeStep.value = typeof prog.step === "number" ? Math.min(4, Math.max(0, prog.step)) : Math.min(4, Math.max(0, (prog.current ?? 1) - 1));
       if (t.status === "done" || t.status === "completed") {
@@ -751,7 +751,7 @@ let metaSaveTimer: ReturnType<typeof setTimeout> | null = null;
 /**
  * 元数据防抖落库 —— **快照 + finalize 节点都要写**。
  *
- * 闭源是 `watch(mergedFullText, ()=>{ saveProject(); saveCurrentNode(); })` 双写;
+ * 参考产品是 `watch(mergedFullText, ()=>{ saveProject(); saveCurrentNode(); })` 双写;
  * 我方此前只写快照, 而回读时 merged_* 列会盖过快照(引擎 merge 只写列) ——
  * 实测: 节点里是「引擎标题」、快照里写「用户改的标题」, 读回来仍是「引擎标题」。
  * 结果就是用户改完标题/摘要/正文, 一刷新全回退。
@@ -809,11 +809,11 @@ function viewDiff() {
   showDiff.value = true;
 }
 
-// ── 采用修订稿(闭源 ye(): activatePhase5Version → 提升为当前终稿 → 落 store) ──
+// ── 采用修订稿(参考产品同名函数: activatePhase5Version → 提升为当前终稿 → 落 store) ──
 async function adoptRevision() {
   const rev = pendingRevision.value;
   if (!rev) return;
-  // 1) 激活该版本(闭源 activatePhase5Version: 版本置 published, 其余 superseded, 记 revision_of_version)
+  // 1) 激活该版本(参考产品 activatePhase5Version: 版本置 published, 其余 superseded, 记 revision_of_version)
   if (rev.version > 0 && store.taskId) {
     try {
       await q(`/research/projects/${store.taskId}/versions/${rev.version}/activate`, { method: "POST" });
@@ -891,7 +891,7 @@ async function loadCitationSources() {
   } catch { /* 读不到就不给比对源 —— 查重那格会显示"库里还没有可比对的文献正文" */ }
 }
 
-// ── 引用/表格重编号(闭源 fe()/xe() 语义 L8840-9400) ──
+// ── 引用/表格重编号(参考产品同名函数 语义 ──
 async function rebuildCitationsAndRefs(fulltext: string, refsProvided: string) {
   const raw = String(fulltext ?? "");
   // 无占位符 → 干净文本原样保留(不重排已有正文/参考文献)
@@ -962,7 +962,7 @@ function sendToEditor() {
   else toast("发送失败: 需要从平台外壳中打开写作舱(独立打开子应用时无法转发)", "error");
 }
 
-// ── 导出(闭源 _e(); md/html 拼装; docx 提示走 Word) ──
+// ── 导出(参考产品同名函数; md/html 拼装; docx 提示走 Word) ──
 function mdRefs(): string {
   return store.mergedReferences
     .split("\n")
@@ -994,7 +994,7 @@ function bodyToHtml(text: string): string {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const tableCap = l.match(/^\*\*(表\d+[^\n]*?)\*\*/);
-    // 表题行(闭源 xe 产物 **表N xxx** 独立成行) → 结束表格 + caption
+    // 表题行(参考产品 xe 产物 **表N xxx** 独立成行) → 结束表格 + caption
     if (tableCap) {
       if (inTable) { html.push("</table>"); inTable = false; }
       html.push(`<p class="rf-table-caption">${esc(tableCap[1])}</p>`);
@@ -1209,7 +1209,7 @@ onMounted(async () => {
          闭源合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
          左列 `lg:col-span-2`(2/3, 流程) + 右列(1/3)。**但容器上限是 max-w-7xl(1280), 不是别页的 max-w-5xl**。
          (依据: .claude/reverse-engineering/socialsci-com/FinalizeView.js 的渲染函数)
-         所以单栏是**你的取舍**, 不是"对齐闭源" —— 与框架设计页那次(闭源本就是单栏)不是一回事。 -->
+         所以单栏是**你的取舍**, 不是"对齐参考产品" —— 与框架设计页那次(闭源本就是单栏)不是一回事。 -->
 
     <!-- ═══ 三轮主流程 ═══ -->
 
@@ -1587,7 +1587,7 @@ onMounted(async () => {
 <style scoped>
 
 .workflow-page { width: 100%; box-sizing: border-box; }
-/* 页头(居中版式, 闭源 `mb-4 flex items-center justify-center text-center` + `text-sm mt-1`) */
+/* 页头(居中版式, 参考产品 `mb-4 flex items-center justify-center text-center` + `text-sm mt-1`) */
 .wf-head-center { margin-bottom: 16px; text-align: center; }
 /* 版本次级入口(V425 A1): 右对齐的轻量按钮, 压在页头上方 —— 它是"查看"不是"主流程",
    所以不做成主按钮, 也不占用轮次行的位置。 */
@@ -1642,11 +1642,11 @@ onMounted(async () => {
 }
 .finalize-empty h3 { margin: 0 0 8px; font-size: 16px; color: var(--wf-text); }
 .finalize-empty p { margin: 0 auto 18px; max-width: 420px; font-size: 13px; color: var(--wf-muted); line-height: 1.7; }
-/* 空态里的模式/档位/开始按钮: 闭源是居中收窄的窄列, 与上方说明文字同宽 */
+/* 空态里的模式/档位/开始按钮: 参考产品是居中收窄的窄列, 与上方说明文字同宽 */
 .fe-modes { justify-content: center; width: max-content; margin: 0 auto 12px; }
 .fe-tiers { margin: 0 auto 12px; justify-content: center; }
 .fe-start { display: inline-block; padding: 11px 32px; font-size: 15px; }
-/* 五步预览(闭源 at/nt: 左对齐、居中收窄、每步 灰圈+两位序号 + 标题/说明) */
+/* 五步预览(参考产品 at/nt: 左对齐、居中收窄、每步 灰圈+两位序号 + 标题/说明) */
 .merge-steps-preview { margin: 28px auto 0; max-width: 448px; text-align: left; display: flex; flex-direction: column; gap: 12px; }
 .msp-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--wf-faint); }
 .msp-num {
@@ -1693,7 +1693,7 @@ onMounted(async () => {
 .btn-round.ghost { background: var(--wf-surface); color: #E8B54A; border: 1px solid #C9A23C; }
 .btn-round:disabled { opacity: 0.55; cursor: not-allowed; }
 /*
- * 合稿时间轴 —— 逐条对照闭源 FinalizeView-DLWtk8kO.css:
+ * 合稿时间轴 —— 逐条对照参考产品 FinalizeView-DLWtk8kO.css:
  *   .merge-timeline{position:relative;width:100%;max-width:640px;margin:0 auto}
  *   .merge-timeline__track,__progress{position:absolute;top:0;left:50%;width:2px;transform:translate(-50%)}
  *   .merge-timeline__track{bottom:0;background:#e5e7eb}  __progress{background:#f59e0b}
@@ -1704,7 +1704,7 @@ onMounted(async () => {
  *   .merge-timeline__item.is-left .merge-timeline__content{grid-column:1;text-align:right}
  *
  * 2026-09-16 修: 我方原先是**单列竖排**(轨道 left:7px, 圆点 16px, 无 max-width)——
- *   形状就不是一个东西。闭源是"1 左 2 右 3 左 4 右 5 左"的之字形, 轨道穿中间。
+ *   形状就不是一个东西。参考产品是"1 左 2 右 3 左 4 右 5 左"的之字形, 轨道穿中间。
  */
 .merge-timeline { position: relative; width: 100%; max-width: 640px; margin: 18px auto 6px; }
 .merge-timeline__track, .merge-timeline__progress {
@@ -1835,7 +1835,7 @@ onMounted(async () => {
  * `width:100%` 的块(两个 .export-row / 一个 .export-row + .chapter-list)。
  * flex 会把它们当**并排子项**: 实测导出卡里 3 个 .export-row 挤成各约 1/3 宽,
  * 论文要件卡里 .export-row 与 .chapter-list 左右并排、卡片被撑到 778px 高。
- * 闭源这里是纵向块流(`space-y-*`), 没有横向排布。
+ * 参考产品这里是纵向块流(`space-y-*`), 没有横向排布。
  */
 .export-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
@@ -1863,18 +1863,18 @@ onMounted(async () => {
 }
 .preview-close { position: absolute; top: 16px; right: 20px; font-size: 22px; background: rgba(17,25,44,0.92); border: 0; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; z-index: 2; }
 /*
- * 终稿预览 —— **纸面观感**(白底黑字), 逐条对齐闭源 PaperPreview-DVOZcwe9.css。
+ * 终稿预览 —— **纸面观感**(白底黑字), 逐条对齐参考产品 PaperPreview-DVOZcwe9.css。
  *
  * 2026-09-16 修: 深色化时把背景改成了 var(--wf-surface), 却漏改 `color:#111` ——
  *   实测标题/摘要/关键词的颜色是 rgb(17,17,17) 压在 rgb(17,25,44) 上, 对比度约 1.05:1,
  *   **完全不可读**(正文/参考文献因为用了全局 .markdown-body 的浅色而侥幸正常, 反衬得标题像空白)。
  *
- *   修法不是把字改成浅色 —— 闭源这里本来就是**白底黑字的一张纸**(预览要像打印稿),
- *   深色主题下它是一块"纸"浮在深色画布上。所以背景回白、字回黑, 并补齐闭源缺的规格。
+ *   修法不是把字改成浅色 —— 参考产品这里本来就是**白底黑字的一张纸**(预览要像打印稿),
+ *   深色主题下它是一块"纸"浮在深色画布上。所以背景回白、字回黑, 并补齐参考产品缺的规格。
  */
 .preview-paper {
   width: min(100%, 860px); min-height: 100%; max-height: 90vh; overflow-y: auto; margin: 0 auto;
-  /* 闭源: padding:64px 76px 80px */
+  /* 参考产品: padding:64px 76px 80px */
   padding: 64px 76px 80px;
   background: #FFFFFF; color: #111111;
   box-shadow: 0 8px 28px #0f172a14;
@@ -1888,10 +1888,10 @@ onMounted(async () => {
 .paper-keywords { margin: 12px auto 0; max-width: 720px; font-size: 10.5pt; line-height: 1.65; }
 .paper-body { font-size: 12pt; }
 .paper-body p { margin: 0 0 1em; line-height: 1.65; text-align: justify; text-indent: 2em; }
-/* 闭源: 参考文献悬挂缩进(padding-left:2em + text-indent:-2em), 我方原是直排 */
+/* 参考产品: 参考文献悬挂缩进(padding-left:2em + text-indent:-2em), 我方原是直排 */
 .paper-references { margin-top: 42px; padding-top: 18px; border-top: 1px solid #cbd5e1; }
 .paper-references pre { margin: 0; padding-left: 2em; white-space: pre-wrap; font: inherit; font-size: 10.5pt; line-height: 1.65; text-indent: -2em; }
-/* 闭源 @media(max-width:700px){padding:36px 24px 48px; .paper-title{font-size:22px}} */
+/* 参考产品 @media(max-width:700px){padding:36px 24px 48px; .paper-title{font-size:22px}} */
 @media (max-width: 700px) {
   .preview-paper { padding: 36px 24px 48px; }
   .paper-title { font-size: 22px; }

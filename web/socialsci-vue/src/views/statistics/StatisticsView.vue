@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * StatisticsView — 还原自闭源 StatisticsView-C1S4N5xA.js(3329 行单组件, scope data-v-38a82752)
+ * StatisticsView — 还原自参考产品 统计台(3329 行单组件, scope data-v-38a82752)
  * 三栏: 左方法面板(4 分类 17 法) / 中配置(上传+变量多选+动态参数+运行) / 右结果(三线表+plotly 图)
  * 状态机: 上传→选变量→校验→POST statistics-jobs→700ms 轮询+SSE 恢复→结果/错误中文化→localStorage 快照
  */
@@ -60,7 +60,7 @@ function resetParams() {
   }
 }
 
-// ── 派生: 需要左侧选变量的方法(闭源 Be() 排除表) ──
+// ── 派生: 需要左侧选变量的方法(参考产品 B 同名函数 排除表) ──
 const NO_VAR_SELECT = new Set(["crosstab", "regression", "logistic-regression", "multivariate-anova", "mediation-moderation", "filter"]);
 const needsVarSelect = computed(() => !NO_VAR_SELECT.has(currentTool.value));
 const scaleOnlyMethods = new Set(["descriptive", "classify", "transform", "t-test", "anova", "correlation", "normality", "reliability", "efa"]);
@@ -117,7 +117,7 @@ async function onUploadFile(file: File) {
       toast("数据未识别出变量列, 请确认文件为 CSV/表格", "warning");
     }
     selectedVars.value = new Set();
-    // 任务命名(闭源: 首次上传建 statistics 任务)
+    // 任务命名(参考产品: 首次上传建 statistics 任务)
     await ensureModuleTask("statistics", file.name.replace(/\.[^.]+$/, ""), props.taskId).catch(() => null);
     toast("文件已加载", "success");
     autoSaveDraft();
@@ -134,7 +134,7 @@ function onUploadInput(ev: Event) {
   (ev.target as HTMLInputElement).value = "";
 }
 
-// ── 健康检查(闭源: 15s 轮询 statistics/health) ──
+// ── 健康检查(参考产品: 15s 轮询 statistics/health) ──
 async function probeHealth() {
   healthState.value = "checking";
   try {
@@ -145,7 +145,7 @@ async function probeHealth() {
   }
 }
 
-// ── 运行(闭源 ut() L1440-1665 校验链 + 创建 + 700ms 轮询) ──
+// ── 运行(参考产品同名函数 校验链 + 创建 + 700ms 轮询) ──
 function validateRun(): string | null {
   const m = currentMethod.value;
   if (!m) return "方法不存在";
@@ -213,7 +213,7 @@ function pollJob(id: string) {
       loadingRun.value = false;
       toast("任务查询失败", "error");
     }
-  }, 700); // 闭源 700ms 轮询
+  }, 700); // 参考产品 700ms 轮询
 }
 
 function applyResult(job: StatsJob) {
@@ -310,7 +310,7 @@ function cellText(v: unknown): string {
   return fmtCell(v);
 }
 
-// ── localStorage 快照(闭源 stats_save_<uid>_<taskId>/stats_save_<uid>) ──
+// ── localStorage 快照(参考产品 stats_save_<uid>_<taskId>/stats_save_<uid>) ──
 function autoSaveDraft() {
   try {
     const key = props.taskId ? K.statsSave(uid(), props.taskId) : K.statsSaveNoTask(uid());
@@ -358,7 +358,7 @@ function resetParamsKeepSaved() {
 function selectTool(id: string) {
   currentTool.value = id;
   resetParams();
-  // 保留与当前方法类型匹配的已选变量(闭源切方法不清选择)
+  // 保留与当前方法类型匹配的已选变量(参考产品切方法不清选择)
   autoSaveDraft();
 }
 
@@ -429,9 +429,9 @@ onMounted(() => {
   healthTimer = setInterval(() => {
     healthProbe.value++;
     void probeHealth();
-  }, 15_000); // 闭源 15s health 轮询
+  }, 15_000); // 参考产品 15s health 轮询
   void refreshHistory();
-  // 恢复活动 job(闭源 stats_job_<uid> 残留 → 恢复轮询)
+  // 恢复活动 job(参考产品 stats_job_<uid> 残留 → 恢复轮询)
   const job = localStorage.getItem(K.statsJob(uid()));
   if (job) {
     void getStatsJob(job)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** TopBar — 还原自闭源 EditorView E:18101-18294: 标题+保存/版本历史/状态徽标+新建弹窗+导入 Word */
+/** TopBar — 还原自参考产品 EditorView : 标题+保存/版本历史/状态徽标+新建弹窗+导入 Word */
 import { ref, computed } from "vue";
 import { useDocumentStore } from "./stores/document";
 import { editorApi } from "@/shared/editorApi";
@@ -29,7 +29,7 @@ const statusMeta = computed(() => {
   }
 });
 
-// 监听外部"新建文档"请求(闭源 editor-open-new-document)
+// 监听外部"新建文档"请求(参考产品 editor-open-new-document)
 window.addEventListener(EVT.editorOpenNewDocument, () => {
   showNewDialog.value = true;
 });

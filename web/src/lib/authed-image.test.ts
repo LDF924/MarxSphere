@@ -2,7 +2,7 @@
 /**
  * authed-image 契约测试。
  *
- * 为什么值得测: 这套重试规格(哪些码重试、哪些立刻放弃、退避多久)是**照抄闭源**的,
+ * 为什么值得测: 这套重试规格(哪些码重试、哪些立刻放弃、退避多久)是**照抄参考产品**的,
  * 而它的失效方式很安静 —— 比如把"不可恢复的码立即放弃"写掉, 表现只是"用户多等 900ms",
  * 没人会报障; 又比如漏掉 Authorization, 本机有鉴权豁免、**只有上云才 401**。
  */
@@ -72,7 +72,7 @@ describe("fetchImageObjectUrl", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("网络异常也重试(闭源 catch 到就继续下一轮)", async () => {
+  it("网络异常也重试(参考产品 catch 到就继续下一轮)", async () => {
     const fetchMock = vi.fn(async () => {
       throw new TypeError("Failed to fetch");
     });

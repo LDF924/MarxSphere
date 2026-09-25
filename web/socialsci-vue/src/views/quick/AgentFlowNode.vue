@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * AgentFlowNode — 还原自闭源 QuickModeView-DJU6Ms4b.js AgentFlowNode(L13403-13522, data-v-be4e6308)
+ * AgentFlowNode — 还原自参考产品 快速编排 AgentFlowNode(, data-v-be4e6308)
  * vue-flow 自定义节点: 190×190 卡片, 7 段信息(index/module/menu/title/progress/meta/footer + hint/detail/preview)
- * Handle: 连线柄(闭源 hasTarget/hasSource; 缺柄 = 无法拖线)
+ * Handle: 连线柄(参考产品 hasTarget/hasSource; 缺柄 = 无法拖线)
  */
 import { Handle, Position } from "@vue-flow/core";
-// V415: 卡片上的 ••• 与 → 是闭源里的可点入口, 之前只是两个静态 span(点了没反应)。
+// V415: 卡片上的 ••• 与 → 是参考产品里的可点入口, 之前只是两个静态 span(点了没反应)。
 //
 // 为什么走 inject 而不是 emit: 自定义节点由 VueFlow 在**它自己内部**渲染,
 // 节点 emit 的事件只到 VueFlow 的包装器, 到不了画布组件上写的 @node-menu 监听。

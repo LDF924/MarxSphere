@@ -1,5 +1,5 @@
 /**
- * Statistics 域 API 客户端 — 还原自闭源 StatisticsView 直连 fetch 契约(decoded-stats-viz.md §1.5)
+ * Statistics 域 API 客户端 — 还原自参考产品 StatisticsView 直连 fetch 契约(decoded-stats-viz.md §1.5)
  * 我方后端: /api/files/upload(base64 JSON) + /api/statistics-jobs 全套(M3 补) + SSE stats.* 事件
  */
 import { q, streamSse, type SseHandle } from "@/shared/api";
@@ -17,7 +17,7 @@ export interface FileUploadResult {
   profile?: { variables?: VarProfile[]; columns?: VarProfile[]; sampleRows?: unknown[] };
 }
 
-/** 上传数据文件(闭源 POST /api/files/upload FormData{file}; 我方 base64 JSON) */
+/** 上传数据文件(参考产品 POST /api/files/upload FormData{file}; 我方 base64 JSON) */
 export async function uploadStatsFile(file: File): Promise<FileUploadResult> {
   const b64 = await fileToBase64(file);
   const r = await q<FileUploadResult>(`/files/upload`, {
@@ -56,7 +56,7 @@ export interface StatsJob {
   source_task_id?: string;
 }
 
-/** 创建分析 job(闭源 POST /api/statistics-jobs body={tool,fileId,...}) */
+/** 创建分析 job(参考产品 POST /api/statistics-jobs body={tool,fileId,...}) */
 export function createStatsJob(body: Record<string, unknown>): Promise<{ job: { id: string; status: string } }> {
   return q(`/statistics-jobs`, { method: "POST", body });
 }
@@ -77,7 +77,7 @@ export function listStatsJobs(limit = 30): Promise<{ jobs: StatsJob[] }> {
   return q(`/statistics-jobs?limit=${limit}`);
 }
 
-/** SSE: 事件 stats.completed/stats.failed/stats.cancelled + job.snapshot(闭源可恢复流语义) */
+/** SSE: 事件 stats.completed/stats.failed/stats.cancelled + job.snapshot(参考产品可恢复流语义) */
 export function streamStatsJob(jobId: string, handlers: { onCompleted?: (j: StatsJob) => void; onFailed?: (e?: unknown) => void; onCancelled?: () => void; onSnapshot?: (s: { status: string }) => void }): SseHandle {
   return streamSse(`/statistics-jobs/${jobId}/stream`, {
     onEvent: (event: string | null, payload: unknown) => {
@@ -91,7 +91,7 @@ export function streamStatsJob(jobId: string, handlers: { onCompleted?: (j: Stat
   });
 }
 
-/** Python 异常翻译(闭源 it(); 后端已翻, 前端兜底再翻一层) */
+/** Python 异常翻译(参考产品同名函数; 后端已翻, 前端兜底再翻一层) */
 export function translateStatsError(raw: string): string {
   if (!raw) return "分析执行失败";
   if (/unsupported operand|数据类型不匹配/.test(raw)) return "数据类型不匹配, 请检查所选变量的取值类型";

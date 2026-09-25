@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// prisma-service.ts — PRISMA 式系统综述工作流(参考 Elicit sysreview 机制, 闭源借鉴思路)
+// prisma-service.ts — PRISMA 式系统综述工作流(参考 Elicit sysreview 机制, 参考产品借鉴思路)
 // 阶段: ①检索(主题→匹配文献库论文, 记总数) ②标题筛选(逐篇判 included/excluded+理由, 可人工改)
 //      ③纳入集(生成综述只用纳入集) + PRISMA 流程摘要(记录数/去重/筛除/纳入)
 // 全程留存痕到 provenance(每阶段状态可审计) — 契合 PRISMA 可追溯

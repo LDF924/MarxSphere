@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// statistics-job-service.ts — SocialSci Vue M3: 统计分析 17 法任务执行器(闭源契约完整还原)
+// statistics-job-service.ts — SocialSci Vue M3: 统计分析 17 法任务执行器(参考产品契约完整还原)
 // 契约: POST /api/statistics-jobs {tool,fileId,variables,options...} → {job:{id,status:"queued"}}
 //       GET  /api/statistics-jobs/:id → {job:{id,status,result:{tables,charts,warnings,metadata},result_version_id,error}}
 //       GET  /api/statistics-jobs/:id/stream → SSE(可恢复: 完成前挂起→推送 done; after 重放)
 //       POST /:id/cancel / POST /:id/retry
 // 执行: 文件仓取数据(user_files) → statistics_runner.py(独立 venv, pandas/scipy/statsmodels) → 结果 DB 落库
-// 闭源语义: decoded-stats-viz.md §1(17 法参数/输出契约/Python 异常翻译); 与 empirical 域隔离独立实现
+// 参考产品语义: decoded-stats-viz.md §1(17 法参数/输出契约/Python 异常翻译); 与 empirical 域隔离独立实现
 import { randomUUID } from "node:crypto";
 import { getObject } from "./blob-store.js";
 import path from "node:path";
@@ -49,7 +49,7 @@ export interface StatsJob {
 
 const jobs = new Map<string, StatsJob>();
 
-/** 建任务(完整参数入 input; 与闭源 body 契约一致) */
+/** 建任务(完整参数入 input; 与参考产品 body 契约一致) */
 export function createStatsJob(userId: string, body: Record<string, unknown>): StatsJob | null {
   const tool = String(body.tool ?? "descriptive");
   const job: StatsJob = {
@@ -119,7 +119,7 @@ async function loadUserFileData(userId: string, fileId: string): Promise<{ colum
   }
 }
 
-/** 中文化 Python 异常(闭源 it() 翻译表语义, decoded-stats-viz §1.4-4) */
+/** 中文化 Python 异常(参考产品同名函数 翻译表语义, decoded-stats-viz §1.4-4) */
 function translateError(raw: string): { message: string; detail: string } {
   const s = String(raw ?? "");
   let msg = "分析执行失败";
@@ -267,7 +267,7 @@ export async function cancelStatsJob(userId: string, jobId: string): Promise<Sta
   return j;
 }
 
-/** retry: failed/cancelled → 重排队重跑(闭源 retry 语义) */
+/** retry: failed/cancelled → 重排队重跑(参考产品 retry 语义) */
 export async function retryStatsJob(userId: string, jobId: string): Promise<StatsJob | null> {
   const j = await getStatsJobAsync(userId, jobId);
   if (!j || !["failed", "cancelled"].includes(j.status)) return j;

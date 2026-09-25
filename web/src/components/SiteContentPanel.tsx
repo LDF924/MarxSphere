@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // SiteContentPanel.tsx — SocialSci P2: 站点内容页(公告/帮助/法律条款/学术资源导航)
-// 形态对齐(闭源产品内容页语义, 原创实现): 纯前端静态数据驱动, 不改 server 主流程
+// 形态对齐(参考产品内容页语义, 原创实现): 纯前端静态数据驱动, 不改 server 主流程
 //   J1 新闻/公告 | J2 帮助中心 | J3 条款/隐私/免责 | J4 学术资源导航
 //
 // V418(2026-09-15): 全量更新 —— 原内容停在 2026-09-06, 且面板内**不能导航**:

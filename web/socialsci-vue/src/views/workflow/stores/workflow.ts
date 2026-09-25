@@ -1,8 +1,8 @@
 /**
- * workflow project store — 还原自闭源 project store 语义(共享 index-xpWAkSSw.js L15595+)
+ * workflow project store — 还原自参考产品 project store 语义(共享 index +)
  * sections/variables/input{title,outline,...}/project{logicFlow}/materials/版本链/phase
  * 我方后端: research_projects + research_nodes(sections/materials 等节点) + workbench snapshot
- * 视图间衔接: 本 store 是 5 阶段唯一真源(闭源同一 store 语义)
+ * 视图间衔接: 本 store 是 5 阶段唯一真源(参考产品同一 store 语义)
  */
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
@@ -67,7 +67,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
    * 现在把判定收进 store: 指针指向的项目读不出来, 就是**没有**已存项目, 与空项目同义。
    */
   const hasSavedProject = ref(false);
-  // ── 版本链(闭源 getCurrent 校验 stale) ──
+  // ── 版本链(参考产品 getCurrent 校验 stale) ──
   const inputVersionId = ref("");
   const phase2VersionId = ref("");
   const phase3VersionId = ref("");
@@ -105,7 +105,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const activeSection = computed(() => sections.value.find((s) => s.id === activeSectionId.value) ?? null);
   const totalWordCount = computed(() => Number(input.value.totalWordCount) || 0);
 
-  // ── 节点持久化(闭源 loadNode/saveCurrentNode 语义) ──
+  // ── 节点持久化(参考产品 loadNode/saveCurrentNode 语义) ──
   async function ensureTask(title: string): Promise<string> {
     if (taskId.value) return taskId.value;
     // 1) localStorage 项目指针(lastTask_workflow 语义 → 存 projectId)

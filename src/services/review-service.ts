@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // review-service.ts — SocialSci P0-3: 审稿任务流 + 期刊库/标准库解析
-// 形态对齐(闭源产品交互语义, 原创实现): 传稿→分段审稿→SSE review.delta 维度JSON边流边渲染→聚合报告
+// 形态对齐(参考产品交互语义, 原创实现): 传稿→分段审稿→SSE review.delta 维度JSON边流边渲染→聚合报告
 //   - 分段: 2000-4000字/段 token感知, 逐段 LLM 审 → 写 progress checkpoint(断线续传)
 //   - parse: 投稿须知/评分标准 → LLM 结构化 JSON(zod 校验)
 //   - 选用刊物规则: journal.parsed_rules 并入本次审稿维度
@@ -51,8 +51,8 @@ export function segmentText(text: string, minLen = 1800, maxLen = 4000): string[
 }
 
 const DEFAULT_DIMENSIONS = [
-  // P-B: 闭源社科期刊 7 维模板(实页 /review 报告维度权重 3-5 整数档, 30 分制)
-  // weight 归一 = weightLabel/30(聚合 schema 用 0-1), weightLabel 供 UI 显示闭源整档
+  // P-B: 参考产品社科期刊 7 维模板(实页 /review 报告维度权重 3-5 整数档, 30 分制)
+  // weight 归一 = weightLabel/30(聚合 schema 用 0-1), weightLabel 供 UI 显示参考产品整档
   { key: "topic_value", name: "选题与意义", weight: 4 / 30, weightLabel: 4, criteria: "选题价值/现实意义/理论意义/概念创新性", min: 0, max: 100 },
   { key: "literature", name: "文献综述与分析框架", weight: 5 / 30, weightLabel: 5, criteria: "综述深度/学理对话/框架清晰/引文规范", min: 0, max: 100 },
   { key: "method", name: "研究方法与数据", weight: 5 / 30, weightLabel: 5, criteria: "研究设计/变量测量/数据可信/样本交代", min: 0, max: 100 },
@@ -111,13 +111,13 @@ export async function createReviewJob(input: {
   settings?: { strictness?: string; journalId?: string | null; standardIds?: string[]; customRequirements?: string; modelId?: string };
   sourceFileId?: string; sourceFileName?: string; sourceFileType?: string;
   sidebarTaskId?: string;
-  /** 显式要求按闭源 7 维默认标准判审(不选标准库时默认走「设为默认」的标准) */
+  /** 显式要求按参考产品 7 维默认标准判审(不选标准库时默认走「设为默认」的标准) */
   useDefaults?: boolean;
 }) {
   const id = randomUUID();
   const segments = segmentText(input.text);
   // 选刊/选标准有两条来源, 必须读数组合:
-  //   (a) settings.journalId / settings.standardIds — Vue 面板(闭源契约)只从这里发
+  //   (a) settings.journalId / settings.standardIds — Vue 面板(参考产品契约)只从这里发
   //   (b) 顶层 journalId / standardId — MCP、直接调 API 的老路径
   // 2026-09-11 实测: 面板选了刊物但 settings_json.journalId 被读成 journal_id=null,
   //   期刊规则不进提示词、"选用刊物"选项事实上是死的。
@@ -664,7 +664,7 @@ export async function runReviewJob(
   const weightLabelOf = (d: Record<string, unknown> | undefined): number => {
     if (!d) return 1;
     const wl = Number(d.weightLabel);
-    if (Number.isFinite(wl) && wl > 0) return wl;           // 闭源 3-5 整档
+    if (Number.isFinite(wl) && wl > 0) return wl;           // 参考产品 3-5 整档
     const w = Number(d.weight);
     if (Number.isFinite(w) && w > 1) return w;             // 标准库 int 权重
     return 1;
@@ -673,7 +673,7 @@ export async function runReviewJob(
   // 本次审稿的模型: 提交时选定, 随任务落库 —— 重审/恢复历史任务都会沿用同一个模型,
   //   不会出现"当时用 A 审的, 重开却走了默认模型"。
   const jobModel = String(((job.settings_json ?? {}) as { modelId?: string }).modelId || "");
-  // 审稿设置(闭源三档严格度 + 额外要求): 此前只落库不进提示词, 三个档位跑出来一模一样
+  // 审稿设置(参考产品三档严格度 + 额外要求): 此前只落库不进提示词, 三个档位跑出来一模一样
   const st = (job.settings_json ?? {}) as { strictness?: string; customRequirements?: string };
   const strictnessHint = st.strictness === "lax" ? "标准从宽: 只指出影响结论的硬伤, 措辞鼓励为主, 不罗列细节瑕疵。"
     : st.strictness === "strict" ? "标准从严: 按顶刊外审尺度逐条深挖, 方法/数据/论证/表述任一环节不达标都要指出并给出可执行修改方案。"
@@ -869,7 +869,7 @@ const ownClause = (col = "user_id", n = 1) => `(${col}=$${n} or ${col} is null)`
 
 /** 库列表的对外形状: 面板读 category/scope/isBuiltIn/structuredRules/useCount —
  *  后端列名是 level/parsed_rules, 直接回 rows 会让面板的分类全是"其他"、关卡全是"待确认"。
- *  字段名由闭源 ReviewView 契约决定(left.join 只认这两个 key), 这里同时给 snake 兼容旧调用方。 */
+ *  字段名由参考产品 ReviewView 契约决定(left.join 只认这两个 key), 这里同时给 snake 兼容旧调用方。 */
 function journalShape(row: Record<string, unknown>) {
   const rules = (row.parsed_rules ?? {}) as Record<string, unknown>;
   const level = String(row.level ?? "");
@@ -889,7 +889,7 @@ function journalShape(row: Record<string, unknown>) {
       // 原样保留库里的全部键: 面板读的是 AI 四类, 但本地正则产出的 6 类
       //   (wordCount/referenceFormat/languageStyle/…) 也必须带回前端, 否则编辑一次就永久丢失
       ...rules,
-      formatRules: rules.formatRules ?? undefined,          // 闭源编辑页读这个 key(不是 reviewFocus)
+      formatRules: rules.formatRules ?? undefined,          // 参考产品编辑页读这个 key(不是 reviewFocus)
       reviewFocus: rules.reviewFocus ?? undefined,
       citationRules: rules.citationRules ?? undefined,
       scope: rules.scope ?? undefined,
@@ -905,7 +905,7 @@ function standardShape(row: Record<string, unknown>) {
     isBuiltIn: !!row.built_in,
     isDefault: !!row.is_default,
     useCount: Number(row.use_count ?? 0),
-    // 闭源 StandardRecord 契约: 维度对象是 {name, weight, description, criteria:[{id,title}]},
+    // 参考产品 StandardRecord 契约: 维度对象是 {name, weight, description, criteria:[{id,title}]},
     //   标准库存的是 {key, criteria(字符串), min, max} — 缺 description 会让面板整行维度渲染成空白
     dimensions: dims.map((d) => ({
       ...d,
@@ -958,7 +958,7 @@ export async function listJournals(userId: string) {
 }
 
 export async function createJournal(input: { name: string; level?: string; category?: string; scope?: string; submissionGuideText?: string; parsedRules?: unknown; structuredRules?: Record<string, unknown>; userId?: string | null }) {
-  // 面板发的是 category + structuredRules(闭源契约), 老调用方发 level + parsedRules — 两个都收
+  // 面板发的是 category + structuredRules(参考产品契约), 老调用方发 level + parsedRules — 两个都收
   const level = input.level ?? input.category ?? "other";
   const rules = input.parsedRules ?? input.structuredRules ?? {};
   const guide = input.submissionGuideText ?? String((input.structuredRules as Record<string, unknown> | undefined)?.submissionGuideText ?? "");
@@ -1002,7 +1002,7 @@ export async function deleteJournal(userId: string, journalId: string) {
 
 /** 投稿须知 → AI 解析结构化规则 */
 export async function parseSubmissionGuide(text: string) {
-  // R9c: LLM JSON 解析失败兜底 — 重试 1 次仍失败返回可读错误(闭源 500"非有效JSON"无兜底, 学其教训)
+  // R9c: LLM JSON 解析失败兜底 — 重试 1 次仍失败返回可读错误(参考产品 500"非有效JSON"无兜底, 学其教训)
   const run = async () => {
     const ans = await llmJson(`你是学术期刊编辑。解析期刊投稿须知原文为结构化规则, 输出 JSON:
 {"formatRules":["格式要求(如字数/摘要结构/图表规范)"],
@@ -1442,8 +1442,8 @@ export async function exportReportWord(userId: string, jobId: string): Promise<{
   }
 }
 
-// ═══ T6: 审稿排版 HTML 报告导出(对齐闭源 export-report 语义) ═══
-// 闭源 POST /review/export-report → 服务端渲染完整排版 HTML(标题/总分大字/总评/维度卡/批注),
+// ═══ T6: 审稿排版 HTML 报告导出(对齐参考产品 export-report 语义) ═══
+// 参考产品 POST /review/export-report → 服务端渲染完整排版 HTML(标题/总分大字/总评/维度卡/批注),
 // 供打印/存 PDF; 我方 Word 批注导出之外的第二种报告形态
 export async function exportReportHtml(userId: string, jobId: string): Promise<{ ok: boolean; html?: string; error?: string }> {
   const job = await getReviewJob(userId, jobId);

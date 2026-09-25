@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * VizView — 还原自闭源 VizView-DKRGiXDc.js L3301-5031(scope data-v-df5821c7)
+ * VizView — 还原自参考产品 绘图台(scope data-v-df5821c7)
  * header(图表/任务 tab + 新建 + 删除二次确认) + 双栏(左 VizChatPanelV2 220-480 可拖 + 右画布)
  * 画布: 图卡 tab 条(≤8 + "+")/预览/底部三 tab(数据/图注/代码)
  * 任务视图: VizTaskWindow 列表 → select → 恢复
@@ -12,7 +12,7 @@ import { toast, confirmDialog } from "@/shared/ui";
 
 const viewTab = ref<"canvas" | "windows">("canvas");
 
-// ── 图卡模型(闭源 $e() L3691-3716) ──
+// ── 图卡模型(参考产品同名函数 ──
 interface Figure {
   id: number;
   vizJobId?: string;
@@ -58,7 +58,7 @@ function startInfoResize(e: MouseEvent) {
   window.addEventListener("mouseup", up);
 }
 
-// ── 对话栏宽度(220-480 拖拽, 闭源 re() L3636-3648) ──
+// ── 对话栏宽度(220-480 拖拽, 参考产品同名函数 ──
 const chatWidth = ref(420);
 let chatDrag = false;
 function onChatResizeDown(e: MouseEvent) {
@@ -98,7 +98,7 @@ async function loadJobs() {
 async function selectJob(job: VizJob) {
   selectedJobId.value = job.id;
   selectedJobChartIdx.value = -1;
-  // 切到图表视图并恢复画布(闭源 M() 三级恢复)
+  // 切到图表视图并恢复画布(参考产品同名函数 三级恢复)
   try {
     const { job: fresh } = await getVizJob(job.id);
     await restoreFromJob(fresh);
@@ -112,7 +112,7 @@ async function restoreFromJob(job: VizJob) {
   const newFigs: Figure[] = [];
   for (const c of charts) {
     const url = await blobifyPng(c.png ?? c.chartPng ?? null);
-    if (!url) continue; // 缺图跳过(闭源语义)
+    if (!url) continue; // 缺图跳过(参考产品语义)
     newFigs.push({
       id: figSeq++,
       vizJobId: job.id,
@@ -163,11 +163,11 @@ async function restoreFromJob(job: VizJob) {
 type DataSnap = { fileId: string; fileName: string; columns: string[]; rows: unknown[][]; totalRows?: number; sampleData?: boolean };
 const curDataSnapshot = ref<DataSnap | null>(null);
 
-// ── chart-update 事件(闭源 Xe() L3755-3851: 去重/新建图卡/选中滚动) ──
+// ── chart-update 事件(参考产品 X 同名函数: 去重/新建图卡/选中滚动) ──
 function onChartUpdate(payload: Record<string, unknown>) {
   const vizJobId = String(payload.vizJobId ?? "");
   // 图卡身份: 优先后端稳定 figureId; 无 figureId(旧后端)时按 vizJobId 合并 —
-  // 同一 job 的 chart 迭代(v1/v2/v3)更新同一张图卡, 不新开(闭源 be() 语义)
+  // 同一 job 的 chart 迭代(v1/v2/v3)更新同一张图卡, 不新开(参考产品同名函数 语义)
   const chartKey = String(payload.figureId ?? payload.chartKey ?? payload.chartKeyRaw ?? "");
   const url = String(payload.url ?? "");
   const pngRaw = String(payload.png ?? "");
@@ -187,7 +187,7 @@ function onChartUpdate(payload: Record<string, unknown>) {
     if (existing.chartVersionId !== String(payload.chartVersionId ?? "")) existing.chartVersionId = String(payload.chartVersionId ?? "");
   } else if (url) {
     if (figures.value.length >= 8) {
-      // 超过 8 个: 滚动替换最旧? 闭源上限 8 → 直接加(无删除)
+      // 超过 8 个: 滚动替换最旧? 参考产品上限 8 → 直接加(无删除)
     }
     figures.value.push({
       id: figSeq++,
@@ -210,7 +210,7 @@ function onChartUpdate(payload: Record<string, unknown>) {
   }
 }
 
-// ── data-upload 事件(闭源 Oe(): 绑数据快照 + 命名任务) ──
+// ── data-upload 事件(参考产品 O 同名函数: 绑数据快照 + 命名任务) ──
 function onDataUpload(payload: { fileId: string; fileName: string; columns: string[]; rows: unknown[][]; rowCount?: number }) {
   const snap: DataSnap = {
     fileId: payload.fileId, fileName: payload.fileName,
@@ -229,7 +229,7 @@ function onDataUpload(payload: { fileId: string; fileName: string; columns: stri
 function onJobStatus(payload: { id: string; status: string }) {
   // 后端写的是 'done'(viz-job-service setStatus), 不是 'completed' —— 两种都认
   if (payload.status === "completed" || payload.status === "done") {
-    // 120ms 后刷新任务列表(闭源 G() L3474-3485)
+    // 120ms 后刷新任务列表(参考产品同名函数
     setTimeout(() => void loadJobs(), 120);
   } else {
     void loadJobs();
@@ -253,7 +253,7 @@ function removeFig(i: number) {
   saveCanvas();
 }
 
-// ── 画布持久化(闭源 viz_save_<uid>_<taskId>: dataSnapshot≤500 行) ──
+// ── 画布持久化(参考产品 viz_save_<uid>_<taskId>: dataSnapshot≤500 行) ──
 function saveCanvas() {
   try {
     const key = K.vizSave(uid(), "default");
@@ -285,7 +285,7 @@ function loadCanvas() {
   } catch { /* 解析失败忽略 */ }
 }
 
-// ── 新建/删除(闭源 confirm 语义) ──
+// ── 新建/删除(参考产品 confirm 语义) ──
 async function newChart() {
   const ok = await confirmDialog({ message: "开始新的绘图任务? 当前画布图表将保留, 会话内容会清空。", title: "新建图表", okText: "开始" });
   if (!ok) return;
@@ -311,7 +311,7 @@ function deleteCurrent() {
   saveCanvas();
 }
 
-// ── 导出当前图为 png(闭源: blob → saveAs) ──
+// ── 导出当前图为 png(参考产品: blob → saveAs) ──
 function downloadUrl(url: string, filename: string) {
   const a = document.createElement("a");
   a.href = url;
@@ -396,7 +396,7 @@ async function copyText(text: string | undefined, label: string) {
   }
 }
 
-// ── 代码高亮(闭源 Ye(): 注释/字符串/关键字/数字 + 行号) ──
+// ── 代码高亮(参考产品 Y 同名函数: 注释/字符串/关键字/数字 + 行号) ──
 function copyFigCode() {
   const f = selectedFigure.value;
   if (f?.code) void copyText(f.code, "代码");

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // research-pipeline-service.ts — SocialSci P0-1: 科研项目容器 + 节点快照 + 版本发布
-// 形态对齐(闭源产品交互语义, 原创实现, 不涉源码): 可视化DAG科研工作台的项目层
+// 形态对齐(参考产品交互语义, 原创实现, 不涉源码): 可视化DAG科研工作台的项目层
 //   - research_projects: 项目容器, canvas 存 DAG 画布态(nodes/edges), 乐观锁防并发覆盖
 //   - research_tasks:    项目级执行任务(并列于 agent_tasks, 不干扰52步推理主链)
 //   - research_nodes:    节点快照(node_key 全量 JSON 原子覆盖 + 历史行回滚)
@@ -553,7 +553,7 @@ export async function listVersions(userId: string, projectId: string) {
   return r.rows;
 }
 
-/** P-A 终稿激活(闭源 #651 activate 语义): 把指定版本置 published/终稿, 其余版本 superseded,
+/** P-A 终稿激活(参考产品 #651 activate 语义): 把指定版本置 published/终稿, 其余版本 superseded,
  *  记录 project.revision_of_version 指向激活版本。 */
 export async function activateVersion(userId: string, projectId: string, version: number) {
   const client = await pool.connect();
@@ -597,7 +597,7 @@ export async function activateVersion(userId: string, projectId: string, version
 // ═══ DAG 模板(标准五阶段 → 画布节点+连线) ═══
 export function dagTemplateFiveStage(topic: string): CanvasState {
   const x0 = 60;
-  // R10/R16 对齐(闭源 AgentFlowNode): index 序号 + module 徽标 + 输入/输出 meta + systemStart
+  // R10/R16 对齐(参考产品 AgentFlowNode): index 序号 + module 徽标 + 输入/输出 meta + systemStart
   const stages: Array<{ type: CanvasNode["type"]; label: string; module: string; input: string; output: string }> = [
     { type: "goal", label: "研究目标", module: "SYSTEM", input: "用户目标", output: "研究框架" },
     { type: "object_sample", label: "对象/样本", module: "STANDARD WORKFLOW", input: "框架", output: "样本方案" },
@@ -624,7 +624,7 @@ export function dagTemplateFiveStage(topic: string): CanvasState {
       systemStart: i === 0,
     },
   }));
-  // E2(闭源 agent-edge- 自动补边): 模板边带 kind:auto(前端渲染为绿虚线), 与用户手动边(蓝实线)区分
+  // E2(参考产品 agent-edge- 自动补边): 模板边带 kind:auto(前端渲染为绿虚线), 与用户手动边(蓝实线)区分
   const edges: CanvasEdge[] = nodes.slice(0, -1).map((n, i) => ({
     id: `e_${i + 1}`,
     source: n.id,
@@ -702,7 +702,7 @@ export async function planFromNl(description: string): Promise<{ steps: NlStep[]
   const steps: Array<{ type: string; label: string; task?: string }> = ans?.steps;
   if (!Array.isArray(steps) || !steps.length) return { error: "AI 未能解析任务结构, 请重试或手动搭建画布" };
   const out: NlStep[] = steps.map((s, i) => {
-    // 强制首尾(闭源同口径: goal 起、deliverable 收)
+    // 强制首尾(参考产品同口径: goal 起、deliverable 收)
     const type = i === 0 ? "goal" : i === steps.length - 1 ? "deliverable" : String(s.type ?? "analysis");
     const label = String(s.label ?? `步骤${i + 1}`);
     const task = String(s.task ?? "").trim();
@@ -772,7 +772,7 @@ export async function nlToOrchestratorGraph(description: string): Promise<{ grap
 }
 
 // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate → {analysis, questions[5]带id/category/guidance/importance}) ═══
-// E4(闭源 2 轮集中补齐): answers(已答上下文)传入 → 第二轮只追问仍模糊的点(≤3 问)
+// E4(参考产品 2 轮集中补齐): answers(已答上下文)传入 → 第二轮只追问仍模糊的点(≤3 问)
 export async function generateClarify(input: {
   title: string; outline?: string; requirements?: string; researchMethod?: string;
   totalWordCount?: number; sampleContent?: string;
@@ -815,11 +815,11 @@ ${roundPrompt}`, undefined, 4000);
 export async function runMainAgentAnalysis(userId: string, projectId: string, opts: { taskId?: string } = {}) {
   const project = await getProject(userId, projectId);
   if (!project) return { ok: false as const, code: "NOT_FOUND" };
-  const ans = await llmJson(`你是框架设计分析专家(主控智能体)。基于研究主题生成框架设计, 输出 JSON(R3 闭源 SectionsView 对齐: 定性方法用定性变量角色):
+  const ans = await llmJson(`你是框架设计分析专家(主控智能体)。基于研究主题生成框架设计, 输出 JSON(R3 参考产品 SectionsView 对齐: 定性方法用定性变量角色):
 {"variables":{"kind":"qualitative|quantitative|mixed","list":[{"name":"变量名","role":"quantitative 时: dependent|independent|mediator|moderator|control; qualitative 时: influence|outcome|mechanism|context|background","description":"该变量的操作化语义描述(含为何作此角色)"}]},
  "hypotheses":[{"id":"H1","type":"main|mediation|moderation","text":"完整假设表述","theory":"基于 XX 理论/假说+机制解释"}],
  "chapterPlan":[{"title":"章节标题","level":1,"requirements":"该章写作要求(一句话)","skillType":"intro|literature|theory|method|result|conclusion","wordCount":按总字数比例的该章目标字数}],
- "logicChain":"研究逻辑主线(一段话, 闭源'研究逻辑'风格: 起承转结构说明)",
+ "logicChain":"研究逻辑主线(一段话, 参考产品'研究逻辑'风格: 起承转结构说明)",
  "clarifyQuestions":["澄清问题(如无则[])"]}
 
 研究主题: ${project.topic || project.title}

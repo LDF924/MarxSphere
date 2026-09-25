@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Editor 主组件 — 还原自闭源 EditorView 默认导出(E:39364, scope data-v-8380a051)
+ * Editor 主组件 — 还原自参考产品 EditorView 默认导出, scope data-v-8380a051)
  * 三栏布局: TopBar + SideBar(doc rail) + 编辑区(工具栏+A4 纸面) + AIPanel(右抽屉)
  * 编排语义: 1200ms 防抖自动保存 / currentContent 双向同步(JSON diff 才 setContent)
  * / 路由意图(?new=1&dialog=1 / ?new=1 / ?documentId=N) / ctrl+s 拦截 / beforeunload flush
@@ -81,7 +81,7 @@ function scheduleAutoSave() {
   if (saveTimer.value) clearTimeout(saveTimer.value);
   saveTimer.value = setTimeout(async () => {
     await store.saveNow();
-  }, 1200); // 闭源 1200ms 防抖
+  }, 1200); // 参考产品 1200ms 防抖
 }
 
 function flushAndSave() {
@@ -327,7 +327,7 @@ async function onAiInsertChart(e: Event) {
  *   实测恒 404「接口不存在」, 点「导出 Word」必然弹「导出失败」。
  *   同一个契约层里 `shared/editorApi.ts` 的 `exportDocxBlob()` 是专为它写的包装, **零调用点**;
  *   全仓 `format_options` 也只有前端两处、后端一处不认 —— 这条路从来没被后端接住过。
- *   闭源确实有 `/editor/v1/documents/document/<id>/export/...`, 但那是**服务端 HTML→docx**,
+ *   参考产品确实有 `/editor/v1/documents/document/<id>/export/...`, 但那是**服务端 HTML→docx**,
  *   我方没有等价地基服务(`docx`/`mammoth` 在 node_modules 里但全仓零 import)。
  *
  *   改走平台**已有且实测可用**的 docx 通道 POST `/api/paper-outline/export`
@@ -337,7 +337,7 @@ async function onAiInsertChart(e: Event) {
  * 形态说明: 那里的 `nodes` 是**骨架 + 正文**两段式。编辑器正文是 TipTap JSON 富文本,
  *   是它的超集 —— 本函数只搬「标题层级 + 文本, 附空行」, 其余包裹格式(粗斜体/列表/表格)
  *   **会降级成纯文本**。这是已知限制, 不假装支持; 要保真得让后端直接吃 HTML。
- *   顺带一提, 降级后正好落回闭源「导出后 postprocess 处理 docx_text」的往返语义。
+ *   顺带一提, 降级后正好落回参考产品「导出后 postprocess 处理 docx_text」的往返语义。
  */
 async function handleExport() {
   const ed = editorRef.value;

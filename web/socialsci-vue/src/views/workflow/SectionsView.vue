@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * SectionsView(Phase2 框架设计) — 还原自闭源 SectionsView-C4lM9Tih.js(L212-1595, 单组件纯消费页)
+ * SectionsView(Phase2 框架设计) — 还原自参考产品 框架页, 单组件纯消费页)
  * 页头统计/AI 分析横幅 3 态/3 步进度+打字机思考/变量卡+假设/章节树(aiSkill 写作指导)
  * 数据源: workbench 快照恢复 + skill-cards(后端 aiSkill 生成)轮询
  */
@@ -34,7 +34,7 @@ function fsOf(sk: { frameworkSource?: unknown } | undefined):
   };
   return Object.values(out).some(Boolean) ? out : null;
 }
-/** 子节规划(闭源: {title, aim}[]) */
+/** 子节规划(参考产品: {title, aim}[]) */
 function childSecsOf(sk: { childSections?: unknown } | undefined): Array<{ title: string; aim?: string }> {
   const list = sk?.childSections;
   if (!Array.isArray(list)) return [];
@@ -46,18 +46,18 @@ function childSecsOf(sk: { childSections?: unknown } | undefined): Array<{ title
     })
     .filter((c) => c.title);
 }
-/** 闭源标签按"有没有参考文件"切换: 有 = 参考框架, 无 = AI 写作指导 */
+/** 参考产品标签按"有没有参考文件"切换: 有 = 参考框架, 无 = AI 写作指导 */
 const hasSampleFiles = computed(() => store.input.sampleFiles.length > 0);
 
 
-// ── 打字机(闭源 L242-274: 20ms tick, chunk=clamp(8..40, ceil(剩余/20))) ──
+// ── 打字机(参考产品: 20ms tick, chunk=clamp(8..40, ceil(剩余/20))) ──
 const typewriterArea = ref<HTMLElement | null>(null);
 const typeText = ref("");
 let typeTimer: ReturnType<typeof setTimeout> | null = null;
 let typeQueue = "";
 let typeFull = "";
 /**
- * 当前步要打的叙述。闭源打的是模型**流式增量**(skillStreamText), 我方后端是轮询 + 阶段,
+ * 当前步要打的叙述。参考产品打的是模型**流式增量**(skillStreamText), 我方后端是轮询 + 阶段,
  * 没有逐字流 —— 所以这里打的是**阶段叙述**, 每段只在阶段变化时重打一次。
  * 宁可如实展示"现在到哪一步了", 也不要留一个永远空白的 `<pre>` 让用户干等。
  */
@@ -109,7 +109,7 @@ const activeJobId = ref("");
 // → skillComplete 恒 false → "确认进入"永久置灰, 且界面不说原因(实测: 只能删库重来)
 const guidesBusy = ref(false);
 
-// ── 步骤(闭源 Q 表: 定性词表切换) ──
+// ── 步骤(参考产品 Q 表: 定性词表切换) ──
 const isQual = computed(() => store.input.researchMethod === "qualitative" || (store.input.researchMethod || "").includes("qual"));
 const steps = computed(() => [
   { key: 1, label: isQual.value ? "因素识别" : "变量识别" },
@@ -117,7 +117,7 @@ const steps = computed(() => [
   { key: 3, label: "逐章写作指导" }
 ]);
 
-// ── 派生统计(闭源 k/L/C/D/H/$) ──
+// ── 派生统计(参考产品 k/L/C/D/H/$) ──
 const l1Count = computed(() => store.level1Sections.length);
 const childCount = computed(() => store.sections.filter((s) => s.level === 2).length);
 const withSkill = computed(() => store.level1Sections.filter((s) => s.aiSkill || s.skill_prompt).length);
@@ -127,14 +127,14 @@ const canConfirm = computed(() => !analyzing.value && l1Count.value > 0 && withS
 /**
  * 完成态的三步骤。
  *
- * ⚠ 2026-09-24: 第三步从 "Skill 生成" 改成 "逐章写作指导" —— **刻意偏离闭源**
- *   (闭源原文就是 "Skill 生成", DOM 实拍里可见)。理由: 全站其余地方都说中文
+ * ⚠ 2026-09-24: 第三步从 "Skill 生成" 改成 "逐章写作指导" —— **刻意偏离参考产品**
+ *   (参考产品原文就是 "Skill 生成", DOM 实拍里可见)。理由: 全站其余地方都说中文
  *   (工作台那套是"识别研究变量/构建研究框架/生成写作指导"), 只有这里露着英文术语,
  *   用户看不懂 "Skill" 指什么。改后与工作台的说法一致。
  */
 const DONE_STEPS = ["变量识别", "框架分析", "逐章写作指导"];
 
-// ── 变量角色色(闭源 K L355-368 定量 5 色/定性词表) ──
+// ── 变量角色色(参考产品 K  定量 5 色/定性词表) ──
 const roleColor = (role: string): string => {
   const r = String(role ?? "");
   const qn: Record<string, string> = {
@@ -336,7 +336,7 @@ function pollJob() {
         // 2026-09-16: 此前 `startTypewriter()` **一次都没被调用过**(只有 finishTypewriter 在完成时调),
         //   所以思考区永远是空的 `<pre>` —— 用户盯着一个空盒子等几分钟。
         // 前提: 本轮给后端补了 progress.stage 回写(V6), 在此之前这里根本没有可读的阶段。
-        // 说明: 我方后端是"轮询 + 阶段"而非闭源的逐字 SSE, 所以这里打字的是**阶段叙述**
+        // 说明: 我方后端是"轮询 + 阶段"而非参考产品的逐字 SSE, 所以这里打字的是**阶段叙述**
         //   (每段只在变化时重打一次), 不是模型逐字输出 —— 不假装有流式。
         const narration = STAGE_NARRATION[analyzeStep.value];
         if (narration && narration !== lastNarration) {
@@ -411,7 +411,7 @@ async function retryGuides() {
 /** V417: 上次写作指导批量生成的结果 —— 用于如实报告(此前全失败也弹绿色成功) */
 const guidesResult = ref<{ ok: number; total: number; error?: string }>({ ok: 0, total: 0 });
 
-/** 生成各一级章节写作指导(闭源 generateSkillsForSections: 后端逐章 LLM 生成 aiSkill) */
+/** 生成各一级章节写作指导(参考产品 generateSkillsForSections: 后端逐章 LLM 生成 aiSkill) */
 async function generateWritingGuides() {
   const l1 = store.level1Sections;
   if (!l1.length || !store.taskId) return;
@@ -461,7 +461,7 @@ async function loadSkillCards() {
   } catch { /* 容忍 */ }
 }
 
-// ── 确认进入文献与资料(闭源 Z() 门禁) ──
+// ── 确认进入文献与资料(参考产品同名函数 门禁) ──
 async function confirmSections() {
   if (!l1Count.value) {
     toast("请至少添加一个章节", "warning");
@@ -484,7 +484,7 @@ async function confirmSections() {
   void router.push("/workflow/materials");
 }
 
-// ── A2 假设解析(闭源 j() L281-321: 定性空; stepAnalysisTexts[2] ①json conceptModel ②行正则 ③兜底配对) ──
+// ── A2 假设解析(参考产品同名函数: 定性空; stepAnalysisTexts[2] ①json conceptModel ②行正则 ③兜底配对) ──
 function parseHypotheses(text: string | undefined | null): string[] {
   const src = String(text ?? "");
   const out: string[] = [];
@@ -512,14 +512,14 @@ function parseHypotheses(text: string | undefined | null): string[] {
     if (body && body.length > 4) out.push(`${mm[1].replace(/[.、:：]/g, "")}: ${body}`);
   }
   if (out.length) return out;
-  // ③ 兜底: 自变量/因变量配对(闭源 role=自变量/因变量)
+  // ③ 兜底: 自变量/因变量配对(参考产品 role=自变量/因变量)
   const x = store.variables.find((v) => ["自变量", "影响因素"].includes(v.role));
   const y = store.variables.find((v) => ["因变量", "结果表现"].includes(v.role));
   if (x && y) out.push(`${x.name} 对 ${y.name} 有显著影响`);
   return out;
 }
 
-// A3: 研究方法 pill(闭源 L1112-1116: 已选择/自动识别)
+// A3: 研究方法 pill(参考产品: 已选择/自动识别)
 const methodPill = computed(() => {
   const mm = store.input.researchMethod;
   const labels: Record<string, string> = { qualitative: "定性研究", quantitative: "定量研究", mixed: "混合方法" };
@@ -914,16 +914,16 @@ onUnmounted(() => {
 <style scoped>
 
 .workflow-page { width: 100%; box-sizing: border-box; }
-/* 页头整体。闭源把 h1+p+统计行包在一个 `mb-8` 块里(= 整块下方 32px 留白)。
+/* 页头整体。参考产品把 h1+p+统计行包在一个 `mb-8` 块里(= 整块下方 32px 留白)。
    我方原先是 h1 mb-4 / sub mb-0 / 统计 mt-8 mb-16 拼出来, 净距只有 24px ——
-   比闭源少 8px, 而且 h1 与副标题之间被撑到 8px(闭源 text-sm mt-1 = 4px)。 */
+   比参考产品少 8px, 而且 h1 与副标题之间被撑到 8px(参考产品 text-sm mt-1 = 4px)。 */
 .wf-head { margin-bottom: 32px; }
 .wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
 .wf-stats { margin: 12px 0 0; font-size: 12.5px; color: var(--wf-muted); }
 .stats-num { color: var(--wf-text); font-weight: 600; }
 .fail-step { color: #E88A8A; font-weight: 600; margin-right: 2px; }
-/* 闭源页面级块间距是 mb-6(24px); 原值 14px 明显更紧 */
+/* 参考产品页面级块间距是 mb-6(24px); 原值 14px 明显更紧 */
 .banner { border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
 .banner-fail { background: #2A1C1C; border: 1px solid #3A2323; }
 .banner-thinking { background: var(--wf-raised); border: 1px solid var(--wf-line-hard); }
@@ -978,7 +978,7 @@ onUnmounted(() => {
   display: flex; align-items: center; gap: 10px;
 }
 .btn-warn { border: 0; background: #E8B54A; color: #F1F5F9; padding: 3px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
-/* 完成态: 绿头 + 三步骤进度条(闭源 ppb 语义: ✓ 圆 + 步骤名 + › 分隔) */
+/* 完成态: 绿头 + 三步骤进度条(参考产品 ppb 语义: ✓ 圆 + 步骤名 + › 分隔) */
 .banner-done .banner-head { gap: 8px; justify-content: flex-start; }
 .done-steps {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -992,7 +992,7 @@ onUnmounted(() => {
 }
 .ds-sep { color: #2E5C46; font-size: 14px; }
 
-/* 科研框架概览卡(闭源: 一张卡收 ①变量 ②假设 ③逻辑+方法) */
+/* 科研框架概览卡(参考产品: 一张卡收 ①变量 ②假设 ③逻辑+方法) */
 .overview-card {
   background: var(--wf-surface); border: 1px solid #2B2F52; border-radius: 12px;
   overflow: hidden; margin-bottom: 14px;
@@ -1035,10 +1035,10 @@ onUnmounted(() => {
 }
 .var-edit-x:hover { color: var(--wf-warn); }
 .var-edit-note { margin: 2px 0 0; font-size: 11px; color: var(--wf-faint); line-height: 1.65; }
-/* ⚠ 2026-09-23: 从 `auto-fill minmax(200px,1fr)` 改成**定 3 列**, 对齐闭源。
-   闭源的变量卡网格是 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`(见逆向资料的 DOM 实拍)。
+/* ⚠ 2026-09-23: 从 `auto-fill minmax(200px,1fr)` 改成**定 3 列**, 对齐参考产品。
+   参考产品的变量卡网格是 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`(见逆向资料的 DOM 实拍)。
    我们那套 auto-fill 在 1230px 的单栏里会铺出 **5 条窄卡**(每张刚过 200px),
-   而闭源在同样的宽度下是 3 列 —— 卡片一窄, 里面的「变量名 + 测量方式」就挤成两三行。
+   而参考产品在同样的宽度下是 3 列 —— 卡片一窄, 里面的「变量名 + 测量方式」就挤成两三行。
    单栏化之前右列只有 461px, auto-fill 恰好只出 2 列, 所以这个偏差一直没暴露。 */
 .var-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 @media (min-width: 1100px) { .var-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -1051,7 +1051,7 @@ onUnmounted(() => {
 .var-role { color: #F1F5F9; font-size: 10.5px; padding: 2px 9px; border-radius: 8px; flex-shrink: 0; font-weight: 600; }
 .var-name { font-size: 13.5px; color: var(--wf-text); }
 .var-card p { margin: 0; font-size: 12px; color: var(--wf-muted); line-height: 1.5; }
-/* 描述两行截断(闭源 line-clamp-2) —— 全量展开会把卡片撑成高矮不齐的一片 */
+/* 描述两行截断(参考产品 line-clamp-2) —— 全量展开会把卡片撑成高矮不齐的一片 */
 .var-desc {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
@@ -1070,13 +1070,13 @@ onUnmounted(() => {
 /* V424 两栏: 分析产物(左) + 章节结构(右)。章节结构需要更多横向空间(树 + 每章的写作指导),
    所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
 /* ⚠ 2026-09-23: `.sec-cols` / `.sec-col-left` / `.sec-col-right` 已删除 —— 框架设计页改回**单栏**,
-   章节结构直接排在科研框架概览下方(与闭源顺序一致)。那套两栏是 2026-09-21 自己加的,
-   核对逆向对象发现闭源是 `max-w-5xl mx-auto` 单栏(见 .claude/reverse-engineering/.../sections-dom.txt)。
+   章节结构直接排在科研框架概览下方(与参考产品顺序一致)。那套两栏是 2026-09-21 自己加的,
+   核对逆向对象发现参考产品是 `max-w-5xl mx-auto` 单栏(见 .claude/reverse-engineering/.../sections-dom.txt)。
    单栏之后两栏那套 grid / 列内 gap 都不需要了, 卡片的垂直间距回到**卡片自己的 margin**。 */
 .tree-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
   padding: 16px 18px;
-  /* 闭源是 mb-6(24px), 但那是**卡片夹在中间**时的下距。单栏下它是最后一个块,
+  /* 参考产品是 mb-6(24px), 但那是**卡片夹在中间**时的下距。单栏下它是最后一个块,
      下距交给页面底部(60px) —— 两栏时这条被 `.sec-cols .tree-card{margin-bottom:0}` 覆盖,
      现在那层没了, 归零写在原地。 */
   margin-bottom: 0;
@@ -1094,7 +1094,7 @@ onUnmounted(() => {
 .level1-row { border-bottom: 1px solid var(--wf-line-soft); padding: 10px 0; }
 .level1-row:last-child { border-bottom: 0; }
 .l1-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* 编号块(闭源: 一级 bg-red-100 text-red-700 浅红底红字, 二级 bg-gray-100 text-gray-600 灰底灰字;
+/* 编号块(参考产品: 一级 bg-red-100 text-red-700 浅红底红字, 二级 bg-gray-100 text-gray-600 灰底灰字;
    尺寸同为 w-10 h-8)。2026-09-15 修: 一级原为实心红底白字, 二级只有灰字没有底块。 */
 .l1-num {
   width: 40px; height: 32px; border-radius: 8px;
@@ -1108,7 +1108,7 @@ onUnmounted(() => {
 .wc-badge { font-size: 10.5px; padding: 2px 8px; background: #1E2A48; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 8px; }
 .l2-list { list-style: none; margin: 6px 0 0; padding: 0 0 0 6px; border-left: 2px solid var(--wf-line-soft); }
 .l2-row { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 10px; flex-wrap: wrap; }
-/* 二级编号块: 与一级同尺寸但灰底灰字(闭源 bg-gray-100 text-gray-600) */
+/* 二级编号块: 与一级同尺寸但灰底灰字(参考产品 bg-gray-100 text-gray-600) */
 .l2-num {
   width: 40px; height: 32px; border-radius: 8px;
   background: var(--wf-raised); color: #A8B4C4;
@@ -1125,7 +1125,7 @@ onUnmounted(() => {
   font-size: 10.5px; padding: 2px 8px; border-radius: 8px;
   background: var(--wf-raised); color: #9B8BD7; border: 1px solid #3A3355;
 }
-/* 草稿预览(闭源绿框): 与"框架来源"琥珀框并列, 视觉上是两块独立信息 */
+/* 草稿预览(参考产品绿框): 与"框架来源"琥珀框并列, 视觉上是两块独立信息 */
 .draft-box {
   background: #14281F; border: 1px solid #2E5C46; border-radius: 6px;
   padding: 6px 10px; font-size: 12px; color: #7DD3A8; line-height: 1.6;
@@ -1140,9 +1140,9 @@ onUnmounted(() => {
 .skill-block ul { margin: 4px 0 0; padding-left: 18px; }
 .skill-pending { margin: 6px 0 0 34px; font-size: 12px; color: var(--wf-muted); }
 .skill-pending.dim { color: var(--wf-faint); }
-/* 动作行。闭源 `mt-8 pt-6 border-t`(= 32+24 上距 + 一条 1px 分隔线, gap-3=12px)。
+/* 动作行。参考产品 `mt-8 pt-6 border-t`(= 32+24 上距 + 一条 1px 分隔线, gap-3=12px)。
    原值 margin-top:6px 且**无分隔线** —— 与「确认框架设计」上方那一大片内容连成一体,
-   少了闭源那道"这是页面级操作、不是内容"的视觉分界。 */
+   少了参考产品那道"这是页面级操作、不是内容"的视觉分界。 */
 .wf-actions {
   display: flex; gap: 12px;
   margin-top: 32px; padding-top: 24px;
@@ -1151,7 +1151,7 @@ onUnmounted(() => {
 /* 主按钮不横贯整幅(与选题界定页统一): 实测原先 flex:1 让它撑到 1156px, 而动作行才 1274px */
 .wf-actions { justify-content: flex-end; }
 .wf-actions .btn-primary { min-width: 200px; }
-/* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
+/* 参考产品按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {

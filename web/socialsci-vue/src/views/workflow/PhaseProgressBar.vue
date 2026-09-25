@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PhaseProgressBar(阶段进度条) — 还原自闭源 phase-progress(6 节点 ppb-* 语义, DeepDive-DOM-DECODED §阶段进度条)
+ * PhaseProgressBar(阶段进度条) — 还原自参考产品 phase-progress(6 节点 ppb-* 语义, DeepDive-DOM-DECODED §阶段进度条)
  * 节点: 研究主题 → 1选题界定 → 2框架设计 → 3文献与资料 → 4章节写作 → 5统稿定稿
  * 形态: ppb-topic 研究主题卡(已完成绿点) + ppb-node(done ✓/active 序号+metric/pending 灰)+ ppb-line 连接线
  * 点击导航: 已完成/当前阶段可达; 向后阶段需按顺序推进(门禁提示在本组件 goNode 内)
@@ -14,7 +14,7 @@ import { createTask } from "@/shared/tasks";
 const router = useRouter();
 const store = useWorkflowStore();
 
-/** 横向滚动容器 —— 用于把当前阶段滚到中央(闭源 p() 的语义) */
+/** 横向滚动容器 —— 用于把当前阶段滚到中央(参考产品同名函数 的语义) */
 const wrapperRef = ref<HTMLElement | null>(null);
 
 const NODES = [
@@ -28,9 +28,9 @@ const NODES = [
 const topicDone = computed(() => store.phase >= 1 || !!store.input.title.trim() || !!store.taskId);
 
 /**
- * 当前**正在查看**的阶段(闭源 `viewing` 第四态)。
+ * 当前**正在查看**的阶段(参考产品 `viewing` 第四态)。
  *
- * 闭源的状态机是三档 + 一档(逐字对照 index-xpWAkSSw.js):
+ * 参考产品的状态机是三档 + 一档(逐字对照 index):
  *   y(O) = O.phase <  store.phase                        → done
  *   g(O) = O.phase === store.phase                       → active
  *   E(O) = O.phase === viewing.value && O.phase !== store.phase → **viewing**
@@ -74,7 +74,7 @@ function nodeState(n: { ph: number }) {
  *  · **真正的依赖检查在各页的按钮上, 而且本来就是准的**:
  *    创作台「进入合稿」查 `pendingCount > 0`, 输入页「开始思考」查标题与大纲。
  *    进度条这道门是同一结论的**粗糙近似** —— 它不看内容, 只看你按没按过按钮。
- *  · **闭源也没有这道门**: 实拍它的进度条 DOM, 节点只有 done / active / pending 三态
+ *  · **参考产品也没有这道门**: 实拍它的进度条 DOM, 节点只有 done / active / pending 三态
  *    (已走过 / 正在看 / 还没到), 没有 disabled 的视觉表达。这道门是我方自己加严的。
  *
  * 新规则: **"看"不是破坏性操作** —— 可以自由进入任何阶段查看, 页面已有空态接住;
@@ -87,7 +87,7 @@ function goNode(n: { ph: number; path: string }) {
 }
 
 /**
- * 把当前阶段节点滚到视口中央(闭源 p(): offsetLeft - (容器宽 - 节点宽) / 2)。
+ * 把当前阶段节点滚到视口中央(参考产品同名函数: offsetLeft - (容器宽 - 节点宽) / 2)。
  * 窄屏时进度条要横向滚动, 阶段一多当前节点可能就在屏外 —— 用户看不到自己走到哪了。
  */
 function centerCurrentNode() {
@@ -115,7 +115,7 @@ function isSectionGenerated(s: { status?: string; content?: string }): boolean {
 }
 
 /**
- * 节点 metric(逐字对照闭源 index-main.js 的 5 个节点定义):
+ * 节点 metric(逐字对照参考产品 index-main.js 的 5 个节点定义):
  *   框架设计 `N 章节` / 文献与资料 `N 条` / 章节写作 `已生成/总数` / 统稿定稿 `已定稿|待确认`
  * 2026-09-15 修: 原实现里素材写成「N 素材」、章节写作写成「N 章节」, 且合稿节点的 metric 完全没做。
  */
@@ -132,9 +132,9 @@ function nodeMetric(n: { key: string }): string {
 }
 
 /**
- * 新项目(闭源 ppb-new-btn: 确认后 `createTaskWithTitle("未命名","workflow")` + 切到新任务)。
- * 2026-09-15 补: 原先只清本地指针(注释里我写"怕在库里堆空项目")—— 但那**不是**闭源语义,
- * 而且清指针会让用户误以为上一个项目没了。现在按闭源来: 真建一个空项目并切过去,
+ * 新项目(参考产品 ppb-new-btn: 确认后 `createTaskWithTitle("未命名","workflow")` + 切到新任务)。
+ * 2026-09-15 补: 原先只清本地指针(注释里我写"怕在库里堆空项目")—— 但那**不是**参考产品语义,
+ * 而且清指针会让用户误以为上一个项目没了。现在按参考产品来: 真建一个空项目并切过去,
  * 旧项目留在历史里(用户随时能从「历史记录」回去)。
  */
 async function newProject() {
@@ -146,7 +146,7 @@ async function newProject() {
   });
   if (!ok) return;
   try {
-    // 不传 projectId → createTask 自动建一个新的项目容器(闭源 createTaskWithTitle 语义)
+    // 不传 projectId → createTask 自动建一个新的项目容器(参考产品 createTaskWithTitle 语义)
     const t = await createTask({ title: "未命名", module: "workflow" });
     const newPid = t?.projectId ?? "";
     store.resetLocal();
@@ -218,29 +218,29 @@ async function newProject() {
 </template>
 
 <style scoped>
-/* 闭源 .phase-progress-wrapper{height:90px;...;display:flex;align-items:center} —— 我方实测 78px */
+/* 参考产品 .phase-progress-wrapper{height:90px;...;display:flex;align-items:center} —— 我方实测 78px */
 .phase-progress-wrapper {
   background: var(--wf-surface); border-bottom: 1px solid var(--wf-line);
   position: sticky; top: 0; z-index: 30;
   height: 90px; display: flex; align-items: center;
   max-width: 100%; overflow-x: auto;
 }
-/* 只有 wrapper 一层横向滚动(闭源: ppb-inner 无 min-width, 窄容器由外层滚) ——
+/* 只有 wrapper 一层横向滚动(参考产品: ppb-inner 无 min-width, 窄容器由外层滚) ——
    原先内层也套了 overflow-x 并钉死 min-width:860px, 窄屏会出现双滚动条且内条不动。 */
-/* 闭源 .phase-progress-bar{position:relative;width:100%;height:100%} —— 限宽交给 .ppb-inner(1200px) */
+/* 参考产品 .phase-progress-bar{position:relative;width:100%;height:100%} —— 限宽交给 .ppb-inner(1200px) */
 .phase-progress-bar { position: relative; width: 100%; height: 100%; }
-/* V420: 去掉 `max-width:1200px`。闭源那个限宽是为了让进度条在它的文档页里居中;
+/* V420: 去掉 `max-width:1200px`。参考产品那个限宽是为了让进度条在它的文档页里居中;
    我方页面已改全宽, 留着就是**在 1440 视口上左右各空 120px**, 进度条看着像被框住。
    改成吃满可用宽度。
    ⚠ 2026-09-24 再改: 原先 `justify-content:center` —— 在 1536 视口下实测**左空 181px、右空 196px**,
    而中间的主题卡与节点已经排到 1325px(条宽 1289), 加上"新项目"按钮又把内容挤得更紧。
    改成**左对齐**: 主题卡贴左边, "新项目"用 `margin-left:auto` 推到最右 —— 这样两头都用上了,
    中间的空白变成"节点与按钮之间的弹性间距", 而不是两边各空一块。
-   (闭源无此问题: 它的进度条挂在 max-w-5xl 的文档页里, 本来就不会这么宽。) */
+   (参考产品无此问题: 它的进度条挂在 max-w-5xl 的文档页里, 本来就不会这么宽。) */
 .ppb-inner { display: flex; align-items: center; justify-content: flex-start; gap: 0; padding: 0 20px; margin: 0 auto; height: 100%; width: 100%; }
 .ppb-new-btn { margin-left: auto; }
 .ppb-topic {
-  /* 闭源: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
+  /* 参考产品: width:280px;margin:0 24px 0 0;padding:8px 12px;border-radius:7px */
   width: 280px; flex-shrink: 0; margin: 0 24px 0 0; min-width: 0;
   padding: 8px 12px; box-sizing: border-box;
   border: 1px solid var(--wf-line); border-radius: 7px; background: var(--wf-raised);
@@ -256,17 +256,17 @@ async function newProject() {
   display: block; font-size: 12px; font-weight: 600; color: var(--wf-text); margin-top: 3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* 闭源 .ppb-line-wrap{width:40px} —— 我方原 26px, 连接线过短 */
+/* 参考产品 .ppb-line-wrap{width:40px} —— 我方原 26px, 连接线过短 */
 .ppb-line-wrap { width: 40px; flex-shrink: 0; display: flex; align-items: center; }
-/* 闭源 .ppb-line{width:100%;height:2.5px;border-radius:2px} */
+/* 参考产品 .ppb-line{width:100%;height:2.5px;border-radius:2px} */
 .ppb-line { width: 100%; height: 2.5px; background: var(--wf-line); border-radius: 2px; transition: background .35s ease; }
 .ppb-line.done { background: #5FD0B4; }
 .ppb-line.viewing { background: #4D84CB; }
 /*
- * 闭源 .ppb-node{display:flex;flex-direction:column;align-items:center;gap:6px;
+ * 参考产品 .ppb-node{display:flex;flex-direction:column;align-items:center;gap:6px;
  *   padding:4px 8px;border-radius:12px;min-width:72px}
  * 2026-09-16 修: 我方原先是 `flex-direction:row` 的**横向 pill** —— 方向反了,
- *   闭源是"圆在上、标签在下"的纵向块。整条进度条的视觉节奏因此完全不同。
+ *   参考产品是"圆在上、标签在下"的纵向块。整条进度条的视觉节奏因此完全不同。
  */
 .ppb-node {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -278,7 +278,7 @@ async function newProject() {
 /**
  * ⚠ V425: 节点**仍然标注 pending, 但已经可以点进去**。
  *
- * 闭源只有 done / active / pending 三态, 没有 disabled 的视觉表达; 我方此前把 pending
+ * 参考产品只有 done / active / pending 三态, 没有 disabled 的视觉表达; 我方此前把 pending
  * 做成了"拦住的"——点它弹一个 3 秒就消失的 toast。现在改成: 三态只表达**进度**
  * (已走过 / 正在看 / 还没到), 不再暗示"不可点"。
  *
@@ -299,7 +299,7 @@ async function newProject() {
   z-index: 5;
 }
 .ppb-node.pending:hover::after { opacity: 1; }
-/* 闭源 .ppb-circle{width:32px;height:32px;font-size:12px} —— 我方原 24px */
+/* 参考产品 .ppb-circle{width:32px;height:32px;font-size:12px} —— 我方原 24px */
 .ppb-circle {
   width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 12px; font-weight: 700; flex-shrink: 0; position: relative;
@@ -308,17 +308,17 @@ async function newProject() {
 }
 .ppb-circle.done { background: #16a34a; color: #F1F5F9; border: none; box-shadow: 0 2px 8px #16a34a40; }
 .ppb-circle.active { background: #4D84CB; color: #F1F5F9; border: none; box-shadow: 0 0 0 4px #1E2A48, 0 2px 8px #00000014; }
-/* 第四态: 用户在看的阶段(不是当前阶段) —— 闭源 .ppb-circle.viewing{background:#3b82f6;border:2px solid #93bbfd} */
+/* 第四态: 用户在看的阶段(不是当前阶段) —— 参考产品 .ppb-circle.viewing{background:#3b82f6;border:2px solid #93bbfd} */
 .ppb-circle.viewing { background: #3B82F6; color: #F1F5F9; border: 2px solid #93BBFD; box-shadow: 0 2px 8px #3b82f64d; }
 .ppb-num { font-size: 13px; font-weight: 700; line-height: 1; }
-/* 闭源 .ppb-label{font-size:11px;font-weight:600;text-align:center;white-space:nowrap} —— 我方原 13px */
+/* 参考产品 .ppb-label{font-size:11px;font-weight:600;text-align:center;white-space:nowrap} —— 我方原 13px */
 .ppb-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; text-align: center; }
 .ppb-label-text { font-size: 11px; font-weight: 600; color: var(--wf-faint); letter-spacing: .02em; }
 .ppb-label.active .ppb-label-text { color: #759FD7; }
 .ppb-label.done .ppb-label-text { color: #5FD0B4; }
 .ppb-label.viewing .ppb-label-text { color: #6FA8F5; }
 .ppb-label.pending .ppb-label-text { color: var(--wf-faint); }
-/* 闭源 .ppb-metric{font-size:9.5px;display:block;margin-top:1px;opacity:.85} —— 我方原是带底色的胶囊 */
+/* 参考产品 .ppb-metric{font-size:9.5px;display:block;margin-top:1px;opacity:.85} —— 我方原是带底色的胶囊 */
 .ppb-metric {
   font-size: 9.5px; font-weight: 500; display: block; margin-top: 1px; opacity: .85;
   color: var(--wf-muted); background: none; padding: 0;
@@ -339,7 +339,7 @@ async function newProject() {
 .ppb-new-btn:hover { border-color: #B06A6A; color: var(--wf-text); }
 
 /*
- * 窄屏紧凑化 —— 逐条对照闭源 @media(max-width:600px):
+ * 窄屏紧凑化 —— 逐条对照参考产品 @media(max-width:600px):
  *   .ppb-topic{width:170px;margin-left:0;padding:6px 8px}
  *   .ppb-inner{gap:0;padding:12px 8px;overflow-x:auto;justify-content:flex-start;scroll-behavior:smooth}
  *   .ppb-line-wrap{width:28px} / .ppb-circle{28px} / .ppb-label{font-size:10px} / .ppb-node{min-width:56px;padding:2px 4px}

@@ -1,7 +1,7 @@
 /**
- * Review 域 API 客户端 — 还原自闭源 ReviewView-B4QyxKEn.js 直连契约(decoded-editor-review.md §2.4)
- * 我方后端: /api/review/jobs(L9549-9608, SSE review.started/status/delta/completed)
- * + journals/standards CRUD/parse(L9617-9696) + files/extract-text(base64) + export-word/html
+ * Review 域 API 客户端 — 还原自参考产品 评审页 直连契约(decoded-editor-review.md §2.4)
+ * 我方后端: /api/review/jobs(, SSE review.started/status/delta/completed)
+ * + journals/standards CRUD/parse( + files/extract-text(base64) + export-word/html
  */
 import { q, streamSse, type SseHandle } from "@/shared/api";
 
@@ -15,7 +15,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 import type { ReviewResult, ReviewSettings } from "./stores/review";
 
-// ── 文件文本提取(闭源 POST /api/files/extract-text multipart; 我方 base64 JSON) ──
+// ── 文件文本提取(参考产品 POST /api/files/extract-text multipart; 我方 base64 JSON) ──
 export async function extractFileText(file: File): Promise<{
   text: string;
   fileId?: string;
@@ -63,7 +63,7 @@ export interface ReviewJob {
   text_snapshot?: string;
 }
 
-/** 创建审稿 job(闭源 body: {title,content,settings,sidebarTaskId,sourceFileId}) */
+/** 创建审稿 job(参考产品 body: {title,content,settings,sidebarTaskId,sourceFileId}) */
 export async function createReviewJob(body: {
   title: string;
   content: string;
@@ -126,7 +126,7 @@ export async function deleteReviewJob(jobId: string): Promise<void> {
 
 /**
  * 审稿 SSE — 我方事件: review.started/status/delta/completed; 终态 failed/cancelled 靠轮询兜底
- * (闭源 4 事件 + 断点续传语义)
+ * (参考产品 4 事件 + 断点续传语义)
  */
 export function streamReviewJob(
   jobId: string,
@@ -184,7 +184,7 @@ export interface JournalRecord {
   topicTags?: string[];
   style?: string;
   officialSite?: string;
-  // 后端 /review/journals/parse 产出的是这四类(闭源 ReviewView 编辑页读 formatRules)
+  // 后端 /review/journals/parse 产出的是这四类(参考产品 ReviewView 编辑页读 formatRules)
   structuredRules?: {
     formatRules?: string[];
     reviewFocus?: string[];
@@ -307,7 +307,7 @@ export async function setDefaultStandard(id: string, isDefault: boolean): Promis
   return q(`/review/standards/${id}/default`, { method: "POST", body: { isDefault } });
 }
 
-/** 投稿须知 → 结构化规则(闭源纯前端正则 6 类归槽; 后端 parse 为 AI 辅助) */
+/** 投稿须知 → 结构化规则(参考产品纯前端正则 6 类归槽; 后端 parse 为 AI 辅助) */
 export function parseSubmissionGuideLocally(text: string): JournalRecord["structuredRules"] {
   const rules: NonNullable<JournalRecord["structuredRules"]> = {};
   const lines = String(text ?? "").split("\n").map((l) => l.trim().replace(/^[-*·•]\s*/, "")).filter(Boolean);
@@ -340,7 +340,7 @@ export function parseSubmissionGuideLocally(text: string): JournalRecord["struct
   return rules;
 }
 
-/** 结果导出(闭源: Word 导出在 ReviewResult 内) */
+/** 结果导出(参考产品: Word 导出在 ReviewResult 内) */
 /**
  * 审稿报告导出(2026-09-12)。
  *

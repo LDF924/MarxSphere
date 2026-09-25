@@ -86,7 +86,7 @@ function parseCsv(text: string): { columnOrder: string[]; rows: (string | number
   return { columnOrder, rows };
 }
 
-// C5(闭源 StatisticsView PNG 导出三级降级): SVG→Blob→Image→canvas→PNG(scale 2),
+// C5(参考产品 StatisticsView PNG 导出三级降级): SVG→Blob→Image→canvas→PNG(scale 2),
 //   失败兜底 dataURL 直存; 产物 Blob 下载
 function svgToPngDownload(svgEl: HTMLElement, title: string) {
   try {
@@ -132,7 +132,7 @@ function CoefFigure({ fig }: { fig: any }) {
   );
 }
 
-// C8(闭源 StatisticsView 数值格式): |x|≥1000 或 <0.001 → 科学计数3位; <0.01 → 4位小数;
+// C8(参考产品 StatisticsView 数值格式): |x|≥1000 或 <0.001 → 科学计数3位; <0.01 → 4位小数;
 //   整数原样; 否则 3 位有效
 function fmtNum(v: unknown): string {
   if (typeof v !== "number" || !Number.isFinite(v)) return v === null ? "" : String(v);

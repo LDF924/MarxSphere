@@ -1,6 +1,6 @@
 /**
- * StatisticsView 17 方法注册表 + 参数 schema — 还原自闭源 StatisticsView-C1S4N5xA.js
- * (A/H/we/Le 数组 + 17 模板 L617-1216 + 提交组装 Je() L1318-1439)
+ * StatisticsView 17 方法注册表 + 参数 schema — 还原自参考产品 统计台
+ * (A/H/we/Le 数组 + 17 模板 + 提交组装 Je()
  * 每方法: key/local 默认/校验/提交组装; ParamField.vue 按 schema 渲染表单
  */
 export interface VarDef {
@@ -309,7 +309,7 @@ export const groupedMethods = (): Record<string, MethodDef[]> => ({
   "信效度&高级": METHODS.filter((m) => m.category === "信效度&高级")
 });
 
-/** 变量类型归一(闭源 ct() L1274-1290: categorical/binary/nominal→nominal; continuous/numeric/scale→scale) */
+/** 变量类型归一(参考产品同名函数: categorical/binary/nominal→nominal; continuous/numeric/scale→scale) */
 export function normalizeVarType(t: string): string {
   const s = String(t ?? "").toLowerCase();
   if (["categorical", "binary", "nominal", "category", "object", "string", "text", "bool"].includes(s)) return "nominal";
@@ -327,7 +327,7 @@ export function isIdColumn(name: string, type: string): boolean {
   return type === "id" || /^(id|uuid|identifier|case[_-]?id|subject[_-]?id)$/i.test(name);
 }
 
-/** 数值格式(闭源 Oe(): |x|≥1000 或 <0.001 → toExponential(3); <0.01 → 4 位; 整数原样; 否则 3 位) */
+/** 数值格式(参考产品 O 同名函数: |x|≥1000 或 <0.001 → toExponential(3); <0.01 → 4 位; 整数原样; 否则 3 位) */
 export function fmtCell(v: unknown): string {
   if (v === null || v === undefined || v === "") return "";
   const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));

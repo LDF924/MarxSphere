@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * LibraryHome 审稿库 — 还原自闭源 LibraryHome-CugeBZHb.js(L:1924-2089) + 期刊/标准子组件
+ * LibraryHome 审稿库 — 还原自参考产品 审稿库 + 期刊/标准子组件
  * tab: 期刊库/标准库; 期刊: 列表(搜索/分类筛选)+新增/AI 智能解析投稿须知(前端正则 6 类归槽)
  * 标准: 列表(维度/准则计数/默认+内置徽标)+新增/编辑(维度行)
  */
@@ -578,7 +578,7 @@ const filteredStandards = computed(() => {
     || (s.dimensions ?? []).some((d) => String(d.name ?? "").toLowerCase().includes(kw)));
 });
 /**
- * 权重合计。库里两种权重并存: 整档(标准库 1-5 / 闭源 3-5)与归一化(0-1 小数, 如 0.2=20%)。
+ * 权重合计。库里两种权重并存: 整档(标准库 1-5 / 参考产品 3-5)与归一化(0-1 小数, 如 0.2=20%)。
  * 混着求和会把 0.2 显示成"权重合计 0.2"这种没有意义的数字 —— 分开算、分别标注。
  */
 function weightInfo(s: StandardRecord): { value: string } | null {

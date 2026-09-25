@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// ResearchHistoryPanel.tsx — SocialSci HistoryView 源码级对照(闭源 Vue HistoryView 解码):
+// ResearchHistoryPanel.tsx — SocialSci HistoryView 源码级对照(参考产品 Vue HistoryView 解码):
 //   6 模块历史分区(section-header+count+task-grid 卡) / 卡=状态点+phase 徽标+title+相对时间 /
 //   点击恢复对应工作台条目(deep-resume) / 清除全部历史(confirm + ACTIVE_JOB 保护 + failed 明细 toast)
 // 数据源: GET /api/research/history(后端一次聚合 6 源: research_tasks+review_jobs+empirical_results
 //   +viz_sessions+documents_v2+search_query_history); 删除走 DELETE /api/research/tasks/history(deleteAll 语义)
 // 恢复通道: localStorage sag:resume:<module> = {id, projectId} — 各工作台面板挂载时消费并自动打开
-//   (语义同闭源 lastTask_*; knowledge 查询经 App pendingDemo 通道重放)
+//   (语义同参考产品 lastTask_*; knowledge 查询经 App pendingDemo 通道重放)
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, BookOpen, ChevronRight, ClipboardList, Eraser, FlaskConical, GitBranch, Loader2, PenLine, RefreshCw, Search } from "lucide-react";
 import { ConfirmDialog, type ConfirmSpec } from "./ConfirmDialog";
@@ -20,7 +20,7 @@ async function j<T = unknown>(url: string, opts: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** 统一历史条目(闭源 HistoryView 卡结构: phase 徽标+title+status+相对时间) */
+/** 统一历史条目(参考产品 HistoryView 卡结构: phase 徽标+title+status+相对时间) */
 export interface HistoryTask {
   id: string; projectId?: string; module: string; title: string; phase: number; phase_label: string;
   status: string; created_at: string; updated_at: string; error?: unknown; active?: boolean; kind?: string;
@@ -30,7 +30,7 @@ interface HistoryBundle {
   editor: HistoryTask[]; knowledge: HistoryTask[];
 }
 
-/** deep-resume: 写入待消费的恢复指针(目标面板挂载时读取并自动打开; 同闭源 lastTask_* 语义) */
+/** deep-resume: 写入待消费的恢复指针(目标面板挂载时读取并自动打开; 同参考产品 lastTask_* 语义) */
 export function writeResume(module: string, payload: Record<string, unknown>) {
   try { localStorage.setItem(`sag:resume:${module}`, JSON.stringify({ ...payload, at: Date.now() })); } catch { /* 忽略 */ }
 }
@@ -44,7 +44,7 @@ export function readResume(module: string): Record<string, unknown> | null {
     return typeof p.at === "number" && Date.now() - p.at < 10_000 ? p : null;
   } catch { return null; }
 }
-/** 清除全部历史后清理全部恢复指针(闭源 lastTask_* removeItem 语义) */
+/** 清除全部历史后清理全部恢复指针(参考产品 lastTask_* removeItem 语义) */
 export function clearResumeAll() {
   for (const m of ["workflow", "review", "statistics", "viz", "editor", "knowledge"]) {
     try { localStorage.removeItem(`sag:resume:${m}`); } catch { /* 忽略 */ }
@@ -60,7 +60,7 @@ const MODULE_ORDER: Array<{ key: string; label: string; color: string; icon: Rea
   { key: "knowledge", label: "知识库查询", color: "#22c55e", icon: <Search className="h-3.5 w-3.5" />, target: "ask" },
 ];
 
-/** 相对时间(闭源格式: <1h 分钟前 / <1d 小时前 / <7d 天前 / 否则日期) */
+/** 相对时间(参考产品格式: <1h 分钟前 / <1d 小时前 / <7d 天前 / 否则日期) */
 function relTime(iso: string): string {
   const d = new Date(iso).getTime();
   if (!Number.isFinite(d)) return "";
@@ -100,7 +100,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
   const total = (bundle?.tasks.length ?? 0) + (bundle?.review.length ?? 0) + (bundle?.statistics.length ?? 0)
     + (bundle?.viz.length ?? 0) + (bundle?.editor.length ?? 0) + (bundle?.knowledge.length ?? 0);
 
-  // 清除全部历史(闭源 z(): confirm → deleteAll → failed 明细 → 清空+重载)
+  // 清除全部历史(参考产品同名函数: confirm → deleteAll → failed 明细 → 清空+重载)
   const clearAll = async () => {
     setBusy(true); setErr(""); setToast("");
     try {
@@ -139,7 +139,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 顶栏: 标题 + 总计数 + 操作(闭源 history-page header) */}
+      {/* 顶栏: 标题 + 总计数 + 操作(参考产品 history-page header) */}
       <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
         <div className="flex items-center gap-2">
           <BookOpen className="h-5 w-5 text-cyan-400" />
@@ -179,7 +179,7 @@ export function ResearchHistoryPanel({ onNavigate }: { onNavigate: (view: string
         {bundle && total > 0 && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {MODULE_ORDER.map((meta) => {
-              // 后端返回字段名 tasks 对应 workflow 区(闭源 module=workflow), 其余同名
+              // 后端返回字段名 tasks 对应 workflow 区(参考产品 module=workflow), 其余同名
               const list = (meta.key === "workflow" ? bundle.tasks : (bundle as unknown as Record<string, HistoryTask[]>)[meta.key]) ?? [];
               if (list.length === 0) {
                 return (

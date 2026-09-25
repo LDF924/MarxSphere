@@ -1,7 +1,7 @@
 /**
- * editor-ai store — 还原自闭源 Pinia `editor-ai`(EditorView E:18595-18890) 的 job 域核心
- * 我方后端仅实现 jobs 域(ai/jobs + stream delta/model/done/error + cancel/retry, server.ts L9929-9954);
- * 会话(conversations)端点不存在 → UI 采用"6 tab 动作 + 断点续传"形态(闭源 AIPanel 主形态), 不建假会话。
+ * editor-ai store — 还原自参考产品 Pinia `editor-ai`(EditorView  的 job 域核心
+ * 我方后端仅实现 jobs 域(ai/jobs + stream delta/model/done/error + cancel/retry, server.ts ;
+ * 会话(conversations)端点不存在 → UI 采用"6 tab 动作 + 断点续传"形态(参考产品 AIPanel 主形态), 不建假会话。
  * 关键语义: editor.activeJobId 断点恢复 / AbortController 停止 / retryActiveJob
  */
 import { defineStore } from "pinia";
@@ -72,7 +72,7 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
     localStorage.removeItem(K.editorActiveJobId);
   }
 
-  /** 挂载恢复(闭源 recoverActiveJob): localStorage 有 jobId → retry 重排队 → 重连 stream */
+  /** 挂载恢复(参考产品 recoverActiveJob): localStorage 有 jobId → retry 重排队 → 重连 stream */
   async function recoverActiveJob(handlers: { onDelta?: (t: string) => void; onDone?: (content?: string) => void } = {}): Promise<boolean> {
     const saved = localStorage.getItem(K.editorActiveJobId);
     if (!saved) return false;

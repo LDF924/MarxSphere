@@ -1,5 +1,5 @@
 /**
- * TipTap 编辑器装配 — 还原自闭源 useEditor GN()(EditorView E:39289-39315)
+ * TipTap 编辑器装配 — 还原自参考产品 useEditor GN()(EditorView 
  * extensions 全表 1:1: StarterKit{codeBlock:false,link:false,underline:false} + Placeholder + Link(openOnClick:false)
  * + Underline + academicTextStyle/academicBlockStyle + TextAlign + Highlight(multicolor)
  * + Image(allowBase64) + ImageResize + Table(resizable) + CodeBlockLowlight(29 语言)
@@ -22,7 +22,7 @@ import { common, createLowlight } from "lowlight";
 import { AcademicTextStyle, AcademicBlockStyle } from "./academicExtensions";
 import { mergeAttributes, type Extensions } from "@tiptap/core";
 
-// 29 语言注册表(闭源 zN lowlight 表): 常见科研语言
+// 29 语言注册表(参考产品 zN lowlight 表): 常见科研语言
 const LANGS = [
   "python", "javascript", "typescript", "java", "c", "cpp", "csharp", "go", "rust",
   "r", "sql", "bash", "shell", "json", "yaml", "xml", "html", "css", "markdown",
@@ -38,7 +38,7 @@ export interface EditorExtensionsOptions {
   editorProps?: Record<string, unknown>;
 }
 
-/** 扩展装配(闭源 GN 1:1) */
+/** 扩展装配(参考产品 GN 1:1) */
 export function buildExtensions(opts: EditorExtensionsOptions = {}): Extensions {
   return [
     StarterKit.configure({ codeBlock: false, link: false, underline: false }),
@@ -50,7 +50,7 @@ export function buildExtensions(opts: EditorExtensionsOptions = {}): Extensions 
     TextAlign.configure({ types: ["heading", "paragraph"] }),
     Highlight.configure({ multicolor: true }),
     Image.configure({ inline: false, allowBase64: true }),
-    // ImageResize = Image.extend({name:"imageResize", allowBase64:true}) — 闭源用同名扩展做 resize
+    // ImageResize = Image.extend({name:"imageResize", allowBase64:true}) — 参考产品用同名扩展做 resize
     Image.extend({ name: "imageResize", allowBase64: true }),
     Table.configure({ resizable: true }),
     TableRow,

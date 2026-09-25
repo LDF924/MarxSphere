@@ -1,7 +1,7 @@
 /**
- * SocialSci Vue 共享 API 层 — 还原自闭源 index-xpWAkSSw.js(共享 chunk)的 q() 封装
- * 原实现(L12813): fetch("/api"+path, {headers: Go()}) → Bearer skf_auth_token → 401 清 token + 广播 auth-expired
- * 我方适配: token 读 skf_auth_token(闭源键), 回退 sag_token(仓库 React 登录态键, server.ts requireUser JWT)
+ * SocialSci Vue 共享 API 层 — 还原自参考产品 index(共享 chunk)的 q() 封装
+ * 原实现: fetch("/api"+path, {headers: Go()}) → Bearer skf_auth_token → 401 清 token + 广播 auth-expired
+ * 我方适配: token 读 skf_auth_token(参考产品键), 回退 sag_token(仓库 React 登录态键, server.ts requireUser JWT)
  */
 export const API_BASE = "/api";
 export const TOKEN_KEY = "skf_auth_token";
@@ -60,7 +60,7 @@ export async function q<T = unknown>(path: string, opts: { method?: string; body
   return (payload ?? {}) as T;
 }
 
-/** FormData 上传(不带 Content-Type, 浏览器自动带 boundary — 对齐闭源 extract-text 语义) */
+/** FormData 上传(不带 Content-Type, 浏览器自动带 boundary — 对齐参考产品 extract-text 语义) */
 export async function uploadForm<T = unknown>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {};
   const token = readToken();
@@ -136,7 +136,7 @@ export function parseSseFrame(text: string): Array<{ event: string | null; data:
 }
 
 /**
- * 流式 SSE(fetch + ReadableStream, AbortController 贯穿 — 对齐闭源 sn()/ma() 语义)
+ * 流式 SSE(fetch + ReadableStream, AbortController 贯穿 — 对齐参考产品同名函数 语义)
  * onEvent(event|null, payload) / onDone() / onError(err)
  */
 export function streamSse(

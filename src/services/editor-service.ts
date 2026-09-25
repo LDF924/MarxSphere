@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // editor-service.ts — SocialSci P0-5: 学术文本编辑器后端(文档 CRUD + 选区改写 + 全文检查 + 图表代码)
-// 形态对齐(闭源产品交互语义, 原创实现): 选中文本→改写5模式+humanize / 全文一致性检查 / AI图表代码
+// 形态对齐(参考产品交互语义, 原创实现): 选中文本→改写5模式+humanize / 全文一致性检查 / AI图表代码
 // 诚实性边界: 全文检查"不验证文献真实性"(与 citation-verify 定位区分, 服务注释注明)
 // 迁移119 documents_v2; 与 doc-session-service(锁/心跳) 配合
 import { randomUUID } from "node:crypto";
@@ -156,7 +156,7 @@ export async function unlockDoc(userId: string, docId: string) {
   return { ok: true };
 }
 
-// ═══ 选区改写 6 模式 + humanize(T5: 补"扩展论证", 闭源 EditorView 对齐) ═══
+// ═══ 选区改写 6 模式 + humanize(T5: 补"扩展论证", 参考产品 EditorView 对齐) ═══
 export type RewriteMode = "condense" | "de-template" | "polish" | "proofread" | "journal-style" | "humanize" | "expand";
 
 const MODE_PROMPT: Record<RewriteMode, string> = {
@@ -185,8 +185,8 @@ ${text.slice(0, 6000)}
 }
 
 // ═══ 全文检查(不验证文献真实性 — 诚实性边界, 与 citation-verify 定位区分) ═══
-// P-C 对齐闭源 EditorView 全文检查 4 模式: 全文逻辑检查/章节衔接检查/变量-方法-结论一致性/投稿前检查
-// 行为: 只给修改建议, 不直接改正文(闭源明示)
+// P-C 对齐参考产品 EditorView 全文检查 4 模式: 全文逻辑检查/章节衔接检查/变量-方法-结论一致性/投稿前检查
+// 行为: 只给修改建议, 不直接改正文(参考产品明示)
 const CHECK_MODES: Record<string, { mode: string; name: string; prompt: string }> = {
   logic: {
     mode: "logic",
@@ -209,7 +209,7 @@ const CHECK_MODES: Record<string, { mode: string; name: string; prompt: string }
     prompt: "列出需要优先处理的修订事项, 从期刊投稿视角: 结构体例/摘要关键词/格式/需优先修订项",
   },
 };
-// 前端按钮 id → 后端 mode 别名(闭源 UI 动作名与内部 mode 名不同, 两者都接受)
+// 前端按钮 id → 后端 mode 别名(参考产品 UI 动作名与内部 mode 名不同, 两者都接受)
 const CHECK_ALIAS: Record<string, string> = {
   logic_check: "logic",
   section_coherence_check: "cohesion",

@@ -1,9 +1,9 @@
 /**
- * document store — 还原自闭源 Pinia `gu("document")`(EditorView E:17901-18087)
- * 契约对齐我方后端(server.ts L9822-9954):
+ * document store — 还原自参考产品 Pinia `gu("document")`(EditorView 
+ * 契约对齐我方后端(server.ts :
  *  - GET /documents → {data:{items,pagination}}; GET /:id → {document:{...,content_hash}}
  *  - PUT /:id body {content:string, expectedContentHash} — 409 = 他窗口已改(doc-conflict 事件)
- *  - content 存字符串(闭源独立后端语义同); 前端 currentContent 也保持字符串(经 tiptap getJSON→JSON.stringify)
+ *  - content 存字符串(参考产品独立后端语义同); 前端 currentContent 也保持字符串(经 tiptap getJSON→JSON.stringify)
  *  - 锁 5 分钟自动过期 → 60s 幂等重锁续期; editor.activeDocumentId 持久化
  */
 import { defineStore } from "pinia";
@@ -139,7 +139,7 @@ export const useDocumentStore = defineStore("document", () => {
       lastSavedHash.value = hashOf(currentContent.value);
       saveStatus.value = "saved";
       saveError.value = "";
-      // 同步列表项(word_count/updated_at; 闭源 store 保存后同步列表语义)
+      // 同步列表项(word_count/updated_at; 参考产品 store 保存后同步列表语义)
       const wc = currentContent.value.replace(/\s/g, "").length;
       const i = documents.value.findIndex((d) => d.id === doc.id);
       if (i >= 0) {

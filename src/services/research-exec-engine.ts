@@ -243,7 +243,7 @@ export async function syncTaskDependenciesFromCanvas(projectId: string) {
 
 // ═══ SocialSci 补漏组4: P3/P4/P5 专用执行器(HAR 实测语义: phase3 literature-search/theory-generate/table-generate; phase4 batch; phase5 merge/revise) ═══
 
-/** 章节结构解析(闭源 goal→outline 规则): ①引号/"研究X"/主题句 → 段 ②数字/汉字/章节头 → 层级 ③兜底 5 段默认模板 */
+/** 章节结构解析(参考产品 goal→outline 规则): ①引号/"研究X"/主题句 → 段 ②数字/汉字/章节头 → 层级 ③兜底 5 段默认模板 */
 export function parseGoalToSections(goal: string): Array<{ id: string; title: string; level: number; parentId?: string }> {
   const src = String(goal ?? "").trim();
   const topic = ((): string => {
@@ -286,7 +286,7 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
     order += 1;
   }
   if (!out.length && topic) out.push({ id: "sec_0", title: topic.slice(0, 60), level: 1 });
-  // 少于 5 节 → 默认模板补足(闭源"标准流程 Phase1-5"选题界定默认 outline)
+  // 少于 5 节 → 默认模板补足(参考产品"标准流程 Phase1-5"选题界定默认 outline)
   if (out.length < 5) {
     const defaults = ["引言", "文献综述与分析框架", "现状描述或案例呈现", "问题分析与对策建议", "结语"];
     for (const d of defaults) {
@@ -299,7 +299,7 @@ export function parseGoalToSections(goal: string): Array<{ id: string; title: st
 }
 
 /**
- * analyze 执行器 — 框架设计阶段(闭源 phase2 createPhase2 + publishPhase2 语义):
+ * analyze 执行器 — 框架设计阶段(参考产品 phase2 createPhase2 + publishPhase2 语义):
  * 结构三段: ①节点快照大纲(结构源自项目 input 节点 outline 或任务 goal 解析) ②LLM 架构分析(变量/方法/逻辑)
  *   ③sections 节点落库(status=pending) → phrase4/5 消费; 无 LLM 时快照段兜底仍产出
  */
@@ -464,7 +464,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   // ⚠ 2026-09-24: 从 `"Skill 生成"` 改成 `"逐章写作指导"`(用户要求去掉英文术语)。
   //   注意这是**前后端契约**: 前端 SectionsView 靠 `progress.stage` 的关键词匹配推进第 3 步,
   //   所以改这里必须同步改那边的匹配式(那边已改成同时认新旧, 免得混版本时第 3 步卡住)。
-  //   (另: 闭源原文就叫 "Skill 生成" —— 见 .claude/reverse-engineering/.../deep/sections-dom.txt,
+  //   (另: 参考产品原文就叫 "Skill 生成" —— 见 .claude/reverse-engineering/.../deep/sections-dom.txt,
   //    所以这是一次**刻意偏离逆向对象**的改动, 不是"还原"。)
   await setStage("逐章写作指导", 3);
   return {
@@ -542,7 +542,7 @@ async function runLiteratureSearch(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "citation",
     title: hits.length ? `文献 ${hits.length} 条 · ${String(sectionTitle).slice(0, 24)}` : `检索式 · ${String(sectionTitle).slice(0, 24)}`,
     contentMd,
-    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(参考产品零命中), 而且**全链路只有写、没有读**:
     //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
     //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
     //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
@@ -612,7 +612,7 @@ async function runTheoryGenerate(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "theory",
     title: `理论框架 · ${(theory?.name || sectionTitle).toString().slice(0, 30)}`,
     contentMd: `${theory?.core ?? ""}\n\n本文应用: ${theory?.apply ?? ""}`,
-    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(参考产品零命中), 而且**全链路只有写、没有读**:
     //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
     //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
     //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
@@ -624,7 +624,7 @@ async function runTheoryGenerate(task: any, ctx: ExecCtx) {
   return { text: `理论框架: ${theory?.name ?? "未生成"}`, structured: { theory } };
 }
 
-/** P3 素材生成执行计划(闭源 material-plan): 基于章节+变量产出 literatureSearch/textTables/dataAnalysis 三段计划 */
+/** P3 素材生成执行计划(参考产品 material-plan): 基于章节+变量产出 literatureSearch/textTables/dataAnalysis 三段计划 */
 async function runMaterialPlan(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   const l1 = Array.isArray(snapshot.l1Sections) ? snapshot.l1Sections as Array<{ id: string; title: string }> : [];
@@ -676,7 +676,7 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
     projectId: ctx.projectId, userId: ctx.userId, kind: "table",
     title: `表格设计 · ${String(sectionTitle).slice(0, 30)}`,
     contentMd: tables.map((t) => `- ${t.title}: [${(t.columns ?? []).join("|")}] ${t.purpose ?? ""}`).join("\n"),
-    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(参考产品零命中), 而且**全链路只有写、没有读**:
     //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
     //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
     //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
@@ -688,7 +688,7 @@ async function runTableGenerate(task: any, ctx: ExecCtx) {
   return { text: `已设计 ${tables.length} 张表`, structured: { tables } };
 }
 
-/** P3 数据分析方案(闭源 plan.dataAnalysis 段执行): 对变量产出拟用分析方法/验证路径 → data_result 素材(归"数据分析素材"分组) */
+/** P3 数据分析方案(参考产品 plan.dataAnalysis 段执行): 对变量产出拟用分析方法/验证路径 → data_result 素材(归"数据分析素材"分组) */
 async function runDataAnalysisPlan(task: any, ctx: ExecCtx) {
   const snapshot = task.input_snapshot ?? {};
   const sectionId = String(snapshot.sectionId ?? "");
@@ -714,7 +714,7 @@ ${methods.length ? `【备选方法】${methods.join("、")}` : ""}` }],
     projectId: ctx.projectId, userId: ctx.userId, kind: "data_result",
     title,
     contentMd: `分析方法: ${analysis?.coreMethod ?? (methods[0] ?? analysisType)}\n\n${analysis?.design ?? ""}${(analysis?.expectedTables ?? []).length ? `\n拟产出: ${(analysis?.expectedTables ?? []).join("; ")}` : ""}`,
-    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(闭源零命中), 而且**全链路只有写、没有读**:
+    // 2026-09-18: 不再写 producedByDagNode。它是自创概念(参考产品零命中), 而且**全链路只有写、没有读**:
     //   接口收、四类素材写、mapper 还对外返回 —— 但 Vue/React 前端零读取(唯一读它的那个组件
     //   是 09-06 的死代码, 已删)。且 `ctx.dagNodeId = task.dag_node_id ?? ""`, 绝大多数任务
     //   写进去的是**空串**。留着只会让下游 grep 到而误以为它有意义。
@@ -805,7 +805,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
       const pr = await pool.query(`select style from research_projects where id=$1`, [ctx.projectId]).catch(() => ({ rows: [] as unknown[] }));
       const style = String((pr.rows[0] as { style?: unknown } | undefined)?.style ?? "").trim();
       // 2026-09-16: 参考文件此前**从不进入章节生成** —— 上传的范文只影响过"澄清提问"一次请求。
-      //   闭源语义: buildSampleContent() 拼成 `=== 文件名 ===\n内容`, 截 8000 字。
+      //   参考产品语义: buildSampleContent() 拼成 `=== 文件名 ===\n内容`, 截 8000 字。
       const sampleContent = Array.isArray(payload.sampleFiles)
         ? payload.sampleFiles
             .filter((f) => f && typeof f.content === "string" && f.content.trim())
@@ -965,7 +965,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
  *
  * 2026-09-16: 补上"结构化 references 进不了引用链"的缺口。
  * 库里存着两种形状的条目(检索臂写 `venue`, 手动录入写 `author`/`source`), 这里统一兜住;
- * 闭源的 `gbRef` 字段若已存在就直接用它(那是它拼好的完整著录)。
+ * 参考产品的 `gbRef` 字段若已存在就直接用它(那是它拼好的完整著录)。
  * 缺字段就按有的拼, **不补假值**(学术文献不能编造著录信息)。
  */
 function formatReferenceEntry(r: Record<string, unknown>): string {
@@ -1005,14 +1005,14 @@ function refsFromMaterialRow(row: { content_md?: unknown; references_json?: unkn
 /**
  * 可引文献池 —— **两端共用的唯一定义**。
  *
- * 2026-09-16: 改为占位符制(闭源 `§REF_a_b§` 规格)。
+ * 2026-09-16: 改为占位符制(参考产品 `§REF_a_b§` 规格)。
  *
  * 为什么: 先用 `[N]` 时, 正文编号与参考文献表编号各有各的序 ——
  *   正文按**模型引用顺序**, 表按**素材建档顺序**。实测: 正文说 `[1]` 是"丙",
- *   表说 `[1]` 是"甲", 而表里根本没有"丙"。闭源这套占位符就是为此设计的:
+ *   表说 `[1]` 是"甲", 而表里根本没有"丙"。参考产品这套占位符就是为此设计的:
  *   正文只标"引的是池里哪条", 编号留到合稿时按**正文首次出现序**统一重排。
  *
- * 格式(与闭源 `fe()` 的正则 `§REF_(\d+)_(\d+)§` 对齐):
+ * 格式(与参考产品 `fe()` 的正则 `§REF_(\d+)_(\d+)§` 对齐):
  *   `a` = 该条目在**本池**中的位置(1-based) —— 合稿时据此去池里取著录
  *   `b` = 条内序号(一条素材可含多条文献), 从 1 起
  * 池子按 `created_at` 排序 → 位置稳定可复现。
@@ -1046,12 +1046,12 @@ export async function buildCitationPool(userId: string, projectId: string): Prom
 /**
  * 合稿阶段: 把正文里的 `§REF_a_b§` 换成按首次出现序重排的 `[n]`, 并生成对应参考文献表。
  *
- * 与闭源 `fe()` 的差异(有意为之): 闭源用 `f.has(poolIdx)` 过滤池, 而 `f` 装的是
+ * 与参考产品 `fe()` 的差异(有意为之): 参考产品用 `f.has(poolIdx)` 过滤池, 而 `f` 装的是
  * **重排后的引用序号** —— 只有当"正文引用顺序恰好等于池顺序"时它才对得上;
- * 正文先引池里第 3 条时, 闭源自己也会错位。
+ * 正文先引池里第 3 条时, 参考产品自己也会错位。
  * 这里改成**按池位置取著录**(`usedPoolIdx`), 与它机制的声明意图一致。
  *
- * @param refsProvided 已有参考文献表(非空则原样保留, 不重排 —— 与闭源同语义)
+ * @param refsProvided 已有参考文献表(非空则原样保留, 不重排 —— 与参考产品同语义)
  */
 export function rewriteCitationsWithRefs(
   fulltext: string,
@@ -1081,7 +1081,7 @@ export function rewriteCitationsWithRefs(
 }
 
 /** P5 合并/审查/修订(job_kind: merge|review|revise; 合并走 generateComponent 要件)
- *  P-A 对齐闭源 #589/#601/#612/#651: review 产六维报告存 task.result+project.review_result;
+ *  P-A 对齐参考产品 #589/#601/#612/#651: review 产六维报告存 task.result+project.review_result;
  *  revise 读报告对 merge 产物做有向修订(输出去AI痕迹+按 checks 改), 产出修订稿覆盖 merged_*,
  *  产物链 revisionOf 指向被修订版本(发布版本号), activate 端点把版本置终稿。
  *  正文真源: sections 节点(analyze 建结构/phase4_batch 回写正文); merge 空正文保护不清既有全文 */
@@ -1143,7 +1143,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
       !rawDeAI ? null
         : ["light", "medium", "heavy"].includes(String(rawDeAI)) ? (String(rawDeAI) as "light" | "medium" | "heavy")
           : "medium";
-    // 闭源时间轴 5 步(合并正文/语言润色/整理参考文献/生成元信息/完成)由后端 step 驱动。
+    // 参考产品时间轴 5 步(合并正文/语言润色/整理参考文献/生成元信息/完成)由后端 step 驱动。
     //   此前前端拿 progress.current 硬映射, 与真实阶段无关 —— 这里把 step 真报出去。
     const setMergeStep = async (step: number, text: string) => {
       await pool.query(
@@ -1182,7 +1182,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
      *
      * 2026-09-16: 章节 prompt 已改教模型写 `§REF_a_b§`(见 paper-outline-service 的引用池段),
      * 这里负责按**正文首次出现序**重编号, 并同步生成对应的参考文献表 —— 两边永远对齐。
-     * 这是闭源 `fe()` 的语义。池与正文用的是**同一份** buildCitationPool 输出,
+     * 这是参考产品 `fe()` 的语义。池与正文用的是**同一份** buildCitationPool 输出,
      * 所以 `a` 位一定能反查到著录。
      *
      * 兼容: 没有占位符的历史正文(旧的 `[N]` 形式)走原路径, 不重排。
@@ -1265,14 +1265,14 @@ async function runPhase5(task: any, ctx: ExecCtx) {
   const keywords = fz.mergedKeywords ?? p.merged_keywords ?? "";
   const refs = fz.mergedReferences ?? p.merged_references ?? "";
   // 审查的报告源 = 本轮新报告(节点) > 历史报告(列)。
-  //   为什么不带 revise_pending: 闭源审查**只吃 reviewResult**(`createPhase5Review({reviewReport:e.reviewResult})`),
+  //   为什么不带 revise_pending: 参考产品审查**只吃 reviewResult**(`createPhase5Review({reviewReport:e.reviewResult})`),
   //   前端在生成修订稿后仍持有同一份 reviewResult —— 修订稿不参与审查输入, 两边一致。
   const reportSrc = (nodeReview ?? p.review_result ?? null) as Record<string, unknown> | null;
   const ep = getLlmEndpoint({ model: getRoleModel("reason") });
 
   if (kind === "review") {
     if (!fulltext.trim()) throw new Error("尚无合并正文, 请先运行合稿");
-    // 闭源六维审查: score/overall/highlights/checks{requirements,references,aiTone,logic,dataAccuracy}/topSuggestions
+    // 参考产品六维审查: score/overall/highlights/checks{requirements,references,aiTone,logic,dataAccuracy}/topSuggestions
     const res = await fetchLlm({
       url: ep.url, key: ep.key, model: ep.model,
       messages: [{ role: "user", content: `你是期刊主编, 对一篇社科论文做多维质量审查。只依据提供的全文, 不验证文献真实存在与否, 只评价文本呈现。${evidenceSummary ? "\n**但「数据/实证表述可信度」这一维必须比对下方的【研究证据】**: 正文里出现的统计数字若在证据里找不到对应, 该项判 false 并在 detail 里点名是哪几个数字。" : ""}
@@ -1349,7 +1349,7 @@ ${fulltext}
   /**
    * 为修订稿**建一个真版本行**。
    *
-   * 为什么不让 adopt 直接写 merged_*: 闭源的「采用」是 `activatePhase5Version(id)`
+   * 为什么不让 adopt 直接写 merged_*: 参考产品的「采用」是 `activatePhase5Version(id)`
    *   —— 必须有一个**版本**可以激活(置 published / 其余 superseded / 记 revision_of_version)。
    *   我们这儿 activateVersion 也依赖 research_versions 里真有这一行, 否则 404。
    *
@@ -1386,7 +1386,7 @@ ${fulltext}
    *   更糟的是「采用修订稿」拿的是同一次长轮询后回读的 store.mergedFullText, 那时它**已经是修订稿**,
    *   所以 adopt 退化成空操作: 实测点击前后正文都是 318 字, 数据库里也查不到 pendingRevision 这一列。
    *
-   * 闭源语义(ye/activatePhase5Version): 修订稿先作为**待激活版本**存在,
+   * 参考产品语义(ye/activatePhase5Version): 修订稿先作为**待激活版本**存在,
    *   「采用」才把它提升为当前终稿(`activatePhase5Version` → 前端 e.merged*=S.value)。
    *   这里对齐该语义: 写 revise_pending, 由前端 adopt 时调 versions/activate + 落 merged_*。
    */
@@ -1422,7 +1422,7 @@ export async function buildMergedReferences(userId: string, projectId: string): 
 
 // ═══ SocialSci UI级审计: structuredSummary 自动抽取器(原创实现, 规格对齐) ═══
 // 功能: 从章节正文正则抽取 {关键结论/关键数据/核心论点/遗留问题} → ≤800字结构化摘要
-// 语义对齐(闭源UI的Z()函数行为): 按段落切分→四类句式正则→组装
+// 语义对齐(参考产品UI的Z()函数行为): 按段落切分→四类句式正则→组装
 export function buildStructuredSummary(content: string): string {
   if (!content || content.trim().length < 100) return "";
   const paras = content.split(/\n\s*\n/).filter((w) => w.trim().length > 20);

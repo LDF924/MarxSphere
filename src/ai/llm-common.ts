@@ -355,7 +355,7 @@ export function getLlmEndpoint(overrides?: { model?: string }): { url: string; k
   return { url, key, model };
 }
 
-/** 解析 LLM 返回中的 JSON — 五级容错(对齐闭源 ReviewView jsonrepair 语义)
+/** 解析 LLM 返回中的 JSON — 五级容错(对齐参考产品 ReviewView jsonrepair 语义)
  * L1 直解 / L2 剥 code fence / L3 括号平衡修复 / L4 常见字符串损坏修复 / L5 截断回溯+外圈提取
  */
 export function parseLlmJson(text: string): any {

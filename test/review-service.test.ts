@@ -47,13 +47,13 @@ describe("segmentText 分段算法", () => {
 });
 
 describe("defaultDimensions", () => {
-  it("含 7 个社科期刊审稿维度(闭源实页 7 维)且权重和≈1", () => {
+  it("含 7 个社科期刊审稿维度(参考产品实页 7 维)且权重和≈1", () => {
     const dims = defaultDimensions() as Array<{ key: string; weight: number; weightLabel?: number }>;
     expect(dims).toHaveLength(7);
     const sum = dims.reduce((a, d) => a + d.weight, 0);
     expect(sum).toBeCloseTo(1.0);
     expect(dims[0].key).toBe("topic_value");
-    // P-B: 闭源权重整档 3-5 透传
+    // P-B: 参考产品权重整档 3-5 透传
     expect(dims.map((d) => d.weightLabel)).toEqual([4, 5, 5, 5, 4, 3, 4]);
     expect(dims.some((d) => d.key === "empirical")).toBe(true);
     expect(dims.some((d) => d.key === "countermeasure")).toBe(true);

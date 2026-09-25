@@ -1,4 +1,4 @@
-/** Toast + 确认弹层 — 闭源全局 addToast / tc()(无头安全 confirm)语义还原 */
+/** Toast + 确认弹层 — 参考产品全局 addToast / tc()(无头安全 confirm)语义还原 */
 import { reactive, h } from "vue";
 
 export interface ToastItem {
@@ -66,7 +66,7 @@ export const ToastHost = {
 
 // 避免循环 import vue
 
-/** 全局确认(闭源 tc()): 返回 Promise<bool>; 渲染自绘 confirm 层 */
+/** 全局确认(参考产品同名函数): 返回 Promise<bool>; 渲染自绘 confirm 层 */
 export interface ConfirmOptions {
   message: string;
   title?: string;

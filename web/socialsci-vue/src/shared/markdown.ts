@@ -1,5 +1,5 @@
 /**
- * markdown 渲染管线 — 还原闭源 AIPanel 渲染(AI 结果区): katex 先行提取公式 → 占位符
+ * markdown 渲染管线 — 还原参考产品 AIPanel 渲染(AI 结果区): katex 先行提取公式 → 占位符
  * → marked(breaks) → 占位回填 → DOMPurify → innerHTML; 及 Materials/Workspace 的 markdown-body 渲染
  */
 import { marked } from "marked";

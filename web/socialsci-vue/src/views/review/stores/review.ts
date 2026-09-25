@@ -1,5 +1,5 @@
 /**
- * review store — 还原自闭源 ReviewView-B4QyxKEn.js Pinia review(R:623-1198) 核心状态机
+ * review store — 还原自参考产品 评审页 Pinia review( 核心状态机
  * pageState: input_ready/reviewing/result_view/detail_view; paper 六元组; settings 三要素
  * LLM 结果五级容错解析(直解→剥围栏→括号平衡→字符串修复→rawOutput 兜底)
  */
@@ -43,7 +43,7 @@ export interface ReviewResult {
 }
 
 export interface ReviewSettings {
-  strictness: string; // lax | standard | strict(闭源三档)
+  strictness: string; // lax | standard | strict(参考产品三档)
   journalId: string | null;
   standardIds: string[];
   customRequirements: string;
@@ -54,7 +54,7 @@ export interface ReviewSettings {
 export type ReviewPageState = "input_ready" | "reviewing" | "result_view" | "detail_view";
 
 export const useReviewStore = defineStore("review", () => {
-  // ── state(闭源 R:623 起) ──
+  // ── state(参考产品 起) ──
   const pageState = ref<ReviewPageState>("input_ready");
   const reviewing = ref(false);
   const currentStep = ref(0);
@@ -74,7 +74,7 @@ export const useReviewStore = defineStore("review", () => {
   const result = ref<ReviewResult | null>(null);
   const errorMessage = ref("");
 
-  // ── derived(闭源 R:663-675) ──
+  // ── derived(参考产品 ──
   const overallScore = computed(() => result.value?.overallScore ?? 0);
   const grade = computed(() => result.value?.grade ?? "");
   const dimensions = computed(() => result.value?.dimensions ?? []);
@@ -95,7 +95,7 @@ export const useReviewStore = defineStore("review", () => {
     return stats;
   });
 
-  // ── 页面切换(闭源 setPaper/resetPaper/showResult/showDetail/backToInput/backToResult) ──
+  // ── 页面切换(参考产品 setPaper/resetPaper/showResult/showDetail/backToInput/backToResult) ──
   function setPaper(p: { title?: string; content?: string; fileName?: string; sourceFileId?: string; sourceType?: string }) {
     if (p.title !== undefined) paperTitle.value = p.title;
     if (p.content !== undefined) paperContent.value = p.content;
@@ -138,7 +138,7 @@ export const useReviewStore = defineStore("review", () => {
     currentJobId.value = "";
   }
 
-  // ── 五级容错 JSON 解析(闭源 parseFinalResult R:768-816 + jsonrepair 状态机语义) ──
+  // ── 五级容错 JSON 解析(参考产品 parseFinalResult  + jsonrepair 状态机语义) ──
   function parseFinalResult(text: string): { ok: boolean; value?: unknown; raw?: string } {
     const src = String(text ?? "").trim();
     if (!src) return { ok: false, raw: src };
@@ -189,7 +189,7 @@ export const useReviewStore = defineStore("review", () => {
     return { ok: false, raw: src };
   }
 
-  // ── 快照(闭源 collectState/restoreFromState; 任务侧栏) ──
+  // ── 快照(参考产品 collectState/restoreFromState; 任务侧栏) ──
   function collectState(): Record<string, unknown> {
     return {
       pageState: pageState.value,
@@ -227,7 +227,7 @@ export const useReviewStore = defineStore("review", () => {
   };
 });
 
-/** 严格度三档文案(闭源 radio 形态) */
+/** 严格度三档文案(参考产品 radio 形态) */
 export const STRICTNESS_OPTIONS = [
   { value: "lax", label: "宽松", desc: "以鼓励为主, 主要问题提示" },
   { value: "standard", label: "标准", desc: "期刊编辑视角, 全面指出问题" },

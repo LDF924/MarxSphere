@@ -1,6 +1,6 @@
 /**
- * 任务体系(Task store API) — 还原自闭源 index-xpWAkSSw.js Rt 服务(L13219-13271) + taskList store
- * 闭源端点: GET /tasks?module= / GET|POST|PUT|DELETE /tasks/:id / POST /tasks/:id/switch
+ * 任务体系(Task store API) — 还原自参考产品 index Rt 服务 + taskList store
+ * 参考产品端点: GET /tasks?module= / GET|POST|PUT|DELETE /tasks/:id / POST /tasks/:id/switch
  *           POST /tasks/:id/release-lock / GET /tasks/:id/nodes / GET|PUT /tasks/:id/nodes/:nodeId
  * 我方后端形态差异: 任务主体在 /api/research/tasks(projectId 系), 本前端适配层提供
  * "task = {id, projectId, module, title, phase, status}" 统一视图, 所有写操作映射到 research 端点。
@@ -37,7 +37,7 @@ export interface SocTaskListOptions {
   limit?: number;
 }
 
-/** 任务列表(闭源 GET /tasks?module=x) */
+/** 任务列表(参考产品 GET /tasks?module=x) */
 export async function listTasks(opts: SocTaskListOptions = {}): Promise<SocTask[]> {
   const p: string[] = [];
   if (opts.module) p.push(`module=${encodeURIComponent(opts.module)}`);
@@ -60,7 +60,7 @@ export interface CreateTaskInput {
   inputSnapshot?: Record<string, unknown>;
 }
 
-/** 创建任务(闭源 POST /tasks) — 我方 research 域: 无 projectId 时创建独立项目容器 */
+/** 创建任务(参考产品 POST /tasks) — 我方 research 域: 无 projectId 时创建独立项目容器 */
 export async function createTask(input: CreateTaskInput): Promise<SocTask> {
   const { projectId } = input;
   if (projectId) {
@@ -78,7 +78,7 @@ export async function createTask(input: CreateTaskInput): Promise<SocTask> {
     });
     return r.task ?? (r as unknown as SocTask);
   }
-  // 无项目 → 先建项目(闭源 createTaskWithTitle 语义: 任务即顶层容器)
+  // 无项目 → 先建项目(参考产品 createTaskWithTitle 语义: 任务即顶层容器)
   const p = await q<{ data?: { id: string }; id?: string }>(`/research/projects`, {
     method: "POST",
     body: { title: input.title, status: "active", phase: input.phase ?? 0, phaseLabel: input.phaseLabel ?? "" }
@@ -135,7 +135,7 @@ export async function getTask(taskId: string): Promise<SocTask | null> {
   }
 }
 
-/** 快照保存(闭源 PUT /tasks/:id saveSnapshot {phase,status,phaseLabel,snapshot}) — 我方 workbench snapshot */
+/** 快照保存(参考产品 PUT /tasks/:id saveSnapshot {phase,status,phaseLabel,snapshot}) — 我方 workbench snapshot */
 export async function saveTaskSnapshot(taskId: string, patch: { phase?: number; status?: string; phaseLabel?: string; snapshot?: Record<string, unknown> }): Promise<void> {
   const task = await getTask(taskId).catch(() => null);
   if (!task?.projectId) return;
@@ -174,7 +174,7 @@ export async function createSkillCard(projectId: string, body: Record<string, un
 }
 
 /**
- * 章节技能卡批量生成(闭源 generateSkillsForSections: analyze done 后触发, 后端逐章 LLM)
+ * 章节技能卡批量生成(参考产品 generateSkillsForSections: analyze done 后触发, 后端逐章 LLM)
  *
  * V417: **不再吞错**。原来 `.catch(() => ({ okCount: 0 }))` 把 HTTP 层的失败
  * (网络/401/500) 与"确实 0 条成功"合并成同一个返回值, 调用方据此无从判断 ——
@@ -185,7 +185,7 @@ export async function batchGenerateSkillCards(projectId: string, sections: Array
   return q<{ results?: Array<{ sectionId: string; ok: boolean; error?: string }>; okCount?: number }>(`/research/projects/${projectId}/skill-cards/batch`, { method: "POST", body: { sections } });
 }
 
-/** 节点 KV(闭源 /tasks/:id/nodes/:key {nodeData}) — 我方 /research/projects/:pid/nodes/:key */
+/** 节点 KV(参考产品 /tasks/:id/nodes/:key {nodeData}) — 我方 /research/projects/:pid/nodes/:key */
 export async function getNode(projectId: string, nodeKey: string): Promise<Record<string, unknown> | null> {
   try {
     // 我方契约: GET → {node:{payload,...}}; 404 = 节点不存在
@@ -197,7 +197,7 @@ export async function getNode(projectId: string, nodeKey: string): Promise<Recor
 }
 
 export async function putNode(projectId: string, nodeKey: string, payload: Record<string, unknown>): Promise<void> {
-  await q(`/research/projects/${projectId}/nodes/${nodeKey}`, { method: "PUT", body: { payload } }).catch(() => { /* 409 静默跳过(闭源语义) */ });
+  await q(`/research/projects/${projectId}/nodes/${nodeKey}`, { method: "PUT", body: { payload } }).catch(() => { /* 409 静默跳过(参考产品语义) */ });
 }
 
 /**
@@ -225,7 +225,7 @@ export async function listNodes(projectId: string): Promise<Array<{ node_key: st
 //   (versions / nodes/:key/history / nodes/:key/rollback / versions/:ver/activate)全在后端躺着,
 //   前端引用数为 0。
 //
-// 契约形状(读后端 handler 逐个确认, 不照抄闭源):
+// 契约形状(读后端 handler 逐个确认, 不照抄参考产品):
 //   GET  versions                  → { versions: [{id, version, label, status, created_at}] }   (version desc)
 //   GET  nodes/:key/history        → { history: [{id, version, by_role, note, created_at}] }    (version desc)
 //   POST nodes/:key/rollback       → { ok, version }   body { historyId }       404 = 历史不存在
@@ -299,7 +299,7 @@ export async function publishVersion(projectId: string, label: string): Promise<
   }
 }
 
-// ── lastTask_workflow 持久化(闭源共享层语义) ──
+// ── lastTask_workflow 持久化(参考产品共享层语义) ──
 export function persistLastWorkflowTask(taskId: string): void {
   localStorage.setItem(K.lastTaskWorkflow, taskId);
 }
@@ -310,7 +310,7 @@ export function clearLastWorkflowTask(): void {
   localStorage.removeItem(K.lastTaskWorkflow);
 }
 
-// ── 任务命名(闭源 createTaskWithTitle: 复用同名模块任务 or 新建) ──
+// ── 任务命名(参考产品 createTaskWithTitle: 复用同名模块任务 or 新建) ──
 export async function ensureModuleTask(module: SocModule, title: string, taskId?: string): Promise<{ taskId: string; projectId?: string; created: boolean }> {
   if (taskId) {
     const t = await getTask(taskId).catch(() => null);
@@ -377,7 +377,7 @@ export function moduleLabel(m: string): string {
   return MODULE_LABELS[m as SocModule] ?? m;
 }
 
-// ── 状态机(闭源 task status → 中文/圆点色) ──
+// ── 状态机(参考产品 task status → 中文/圆点色) ──
 export const taskStatusMeta: Record<string, { label: string; dot: string }> = {
   queued: { label: "排队中", dot: "#94a3b8" },
   running: { label: "运行中", dot: "#2563eb" },

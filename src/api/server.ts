@@ -1580,7 +1580,7 @@ export function buildHttpServer() {
     paperTitle: z.string().min(1).max(200),
     nodes: z.array(z.unknown()).max(200),
     fontName: z.string().max(60).optional(),
-    // R7: 字号来自编辑器预览预设(闭源 formatPresets.docxFontSize) —— 与 fontName 配套
+    // R7: 字号来自编辑器预览预设(参考产品 formatPresets.docxFontSize) —— 与 fontName 配套
     fontSize: z.number().min(6).max(36).optional(),
     /**
      * V425: 目标体例 —— 让导出的 docx 带上该体例的行距与页边距。
@@ -5886,7 +5886,7 @@ export function buildHttpServer() {
     if (body.format === "csv") {
       return reply.type("text/csv").send(empiricalService.csvTable(body.table));
     }
-    // C4(闭源三线表 Word 导出): python-docx 生成 booktabs 风格 docx
+    // C4(参考产品三线表 Word 导出): python-docx 生成 booktabs 风格 docx
     if (body.format === "docx") {
       const r = await empiricalService.exportTableDocx(body.table);
       if (!r.ok || !r.base64) return reply.code(500).send({ error: { code: "EXPORT_FAILED", message: r.error ?? "docx 生成失败" } });
@@ -9782,7 +9782,7 @@ except Exception as e:
 
   // ═══ SocialSci P0-1: 科研项目/可视化DAG工作台(迁移114/115) ═══
   // 项目容器 CRUD + 画布乐观锁 + 执行任务 + 节点快照/回滚 + 版本发布 + DAG模板/NL转DAG + 主控分析
-  // 形态对齐闭源产品交互语义, 原创实现(见 docs/SOCIALSCI-GAP-ANALYSIS.md S-01~S-10)
+  // 形态对齐参考产品交互语义, 原创实现(见 docs/SOCIALSCI-GAP-ANALYSIS.md S-01~S-10)
 
   app.get("/api/research/projects", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
@@ -9953,7 +9953,7 @@ except Exception as e:
   });
 
   // ═══ SocialSci HistoryView 对齐: 历史中心统一多源端点 ═══
-  // 闭源语义: 6 模块(workflow/review/statistics/viz/editor/knowledge)分区展示,
+  // 参考产品语义: 6 模块(workflow/review/statistics/viz/editor/knowledge)分区展示,
   //   每卡=模块归属+标题+状态+相对时间, 点击恢复对应工作台条目。
   // 数据源: research_tasks(workflow, 含跨模块容器 module 字段真值) / review_jobs(review)
   //   / empirical_results(statistics, 全局共享分析记录) / viz_sessions(viz)
@@ -10039,7 +10039,7 @@ except Exception as e:
     return { ok: true };
   });
 
-  // 清除历史记录(闭源 deleteAll 语义): ACTIVE_JOB 保护 + failed 明细 + 资产保护
+  // 清除历史记录(参考产品 deleteAll 语义): ACTIVE_JOB 保护 + failed 明细 + 资产保护
   // - research_tasks: 跳过运行中/排队任务(ACTIVE_JOB 保护, 2s 调度泵会续跑), 删终态
   // - review_jobs: 跳过非终态(审稿 SSE 流运行中)
   // - viz_sessions / search_query_history: 整删(会话/查询记录)
@@ -10359,7 +10359,7 @@ except Exception as e:
     return reply.send(r.buffer);
   });
 
-  // P-A 终稿激活(闭源 phase5/version/:ver/activate 语义: 版本置 published + project.revision_of_version)
+  // P-A 终稿激活(参考产品 phase5/version/:ver/activate 语义: 版本置 published + project.revision_of_version)
   app.post("/api/research/projects/:projectId/versions/:version/activate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { projectId, version } = request.params as { projectId: string; version: string };
@@ -10460,8 +10460,8 @@ except Exception as e:
 
   app.post("/api/research/materials/reorder", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    // taskId 是闭源(及素材列表接口)对"项目"的叫法, 本项目其余路由叫 projectId —— 两者都收,
-    //   作为归属校验的收窄条件(闭源前端发 {taskId, ids}, 见 .claude/socialsci-probe/full/index-xpWAkSSw.js)。
+    // taskId 是参考产品(及素材列表接口)对"项目"的叫法, 本项目其余路由叫 projectId —— 两者都收,
+    //   作为归属校验的收窄条件(参考产品前端发 {taskId, ids}, 见 .claude/socialsci-probe/full/index-xpWAkSSw.js)。
     const body = request.body as { ids?: string[]; projectId?: string; taskId?: string };
     if (!Array.isArray(body?.ids)) return reply.code(400).send({ error: "缺少 ids" });
     const projectId = body.projectId || body.taskId;
@@ -10687,7 +10687,7 @@ except Exception as e:
     return { ok: true, base64: r.base64, fileName: r.fileName };
   });
 
-  // T6: 审稿排版 HTML 报告(对齐闭源 export-report; base64 供新窗口打印/存 PDF)
+  // T6: 审稿排版 HTML 报告(对齐参考产品 export-report; base64 供新窗口打印/存 PDF)
   app.post("/api/review/jobs/:jobId/export-html", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
@@ -10862,7 +10862,7 @@ except Exception as e:
     sse.end();
   });
 
-  // D4(闭源 VizView job 体系): 中长绘图任务 — 建 job(后台执行)→ SSE 观察(可断线重连重放)
+  // D4(参考产品 VizView job 体系): 中长绘图任务 — 建 job(后台执行)→ SSE 观察(可断线重连重放)
   app.post("/api/viz/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as {
@@ -10876,7 +10876,7 @@ except Exception as e:
         csv: body.csv, columnOrder: body.columnOrder, spec: body.spec,
         // 数据接入统一(2026-09-11): 前端上传发的 fileId 此前被丢弃 → 服务端按 fileId 取真实数据
         fileId: body.fileId, fileName: body.fileName,
-        // 闭源 VizView journalConfig(期刊/双栏/DPI/字号/配色) — 此前前端发了后端没用
+        // 参考产品 VizView journalConfig(期刊/双栏/DPI/字号/配色) — 此前前端发了后端没用
         journalConfig: body.journalConfig,
       });
       return r;
@@ -11038,7 +11038,7 @@ except Exception as e:
   app.put("/api/editor/v1/documents/:docId", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { docId } = request.params as { docId: string };
-    // A1(闭源 content_hash 乐观锁): 前端带 expectedContentHash → 与当前版本 hash 对比,
+    // A1(参考产品 content_hash 乐观锁): 前端带 expectedContentHash → 与当前版本 hash 对比,
     // 不一致 = 他窗口已改 → 409 冲突(前端提示刷新)
     const body = request.body as { title?: string; content?: string; tags?: string[]; expectedContentHash?: string };
     if (body.expectedContentHash && body.content !== undefined) {
@@ -11070,13 +11070,13 @@ except Exception as e:
     const r = await pool.query(
       `select version, content_hash, title, content_len, by_editor, created_at from doc2_versions
         where document_id=$1 order by version desc limit 50`, [docId]);
-    // 沿用 items 这条链自己的线格式(api.listDocs 回的就是 items; 前端内联的闭源契约也是
+    // 沿用 items 这条链自己的线格式(api.listDocs 回的就是 items; 前端内联的参考产品契约也是
     //   {items,pagination}) —— 版本列表比文档列表更小, 不需要分页, 只带 items。
     // api.ts 的 q() 直接返回整个响应体(不像 axios 那样剥 data), 所以**不能再套一层信封**,
     //   否则前端拿到的是对象: `!versions.length` 恒 false 会渲染「暂无版本记录」的兄弟分支,
     //   而 v-for 会去遍历这个对象。
     const items = r.rows.map((row) => ({
-      // 前端 :key / 恢复调用都用 id; 版本表的主键(闭源版本列表同字段)
+      // 前端 :key / 恢复调用都用 id; 版本表的主键(参考产品版本列表同字段)
       id: String(row.version),
       version_num: row.version,
       created_at: row.created_at,
@@ -11111,7 +11111,7 @@ except Exception as e:
       };
       const { value } = await mammoth.convertToHtml({ buffer: buf });
       const filename = String(body?.filename ?? "");
-      // 标题: 文件名兜底(闭源同口径); 前端另有 .docx 后缀剥离
+      // 标题: 文件名兜底(参考产品同口径); 前端另有 .docx 后缀剥离
       const title = filename.replace(/\.docx?$/i, "") || "导入文档";
       return { html: value, title };
     } catch (e) {
@@ -11151,7 +11151,7 @@ except Exception as e:
     return await editorService.unlockDoc(user.id, docId);
   });
 
-  // R6(闭源 Editor AI job 契约): 统一 AI job + SSE + cancel/retry
+  // R6(参考产品 Editor AI job 契约): 统一 AI job + SSE + cancel/retry
   app.post("/api/editor/v1/ai/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { action?: string; text?: string; mode?: string; context?: string; document_id?: string; model?: string };
@@ -11565,12 +11565,12 @@ ${dataBlock}
     return { usage: r.rows };
   });
 
-  // ═══ SocialSci Vue M3: 统计分析 17 法 jobs 全契约(闭源 decoded-stats-viz §1.5) ═══
+  // ═══ SocialSci Vue M3: 统计分析 17 法 jobs 全契约(参考产品 decoded-stats-viz §1.5) ═══
   // POST /api/statistics-jobs {tool,fileId,variables,...} → {job:{id,status}}
   // GET /api/statistics-jobs?limit=N → {jobs:[...]}; GET /:id → {job}
   // POST /:id/cancel|retry; GET /:id/stream → SSE(事件 stats.completed/failed/cancelled + job.snapshot)
   app.get("/api/statistics/health", async () => {
-    // 闭源 StatisticsView 徽标轮询(health check); python venv 状态一并回
+    // 参考产品 StatisticsView 徽标轮询(health check); python venv 状态一并回
     let venvReady = false;
     try {
       const { getEmpiricalMeta } = await import("../services/empirical-service.js");
@@ -11780,7 +11780,7 @@ ${dataBlock}
     return { job: { id: j.id, status: j.status } };
   });
 
-  // 任务执行 SSE(闭源: 可恢复事件流; 完成前挂起等待 → 完成后推送 stats.completed)
+  // 任务执行 SSE(参考产品: 可恢复事件流; 完成前挂起等待 → 完成后推送 stats.completed)
   app.get("/api/statistics-jobs/:jobId/stream", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { jobId } = request.params as { jobId: string };
@@ -11874,7 +11874,7 @@ ${dataBlock}
     return { ok: true };
   });
 
-  // T4-4: AI 自动编排素材到章节(闭源 MaterialsView allocateMaterials; 建议→前端确认→逐条 adopt)
+  // T4-4: AI 自动编排素材到章节(参考产品 MaterialsView allocateMaterials; 建议→前端确认→逐条 adopt)
   app.post("/api/research/materials/allocate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { projectId?: string };
@@ -12236,7 +12236,7 @@ ${dataBlock}
       profile = { kind: "text", lines: lines.length, chars: text.length };
       if (lines.length > 1 && lines[0].includes(",")) {
         const cols = lines[0].split(",").map((c) => c.trim());
-        // M3: 变量类型推断(闭源 profile.variables[{name,type}] 契约) — 采样前 50 行数值探测
+        // M3: 变量类型推断(参考产品 profile.variables[{name,type}] 契约) — 采样前 50 行数值探测
         const sample = lines.slice(1, 51).map((l) => l.split(",").map((c) => c.trim()));
         const variables = cols.slice(0, 20).map((c, ci) => {
           let num = 0;
@@ -12253,7 +12253,7 @@ ${dataBlock}
         });
         profile = {
           kind: "csv",
-          parseStatus: "completed", // viz 前端契约(闭源 o() 判定)
+          parseStatus: "completed", // viz 前端契约(参考产品同名函数 判定)
           rowCount: lines.length - 1,
           columnCount: cols.length,
           colCount: cols.length, // 别名(viz 前端读 colCount)
@@ -12409,7 +12409,7 @@ ${dataBlock}
   });
 
   // ═══ SocialSci R5: 需求澄清(HAR: clarify/generate) ═══
-  // E4(闭源 2 轮集中补齐): 透传 round/answers — 前端第一轮答完可再发起第二轮追问
+  // E4(参考产品 2 轮集中补齐): 透传 round/answers — 前端第一轮答完可再发起第二轮追问
   app.post("/api/clarify/generate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { title?: string; outline?: string; requirements?: string; researchMethod?: string; totalWordCount?: number; sampleContent?: string; round?: number; answers?: Array<{ question: string; answer: string }> };

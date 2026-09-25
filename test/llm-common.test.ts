@@ -45,7 +45,7 @@ describe("retryBackoffMs", () => {
   });
 });
 
-describe("parseLlmJson 五级容错(R16b 对齐闭源 jsonrepair)", () => {
+describe("parseLlmJson 五级容错(R16b 对齐参考产品 jsonrepair)", () => {
   it("直解+围栏", () => {
     expect(parseLlmJson('{"a":1}')).toEqual({ a: 1 });
     expect(parseLlmJson("```json\n{\"b\":2}\n```")).toEqual({ b: 2 });

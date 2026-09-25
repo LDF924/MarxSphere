@@ -133,7 +133,7 @@ describe("executeReadyTask 执行器分派", () => {
     expect(r.ok, "SQLs: " + JSON.stringify(vi.mocked(pool.query).mock.calls.map((c) => String(c[0]).slice(0, 90)))).toBe(true);
     const sqls = vi.mocked(pool.query).mock.calls.map((c) => String(c[0]));
     // 2026-09-16 起: 修订稿**不再**直接覆盖 merged_*。
-    //   闭源语义是"先作待激活版本, 采用时才提升"(activatePhase5Version), 而此前后端直接写
+    //   参考产品语义是"先作待激活版本, 采用时才提升"(activatePhase5Version), 而此前后端直接写
     //   merged_fulltext, 前端 adopt 又拿的是同一次回读的 store —— 于是「采用修订稿」是空操作,
     //   实测点击前后正文同长。现在只落 revise_pending, 由 adopt 走 versions/activate。
     expect(sqls.some((s) => s.includes("merged_fulltext=$4") && s.includes("revision_of_version=$5")), "revise 不应再直接写 merged_*").toBe(false);
@@ -429,7 +429,7 @@ describe("引用占位符重写(2026-09-16: 正文与参考文献表编号必须
   ];
 
   it("按正文首次出现序重编号, 表按正文编号排(不是按池位置)", async () => {
-    // 关键场景: 正文首次引用的是池里第 2 条 —— 这正是 [N] 方案与闭源 fe() 都会错位的地方
+    // 关键场景: 正文首次引用的是池里第 2 条 —— 这正是 [N] 方案与参考产品同名函数 都会错位的地方
     const body = "张三指出转型提升绩效§REF_2_1§。李四讨论了融资约束§REF_3_1§。郭峰提出测度框架§REF_1_1§。";
     const { rewriteCitationsWithRefs } = await import("../src/services/research-exec-engine.js");
     const r = rewriteCitationsWithRefs(body, "", POOL);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// literature-matrix-service.ts — 文献提取矩阵(参考 Elicit 数据提取成表机制, 闭源仅借鉴思路)
+// literature-matrix-service.ts — 文献提取矩阵(参考 Elicit 数据提取成表机制, 参考产品仅借鉴思路)
 // 选论文集 → 定义提取列 → LLM 逐篇提取字段 → 表格(可排序/每格可链源文)
 import { literatureService } from "./literature-service.js";
 import { getRoleModel } from "./llm-model-registry.js";

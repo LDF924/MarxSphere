@@ -2,7 +2,7 @@
 // points-service.ts — SocialSci P0-8: 积分商业化(签到/兑换/冻结-实扣对账/管理员运营)
 // 语义: 与 billing(balance_cents=真钱/token) 解耦, 积分只计 feature 级消费
 //   - 消费: freezeCharge(冻结→frozen) → settleCharge(核销实扣) / rollbackFreeze(归还)
-//   - 禁止透支: 冻结失败即拒绝(替代闭源产品"负余额挂账"设计)
+//   - 禁止透支: 冻结失败即拒绝(替代参考产品"负余额挂账"设计)
 //   - 对账: sum(type=freeze 的 freeze_amount) = sum(type=settle 的 settle_amount) + 当前 frozen
 // 迁移120 points_accounts/points_ledger/daily_checkins/redeem_*/invite_codes/points_usage_daily
 import { randomUUID } from "node:crypto";

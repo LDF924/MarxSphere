@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * MaterialsView(Phase3 文献与资料) — 还原自闭源 MaterialsView-CW_9_w3K.js(10 组件, 核心形态还原)
+ * MaterialsView(Phase3 文献与资料) — 还原自参考产品 资料页(10 组件, 核心形态还原)
  * 5 分类手风琴(文献检索/表格素材/理论素材/数据分析素材/附件素材) + AI 生成 + 手动添加 + 发布版本
  * 数据: 后端 research_materials CRUD + 素材节点; kind: citation/theory/data_result/figure/file
  */
@@ -77,7 +77,7 @@ function startEditDrag(e: PointerEvent) {
   window.addEventListener("pointerup", up);
 }
 
-// ── 5 分类定义(闭源 ze L4419-4468) ──
+// ── 5 分类定义(参考产品 ze  ──
 const CATS = [
   { key: "literature", label: "文献检索", icon: "📚", aiAction: "检索文献", manualAction: "手动添加文献", kinds: ["literature", "citation"] },
   { key: "data", label: "表格素材", icon: "📊", aiAction: "生成表格", manualAction: "添加表格", kinds: ["table", "data"] },
@@ -91,14 +91,14 @@ const catOf = (kind: string): string => {
   for (const c of CATS) if (c.kinds.includes(kind)) return c.key;
   return "document";
 };
-/** B5: 文献来源徽章(闭源: platformType wanfang/ncpssd=文献库检索 / internal_knowledge_base=内部资料; source.sourceStatus completed/empty/failed) */
+/** B5: 文献来源徽章(参考产品: platformType wanfang/ncpssd=文献库检索 / internal_knowledge_base=内部资料; source.sourceStatus completed/empty/failed) */
 function mKindBadge(m: Material): { text: string; cls: string } | null {
   const ss = (m.source?.sourceStatus ?? {}) as Record<string, string>;
   // V417: 后端写的是 internal 键(实测), 前端原来只认 ncpssd/wanfang → 状态位永远读不到,
   //   「已用/无结果/失败」三态从不显示。补上 internal。
   const st = ss.ncpssd || ss.wanfang || ss.internal || "";
   const pt = String((m as { platformType?: string }).platformType ?? (m as { sourceType?: string }).sourceType ?? "").toLowerCase();
-  // 无平台亦无检索状态 → 不显示徽章(闭源仅对真实检索/导入素材打标)
+  // 无平台亦无检索状态 → 不显示徽章(参考产品仅对真实检索/导入素材打标)
   if (!pt && !st) return null;
   const base = !pt || pt === "wanfang" || pt === "ncpssd" || pt === "literature" ? "文献库检索" : pt === "internal_knowledge_base" ? "内部资料" : "";
   if (!base) return null;
@@ -107,7 +107,7 @@ function mKindBadge(m: Material): { text: string; cls: string } | null {
   if (st === "failed") return { text: base + "失败", cls: "src-red" };
   return { text: base, cls: "src-plain" };
 }
-// 图片全屏预览层状态(闭源: Teleport 遮罩 + img max-h 85vh)
+// 图片全屏预览层状态(参考产品: Teleport 遮罩 + img max-h 85vh)
 const imagePreviewSrc = ref("");
 /** 通用素材卡里"展开全文"的素材 id 集合(长正文默认折叠 400 字) */
 const expandedIds = ref<Set<string>>(new Set());
@@ -354,7 +354,7 @@ async function createMaterial(body: Record<string, unknown>): Promise<Material |
       method: "POST",
       body: { projectId: store.taskId, ...body }
     });
-    // 契约: 我方后端 POST → {id}(无嵌套对象); 闭源 → {material}
+    // 契约: 我方后端 POST → {id}(无嵌套对象); 参考产品 → {material}
     if (r.material || r.data) return (r.material ?? r.data ?? null) as Material | null;
     return r.id ? ({ id: r.id } as Material) : null;
   } catch {
@@ -368,13 +368,13 @@ async function aiGenerate(catKey: string) {
     toast("请先完成选题界定", "warning");
     return;
   }
-  // B4: 单类生成进阶弹层(闭源 MaterialGenerateDialog: 关联章节 select + 表类型 radio + 流式预览)
+  // B4: 单类生成进阶弹层(参考产品 MaterialGenerateDialog: 关联章节 select + 表类型 radio + 流式预览)
   openGenDialog(catKey);
 }
 
 // ── 手动添加 ──
 
-// ── B4 单类生成弹层(闭源 MaterialGenerateDialog: 标题/提示/变量 chips/生成要求/表类型 radio/关联章节 select/生成→预览→完成) ──
+// ── B4 单类生成弹层(参考产品 MaterialGenerateDialog: 标题/提示/变量 chips/生成要求/表类型 radio/关联章节 select/生成→预览→完成) ──
 interface GenDialogState {
   open: boolean;
   catKey: string;
@@ -428,7 +428,7 @@ function openGenDialog(catKey: string) {
  * 2026-09-16 修: 原先只做 `open=false` —— `genTaskId` 不清零, 而它是页面级
  *   `data-assistant-async-busy` 的判据(`matAsyncBusy`), 于是**第一次生成之后该标志永久为真**,
  *   科研助手此后一直认为"正在生成素材", 不再推荐任何动作。实测: 生成一次 → 关掉 → busy 恒 true。
- *   同时把弹层内的临时态一并复位, 否则下次打开会看到上一次的预览残留(闭源是"放弃 → 状态复位")。
+ *   同时把弹层内的临时态一并复位, 否则下次打开会看到上一次的预览残留(参考产品是"放弃 → 状态复位")。
  */
 function resetGenDialogState() {
   genTaskId.value = "";
@@ -570,9 +570,9 @@ async function buildGenPreview(taskId: string): Promise<string> {
  *   所以「保存」既不保存什么、也不改变什么, 只是把窗口关掉。用户点完以为"我确认保存了这一条",
  *   实际什么都没发生(这也让"未获取到真实文献数据"这类硬拦截无处可放)。
  *
- * 现在按闭源 `saveGeneratedMaterial` 的语义:
+ * 现在按参考产品 `saveGeneratedMaterial` 的语义:
  *   ① 文献类**必须有真命中**才允许入库 —— 检索空结果时后端写的是"需人工补录"占位条目,
- *      把它当"已保存的文献"会误导(闭源在这里硬拦截并提示"未获取到真实文献数据")。
+ *      把它当"已保存的文献"会误导(参考产品在这里硬拦截并提示"未获取到真实文献数据")。
  *      此时把该条草稿素材删掉, 避免库里留垃圾。
  *   ② 其余类: 确认入库(toast 计数)。
  */
@@ -606,7 +606,7 @@ async function finishGenSave() {
 }
 
 
-// ── B2 文献批量解析(闭源 la(): DOI/年份/APA·GB 混合; 空条目工厂/单条解析/批量粘贴) ──
+// ── B2 文献批量解析(参考产品同名函数: DOI/年份/APA·GB 混合; 空条目工厂/单条解析/批量粘贴) ──
 const REF_KEYS = ["title", "author", "source", "journal", "year", "volume", "issue", "pages", "doi", "abstract"];
 /**
  * 卷(期):页码 —— 模板此前读的是 `volumeIssue`, 而解析器产出的是
@@ -691,7 +691,7 @@ function runBulkParse() {
  *   · 文献卡的结构化渲染分支(逐条标题/作者/年份/DOI + GB 引用)永远不成立;
  *   · 后端参考文献池 `buildCitationPool` 按 `content_md` 里的 `[N] 条目` 匹配, 拼出来的
  *     `【题目】…` 格式它认不出 → **手动添加的文献从不进入正文引用池**。
- * 闭源的做法就是解析成 `references[]` 数组(单条时原地替换), 这里对齐。
+ * 参考产品的做法就是解析成 `references[]` 数组(单条时原地替换), 这里对齐。
  */
 function applyParsedRefs() {
   const m = editDialog.value.material;
@@ -714,7 +714,7 @@ function applyParsedRefs() {
   bulkRefText.value = "";
   toast(`已录入 ${incoming.length} 条结构化文献`, "success");
 }
-/** 逐条删除已录入的文献(闭源文献卡 hover 的「删除此条」) */
+/** 逐条删除已录入的文献(参考产品文献卡 hover 的「删除此条」) */
 function removeRefAt(i: number) {
   const m = editDialog.value.material;
   if (!Array.isArray(m.references)) return;
@@ -758,12 +758,12 @@ function roleColor(role: string): string {
   return qn[String(role ?? "")] ?? "#2563eb";
 }
 
-/** 编辑已有素材(闭源素材卡 hover 出现的「编辑」; 与新建共用同一弹层, 靠 material.id 区分) */
+/** 编辑已有素材(参考产品素材卡 hover 出现的「编辑」; 与新建共用同一弹层, 靠 material.id 区分) */
 function openEdit(m: Material) {
   editDialog.value = { open: true, kind: catOf(String(m.kind ?? "")), material: { ...m } };
 }
 
-/** 素材卡上的章节徽标(闭源: 灰色小徽标, 显示挂到的章/子节名, 最多 80px 截断) */
+/** 素材卡上的章节徽标(参考产品: 灰色小徽标, 显示挂到的章/子节名, 最多 80px 截断) */
 function sectionBadgeOf(m: Material): string {
   const ids = Array.isArray(m.sectionIds) ? m.sectionIds : [];
   const all = ids.length ? ids : m.sectionId ? [m.sectionId] : [];
@@ -773,7 +773,7 @@ function sectionBadgeOf(m: Material): string {
   return all.length > 1 ? `${title.slice(0, 6)}… +${all.length - 1}` : title.slice(0, 10);
 }
 
-/** 素材字数(闭源「N 字」) */
+/** 素材字数(参考产品「N 字」) */
 function wordCountOf(m: Material): number {
   const t = String(m.contentMd ?? "");
   return t.replace(/\s/g, "").length;
@@ -912,7 +912,7 @@ async function saveManual() {
   // 数据分析素材(上传图/实证产物) → figure/data_result 归 dataAnalysis
   const kindMap: Record<string, string> = { literature: "citation", data: "table", theory: "theory", dataAnalysis: "figure", document: "file" };
   // 编辑已有素材(有 id): 走 PUT 只改标题与内容 —— 不要重新建一条,
-  //   否则"编辑"会变成"复制一份"(闭源素材卡的编辑是就地改)。
+  //   否则"编辑"会变成"复制一份"(参考产品素材卡的编辑是就地改)。
   if (m.id) {
     try {
       await q(`/research/materials/${m.id}`, {
@@ -944,7 +944,7 @@ async function saveManual() {
   }
 }
 
-// ── 素材文件上传(闭源上传语义; 图→data-url 素材; 附件→extract-text 抽文本入 contentMd) ──
+// ── 素材文件上传(参考产品上传语义; 图→data-url 素材; 附件→extract-text 抽文本入 contentMd) ──
 /**
  * V417: 上传「数据文件」—— 写作舱原先**没有任何数据上传入口**, 于是 store.statisticsFileId
  *   永远是空 → 素材计划里的 hasDataFile 恒为 false → dataAnalysis 段恒空 → 那整块 UI 从不渲染。
@@ -1055,7 +1055,7 @@ async function removeMaterial(m: Material) {  const ok = await confirmDialog({ m
   }
 }
 
-// ── B1 智能生成执行计划(闭源 na composable: 计划 → 确认弹层三段 checkbox → 逐段执行) ──
+// ── B1 智能生成执行计划(参考产品 na composable: 计划 → 确认弹层三段 checkbox → 逐段执行) ──
 interface PlanItem { _enabled: boolean; sectionId?: string; sectionTitle?: string; keywords?: string[]; title?: string; columns?: string[]; count?: number }
 /**
  * ⚠ 2026-09-16 修: 初值原为 `state:"running"`, 而 `open:false` —— 于是**页面一打开**
@@ -1184,7 +1184,7 @@ async function importLitHits() {
 const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "ready" });
 
 /**
- * 页面级异步状态埋点(闭源 MaterialsView: busy = 计划生成中 || 素材生成中 || dataBusy,
+ * 页面级异步状态埋点(参考产品 MaterialsView: busy = 计划生成中 || 素材生成中 || dataBusy,
  * reason = 对应阶段文案)。科研助手靠它避免在长任务进行中插动作。
  * 2026-09-15 补: 原先根节点只有 `data-assistant-material-count="0"` 这个**写死的假值**。
  */
@@ -1290,7 +1290,7 @@ async function executePlan() {
         inputSnapshot: { sectionId: item.sectionId ?? "", sectionTitle: item.sectionTitle ?? "", title: item.title ?? "", prompt: `为「${store.input.title}」设计表格: ${item.title ?? ""}`, tableType: "text" } });
       await waitJobDone(t.id).then((ok) => { if (ok) okTab++; });
     }
-    // 数据分析组(闭源 plan.dataAnalysis 段; 执行器 data-analysis 产方案素材)
+    // 数据分析组(参考产品 plan.dataAnalysis 段; 执行器 data-analysis 产方案素材)
     for (const item of enabled.ana) {
       const it = item as PlanItem & { analysisType?: string; variables?: string[]; methods?: string[] };
       const t = await createTask({ title: `分析: ${String(it.analysisType ?? "描述统计")}`, projectId: store.taskId, module: "workflow", jobKind: "data-analysis", goal: store.input.title, phase: 3, phaseLabel: "文献与资料",
@@ -1328,19 +1328,19 @@ function togglePlanItem(section: keyof { literatureSearch: PlanItem[]; textTable
   plan[section][idx]._enabled = !plan[section][idx]._enabled;
 }
 
-// ── B3 编排弹层(闭源 MaterialAllocationDialog: suggestions 无 sectionId 素材 → checkbox+目标章节 select → 逐条关联) ──
+// ── B3 编排弹层(参考产品 MaterialAllocationDialog: suggestions 无 sectionId 素材 → checkbox+目标章节 select → 逐条关联) ──
 interface AllocSuggestion { materialId: string; materialTitle: string; sectionId: string | null; sectionTitle: string; reason?: string; selected?: boolean }
 const allocDialog = ref<{ open: boolean; loading: boolean; suggestions: AllocSuggestion[] }>({ open: false, loading: false, suggestions: [] });
 const allocBusy = ref(false);
 const allocErr = ref("");
-/** 章节 option 文案(闭源 y(): level>1 全角空格缩进 + "└ " 前缀) */
+/** 章节 option 文案(参考产品同名函数: level>1 全角空格缩进 + "└ " 前缀) */
 const allocOptionLabel = (s: { id: string; title: string; level: number }) =>
   `${(s.level || 1) > 1 ? "　　".repeat((s.level || 1) - 1) + "└ " : ""}${s.title || ""}`;
 const allocSelected = computed(() => allocDialog.value.suggestions.filter((s) => s.selected).length);
 const allocSectionTitle = (id: string | null | undefined) =>
   (store.sections.find((s) => s.id === id)?.title) || "";
 
-/** 编排: 请求 AI 建议(仅未关联素材) → 弹层确认(闭源 ee(): 无章节→"请先完成框架设计"; 全已关联→info; 无建议→warning) */
+/** 编排: 请求 AI 建议(仅未关联素材) → 弹层确认(参考产品同名函数: 无章节→"请先完成框架设计"; 全已关联→info; 无建议→warning) */
 async function runAllocate() {
   if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
   if (!store.level1Sections.length) { toast("请先完成框架设计", "warning"); return; }
@@ -1358,7 +1358,7 @@ async function runAllocate() {
       body: { projectId: store.taskId }
     });
     const list = (r.suggestions ?? []).filter((s) => s && s.materialId);
-    // 空态文案与闭源一致: "暂无建议"
+    // 空态文案与参考产品一致: "暂无建议"
     if (!list.length) { allocDialog.value.suggestions = []; allocDialog.value.loading = false; return; }
     allocDialog.value.suggestions = list.map((s) => ({ ...s, selected: true, sectionId: s.sectionId ?? store.level1Sections[0]?.id ?? "" }));
     allocDialog.value.loading = false;
@@ -1372,7 +1372,7 @@ function closeAllocate() {
   if (allocBusy.value) return;
   allocDialog.value.open = false;
 }
-/** 确认: 逐条关联(闭源 apply: 未选择→"未选择任何匹配项"; 逐条 updateMaterial {sectionId} → 计数 toast "已为 N 个素材关联章节") */
+/** 确认: 逐条关联(参考产品 apply: 未选择→"未选择任何匹配项"; 逐条 updateMaterial {sectionId} → 计数 toast "已为 N 个素材关联章节") */
 async function confirmAllocate() {
   const picked = allocDialog.value.suggestions.filter((s) => s.selected);
   if (!picked.length) { toast("未选择任何匹配项", "warning"); return; }
@@ -1429,7 +1429,7 @@ async function reviewAll() {
   }
 }
 
-// ── 发布版本 → Phase4(闭源 Ut(): 无素材→"请先添加素材"; 未关联→"还有 N 个素材未关联章节，请先为每个素材选择所属章节") ──
+// ── 发布版本 → Phase4(参考产品 U 同名函数: 无素材→"请先添加素材"; 未关联→"还有 N 个素材未关联章节，请先为每个素材选择所属章节") ──
 async function publishAndEnter() {
   if (!materials.value.length) {
     toast("请先添加素材", "warning");
@@ -1441,7 +1441,7 @@ async function publishAndEnter() {
     return;
   }
   /**
-   * phase2 版本门禁(闭源: `!state.phase2Version || state.phase2Stale` → 中止并提示返回 Phase 2)。
+   * phase2 版本门禁(参考产品: `!state.phase2Version || state.phase2Stale` → 中止并提示返回 Phase 2)。
    *
    * 2026-09-16 补: 后端 `/versions/current` 一直能算出 `phase2Stale`, 但**前端从不请求它**
    * (`store.phase2Stale` 零写入方), 于是"架构改了却没重新确认"的情况下照样能发布素材版本 ——
@@ -1485,7 +1485,7 @@ onMounted(async () => {
   void loadAnalyses();
   // V417: 接外部模块投递的素材(文献库检索结果/论文评审意见/统计结果/图表), 落 research_materials
   await importExternalMaterials();
-  // 默认展开非空分类(闭源默认)
+  // 默认展开非空分类(参考产品默认)
   const nonEmpty = Object.entries(grouped.value).filter(([, list]) => list.length).map(([k]) => k);
   if (nonEmpty.length) expandedCats.value = new Set(nonEmpty);
 });
@@ -2392,11 +2392,11 @@ onMounted(async () => {
 .ci-note { margin: 8px 0 0; font-size: 11px; line-height: 1.7; color: #6B7A90; }
 .ci-note strong { color: var(--wf-text-2); }
  width: 100%; box-sizing: border-box; }
-/* 页头整块。闭源 `<div class="mb-8">` 包住标题+副标题+统计行(整块下方 32px) */
+/* 页头整块。参考产品 `<div class="mb-8">` 包住标题+副标题+统计行(整块下方 32px) */
 .wf-head { margin-bottom: 32px; }
 .wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
-/* 页头三行状态区(闭源: N | 说明 | 版本状态, 中间夹竖线) */
+/* 页头三行状态区(参考产品: N | 说明 | 版本状态, 中间夹竖线) */
 .mat-stats { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--wf-muted); margin: 12px 0 0; flex-wrap: wrap; }
 .ms-num { color: var(--wf-text); font-weight: 600; font-size: 13.5px; }
 .ms-sep { width: 1px; height: 12px; background: var(--wf-line-hard); display: inline-block; }
@@ -2404,7 +2404,7 @@ onMounted(async () => {
 /* 补充素材来源整卡 */
 .source-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 32px; /* 闭源 mb-8=32px(页级留白); 卡内 space-y-4=16px */
+  padding: 16px 20px; margin-bottom: 32px; /* 参考产品 mb-8=32px(页级留白); 卡内 space-y-4=16px */
 }
 .sc-title { margin: 0 0 14px; font-size: 16px; font-weight: 600; color: var(--wf-text); }
 .sc-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -2489,7 +2489,7 @@ onMounted(async () => {
 .dc-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; color: var(--wf-muted); }
 .dc-head span { font-size: 13px; font-weight: 500; color: #DCE6F2; }
 .dc-body { margin: 0; font-size: 12.5px; color: #B9C6D8; line-height: 1.7; overflow-wrap: break-word; }
-.mat-section-title { margin: 0 0 12px; /* 该 h2 在闭源也是 mb-8 块的一部分, 见下 .mat-section */ font-size: 16px; font-weight: 600; color: var(--wf-text); }
+.mat-section-title { margin: 0 0 12px; /* 该 h2 在参考产品也是 mb-8 块的一部分, 见下 .mat-section */ font-size: 16px; font-weight: 600; color: var(--wf-text); }
 
 .job-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 9px; margin-bottom: 12px; font-size: 13px; }
 .job-bar.running { background: #1E2A48; border: 1px solid #bfdbfe; color: #1d4ed8; }
@@ -2509,7 +2509,7 @@ onMounted(async () => {
 /* 1024 下两列各只剩 ~480px, 卡片里的行内按钮会挤到换行 —— 单列反而更好读 */
 @media (max-width: 1180px) { .cat-list { grid-template-columns: minmax(0, 1fr); } }
 .cat-card { background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px; overflow: hidden; }
-/* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(闭源如此) */
+/* 头行: 图标块 + 标题/计数 + 行内按钮 + caret。行内按钮**折叠态也可见**(参考产品如此) */
 .cat-head {
   display: flex; align-items: center; gap: 12px; padding: 13px 18px;
   background: var(--wf-raised); user-select: none;
@@ -2534,7 +2534,7 @@ onMounted(async () => {
 .cat-inline-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cat-caret { color: var(--wf-faint); font-size: 10px; cursor: pointer; transition: transform 0.16s; }
 .cat-caret.open { transform: rotate(180deg); }
-.cat-body { padding: 12px 18px 14px; border-top: 1px solid var(--wf-line-soft); } /* 闭源 space-y-3=12px */
+.cat-body { padding: 12px 18px 14px; border-top: 1px solid var(--wf-line-soft); } /* 参考产品 space-y-3=12px */
 .cat-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 .cat-more {
   margin-top: 10px; width: 100%; padding: 7px; border-radius: 7px;
@@ -2592,13 +2592,13 @@ onMounted(async () => {
 .f-hint { font-size: 12px; color: var(--wf-muted); margin: 4px 0; }
 .mat-head { display: flex; align-items: center; gap: 8px; }
 .mat-title { font-size: 13.5px; font-weight: 500; color: var(--wf-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 章节徽标(闭源 text-gray-500 小徽标, max-w-[80px] 截断) */
+/* 章节徽标(参考产品 text-gray-500 小徽标, max-w-[80px] 截断) */
 .mat-sec-chip {
   font-size: 10.5px; color: var(--wf-muted); background: var(--wf-raised);
   padding: 2px 7px; border-radius: 6px; max-width: 80px; flex-shrink: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 卡头操作(闭源 hover 才出现) */
+/* 卡头操作(参考产品 hover 才出现) */
 .mat-head-ops { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
 .mat-card:hover .mat-head-ops { opacity: 1; }
 .mat-op {
@@ -2650,16 +2650,16 @@ onMounted(async () => {
 }
 .ref-gb { font-size: 11px; color: var(--wf-faint); line-height: 1.5; overflow-wrap: break-word; }
 
-/* 表格预览: 闭源 max-h-20 可滚动, 不截断行(原先 slice(0,3) 会把长表截成"只有表头") */
+/* 表格预览: 参考产品 max-h-20 可滚动, 不截断行(原先 slice(0,3) 会把长表截成"只有表头") */
 .mat-table { max-height: 80px; overflow-y: auto; }
 /*
  * 三线表 —— 必须是**三条线**: 顶线 / 栏目线 / 底线。
  *
  * 2026-09-16 修: 我方把边框挂在 `th` 上(上 2px + 下 1px), `tbody` **没有底线** ——
- *   表格底部不封口, 只剩两条线。闭源的写法是按语义元素挂:
+ *   表格底部不封口, 只剩两条线。参考产品的写法是按语义元素挂:
  *     thead{border-top:2px;border-bottom:1.5px} + tbody{border-bottom:2px}
  *   注: `border-collapse:collapse` 下 thead 的 border 在部分浏览器里不生效,
- *   所以顶/栏目线**同时**挂在 thead 上(与闭源一致), 底线挂 tbody。
+ *   所以顶/栏目线**同时**挂在 thead 上(与参考产品一致), 底线挂 tbody。
  */
 .three-line-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
 .three-line-table thead { border-top: 2px solid var(--wf-line-hard); border-bottom: 1.5px solid var(--wf-line-hard); }
@@ -2677,8 +2677,8 @@ onMounted(async () => {
   border: 1px solid #3A3020; border-top: 0; border-radius: 0 0 9px 9px;
   font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; color: #DCE6F2;
 }
-/* 动作行。闭源 `pt-6 border-t`(= 24px 上距 + 1px 分隔线; **无** mt-8, 与 sections 不同)。
-   原值 margin-top:6px 且无分隔线, 与闭源那道分界对不上。 */
+/* 动作行。参考产品 `pt-6 border-t`(= 24px 上距 + 1px 分隔线; **无** mt-8, 与 sections 不同)。
+   原值 margin-top:6px 且无分隔线, 与参考产品那道分界对不上。 */
 .wf-actions {
   display: flex; gap: 12px;
   margin-top: 0; padding-top: 24px;
@@ -2687,7 +2687,7 @@ onMounted(async () => {
 /* 主按钮不横贯整幅(与选题界定/框架设计页统一): 实测原先 flex:1 让它撑到 1113px, 动作行才 1259px */
 .wf-actions { justify-content: flex-end; }
 .wf-actions .btn-primary { min-width: 200px; }
-/* 闭源按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
+/* 参考产品按钮 `px-6 py-3 text-sm` = 24/12 + 固定 20px 行高 + 边框 = 46px 高(我方原 38px) */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 .btn-back {
@@ -2703,7 +2703,7 @@ onMounted(async () => {
   background: #4D84CB; color: #F1F5F9; font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .btn-primary:disabled { background: var(--wf-line-hard); cursor: not-allowed; }
-.modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+.modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(参考产品是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 520px; max-width: 95vw; background: var(--wf-surface); border-radius: 16px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
 /* 可拖拽弹层: 标题栏当抓手。`touch-action:none` 是必须的 —— 否则触屏上按下会在拖动前触发滚动 */
@@ -2716,7 +2716,7 @@ onMounted(async () => {
 .f-row { display: flex; flex-direction: column; gap: 5px; }
 .f-row label { font-size: 13px; font-weight: 600; color: #DCE6F2; }
 .f-input { padding: 8px 12px; border: 1px solid var(--wf-line); border-radius: 8px; font-size: 13px; }
-/* 生成要求文本域(闭源 resize-none —— 让弹层高度稳定, 不被用户拖成两屏) */
+/* 生成要求文本域(参考产品 resize-none —— 让弹层高度稳定, 不被用户拖成两屏) */
 .f-textarea { padding: 8px 12px; border: 1px solid var(--wf-line); border-radius: 8px; font-size: 13px; font-family: inherit; resize: none; }
 /* 研究变量参考 chips */
 .gen-vars { margin-bottom: 12px; }
@@ -2802,7 +2802,7 @@ onMounted(async () => {
 .pi-doi { color: #2563eb; font-size: 10px; flex-shrink: 0; }
 .parsed-more { font-size: 11px; color: var(--wf-faint); text-align: center; }
 
-/* B3 素材编排(闭源 MaterialAllocationDialog) */
+/* B3 素材编排(参考产品 MaterialAllocationDialog) */
 .mat-alloc {
   border: 0; background: none; color: #4D84CB; font-size: 11.5px; cursor: pointer; margin-left: 4px;
 }
@@ -2832,8 +2832,8 @@ onMounted(async () => {
 .alloc-select:focus { border-color: #6FA8E8; }
 .alloc-select:disabled { background: var(--wf-line-soft); color: var(--wf-muted); }
 
-/* B4 单类生成弹层(闭源 MaterialGenerateDialog) */
-.gen-mask { /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+/* B4 单类生成弹层(参考产品 MaterialGenerateDialog) */
+.gen-mask { /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(参考产品是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); }
 .gen-card { width: 640px !important; }
 .gen-body { max-height: 62vh; overflow-y: auto; }

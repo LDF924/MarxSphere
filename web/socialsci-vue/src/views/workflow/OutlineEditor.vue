@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * OutlineEditor — 还原自闭源 InputView-DwlhRWpv.js 的 OutlineEditor 组件(L125-573, scope data-v-e03bb037)
+ * OutlineEditor — 还原自参考产品 录入门 的 OutlineEditor 组件, scope data-v-e03bb037)
  * 大纲 markdown ↔ 树双向(7 类标题正则, 只收 1/2 级); 中文数序号; 加/删/移/折叠/插入模板/清除
  */
 import { ref, watch, computed } from "vue";
@@ -17,7 +17,7 @@ interface OutlineNode {
   children: OutlineNode[];
 }
 
-// 中文数字(一~二十, 闭源 w)
+// 中文数字(一~二十, 参考产品 w)
 const CN = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"];
 const cnOf = (i: number) => CN[i] ?? String(i + 1);
 
@@ -26,7 +26,7 @@ let suppress = false; // 回写抑制(防循环)
 let idSeq = 0;
 const newId = () => `o${idSeq++}_${Date.now()}`;
 
-// ── 空骨架(闭源 k(): 3 空一级各带 2 空子节) ──
+// ── 空骨架(参考产品同名函数: 3 空一级各带 2 空子节) ──
 function emptySkeleton(): OutlineNode[] {
   return [0, 1, 2].map(() => ({
     id: newId(), title: "", level: 1 as const, collapsed: false,
@@ -34,7 +34,7 @@ function emptySkeleton(): OutlineNode[] {
   }));
 }
 
-// ── 大纲文本 → 树(闭源 L() L171-225: 7 类标题正则) ──
+// ── 大纲文本 → 树(参考产品同名函数: 7 类标题正则) ──
 function parseOutline(text: string): OutlineNode[] {
   const lines = String(text ?? "").split("\n");
   const roots: OutlineNode[] = [];
@@ -86,7 +86,7 @@ function parseOutline(text: string): OutlineNode[] {
   return roots;
 }
 
-// ── 树 → 大纲文本(闭源 B() L226-243) ──
+// ── 树 → 大纲文本(参考产品同名函数 ──
 function serialize(nodes: OutlineNode[]): string {
   return nodes
     .map((n, i) => {
@@ -163,7 +163,7 @@ function setChildTitle(i: number, j: number, v: string) {
   pushOut();
 }
 
-// ── 插入模板(闭源 $(): 固定五章大纲) ──
+// ── 插入模板(参考产品同名函数: 固定五章大纲) ──
 function insertTemplate() {
   tree.value = [
     { id: newId(), title: "引言", level: 1, children: [
@@ -208,7 +208,7 @@ async function clearOutline() {
 const counter = computed(() => {
   const l1 = tree.value.length;
   const l2 = tree.value.reduce((s, n) => s + n.children.length, 0);
-  // 无二级时退化成「N 个章节」(闭源如此) —— "3 个一级 · 0 个二级"读起来像出错了
+  // 无二级时退化成「N 个章节」(参考产品如此) —— "3 个一级 · 0 个二级"读起来像出错了
   return l2 === 0 ? `${l1} 个章节` : `${l1} 个一级 · ${l2} 个二级`;
 });
 </script>
@@ -307,7 +307,7 @@ const counter = computed(() => {
   color: #C7D2E0;
   cursor: pointer;
 }
-/* 闭源三个工具按钮同款白底描边; 「清除目录」文字更淡(破坏性操作用弱视觉) */
+/* 参考产品三个工具按钮同款白底描边; 「清除目录」文字更淡(破坏性操作用弱视觉) */
 .oe-btn.dim { color: var(--wf-faint); }
 .oe-sep { color: var(--wf-line-hard); font-size: 11px; }
 .oe-btn:hover { filter: brightness(0.97); }
@@ -343,7 +343,7 @@ const counter = computed(() => {
   text-align: center;
   padding: 2px 6px;
   border-radius: 5px;
-  /* 闭源一级序号是**纯红字无底块**(text-sm font-bold text-red-500 w-8), 不是红底药丸 */
+  /* 参考产品一级序号是**纯红字无底块**(text-sm font-bold text-red-500 w-8), 不是红底药丸 */
   background: transparent;
   color: #E88A8A;
   font-size: 13px;
@@ -357,7 +357,7 @@ const counter = computed(() => {
   min-width: 34px;
 }
 /*
- * 子节树形 —— 逐条对齐闭源 InputView-D7ddvbNn.css:
+ * 子节树形 —— 逐条对齐参考产品 InputView-D7ddvbNn.css:
  *   .tree-branch{margin-left:28px;padding-left:20px;border-left:1.5px solid}
  *   .tree-child:before{left:-20px;top:50%;width:16px;height:1.5px}   ← 水平连接线
  *   .tree-child-last:after{left:-21px;bottom:0;width:3px;height:50%} ← 末行遮住下半段竖线
@@ -381,7 +381,7 @@ const counter = computed(() => {
   height: 1.5px;
   background: var(--wf-raised);
 }
-/* 末行: 用背景色遮住竖线的下半段, 让树"收住"(闭源 tree-child-last 语义) */
+/* 末行: 用背景色遮住竖线的下半段, 让树"收住"(参考产品 tree-child-last 语义) */
 .oe-row.l2.tree-child:last-child::after {
   content: "";
   position: absolute;
@@ -392,7 +392,7 @@ const counter = computed(() => {
   background: var(--wf-surface);
   pointer-events: none;
 }
-/* 闭源常显小组: 两个 `w-6 h-6 rounded` 图标钮(蓝 hover), 与悬停才出的 .op-btn 分开 */
+/* 参考产品常显小组: 两个 `w-6 h-6 rounded` 图标钮(蓝 hover), 与悬停才出的 .op-btn 分开 */
 .oe-inline-ops { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .op-btn-add {
   width: 24px;
@@ -436,7 +436,7 @@ const counter = computed(() => {
 }
 .op-btn:hover:not(:disabled) { background: #2A1C1C; color: #4D84CB; }
 .op-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-/* 闭源 .op-btn-sm{width:18px;height:18px;font-size:10px} —— 2026-09-16 修:
+/* 参考产品 .op-btn-sm{width:18px;height:18px;font-size:10px} —— 2026-09-16 修:
    我方原先是 `padding:1px 6px` 的文字按钮, 尺寸随文案变。现在只用于子节行的 ✕,
    与 .op-btn 一样走「悬停才显形」(.oe-row:hover .oe-ops / 子节行同理)。 */
 .op-btn-sm {

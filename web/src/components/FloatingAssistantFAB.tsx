@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // FloatingAssistantFAB.tsx — SocialSci P0-7: 悬浮助手(深水区体验件)
-// 形态对齐(闭源产品交互语义, 原创实现): 全局悬浮在场 UI(非对话框唤起式)
+// 形态对齐(参考产品交互语义, 原创实现): 全局悬浮在场 UI(非对话框唤起式)
 //   ①页面观察+导航引导: 记录访问历史 → 按"科研推进"规则推荐下一步
 //   ②任务推荐: 聚合 research 流水线任务 + agent 任务, 推荐"继续/恢复"
 //   ③签到卡: P0-8 points 接口就绪后接入(点位已留: loadCheckin + 签到按钮)

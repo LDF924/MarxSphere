@@ -1,5 +1,5 @@
 /**
- * 学术排版自研扩展 — 还原自闭源 EditorView E:39167-39288 academicTextStyle/academicBlockStyle
+ * 学术排版自研扩展 — 还原自参考产品 EditorView  academicTextStyle/academicBlockStyle
  * academicTextStyle: 行内 mark(fontFamily/fontSize/color), 命令链 clearAcademicTextStyle
  * academicBlockStyle: 段落级 attr(lineHeight/paragraphSpacing/paragraphStyle), unset 命令链
  */
@@ -132,7 +132,7 @@ export const AcademicBlockStyle = Extension.create({
   }
 });
 
-// ── 工具栏档位表(闭源工具栏常量) ──
+// ── 工具栏档位表(参考产品工具栏常量) ──
 export const FONT_FAMILIES = [
   { label: "宋体", value: "SimSun, 'Songti SC', serif" },
   { label: "黑体", value: "SimHei, 'Heiti SC', sans-serif" },

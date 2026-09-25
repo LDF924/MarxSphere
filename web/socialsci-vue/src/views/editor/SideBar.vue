@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** SideBar 文档 rail — 还原自闭源 EditorView E:18305-18448: 文档列表(千分位字数 + MM-DD HH:mm + 删除) */
+/** SideBar 文档 rail — 还原自参考产品 EditorView : 文档列表(千分位字数 + MM-DD HH:mm + 删除) */
 import { useDocumentStore } from "./stores/document";
 import { zhCount, fmtMeta } from "@/shared/constants";
 import { toast } from "@/shared/ui";

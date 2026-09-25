@@ -1,6 +1,6 @@
 /**
- * Viz 域 API 客户端 — 还原自闭源 VizView-DKRGiXDc.js + 共享 Y0 服务契约(decoded-stats-viz.md §2.4)
- * 我方后端: /api/viz/jobs(L9725-9763, viz_job_events 事件表 after=N 重放) — 前端路径 viz-jobs→viz/jobs 适配
+ * Viz 域 API 客户端 — 还原自参考产品 绘图台 + 共享 Y0 服务契约(decoded-stats-viz.md §2.4)
+ * 我方后端: /api/viz/jobs(, viz_job_events 事件表 after=N 重放) — 前端路径 viz-jobs→viz/jobs 适配
  * PNG 三态统一 blob 化(路径/dataURL/裸 base64; He() 4 次退避重试 150ms*(attempt+1))
  */
 import { q, streamSse, authedBlob, type SseHandle } from "@/shared/api";
@@ -141,7 +141,7 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-/** 建/复用绘图会话(闭源: job 需 session 存在; 返回 session id) */
+/** 建/复用绘图会话(参考产品: job 需 session 存在; 返回 session id) */
 export async function ensureVizSession(sessionId?: string, title = "未命名绘图会话"): Promise<string> {
   if (sessionId && sessionId.startsWith("v2_")) {
     // 本地生成 id 需落服务端 → 检查是否存在, 不存在则建
@@ -178,7 +178,7 @@ export function retryVizJob(jobId: string): Promise<unknown> {
   return q(`/viz/jobs/${jobId}/retry`, { method: "POST" }).catch(() => null);
 }
 
-/** 绘图默认期刊参数(闭源 VizChatPanelV2 默认值 1:1) */
+/** 绘图默认期刊参数(参考产品 VizChatPanelV2 默认值 1:1) */
 export const DEFAULT_JOURNAL_CONFIG = {
   journal: "nature",
   layout: "single-column",
@@ -193,7 +193,7 @@ export const DEFAULT_JOURNAL_CONFIG = {
 };
 
 /**
- * viz job SSE — 闭源 13 事件协议: plan/delta/thinking/tool_status/tool/chart/svg/code/critique/
+ * viz job SSE — 参考产品 13 事件协议: plan/delta/thinking/tool_status/tool/chart/svg/code/critique/
  * critique_fix/error/done/viz.completed + viz.failed/viz.cancelled(事件映射 UI 在 ChatPanel)
  */
 export function streamVizJob(
@@ -213,7 +213,7 @@ export function streamVizJob(
   });
 }
 
-/** 后端心跳(闭源 GET /api/viz2/status 30s; 我方无 → 打 statistics/health 兜底) */
+/** 后端心跳(参考产品 GET /api/viz2/status 30s; 我方无 → 打 statistics/health 兜底) */
 export async function vizBackendStatus(): Promise<"connected" | "disconnected"> {
   try {
     const r = await fetch("/api/viz/jobs?limit=1", {
@@ -226,7 +226,7 @@ export async function vizBackendStatus(): Promise<"connected" | "disconnected"> 
 }
 
 /**
- * PNG 三态统一 blob/url 化(闭源 He() L3718 附近: 4 次重试 150ms*(attempt+1) 退避)
+ * PNG 三态统一 blob/url 化(参考产品 H 同名函数 附近: 4 次重试 150ms*(attempt+1) 退避)
  * 返回: {url} — 路径以 / 开头 → fetch blob; data: → 解码; 裸 base64 → 补齐前缀
  */
 export async function blobifyPng(png: string | null | undefined, attempt = 0): Promise<string | null> {

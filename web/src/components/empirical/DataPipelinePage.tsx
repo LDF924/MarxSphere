@@ -34,7 +34,7 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
   const [stataCode, setStataCode] = useState("");
   const [verifyReport, setVerifyReport] = useState<any>(null);
   const [error, setError] = useState("");
-  // W8(闭源 statistics 数据转换实拍): 5 方法多选 + 目标列
+  // W8(参考产品 statistics 数据转换实拍): 5 方法多选 + 目标列
   const [transformVars, setTransformVars] = useState<string[]>([]);
   const [transformMethods, setTransformMethods] = useState<string[]>(["center", "rank", "sqrt"]);
 
@@ -52,7 +52,7 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
       winsorize: { cols: ["nonfarm_income", "own_area"] },
       genvars: [{ name: "has_out", expr: "transfer_out_area > 0" }],
       filter: [{ col: "own_area", op: ">", value: 0 }],
-      // W8(闭源 statistics 数据转换): zscore 标准化/minmax 归一/log 对数/rank 排名/sqrt 开方 — 用户多选
+      // W8(参考产品 statistics 数据转换): zscore 标准化/minmax 归一/log 对数/rank 排名/sqrt 开方 — 用户多选
       transform: t,
       describe: { cols: ["own_area", "cult_area", "adj_willing", "has_out"] },
     };
@@ -114,7 +114,7 @@ export function DataPipelinePage({ projectId }: { projectId?: string }) {
         </div>
         <div className="mt-1 text-[9px] text-muted-foreground">{"步骤: 缺失统计 → 缩尾(1%/99%) → has_out 构造 → own_area>0 筛选 → 数据转换(center/rank/sqrt of own_area) → Table 1"}</div>
 
-        {/* W8(闭源 statistics 数据转换实拍): 转换方法多选 + 目标列 */}
+        {/* W8(参考产品 statistics 数据转换实拍): 转换方法多选 + 目标列 */}
         <div className="mt-2 rounded-lg border bg-muted/20 p-2">
           <p className="mb-1 text-[10px] font-medium text-muted-foreground">数据转换(可多选, 作用于所选数值列)</p>
           <div className="flex flex-wrap items-center gap-1.5">

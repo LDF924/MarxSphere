@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ReviewView — 还原自闭源 ReviewView-B4QyxKEn.js(R:36724-37255) 容器 + 4 页面状态机
+ * ReviewView — 还原自参考产品 评审页 容器 + 4 页面状态机
  * input_ready(输入设置)/reviewing(审稿动画)/result_view(评分卡)/detail_view(原文对照)
  * 提交链: 校验 → 建任务 → POST review/jobs → SSE review.started/status/delta/completed → 收敛 getJob
  */
@@ -137,8 +137,8 @@ const mergedDimensions = computed(() => {
 const effectiveDimensions = computed(() => mergedDimensions.value.filter((d) => !d.overridden));
 const weightSum = computed(() => effectiveDimensions.value.reduce((s, d) => s + d.weight, 0));
 
-// ── 提交(闭源 _() R:37026-37064) ──
-/** 新建审稿(闭源 X(): 确认 → resetPaper)。已有内容/结果时才问, 空白页直接重置不打断 */
+// ── 提交(参考产品同名函数 ──
+/** 新建审稿(参考产品同名函数: 确认 → resetPaper)。已有内容/结果时才问, 空白页直接重置不打断 */
 async function startNewReview() {
   if (store.paperTitle || store.paperContent || store.result) {
     const ok = await confirmDialog({
@@ -190,7 +190,7 @@ async function submitReview() {
   }
 }
 
-// ── 进度轮询 + SSE(闭源 E() R:36886-36924) ──
+// ── 进度轮询 + SSE(参考产品同名函数 ──
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let sseCleanup: (() => void) | null = null;
 
@@ -798,7 +798,7 @@ async function exportWord() {
   }
 }
 
-// ── 恢复(闭源 ?jobId= 恢复 / ?new=1 重置) ──
+// ── 恢复(参考产品 ?jobId= 恢复 / ?new=1 重置) ──
 async function handleRouteIntent() {
   const query = route.query;
   await refreshJobs();
@@ -895,7 +895,7 @@ async function removeJob(j: { id: string; title?: string; status: string }) {
   await refreshJobs();
 }
 
-// ── 历史选择(闭源 rail 双击规则) ──
+// ── 历史选择(参考产品 rail 双击规则) ──
 async function selectHistoryJob(job: { id: string; status: string }) {
   if (ACTIVE_STATUS.includes(job.status)) {
     void router.replace({ query: { jobId: job.id } });
@@ -942,7 +942,7 @@ const annotationsFlat = computed(() => {
 const activeAnnIdx = ref(0);
 const activeAnnotation = computed(() => annotationsFlat.value[activeAnnIdx.value] ?? null);
 
-/** 去空白映射定位(闭源 txt 三级定位: 直接 indexOf → 空白归一 posMap → 首尾夹逼)
+/** 去空白映射定位(参考产品 txt 三级定位: 直接 indexOf → 空白归一 posMap → 首尾夹逼)
  *  先建"原文非空白字符 → 原文下标"映射表, 再在去空白串中找 needle, 经映射回原文区间 */
 function highlightPosition(text: string): { start: number; len: number } | null {
   const src = store.paperContent;

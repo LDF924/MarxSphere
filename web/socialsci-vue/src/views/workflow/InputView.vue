@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * InputView(Phase1 选题界定) — 还原自闭源 InputView-DwlhRWpv.js(L616-1471)
+ * InputView(Phase1 选题界定) — 还原自参考产品 录入门
  * 主题/字数预估/大纲 OutlineEditor/额外要求/方法 3 卡/参考文件/agent 引导提问手风琴 → submitAnalysis
  * 提交链: 校验 → 建项目(template five-stage) → 写 input 节点 → phase=2 → /workflow/sections
  */
@@ -39,22 +39,22 @@ const METHODS = [
 ];
 
 /**
- * 研究方法自动识别 —— 还原闭源 `wp()`(index-xpWAkSSw.js, "detectResearchMethod")。
+ * 研究方法自动识别 —— 还原参考产品 `wp()`(index, "detectResearchMethod")。
  *
  * ⚠ 2026-09-16 修: 原先这里有**两份**词表(展示用 10 词 / 提交用 9 词), 两份还不一样,
- *   而且都和闭源差得远。逐字对照闭源后的三处不等价:
- *   ① 词表: 闭源定量 **34** 词、定性 **18** 词; 我方只有 10/7 —— "量表/结构方程/信度/效度/
+ *   而且都和参考产品差得远。逐字对照参考产品后的三处不等价:
+ *   ① 词表: 参考产品定量 **34** 词、定性 **18** 词; 我方只有 10/7 —— "量表/结构方程/信度/效度/
  *      绩效/评价指标"这类高频题面词全识别不出来。
- *   ② 文本源: 闭源取 **title + outline**; 我方取 title + requirements。
+ *   ② 文本源: 参考产品取 **title + outline**; 我方取 title + requirements。
  *      后果: 用户写的目录里全是量化词, 系统却当没看见。
- *   ③ 兜底: 闭源无匹配时**兜底 qualitative**(并打日志); 我方返 ""。
+ *   ③ 兜底: 参考产品无匹配时**兜底 qualitative**(并打日志); 我方返 ""。
  *      这条看似等价(下游默认走定性), 但空值会让 `researchMethodAuto` 判定为"没识别出来",
  *      提示条不显示 —— 用户看不到系统替他选了什么。
  *   现在统一成一份实现, 展示与提交共用(原先两份并存正是"显示的和提交的不一致"的根源)。
  */
 const QUANT_WORDS = ["实证", "问卷", "量表", "回归", "统计", "数据分析", "假设检验", "结构方程", "sem", "amos", "spss", "stata", "计量", "量化", "定量", "样本", "显著性", "相关系数", "因子分析", "信度", "效度", "调查", "实验", "检验", "模型", "路径分析", "调节效应", "中介效应", "影响机制", "驱动因素", "影响因素", "绩效", "效率", "评价指标"];
 const QUAL_WORDS = ["案例", "访谈", "文本分析", "话语分析", "民族志", "扎根理论", "质性", "叙事", "现象学", "田野", "观察", "内容分析", "比较研究", "政策分析", "历史分析", "文献分析", "理论分析", "思辨"];
-/** 识别文本源: 标题 + 目录(闭源 `(title||"") + " " + (outline||"")`, 统一小写) */
+/** 识别文本源: 标题 + 目录(参考产品 `(title||"") + " " + (outline||"")`, 统一小写) */
 function methodHeuristicText(): string {
   return `${store.input.title || ""} ${store.input.outline || ""}`.toLowerCase();
 }
@@ -65,12 +65,12 @@ function inferMethod(txt: string): "qualitative" | "quantitative" | "mixed" {
   if (qn >= 2 && ql >= 2) return "mixed";
   if (qn >= 2) return "quantitative";
   if (ql >= 2) return "qualitative";
-  return "qualitative"; // 闭源语义: 无明确定量线索 → 默认定性
+  return "qualitative"; // 参考产品语义: 无明确定量线索 → 默认定性
 }
 /**
  * 识别提示条是否显示。
  *
- * 闭源这里有**时序不对称**: 提示由 `wp()` 在**提交那一刻**才触发(它顺手把值写回 store),
+ * 参考产品这里有**时序不对称**: 提示由 `wp()` 在**提交那一刻**才触发(它顺手把值写回 store),
  * 而模型卡的高亮直接绑 `input.researchMethod` —— 所以"高亮"和"提示条"只在提交后才同时亮。
  * 我方常驻计算, 在**表现上更好**(用户在提交前就知道系统会怎么判), 但两边必须用**同一份实现**,
  * 否则会出现"提示说识别为定量、提交后却按定性走"这种自相矛盾。
@@ -80,7 +80,7 @@ const researchMethodAuto = computed(() => {
   // 用户手动选过就不再提示(那一项已高亮, 再提示是噪音)
   if (store.input.researchMethod) return false;
   const txt = methodHeuristicText();
-  // 闭源在提交时才校验"主题 ≥4 字", 这里只在够长时才展示判断, 免得空表单显示"已识别为定性"
+  // 参考产品在提交时才校验"主题 ≥4 字", 这里只在够长时才展示判断, 免得空表单显示"已识别为定性"
   return txt.trim().length >= 6;
 });
 const methodAutoLabel = computed(() => {
@@ -92,12 +92,12 @@ function pickMethod(id: string) {
   autoSave();
 }
 
-// ── 自动草稿(闭源 autoSaveDraft: skf_draft) ──
+// ── 自动草稿(参考产品 autoSaveDraft: skf_draft) ──
 function autoSave() {
   try {
     localStorage.setItem(
       "skf_draft",
-      // 2026-09-16: 补 clarifyAnswers —— 用户答完引导问题若刷新页面, 答案是空的(闭源草稿存整个 input 对象);
+      // 2026-09-16: 补 clarifyAnswers —— 用户答完引导问题若刷新页面, 答案是空的(参考产品草稿存整个 input 对象);
       //   顺带把 sampleFiles 也存上, 但那可能很大, 只存文件名与大小, 内容不进草稿。
       JSON.stringify({
         title: store.input.title, outline: store.input.outline,
@@ -124,7 +124,7 @@ function loadDraft() {
   } catch { /* 忽略 */ }
 }
 
-// ── 参考文件解析(txt/docx/pdf; 闭源 st/Q/rt 三管道) ──
+// ── 参考文件解析(txt/docx/pdf; 参考产品 st/Q/rt 三管道) ──
 async function readFileAsText(file: File): Promise<string> {
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".pdf")) {
@@ -223,7 +223,7 @@ async function persistSources(projectId: string): Promise<void> {
   } catch { /* 不阻断提交(检索时回退默认库) */ }
 }
 
-// ── 澄清问答(闭源 4 态手风琴; POST /api/clarify/generate) ──
+// ── 澄清问答(参考产品 4 态手风琴; POST /api/clarify/generate) ──
 const clarify = ref<{ state: "idle" | "loading" | "done" | "error"; questions: Array<{ id: string; category: string; question: string; guidance: string; importance: string; answer?: string }>; error: string }>({
   state: "idle", questions: [], error: ""
 });
@@ -237,7 +237,7 @@ const clarifyAnalysis = ref("");
 const clarifyRound = ref(0);
 let clarifyAbort: AbortController | null = null;
 
-/** 引导提问手风琴(闭源默认收起; 生成完/有答案时自动展开, 免得结果藏在折叠里没人看见) */
+/** 引导提问手风琴(参考产品默认收起; 生成完/有答案时自动展开, 免得结果藏在折叠里没人看见) */
 /**
  * ⚠ 2026-09-24 改成**默认展开**(你要求"保持一直打开")。
  *   原来是 `false`(折叠), 只在"引导问题已生成"时才自动展开 —— 也就是**没跑过的人永远看不到它**,
@@ -250,7 +250,7 @@ watch(
   (s) => { if (s === "done") clarifyOpen.value = true; }
 );
 
-/** 引导问 8 分类的中文标签与配色(闭源 OutlineEditor-DECODED §引导提问 8 分类) */
+/** 引导问 8 分类的中文标签与配色(参考产品 OutlineEditor-DECODED §引导提问 8 分类) */
 const CAT_LABELS: Record<string, string> = {
   scope: "范围界定", concept: "概念维度", method: "研究方法", theory: "理论基础",
   data: "数据来源", innovation: "创新聚焦", structure: "章节逻辑", general: "补充信息",
@@ -265,7 +265,7 @@ function catColor(c: string): string { return CAT_COLORS[String(c)] ?? "cat-gray
 /**
  * 生成/续问澄清问题。
  *
- * @param nextRound true = 基于已答内容发起**第二轮追问**(闭源 `round` + `answers` 语义)。
+ * @param nextRound true = 基于已答内容发起**第二轮追问**(参考产品 `round` + `answers` 语义)。
  *   后端一直支持这两个字段, 但前端从不传 —— 所以"答完第一轮再问一轮"的能力此前根本走不到。
  *   后端在第 2 轮会切到"只问仍模糊的关键点(≤3 问, 不重复已明确项)"的提示词。
  */
@@ -337,11 +337,11 @@ function setAnswer(q: { id: string }, v: string) {
   autoSave();
 }
 
-// ── 提交(闭源 submitAnalysis → W()): 建项目 → 写 input 节点 → phase2 ──
+// ── 提交(参考产品 submitAnalysis → W()): 建项目 → 写 input 节点 → phase2 ──
 const submitting = ref(false);
 
 /**
- * 页面级异步状态埋点(闭源 InputView-DECODED: data-assistant-async-busy=submitting||clarifyLoading,
+ * 页面级异步状态埋点(参考产品 InputView-DECODED: data-assistant-async-busy=submitting||clarifyLoading,
  * reason=正在提交研究信息/正在生成需求澄清问题)。
  * 科研助手靠它判断"这页正忙、别来插动作" —— 原先恒为 "false", 助手在提交过程中照样推动作。
  */
@@ -405,7 +405,7 @@ async function submitAnalysis() {
   }
   submitting.value = true;
   try {
-    // researchMethod 启发式(闭源 wp: 标题+目录 → 定量/定性关键词计分, 无匹配默认定性)
+    // researchMethod 启发式(参考产品 wp: 标题+目录 → 定量/定性关键词计分, 无匹配默认定性)
     // 与展示用的 methodAutoLabel 共用同一份实现(原先这里是第二份词表, 两边会打架)
     if (!store.input.researchMethod) {
       store.input.researchMethod = inferMethod(methodHeuristicText());
@@ -754,7 +754,7 @@ onMounted(async () => {
 .wf-head { margin-bottom: 32px; }
 .wf-h1 { margin: 0; font-size: 24px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 14px; color: var(--wf-muted); }
-/* 闭源各卡之间是 `space-y-6`(24px), 卡内 `p-5`(20px) —— 我方原 14px / 16px18px */
+/* 参考产品各卡之间是 `space-y-6`(24px), 卡内 `p-5`(20px) —— 我方原 14px / 16px18px */
 .wf-card {
   /* V421: 用令牌 + 加一层**极轻阴影**。原先整个 tab 只有 8 处阴影, 所有卡片都贴在同一个
      平面上 —— 这正是"简陋/平"的来源。这里给卡片一个 `--wf-el-1`(1px 贴地),
@@ -789,7 +789,7 @@ onMounted(async () => {
   resize: none; line-height: 1.6;
 }
 .opt-tag { font-weight: 400; font-size: 12px; color: var(--wf-faint); }
-/* 主题 + 字数同行(闭源: 主题 flex-1 自适应, 字数固定 144px) */
+/* 主题 + 字数同行(参考产品: 主题 flex-1 自适应, 字数固定 144px) */
 /**
  * 顶部卡的两列。
  *
@@ -868,7 +868,7 @@ onMounted(async () => {
 .file-size { color: var(--wf-faint); font-size: 11px; }
 .file-status.ok { color: #5FD0B4; font-size: 11.5px; }
 .file-remove { border: 0; background: none; color: #dc2626; font-size: 12px; cursor: pointer; }
-/* 引导提问: 折叠头 + 展开体(闭源是手风琴, 默认收起) */
+/* 引导提问: 折叠头 + 展开体(参考产品是手风琴, 默认收起) */
 .clarify-card { padding: 0; overflow: hidden; }
 .clarify-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
@@ -926,7 +926,7 @@ onMounted(async () => {
  * 跟着正文块走, 不要一半左一半中。
  */
 .clarify-done-empty:has(.cq-analysis) > p { text-align: left; align-self: stretch; max-width: none; }
-/* 生成引导问题的主按钮(闭源红底实心, 与页面其它主行动一致) */
+/* 生成引导问题的主按钮(参考产品红底实心, 与页面其它主行动一致) */
 .btn-clarify-run {
   padding: 9px 22px; border: 0; border-radius: 8px;
   background: #4D84CB; color: #F1F5F9; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -956,7 +956,7 @@ onMounted(async () => {
   font-size: 10.5px; padding: 2px 9px; border-radius: 9px;
   background: #1E2A48; color: #8BA4F0;
 }
-/* 8 分类配色(闭源 P 映射: blue/purple/green/orange/cyan/pink/indigo/gray) —— 深色化后的等价色 */
+/* 8 分类配色(参考产品 P 映射: blue/purple/green/orange/cyan/pink/indigo/gray) —— 深色化后的等价色 */
 .cq-cat.cat-blue { background: #16243F; color: #6FA8F5; }
 .cq-cat.cat-purple { background: #241A3A; color: #B08CF0; }
 .cq-cat.cat-green { background: #14291F; color: #5FD09A; }
@@ -982,18 +982,18 @@ onMounted(async () => {
   padding: 7px 10px; border: 1px solid var(--wf-line); border-radius: 7px;
   font-size: 12.5px; font-family: inherit; resize: vertical;
 }
-/* 动作行。闭源 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
+/* 动作行。参考产品 `pt-4 flex gap-3`(16px 上边距 + 12px 间距, **无**分隔线 —— 这一页是
    "开始思考框架设计 / 返回" 那对, 与 sections/materials 的 pt-6 + border-t 不同)。
-   原值 margin-top:6px 比闭源少 10px, 页面底部显得挤。 */
+   原值 margin-top:6px 比参考产品少 10px, 页面底部显得挤。 */
 /**
  * 动作行。⚠ 主按钮原先 `flex:1` 会横贯整幅(实测 1276px 里的 1186px) —— 一个"提交"按钮
  * 拉这么长既不美观也不像按钮。改成内容宽度, 并把整行右对齐(退路按钮在最右)。
  */
 .wf-actions { display: flex; gap: 12px; margin-top: 16px; justify-content: flex-end; }
-/* 主按钮占满剩余宽度(闭源 flex-1), 返回按钮固定宽在右 */
+/* 主按钮占满剩余宽度(参考产品 flex-1), 返回按钮固定宽在右 */
 .wf-actions .btn-primary { min-width: 200px; }
-/* 闭源按钮是 `px-6 py-3 text-sm` = 24/12 内边距 + **固定 20px 行高** + 边框 = 46px 高。
-   我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比闭源矮 8px。行高写死 20px 才与闭源等高。 */
+/* 参考产品按钮是 `px-6 py-3 text-sm` = 24/12 内边距 + **固定 20px 行高** + 边框 = 46px 高。
+   我方原 10px 内边距 + 13px×1.2 行高 = 38px, 比参考产品矮 8px。行高写死 20px 才与参考产品等高。 */
 .wf-actions .btn-primary,
 .wf-actions .btn-back { padding: 12px 24px; line-height: 20px; }
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// viz-job-service.ts — D4(闭源 VizView job 体系对齐): 中长绘图任务持久化执行
+// viz-job-service.ts — D4(参考产品 VizView job 体系对齐): 中长绘图任务持久化执行
 // 设计: runTurn(既有逐轮逻辑) 零改动包 RecordingSse 适配器 →
 //   - 每个事件同步落 viz_job_events(seq 递增), SSE 连接断开任务照跑(后台完成)
 //   - 断线重连 GET /viz/jobs/:id/stream?after=N → 重放已发生事件 + 挂起等新事件
@@ -24,7 +24,7 @@ export interface VizJobOpts {
   fileId?: string;
   /** 数据来源文件名(仅记录/提示用) */
   fileName?: string;
-  /** 闭源 VizView journalConfig(期刊/双栏/DPI/字号/配色/尺寸) — 转成绘图 spec */
+  /** 参考产品 VizView journalConfig(期刊/双栏/DPI/字号/配色/尺寸) — 转成绘图 spec */
   journalConfig?: Record<string, unknown>;
 }
 
@@ -42,7 +42,7 @@ function mergeSpec(spec: Record<string, unknown> | undefined, journalConfig: Rec
     if (out[k] == null && journalConfig[k] != null) out[k] = journalConfig[k];
   }
   if (out.lineWidth == null) {
-    // 闭源 journalConfig 把轴线/数据线分开, specPrompt 只认单一 lineWidth → 取数据线
+    // 参考产品 journalConfig 把轴线/数据线分开, specPrompt 只认单一 lineWidth → 取数据线
     out.lineWidth = journalConfig.dataLineWidth ?? journalConfig.axisLineWidth;
   }
   for (const k of ["journal", "layout", "colorScheme"]) {
@@ -279,7 +279,7 @@ export async function getVizJob(userId: string, jobId: string) {
   const r = await pool.query(`select * from viz_jobs where id=$1 and user_id=$2`, [jobId, userId]);
   const job = r.rows[0];
   if (!job) return null;
-  // 聚合: 该会话的最新产物 → job.result.charts(闭源 getJob result.charts 语义)
+  // 聚合: 该会话的最新产物 → job.result.charts(参考产品 getJob result.charts 语义)
   try {
     const arts = await pool.query(
       `select python_code, png_path, svg_editable_path, critique, spec, prompt, version, created_at
@@ -369,7 +369,7 @@ export async function getVizJobDataset(userId: string, jobId: string, limit = 20
   };
 }
 
-/** 任务列表(闭源 viz-jobs?limit=N 语义): 最近 N 个 + 图数/错误摘要 */
+/** 任务列表(参考产品 viz-jobs?limit=N 语义): 最近 N 个 + 图数/错误摘要 */
 export async function listVizJobs(userId: string, limit = 20): Promise<unknown[]> {
   const r = await pool.query(
     `select j.id, j.session_id, j.prompt, j.status, j.error, j.created_at, j.updated_at, j.file_id,

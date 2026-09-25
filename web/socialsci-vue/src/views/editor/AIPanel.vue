@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * AIPanel — 还原自闭源 EditorView E:18962-19952(scope data-v-e0631cb6)
+ * AIPanel — 还原自参考产品 EditorView (scope data-v-e0631cb6)
  * 6 tab: check(全文检查 4 动作)/local(选区修改 5 动作)/title(题名摘要 3)/citation(引用格式 2)
  *       /format(4 预设持久化 ade-format-preset)/chart(5 类型 → /ai/chart → ChartRenderer → ai-insert-chart)
  * 动作按钮 → 统一 assistDocument(action...) job 流; 全文 ≤60000 字; 选区上下文前后各 4000 字
@@ -23,7 +23,7 @@ const props = defineProps<{ editor: Editor | null }>();
 const store = useEditorAiStore();
 const docStore = useDocumentStore();
 
-// ── tab 与动作表(闭源文案 1:1) ──
+// ── tab 与动作表(参考产品文案 1:1) ──
 const CHECK_ACTIONS = [
   { id: "logic_check", title: "全文逻辑检查", desc: "检查全文逻辑连贯性、论证是否完整" },
   { id: "section_coherence_check", title: "章节衔接检查", desc: "检查章节之间衔接是否自然顺畅" },
@@ -116,7 +116,7 @@ function selectionText(): string {
   return ed.state.doc.textBetween(from, to, "\n");
 }
 
-// 正文全文(闭源 j.value: currentContent 去标签; 一律 ≤60000 字) — 与"是否已打开文档"无关
+// 正文全文(参考产品 j.value: currentContent 去标签; 一律 ≤60000 字) — 与"是否已打开文档"无关
 const docText = computed(() => plainTextOf(docStore.currentContent));
 
 function plainTextOf(raw: unknown): string {
@@ -168,7 +168,7 @@ const ACTION_MAP: Record<string, { action: string; mode: string }> = {
 async function runAction(tab: string, action: { id: string; title: string }) {
   const ed = props.editor;
   const mapped = ACTION_MAP[action.id] ?? { action: action.id, mode: "" };
-  // 闭源语义: 门控只看"有无正文/选区"与"是否忙碌", 不要求先打开文档
+  // 参考产品语义: 门控只看"有无正文/选区"与"是否忙碌", 不要求先打开文档
   if (!docText.value.trim() || store.isLoading) return;
   pendingActionTitle.value = action.title;
   resultError.value = false;
@@ -182,7 +182,7 @@ async function runAction(tab: string, action: { id: string; title: string }) {
         toast("请先在正文中选中需要处理的文字", "warning");
         return;
       }
-      // 上下文 = 选区前后各 4000 字(闭源 L(): "Context before selection: … Context after selection: …")
+      // 上下文 = 选区前后各 4000 字(参考产品同名函数: "Context before selection: … Context after selection: …")
       const ctx = buildContext(ed);
       const out = await store.assistDocument(mapped.action, sel, ctx, docId, mapped.mode);
       resultTitle.value = action.title;
@@ -200,7 +200,7 @@ async function runAction(tab: string, action: { id: string; title: string }) {
   }
 }
 
-/** 选区前后各 4000 字上下文(闭源 L() 同格式) */
+/** 选区前后各 4000 字上下文(参考产品同名函数 同格式) */
 function buildContext(ed: Editor | null): string {
   if (!ed) return "";
   const U = 4000;
@@ -505,7 +505,7 @@ async function insertChart() {
   toast("图表已插入正文", "success");
 }
 
-// ── 面板宽度拖拽(闭源 E:19366-19392) ──
+// ── 面板宽度拖拽(参考产品 ──
 const panelWidth = ref(loadAiPanelWidth());
 let dragging = false;
 function onResizeDown(e: MouseEvent) {

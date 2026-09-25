@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** VersionHistory 抽屉 — 还原自闭源 EditorView E:19953-20143: 版本列表 + 恢复(confirm 提示"当前内容将自动备份为新版本") */
+/** VersionHistory 抽屉 — 还原自参考产品 EditorView : 版本列表 + 恢复(confirm 提示"当前内容将自动备份为新版本") */
 import { ref, watch, onMounted } from "vue";
 import { editorApi } from "@/shared/editorApi";
 import { toast, confirmDialog } from "@/shared/ui";

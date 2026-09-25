@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// editor-ai-job-service.ts — R6(闭源 Editor AI job 契约): 统一 job 容器 + SSE 流
+// editor-ai-job-service.ts — R6(参考产品 Editor AI job 契约): 统一 job 容器 + SSE 流
 // 端点: POST ai/jobs{action,text,context,language,document_id}→{job_id}
 //       GET ai/jobs/:id/stream(SSE: delta{content}/done{content}/error{message,is_retriable})
 //       POST ai/jobs/:id/cancel | /retry
-// 语义对齐闭源: activeJobId 断线恢复(retry 即重新入队), 内存 TTL 30min 清理
+// 语义对齐参考产品: activeJobId 断线恢复(retry 即重新入队), 内存 TTL 30min 清理
 import { randomUUID } from "node:crypto";
 import { rewriteText, checkFulltext, generateTitleAbstract, formatReferences, type RewriteMode } from "./editor-service.js";
 import { getRoleModel, resolveModelAlias } from "./llm-model-registry.js";

@@ -1,7 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import PlaceholderView from "./views/PlaceholderView.vue";
 
-// 闭源 11 路由表(route-chunk-map.md + decoded-workflow-INDEX.md §双产品线路由)
+// 参考产品 11 路由表(route-chunk-map.md + decoded-workflow-INDEX.md §双产品线路由)
 // 父级 React 自写 location.hash 路由与 vue-router hash 冲突 → iframe 自带独立 hash, 本路由用 createWebHashHistory
 // 视图按模块批次(M1-M6)逐步落地; 未落地路径先给占位, 避免构建期断链
 // 延迟 import(每批模块落地后替换 PlaceholderView): 每批模块落地后替换占位

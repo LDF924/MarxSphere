@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 /**
- * authed-image.ts — 带鉴权 + 重试的图片取用(闭源 `ye()` 的等价物)
+ * authed-image.ts — 带鉴权 + 重试的图片取用(参考产品 `ye()` 的等价物)
  *
  * 为什么需要它: 后端的图片端点(`/api/viz/files/*` 等)是 **requireUser** 保护的,
  *   而 `<img src="/api/viz/files/...">` **发不带 Authorization 头** —— 本机因为鉴权豁免看不出来,
- *   一旦走局域网/上云就是必然 401。闭源那套是 `fetch(url, {headers: 注入 token, cache:"no-store"})`
+ *   一旦走局域网/上云就是必然 401。参考产品那套是 `fetch(url, {headers: 注入 token, cache:"no-store"})`
  *   再 `URL.createObjectURL(blob)`, 顺带做了重试。
  *
- * 规格照抄闭源 `ye()`(`VizView-DKRGiXDk.js`), 逐条对齐:
+ * 规格照抄参考产品 `ye()`(`VizView-DKRGiXDk.js`), 逐条对齐:
  *   · `cache: "no-store"`                     —— 产物图会被同名覆盖, 不能吃浏览器缓存
  *   · **只对可恢复状态码重试**: 401/404/408/425/429/500/502/503/504
  *     其他状态码(如 403/400)**立即放弃** —— 重试不会让它变好, 白等
- *   · 网络异常(`fetch` reject)**也重试**(这是闭源的写法: catch 到就记下继续下一轮)
+ *   · 网络异常(`fetch` reject)**也重试**(这是参考产品的写法: catch 到就记下继续下一轮)
  *   · 最多 4 次, 退避 `150ms * (attempt + 1)` → 150/300/450
  *
  * ⚠ 与 Vue 侧 `vizApi.ts` 的 `blobifyPng` 是同一个契约的**两份实现**(那一份在 soc 子应用里,
@@ -19,13 +19,13 @@
  */
 import * as React from "react";
 
-/** 值得重试的状态码 —— 与闭源那张表逐字一致 */
+/** 值得重试的状态码 —— 与参考产品那张表逐字一致 */
 export const RETRYABLE_STATUS = [401, 404, 408, 425, 429, 500, 502, 503, 504] as const;
 
 export interface AuthedImageOptions {
-  /** 最多几次(含首次), 闭源默认 4 */
+  /** 最多几次(含首次), 参考产品默认 4 */
   attempts?: number;
-  /** 退避基数(ms), 闭源 150 → 150/300/450 */
+  /** 退避基数(ms), 参考产品 150 → 150/300/450 */
   backoffMs?: number;
   /** 取 token 的方式(默认读 localStorage 的两个键, 与 lib/api.ts 同口径) */
   token?: string;
@@ -57,7 +57,7 @@ export async function fetchImageObjectUrl(url: string, opts: AuthedImageOptions 
      *
      * 第一版在 try 里 `throw err` 想提前退出 —— 结果被**自己的 catch 接住**了,
      * 于是"403 立即放弃"完全没生效, 照样重试满 4 次(白等 900ms 还多打三次服务端)。
-     * 单测把这条抓出来了。闭源用的也是 `break`。
+     * 单测把这条抓出来了。参考产品用的也是 `break`。
      */
     let retryable = true;
     try {

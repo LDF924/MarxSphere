@@ -119,7 +119,7 @@ export async function runTurn(userId: string, sessionId: string, userMsg: string
     let lastAnalysis = "";
     let done = false;
     // 本次 turn 的稳定图身份: chart 事件多次迭代(自审修订)共用同一 figureId,
-    // 前端按 vizJobId+figureId 合并到同一图卡(闭源 Xe() 语义), 避免每版本开新卡
+    // 前端按 vizJobId+figureId 合并到同一图卡(参考产品 X 同名函数 语义), 避免每版本开新卡
     const figureId = `figure:${randomUUID().slice(0, 8)}`;
 
     for (let round = 0; round <= MAX_CRITIQUE_ROUNDS && !done; round++) {
@@ -168,11 +168,11 @@ ${haveData ? "本图使用了真实数据。" : "⚠ 本图无绑定数据, 若�
       const issues: Array<{ severity: string; issue: string }> = Array.isArray(crit?.issues) ? crit.issues : [];
       const errors = issues.filter((i) => i.severity === "error");
       lastCritique = crit?.improve ?? issues.map((i) => `[${i.severity}] ${i.issue}`).join("\n");
-      // 图注/分析源自自审结果(闭源 chart 事件带 caption/analysisText, 前端图卡与底部栏直接消费)
+      // 图注/分析源自自审结果(参考产品 chart 事件带 caption/analysisText, 前端图卡与底部栏直接消费)
       lastCaption = String(crit?.caption ?? "").trim() || String(plan?.chartIntent ?? "");
       lastAnalysis = String(crit?.analysis ?? "").trim();
       sse.send("critique", { round, verdict: crit?.verdict ?? "fix", issues: issues.slice(0, 5), improve: crit?.improve ?? "" });
-      // 出图事件放在自审后: 图注/分析来自同一轮 critique, 与之同版本(闭源 chart 事件同样带 caption/analysisText)
+      // 出图事件放在自审后: 图注/分析来自同一轮 critique, 与之同版本(参考产品 chart 事件同样带 caption/analysisText)
       // code 必须一并下发: 前端画布「代码」页签直接消费, 此前不带 → 实时出图后代码页签恒空
       //  (恢复历史任务时之所以有代码, 是因为走的是 getVizJob 的 python_code, 不是这条事件)
       sse.send("chart", {
@@ -273,7 +273,7 @@ export function classifyChart(prompt: string, code: string): string {
   return "";
 }
 
-/** 期刊规范 → 绘图提示词片段(对齐闭源 VizView journal spec; 尺寸 mm/字号/线宽 描述) */
+/** 期刊规范 → 绘图提示词片段(对齐参考产品 VizView journal spec; 尺寸 mm/字号/线宽 描述) */
 function specPrompt(spec: Record<string, unknown>): string {
   const w = spec.widthMm ? `图宽 ${spec.widthMm}mm` : "";
   const h = spec.heightMm ? `× 高 ${spec.heightMm}mm` : "";

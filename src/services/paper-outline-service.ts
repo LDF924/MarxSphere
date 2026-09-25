@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // paper-outline-service.ts — 论文写作工作台(大纲编辑器+分章生成+docx 导出)
-// 参考 Respal「大纲编辑器/人机双写」体验(闭源, 仅借鉴交互思路, 不涉源码)
+// 参考 Respal「大纲编辑器/人机双写」体验(参考产品, 仅借鉴交互思路, 不涉源码)
 // 架构: 大纲 JSON 前端持有(localStorage 持久化) + 分章生成走 LLM + docx 导出走 python-docx
 import { getRoleModel } from "./llm-model-registry.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
@@ -194,7 +194,7 @@ export async function generateChapter(input: {
    */
   targetWordCount?: number;
   /**
-   * 用户上传的参考样例(闭源 `buildSampleContent()`: 把每个文件拼成 `=== 文件名 ===\n内容`, 截 8000 字)。
+   * 用户上传的参考样例(参考产品 `buildSampleContent()`: 把每个文件拼成 `=== 文件名 ===\n内容`, 截 8000 字)。
    *
    * 2026-09-16: 此前这个参数**不存在**, 于是「选题界定」页上传的参考文件只喂给了澄清提问那一处,
    * **从不进入章节生成** —— 用户在界面上传了 3 个 PDF 当写作范式, 生成的正文跟它们毫无关系。
@@ -382,7 +382,7 @@ function flattenForDocx(nodes: OutlineNode[]): Array<{ title: string; level: num
 export async function exportOutlineDocx(input: {
   paperTitle: string;
   nodes: OutlineNode[];
-  fontName?: string; // R7(闭源 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
+  fontName?: string; // R7(参考产品 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
   fontSize?: number; // R7: 正文字号(pt), 同样来自预览预设; 缺省走 python 侧默认
   references?: ReferenceListInfo; // V417: 参考文献 + 著录完整性(补录提醒)
   /** V425: 目标体例 —— 决定行距与页边距(见下方 LAYOUT 表) */

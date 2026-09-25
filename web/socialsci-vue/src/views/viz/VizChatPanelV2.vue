@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * VizChatPanelV2 — 还原自闭源 VizView L449-2869(scope data-v-cca9ccd1) 对话核心
+ * VizChatPanelV2 — 还原自参考产品 VizView (scope data-v-cca9ccd1) 对话核心
  * 发送主链: 建任务 → POST viz-jobs(body 全契约) → AbortController SSE → 13 事件分发表
  * 图卡: chart 事件 → blob 化 → emit chart-update(父画布); data-upload/job-status 上行事件
  * markdown 手写正则渲染(v-html + XSS 转义, 无外部 md 库); 自动保存 300ms → viz_v2 键 + tasks 节点
@@ -23,7 +23,7 @@ const emit = defineEmits<{
   (e: "job-status", payload: { id: string; status: string }): void;
 }>();
 
-// ── 消息模型(闭源 F() L557-571) ──
+// ── 消息模型(参考产品同名函数 ──
 export interface VizMsg {
   id: string;
   role: "user" | "assistant" | "tool" | "system";
@@ -223,11 +223,11 @@ function startComposerResize(e: MouseEvent) {
 
 let abortCtrl: AbortController | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let currentTaskId = ""; // 任务 id(localStorage viz_v2_<uid>_<taskId> 键, 闭源语义)
+let currentTaskId = ""; // 任务 id(localStorage viz_v2_<uid>_<taskId> 键, 参考产品语义)
 let currentProjectId = ""; // 项目 id(节点云存 PUT /research/projects/:projectId/nodes/:key 归属)
 let currentJobId = ""; // 本轮 job(图表去重/任务关联)
 
-// ── expose(闭源 L1144-1244: saveToLocal/loadFromLocal/restoreFromVizJob 等) ──
+// ── expose(参考产品: saveToLocal/loadFromLocal/restoreFromVizJob 等) ──
 defineExpose({
   messages, sessionId, uploadedData,
   send, stop,
@@ -266,7 +266,7 @@ defineExpose({
   }
 });
 
-// ── localStorage(闭源 be() L662-750: viz_v2_<uid>_<taskId>, 300ms 防抖, 流结束立即存) ──
+// ── localStorage(参考产品同名函数: viz_v2_<uid>_<taskId>, 300ms 防抖, 流结束立即存) ──
 function saveLocal() {
   try {
     if (!currentTaskId) return;
@@ -299,7 +299,7 @@ async function putNodeSafe(key: string, payload: Record<string, unknown>) {
 
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveLocal, 300); // 闭源 300ms 防抖
+  saveTimer = setTimeout(saveLocal, 300); // 参考产品 300ms 防抖
 }
 
 function loadLocal() {
@@ -327,7 +327,7 @@ function loadLocal() {
   } catch { /* 忽略 */ }
 }
 
-// ── markdown 手写正则渲染(闭源 z() L1817-1913: XSS 转义 → 代码块折叠 → 表/标题/粗体/列表) ──
+// ── markdown 手写正则渲染(参考产品同名函数: XSS 转义 → 代码块折叠 → 表/标题/粗体/列表) ──
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -413,7 +413,7 @@ async function ensureTask(title: string) {
   currentProjectId = projectId ?? "";
 }
 
-// ── 发送主链(闭源 d() L1453-1594) ──
+// ── 发送主链(参考产品同名函数 ──
 async function send() {
   const text = input.value.trim();
   if (!text || sending.value) return;
@@ -480,7 +480,7 @@ function stop() {
   abortCtrl?.abort();
 }
 
-// ── SSE 事件分发表(闭源 m() L1646-1801 13 事件) ──
+// ── SSE 事件分发表(参考产品同名函数 13 事件) ──
 function handleEvent(event: string | null, payload: Record<string, unknown>, assistant: VizMsg) {
   const p = payload as Record<string, unknown>;
   switch (event) {
@@ -517,7 +517,7 @@ function handleEvent(event: string | null, payload: Record<string, unknown>, ass
       break;
     }
     case "chart": {
-      // 合并 metadata 别名(闭源 Ae() 双向映射)
+      // 合并 metadata 别名(参考产品 A 同名函数 双向映射)
       const chart = payloadToChart(p);
       assistant.chartType = chart.chartType;
       assistant.chartMetadata = chart.metadata;
@@ -644,7 +644,7 @@ function sendChartToWorkflow(m: VizMsg) {
   } catch { toast("发送失败", "error"); }
 }
 
-/** 后端 chart 事件 payload → 图卡结构(闭源 Ae() L537-556 别名映射) */
+/** 后端 chart 事件 payload → 图卡结构(参考产品 A 同名函数 别名映射) */
 function payloadToChart(p: Record<string, unknown>): VizChart {
   const art = (p.artifact ?? {}) as Record<string, unknown>;
   const png = String(p.png ?? p.chartPng ?? art.pngRel ?? art.png ?? "");
@@ -668,7 +668,7 @@ function payloadToChart(p: Record<string, unknown>): VizChart {
   };
 }
 
-// ── 恢复(闭源 Ue/Ve: 云端优先 → localStorage; 历史任务 restoreFromVizJob) ──
+// ── 恢复(参考产品 Ue/Ve: 云端优先 → localStorage; 历史任务 restoreFromVizJob) ──
 async function restoreFromVizJob(job: VizJob) {
   // 清空现有
   messages.value = [];
@@ -738,7 +738,7 @@ onMounted(() => {
   void ensureTask("未命名绘图任务").catch(() => null).then(() => {
     loadLocal();
   });
-  // 后端心跳 30s(闭源 tt())
+  // 后端心跳 30s(参考产品同名函数)
   const poll = async () => {
     backendState.value = await vizBackendStatus();
   };

@@ -102,7 +102,27 @@ if (!existsSync(OPEN)) {
 const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config", "script-archive", ".github"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
-const EXCLUDE_FILE = [/^\.env/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\.json$/, /^gold_dataset.*\.json$/, /^judge_results\.json$/, /^isolated_entities\.csv$/, /^batch-ingest-log/, /^cognee_entities_dump\.json$/, /^entity_(id|norm)_map\.json$/, /^paper_id_map\.json$/, /^run-eval-one-by-one/, /^start(_sag|-web)\./, /^compact-vhdx/, /^memory-settings\.json$/, /^node_modules\.zip$/];
+/**
+ * ⚠ 2026-09-25 补: **五份方法论文档 + 一个逆向脚本不进开源仓**。
+ *
+ * 由来: 用户问"逆向材料上传云端了吗"。二进制(别人的构建产物)没上传 ——
+ *   `.claude/` 早在 EXCLUDE_DIR 里。但**方法论文档上传了**, 而且比代码注释更具体:
+ *     · HAR-LINE-BY-LINE.md       1105 行闭源接口逐条清单(`/api/editor/v1/documents/10/lock`)
+ *     · SOCIALSCI-FUNCTION-MATRIX  77 个接口的逐条对照
+ *     · socialsci-live-walk-1      登录态下的真实鼠标点击走查记录
+ *     · dump-assistant-controls    从闭源产物抽控件集的脚本(路径写死了逆向目录)
+ *     · SOCIALSCI/UI 两份 GAP-ANALYSIS/UI-AUDIT 同样通篇引用 HAR 与闭源页面结构
+ *
+ * 处置: **主仓保留、只在同步时跳过** —— 我们自己的差异基线不能丢, 但没必要公开。
+ *   这与上面 `.github` 那次的方向相反(那次是"不在列表里就永远同步不过去"的 bug),
+ *   这次是**有意排除**, 不是漏配。
+ */
+const EXCLUDE_FILE = [/\.env$/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\.json$/, /^gold_dataset.*\.json$/, /^judge_results\.json$/, /^isolated_entities\.csv$/, /^batch-ingest-log/, /^cognee_entities_dump\.json$/, /^entity_(id|norm)_map\.json$/, /^paper_id_map\.json$/, /^run-eval-one-by-one/, /^start(_sag|-web)\./, /^compact-vhdx/, /^memory-settings\.json$/, /^node_modules\.zip$/,
+  // 见上方长注释: 逆向方法论文档与抓取脚本, 主仓保留、不公开
+  /^HAR-LINE-BY-LINE\.md$/, /^SOCIALSCI-FUNCTION-MATRIX\.md$/, /^socialsci-live-walk-\d+\.md$/,
+  /^SOCIALSCI-GAP-ANALYSIS\.md$/, /^UI-AUDIT-FINDINGS\.md$/, /^UI-COMPLEXITY-AUDIT\.md$/,
+  /^dump-assistant-controls\.mjs$/,
+];
 
 // vendor/pdf2obsidian 的 dist 是**运行依赖**而非可再生产物:
 //   src/services/pdf2obsidian-adapter.ts 直接 import 它的 {pipeline,core}/dist/*.js,

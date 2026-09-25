@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * WorkspaceView(Phase4 章节写作) — 还原自闭源 WorkspaceView-Baf0x_1H.js(L735-2706, scope data-v-2b778b5d)
+ * WorkspaceView(Phase4 章节写作) — 还原自参考产品 创作台, scope data-v-2b778b5d)
  * 三栏: 左章节导航(SectionNavItem 递归)/中正文编辑器+生成控制/右素材卡(MaterialCard)
  * 生成: 单节/批量 phase4_batch job → 泵 → 800ms 轮询 → nodes/sections 回读 content
  */
@@ -50,7 +50,7 @@ async function selectSection(s: Section) {
     if (!ok) return;
   }
   // 2026-09-16: 这里原有一行 `editing.value = false`。因为 editing 是 computed(写 mdTab),
-  //   它的实际效果是**切章时把用户踢到「预览」** —— 闭源的 tab 是 MarkdownEditor 的局部
+  //   它的实际效果是**切章时把用户踢到「预览」** —— 参考产品的 tab 是 MarkdownEditor 的局部
   //   状态、与章节无关, 切章保持在哪个 tab 是用户的选择, 不该被切章动作改掉。
   //   所以不要再动 mdTab; 切章只需换内容。
   // 解绑而不是写空串 —— 写空串会被防抖 watch 当成"用户把这一章清空了"(见 bindEditorTo 注释)
@@ -118,7 +118,7 @@ function statusText(): string {
   return "就绪";
 }
 /**
- * 页面忙态(闭源: batchGenerating || sectionGenerating || materialGenerating || skillThinking || mainAIThinking)。
+ * 页面忙态(参考产品: batchGenerating || sectionGenerating || materialGenerating || skillThinking || mainAIThinking)。
  * 2026-09-15 前只看 generating —— "素材生成中""结构化分析中"时界面表现为空闲,
  * 用户能同时发起第二次生成(会撞任务)。少掉的聚合位由 genDlg.busy(素材)与 aiThinking(结构化分析)补上。
  * 注: genDlg/aiThinking 在文件后段声明, computed 惰性求值, 此处引用是安全的。
@@ -131,7 +131,7 @@ const busyText = computed(() => {
   return "当前操作处理中";
 });
 
-// ── 单节生成(闭源 me()) ──
+// ── 单节生成(参考产品同名函数) ──
 async function generateSection() {
   const sec = activeSection.value;
   if (!sec) return;
@@ -145,7 +145,7 @@ async function generateSection() {
   }
   const l1 = sec.level === 1 ? sec : store.sections.find((s) => s.id === sec.parentId);
   if (!l1) return;
-  // 子节随父章节一起生成(闭源规则)
+  // 子节随父章节一起生成(参考产品规则)
   const targets = [l1.id, ...childrenOf(l1.id).map((c) => c.id)];
   generating.value = true;
   generateMode.value = "single";
@@ -180,7 +180,7 @@ async function generateSection() {
   }
 }
 
-// ── 批量生成全部(闭源 Me(): 深快照+覆盖确认) ──
+// ── 批量生成全部(参考产品 M 同名函数: 深快照+覆盖确认) ──
 async function generateAll() {
   const targets = l1List.value;
   if (!targets.length) return;
@@ -222,7 +222,7 @@ async function generateAll() {
       toast(`批量生成完成, 共 ${targets.length} 个章节`, "success");
     }, true);
   } catch (e) {
-    // 整批还原(闭源失败路径)
+    // 整批还原(参考产品失败路径)
     const snapRaw = localStorage.getItem("wf_batch_snapshot");
     let restored = false;
     if (snapRaw) {
@@ -299,7 +299,7 @@ async function generateResultDraft() {
   }
 }
 
-// ── 回滚批量(闭源 Fe/Ae) ──
+// ── 回滚批量(参考产品 Fe/Ae) ──
 async function rollbackBatch() {
   const ok = window.confirm("回滚到批量生成前的内容? 当前全部章节正文将被覆盖。");
   if (!ok) return;
@@ -438,12 +438,12 @@ function sendSectionToEditor() {
   else toast("发送失败: 需要从平台外壳中打开写作舱(独立打开子应用时无法转发)", "error");
 }
 /**
- * 编辑/预览双 tab(闭源 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章。
+ * 编辑/预览双 tab(参考产品 MarkdownEditor)。正文编辑始终可用 —— 所以 editText 跟随当前章。
  *
  * ⚠ 2026-09-16 修 bug: 这里原来把 `editing` 做成 computed(读 mdTab==='write', 写 mdTab),
  *   而 selectSection() 会执行 `editing.value = false` —— 副作用是**点任意章节(包括当前章)
  *   都把正文区从「编辑」踢到「预览」**。用户每点一次章节树就得手动切回来。
- *   对照闭源 MarkdownEditor: 那个 tab 是组件内部的 `x("write")` 局部状态, 没有 watch、
+ *   对照参考产品 MarkdownEditor: 那个 tab 是组件内部的 `x("write")` 局部状态, 没有 watch、
  *   与章节无任何关系, 切章不会重置。所以这里跟进: `editing` 就是 mdTab 本身,
  *   切章路径不再去动它。
  */
@@ -462,7 +462,7 @@ const editDirty = computed(() => {
 });
 
 /**
- * 正文 500ms 防抖落库(闭源 O=Ze(()=>e.saveProject(),500), content 一变更就排程)。
+ * 正文 500ms 防抖落库(参考产品 O=Ze(()=>e.saveProject(),500), content 一变更就排程)。
  * 2026-09-15 补: 原先只有点「保存修改」才写, 用户敲完直接切页/刷新, 整章改动就没了 ——
  *   而界面上"未保存"三个字很容易被忽略。写节点(不是只写快照), 理由见 saveEdit 的注释。
  *
@@ -614,7 +614,7 @@ async function insertMaterialContent(m: Record<string, unknown>) {
   toast("素材已插入到章节尾部", "success");
 }
 
-/** 素材类型 → 图标/中文标签/主色(闭源 MaterialCard 9 类映射) */
+/** 素材类型 → 图标/中文标签/主色(参考产品 MaterialCard 9 类映射) */
 const KIND_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
   theory: { icon: "💡", label: "理论", color: "#B08CF0", bg: "#241A3A" },
   citation: { icon: "📚", label: "文献", color: "#6FA8F5", bg: "#16243F" },
@@ -631,11 +631,11 @@ const KIND_META: Record<string, { icon: string; label: string; color: string; bg
 };
 const kindMeta = (k: string) => KIND_META[k] ?? KIND_META.file;
 /**
- * 原始 kind → 闭源筛选器的概念类别。
+ * 原始 kind → 参考产品筛选器的概念类别。
  *
  * 后端真实写入的 kind 比筛选器多(图片上传写 `figure`、附件写 `file`、表格写 `table`),
  * 直接拿原始 kind 当筛选项值会出现"选得出却永远筛不出"(2026-09-16 实测:
- * `figure`/`file` 两个选项恒空)。这里把多对一收敛到闭源的 6 类,
+ * `figure`/`file` 两个选项恒空)。这里把多对一收敛到参考产品的 6 类,
  * 未收录的一律归 "case"(不丢素材, 也不会出现空选项)。
  */
 const FILTER_CATS: Record<string, string> = {
@@ -670,7 +670,7 @@ async function removeMaterialFromLib(m: Record<string, unknown>) {
   }
 }
 
-/** 回滚本次批量里**已成功**的那些章(保留失败章的原状) —— 闭源两个回滚按钮中的第二个 */
+/** 回滚本次批量里**已成功**的那些章(保留失败章的原状) —— 参考产品两个回滚按钮中的第二个 */
 async function rollbackBatchKeep() {
   const ok = await confirmDialog({
     title: "回滚本次成功章节?",
@@ -681,7 +681,7 @@ async function rollbackBatchKeep() {
   await rollbackBatch();
 }
 
-// ── C3 素材生成弹窗(闭源: 类型 select + 生成要求 + 流式结果 → 保存到素材库) ──
+// ── C3 素材生成弹窗(参考产品: 类型 select + 生成要求 + 流式结果 → 保存到素材库) ──
 const genDlg = ref({ open: false, type: "theory", prompt: "", busy: false, preview: "", err: "" });
 const GEN_TYPES = [
   { key: "theory", label: "理论素材" },
@@ -738,7 +738,7 @@ async function saveGenMaterial() {
   toast("素材已保存到素材库", "success");
 }
 
-// ── C4 字数徽标(闭源 SectionGenerator: 已生成 N 字, 生成中按流式字符数实时) ──
+// ── C4 字数徽标(参考产品 SectionGenerator: 已生成 N 字, 生成中按流式字符数实时) ──
 const activeWords = computed(() => {
   const sec = activeSection.value;
   if (!sec?.content) return 0;
@@ -750,7 +750,7 @@ const secWordBadge = computed(() => {
   return words ? `已生成 ${words} 字` : "";
 });
 
-// ── 进合稿门禁(闭源 je()) ──
+// ── 进合稿门禁(参考产品同名函数) ──
 async function enterFinalize() {
   if (!l1List.value.length) {
     toast("请先确认章节清单, 再进入合并定稿", "warning");
@@ -763,7 +763,7 @@ async function enterFinalize() {
   store.setPhase(5);
   // 2026-09-15: 把本轮正文发布成 phase4_text 版本 —— 合稿前的"Phase 4 已完成"凭证。
   //   此前没有任何地方写过 phase4 版本, /versions/current 的 phase4Version 恒为 null,
-  //   闭源那条"请先完成当前 Phase 4 正文生成, 再进行合稿"的门禁根本无从触发。
+  //   参考产品那条"请先完成当前 Phase 4 正文生成, 再进行合稿"的门禁根本无从触发。
   await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase4_text" } }).catch(() => null);
   void router.push("/workflow/finalize");
 }
@@ -809,9 +809,9 @@ watch(
 );
 
 /**
- * 主控智能体思考(闭源: 每章一个可编辑的写作思路 textarea, 预填该章写作指导)。
+ * 主控智能体思考(参考产品: 每章一个可编辑的写作思路 textarea, 预填该章写作指导)。
  * 存到 section.skill_prompt —— 生成章节时 runChapterBatch 会优先用它(见后端 buildChapterPrompt)。
- * 500ms 防抖落库(闭源同款): 逐字敲时不该每键一次请求, 但也不能只在失焦时才存 ——
+ * 500ms 防抖落库(参考产品同款): 逐字敲时不该每键一次请求, 但也不能只在失焦时才存 ——
  *   用户写完直接点「执行智能体开始思考」, 那次生成就得用上刚写的内容。
  *
  * ⚠ 归属必须显式记(与 editOwnerId 同因): 切章时 `thinkPrompt = 新章的指导` 这一下会给 watch
@@ -869,12 +869,12 @@ onUnmounted(() => {
     const sec = editOwnerId ? store.sections.find((s) => s.id === editOwnerId) : null;
     if (sec && editText.value !== (sec.content ?? "")) void persistBody(sec.id, editText.value);
   }
-  // 防抖 watch 是组件作用域创建的, 组件卸载后不应再落库(闭源的 watch 随组件销毁)
+  // 防抖 watch 是组件作用域创建的, 组件卸载后不应再落库(参考产品的 watch 随组件销毁)
   if (bodyTimer) { clearTimeout(bodyTimer); bodyTimer = null; }
   if (thinkTimer) { clearTimeout(thinkTimer); thinkTimer = null; }
 });
 
-/** 状态胶囊三色(闭源: 待生成灰 / 生成中琥珀 / 已生成绿) */
+/** 状态胶囊三色(参考产品: 待生成灰 / 生成中琥珀 / 已生成绿) */
 const secHasContent = computed(() => {
   const c = activeSection.value?.content ?? "";
   return c.length > 50;
@@ -884,7 +884,7 @@ const genPill = computed(() => {
   return secHasContent.value ? { text: "已生成", cls: "pill-done" } : { text: "待生成", cls: "pill-pending" };
 });
 
-// ── C2 主控 AI — 结构化分析面板(闭源 WorkspaceView L36269+: 折叠卡片盖中央区) ──
+// ── C2 主控 AI — 结构化分析面板(参考产品 WorkspaceView +: 折叠卡片盖中央区) ──
 const aiPanelOpen = ref(false);
 const aiThinking = ref(false);
 const aiStepMsg = ref("");
@@ -966,7 +966,7 @@ function stopAiPoll() {
   if (aiPoll) { clearInterval(aiPoll); aiPoll = null; }
 }
 
-/** 开始/重新分析(闭源 ue()=generateSkillsForSections): analyze job 泵 → 变量/框架/写作指导回填 */
+/** 开始/重新分析(参考产品同名函数=generateSkillsForSections): analyze job 泵 → 变量/框架/写作指导回填 */
 async function runStructuredAnalysis() {
   if (!store.taskId) { toast("请先完成选题界定", "warning"); return; }
   if (!store.level1Sections.length) { toast("请先确认章节清单", "warning"); return; }
@@ -1562,14 +1562,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 </template>
 
 <style scoped>
-/* 闭源 .app-root--workspace{height:100vh;height:100dvh} —— 后者覆盖前者;
+/* 参考产品 .app-root--workspace{height:100vh;height:100dvh} —— 后者覆盖前者;
    移动端地址栏收起时 100vh 大于可视高度, 底栏会被推出视口 */
 .ws-page-root { height: 100vh; height: 100dvh; width: 100%; max-width: 100%; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
 .wf-layout { display: flex; gap: 0; flex: 1; min-height: 0; }
 /**
  * 左右两条侧栏的宽度。
  *
- * 闭源写死 `w-72`(288px): 1024 窄屏上两栏吃掉 56% 可视宽 —— 于是 2026-09-21 改成
+ * 参考产品写死 `w-72`(288px): 1024 窄屏上两栏吃掉 56% 可视宽 —— 于是 2026-09-21 改成
  * `clamp(240px, 19vw, 360px)`, 只解决"窄屏太胖"。
  *
  * ⚠ 2026-09-22 **试过"直接取 `--wf-aside`"来消除跨页跳变, 结果是错的**: 本页是**三栏**,
@@ -1590,7 +1590,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .rail-head { display: flex; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--wf-line-soft); }
 .rail-head strong { font-size: 13.5px; color: var(--wf-text); }
 .rail-count { font-size: 11px; color: var(--wf-faint); background: var(--wf-line-soft); padding: 2px 8px; border-radius: 9px; }
-/* 左栏进度条(闭源 h-1.5 圆角) */
+/* 左栏进度条(参考产品 h-1.5 圆角) */
 .rail-progress { height: 6px; background: var(--wf-line-soft); border-radius: 999px; overflow: hidden; }
 .rail-progress-fill { height: 100%; background: #4D84CB; border-radius: 999px; transition: width 0.4s; }
 .rail-empty { padding: 26px 14px; text-align: center; color: var(--wf-faint); font-size: 12px; }
@@ -1625,12 +1625,12 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
 /*
- * 中央列 —— 闭源是 `flex-1 overflow-y-auto` + 内容 `max-w-4xl mx-auto px-8 py-6`。
+ * 中央列 —— 参考产品是 `flex-1 overflow-y-auto` + 内容 `max-w-4xl mx-auto px-8 py-6`。
  * 2026-09-16 修: 我方原先只有 padding, **没有 max-width 约束** —— 宽屏下正文行宽拉满,
- *   中文长行极难读(闭源用 896px 上限 + 居中)。
+ *   中文长行极难读(参考产品用 896px 上限 + 居中)。
  */
 .center-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--wf-surface); padding: 16px 24px; overflow-y: auto; }
-/* V420: 原先 `max-width: 896px`(= 闭源的 max-w-4xl)把中栏内容压成一条窄带 —— 在 1440 视口下
+/* V420: 原先 `max-width: 896px`(= 参考产品的 max-w-4xl)把中栏内容压成一条窄带 —— 在 1440 视口下
    左 288 + 右 288 之后中栏还有 800+ 可用, 却只用到 896 中的一部分, 编辑区两侧大片空着。
    中栏是**编辑工作区**(章节标题 + 正文编辑框 + 动作按钮), 不是给人读长文的版面, 应该吃满。
    只有正文这一块需要可读行宽 —— 由 `.content-textarea` 自己的行高/字号控制, 见其定义。 */
@@ -1723,7 +1723,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .mat-kind-pill { padding: 1px 6px; border-radius: 7px; font-size: 9.5px; font-weight: 600; }
 .mat-mini-words { color: var(--wf-faint); }
 .mat-linked { display: inline-flex; align-items: center; gap: 2px; color: #E8B54A; }
-/* 插入/删除:hover 才出现(闭源 group-hover:opacity-100) */
+/* 插入/删除:hover 才出现(参考产品 group-hover:opacity-100) */
 .mat-mini-ops {
   display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;
   opacity: 0; transition: opacity 0.15s;
@@ -1798,7 +1798,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .md-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; color: var(--wf-faint); }
 .md-save-state { color: var(--wf-faint); }
 .md-foot .btn-save { margin-left: auto; }
-/* 结构化指导开关(闭源 workflow-outline-primary: 白底蓝边) */
+/* 结构化指导开关(参考产品 workflow-outline-primary: 白底蓝边) */
 .workflow-outline-primary {
   width: calc(100% - 12px); margin: 0 6px 8px; padding: 7px 10px;
   display: flex; align-items: center; gap: 7px;
@@ -1941,7 +1941,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .mat-gen-btn:hover { background: var(--wf-sunken); }
 .mat-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .rail-empty-sub { font-size: 11px; color: var(--wf-line-hard); margin: 3px 0 0; }
-.modal-mask { position: fixed; inset: 0; z-index: 90; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(闭源是浅色底所以 20% 够用) */
+.modal-mask { position: fixed; inset: 0; z-index: 90; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(参考产品是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 480px; max-width: 94vw; background: var(--wf-surface); border-radius: 14px; padding: 18px 22px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
 .modal-title { margin: 0 0 14px; font-size: 17px; font-weight: 700; color: var(--wf-text); }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
 // research-materials-service.ts — SocialSci P0-2: 素材库 CRUD + 跨模块导入钩子
-// 形态对齐(闭源产品交互语义, 原创实现): 素材库四类素材 + 从其他模块导入(实证结果/绘图产物/审稿结果)
+// 形态对齐(参考产品交互语义, 原创实现): 素材库四类素材 + 从其他模块导入(实证结果/绘图产物/审稿结果)
 // 迁移116 research_materials
 import { randomUUID } from "node:crypto";
 import { pool } from "../db/pool.js";
@@ -383,7 +383,7 @@ ${content}` }],
   }
 }
 
-// ═══ T4-4: AI 自动编排素材到章节(对齐闭源 MaterialsView allocateMaterials) ═══
+// ═══ T4-4: AI 自动编排素材到章节(对齐参考产品 MaterialsView allocateMaterials) ═══
 // LLM 读「未挂章素材 + 一级章节清单」→ 每条素材建议目标章节 + 理由; 前端确认后逐条 adopt
 export async function allocateMaterialsToSections(userId: string, projectId: string): Promise<{
   ok: boolean; suggestions?: Array<{ materialId: string; materialTitle: string; sectionId: string | null; sectionTitle: string; reason: string }>; error?: string;

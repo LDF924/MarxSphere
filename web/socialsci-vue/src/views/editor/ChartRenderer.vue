@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ChartRenderer — 还原自闭源 ChartRenderer-DVxWvy7W.js(scope data-v-4f047ab7)
+ * ChartRenderer — 还原自参考产品 图表渲染(scope data-v-4f047ab7)
  * mermaid: 懒加载 mermaid → render().svg → DOMPurify(svg 白名单) → v-html
  * echarts: 懒加载 echarts → init(div 350px) → setOption → ResizeObserver 自适应
  * 样式: 外框 1px #222F44 radius 12 / error #F08A8A 12px / mermaid 白底居中 / echarts 高 350px

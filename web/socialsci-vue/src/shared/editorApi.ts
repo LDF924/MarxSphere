@@ -1,13 +1,13 @@
 /**
- * Editor 域 API 客户端 — 还原自闭源 EditorView-CaKgg_bg.js E:17804-17900(Axios baseURL /api/editor/v1)
- * 我方后端已实现同前缀端点(server.ts L9822-9954, 含 content_hash 乐观锁 + ai job SSE)
+ * Editor 域 API 客户端 — 还原自参考产品 编辑器(Axios baseURL /api/editor/v1)
+ * 我方后端已实现同前缀端点(server.ts , 含 content_hash 乐观锁 + ai job SSE)
  */
 import { q, authedBlob } from "./api";
 
 export interface EditorDoc {
   id: string;
   title: string;
-  content?: unknown; // 后端存字符串(闭源独立后端语义: JSON 序列化); 前端读写保持字符串
+  content?: unknown; // 后端存字符串(参考产品独立后端语义: JSON 序列化); 前端读写保持字符串
   content_hash?: string;
   word_count?: number;
   updated_at?: string;
@@ -53,7 +53,7 @@ export const editorApi: EditorApi = {
     // 解包在**契约层**做: 消费者(VersionHistory.vue)把返回值直接当数组用(v-for / .length)。
     // 2026-09-20 修——原实现直接 `return q(...)` 把整个响应体当数组返回, 于是版本列表
     //   永远是空的(渲染「暂无版本记录」的兄弟分支), 恢复按钮也就无从点起。
-    //   同时按版本号映射字段: 后端用 version/content_len, 闭源契约与模板用 version_num/word_count。
+    //   同时按版本号映射字段: 后端用 version/content_len, 参考产品契约与模板用 version_num/word_count。
     const r = await q<{ items?: Array<Record<string, unknown>> }>(`/editor/v1/documents/${id}/versions`);
     return (r.items ?? []).map((v) => ({
       id: String(v.id ?? v.version ?? ""),
@@ -67,11 +67,11 @@ export const editorApi: EditorApi = {
   },
   async restoreVersion(id, versionId) {
     // 后端真实形态是 POST /documents/:docId/restore {version} —— 按版本号回档。
-    // 闭源把版本 id 放进路径段, 我方没有版本行 id, 用版本号(上面映射时 id 就取的是版本号)。
+    // 参考产品把版本 id 放进路径段, 我方没有版本行 id, 用版本号(上面映射时 id 就取的是版本号)。
     return q(`/editor/v1/documents/${id}/restore`, { method: "POST", body: { version: Number(versionId) } });
   },
   async importWord(fileBase64, fileName) {
-    // 我方后端走 base64 JSON(闭源 multipart; 语义等价)
+    // 我方后端走 base64 JSON(参考产品 multipart; 语义等价)
     return q(`/editor/v1/documents/import`, { method: "POST", body: { filename: fileName, base64: fileBase64 } });
   }
 };
@@ -83,7 +83,7 @@ export interface AiJobSseHandlers {
   onError?: (err: { message: string; is_retriable?: boolean }) => void;
 }
 
-/** 创建 editor-ai job(闭源 body: {action,text,context,language,document_id} 或 {message,conversation_id,...}) */
+/** 创建 editor-ai job(参考产品 body: {action,text,context,language,document_id} 或 {message,conversation_id,...}) */
 export function createAiJob(body: Record<string, unknown>): Promise<{ job_id: string }> {
   return q(`/editor/v1/ai/jobs`, { method: "POST", body });
 }
@@ -152,7 +152,7 @@ export async function streamAiJob(
   }
 }
 
-/** 文档内容 JSON 树 → 排序键规范化字符串(闭源 canonicalStringify Aa(), 对象键排序 — 变更检测核心) */
+/** 文档内容 JSON 树 → 排序键规范化字符串(参考产品 canonicalStringify Aa(), 对象键排序 — 变更检测核心) */
 export function canonicalStringify(value: unknown): string {
   if (value === null || value === undefined) return JSON.stringify(value);
   if (Array.isArray(value)) return "[" + value.map((v) => canonicalStringify(v)).join(",") + "]";

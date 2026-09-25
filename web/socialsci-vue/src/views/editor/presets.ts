@@ -1,4 +1,4 @@
-/** 4 套排版预设 — 还原自闭源格式预设表(Ma, E:18891-18961) + localStorage ade-format-preset */
+/** 4 套排版预设 — 还原自参考产品格式预设表(Ma, + localStorage ade-format-preset */
 export interface FormatPreset {
   key: string;
   name: string;
@@ -75,7 +75,7 @@ export function presetByKey(key: string): FormatPreset {
   return FORMAT_PRESETS.find((p) => p.key === key) ?? FORMAT_PRESETS[0];
 }
 
-/** 预设 → CSS 变量映射(闭源 ES: --ade-doc-* 五变量) */
+/** 预设 → CSS 变量映射(参考产品 ES: --ade-doc-* 五变量) */
 export function presetToCssVars(p: FormatPreset): Record<string, string> {
   return {
     "--ade-doc-font-family": p.fontFamily,
@@ -86,7 +86,7 @@ export function presetToCssVars(p: FormatPreset): Record<string, string> {
   };
 }
 
-/** AI 面板宽度持久化(闭源 vd=ade-ai-panel-width, clamp 340-720) */
+/** AI 面板宽度持久化(参考产品 vd=ade-ai-panel-width, clamp 340-720) */
 export const AI_PANEL_MIN = 340;
 export const AI_PANEL_MAX = 720;
 export function loadAiPanelWidth(): number {
