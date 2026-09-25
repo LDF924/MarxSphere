@@ -122,6 +122,8 @@ const EXCLUDE_FILE = [/\.env$/, /\.log$/, /\.v\d+/, /\.bak/, /^eval_32metrics.*\
   /^HAR-LINE-BY-LINE\.md$/, /^SOCIALSCI-FUNCTION-MATRIX\.md$/, /^socialsci-live-walk-\d+\.md$/,
   /^SOCIALSCI-GAP-ANALYSIS\.md$/, /^UI-AUDIT-FINDINGS\.md$/, /^UI-COMPLEXITY-AUDIT\.md$/,
   /^dump-assistant-controls\.mjs$/,
+  // 同类: 逆向工具本身(能直接重跑抽取), 与"记录性文档"不是一回事
+  /^har-line-by-line\.mjs$/, /^har-eighth-round\.mjs$/, /^closed-feature-extract\.mjs$/,
 ];
 
 // vendor/pdf2obsidian 的 dist 是**运行依赖**而非可再生产物:
