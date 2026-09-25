@@ -17,6 +17,8 @@ import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import EmptyState from "./EmptyState.vue";
 import CitationCheckPanel from "./CitationCheckPanel.vue";
+import ChapterEvidencePanel from "./ChapterEvidencePanel.vue";
+import NumberCheckPanel from "./NumberCheckPanel.vue";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -242,8 +244,47 @@ async function generateAll() {
   }
 }
 
-/** 停止当前章节生成: 调后端 cancel(任务真的停下, 不再回写节点) */
-async function stopGeneration() {
+const resultDrafting = ref(false);
+const resultDraftNote = ref("");
+
+/**
+ * 从发现台账生成「结果」段。
+ *
+ * 与 generateSection 的本质区别: 那条把整章的写作交给模型(适合背景/理论/讨论);
+ * 这条只让它**陈述已算出来的结果** —— 数字由后端用代码写成句子骨架, 模型仅负责连缀成段。
+ * 为什么不做成"同一个按钮换个参数": 两条路的失败模式完全不同。
+ * 自由生成失败 = 写得不好(可接受); 结果段失败 = 数字错(不可接受), 所以它必须是显式动作。
+ */
+async function generateResultDraft() {
+  const sec = activeSection.value;
+  if (!sec || !store.taskId) return;
+  resultDrafting.value = true;
+  resultDraftNote.value = "";
+  try {
+    const r = await q<{ content?: string; verification?: { matched: number; unmatched: number; checks: Array<{ raw: string; suggestion?: string }> } }>(
+      `/research/projects/${store.taskId}/chapters/${encodeURIComponent(sec.id)}/result-draft`,
+      { method: "POST", body: { topic: store.input.title } });
+    const text = String(r.content ?? "");
+    if (!text.trim()) { toast("生成结果为空", "warning"); return; }
+    // 与普通生成同一落库路径: 写节点 + 刷新章节树
+    const list = store.sections.map((s) => (s.id === sec.id ? { ...s, content: text, status: "generated" } : s));
+    await putNode(store.taskId, "sections", { sections: list });
+    await refreshSections();
+    const v = r.verification;
+    resultDraftNote.value = v
+      ? `已生成。数字核验：命中 ${v.matched}，未命中 ${v.unmatched}`
+        + (v.unmatched ? `（${v.checks.slice(0, 3).map((c) => c.raw).join("、")} 在依据里找不到，请自行确认）` : "")
+      : "已生成。";
+    toast("结果段已生成", "success");
+  } catch (e) {
+    resultDraftNote.value = `生成失败：${(e as Error).message}`;
+    toast(resultDraftNote.value, "error");
+  } finally {
+    resultDrafting.value = false;
+  }
+}
+
+/** 停止当前章节生成: 调后端 cancel(任务真的停下, 不再回写节点) */async function stopGeneration() {
   const id = activeGenTaskId.value;
   stopPoll();
   generating.value = false;
@@ -1330,7 +1371,19 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
               </button>
               <button class="btn-gen-cancel" data-control="workflow:stop-generation" @click="stopGeneration">取消</button>
             </template>
+            <!-- 从发现台账生成结果段(2026-09-25 加法)。
+                 与左边那条的区别: 那条是"围绕本章标题写一篇文章"(适合背景/理论/讨论);
+                 这条只陈述**已算出来的结果**, 数字由后端用代码写进句子骨架, 模型只连缀。
+                 结果章/实证章该走这条 —— 让模型自由描述"发现了什么"正是编数字的高发处。 -->
+            <button
+              v-if="!generating"
+              class="btn-gen-alt"
+              :disabled="resultDrafting"
+              data-control="workflow:gen-result-draft"
+              @click="generateResultDraft"
+            >{{ resultDrafting ? "生成中…" : "从结果台账生成" }}</button>
           </div>
+          <p v-if="resultDraftNote" class="gen-alt-note">{{ resultDraftNote }}</p>
         </div>
 
         <!-- 正文: 编辑 / 预览 双 tab(闭源 MarkdownEditor 形态) -->
@@ -1375,6 +1428,31 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <details class="cite-box" open>
           <summary>引文核查（本章正文）</summary>
           <CitationCheckPanel :text="activeSection.content ?? ''" :refs="storeReferences" />
+        </details>
+
+        <!-- 本章依据(2026-09-25 加法): 真实科研里正文是先有依据再动笔的。
+             放在正文**上面**不是排版偏好 —— 顺序即语义: 先定这一章依据什么数据/回归/假设,
+             再写。素材页那个"插入到章节"是反的(先成文、再补证据)。 -->
+        <details class="evidence-box" open>
+          <summary>本章依据（素材 / 分析结果 / 假设 / 发现）</summary>
+          <ChapterEvidencePanel
+            :project-id="store.taskId"
+            :section-id="activeSection.id"
+            :section-title="activeSection.title ?? ''"
+            :statistics-file-id="store.statisticsFileId"
+          />
+        </details>
+
+        <!-- 正文数字核验(2026-09-25 加法): "真实科研"的硬判据 ——
+             正文里写出来的数字必须能对上分析结果。放在正文下面: 写完才核。
+             与「引文核查」并列: 一个核引用是否真实存在, 一个核数据是否对得上自己的结果。 -->
+        <details class="evidence-box">
+          <summary>正文数字核验（正文 ↔ 本章依据）</summary>
+          <NumberCheckPanel
+            :project-id="store.taskId"
+            :section-id="activeSection.id"
+            :content="activeSection.content ?? ''"
+          />
         </details>
       </template>
       <div v-else class="center-empty">
@@ -1615,6 +1693,12 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   background: var(--wf-surface); padding: 8px 12px;
 }
 .cite-box > summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); margin-bottom: 8px; }
+/* 本章依据块 —— 与引文核查同一形态; 区别只是它排在正文**上面**(顺序即语义: 先依据后动笔) */
+.evidence-box {
+  margin: 0 0 10px; border: 1px solid var(--wf-line); border-radius: 8px;
+  background: var(--wf-surface); padding: 8px 12px;
+}
+.evidence-box > summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); margin-bottom: 8px; }
 .right-rail {
   width: clamp(240px, 19vw, 400px); flex-shrink: 0; border-left: 1px solid var(--wf-line);
   display: flex; flex-direction: column; background: #141E33;
@@ -1692,6 +1776,15 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   border: 1px solid #dc2626; color: #E88A8A; font-size: 13px; cursor: pointer;
 }
 .btn-gen-cancel:hover { background: #2A1C1C; }
+/* 次要生成入口(从结果台账生成) —— 与主按钮并排但明显次级:
+   它是"另一种生成", 不是"另一个主操作"。 */
+.btn-gen-alt {
+  padding: 9px 14px; border-radius: 9px; background: transparent;
+  border: 1px solid var(--wf-line-strong); color: var(--wf-muted); font-size: 12.5px; cursor: pointer;
+}
+.btn-gen-alt:hover { color: var(--wf-text); border-color: var(--wf-accent); }
+.btn-gen-alt:disabled { opacity: 0.5; cursor: default; }
+.gen-alt-note { margin: 6px 0 0; font-size: 11.5px; color: var(--wf-muted); line-height: 1.6; }
 
 /* 编辑/预览双 tab */
 .md-block { flex: 1; min-height: 0; display: flex; flex-direction: column; }

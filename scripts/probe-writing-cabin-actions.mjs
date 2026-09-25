@@ -13,7 +13,7 @@
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 import { openSoc, spyInstall, probeAction, waitFor, readToast, dismissOverlays } from "./lib/probe-actions.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 const ALL = process.argv.includes("--all");
 const rows = [];
 /**

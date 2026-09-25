@@ -14,7 +14,7 @@
 // 用法: node scripts/verify-assistant-soc.mjs   (需 4173 已起)
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 
-const BASE = process.env.ORCH_UI_BASE || "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || process.env.ORCH_UI_BASE || "http://127.0.0.1:4173";
 let pass = 0, fail = 0;
 const t = (n, ok, ex = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${n}${ex ? " — " + ex : ""}`); ok ? pass++ : fail++; };
 

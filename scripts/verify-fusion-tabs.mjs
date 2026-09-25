@@ -23,7 +23,7 @@ import { loginToken } from "./lib/cdp-editor.mjs";
  * 改成与其余探针一致, 把这条不确定性去掉 —— 无论 `localhost` 在 CI 上是否会解析成 `::1`,
  *   显式写 IPv4 都更稳(本机两种解析都验过, 均 5/5)。
  */
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 let CDP_PORT = 31007; // 起点值; 真实端口由 resolveCdpPort 探测(见下)
 const userData = mkdtempSync(path.join(tmpdir(), "edge-fusion-"));
 
@@ -131,14 +131,51 @@ async function main() {
 
     for (const t of TABS) {
       const clicked = await ev(`window.clickByText(${JSON.stringify(t.label)})`);
-      await sleep(3000);
-      const info = await ev(`(async () => {
+      /**
+       * ⚠ **轮询到条件成立**, 不是固定等 3 秒。
+       *
+       * 2026-09-25: 全量门禁里这一条偶发失败(单跑两棵树都 5/5)。当次诊断里躺着一条
+       *   「系统告警 检索步骤失败: 抽取查询实体(This operation was aborted)」——
+       *   后端处于降级/繁忙状态, iframe 装载比平时慢, 3 秒不够。
+       *   固定等待量的是**机器有多快**, 而这条断言想问的是**面板挂没挂对**。
+       *   改成"等到条件成立、超时才判失败": 判据没有放宽(仍然要求三样全中),
+       *   只是不再把"慢"误判成"错"。
+       */
+      const readInfo = () => ev(`(async () => {
         const fs = Array.from(document.querySelectorAll('iframe'));
         const panel = fs.find(f => !!(f.offsetWidth||f.offsetHeight));
         let inner = '';
-        try { inner = panel && panel.contentDocument ? (panel.contentDocument.body.innerText||'').replace(/\s+/g,' ') : ''; } catch(e) { inner = 'ERR'; }
+        try { inner = panel && panel.contentDocument ? (panel.contentDocument.body.innerText||'').replace(/\\s+/g,' ') : ''; } catch(e) { inner = 'ERR'; }
         return { src: panel ? panel.getAttribute('src') : null, inner: inner.slice(0, 300) };
       })()`);
+      let info = null;
+      const deadline = Date.now() + 30000;
+      let clicks = 0;
+      let lastClickAt = 0;
+      do {
+        await sleep(1500);
+        info = await readInfo();
+        if (info?.src === `/soc/index.html#${t.route}`
+          && !REACT_APP.test(info?.inner ?? "")
+          && t.want.test(info?.inner ?? "")) break;
+        /**
+         * ⚠ **点击重试** —— 2026-09-25 补。
+         *
+         * 全量门禁里这条反复失败在**第一个 tab**(单击后 2 分钟 src 仍是初始的 `/workflow/input`),
+         * 而失败页面的诊断恰恰显示「按钮里有该标签=true · 点击 matched=1 visible=1」——
+         * 也就是说**按钮找得到、也点上了**, 但面板没切。这种"点了没反应、单跑又正常"的形态
+         * 最可能是**点击落在 React 挂载完成之前**: 按钮已经在 DOM 里, onClick 还没接上。
+         * (全量门禁里一次要跑 26 套, 前一套刚把机器占满, 首屏 hydrated 得更慢。)
+         *
+         * 每次重试间隔 3 秒、最多 3 次, 总时长仍在下面的 30 秒预算内。
+         * 判据**没有放宽**(仍要求 src + 非 React + 内容三样全中), 只是不再把"挂载慢"判成"面板没挂对"。
+         */
+        if (clicks < 3 && Date.now() - lastClickAt > 3000) {
+          await ev(`window.clickByText(${JSON.stringify(t.label)})`);
+          clicks++;
+          lastClickAt = Date.now();
+        }
+      } while (Date.now() < deadline);
       const srcOk = info?.src === `/soc/index.html#${t.route}`;
       const notReact = !REACT_APP.test(info?.inner ?? "");
       const wantOk = t.want.test(info?.inner ?? "");

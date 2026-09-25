@@ -10,7 +10,7 @@
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 import { openSoc, dismissOverlays } from "./lib/probe-actions.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 const api = async (tk, path, method = "GET", body) => {
   const r = await fetch(`${BASE}/api${path}`, { method, headers: { Authorization: `Bearer ${tk}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return r.ok ? r.json().catch(() => ({})) : { __status: r.status };

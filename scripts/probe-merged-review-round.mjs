@@ -13,7 +13,7 @@
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 import { openSoc, spyInstall, spyLog, probeAction, waitFor, readToast } from "./lib/probe-actions.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 const api = async (token, path, method = "GET", body) => {
   const r = await fetch(`${BASE}/api${path}`, {
     method,

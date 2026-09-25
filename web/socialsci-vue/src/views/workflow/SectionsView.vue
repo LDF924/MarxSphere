@@ -8,7 +8,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import type { Section } from "./stores/workflow";
-import { listSkillCards, batchGenerateSkillCards, createTask, getTask } from "@/shared/tasks";
+import { listSkillCards, batchGenerateSkillCards, createTask, getTask, mergeNode } from "@/shared/tasks";
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
@@ -243,6 +243,50 @@ function parseOutlineToSections(outline: string, topic: string): Section[] {
   }
   if (!out.length && topic) out.push({ id: `sec_${Date.now()}_0`, title: topic, level: 1, order: 0, status: "pending" });
   return out;
+}
+
+// ── 变量 / 假设编辑(2026-09-25) ──
+// 两者都存进 analysis 节点 + 快照(与 store.saveProject 的键一致),
+// 所以不需要新端点 —— 复用的是已有的 PUT nodes/:nodeKey 与 workbench 同步。
+const editVars = ref(false);
+const editHyps = ref(false);
+const VAR_ROLES = ["自变量", "因变量", "中介", "调节", "控制"];
+
+async function persistAnalysis(): Promise<void> {
+  if (!store.taskId) return;
+  try {
+    // mergeNode 而不是 putNode: analysis 节点里还有 logicFlow / stepAnalysisTexts /
+    //   chapterPlan 等字段, 整块 PUT 会把它们抹掉。
+    await mergeNode(store.taskId, "analysis", {
+      variables: store.variables,
+      hypotheses: store.hypotheses,
+    });
+    await store.saveProject();
+    toast("已保存", "success");
+  } catch (e) {
+    toast(`保存失败：${(e as Error).message}`, "error");
+  }
+}
+
+function toggleEditVars() {
+  editVars.value = !editVars.value;
+  if (!editVars.value) void persistAnalysis();
+}
+function toggleEditHyps() {
+  editHyps.value = !editHyps.value;
+  if (!editHyps.value) void persistAnalysis();
+}
+function addVar() {
+  store.variables = [...store.variables, { name: "", role: "自变量", description: "", measurement: "" }];
+}
+function removeVar(i: number) {
+  store.variables = store.variables.filter((_, j) => j !== i);
+}
+function addHyp() {
+  store.hypotheses = [...store.hypotheses, ""];
+}
+function removeHyp(i: number) {
+  store.hypotheses = store.hypotheses.filter((_, j) => j !== i);
 }
 
 // ── 任务轮询(泵执行进度; analyze 产 structured.skills/variables 回填 workbench) ──
@@ -677,38 +721,80 @@ onUnmounted(() => {
         <h3>科研框架概览</h3>
       </div>
 
-      <!-- ① 变量识别 -->
+      <!-- ① 变量识别 —— 2026-09-25 起可编辑。
+           此前这里是**纯只读卡片**: LLM 抽出来的变量一个都改不了, 而抽取必然有错
+           (角色判反、测度写得不对、控制变量漏掉)。研究者只能看着错的变量列表一路往下走,
+           而变量决定了回归怎么跑、假设怎么检验 —— 这是最该能改的地方。 -->
       <div v-if="store.variables.length" class="ov-block">
         <div class="ov-block-head">
           <span class="ov-num blue">1</span>
           <strong>变量识别</strong>
           <span class="ov-count">共 {{ store.variables.length }} 个</span>
+          <button class="ov-edit-btn" :data-control="editVars ? 'workflow:vars-done' : 'workflow:vars-edit'" @click="toggleEditVars">
+            {{ editVars ? "完成" : "编辑" }}
+          </button>
         </div>
-        <div class="var-grid">
-          <div v-for="v in store.variables" :key="v.name" class="var-card">
-            <div class="var-top">
-              <span class="var-role" :style="{ background: roleColor(v.role) }">{{ v.role }}</span>
-              <strong class="var-name">{{ v.name }}</strong>
+        <template v-if="!editVars">
+          <div class="var-grid">
+            <div v-for="v in store.variables" :key="v.name" class="var-card">
+              <div class="var-top">
+                <span class="var-role" :style="{ background: roleColor(v.role) }">{{ v.role }}</span>
+                <strong class="var-name">{{ v.name }}</strong>
+              </div>
+              <p v-if="v.description" class="var-desc">{{ v.description }}</p>
+              <p v-if="v.measurement" class="var-measure">{{ v.measurement }}</p>
             </div>
-            <p v-if="v.description" class="var-desc">{{ v.description }}</p>
-            <p v-if="v.measurement" class="var-measure">{{ v.measurement }}</p>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <div class="var-edit-list">
+            <div v-for="(v, i) in store.variables" :key="`ev${i}`" class="var-edit-row">
+              <select v-model="v.role" class="var-edit-sel" :data-control="`workflow:var-role-${i}`">
+                <option v-for="r in VAR_ROLES" :key="r" :value="r">{{ r }}</option>
+              </select>
+              <input v-model="v.name" class="var-edit-in" :data-control="`workflow:var-name-${i}`" placeholder="变量名" />
+              <input v-model="v.measurement" class="var-edit-in" :data-control="`workflow:var-measure-${i}`" placeholder="测度（如：受教育年限/年）" />
+              <button class="var-edit-x" :data-control="`workflow:var-del-${i}`" @click="removeVar(i)">×</button>
+            </div>
+            <button class="ov-edit-btn" data-control="workflow:var-add" @click="addVar">＋ 添加变量</button>
+            <p class="var-edit-note">改完点「完成」保存。变量决定回归怎么跑、假设怎么检验，值得逐条核对。</p>
+          </div>
+        </template>
       </div>
 
-      <!-- ② 研究假设 -->
+      <!-- ② 研究假设 —— 2026-09-25 起可编辑。
+           检验结论与依据在「文献与资料」页的研究台账里填; 这里改的是假设**表述本身**
+           (LLM 写出来的表述常常需要按理论主线重写)。两处改的是同一条数据的两个字段。 -->
       <div v-if="store.hypotheses.length && !isQual" class="ov-block">
         <div class="ov-block-head">
           <span class="ov-num purple">2</span>
           <strong>研究假设</strong>
           <span class="ov-count">共 {{ store.hypotheses.length }} 条</span>
+          <button class="ov-edit-btn" :data-control="editHyps ? 'workflow:hyps-done' : 'workflow:hyps-edit'" @click="toggleEditHyps">
+            {{ editHyps ? "完成" : "编辑" }}
+          </button>
         </div>
-        <ul class="hypo-list">
-          <li v-for="(h, i) in store.hypotheses" :key="i" class="hypo-item">
-            <span class="hypo-badge">H{{ i + 1 }}</span>
-            <span class="hypo-text">{{ h }}</span>
-          </li>
-        </ul>
+        <template v-if="!editHyps">
+          <ul class="hypo-list">
+            <li v-for="(h, i) in store.hypotheses" :key="i" class="hypo-item">
+              <span class="hypo-badge">H{{ i + 1 }}</span>
+              <span class="hypo-text">{{ h }}</span>
+            </li>
+          </ul>
+        </template>
+        <template v-else>
+          <div class="var-edit-list">
+            <div v-for="(h, i) in store.hypotheses" :key="`eh${i}`" class="hypo-edit-row">
+              <span class="hypo-badge">H{{ i + 1 }}</span>
+              <input v-model="store.hypotheses[i]" class="var-edit-in" :data-control="`workflow:hyp-text-${i}`" placeholder="假设表述" />
+              <button class="var-edit-x" :data-control="`workflow:hyp-del-${i}`" @click="removeHyp(i)">×</button>
+            </div>
+            <button class="ov-edit-btn" data-control="workflow:hyp-add" @click="addHyp">＋ 添加假设</button>
+            <p class="var-edit-note">
+              这里只改**表述**。检验结论与依据（哪个回归的哪个系数）在「文献与资料」页的研究台账里填。
+            </p>
+          </div>
+        </template>
       </div>
 
       <!-- ③ 研究逻辑 + 研究方法 -->
@@ -740,7 +826,7 @@ onUnmounted(() => {
     <section class="design-card-wrap">
       <details class="design-box" open>
         <summary>研究设计（方法 / 因果识别 / 数据来源 / 伦理）</summary>
-        <ResearchDesignPanel :research-method="store.input.researchMethod" />
+        <ResearchDesignPanel :research-method="store.input.researchMethod" :project-id="store.taskId" />
       </details>
     </section>
     <section class="tree-card">
@@ -928,6 +1014,27 @@ onUnmounted(() => {
 .ov-num.blue { background: #16243F; color: #6FA8F5; }
 .ov-num.purple { background: #241A3A; color: #B08CF0; }
 .ov-count { font-size: 11.5px; color: var(--wf-faint); }
+/* 变量/假设编辑(2026-09-25) —— 与"共 N 个"并排的次级按钮, 不抢主视线 */
+.ov-edit-btn {
+  margin-left: auto; cursor: pointer; border: 1px solid var(--wf-line-strong);
+  border-radius: var(--wf-r-pill); background: transparent; color: var(--wf-muted);
+  font-size: 11px; padding: 2px 10px;
+}
+.ov-edit-btn:hover { color: var(--wf-text); border-color: var(--wf-accent); }
+.var-edit-list { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+.var-edit-row { display: grid; grid-template-columns: 84px 1fr 1fr auto; gap: 6px; align-items: center; }
+.hypo-edit-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; }
+.var-edit-sel, .var-edit-in {
+  width: 100%; background: var(--wf-surface-2); border: 1px solid var(--wf-line);
+  border-radius: var(--wf-r-sm); padding: 4px 8px; font-size: 12px; color: var(--wf-text); font-family: inherit;
+}
+.var-edit-in::placeholder { color: var(--wf-faint); }
+.var-edit-x {
+  cursor: pointer; border: 0; background: transparent; color: var(--wf-faint);
+  font-size: 14px; line-height: 1; padding: 2px 5px;
+}
+.var-edit-x:hover { color: var(--wf-warn); }
+.var-edit-note { margin: 2px 0 0; font-size: 11px; color: var(--wf-faint); line-height: 1.65; }
 /* ⚠ 2026-09-23: 从 `auto-fill minmax(200px,1fr)` 改成**定 3 列**, 对齐闭源。
    闭源的变量卡网格是 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`(见逆向资料的 DOM 实拍)。
    我们那套 auto-fill 在 1230px 的单栏里会铺出 **5 条窄卡**(每张刚过 200px),

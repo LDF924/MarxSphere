@@ -22,6 +22,21 @@ vi.mock("../src/services/paper-outline-service.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../src/services/paper-outline-service.js")>();
   return { ...mod, generateChapter: vi.fn(async () => ({ content: "章节正文", wordCount: 100 })) };
 });
+/**
+ * 研究证据组装要查库 —— 单测里打桩成"没有依据/没有设计块"。
+ *
+ * ⚠ 2026-09-25 补。`runPhase5`(review/revise)现在会调 `buildEvidenceBlocks` 给全文审查
+ *   比对数据、再调 `buildDesignBlock` 注入设计约束。**那些查询不是 mock 的** ——
+ *   下面这些用例是按顺序 `mockResolvedValueOnce` 排队的, 多出来的查询会把整个队列错位,
+ *   于是"review_result 没写回"这种**看起来像产品坏了**的失败就冒出来了。
+ *   打桩而不是给每个用例补 mock: 这两条验的是"分派到哪个执行器 + 落库形状",
+ *   证据组成本身由 test/research-evidence-service.test.ts 覆盖, 在这里重复没有意义。
+ *   返回空块 → 执行路径与注入前完全一致, 断言一行都不用改。
+ */
+vi.mock("../src/services/research-evidence-service.js", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../src/services/research-evidence-service.js")>();
+  return { ...mod, buildEvidenceBlocks: async () => ({}), buildDesignBlock: async () => "" };
+});
 
 import { pool } from "../src/db/pool.js";
 import * as llmCommon from "../src/ai/llm-common.js";

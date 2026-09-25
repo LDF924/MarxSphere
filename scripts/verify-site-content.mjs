@@ -11,7 +11,7 @@
 // 用法: node scripts/verify-site-content.mjs   (前置: 4173 已起)
 import { startCdp, loginToken, sleep, verdict } from "./lib/cdp-editor.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 
 async function main() {
   const { ev, cdp, close } = await startCdp({ preferredPort: 31031, label: "scripts/verify-site-content.mjs", tmpPrefix: "edge-site-content" });

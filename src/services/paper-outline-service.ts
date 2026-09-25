@@ -200,8 +200,49 @@ export async function generateChapter(input: {
    * **从不进入章节生成** —— 用户在界面上传了 3 个 PDF 当写作范式, 生成的正文跟它们毫无关系。
    */
   sampleContent?: string;
+  /**
+   * 本章依据 —— 用户在「本章依据」区为这一章勾选的研究证据(素材/分析结果/假设/发现)。
+   *
+   * 2026-09-25: 在此之前**没有任何参数能把研究证据送进正文**。`runLlmJob` 里那条
+   * `【可用素材】` 注入是死代码(它只在 jobKind 走不到 executorMap 时触发, 而写作舱的
+   * jobKind 全部命中 executorMap, 且那三种触发用的 jobKind 全仓无人创建)。
+   * 于是"跑完回归"与"正文怎么写"是两件互不相干的事。
+   *
+   * 本参数由 `research-evidence-service.buildEvidenceBlock()` 组装 —— 里面带着写作纪律
+   * (数字必须原样引用/没有的数据写"待补数据"/假设结论以台账为准), 所以这里不再重复约束。
+   */
+  evidenceBlock?: string;
+  /**
+   * 研究设计约束(方法/因果识别/数据来源/伦理)。
+   *
+   * 2026-09-25: 框架设计页那张「研究设计」面板此前 `defineEmits` 为 0、不落库、生成时也读不到 ——
+   * 用户选"双重差分"和选"不做因果推断", 生成的稿子一模一样。现在由 `buildDesignBlock()` 组装后注入。
+   */
+  designBlock?: string;
+  /**
+   * 研究主线逻辑(来自框架设计的 analysis 节点, 由 LLM 抽出的一段"从问题到结论"的论证线)。
+   *
+   * 2026-09-25 补。它与 `thesis` 是**两件事**: thesis 是一句话主张(本文主张 X 导致 Y),
+   * 主线逻辑是**论证路径**(先说明什么、再检验什么、最后落到什么)。各章共享同一条主线,
+   * 才能避免"每一章自成一个话题"。
+   *
+   * 此前它只存在 analysis 节点里给界面展示 —— 改了生成时一个字都读不到。
+   */
+  researchLogic?: string;
 }): Promise<ChapterResult> {
   const isRoot = input.level === 0;
+  /**
+   * 文献综述类章节的专属要求(⑨)。
+   *
+   * 由来(2026-09-25): 写出来的综述是"别人说了什么"的罗列, 与**本研究的问题**不挂钩 ——
+   *   而综述存在的意义恰恰是"从既有研究里论证出本研究的问题为什么成立"。
+   *   审稿人最先挑的就是这个: 前面铺了三页文献, 到研究问题那里突然断掉。
+   *
+   * 判据用标题(不是 aiSkill.type): skill 卡片是另一条链路的产物, 不是每章都有
+   *   (用户可能只生成了正文没生成指导卡)。标题判据覆盖 99% 的真实情况, 且**判错也不有害** ——
+   *   多一句"落到研究问题"的要求, 最坏只是让模型多写一句转折。
+   */
+  const isLitReview = /文献(综述|回顾|梳理|述评)|研究综述|相关研究|既有研究|文献综述/.test(input.title ?? "");
   // 目标字数 → 提示词里的区间(±20%); 没给就用原来的兜底区间
   const wcHint = input.targetWordCount && input.targetWordCount > 0
     ? `${Math.round(input.targetWordCount * 0.8)}-${Math.round(input.targetWordCount * 1.2)}字(本章配额约 ${input.targetWordCount} 字)`
@@ -222,11 +263,20 @@ ${input.citationPool}
 不要自己编编号, 不要写 \`[1]\` 这种数字——编号由后续环节按**正文首次出现顺序**统一重排,
 你只管把引用的位置标出来。请自然引用 1-5 条。` : ""}
 ${input.sampleContent ? `【参考样例(用户上传的文献/范文, 用来判断其写作取向与规范)】\n${input.sampleContent.slice(0, 4000)}\n注意: 只借鉴其**语体、结构与论证密度**, 不要照抄其观点与结论。` : ""}
-
+${input.researchLogic ? `【研究主线(各章须沿同一条论证路径展开, 不要自成一个话题)】
+${input.researchLogic.slice(0, 1500)}` : ""}
+${input.designBlock ? `\n${input.designBlock.slice(0, 4000)}\n` : ""}
+${input.evidenceBlock ? `\n${input.evidenceBlock.slice(0, 12000)}\n` : ""}
 要求:
 1. 围绕本章标题展开论证: 提出观点 → 理论依据 → 证据/例证 → 小结
 2. 学术引文用 [1] 式占位(勿编造具体文献, 标注"待补引文"处)${input.citationPool ? " — 但已有引用池时必须用池内条目编号" : ""}
-3. 输出 JSON: {"content":"本章正文(中文, 自然分段, ${wcHint}; 若有小节用 Markdown 二级/三级标题)"}`;
+3. 输出 JSON: {"content":"本章正文(中文, 自然分段, ${wcHint}; 若有小节用 Markdown 二级/三级标题)"}${
+  input.evidenceBlock
+    ? `\n4. 【本章依据】是本章的事实基础: 正文里凡涉及数据、系数、检验结论, 都必须能在依据里找到出处, 且数字原样照抄; 依据里没有的一律不写具体数值。`
+    : ""}${
+  isLitReview
+    ? `\n5. **这是文献综述章, 不是文献罗列**。每一组文献梳理完必须落到"它对本研究意味着什么": 已解决到什么程度、留下了什么问题、本研究填补的是哪一条。段落之间要有**递进关系**(由宽到窄、由共识到分歧), 不要按"作者A说…作者B说…"平铺。末尾要自然收束到本研究的问题与假设(可用上面【核心论点】与【研究设计约束】里的措辞)。`
+    : ""}`;
 
   const answer = await llmJson(prompt, input.model, 6000);
   const content = String(answer?.content ?? "").trim();
@@ -256,6 +306,14 @@ export async function generateComponent(input: {
    * 由调用方用 applyDeAITier() 做(那条路要分块, 不适合塞在这个单次 JSON 调用里)。
    */
   deAITone?: boolean | DeAITier;
+  /**
+   * 研究证据摘要 —— 摘要/结论里写的"研究发现"必须与真实结果一致。
+   *
+   * 2026-09-25: 结论章此前是**凭空生成**的: prompt 只拿到"论文主题 + 章节标题 + 各章要点前 500 字",
+   * 而结论恰恰是最该说清"本文发现了什么"的地方。没有这条时, 模型只能把各章开头复述一遍,
+   * 于是结论里出现的"研究表明…"没有任何一条能回到数据。
+   */
+  evidenceSummary?: string;
 }): Promise<ChapterResult> {
   const kindCn = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[input.kind];
   const chapters = input.sections.map((s, i) => `第${i + 1}章 ${s}`).join("；");
@@ -270,9 +328,13 @@ export async function generateComponent(input: {
 ${input.thesis ? `【核心论点】${input.thesis}` : ""}
 【章节结构】${chapters}
 ${bodies ? `【各章要点(摘要用)】\n${bodies}` : ""}
+${input.evidenceSummary ? `\n【研究证据(摘要/结论里凡涉及数据与结论, 必须以此为准, 不得另编)】\n${input.evidenceSummary.slice(0, 6000)}\n` : ""}
 
 要求:
-1. ${input.kind === "abstract" ? "摘要 200-400 字, 涵盖目的/方法/结果/结论四要素" : input.kind === "keywords" ? "3-5 个关键词, 用「；」分隔" : "结论 300-600 字, 总结全文论点+研究贡献+展望"}
+1. ${input.kind === "abstract" ? "摘要 200-400 字, 涵盖目的/方法/结果/结论四要素" : input.kind === "keywords" ? "3-5 个关键词, 用「；」分隔" : "结论 300-600 字, 总结全文论点+研究贡献+展望"}${
+  input.evidenceSummary && input.kind !== "keywords"
+    ? "\n   其中「结果/发现」部分必须来自【研究证据】: 有具体数值就原样写(含显著性), 没有就作定性表述, 不得编造数字。"
+    : ""}
 2. 输出 JSON: {"content":"${input.kind === "keywords" ? "关键词:…" : "内容"}"}${deAI}`;
 
   const answer = await llmJson(prompt, input.model, 3000);

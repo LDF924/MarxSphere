@@ -5,6 +5,7 @@
 import { useState, useEffect, type FC } from "react";
 import { FlaskConical, Upload, Play, RotateCcw, Table2, AlertTriangle, CheckCircle2, FileUp, ArrowRight, Wand2, History, Download, BookOpen, Trash2, Stethoscope, Database, ListChecks, Workflow, LineChart, BookMarked } from "lucide-react";
 import { apiEmpirical, apiEmpiricalWorkshop, apiEmpiricalDemo } from "../lib/api";
+import { takeEmpiricalTarget } from "../lib/workflow-bridge";
 import { readResume } from "./ResearchHistoryPanel";
 import { Button } from "./ui/button";
 import { ToolRunner } from "./ToolRunner";
@@ -370,6 +371,14 @@ export const EmpiricalResearchPanel: FC = () => {
   const loadProjects = () => {
     void apiEmpiricalWorkshop.projects().then((r) => {
       setProjects(r.projects);
+      /**
+       * 写作舱跳过来时**预选**它绑定的那个课题(2026-09-25)。
+       * 与下面那条"不自动选第一个"并不矛盾: 那个禁止的是**猜**,
+       * 这里是用户刚从写作舱带着明确目标跳过来的, 选它是执行他的意图。
+       * 读后即删 —— 否则以后手动进实证台会被旧目标重复选中。
+       */
+      const want = takeEmpiricalTarget();
+      if (want && r.projects.some((p: any) => p.id === want)) setProjectId(want);
       // V414: 原来这里是 `if (!projectId) setProjectId(r.projects[0].id)` —— 静默选中列表第一个。
       //   课题列表按 created_at desc 排, 顺序会随新建课题变化, 等于"悄悄换课题";
       //   切到空课题时流水线总览整块消失, 用户会以为功能坏了(实测踩过)。

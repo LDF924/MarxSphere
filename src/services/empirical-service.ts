@@ -118,7 +118,46 @@ async function trackRunToPipeline(
       if (t.status !== "done" && t.status !== "error") continue;
       if (t.status === "done") {
         let enriched = t.result as any;
-        // 回归类方法(有系数表) → 自动森林图
+        /**
+         * ⚠⚠ 2026-09-25 修一个**写路径静默不发生**的缺陷 —— 原先 `pipeline_runs` 是在
+         *   下面那段"森林图"**之后**才写的, 而森林图要**再 spawn 一次 Python 并轮询最长 ~33 秒**
+         *   (`for fi < 25 … 1300ms`)。后果有三层:
+         *     ① 一次成功的回归, 要等几十秒才在"课题流水线总览"里出现 —— 用户以为没跑成;
+         *     ② 森林图那一步抛错虽然被 catch 住, 但**整个 try 包住的是图与落库两件事**,
+         *        某些失败路径会走到 `return`, 于是 `pipeline_runs` **永久不写**;
+         *     ③ 服务在这几十秒内重启 → 记录丢失, 而结果其实早就算好了。
+         *   实测发现路径: 写作舱的「本章依据」按 pipeline_runs 列实证运行, 探针跑完 OLS
+         *   等了 30 秒仍是 0 条 —— 而同一时刻 `empirical_results` 里结果早就写好了。
+         *
+         *   修法: **先落库(原始结果), 图算出来之后再补一遍**。两张记录语义一致(同一 run),
+         *   后者只是多了 figures; 用 `enriched` 覆盖同一条会需要 run id, 而这里没有 ——
+         *   所以补写时按 (project_id, runTaskId) 更新, 避免流水线里出现两条。
+         */
+        const { pool: dbPool } = await import("../db/pool.js");
+        const writeRun = async (payload: unknown) => {
+          await dbPool.query(
+            `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result)
+             values ($1, $2, $3, $4)`,
+            [projectId, method === "descriptive" ? "data_pipeline" : method,
+             JSON.stringify({ method, params, nRows: data.rows.length, columns: data.columnOrder, runTaskId: taskId }),
+             JSON.stringify(payload)]
+          ).catch(() => {});
+        };
+        // ① 结果一到就落库 —— 这才是"跑完了"的真相源
+        await writeRun(enriched);
+
+        /**
+         * ② 自动进研究台账 —— 与统计台那条**对称**。
+         *   统计台是"任务完成 → autoHarvestForFile"; 实证台在同一个位置做同一件事,
+         *   否则"跑完回归正文里还是没证据"这个毛病会从统计台搬到实证台。
+         *   写在**落库之后**: 抽取要读 pipeline_runs 那一行, 读早了会 0 条。
+         *   不 await、失败只 warn —— 这是旁路增强, 不该影响实证分析本身。
+         */
+        void import("./research-evidence-service.js")
+          .then((m) => m.autoHarvestEmpiricalRun(projectId, taskId))
+          .catch((e) => console.warn(`[empirical] 自动采集发现失败: ${String(e).slice(0, 160)}`));
+
+        // ③ 回归类方法补森林图(失败不影响已落库的原始结果)
         const regMethods = new Set(["ols", "logit", "ologit", "mnl", "did", "did_twfe", "event_study", "panel_fe", "iv", "rdd"]);
         if (regMethods.has(method)) {
           try {
@@ -146,15 +185,13 @@ async function trackRunToPipeline(
               }
             }
           } catch { /* 图失败不影响落库 */ }
+          // 补写: 把带图的那份替换掉刚才那条(同一 runTaskId), 不让流水线里出现两条
+          await dbPool.query(
+            `update empirical_pipeline_runs set python_result=$3::jsonb
+              where project_id=$1 and input_snapshot->>'runTaskId' = $2`,
+            [projectId, taskId, JSON.stringify(enriched)]
+          ).catch(() => {});
         }
-        const { pool: dbPool } = await import("../db/pool.js");
-        await dbPool.query(
-          `insert into empirical_pipeline_runs (project_id, stage, input_snapshot, python_result)
-           values ($1, $2, $3, $4)`,
-          [projectId, method === "descriptive" ? "data_pipeline" : method,
-           JSON.stringify({ method, params, nRows: data.rows.length, columns: data.columnOrder, runTaskId: taskId }),
-           JSON.stringify(enriched)]
-        ).catch(() => {});
       }
       return;
     }

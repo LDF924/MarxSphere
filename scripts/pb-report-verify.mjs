@@ -13,7 +13,7 @@
 // 用法: node scripts/pb-report-verify.mjs  (前置: 4173 已起; admin 账号存在; 至少有 1 条历史审稿)
 import { startCdp, loginToken, findSocFrame, evalInFrame, verdict, sleep } from "./lib/cdp-editor.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 
 async function main() {
   const { ev, cdp, close } = await startCdp({ preferredPort: 31005, label: "scripts/pb-report-verify.mjs", tmpPrefix: "edge-cdp-pb" });

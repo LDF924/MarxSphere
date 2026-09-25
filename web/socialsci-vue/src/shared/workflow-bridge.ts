@@ -171,3 +171,30 @@ export function markWorkflowReady(): void {
   const w = window as unknown as { __socReady?: Record<string, boolean> };
   w.__socReady = { ...(w.__socReady ?? {}), workflow: true };
 }
+
+/**
+ * 写作舱 → 实证台的**目标课题交接**。
+ *
+ * 由来(2026-09-25): 写作舱能绑定一个实证课题, 但从这里点"去实证台"过去之后,
+ * 实证台是**未选中课题**的状态(它刻意不自动选第一个 —— 见 EmpiricalResearchPanel 的注释),
+ * 用户得在下拉里再找一遍自己刚绑的那个。跨了页面还要重新找, 就是断的。
+ *
+ * 走 localStorage 而不是 postMessage: 与 `writePendingRoute` 同一个理由 ——
+ * 目标视图可能还没挂载, 监听器不存在, 消息会静默丢。读方挂载时主动取, 读后即删。
+ */
+const EMP_TARGET_KEY = "skf_wf_empirical_target";
+/** ⚠ 与 React 外壳侧 `web/src/lib/workflow-bridge.ts` 的同名常量**必须是同一个字符串** */
+export const __EMP_TARGET_KEY = EMP_TARGET_KEY;
+
+export function setEmpiricalTarget(empiricalProjectId: string): void {
+  try { localStorage.setItem(EMP_TARGET_KEY, String(empiricalProjectId ?? "")); } catch { /* 忽略 */ }
+}
+
+/** 读后即删 —— 否则用户以后手动进实证台会被旧目标重复选中 */
+export function takeEmpiricalTarget(): string {
+  try {
+    const v = localStorage.getItem(EMP_TARGET_KEY) ?? "";
+    if (v) localStorage.removeItem(EMP_TARGET_KEY);
+    return v;
+  } catch { return ""; }
+}

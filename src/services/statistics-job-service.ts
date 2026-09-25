@@ -179,7 +179,11 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       execFile(PYTHON, [RUNNER, taskDir], { timeout: 300_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, _stdout, stderr) => {
         const resultPath = `${taskDir}/result.json`;
-        const tryRead = (attempt: number): void => {
+        /**
+         * ⚠ 这个回调必须是 **async** —— 见下面 `await persistJob`。
+         *   改成 async 而不去掉 await: 常量级的差异, 但少一次静默竞态。
+         */
+        const tryRead = async (attempt: number): Promise<void> => {
           if (existsSync(resultPath)) {
             try {
               const parsed = JSON.parse(readFileSync(resultPath, "utf-8"));
@@ -187,7 +191,35 @@ async function runStatsJob(userId: string, jobId: string): Promise<void> {
               job.resultVersionId = randomUUID();
               job.status = "completed";
               job.error = null;
-              void persistJob(job);
+              /**
+               * ⚠ **必须 await** —— 这里原来沿用了别处的 `void persistJob(job)`(发出去就不管),
+               *   但紧接着的自动采集**要从库里读** `status='completed'` 那一行。
+               *   两条语句并发时, 采集的 SELECT 完全可能先于 UPDATE 提交,
+               *   于是**采到 0 条**而任务看起来一切正常。
+               *   实测表现是**不稳定**(门禁里时红时绿、单跑多半能过), 最难查的一类。
+               *
+               * ⚠⚠ 第一版我在这里写 `await` 却**没把箭头函数改成 async** ——
+               *   esbuild 报 "await can only be used inside an async function", 整个模块转换失败,
+               *   **所有统计任务直接 500**。而 `tsc --noEmit` 抓不到: 它走的是 esbuild 的转换期检查。
+               *   教训: 改完这种语法级的东西要**真跑一次**再收工, 别只看类型通过。
+               *   (下面那两处失败的 persistJob 仍保持 fire-and-forget —— 那里没有下游依赖。)
+               */
+              await persistJob(job);
+              /**
+               * B 批(2026-09-25): 分析跑完 → **自动**把系数抽进研究台账。
+               *
+               * 为什么不放在 API 层: 三条建 job 的路径(统计台/编辑器/实证台)各有各的
+               *   调用点, 挂在 API 上就要求三处都记得加 —— 而"漏一处"的后果是
+               *   "有的分析能进台账、有的不能", 属于最难查的半截状态。挂在**执行完成**
+               *   这一处, 三条路径自动全覆盖。
+               *
+               * 不 await、失败只 warn: 这是旁路增强, 不能让抽取失败把一次成功的
+               *   统计分析变成失败(用户会看到"分析失败"而结果其实已经算好了)。
+               *   `fileId` 为空(粘贴/仿真数据)时 autoHarvest 内部直接返回 0。
+               */
+              void import("./research-evidence-service.js")
+                .then((m) => m.autoHarvestForFile(job.userId, job.id))
+                .catch((e) => console.warn(`[stats-job] 自动采集发现失败: ${String(e).slice(0, 160)}`));
               resolve();
               return;
             } catch {

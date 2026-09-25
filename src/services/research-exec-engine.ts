@@ -13,6 +13,7 @@ import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 import * as materials from "./research-materials-service.js";
 import { generateChapter, generateComponent, applyDeAITier } from "./paper-outline-service.js";
 import { retrieveLiterature, buildCitationMaterialBody, type LiteratureHit } from "./research-literature-retrieval.js";
+import * as researchEvidence from "./research-evidence-service.js";
 
 export interface ExecCtx {
   taskId: string;
@@ -787,11 +788,16 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
   //   界面写着"AI 智能体将按此字数进行科研分配"(InputView 字数预估卡), prompt 却写死
   //   800-1500 字, 也就是**承诺了没做的事**。现在按一级章均分当配额。
   // 一次查齐: 章节配额 / 全文大纲树 / 项目语体 / 用户上传的参考样例
-  const planCtx = await (async (): Promise<{ quota?: number; outlineTree?: string; style?: string; sampleContent?: string }> => {
+  const planCtx = await (async (): Promise<{
+    quota?: number; outlineTree?: string; style?: string; sampleContent?: string; thesis?: string; researchLogic?: string;
+  }> => {
     try {
       const n = await pool.query(`select payload from research_nodes where project_id=$1 and node_key='input'`, [ctx.projectId]);
+      // 研究主线在 analysis 节点(框架设计产出的), 与 input 节点分开查 —— 各是各的真源
+      const an = await pool.query(`select payload->>'logicFlow' as lf from research_nodes where project_id=$1 and node_key='analysis'`, [ctx.projectId]).catch(() => ({ rows: [] as unknown[] }));
+      const logicFlow = String((an.rows[0] as { lf?: unknown } | undefined)?.lf ?? "").trim();
       const payload = (n.rows[0]?.payload ?? {}) as {
-        totalWordCount?: unknown; outline?: unknown;
+        totalWordCount?: unknown; outline?: unknown; thesis?: unknown; coreArgument?: unknown;
         sampleFiles?: Array<{ name?: unknown; content?: unknown }>;
       };
       const total = Number(payload.totalWordCount);
@@ -807,6 +813,13 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
             .join("\n\n")
             .slice(0, 8000)
         : "";
+      /**
+       * 核心论点 —— `generateChapter` 一直有这个参数, prompt 里也一直有【核心论点】那一行,
+       * 但**全仓没有任何调用点传过它**(2026-09-25 逐处核对)。后果是每章各自成文,
+       * 章与章之间没有共同论点 —— 这恰恰是审稿人最先看出来的问题。
+       * 两个键都读: thesis 是标准名, coreArgument 是早期快照里的写法。
+       */
+      const thesis = String(payload.thesis ?? payload.coreArgument ?? "").trim();
       return {
         ...(Number.isFinite(total) && total > 0 && l1 > 0 ? { quota: Math.max(300, Math.round(total / l1)) } : {}),
         // V417: outlineTree 此前被 sec.requirements 挪用(语义不符), 这里传**真正的**全文大纲,
@@ -816,9 +829,27 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
         // V417: project.style 有列、有写、澄清也用, 但从来没传到章节生成 → 语体参数恒空。
         ...(style ? { style } : {}),
         ...(sampleContent ? { sampleContent } : {}),
+        ...(thesis ? { thesis } : {}),
+        ...(logicFlow ? { researchLogic: logicFlow } : {}),
       };
     } catch { return {}; }
   })();
+  /**
+   * 本章依据 —— 2026-09-25 新接上的一条线。
+   *
+   * 在此之前正文里**没有任何研究证据**: 用户跑完回归、选好素材, 生成时一个字都不会进 prompt。
+   * 现在按章组装(见 research-evidence-service.buildEvidenceBlock 的三条取舍注释)。
+   * 一次取全项目(而不是逐章查) —— 20 章的论文逐章查会多出 80 次查询。
+   * 取不到依据是**正常状态**(新项目还没配依据), 所以失败不阻断生成。
+   */
+  const evidenceBlocks = await researchEvidence.buildEvidenceBlocks(ctx.userId, ctx.projectId, sections.map((s) => s.id ?? ""))
+    .catch((e): Record<string, { text: string; used: number; dropped: number }> => {
+      console.warn(`[evidence] 依据组装失败(project=${ctx.projectId}): ${String(e).slice(0, 160)}`);
+      return {};
+    });
+  // 研究设计约束(方法/因果识别/数据来源/伦理) —— 全文共用一份, 逐章循环外取一次
+  const designBlock = await researchEvidence.buildDesignBlock(ctx.userId, ctx.projectId)
+    .catch((e) => { console.warn(`[evidence] 设计块组装失败(project=${ctx.projectId}): ${String(e).slice(0, 160)}`); return ""; });
   const quota = planCtx.quota;
   const results: Array<{ id?: string; title?: string; ok: boolean; wordCount?: number; content?: string; error?: string }> = [];
   for (const sec of sections) {
@@ -838,6 +869,7 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
         topic: ctx.goal,
         ...(quota ? { targetWordCount: quota } : {}),
         ...(planCtx.style ? { style: planCtx.style } : {}),
+        ...(planCtx.thesis ? { thesis: planCtx.thesis } : {}),
         ...(sec.skill_prompt ? { prevContext: `【本章写作指令】${sec.skill_prompt.slice(0, 2000)}` } : {}),
         // 优先用真正的全文大纲; 没有才退回 requirements(旧行为)
         ...(planCtx.outlineTree
@@ -845,6 +877,10 @@ async function runChapterBatch(task: any, ctx: ExecCtx) {
           : sec.requirements ? { outlineTree: sec.requirements.slice(0, 1000) } : {}),
         ...(planCtx.sampleContent ? { sampleContent: planCtx.sampleContent } : {}),
         ...(citationPool ? { citationPool } : {}),
+        // 本章依据: 该章勾选的研究证据(素材/分析结果/假设/发现)。空则不加这一行。
+        ...(sec.id && evidenceBlocks[sec.id]?.text ? { evidenceBlock: evidenceBlocks[sec.id].text } : {}),
+        ...(designBlock ? { designBlock } : {}),
+        ...(planCtx.researchLogic ? { researchLogic: planCtx.researchLogic } : {}),
       });
       results.push({ id: sec.id, title: sec.title, ok: !!ch.content, wordCount: ch.wordCount, content: ch.content });
     } catch (e) {
@@ -1066,6 +1102,37 @@ async function runPhase5(task: any, ctx: ExecCtx) {
   const bodies = (Array.isArray(snapshot.chapterContents) && (snapshot.chapterContents as string[]).some((c) => c && c.trim().length > 20)
     ? snapshot.chapterContents as string[]
     : nodeSections.map((s) => s.content ?? "").filter((c) => c && c.trim().length > 20));
+  /**
+   * 研究证据摘要 —— 摘要/结论/全文审查三处共用。
+   *
+   * 2026-09-25: 这三处此前都只看得到**正文文本**, 看不到正文背后的数据。
+   *   摘要写"本文发现 X 与 Y 显著正相关"时, 它没有 X/Y 的任何真实数字;
+   *   结论章同病(那是全文里最该有具体发现的地方);
+   *   全文审查的「数据准确性」一维也只有正文可比对 —— 拿正文核正文, 恒真。
+   *
+   * 组装口径与章节依据同源(buildEvidenceBlocks), 区别只是这里不看某章勾了什么,
+   * 而是取**整个项目**的依据并合并去重 —— 摘要/结论本来就是全文级的。
+   * 取不到是正常状态(还没配依据), 所以失败不阻断合稿。
+   */
+  const evidenceSummary = await (async (): Promise<string> => {
+    try {
+      const blocks = await researchEvidence.buildEvidenceBlocks(ctx.userId, ctx.projectId);
+      const texts = Object.values(blocks).map((b) => b.text).filter(Boolean);
+      if (!texts.length) return "";
+      // 去重: 同一份依据常被配给好几章, 原样拼会把同一张表重复七八遍
+      const items = new Set<string>();
+      for (const t of texts) {
+        for (const seg of t.split("\n\n")) {
+          const s = seg.trim();
+          if (s && !s.startsWith("写作纪律")) items.add(s);
+        }
+      }
+      return [...items].join("\n\n").slice(0, 6000);
+    } catch (e) {
+      console.warn(`[evidence] 全文证据摘要组装失败(project=${ctx.projectId}): ${String(e).slice(0, 160)}`);
+      return "";
+    }
+  })();
   if (kind === "merge") {
     // V417: 用户在「统稿定稿」勾的「降 AIGC」此前写到 input_snapshot 就断了(没人读),
     //   等于开关是摆设。现在把它透到摘要/关键词生成, 真正影响产出。
@@ -1090,6 +1157,7 @@ async function runPhase5(task: any, ctx: ExecCtx) {
       sections: sections.map((s) => s.title ?? ""),
       chapterContents: bodies,
       ...(deAITier ? { deAITone: deAITier } : {}),
+      ...(evidenceSummary ? { evidenceSummary } : {}),
     }).catch(() => ({ content: "" }));
     await setMergeStep(3, "生成元信息");
     const keywords = await generateComponent({
@@ -1207,11 +1275,14 @@ async function runPhase5(task: any, ctx: ExecCtx) {
     // 闭源六维审查: score/overall/highlights/checks{requirements,references,aiTone,logic,dataAccuracy}/topSuggestions
     const res = await fetchLlm({
       url: ep.url, key: ep.key, model: ep.model,
-      messages: [{ role: "user", content: `你是期刊主编, 对一篇社科论文做多维质量审查。只依据提供的全文, 不验证文献真实存在与否, 只评价文本呈现。
+      messages: [{ role: "user", content: `你是期刊主编, 对一篇社科论文做多维质量审查。只依据提供的全文, 不验证文献真实存在与否, 只评价文本呈现。${evidenceSummary ? "\n**但「数据/实证表述可信度」这一维必须比对下方的【研究证据】**: 正文里出现的统计数字若在证据里找不到对应, 该项判 false 并在 detail 里点名是哪几个数字。" : ""}
 
 【论文全文】
 ${fulltext.slice(0, 16000)}
-
+${evidenceSummary ? `
+【研究证据(正文声称的数据来源; 用于核对正文里的数字)】
+${evidenceSummary.slice(0, 4000)}
+` : ""}
 输出 JSON(不要代码块):
 {"score":0-100总分整数,"grade":"A|B|C|D","overall":"总体评语(150字内,亮点+主要问题+修订方向)","highlights":["亮点1","亮点2"],"checks":{"requirements":{"pass":true/false,"detail":"结构与体例完整性检查意见(≤120字)"},"references":{"pass":true/false,"detail":"引文数量/格式/位置规范检查意见(≤120字)"},"aiTone":{"pass":true/false,"detail":"AI生成痕迹检查意见(模板化表达/机械列举/套话, ≤150字)"},"logic":{"pass":true/false,"detail":"论证逻辑一致性检查意见(≤120字)"},"dataAccuracy":{"pass":true/false,"detail":"数据/实证表述可信度检查意见(≤120字)"}},"topSuggestions":["首要修改建议1(具体可执行)","建议2","建议3"]}` }],
       temperature: 0.3, maxTokens: 4000, timeoutMs: 240_000,

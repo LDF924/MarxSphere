@@ -216,30 +216,66 @@ function splitBlocks(text: string, maxChars: number): string[] {
 }
 
 // ─── 落库 helpers ───
-export async function createProject(input: { title: string; topic?: string }): Promise<Record<string, unknown>> {
+/**
+ * 建实证课题。
+ *
+ * `userId` 是可选的 —— 迁移 156 给 `empirical_projects` 加了 `user_id`,
+ * 但**不是所有调用方都有身份**(实证台的老前端在本机未登录时也能用)。
+ * 拿不到就写 null, 语义是"未归属/实例级共享", 与历史数据一致。
+ */
+export async function createProject(input: { title: string; topic?: string; userId?: string | null }): Promise<Record<string, unknown>> {
   const r = await pool.query(
-    `insert into empirical_projects (title, topic) values ($1, $2) returning id, title, topic, created_at`,
-    [input.title, input.topic ?? ""]
+    `insert into empirical_projects (title, topic, user_id) values ($1, $2, $3) returning id, title, topic, created_at`,
+    [input.title, input.topic ?? "", input.userId ?? null]
   );
   const row = r.rows[0];
   return { id: String(row.id), title: row.title, topic: row.topic, created_at: new Date(row.created_at).toISOString() };
 }
 
-export async function listProjects(): Promise<Record<string, unknown>[]> {
+/**
+ * 课题列表。
+ *
+ * ⚠ 2026-09-25 起**按归属过滤**, 但刻意保留"未归属"的历史数据:
+ *   · 有归属的课题: 只有本人看得到;
+ *   · `user_id is null` 的课题(迁移 156 之前建的): **仍然对所有人可见**, 并带 `unowned: true`
+ *     标记, 由界面标注"历史 · 未归属"。直接藏起来会让用户以为数据不见了 ——
+ *     而那批数据的归属**没有任何可靠来源可以回填**(见迁移 156 的注释), 藏起来等于丢数据。
+ *
+ * `viewerId` 为空(未登录/本机匿名)时不做过滤, 与改动前的行为一致 —— 实证台前端
+ * 在未登录状态下是可用的, 加过滤会让它变成空列表。
+ */
+export async function listProjects(viewerId?: string | null): Promise<Record<string, unknown>[]> {
   // V414: 带上各课题的产出计数 — 课题选择器里要显示"N 问卷 · N 数据 · N 分析",
   //   否则切到一个空课题时, 流水线总览整块消失, 用户会以为功能坏了(实测踩过)。
   //   一次聚合查三个表, 避免大列表串行 N+1。
   const r = await pool.query(
-    `select p.id, p.title, p.topic, p.status, p.created_at,
+    `select p.id, p.title, p.topic, p.status, p.created_at, p.user_id,
             (select count(*)::int from empirical_questionnaires q where q.project_id = p.id) as n_questionnaires,
             (select count(*)::int from empirical_data_versions v where v.project_id = p.id) as n_versions,
             (select count(*)::int from empirical_pipeline_runs r where r.project_id = p.id) as n_runs
-     from empirical_projects p order by p.created_at desc limit 50`);
+       from empirical_projects p
+      where $1::uuid is null or p.user_id is null or p.user_id = $1::uuid
+      order by p.created_at desc limit 50`, [viewerId ?? null]);
   return r.rows.map((row: any) => ({
     id: String(row.id), title: row.title, topic: row.topic, status: row.status,
     created_at: new Date(row.created_at).toISOString(),
+    /** 未归属 = 迁移 156 之前的历史课题; 界面据此提示, 不要让人误以为是自己的 */
+    unowned: !row.user_id,
     counts: { questionnaires: row.n_questionnaires, versions: row.n_versions, runs: row.n_runs },
   }));
+}
+
+/**
+ * 课题归属校验 —— 供**新增**的读取路径使用。
+ * 返回 true 表示"这个人可以看这个课题": 本人所有, 或该课题未归属(历史数据)。
+ * 不带 viewerId(未登录)时同样放行, 与 listProjects 的口径一致。
+ */
+export async function canAccessProject(viewerId: string | null | undefined, projectId: string): Promise<boolean> {
+  if (!viewerId) return true;
+  const r = await pool.query(`select user_id from empirical_projects where id=$1`, [projectId]);
+  if (!r.rows.length) return false;
+  const owner = r.rows[0].user_id;
+  return owner === null || String(owner) === String(viewerId);
 }
 
 export async function saveQuestionnaire(input: {

@@ -22,7 +22,7 @@
 //   同一个坑这个会话里踩过五次以上, 故此处直接用 Write 落盘。
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 /** 种子模型: 选**非 deepseek**的, 这样"切回 deepseek"才有真实变化可观察 */
 /**
  * 本环境只有 deepseek 两个模型可用(其余 PUT 一律 400: 密钥未配), 所以"种一个别家模型"只能

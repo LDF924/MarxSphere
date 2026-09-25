@@ -115,6 +115,11 @@ const SUITES = [
   //   正文里的 [n] 真被抽出来并真打端点、查重在没源文本时真禁用。
   //   脚本自带测试课题与收尾清理(首跑踩过: 造了数据却没让被测对象看见 → 三条假失败)。
   { key: "writing-cabin-v425b", file: "probe-writing-cabin-v425b.mjs", desc: "写作舱八项加法: 选题论证/研究设计/数据收集/引文核查/文献矩阵/投稿检查" },
+  // 「研究 → 写作」这条线的接线门禁(2026-09-25)。这一批补的断线全是**静默**失败:
+  //   面板渲染了、按钮在, 但点下去打错端点 / 存了读不回来 —— 只断言"元素存在"抓不到。
+  //   所以每条都验到副作用: 勾选→重载后仍在、采纳→库里 status 真变、设计→design 节点真写。
+  //   不调 LLM(统计是 pandas/statsmodels, 秒级), 故进默认组。脚本自带测试课题并自清。
+  { key: "research-evidence", file: "probe-research-evidence.mjs", desc: "研究证据链: 本章依据/假设台账/发现采集/数字核验/研究设计/变量编辑" },
   { key: "project-rail", file: "probe-project-rail.mjs", desc: "项目栏: 列表/搜索/切项目/折叠 + Alt+数字快捷键(含越级拦截)" },
   { key: "editor-check", file: "editor-check-verify.mjs", desc: "全文检查 4 个动作卡" },
   { key: "editor-chart", file: "editor-ai6-chart.mjs", desc: "图表页签: 数据源/类型/描述/生成" },

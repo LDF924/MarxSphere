@@ -17,7 +17,14 @@ import * as path from "node:path";
 import { resolveBrowser } from "./find-browser.mjs";
 import { resolveCdpPort } from "./cdp-port.mjs";
 
-const BASE = "http://127.0.0.1:4173";
+/**
+ * ⚠ 2026-09-25: 原先写死 4173。后果是**任何指向别处的探针都登不上** ——
+ *   `loginToken` 会去 4173(主仓)换 token, 而探针后续的请求打的是 `API_BASE`(另一棵树/另一个端口),
+ *   token 是另一把密钥签的, 服务端验不过 → 每个请求都是「未登录」, 看起来像产品坏了。
+ *   `verify-ui.mjs` 早就文档化了 `API_BASE`/`WEB` 这套覆盖(见其文件头), 这里跟上同一约定。
+ *   默认值不变(4173) —— 现有那批编辑器探针的行为一个字都不改。
+ */
+const BASE = process.env.API_BASE || "http://127.0.0.1:4173";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**

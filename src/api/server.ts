@@ -114,6 +114,7 @@ import * as researchPipeline from "../services/research-pipeline-service.js";
 import { attachSse } from "./stream-utils.js";
 // SocialSci P0-2: 素材库 + DAG 执行引擎
 import * as researchMaterials from "../services/research-materials-service.js";
+import * as researchEvidence from "../services/research-evidence-service.js";
 import * as researchExec from "../services/research-exec-engine.js";
 // SocialSci P0-3: 审稿任务流 + 期刊库/标准库
 import * as reviewService from "../services/review-service.js";
@@ -5922,18 +5923,36 @@ export function buildHttpServer() {
 
   // ═══════════ V380: 实证研究工作台增强 — 课题/问卷/数据版本 ═══════════
   const empProjectSchema = z.object({ title: z.string().min(1).max(200), topic: z.string().max(2000).default("") });
+  /**
+   * ⚠ 实证台这两个路由的鉴权是**刻意宽松**的 —— 改之前先读迁移 156 的注释。
+   *
+   * 实证台的老前端在本机/未登录状态下是可用的, 直接加 `requireUser` 会让它 401
+   * (注意 `requireUser` **要求 JWT 且不放行本机**, 本机豁免在另一个 onRequest 钩子层)。
+   * 所以这里用 `optionalUser`: 有 token 就记归属并按归属过滤, 没有就沿用旧行为。
+   * 效果是"新数据开始有归属, 老数据不消失", 同时给后续逐路由收紧留了路径
+   * (实证台其余 60 个路由**尚未**做归属校验, 这一点迁移 156 里写明了)。
+   */
+  const optionalUser = async (request: any) => {
+    const token = String((request.headers.authorization || "").replace("Bearer ", "").trim());
+    const payload = token ? authService.verifyToken(token) : null;
+    if (!payload) return null;
+    return (await authService.getUserById(payload.uid)) ?? null;
+  };
+
   app.post("/api/empirical/projects", async (request, reply) => {
     const body = empProjectSchema.parse(request.body);
     const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
+    const user = await optionalUser(request);
     try {
-      return { project: await questionnaireService.createProject(body) };
+      return { project: await questionnaireService.createProject({ ...body, userId: user?.id ?? null }) };
     } catch (e: any) {
       return reply.code(400).send({ error: { code: "BAD_REQUEST", message: String(e?.message ?? e).slice(0, 200) } });
     }
   });
-  app.get("/api/empirical/projects", async () => {
+  app.get("/api/empirical/projects", async (request) => {
     const { questionnaireService } = await import("../services/empirical-questionnaire-service.js");
-    return { projects: await questionnaireService.listProjects() };
+    const user = await optionalUser(request);
+    return { projects: await questionnaireService.listProjects(user?.id ?? null) };
   });
 
   const generateSchema = z.object({
@@ -11865,9 +11884,259 @@ ${dataBlock}
     return { suggestions: r.suggestions };
   });
 
-  // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源)
-  app.post("/api/research/artifacts/import", async (request, reply) => {
+  // ═══════════════════════════════════════════════════════════════════
+  // 研究证据 → 写作(A 批 + B 批)
+  //
+  // 这一组路由补的是**写作舱最根本的一条断线**: 正文与真实研究之间没有任何通道。
+  // 见 src/services/research-evidence-service.ts 文件头(那里记着三条实测事实,
+  // 包括"后端早就写好的素材注入是死代码"这一条)。
+  //
+  // 命名一律走 `/research/projects/:projectId/...` —— 证据、假设、发现都**属于项目**,
+  // 挂到 /materials 下会让"这条依据是哪个课题的"变成要顺着 material 反查的事。
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** 全项目章节依据(前端一次拉全, 切章不重查) */
+  app.get("/api/research/projects/:projectId/evidence", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const q = request.query as { sectionId?: string };
+    const r = await researchEvidence.listEvidence(user.id, projectId, q.sectionId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /** 可选的依据来源清单(素材/分析/假设/发现) —— 勾选面板的数据源 */
+  app.get("/api/research/projects/:projectId/evidence-candidates", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    // fileId 用于把"这个课题跑过的分析"捞回来 —— 统计结果按 user_id 存, 与课题的唯一连接点
+    //   就是快照里的 statisticsFileId(见迁移 153 的长注释)。前端把 store 里那个值带上来。
+    const q = request.query as { fileId?: string };
+    const r = await researchEvidence.listEvidenceCandidates(user.id, projectId, q.fileId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /** 保存某章依据(全量替换 —— 界面看到的就是库里的) */
+  app.put("/api/research/projects/:projectId/evidence/:sectionId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, sectionId } = request.params as { projectId: string; sectionId: string };
+    const body = request.body as { refs?: Array<{ kind?: string; refId?: string; note?: string }> };
+    const refs = Array.isArray(body?.refs) ? body.refs : [];
+    const r = await researchEvidence.replaceSectionEvidence(
+      user.id, projectId, sectionId,
+      refs.map((x) => ({ kind: String(x.kind ?? "material") as never, refId: String(x.refId ?? ""), note: String(x.note ?? "") }))
+    );
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /** 预览某章的依据块(界面里"生成时会给模型的到底是什么" —— 不做黑箱) */
+  app.get("/api/research/projects/:projectId/evidence/:sectionId/preview", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, sectionId } = request.params as { projectId: string; sectionId: string };
+    const r = await researchEvidence.buildEvidenceBlock(user.id, projectId, sectionId);
+    return r;
+  });
+
+  /** 假设检验台账 */
+  app.get("/api/research/projects/:projectId/hypotheses", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchEvidence.listHypotheses(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  app.put("/api/research/projects/:projectId/hypotheses", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { hypotheses?: Array<Record<string, unknown>> };
+    const r = await researchEvidence.saveHypotheses(
+      user.id, projectId,
+      (Array.isArray(body?.hypotheses) ? body.hypotheses : []).map((h) => ({
+        ...(h.id ? { id: String(h.id) } : {}),
+        code: String(h.code ?? ""), text: String(h.text ?? ""),
+        verdict: String(h.verdict ?? "pending"), evidenceRef: String(h.evidenceRef ?? ""),
+        rationale: String(h.rationale ?? ""),
+      }))
+    );
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /** 从框架设计的假设草案灌进台账(只补不覆盖 —— 重跑框架设计不该冲掉已写的结论) */
+  app.post("/api/research/projects/:projectId/hypotheses/sync", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchEvidence.syncHypothesesFromAnalysis(user.id, projectId);
+    if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /**
+   * 正文数字核验 —— 只报告, 不改写。
+   * 见 research-evidence-service.verifyChapterNumbers 的长注释(为什么不能自动"修正")。
+   */
+  app.post("/api/research/projects/:projectId/chapters/:sectionId/verify-numbers", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, sectionId } = request.params as { projectId: string; sectionId: string };
+    const body = request.body as { content?: string };
+    // 正文可以从前端传(编辑器里未保存的版本), 不传就取节点里的
+    let content = typeof body?.content === "string" ? body.content : "";
+    if (!content.trim()) {
+      const r = await pool.query(
+        `select payload from research_nodes where project_id=$1 and node_key='sections'`, [projectId]);
+      const list = (r.rows[0]?.payload?.sections ?? []) as Array<{ id?: string; content?: string }>;
+      content = String(list.find((s) => String(s.id) === sectionId)?.content ?? "");
+    }
+    const r = await researchEvidence.verifyChapterNumbers(user.id, projectId, sectionId, content);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /** 发现台账 */
+  app.get("/api/research/projects/:projectId/findings", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchEvidence.listFindings(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /**
+   * 从一次统计分析里**采集**发现(B 批的入口)。
+   *
+   * 抽取规则在服务端(research-evidence-service.extractFindings), 按表头精确匹配,
+   * **不用 LLM 读数字** —— 报错一个系数整篇论文的可信度就没了。LLM 只在下一步写句子。
+   */
+  app.post("/api/research/projects/:projectId/findings/harvest", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { jobId?: string };
+    if (!body?.jobId) return reply.code(400).send({ error: "缺少 jobId(要从哪次分析里采集)" });
+    const r = await researchEvidence.harvestFindings(user.id, projectId, body.jobId);
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error, ...(r.skipped ? { skipped: r.skipped } : {}) });
+    return r;
+  });
+
+  /** 给已抽取的发现写自然语言结论(LLM 只措辞, 数字写在 prompt 里不许改) */
+  app.post("/api/research/projects/:projectId/findings/claim", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { topic?: string; ids?: string[] };
+    const r = await researchEvidence.claimFindings(user.id, projectId, String(body?.topic ?? ""), body?.ids);
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error });
+    return r;
+  });
+
+  /** 采纳/忽略一条发现(采纳后才进"本章依据"的可选清单) */
+  app.patch("/api/research/projects/:projectId/findings/:findingId", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, findingId } = request.params as { projectId: string; findingId: string };
+    const body = request.body as { status?: string; claim?: string };
+    if (typeof body?.claim === "string") {
+      const r = await researchEvidence.setFindingClaim(user.id, projectId, findingId, body.claim);
+      if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    }
+    if (typeof body?.status === "string") {
+      const r = await researchEvidence.setFindingStatus(user.id, projectId, findingId, body.status);
+      if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    }
+    return { ok: true };
+  });
+
+  /**
+   * 从发现台账生成「结果」章草稿(A4)。
+   *
+   * 与普通章节生成的关键区别: 数字**先由代码写进句子骨架**, 模型只负责把骨架连缀成段。
+   * 这样从源头就不会出现"模型把系数写错"这类问题, 而不是写完再靠核验兜底。
+   * 返回值里带上骨架与核验结果 —— 界面据此显示"哪些数字是机器写的、有没有对不上的"。
+   */
+  app.post("/api/research/projects/:projectId/chapters/:sectionId/result-draft", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, sectionId } = request.params as { projectId: string; sectionId: string };
+    const body = request.body as { findingIds?: string[]; topic?: string };
+    const r = await researchEvidence.generateResultDraft(user.id, projectId, sectionId, {
+      findingIds: Array.isArray(body?.findingIds) ? body.findingIds : undefined,
+      topic: String(body?.topic ?? ""),
+    });
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error });
+    return r;
+  });
+
+  /**
+   * 发现 → 假设的**匹配建议**(B 批)。
+   *
+   * 只给建议不自动填: 一条假设常常对应多个系数(主效应+交互), 也可能对应的是某个系数
+   * **不显著**从而该被否定 —— 这些判断依赖研究设计。系统把"看起来相关的发现"摆到那条
+   * 假设旁边(按变量名/系数在假设文本与依据里的出现匹配, 不用 LLM), 结论仍由人填。
+   */
+  app.get("/api/research/projects/:projectId/hypothesis-links", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const links = await researchEvidence.suggestHypothesisLinks(user.id, projectId);
+    return { links };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 实证台绑定(跨 id 空间的第三条线)
+  //
+  // ⚠⚠ 安全模型 —— 改这几个端点前**先读 research-evidence-service.bindEmpiricalProject 的注释**:
+  //   `empirical_projects` 没有 user_id 列, 实证台的 63 个路由没有一处调 requireUser,
+  //   服务端对本机连接全豁免。**实证台的数据本来就是实例级的**。
+  //   所以这里:
+  //     · 绑定必须**用户显式**设定(不自动发现、不按标题猜);
+  //     · 只按用户设定的那**一个** empirical_project_id 读, 不提供"列出全部实证数据";
+  //     · 越权面与实证台自身一致, 不扩大。
+  //   界面上也要如实说明(见 ChapterEvidencePanel 的提示), 否则用户会误以为这是私有数据。
+  // ═══════════════════════════════════════════════════════════════════
+  app.get("/api/research/projects/:projectId/empirical-binding", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const b = await researchEvidence.getEmpiricalBinding(user.id, projectId);
+    if (!b) return reply.code(404).send({ error: "项目不存在" });
+    return b;
+  });
+
+  app.put("/api/research/projects/:projectId/empirical-binding", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { empiricalProjectId?: string | null };
+    const r = await researchEvidence.bindEmpiricalProject(
+      user.id, projectId, body?.empiricalProjectId ? String(body.empiricalProjectId) : null);
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /** 可选实证课题(下拉)。只返回元信息 + 有结果的运行数, 不含任何结果内容。 */
+  app.get("/api/research/empirical-projects", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    return { projects: await researchEvidence.listEmpiricalProjects(user.id) };
+  });
+
+  /** 已绑定课题下、有表格产物的运行(证据候选 —— 只有表标题, 不含系数) */
+  app.get("/api/research/projects/:projectId/empirical-runs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await researchEvidence.listEmpiricalRuns(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  /** 从一次实证运行采集发现(与统计台那条同一套抽取与落库) */
+  app.post("/api/research/projects/:projectId/empirical-runs/:runId/harvest", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, runId } = request.params as { projectId: string; runId: string };
+    const body = request.body as { tableIndex?: number };
+    const r = await researchEvidence.harvestEmpiricalFindings(
+      user.id, projectId, runId, Number.isInteger(body?.tableIndex) ? body.tableIndex : undefined);
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error, ...(r.skipped ? { skipped: r.skipped } : {}) });
+    return r;
+  });
+
+  // 跨任务工件导入(HAR: artifacts/import → wfart + contentHash 溯源)
+  app.post("/api/research/artifacts/import", async (request, reply) => {    const user = await requireUser(request, reply); if (!user) return;
     const body = request.body as { sourceType?: string; sourceId?: string; sourceTaskId?: string; snapshot?: unknown };
     if (!body?.sourceType || !body?.sourceId) return reply.code(400).send({ error: "缺少 sourceType/sourceId" });
     // 取来源内容构造快照 + 哈希

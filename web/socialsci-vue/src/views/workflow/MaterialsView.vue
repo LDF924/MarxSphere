@@ -18,6 +18,7 @@ import EmptyState from "./EmptyState.vue";
 import LiteratureMatrixPanel from "./LiteratureMatrixPanel.vue";
 import DataCollectionPanel from "./DataCollectionPanel.vue";
 import CitationNetworkPanel from "./CitationNetworkPanel.vue";
+import FindingsView from "./FindingsView.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -806,6 +807,7 @@ interface AnalysisRow {
 const analyses = ref<AnalysisRow[]>([]);
 const analysesNote = ref("");
 const insertingId = ref("");
+const harvestingId = ref("");
 
 /** 工具 id → 中文名(统计台 17 法)。表里没有的原样显示 —— 不编一个像样的名字糊弄 */
 const TOOL_LABELS: Record<string, string> = {
@@ -868,8 +870,34 @@ async function insertAnalysis(a: AnalysisRow) {
   }
 }
 
-function closeAdd() {
-  editDialog.value.open = false;
+/**
+ * 采集发现(B 批入口): 把这次分析的系数抽进 `research_findings` 台账。
+ *
+ * 与「插入到当前章节」的分工要说清楚 —— 两条路都在, 但用途不同:
+ *   · 插入到当前章节 = 把整张表当**素材**贴进去(给人看, 进正文当表格);
+ *   · 采集为发现     = 把**可溯源的统计量**(系数/标准误/p/N)抽出来(给生成用, 且能核验正文数字)。
+ * 前者宽(任何表都行), 后者严(只认能定位到列的系数表, 抽不到会明说原因)。
+ */
+async function harvest(a: AnalysisRow) {
+  if (!store.taskId) { toast("请先创建课题", "warning"); return; }
+  harvestingId.value = a.id;
+  try {
+    const r = await q<{ saved?: number; skipped?: string[] }>(
+      `/research/projects/${store.taskId}/findings/harvest`,
+      { method: "POST", body: { jobId: a.id } });
+    toast(`已采集 ${r.saved ?? 0} 条发现 —— 到「发现台账」里写结论并采纳`, "success");
+    if (Array.isArray(r.skipped) && r.skipped.length) {
+      // 跳过的原因要露出来: "抽不到"与"抽到了但不对"是两回事, 藏起来会让人以为全都进了
+      toast(`另有 ${r.skipped.length} 行未采集：${r.skipped[0]}`, "info");
+    }
+  } catch (e) {
+    toast(`采集失败：${(e as Error).message}`, "error");
+  } finally {
+    harvestingId.value = "";
+  }
+}
+
+function closeAdd() {  editDialog.value.open = false;
   // 关掉时把拖动位移复位 —— 否则下次打开会带着上次的位移出现在角落
   editDrag.value = { dx: 0, dy: 0 };
 }
@@ -1646,10 +1674,30 @@ onMounted(async () => {
               :disabled="insertingId === a.id"
               @click="insertAnalysis(a)"
             >{{ insertingId === a.id ? "插入中…" : "插入到当前章节" }}</button>
-            <span v-else class="ab-note">该结果没有可直接插入的统计表（图表类请走「科研绘图」插图）</span>
+            <!-- 采集发现(B 批入口): 把这次分析的系数抽进台账。
+                 与「插入到当前章节」的区别: 那个把整张表当素材贴进去(给人看),
+                 这个把**可溯源的统计量**抽出来(给生成用 + 可核验)。
+                 抽取在服务端按表头精确匹配, 不让 LLM 读数字。 -->
+            <button
+              v-if="a.hasTable && a.status === 'completed'"
+              class="ab-btn"
+              :data-control="`workflow:harvest-findings-${a.id}`"
+              :disabled="harvestingId === a.id"
+              @click="harvest(a)"
+            >{{ harvestingId === a.id ? "采集中…" : "采集为发现" }}</button>
+            <span v-else-if="!a.hasTable" class="ab-note">该结果没有可直接插入的统计表（图表类请走「科研绘图」插图）</span>
           </li>
         </ul>
       </template>
+
+      <!-- 研究台账(2026-09-25 加法): 假设检验 + 发现。
+           放在"跑过的分析"下面不是排版偏好 —— 这一步**紧接在分析之后**: 跑完回归,
+           自然就该记下"哪条假设被支持、依据是哪个系数", 以及系统从结果里挖出了什么。
+           这也是正文能写具体发现的前提(见「本章依据」)。 -->
+      <details v-if="store.taskId" class="ledger-box" open>
+        <summary>研究台账（假设检验 · 发现）</summary>
+        <FindingsView :project-id="store.taskId" />
+      </details>
     </section>
 
     <!-- 设计思路(闭源: 研究逻辑全文卡) -->
@@ -2380,6 +2428,13 @@ onMounted(async () => {
 }
 .matrix-box > summary { cursor: pointer; font-size: var(--wf-f-md); color: var(--wf-text-2); }
 .matrix-box[open] > summary { margin-bottom: var(--wf-s3); }
+/* 研究台账块 —— 与上面两个加法块同一形态(同一页里不要出现第三种折叠壳) */
+.ledger-box {
+  margin: 0 0 var(--wf-s4); border: 1px solid var(--wf-line); border-radius: var(--wf-r);
+  background: var(--wf-surface); padding: 10px 14px;
+}
+.ledger-box > summary { cursor: pointer; font-size: var(--wf-f-md); color: var(--wf-text-2); }
+.ledger-box[open] > summary { margin-bottom: var(--wf-s3); }
 /* 条目里那个"无可插表格"的说明靠右对齐 —— 与有按钮时的按钮同位置, 两种行看起来才是一列 */
 .ab-item .ab-note { margin-left: auto; font-size: var(--wf-f-xs); color: var(--wf-faint); }
 .ab-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

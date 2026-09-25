@@ -16,14 +16,29 @@
  *   ④ 研究伦理 —— 五个硬约束按数据类型出现, 不出现的就不显示(定性研究没有"脱敏"那一条)。
  *      这一项**没有任何后端支撑**, 是领域常识的清单; 放这里的理由是它必须在设计阶段被看到,
  *      而不是等审稿人问"你的伦理审查呢"。
+ *
+ * ⚠ 2026-09-25 修一处**很典型的"界面像做完了、其实是死路"**:
+ *   本面板此前 `defineEmits` 数量为 0、不写库、生成时也读不到 —— 用户认真选完方法/识别策略/
+ *   数据来源/伦理, 对正文**零影响**。选"双重差分"和选"不做因果推断"生成的稿子一模一样。
+ *   现在: ① 选项落 `research_nodes.design` 节点(与 sections/analysis 同一套节点机制);
+ *         ② 组装成设计约束块, 由 research-exec-engine 注入章节生成。
+ *   为什么落节点而不是加进 workbench 快照: 快照是"工作台整包状态", 而设计是**项目级产物**,
+ *   与 sections 同级 —— 放节点才能被版本历史/回滚/整包导出一并覆盖。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { q } from "@/shared/api";
+import { getNode, putNode } from "@/shared/tasks";
 
 const props = defineProps<{
   /** 研究类型: qualitative / quantitative / mixed(来自选题界定页选的) */
   researchMethod: string;
+  /** 当前项目 id —— 没有它就不落库(面板在未建项目时也能看, 只是不存) */
+  projectId?: string;
 }>();
+
+/** 保存状态: 界面必须说得出"存了没有"。静默保存是"选项刷新即丢"那类问题的温床。 */
+const saveState = ref<"idle" | "saving" | "saved" | "error">("idle");
+const saveError = ref("");
 
 interface MethodRow { id: string; label: string; desc: string; category: string }
 const methods = ref<MethodRow[]>([]);
@@ -121,6 +136,73 @@ function toggleEthics(key: string) {
     ? pickedEthics.value.filter((x) => x !== key)
     : [...pickedEthics.value, key];
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// 落库 + 回读(design 节点)
+//
+// 每次改动 600ms 防抖保存 —— 这是勾选式界面, 用户会连点好几下,
+// 每点一次一个 PUT 既浪费又会让"保存中/已保存"的提示来回跳。
+// ═══════════════════════════════════════════════════════════════════
+const DESIGN_FIELDS = [
+  { key: "methodId", label: "研究方法" },
+  { key: "identifyId", label: "因果识别" },
+  { key: "dataSources", label: "数据来源" },
+  { key: "ethics", label: "研究伦理" },
+] as const;
+
+function payload() {
+  return {
+    version: 1,
+    methodId: pickedMethod.value,
+    identifyId: pickedIdentify.value,
+    dataSources: [...pickedData.value],
+    ethics: [...pickedEthics.value],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+/** 回读期间要抑制保存 —— 否则"读出来的值"会立刻被当成"用户改的值"写回去(无谓写 + 竞态) */
+let hydrating = false;
+
+function scheduleSave() {
+  if (hydrating || !props.projectId) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveState.value = "saving";
+  saveTimer = setTimeout(() => { void saveNow(); }, 600);
+}
+
+async function saveNow() {
+  if (!props.projectId) return;
+  try {
+    await putNode(props.projectId, "design", payload());
+    saveState.value = "saved";
+    saveError.value = "";
+  } catch (e) {
+    saveState.value = "error";
+    saveError.value = String((e as Error).message ?? e).slice(0, 120);
+  }
+}
+
+watch([pickedMethod, pickedIdentify, pickedData, pickedEthics], scheduleSave, { deep: true });
+
+onMounted(async () => {
+  if (props.projectId) {
+    try {
+      const node = await getNode(props.projectId, "design");
+      if (node && (node.methodId || node.identifyId)) {
+        hydrating = true;
+        if (typeof node.methodId === "string") pickedMethod.value = node.methodId;
+        if (typeof node.identifyId === "string") pickedIdentify.value = node.identifyId;
+        if (Array.isArray(node.dataSources)) pickedData.value = node.dataSources.map(String);
+        if (Array.isArray(node.ethics)) pickedEthics.value = node.ethics.map(String);
+        await Promise.resolve();
+        hydrating = false;
+        saveState.value = "saved";
+      }
+    } catch { /* 无节点容忍: 新项目本来就没有 */ }
+  }
+});
 
 // ── 导出成一段可粘贴的设计说明 ──
 const summary = computed(() => {
@@ -228,6 +310,13 @@ const summary = computed(() => {
     <div v-if="summary.length" class="rdp-sum">
       <strong>设计摘要</strong>
       <ul><li v-for="(s, i) in summary" :key="i">{{ s }}</li></ul>
+      <p class="rdp-save" :class="saveState">
+        <template v-if="!props.projectId">未选择项目 —— 这些选择不会被保存</template>
+        <template v-else-if="saveState === 'saving'">保存中…</template>
+        <template v-else-if="saveState === 'saved'">已保存，生成正文时会作为约束注入</template>
+        <template v-else-if="saveState === 'error'">保存失败：{{ saveError }}</template>
+        <template v-else>改动会自动保存，生成正文时会作为约束注入</template>
+      </p>
     </div>
   </div>
 </template>
@@ -272,4 +361,7 @@ const summary = computed(() => {
 .rdp-sum strong { font-size: var(--wf-f-sm); color: var(--wf-text); }
 .rdp-sum ul { list-style: none; margin: 5px 0 0; padding: 0; }
 .rdp-sum li { font-size: var(--wf-f-xs); color: var(--wf-text-2); line-height: 1.7; }
+.rdp-save { margin: 7px 0 0; font-size: var(--wf-f-xs); color: var(--wf-faint); line-height: 1.6; }
+.rdp-save.saved { color: var(--wf-ok, var(--wf-accent-hi)); }
+.rdp-save.error { color: var(--wf-warn); }
 </style>

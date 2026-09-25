@@ -5,7 +5,7 @@
 import { chromium } from "playwright";
 import { resolveBrowser } from "./lib/find-browser.mjs";
 
-const BASE = process.env.ORCH_UI_BASE || "http://127.0.0.1:4173";
+const BASE = process.env.API_BASE || process.env.ORCH_UI_BASE || "http://127.0.0.1:4173";
 let pass = 0, fail = 0;
 const t = (name, ok, extra = "") => { console.log(`${ok ? "  ok  " : "FAIL  "}${name}${extra ? " — " + extra : ""}`); ok ? pass++ : fail++; };
 
