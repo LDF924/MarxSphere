@@ -1,5 +1,5 @@
 -- 120_points_wechat.sql — SocialSci P0-8: 积分商业化(签到/兑换/冻结-实扣对账/邀请码) + 微信扫码登录
--- 形态对齐(闭源产品交互语义, 原创实现), 参考 docs/SOCIALSCI-GAP-ANALYSIS.md S-34~S-40
+-- 形态对齐(参考产品产品交互语义, 原创实现), 参考 docs/SOCIALSCI-GAP-ANALYSIS.md S-34~S-40
 -- 与 billing(balance_cents=真钱/token额度) 解耦: 积分只计 feature 级消费, 互不折算
 -- 设计差异(照搬有害替代): 负余额挂账→禁止透支; 注册带role→邀请码只挂积分归属, 提权走admin
 

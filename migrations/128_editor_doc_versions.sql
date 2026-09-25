@@ -1,5 +1,5 @@
 -- 128_editor_doc_versions.sql — SocialSci HAR R8c: documents_v2 保存自动版本化
--- 闭源行为: 每次保存 current_version_id 递增(8→9→10, 指针到独立版本行)
+-- 参考产品行为: 每次保存 current_version_id 递增(8→9→10, 指针到独立版本行)
 -- 我方: documents_v2.current_version_id 列存在但从未写; 补 doc2_versions 表(与 090 document_versions
 --   挂旧 documents 表隔离) + 服务在 saveDoc/createDoc 写版本行并回填指针
 create table if not exists doc2_versions (

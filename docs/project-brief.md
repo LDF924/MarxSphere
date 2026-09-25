@@ -41,7 +41,7 @@
 
 **开放/复用价值**：
 
-- AGPL v3 + 商业授权双许可（保留 Logo、衍生开源，闭源商用需授权）；
+- AGPL v3 + 商业授权双许可（保留 Logo、衍生开源，专有商用需授权）；
 - OpenAI 兼容接口无锁定；数据本地存储导出即迁移；
 - 对外 MCP + REST API 可被任意 Agent 调用（Claude Code / Codex / DeepSeek Harness）；
 - 检索内核、Agent 编排、实证管道、评测框架、教育服务均可独立复用。

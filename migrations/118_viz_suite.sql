@@ -1,5 +1,5 @@
 -- 118_viz_suite.sql — SocialSci P0-4: 对话式科研绘图 Agent(会话流 + 版本化产物)
--- 形态对齐(闭源产品交互语义, 原创实现): NL对话→Agent循环(plan→analyze→chart→critique→fix)→
+-- 形态对齐(参考产品产品交互语义, 原创实现): NL对话→Agent循环(plan→analyze→chart→critique→fix)→
 --   png+svg_editable 双产物版本化(viz_artifacts), 会话消息可重放 SSE
 -- 参考 docs/SOCIALSCI-GAP-ANALYSIS.md S-26~S-31
 create table if not exists viz_sessions (

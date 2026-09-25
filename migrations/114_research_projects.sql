@@ -1,7 +1,7 @@
 -- 114_research_projects.sql — SocialSci P0-1: 科研项目容器(可视化DAG科研工作台)
 -- 形态对齐: 在线科研工作流平台项目容器(画布态=节点+连线, 每项目一份画布)
 --   项目 = 研究主题容器(可含多个执行任务/节点快照); canvas 存整个 DAG 画布状态
--- 原创实现(仅交互语义对齐闭源产品, 不涉源码), 参考 docs/SOCIALSCI-GAP-ANALYSIS.md S-01~S-04
+-- 原创实现(仅交互语义对齐参考产品产品, 不涉源码), 参考 docs/SOCIALSCI-GAP-ANALYSIS.md S-01~S-04
 
 create table if not exists research_projects (
   id uuid primary key default gen_random_uuid(),

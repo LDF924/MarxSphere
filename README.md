@@ -548,7 +548,7 @@ npm run typecheck       # 前后端类型检查
 
 ## 合规披露
 
-📋 [开源合规披露](docs/OPEN-SOURCE-DISCLOSURE.md) — 完整披露：运行依赖 / 风险提示（模型幻觉、数据缺失、接口异常）/ 商业 API 使用与费用 / 闭源模型与替代方案 / Agent 框架 / 多模态能力 / 运行验证 / **数据治理（数据来源与授权、知识库构建与错误处理、用户数据脱敏与删除、Agent 上下文与记忆管理）**。
+📋 [开源合规披露](docs/OPEN-SOURCE-DISCLOSURE.md) — 完整披露：运行依赖 / 风险提示（模型幻觉、数据缺失、接口异常）/ 商业 API 使用与费用 / 专有模型与替代方案 / Agent 框架 / 多模态能力 / 运行验证 / **数据治理（数据来源与授权、知识库构建与错误处理、用户数据脱敏与删除、Agent 上下文与记忆管理）**。
 
 > 📦 **第三方源码使用声明**：见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)（SAG 底座 MIT / GBrain MIT / PDF2Obsidian MIT / Codex·DeepSeek·wisp 借鉴 / Cognee·Graphiti·OpenViking 集成）。
 
@@ -562,7 +562,7 @@ npm run typecheck       # 前后端类型检查
 | ❓ 常见问题（FAQ） | [docs/FAQ.md](docs/FAQ.md) |
 | 📘 使用说明（环境/部署/权限/流程/样例/输出/注意） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) 第 2 节 |
 | 📘 技术架构（模型/Agent/工具/RAG/上下文/工作流/数据流/架构图） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) 第 3 节 |
-| 📘 合规披露（数据/风险/商业API/闭源模型） | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |
+| 📘 合规披露（数据/风险/商业API/专有模型） | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |
 | 🔧 接口文档（HTTP API / MCP） | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
 | 🖥 桌面端安装包 | `npm run build:desktop` → `release/MarxSphere Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |

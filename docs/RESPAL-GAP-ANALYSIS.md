@@ -1,8 +1,8 @@
 # Respal(研伴)→ MarxSphere 能力差距对照
 
-> 2026-09-04 · 分析对象: 研伴 Respal(闭源商业产品, respal.cn; Tauri2+SolidJS, ¥39-199/月)
+> 2026-09-04 · 分析对象: 研伴 Respal(专有商业产品, respal.cn; Tauri2+SolidJS, ¥39-199/月)
 > 信息来源: 官网 + CSDN/快科技/头条公开报道(2026-04 上线)
-> 注: Respal 闭源无仓库, 本文为**功能体验层对照**(哪些值得 MarxSphere 参考思路), 非源码移植。
+> 注: Respal 专有无仓库, 本文为**功能体验层对照**(哪些值得 MarxSphere 参考思路), 非源码移植。
 
 ## 一、Respal 能力 vs MarxSphere 现状
 

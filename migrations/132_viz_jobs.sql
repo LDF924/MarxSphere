@@ -1,4 +1,4 @@
--- 132_viz_jobs.sql — D4(闭源 VizView job 体系对齐): 中长绘图任务持久化
+-- 132_viz_jobs.sql — D4(参考产品 VizView job 体系对齐): 中长绘图任务持久化
 -- 形态: 一轮绘图 = 一个 job(plan→analyze→code→critique→fix→落盘 全服务端后台执行,
 --   不依赖 SSE 连接存活); 事件流落 viz_job_events(断线重连按 seq 重放/增量)
 --   cancel: 置 cancelled, RecordingSse 在发送时感知并中断本轮

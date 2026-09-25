@@ -1,5 +1,5 @@
 -- 116_research_materials.sql — SocialSci P0-2: 素材库(跨模块产物汇聚, DAG节点产出/下游写作注入)
--- 形态对齐: 素材生成/AI分配/拖入正文(闭源产品交互语义, 原创实现)
+-- 形态对齐: 素材生成/AI分配/拖入正文(参考产品产品交互语义, 原创实现)
 --   素材 kind: note(笔记) / citation(文献引用) / data_result(实证结果) / figure(图表) / file(附件) / theory(理论)
 --   produced_by_dag_node: 来源画布节点(素材自动随节点产物生成)
 --   source_ref: 来源任务/作业 id(审稿job/绘图产物/实证结果, 跨模块追溯)

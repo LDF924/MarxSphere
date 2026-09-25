@@ -1,8 +1,8 @@
 # Elicit → MarxSphere 能力差距分析
 
-> 2026-09-04 · 分析对象: Elicit(闭源 SaaS, elicit.com; Ought 孵化, CEO A. Stuhlmüller)
+> 2026-09-04 · 分析对象: Elicit(专有 SaaS, elicit.com; Ought 孵化, CEO A. Stuhlmüller)
 > 信息来源: 官网 + API docs + 独立评测(公开报道)
-> 注: Elicit 闭源无源码, 本文为**机制/产品层对照**(哪些能力值得 MarxSphere 参考思路)。
+> 注: Elicit 专有无源码, 本文为**机制/产品层对照**(哪些能力值得 MarxSphere 参考思路)。
 
 ## 一、Elicit 核心机制 vs MarxSphere 现状
 

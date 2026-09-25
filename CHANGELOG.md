@@ -279,5 +279,5 @@ MarxSphere 马研星环首个开源版本（MIT 许可）。
 #### 文档
 
 - README（中英双版）+ AGENTS.md + SECURITY.md + CONTRIBUTING.md
-- 合规披露（商业 API/闭源模型/数据治理/PII 声明）
+- 合规披露（商业 API/专有模型/数据治理/PII 声明）
 - 功能规格详解 + 项目概述 + 评测标准（V96）

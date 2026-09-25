@@ -1,4 +1,4 @@
--- 135_viz_job_file_id.sql — viz job 记住数据来源文件(闭源 VizView: 前端传 fileId, 由服务端取数)
+-- 135_viz_job_file_id.sql — viz job 记住数据来源文件(参考产品 VizView: 前端传 fileId, 由服务端取数)
 --
 -- 由来(2026-09-11): 前端上传数据后把 fileId 发给后端, 但 /api/viz/jobs 只读 csv/columnOrder,
 --   fileId 被忽略 → 全部绘图任务 csv 为空 → analyze_data 恒 skipped → 图表是 LLM 编数据的示意图。

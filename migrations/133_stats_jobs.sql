@@ -1,6 +1,6 @@
--- 133_stats_jobs.sql — SocialSci Vue M3: 统计分析 17 法任务持久化(闭源 statistics-jobs 契约)
+-- 133_stats_jobs.sql — SocialSci Vue M3: 统计分析 17 法任务持久化(参考产品 statistics-jobs 契约)
 -- 形态: 一次分析 = 一个 job(tool=17 方法之一, input=完整参数, result={tables,charts,warnings,metadata})
---   result_version_id: 产物版本号(闭源图表素材导入引用); source_task_id: 任务体系归属
+--   result_version_id: 产物版本号(参考产品图表素材导入引用); source_task_id: 任务体系归属
 create table if not exists stats_jobs (
   id uuid primary key,
   user_id uuid not null,
