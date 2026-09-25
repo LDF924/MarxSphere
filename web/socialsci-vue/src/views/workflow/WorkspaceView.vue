@@ -1184,7 +1184,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           </div>
         </div>
       </div>
-      <!-- 结构化指导开关(闭源顺序: 章节树**之后**、底部按钮之前)。2026-09-15 修: 原先放在树之上。 -->
+      <!-- 结构化指导开关(参考产品顺序: 章节树**之后**、底部按钮之前)。2026-09-15 修: 原先放在树之上。 -->
       <button v-if="l1List.length" class="workflow-outline-primary" :class="{ on: aiPanelOpen }" @click="aiPanelOpenToggle" data-control="workflow:toggle-ai-panel">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" />
@@ -1192,14 +1192,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         {{ aiPanelOpen ? "关闭结构化指导" : "结构化指导" }}
       </button>
       <div class="rail-footer">
-        <!-- 智能全局思考(闭源三态文案: 生成中显示进度 / 全生成完显示"重新生成全部" / 否则"智能全局思考") -->
+        <!-- 智能全局思考(参考产品三态文案: 生成中显示进度 / 全生成完显示"重新生成全部" / 否则"智能全局思考") -->
         <button class="btn-think-all" :disabled="generating" data-control="workflow:generate-all" @click="generateAll">
           {{ generating && generateMode === 'batch'
             ? `生成中 (${genProgress.current ?? 0}/${genProgress.total ?? 0})`
             : l1List.length && pendingCount === 0 ? "重新生成全部" : "智能全局思考" }}
         </button>
         <button class="btn-back-sm" data-control="workflow:back" @click="router.push('/workflow/materials')">返回文献与资料</button>
-        <!-- 闭源: 未全部完成时不可进入合稿, 文案带未完成章数 -->
+        <!-- 参考产品: 未全部完成时不可进入合稿, 文案带未完成章数 -->
         <button
           class="btn-finalize-all"
           :disabled="pendingCount > 0 || generating"
@@ -1211,7 +1211,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 
     <!-- 中: 正文区 -->
     <main class="center-main">
-      <!-- C2 主控 AI 面板(闭源: 覆盖中央区; 分析中步骤态/完成态变量+逻辑流+写作指导卡/空闲灯泡态) -->
+      <!-- C2 主控 AI 面板(参考产品: 覆盖中央区; 分析中步骤态/完成态变量+逻辑流+写作指导卡/空闲灯泡态) -->
       <div v-if="aiPanelOpen" class="ai-panel">
         <div class="ai-panel-head">
           <span class="ai-panel-title">主控 AI — 结构化分析</span>
@@ -1332,7 +1332,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           </div>
         </div>
 
-        <!-- 主控智能体思考(闭源: 可编辑 textarea, 预填本章写作指导) -->
+        <!-- 主控智能体思考(参考产品: 可编辑 textarea, 预填本章写作指导) -->
         <div class="think-block">
           <div class="think-head">
             <label class="think-label">
@@ -1352,7 +1352,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           ></textarea>
         </div>
 
-        <!-- 生成控制(闭源: 状态胶囊 + 执行/取消/重新思考并排) -->
+        <!-- 生成控制(参考产品: 状态胶囊 + 执行/取消/重新思考并排) -->
         <div class="gen-block">
           <div class="gen-title-row">
             <h4>{{ activeSection.title }}</h4>
@@ -1386,7 +1386,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <p v-if="resultDraftNote" class="gen-alt-note">{{ resultDraftNote }}</p>
         </div>
 
-        <!-- 正文: 编辑 / 预览 双 tab(闭源 MarkdownEditor 形态) -->
+        <!-- 正文: 编辑 / 预览 双 tab(参考产品 MarkdownEditor 形态) -->
         <div class="md-block">
           <div class="md-tabs" role="tablist">
             <button
@@ -1469,7 +1469,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         </div>
       </div>
       <!--
-        素材分类筛选项 —— 与闭源同语义(全部/理论/数据/案例/方法/文献), 但取值走 `cat` 这个
+        素材分类筛选项 —— 与参考产品同语义(全部/理论/数据/案例/方法/文献), 但取值走 `cat` 这个
         **归一化后**的键, 不是原始 kind。
         2026-09-16 修: 原先直接拿原始 kind 值当 option value(`data_result`/`figure`/`file`),
         有两个问题 ——
@@ -1492,7 +1492,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
       </div>
       <div v-else class="mat-scroll">
         <div v-for="m in filteredMaterials" :key="String(m.id ?? m.title)" class="mat-mini">
-          <!-- 顶色条(闭源按类型 9 色) -->
+          <!-- 顶色条(参考产品按类型 9 色) -->
           <div class="mat-mini-bar" :style="{ background: kindColor(String(m.kind ?? '')) }"></div>
           <div class="mat-mini-inner">
             <span class="mat-mini-icon" :style="{ background: kindBg(String(m.kind ?? '')) }">{{ kindIcon(String(m.kind ?? '')) }}</span>
@@ -1506,7 +1506,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
                 </span>
               </div>
             </div>
-            <!-- hover 才出现的插入/删除(闭源 group-hover) -->
+            <!-- hover 才出现的插入/删除(参考产品 group-hover) -->
             <div class="mat-mini-ops">
               <button class="mat-op-icon" title="插入到章节" data-control="workflow:insert-material" @click="insertMaterialContent(m)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round" /></svg>

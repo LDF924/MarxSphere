@@ -68,7 +68,7 @@ const SUITES = [
   //   但套件里**从来没有 xlsx 用例**(只验过 csv), 所以这条是真跑一遍端到端。
   //   xlsx 在 node 侧用 fflate 现造(最小 OOXML, openpyxl 能读), 不往仓库塞二进制样本。
   { key: "stats-xlsx", file: "probe-stats-xlsx-upload.mjs", desc: "xlsx 上传: 后端转换/profile/变量渲染/可点选/运行前置" },
-  // 审稿台「＋ 新建审稿」: 按闭源 review_new_review 补的入口, 补完只验了渲染 ——
+  // 审稿台「＋ 新建审稿」: 按参考产品 review_new_review 补的入口, 补完只验了渲染 ——
   //   跑整条流才现形: 点确认后正文一个字没少(正文框另存了一份本地副本, resetPaper 只清了 store)。
   //   同时钉住"不重挂载组件时重置也要清界面"(另一个入口走同一路径)。
   { key: "review-reset", file: "probe-review-reset.mjs", desc: "新建审稿: 确认层文案/取消保留/确认清空/重置机制" },

@@ -1,7 +1,7 @@
-# statistics_runner.py — SocialSci 统计分析执行器(闭源 StatisticsView 17 方法语义还原)
+# statistics_runner.py — SocialSci 统计分析执行器(参考产品 StatisticsView 17 方法语义还原)
 # 用法: python statistics_runner.py <task_dir>
 #   task_dir/input.json  : { tool, fileId, ...方法参数(见 methodParams.ts build), data: {columnOrder, rows} }
-#   task_dir/result.json : 闭源结果契约 { tables:[{title,columns,rows}], charts:[{config:{data,layout}}], warnings, metadata }
+#   task_dir/result.json : 参考产品结果契约 { tables:[{title,columns,rows}], charts:[{config:{data,layout}}], warnings, metadata }
 # 语义对齐 decoded-stats-viz.md §1: 17 方法参数/输出/三线表数据/图表 config 结构
 # 安全: 列名白名单(与 empirical_runner 同规则, 防 pandas eval 注入)
 import sys
@@ -258,7 +258,7 @@ elif tool == "multivariate-anova":
     factors = params.get("factors") or []
     from scipy import stats as sps
     if dep in df.columns and len(factors) >= 1:
-        # 双因素 ANOVA 简化: 交互项 OLS 分解(闭源 multivariate-anova 语义核心 = 主效应+交互)
+        # 双因素 ANOVA 简化: 交互项 OLS 分解(参考产品 multivariate-anova 语义核心 = 主效应+交互)
         import statsmodels.formula.api as smf
         safe = df.copy()
         for f in factors:
@@ -381,7 +381,7 @@ elif tool == "regression":
         add_table("OLS 回归结果", header, rows_out)
         add_table("模型拟合", ["R²", "调整 R²", "F 值", "F p 值", "N"],
                   [[round(float(model.rsquared), 4), round(float(model.rsquared_adj), 4), round(float(model.fvalue), 3), round(float(model.f_pvalue), 4), int(model.nobs)]])
-        # 系数图(闭源 chart 配置)
+        # 系数图(参考产品 chart 配置)
         charts.append({"config": {"data": [{"type": "bar", "x": [str(n) for n in model.params.index[1:]], "y": [float(v) for v in model.params.values[1:]], "name": "系数"}],
                         "layout": {"title": {"text": f"{dep} 回归系数图"}, "template": "plotly_white"}}})
 

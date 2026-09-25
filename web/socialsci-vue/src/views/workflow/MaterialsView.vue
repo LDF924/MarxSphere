@@ -1501,11 +1501,11 @@ onMounted(async () => {
   >
     <PhaseProgressBar />
     <div class="wf-body">
-    <!-- 页头整体: 闭源是 `<div class="mb-8">` 把标题+副标题+统计行包成一块(下方 32px)。
-         我方原先是 h1 mb-4 / 统计 mt-10 mb-18 散着摆, 净距与闭源对不上。 -->
+    <!-- 页头整体: 参考产品是 `<div class="mb-8">` 把标题+副标题+统计行包成一块(下方 32px)。
+         我方原先是 h1 mb-4 / 统计 mt-10 mb-18 散着摆, 净距与参考产品对不上。 -->
     <div class="wf-head">
     <h1 class="wf-h1">文献与资料</h1>
-    <!-- 页头三行状态区(闭源: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
+    <!-- 页头三行状态区(参考产品: 计数 | 阶段说明 | 版本状态, 竖线分隔) -->
     <div class="mat-stats">
       <span><span class="ms-num">{{ materials.length }}</span></span>
       <span class="ms-sep"></span>
@@ -1515,7 +1515,7 @@ onMounted(async () => {
     </div>
     </div>
 
-    <!-- ═══ 补充素材来源(闭源整卡: 三主按钮 + 手动添加四格 + 从其他模块导入两格) ═══ -->
+    <!-- ═══ 补充素材来源(参考产品整卡: 三主按钮 + 手动添加四格 + 从其他模块导入两格) ═══ -->
     <section class="source-card">
       <h2 class="sc-title">补充素材来源</h2>
       <div class="sc-actions">
@@ -1700,7 +1700,7 @@ onMounted(async () => {
       </details>
     </section>
 
-    <!-- 设计思路(闭源: 研究逻辑全文卡) -->
+    <!-- 设计思路(参考产品: 研究逻辑全文卡) -->
     <div v-if="store.project.logicFlow" class="design-card">
       <div class="dc-head">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.4.3.6.8.7 1.3l.1.8h5.4l.1-.8c.1-.5.3-1 .7-1.3A6 6 0 0012 3z" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -1792,7 +1792,7 @@ onMounted(async () => {
             <span class="cat-count">{{ matsOf(cat.key).length }} 项<template v-if="filtering && matsOf(cat.key).length !== catCount(cat.key)"> / {{ catCount(cat.key) }}</template></span>
           </div>
           <div class="cat-head-actions">
-            <!-- 数据分析素材(闭源头行三个按钮: 上传图片 / 前往数据分析 / 前往科研绘图)。
+            <!-- 数据分析素材(参考产品头行三个按钮: 上传图片 / 前往数据分析 / 前往科研绘图)。
                  2026-09-15: 原先 `cat.key !== 'dataAnalysis'` 把这类的 aiAction 整个屏蔽掉,
                  于是「上传图片」没有入口, 而 uploadMaterialFile 的图片分支成了死代码。 -->
             <template v-if="cat.key === 'dataAnalysis'">
@@ -1914,7 +1914,7 @@ onMounted(async () => {
               <!-- 通用分支(表格/理论/附件等非文献类)。
                    2026-09-16 修: 原先硬截断 120 字 —— AI 生成的表格素材(contentMd 是
                    `- 表题: [列名|列名] 用途` 列表)、理论素材(core + 本文应用)都读不全,
-                   用户看不到自己生成的东西。闭源这里是**全量**渲染 `o.content`。
+                   用户看不到自己生成的东西。参考产品这里是**全量**渲染 `o.content`。
                    改成: 默认全文, 超过 400 字折叠, 点「展开全文」看剩余。 -->
               <template v-else-if="m.contentMd && !(m as any).imageDataUrl && !m.tableData">
                 <div class="mat-content">{{ expandedIds.has(m.id) ? String(m.contentMd) : String(m.contentMd).slice(0, 400) }}</div>
@@ -1924,14 +1924,14 @@ onMounted(async () => {
                   @click.stop="toggleExpand(m.id)"
                 >{{ expandedIds.has(m.id) ? "收起" : `展开全文（共 ${String(m.contentMd).length} 字）` }}</button>
               </template>
-              <!-- B5: 图片素材预览(点击全屏放大; 闭源 imageDataUrl 语义) -->
+              <!-- B5: 图片素材预览(点击全屏放大; 参考产品 imageDataUrl 语义) -->
               <div v-if="(m as any).imageDataUrl" class="mat-img">
                 <img :src="(m as any).imageDataUrl" :alt="m.title" class="mat-img-src" @click="openImagePreview((m as any).imageDataUrl)" />
               </div>
               <div v-else-if="m.contentMd && /^!\[[^\]]*\]\((\/api\/[^)]+|data:image\/[^)]+)\)/.test(m.contentMd)" class="mat-img">
                 <img :src="String(m.contentMd).match(/^!\[[^\]]*\]\(([^)]+)\)/)?.[1] ?? ''" :alt="m.title" class="mat-img-src" @click="openImagePreview(String(m.contentMd).match(/^!\[[^\]]*\]\(([^)]+)\)/)?.[1] ?? '')" />
               </div>
-              <!-- 表格预览(闭源 max-h-20 可滚动的真三线表, 不截断行) -->
+              <!-- 表格预览(参考产品 max-h-20 可滚动的真三线表, 不截断行) -->
               <div v-if="m.tableData && Array.isArray((m as any).tableData?.columns) && Array.isArray((m as any).tableData?.rows)" class="mat-table">
                 <table class="three-line-table">
                   <thead><tr><th v-for="c in m.tableData.columns" :key="c">{{ c }}</th></tr></thead>
@@ -1944,7 +1944,7 @@ onMounted(async () => {
               </div>
               <div class="mat-foot">
                 <span v-if="m.sectionId || (m as any).sectionIds?.length" class="sec-chip">📎 已关联</span>
-                <!-- B5: 文献来源徽章(闭源: 文献库检索/内部资料 + sourceStatus completed/empty/failed) -->
+                <!-- B5: 文献来源徽章(参考产品: 文献库检索/内部资料 + sourceStatus completed/empty/failed) -->
                 <span v-if="mKindBadge(m)" class="src-badge" :class="mKindBadge(m)!.cls">{{ mKindBadge(m)!.text }}</span>
                 <span class="mat-words">{{ wordCountOf(m) }} 字</span>
                 <span class="mat-date">{{ m.createdAt ? m.createdAt.slice(0, 10).replace(/-/g, "/") : "" }}</span>
@@ -1953,9 +1953,9 @@ onMounted(async () => {
               </div>
             </div>
           </div>
-          <!-- 继续搜集(闭源每类底部一行)。
+          <!-- 继续搜集(参考产品每类底部一行)。
                2026-09-16 修条件: 原先只判 `cat.aiAction` —— 空分类底部会同时出现
-               「暂无X素材」和「＋继续搜集X素材」, 自相矛盾。闭源条件是
+               「暂无X素材」和「＋继续搜集X素材」, 自相矛盾。参考产品条件是
                `hasAI && items.length > 0`: 一条都没有时不该引导"继续搜集"。 -->
           <button v-if="cat.aiAction && catCount(cat.key) > 0" class="cat-more" :data-control="`workflow:cat-more-${cat.key}`" @click.stop="aiGenerate(cat.key)">
             ＋ 继续搜集{{ cat.label.replace("素材", "") }}素材
@@ -1973,7 +1973,7 @@ onMounted(async () => {
       </details>
     </div>
 
-    <!-- 底部操作(闭源顺序: 描边返回在**左**, flex-1 主按钮在**右**) -->
+    <!-- 底部操作(参考产品顺序: 描边返回在**左**, flex-1 主按钮在**右**) -->
     <div class="wf-actions">
       <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/sections')">返回章节清单</button>
       <button class="btn-primary" data-control="workflow:confirm-materials" :disabled="publishing" @click="publishAndEnter">
@@ -2052,7 +2052,7 @@ onMounted(async () => {
       </div>
     </Teleport>
 
-    <!-- B4 单类生成弹层(闭源 MaterialGenerateDialog) -->
+    <!-- B4 单类生成弹层(参考产品 MaterialGenerateDialog) -->
     <Teleport to="body">
       <div v-if="genDialog.open" class="modal-mask gen-mask" @click.self="closeGenDialog">
         <div class="modal-card gen-card">
@@ -2063,7 +2063,7 @@ onMounted(async () => {
           <div class="modal-body gen-body">
             <!-- 提示 -->
             <p v-if="genPromptHint" class="gen-hint">{{ genPromptHint }}</p>
-            <!-- 研究变量参考(闭源仅文献类展示: 角色圆点 + 中文角色 + 变量名) -->
+            <!-- 研究变量参考(参考产品仅文献类展示: 角色圆点 + 中文角色 + 变量名) -->
             <div v-if="genDialog.catKey === 'literature' && store.variables.length" class="gen-vars">
               <p class="gv-title">研究变量参考（可据此查询）</p>
               <div class="gv-chips">
@@ -2072,7 +2072,7 @@ onMounted(async () => {
                 </span>
               </div>
             </div>
-            <!-- 文献类: 检索结果卡(闭源生成前展示检索命中; 这里用后端返回的**真命中**条目) -->
+            <!-- 文献类: 检索结果卡(参考产品生成前展示检索命中; 这里用后端返回的**真命中**条目) -->
             <div v-if="genDialog.catKey === 'literature' && genDialog.retrievedRefs.length" class="gen-refs">
               <p class="gr-title">本次检索命中 {{ genDialog.retrievedRefs.length }} 条（来自内部库真命中）</p>
               <div class="ref-list">
@@ -2098,7 +2098,7 @@ onMounted(async () => {
               <label>{{ genDialog.catKey === "literature" ? "文献查询" : "生成要求" }} *</label>
               <textarea v-model="genDialog.prompt" rows="3" class="f-textarea" :placeholder="genPlaceholder"></textarea>
             </div>
-            <!-- 表类型 radio(仅表格类; 闭源自绘 radio: 文本对比表/数据表) -->
+            <!-- 表类型 radio(仅表格类; 参考产品自绘 radio: 文本对比表/数据表) -->
             <div v-if="genDialog.catKey === 'data'" class="gen-table-type">
               <label class="radio-item" @click="pickGenTableType('comparison')">
                 <span class="radio-dot" :class="genDialog.tableType === 'comparison' ? 'radio-on' : ''"><i v-if="genDialog.tableType === 'comparison'"></i></span>
@@ -2148,7 +2148,7 @@ onMounted(async () => {
       </div>
     </Teleport>
 
-    <!-- B5 图片全屏预览层(闭源: z-[80] 遮罩 bg-black/60 + 白卡 img 点击不穿透) -->
+    <!-- B5 图片全屏预览层(参考产品: z-[80] 遮罩 bg-black/60 + 白卡 img 点击不穿透) -->
     <Teleport to="body">
       <div v-if="imagePreviewSrc" class="imgpv-mask" @click.self="closeImagePreview">
         <div class="imgpv-box">
@@ -2158,7 +2158,7 @@ onMounted(async () => {
       </div>
     </Teleport>
 
-    <!-- B3 素材编排确认弹层(闭源 MaterialAllocationDialog 形态) -->
+    <!-- B3 素材编排确认弹层(参考产品 MaterialAllocationDialog 形态) -->
     <Teleport to="body">
       <div v-if="allocDialog.open" class="modal-mask alloc-mask" @click.self="closeAllocate">
         <div class="modal-card alloc-card">
@@ -2275,7 +2275,7 @@ onMounted(async () => {
               <textarea v-model="editDialog.material.contentMd" class="f-textarea" rows="6" placeholder="素材内容(文本/文献引用格式)…"></textarea>
             </div>
             <!--
-              结构化文献条目(闭源 MaterialEditorDialog 的逐字段表单)。
+              结构化文献条目(参考产品 MaterialEditorDialog 的逐字段表单)。
               2026-09-16 补: 原先只有「标题 + 自由文本」两个框, 作者/年份/来源/DOI 无处可填,
               `references[]` 恒空 —— 文献卡的结构化分支与后端参考文献池都拿不到数据。
               这里给"已录入条目"一个可逐条删除的列表, 新条目通过下面的批量解析或此项录入。

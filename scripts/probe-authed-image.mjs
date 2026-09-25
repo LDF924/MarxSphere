@@ -1,4 +1,4 @@
-// scripts/probe-authed-image.mjs — 受保护图片的取用链(照抄闭源 `ye()` 的那套)
+// scripts/probe-authed-image.mjs — 受保护图片的取用链(照抄参考产品 `ye()` 的那套)
 //
 // 为什么单开一条: 后端的图片端点(`/api/viz/files/*`、`/api/chat/images/*`)是 **requireUser** 保护的,
 //   而 `<img src="/api/...">` **发不带 Authorization 头** —— 两边对不上, 图必然加载不出来。

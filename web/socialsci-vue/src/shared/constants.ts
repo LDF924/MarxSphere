@@ -57,9 +57,9 @@ export const EVT = {
   //   改一边忘另一边就会静默失效。**以 api.ts 的 AUTH_EXPIRED_EVENT 为唯一来源**
   //   (它才是真正 dispatch 的地方; 401 → 清 token → 广播 → auth-bridge 通知父窗口)。
   // ⚠ 以下 6 个是**参考产品契约**, 不是死代码 —— 2026-09-12 审计时全项目零引用, 但参考产品文档
-  //   明确它们的作用(见 .claude/reverse-engineering/socialsci-com/full/decoded-editor-review.md:83 与
+  //   明确它们的作用(
   //   decoded-workflow-sections-input.md:47; 该目录为本地逆向归档, 不入库不同步,
-  //   入口见 .claude/reverse-engineering/README.md 的「规格 ↔ 实现对照表」):
+  //   入口见归档目录的「规格 ↔ 实现对照表」):
   //     review SSE 桥: worker 在另一窗口写入, 由 setSSECallbacks 把回调挂到 window 全局
   //     workflow 台:   恢复 F() 注册 __rfSSEVariables/__rfSSESkills → loadNode → 续连 SSE
   //   即"参考产品有实现、我方尚未移植", 与真正没人听的死代码是两回事, 故保留待接。

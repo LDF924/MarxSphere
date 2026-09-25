@@ -1,6 +1,6 @@
 // editor-ai6-verify.mjs — AI 编辑助手页签对齐验证
 //
-// 验什么: 编辑器「辅助工具」面板的 6 个页签存在、顺序与闭源一致, 且能真实切换。
+// 验什么: 编辑器「辅助工具」面板的 6 个页签存在、顺序与参考产品一致, 且能真实切换。
 //
 // 2026-09-14 重写。原版在**顶层 document** 找 React 组件、用 `__reactProps` 触发点击 ——
 //   但真编辑器是 Vue 版(web/socialsci-vue/src/views/editor/), 渲染在 /soc/ 的 iframe 里。
@@ -33,7 +33,7 @@ async function main() {
     results.push({ name: "AI 面板已展开", pass: state?.panelOpen === true, detail: state?.panelOpen ? "" : "未找到 .ade-ai-panel" });
     results.push({ name: `6 个页签齐全`, pass: labels.length === 6, detail: `实际 ${labels.length} 个: ${labels.join("/")}` });
     results.push({
-      name: "页签顺序与闭源一致",
+      name: "页签顺序与参考产品一致",
       pass: JSON.stringify(labels) === JSON.stringify(EXPECTED),
       detail: labels.join(" → "),
     });

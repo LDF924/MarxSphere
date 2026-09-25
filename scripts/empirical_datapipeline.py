@@ -160,7 +160,7 @@ def main(task_dir):
         if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             df["sqrt_" + col] = np.sqrt(df[col].clip(lower=0))
             transforms.append(f"sqrt_{col} = sqrt({col})")
-    # W8(闭源 statistics 数据转换): zscore 标准化 / minmax 归一 / log 对数
+    # W8(参考产品 statistics 数据转换): zscore 标准化 / minmax 归一 / log 对数
     for col in tf.get("zscore") or []:
         if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
             std = df[col].std(ddof=0)

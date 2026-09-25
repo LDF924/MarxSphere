@@ -187,18 +187,18 @@ async function newProject() {
             :data-phase="n.ph"
             @click="goNode(n)"
           >
-            <!-- 2026-09-15: pending 圆圈原先**没有序号**(空圈), 闭源实拍是 ppb-num 显示 4/5。
-                 active 也用 ppb-num, 圈本身另挂状态类(闭源 .ppb-circle.done/.active/.pending)。 -->
+            <!-- 2026-09-15: pending 圆圈原先**没有序号**(空圈), 参考产品实拍是 ppb-num 显示 4/5。
+                 active 也用 ppb-num, 圈本身另挂状态类(参考产品 .ppb-circle.done/.active/.pending)。 -->
             <div class="ppb-circle" :class="nodeState(n)">
               <svg v-if="nodeState(n) === 'done'" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3">
                 <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <span v-else class="ppb-num">{{ n.ph }}</span>
             </div>
-            <!-- 闭源 ppb-label 是**独立块**(圆在上、标签在下), 不是圆的同行兄弟 -->
+            <!-- 参考产品 ppb-label 是**独立块**(圆在上、标签在下), 不是圆的同行兄弟 -->
             <div class="ppb-label" :class="nodeState(n)">
               <span class="ppb-label-text">{{ n.title }}</span>
-              <!-- 闭源条件: (done||active||viewing) && metrics —— 三种状态都渲染该节点的产物计数。
+              <!-- 参考产品条件: (done||active||viewing) && metrics —— 三种状态都渲染该节点的产物计数。
                    2026-09-15 修: 原先写死只在 done 渲染, 方向反了。
                    2026-09-16 再修: 补上 viewing —— 否则"正在查看的那个非当前阶段"的计数不显示。 -->
               <span v-if="nodeMetric(n)" class="ppb-metric">{{ nodeMetric(n) }}</span>

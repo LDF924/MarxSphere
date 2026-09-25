@@ -1239,7 +1239,7 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
             <p class="page-sub">AI 多维度学术评审 · 期刊标准 + 审稿维度 + 原文批注</p>
           </div>
           <div class="head-actions">
-            <!-- 闭源 review_new_review: 确认层文案与流程逐字对齐
+            <!-- 参考产品 review_new_review: 确认层文案与流程逐字对齐
                  (确认 → resetPaper 清空状态)。原先没有这个入口 —— 提交过一次之后
                  想换一篇重来只能刷新页面。 -->
             <button class="lib-link" data-control="review:new" @click="startNewReview">＋ 新建审稿</button>

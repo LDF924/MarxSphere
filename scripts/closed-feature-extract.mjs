@@ -1,4 +1,4 @@
-// 从闭源 Vue 编译 JS 提取功能点: render 函数里的可交互元素(按钮/输入/选择)+绑定事件
+// 从参考产品 Vue 编译 JS 提取功能点: render 函数里的可交互元素(按钮/输入/选择)+绑定事件
 import { readFileSync } from "node:fs";
 const file = process.argv[2];
 const s = readFileSync(file, "utf8");

@@ -254,7 +254,7 @@ try {
     })()`);
     rec("open-gen-dialog(打开生成素材弹层)", st?.open ? "ok" : "DEAD", `弹层=${st?.open} 按钮=${JSON.stringify(st?.btns?.map((b) => b.ctl).filter(Boolean))}`);
     if (st?.open) {
-      // 闭源 WorkspaceView 的素材生成弹层就是 [执行智能体开始思考] + 「取消」(无 data-control);
+      // 参考产品 WorkspaceView 的素材生成弹层就是 [执行智能体开始思考] + 「取消」(无 data-control);
       //   「放弃/取消」二选一是**素材页**那套 genDialog 的形态, 别串台(第一版探针串了, 误报 ERR)。
       const cancelBtn = st.btns?.find((b) => b.t === "取消");
       rec("弹层有 执行/取消 两个动作", st.btns?.some((b) => /run-material-gen/.test(b.ctl)) && cancelBtn ? "ok" : "ERR",

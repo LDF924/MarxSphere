@@ -464,7 +464,7 @@ async function runAnalyzeArchitecture(task: any, ctx: ExecCtx): Promise<{ text: 
   // ⚠ 2026-09-24: 从 `"Skill 生成"` 改成 `"逐章写作指导"`(用户要求去掉英文术语)。
   //   注意这是**前后端契约**: 前端 SectionsView 靠 `progress.stage` 的关键词匹配推进第 3 步,
   //   所以改这里必须同步改那边的匹配式(那边已改成同时认新旧, 免得混版本时第 3 步卡住)。
-  //   (另: 参考产品原文就叫 "Skill 生成" —— 见 .claude/reverse-engineering/.../deep/sections-dom.txt,
+  //   (另: 参考产品原文就叫 "Skill 生成" ——,
   //    所以这是一次**刻意偏离逆向对象**的改动, 不是"还原"。)
   await setStage("逐章写作指导", 3);
   return {

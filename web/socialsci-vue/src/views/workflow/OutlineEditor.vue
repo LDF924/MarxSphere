@@ -215,7 +215,7 @@ const counter = computed(() => {
 
 <template>
   <div class="outline-editor">
-    <!-- 工具栏(闭源: 三个同款白底描边小按钮, 之间用 | 分隔; 清除目录文字更淡) -->
+    <!-- 工具栏(参考产品: 三个同款白底描边小按钮, 之间用 | 分隔; 清除目录文字更淡) -->
     <div class="oe-toolbar">
       <button class="oe-btn" type="button" @click="addLevel1">+ 一级章节</button>
       <span class="oe-sep">|</span>
@@ -242,7 +242,7 @@ const counter = computed(() => {
             placeholder="输入一级标题"
             @input="setTitle(i, ($event.target as HTMLInputElement).value)"
           />
-          <!-- 闭源把「+ 子节」与折叠箭头放在 input **之后**的常显小组里(`w-6 h-6` 图标钮,
+          <!-- 参考产品把「+ 子节」与折叠箭头放在 input **之后**的常显小组里(`w-6 h-6` 图标钮,
                不参与 .group:hover 揭示), 只有 ↑↓✕ 是悬停才出现的 .op-btn。
                2026-09-16 修: 我方原先「+ 子节」混在悬停组里当文字按钮(.op-btn-sm), 且折叠箭头
                摆在 input 之前的行首、任何情况都渲染 —— 位置与显隐规则两处都不对。 -->
@@ -260,7 +260,7 @@ const counter = computed(() => {
             <button type="button" class="op-btn op-btn-danger" title="删除" @click="delLevel1(i)">✕</button>
           </div>
         </div>
-        <!-- 子节(闭源树形缩进: 竖线 + 缩进块) -->
+        <!-- 子节(参考产品树形缩进: 竖线 + 缩进块) -->
         <div v-if="!n.collapsed" class="oe-children tree-branch">
           <div v-for="(c, j) in n.children" :key="c.id" class="oe-row l2 tree-child">
             <span class="oe-index sub">{{ i + 1 }}.{{ j + 1 }}</span>

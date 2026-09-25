@@ -1208,7 +1208,7 @@ onMounted(async () => {
          ⚠ 2026-09-24 从两栏改回单栏(按你的要求)。**这里要说清一件事, 免得日后有人又"修回去"**:
          闭源合稿页**确实是两栏** —— 它的容器是 `grid w-full max-w-7xl mx-auto px-6 lg:grid-cols-3 gap-6`,
          左列 `lg:col-span-2`(2/3, 流程) + 右列(1/3)。**但容器上限是 max-w-7xl(1280), 不是别页的 max-w-5xl**。
-         (依据: .claude/reverse-engineering/socialsci-com/FinalizeView.js 的渲染函数)
+         (依据: 参考产品的渲染函数)
          所以单栏是**你的取舍**, 不是"对齐参考产品" —— 与框架设计页那次(闭源本就是单栏)不是一回事。 -->
 
     <!-- ═══ 三轮主流程 ═══ -->

@@ -107,11 +107,11 @@ const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", 
  *
  * 由来: 用户问"逆向材料上传云端了吗"。二进制(别人的构建产物)没上传 ——
  *   `.claude/` 早在 EXCLUDE_DIR 里。但**方法论文档上传了**, 而且比代码注释更具体:
- *     · HAR-LINE-BY-LINE.md       1105 行闭源接口逐条清单(`/api/editor/v1/documents/10/lock`)
+ *     · HAR-LINE-BY-LINE.md       1105 行参考产品接口逐条清单(`/api/editor/v1/documents/10/lock`)
  *     · SOCIALSCI-FUNCTION-MATRIX  77 个接口的逐条对照
  *     · socialsci-live-walk-1      登录态下的真实鼠标点击走查记录
- *     · dump-assistant-controls    从闭源产物抽控件集的脚本(路径写死了逆向目录)
- *     · SOCIALSCI/UI 两份 GAP-ANALYSIS/UI-AUDIT 同样通篇引用 HAR 与闭源页面结构
+ *     · dump-assistant-controls    从参考产品产物抽控件集的脚本(路径写死了逆向目录)
+ *     · SOCIALSCI/UI 两份 GAP-ANALYSIS/UI-AUDIT 同样通篇引用 HAR 与参考产品页面结构
  *
  * 处置: **主仓保留、只在同步时跳过** —— 我们自己的差异基线不能丢, 但没必要公开。
  *   这与上面 `.github` 那次的方向相反(那次是"不在列表里就永远同步不过去"的 bug),

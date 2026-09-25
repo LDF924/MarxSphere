@@ -115,7 +115,7 @@ async function handleDelete() {
       </div>
     </div>
 
-    <!-- 新建文档弹窗(闭源自绘形态) -->
+    <!-- 新建文档弹窗(参考产品自绘形态) -->
     <Teleport to="body">
       <div v-if="showNewDialog" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/20" @click.self="showNewDialog = false">
         <div class="relative w-[520px] max-w-[95vw] rounded-2xl bg-[#11192C] shadow-xl">

@@ -1,12 +1,12 @@
 // scripts/probe-review-reset.mjs — 审稿台「新建审稿」整条流 + 「重置能否清干净界面」
 //
-// 为什么单开一条: 「＋ 新建审稿」是 2026-09-18 按闭源 `review_new_review` 补的入口,
+// 为什么单开一条: 「＋ 新建审稿」是 2026-09-18 按参考产品 `review_new_review` 补的入口,
 //   当时**只验了渲染**(按钮在不在), 没跑"确认层 → 清空"这条流。一跑就现形 ——
 //   见下面那条注释: 点了确认, 正文一个字都没少。
 //
 // 覆盖:
 //   ① 空白页点新建**不弹**确认层(不打断用户)
-//   ② 粘正文 → 点新建 → 弹确认层, 且文案与闭源逐字一致
+//   ② 粘正文 → 点新建 → 弹确认层, 且文案与参考产品逐字一致
 //   ③ 点「取消」→ 正文原样保留(这才是确认存在的意义)
 //   ④ 点「新建」→ 状态真被清空(正文 0 字 + 提交键回禁用)
 //   ⑤ 「重置」类操作**不重挂载组件**时, 界面那份副本也要跟着清
@@ -69,11 +69,11 @@ try {
   rec("粘入正文并解锁提交", typed === PAPER.length && filled?.submitDisabled === false ? "ok" : "err",
     `字数=${typed}/${PAPER.length} 提示="${filled?.hint}" 提交键禁用=${filled?.submitDisabled}`);
 
-  // ③ 有内容 → 确认层 + 文案逐字对齐闭源
+  // ③ 有内容 → 确认层 + 文案逐字对齐参考产品
   await probeAction(cdp, '[data-control="review:new"]', { wait: 1500 });
   const txt = await evalTop(cdp, OVERLAY_TEXT);
   const exact = typeof txt === "string" && txt.includes("开始新的审稿") && txt.includes("当前审稿状态将清除") && txt.includes("新建审稿");
-  rec("确认层出现且文案逐字对齐闭源", exact ? "ok" : "err", `弹层文本="${String(txt).slice(0, 66)}"`);
+  rec("确认层出现且文案逐字对齐参考产品", exact ? "ok" : "err", `弹层文本="${String(txt).slice(0, 66)}"`);
 
   // ④ 取消 → 正文保留
   await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="dialog:cancel"]'); if (b) b.click(); return true; })()`);

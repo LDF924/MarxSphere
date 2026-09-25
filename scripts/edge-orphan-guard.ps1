@@ -2,7 +2,7 @@
 #
 # 为什么要有它(血泪教训, 第二次):
 #   2026-09-08 socialsci 深采遗留 headless Edge, 白烧 20 小时 CPU。
-#     事后写了 .claude/socialsci-probe/cleanup-probe.sh —— 但它只认
+#     事后写了清理脚本 —— 但它只认
 #     edge-probe-profile, 且靠人记得手动跑, 所以没拦住下一次。
 #   2026-09-10 11:19 又冒出 --user-data-dir=...\Temp\edge-smoke-cdp 的
 #     headless Edge, 父进程(33532)死后仍存活 32 小时,

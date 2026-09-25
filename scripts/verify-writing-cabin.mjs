@@ -49,7 +49,7 @@ async function seed(token) {
       sections, variables: [], hypotheses: [],
       // ⚠ 这里**不能**种 mergeGenerated: true。原注释写「④ 要验合稿模式 tab + 强度档,
       //   那组控件只在已合稿态出现」—— 没错, 但那与第 ④ 组的第一条断言(未合稿时显示空态卡)
-      //   直接**互斥**, 且与闭源语义也不符: 闭源是 `!mergeGenerated && !mergeGenerating` 才渲染空态。
+      //   直接**互斥**, 且与参考产品语义也不符: 参考产品是 `!mergeGenerated && !mergeGenerating` 才渲染空态。
       //   2026-09-20 之前它一直是绿的, 只因为 mergeGenerated 是**断了的一条链**
       //   (前端置真不落库 → 读侧被列里的 false 覆盖) —— 种了等于没种。
       //   那条链修好之后, 这个自相矛盾的播种立刻显形。
@@ -146,7 +146,7 @@ try {
     const r = fid ? await inFrame(fid, `(async () => {
       const tabs = [...document.querySelectorAll('.md-tab')].map(e => e.innerText.trim());
       const onBefore = [...document.querySelectorAll('.md-tab')].find(e => e.className.includes('on'))?.innerText.trim();
-      // 切到预览(闭源默认落在「编辑」, 预览是第二个 tab)
+      // 切到预览(参考产品默认落在「编辑」, 预览是第二个 tab)
       const pv = [...document.querySelectorAll('.md-tab')].find(e => /预览/.test(e.innerText));
       if (pv) pv.click();
       await new Promise(r => setTimeout(r, 700));
@@ -160,7 +160,7 @@ try {
       };
     })()`) : null;
     t("有编辑/预览双 tab", !!r && r.tabs.length === 2, r ? JSON.stringify(r.tabs) : "—");
-    t("默认落在「编辑」(闭源如此)", r?.onBefore === "编辑", r ? `激活=${r.onBefore}` : "—");
+    t("默认落在「编辑」(参考产品如此)", r?.onBefore === "编辑", r ? `激活=${r.onBefore}` : "—");
     t("切到预览后出现渲染容器(.content-html)", !!r?.hasHtml);
     t("旧的 <pre> 直出已移除", !!r && r.legacyPre === false);
     t("markdown 表格渲染成真表格", !!r && r.tables >= 1 && !r.rawPipes, r ? `tables=${r.tables} 裸管道符=${r.rawPipes}` : "—");
@@ -336,7 +336,7 @@ try {
 
   console.log("\n═══ ⑥ 核对批次新增断言(C1-C7) ═══");
   {
-    // 章节树: 一级/二级编号都应是**有底色的块**(闭源红底浅/灰底), 而非纯文字
+    // 章节树: 一级/二级编号都应是**有底色的块**(参考产品红底浅/灰底), 而非纯文字
     const fid = await goto("/workflow/sections");
     const sec = fid ? await inFrame(fid, `(() => {
       const l1 = document.querySelector('.l1-num'), l2 = document.querySelector('.l2-num');
@@ -351,7 +351,7 @@ try {
     t("二级编号是有底色的块(不是纯文字)", !!sec && sec.l2Count > 0 && sec.l2bg !== null && !/rgba\\(0, 0, 0, 0\\)/.test(sec.l2bg), sec ? `l2bg=${sec.l2bg}` : "—");
     t("一级编号有色块", !!sec && sec.l1bg !== null && !/rgba\\(0, 0, 0, 0\\)/.test(sec.l1bg), sec ? `l1bg=${sec.l1bg}` : "—");
 
-    // 进度条 metric: 闭源条件是 `(done||active||viewing) && metrics` —— 渲染与否看**有没有数据**,
+    // 进度条 metric: 参考产品条件是 `(done||active||viewing) && metrics` —— 渲染与否看**有没有数据**,
     //   不是看状态。旧断言写死"active 必须有 metric"是错的: 本会话项目在 phase4(章节写作),
     //   active 那个节点是"章节写作", 它有值; 但换个 phase, active 节点(如文献与资料)素材为 0 时
     //   metric 本就该为空 —— 那是正确行为, 不是缺陷。所以验"有数据的节点渲染了 metric"。

@@ -286,7 +286,7 @@ try {
         const err = await evalTop(cdp, `(document.querySelector('.clarify-error')?.innerText || '').slice(0, 60)`);
         rec("失败态给了重试入口", true, `错误="${err}"(有「重新生成引导问题」按钮)`);
       }
-      // 有下一轮按钮 → 验轮次上限(闭源 2 轮)
+      // 有下一轮按钮 → 验轮次上限(参考产品 2 轮)
       const next = await evalTop(cdp, `(() => {
         const b = document.querySelector('[data-control="workflow:clarify-next-round"]');
         return b ? { has: true, disabled: b.disabled, text: b.textContent.trim() } : { has: false };
@@ -306,7 +306,7 @@ try {
   {
     const beforePtr = await evalTop(cdp, `localStorage.getItem('lastTask_workflow')`);
     const r = await probeAction(cdp, '[data-control="workflow:new-project"]', { wait: 1200 });
-    // 会弹 confirmDialog(闭源语义: 确认后真建项目), 必须自己点确认
+    // 会弹 confirmDialog(参考产品语义: 确认后真建项目), 必须自己点确认
     const cf = await evalTop(cdp, `(() => {
       const btns = [...document.querySelectorAll('button')].filter(x => {
         let p = x.parentElement; while (p) { if (getComputedStyle(p).position === 'fixed') return true; p = p.parentElement; } return false;

@@ -710,7 +710,7 @@ onUnmounted(() => {
          ⚠ 2026-09-23 从两栏改回单栏。原先这里是 `.sec-cols`(概览左 / 章节树右)。
          核对逆向对象后改了: 闭源框架设计页的**页面级容器是 `max-w-5xl mx-auto` 单栏**,
          正文只有三个纵向堆叠的块(标题 / AI分析横幅 / 科研框架概览 / 章节结构 / 底部操作),
-         **没有侧栏**(见 .claude/reverse-engineering/socialsci-com/deep/sections-dom.txt 的真实 DOM 实拍)。
+         **没有侧栏**(按参考产品的 DOM 实拍)。
          我们那套两栏是 2026-09-21 自己加的, 没有对照依据 —— 现在按你的要求改回来:
          章节结构放在科研框架概览**下方**, 与闭源顺序一致。 -->
     <section v-if="hasOverview" class="overview-card">
@@ -1071,7 +1071,7 @@ onUnmounted(() => {
    所以右侧给 1.25fr。窄屏(<1180)塌回单列。 */
 /* ⚠ 2026-09-23: `.sec-cols` / `.sec-col-left` / `.sec-col-right` 已删除 —— 框架设计页改回**单栏**,
    章节结构直接排在科研框架概览下方(与参考产品顺序一致)。那套两栏是 2026-09-21 自己加的,
-   核对逆向对象发现参考产品是 `max-w-5xl mx-auto` 单栏(见 .claude/reverse-engineering/.../sections-dom.txt)。
+   核对逆向对象发现参考产品是 `max-w-5xl mx-auto` 单栏(按参考产品的 DOM 实拍)。
    单栏之后两栏那套 grid / 列内 gap 都不需要了, 卡片的垂直间距回到**卡片自己的 margin**。 */
 .tree-card {
   background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: 12px;

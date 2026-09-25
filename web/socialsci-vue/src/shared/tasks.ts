@@ -4,8 +4,8 @@
  *           POST /tasks/:id/release-lock / GET /tasks/:id/nodes / GET|PUT /tasks/:id/nodes/:nodeId
  * 我方后端形态差异: 任务主体在 /api/research/tasks(projectId 系), 本前端适配层提供
  * "task = {id, projectId, module, title, phase, status}" 统一视图, 所有写操作映射到 research 端点。
- * 映射表见 .claude/reverse-engineering/socialsci-com/VUE-IMPLEMENTATION-ROADMAP.md §9
- * (该目录为本地逆向归档, 不入库不同步; 入口见 .claude/reverse-engineering/README.md)。
+ * 映射表见归档目录的实现路线图 §9
+ * (该目录为本地归档, 不入库不同步)。
  */
 import { q } from "./api";
 import type { SocModule } from "./constants";

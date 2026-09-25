@@ -96,7 +96,7 @@ try {
    *
    * 那道门禁站不住(详见 PhaseProgressBar 的 goNode 注释): 它不是技术限制 ——
    * 拿空项目直接用 URL 访问四页全部正常渲染; 判据 `store.phase` 记的是"你点到哪儿了"
-   * 而不是"你做完了什么"; 真正的依赖检查在各页按钮上, 本来就是准的; 闭源也没有这道门。
+   * 而不是"你做完了什么"; 真正的依赖检查在各页按钮上, 本来就是准的; 参考产品也没有这道门。
    * 所以这条断言必须跟着翻过来 —— 否则它会把正确的改动当成回归挡住。
    */
   await evalTop(cdp, `(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '3', altKey: true, bubbles: true })); return 1; })()`);

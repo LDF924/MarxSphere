@@ -258,7 +258,7 @@ try {
      * 2026-09-16 实测缺陷: `selectSection()` 里 `editing.value = false`, 而 `editing` 是个
      * computed(读 mdTab==='write', 写 mdTab=...)。副作用是**只要点任意章节(包括当前章),
      * 正文区就从「编辑」跳到「预览」** —— 用户每点一次章节树就得手动切回来。
-     * 对照闭源 MarkdownEditor: 那个 tab 是组件内部 `x("write")` 的局部状态, 没有 watch/没有
+     * 对照参考产品 MarkdownEditor: 那个 tab 是组件内部 `x("write")` 的局部状态, 没有 watch/没有
      * 章节依赖, 切章不会重置。我方的耦合是自己加的。
      */
     const tabProbe = `(() => {
@@ -271,7 +271,7 @@ try {
     await evalTop(cdp, `(() => { const r = [...document.querySelectorAll('.nav-l1')].find(x => /文献综述/.test(x.innerText)); if (r) r.click(); return 1; })()`);
     await sleep(1500);
     const t2 = await evalTop(cdp, tabProbe);
-    rec("workspace", "切章不丢编辑态(闭源 tab 是局部状态)", t1?.on === "编辑" && t2?.on === "编辑" ? "ok" : "err",
+    rec("workspace", "切章不丢编辑态(参考产品 tab 是局部状态)", t1?.on === "编辑" && t2?.on === "编辑" ? "ok" : "err",
       `切章前=${t1?.on} 切章后=${t2?.on}(应为「编辑」)`);
 
     // 编辑正文 → 防抖保存(这是踩过数据丢失的那个点)
@@ -333,11 +333,11 @@ try {
     //   现在**真的会生效**, 页面直接进合稿态 —— 这正是下面那条断言要跟着改的原因。
     const pid5b = pid5;
     /**
-     * ⚠ 这条断言此前是**错的**, 2026-09-20 按闭源规格改对(不是放宽, 是反过来)。
+     * ⚠ 这条断言此前是**错的**, 2026-09-20 按参考产品规格改对(不是放宽, 是反过来)。
      *
      *   旧断言:「未合稿时不出现模式 tab」, 期望 `modes.length === 0`。
      *   但它自己在上面几行把 `mergeGenerated` 播成了 `true` —— 这份"空态"根本不空,
-     *   于是必然报 ERR。而且方向也反了: 闭源 `FinalizeView.js` 的空态容器是
+     *   于是必然报 ERR。而且方向也反了: 参考产品 `FinalizeView.js` 的空态容器是
      *   `!mergeGenerated && !mergeGenerating`, **模式按钮(node `qe`)就在那个容器内部** ——
      *   空态本来就该显示「直接合稿 / 降AIGC合稿」, 用户得先选模式才能点「开始合并」。
      *   我们实现 `FinalizeView.vue:941` 的 `finalize-empty` 与之逐字同构。
@@ -356,7 +356,7 @@ try {
      *     · FinalizeView.vue:1055 空态容器的 `.merge-mode`(选模式才能点「开始合并」)
      *     · FinalizeView.vue:1110 合稿态第①轮的 `.merge-mode`(重新合稿时换模式/档位)
      *   合稿完成后第①轮**本来就在页面上**, 它的模式 tab 自然也在 —— 断言 `modes.length === 0`
-     *   等于要求"已合稿的页面上不能出现模式选择", 与实现和闭源都不符。
+     *   等于要求"已合稿的页面上不能出现模式选择", 与实现和参考产品都不符。
      *   ⇒ 真正该锁的是**空态容器**本身出没出现, 不是全页 `.mm-tab` 的多少。
      */
     const emptyTabs = await evalTop(cdp, `[...document.querySelectorAll('.finalize-empty .mm-tab')].map(e => e.innerText.trim())`);
@@ -437,7 +437,7 @@ try {
   }
 
   // ═══ 6. 2026-09-16 批次二新增回归(研究方法启发式 / aiSkill 渲染 / 生成弹层生命周期) ═══
-  console.log("\n═══ 研究方法自动识别(闭源 wp(): 34 定量词 / 18 定性词 / 标题+目录 / 兜底定性) ═══");
+  console.log("\n═══ 研究方法自动识别(参考产品同名函数: 34 定量词 / 18 定性词 / 标题+目录 / 兜底定性) ═══");
   {
     // 标题+目录里塞**只有宽词表才认得出**的量化词(量表/结构方程/信度/效度) —— 旧词表(10 词)会漏
     const pidH = await seedFresh(token, 1, {
@@ -454,7 +454,7 @@ try {
     rec("input", "研究方法自动识别(宽词表)", hint?.exists && /定量/.test(hint.text) ? "ok" : "err",
       hint?.exists ? hint.text : "提示条未渲染");
 
-    // 兜底: 一个量化/定性词都没有的题面 → 闭源兜底 qualitative(而非空)
+    // 兜底: 一个量化/定性词都没有的题面 → 参考产品兜底 qualitative(而非空)
     const pidH2 = await seedFresh(token, 1, {
       title: "关于某个议题的初步思考",
       outline: "一、引言\n二、结语",
@@ -462,12 +462,12 @@ try {
     });
     await openSoc(cdp, BASE, "/workflow/input", token, pidH2, 8000);
     const hint2 = await evalTop(cdp, `(() => { const el = document.querySelector('.auto-detect-note'); return el ? el.innerText.replace(/\\s+/g,' ').trim() : ''; })()`);
-    rec("input", "无匹配时兜底定性(闭源语义)", /定性/.test(String(hint2)) ? "ok" : "err", `提示条=${hint2 || "(空)"}`);
+    rec("input", "无匹配时兜底定性(参考产品语义)", /定性/.test(String(hint2)) ? "ok" : "err", `提示条=${hint2 || "(空)"}`);
     await api(token, `/research/projects/${pidH}`, "DELETE");
     await api(token, `/research/projects/${pidH2}`, "DELETE");
   }
 
-  console.log("\n═══ aiSkill 产物渲染(闭源展开区 8 项, 其中 frameworkSource 是对象) ═══");
+  console.log("\n═══ aiSkill 产物渲染(参考产品展开区 8 项, 其中 frameworkSource 是对象) ═══");
   {
     const pidS = await seedFresh(token, 2);
     await api(token, `/research/projects/${pidS}/nodes/sections`, "PUT", {
@@ -504,7 +504,7 @@ try {
     await api(token, `/research/projects/${pidS}`, "DELETE");
   }
 
-  console.log("\n═══ 生成弹层生命周期(闭源: 生成中可取消 / 完成后状态位复位) ═══");
+  console.log("\n═══ 生成弹层生命周期(参考产品: 生成中可取消 / 完成后状态位复位) ═══");
   {
     const pidG = await seedFresh(token, 3);
     await api(token, `/research/projects/${pidG}/nodes/sections`, "PUT", {

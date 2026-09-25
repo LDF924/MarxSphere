@@ -123,7 +123,7 @@ try {
     }))()`);
     rec("三步骤条 + 当前步转圈 + 取消按钮", st?.steps?.length === 3 && st?.cancel ? "ok" : "ERR",
       `步骤=${JSON.stringify(st?.steps?.map((x) => x.t))} 转圈=${st?.spinning} 进度="${st?.progressText}"`);
-    // 当前步必须有且只有一个在转圈(闭源语义: 让用户看出卡在哪一步)
+    // 当前步必须有且只有一个在转圈(参考产品语义: 让用户看出卡在哪一步)
     rec("同一时刻只有一个步骤在转圈", st?.spinning === 1 ? "ok" : (st?.spinning === 0 ? "skip" : "ERR"), `spinning=${st?.spinning}`);
   }
 

@@ -51,7 +51,7 @@ defineProps<{
     }"
     role="button"
   >
-    <!-- 连线柄(闭源 hasTarget/hasSource: target 顶/左, source 底/右) -->
+    <!-- 连线柄(参考产品 hasTarget/hasSource: target 顶/左, source 底/右) -->
     <Handle v-if="data.hasTarget !== false" type="target" :position="data.layout === 'horizontal' ? Position.Left : Position.Top" />
     <Handle v-if="data.hasSource !== false" type="source" :position="data.layout === 'horizontal' ? Position.Right : Position.Bottom" />
     <!-- header: index + module + menu -->

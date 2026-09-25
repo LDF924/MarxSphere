@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# empirical_table_docx.py — C4(闭源 StatisticsView 三线表 Word 导出对齐)
+# empirical_table_docx.py — C4(参考产品 StatisticsView 三线表 Word 导出对齐)
 # 输入: task_dir/input.json { table: {title, cols, rows, notes} }
 # 输出: task_dir/table_<ts>.docx (三线表: 表头上下粗边框, 首列与数据 Times New Roman,
 #   尾行下边框; 表头 SimSun bold 10pt, 标题 SimHei, 页边距 1440 twips)

@@ -674,7 +674,7 @@ elif method == "crosstab":
         fail(f"交叉表失败: {str(e)[:120]}")
 
 elif method == "mediation":
-    # W9(闭源 statistics 中介效应实拍): X→M→Y 三步法 + Bootstrap 间接效应
+    # W9(参考产品 statistics 中介效应实拍): X→M→Y 三步法 + Bootstrap 间接效应
     try:
         import statsmodels.formula.api as smf
         xc, mc, yc = params.get("x"), params.get("m"), params.get("y")
@@ -722,7 +722,7 @@ elif method == "mediation":
         fail(f"中介效应失败: {str(e)[:120]}")
 
 elif method == "moderation":
-    # W9(闭源 statistics 调节效应实拍): 中心化后交互项 X*M + 边际效应
+    # W9(参考产品 statistics 调节效应实拍): 中心化后交互项 X*M + 边际效应
     try:
         import statsmodels.formula.api as smf
         xc, mc, yc = params.get("x"), params.get("m"), params.get("y")

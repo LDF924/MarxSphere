@@ -29,12 +29,50 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
 const DRY = !process.argv.includes("--write");
-const EXT = /\.(ts|tsx|vue|mts|cts)$/;
+/**
+ * 覆盖范围 —— ⚠ **踩过一次**: 最初只写了 `ts|tsx|vue|mts|cts`, 于是脚本、Python 与样式表
+ * 里的同类注释**从来没被洗过**(实测漏了 18 个 .mjs + 4 个 .py + 1 个 .css)。
+ * 这不是"顺带扩展", 是范围本身定错了: 溯源痕迹不挑文件类型。
+ */
+const EXT = /\.(ts|tsx|vue|mts|cts|mjs|cjs|js|py|css|scss|less)$/;
 
-/** 从 git 取"含闭源字样"的文件清单 —— 用 git 而不是遍历目录, 免得走进 node_modules */
+/**
+ * 从 git 取"含闭源字样"的文件清单 —— 用 git 而不是遍历目录, 免得走进 node_modules。
+ *
+ * ⚠⚠ **必须把自己排除掉** —— 踩过一次, 后果很难看:
+ *   脚本里有好几处写给"闭源"看的字面量(下面的清洗规则、以及这条命令本身),
+ *   而它**第一次运行之后**, 这条命令里的 `闭源` 已经变成了 `参考产品`(因为脚本自己
+ *   也在 `scripts/` 下、也被纳入目标) —— 于是**第二次运行**把脚本自身当成目标全文件重写了:
+ *   规则 ①④⑤ 被改成 `闭源产品→参考产品`、`(参考产品|参考产品)`、`参考产品→参考产品` 这种
+ *   自指的死代码, 而外层的 `targets()` 又用新词去搜 —— 整套逻辑静默失效。
+ *   这类"工具改自己"的坑不会报错, 只会让下一次运行结果不可信。
+ */
 function targets(): string[] {
-  const out = execSync("git grep -l 闭源 -- src web test scripts", { encoding: "utf-8", maxBuffer: 1 << 28 });
-  return out.split("\n").map((s) => s.trim()).filter((s) => s && EXT.test(s));
+  const self = "scripts/scrub-provenance-comments.ts";
+  /**
+   * ⚠ 判据放在 **JS 里**做, 不靠 shell 传正则 —— 试过 `git grep -E "...{6,12}..."`,
+   *   花括号/反斜杠要穿过两层转义, 实测根本没命中(而 `git grep -l` 无命中**不报错**,
+   *   于是表现为"目标 2 个文件、改动 0 处"这种看起来正常的结果)。
+   *
+   * ⚠ 而且**必须用"含指纹但已无「闭源」"这条判据** —— 只搜「闭源」会漏掉跑过一轮之后
+   *   才产生的文件。实测漏过 `web/src/lib/authed-image.tsx`:
+   *   `` * 规格照抄参考产品 `ye()`(`VizView-DKRGiXDk.js`), 逐条对齐 `` —— 一个「闭源」都没有,
+   *   却带着完整的构建产物指纹。
+   */
+  const g = (args: string) => {
+    try { return execSync(`git grep -l ${args} -- src web test scripts`, { encoding: "utf-8", maxBuffer: 1 << 28 }); }
+    catch { return ""; }   // 无命中时 git grep 退出码非 0, 属正常
+  };
+  const cands = [...new Set((g("闭源") + "\n" + g("-F \"-\"") + "\n" + g("-F \".js\"")).split("\n").map((s) => s.trim()))]
+    .filter((s) => s && s !== self && EXT.test(s));
+  // 用 JS 正则精筛: 要么带「闭源」, 要么带"像 bundle 的 .js 名"
+  const FINGERPRINT = /[A-Za-z]+-[A-Za-z0-9_]{6,12}\.js/;
+  return cands.filter((f) => {
+    try {
+      const src = readFileSync(f, "utf-8");
+      return src.includes("闭源") || FINGERPRINT.test(src);
+    } catch { return false; }
+  });
 }
 
 /** bundle 基名 → 中文视图名(其余保留英文基名: 它不含哈希, 本身不是指纹) */
@@ -74,8 +112,34 @@ function scrubText(t: string): string {
   //       (base=`recall` + 残余 `on`)。那是**代码在用的真实文件路径**, 运行期会找不到文件,
   //       而 typecheck 与单测**都发现不了**(它仍是一个合法字符串)。
   //       三条一起才安全: 前面不是引号/斜杠、是词边界、后面不是单词字符。
-  s = apply(s, /(?<!["'`/])\b([A-Za-z][A-Za-z0-9]*?)-[A-Za-z0-9_]{6,12}\.js(?![\w"'`])/g,
-    (_m: string, base: string) => viewNameCn(base));
+  //    d) 后顾里**只能排除斜杠**, 别的都别加 —— 这个坑踩了三轮:
+  //       ① 加反引号 → 注释里 `` `VizView-DKRGiXDk.js` `` 被漏;
+  //       ② 加单双引号 → 注释里 `"MaterialsView-CW_9_w3K.js"` 被漏;
+  //       ③ 两个都加 → 上面两处一起漏。
+  //       而"护 import 路径"**一条就够**: `../services/x.js` 的前一个字符必然是 `/`,
+  //       这正是它与"注释里提到的 bundle 名"唯一的结构差别。
+  //    e) ⚠ **四条约束, 少一条就出事**, 而且它们分别是被四次不同的事故定下来的:
+  //       · 左边 `(?<![-/\w])` —— 排掉"单词字符/连字符/斜杠"。差一个 `/` 就把
+  //         `../services/llm-model-registry.js` 洗成 `../services/llm-<中文>` (编译不过);
+  //         差一个 `-` 就会从长名字的中间开始匹配。
+  //       · 右边 `(?!\w)` —— 排掉"后面还跟着字母数字"。差它就吃到 `.json` 的前三个字母。
+  //       ⚠ **别往这两处再加引号/反引号**: 加进来会把注释里 `` `VizView-DKRGiXDk.js` ``
+  //         和 `"MaterialsView-CW_9_w3K.js"` 一起挡掉(实测漏洗两个文件)。
+  //
+  //    ⚠⚠ 方法上的教训: 我做"穷举验证"时把三个用例**原样打印**了出来(根本没替换),
+  //       却看着"该洗:"这个标签当成通过了 —— 又白跑一轮。**核验要看值, 不看标签。**
+  //
+  //    ⚠⚠⚠ **f) 最终改了判据: 不再猜文件名, 只洗"紧跟溯源词之后"的那种。**
+  //       上一版(左边排 `-/\w`、右边排 `\w`)在 6 个用例上全过, 却**误伤**了
+  //       `load-config.js`(正常文件名) → 洗成 `load`。
+  //       根因: "这个 .js 名是不是构建产物指纹"**本质上判不出来** ——
+  //       `load-config.js` 与 `llm-model-registry.js` 形状完全一样。
+  //       而指纹之所以**是证据**, 恰恰因为它写在"闭源/参考产品 XxxView-Hash.js"这个句式里。
+  //       所以改成用**句式**当判据, 而不是用文件名形状。
+  //       代价: 极少数"指纹单独出现、不在溯源词后面"的会漏 —— 可接受, 因为
+  //       漏了只是少洗一处, 而误伤一个真实文件名会让**运行期**坏掉且 typecheck 全绿。
+  s = apply(s, /((?:参考产品|闭源)\s*(?:[A-Za-z][A-Za-z0-9]*\s+)?)([A-Za-z][A-Za-z0-9]*?)-[A-Za-z0-9_]{6,12}\.js(?!\w)/g,
+    (_m: string, lead: string, base: string) => `${lead}${viewNameCn(base)}`);
 
   // ③ 行号坐标 —— 两条硬约束, 都是踩出来的:
   //    a) **前缀 [LRE] 必须必需**, 不能写成可选。第一版写成可选, 于是"任意 3-6 位数字"
@@ -126,6 +190,26 @@ function scrubSource(src: string): { out: string; changed: number } {
   while (i < n) {
     const c = src[i];
     const c2 = src[i + 1];
+    /**
+     * ⚠ 三类注释各漏过一次, 每一次都让一整批文件"看起来洗过了其实没有":
+     *   · HTML `<!-- -->`  → Vue 模板里的溯源注释整批漏(实测漏了 2 个 .vue);
+     *   · Python `#`       → 扩到 .py 之后才需要, 但范围定错时连文件都没进目标;
+     *   · `.mjs`           → 不在 EXT 里, 18 个脚本从头到尾没被洗过。
+     * "覆盖范围"与"语法种类"要一起想 —— 少一样, 漏掉的那部分**不会有任何信号**。
+     */
+    if (c === "<" && c2 === "!") {
+      const end = src.indexOf("-->", i);
+      if (end !== -1) { flush(src.slice(i, end + 3)); i = end + 3; continue; }
+    }
+    // Python 注释: `#` 只在行首或空白之后才算注释起点
+    //   (`#` 在别处可能是颜色值 `#4D84CB` 或 CSS 选择器, 收窄判据以免误伤)
+    if (c === "#" && (i === 0 || /\s/.test(src[i - 1]))) {
+      let j = i;
+      while (j < n && src[j] !== "\n") j++;
+      flush(src.slice(i, j));
+      i = j;
+      continue;
+    }
     // 行注释
     if (c === "/" && c2 === "/") {
       let j = i;

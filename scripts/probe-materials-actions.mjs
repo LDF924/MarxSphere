@@ -116,7 +116,7 @@ try {
       rec("materials", `${label}(打开弹层)`, st?.open ? "ok" : "DEAD", `弹层=${st?.open} 标题=${st?.title || "—"}`);
 
       if (st?.open) {
-        // 填标题(闭源: 无标题时 saveManual 直接 toast 拦截)
+        // 填标题(参考产品: 无标题时 saveManual 直接 toast 拦截)
         await evalTop(cdp, `(() => {
           const inp = document.querySelector('.modal-mask input[type="text"], .modal-mask input:not([type])');
           if (!inp) return 'no-input';
@@ -196,7 +196,7 @@ try {
   {
     const has = await evalTop(cdp, `document.querySelectorAll('[data-control="workflow:open-sources"]').length`);
     rec("materials", "文献卡「来源」入口存在性", has > 0 ? "ok" : "skip",
-      has > 0 ? `${has} 个` : "播种的素材没有来源文献 → 闭源语义下本就不渲染该按钮");
+      has > 0 ? `${has} 个` : "播种的素材没有来源文献 → 参考产品语义下本就不渲染该按钮");
     if (has > 0) {
       const r = await probeAction(cdp, '[data-control="workflow:open-sources"]', { wait: 2000 });
       const st = await evalTop(cdp, `(() => {
@@ -260,7 +260,7 @@ try {
     })()`);
     rec("materials", "open-gen-dialog(打开生成弹层)", st?.open ? "ok" : "DEAD", `弹层=${st?.open} 按钮=${JSON.stringify(st?.btns ?? [])}`);
     if (st?.open) {
-      // 未生成时应当是「放弃」而不是「取消」(闭源: generating ? cancel-gen : discard-gen)
+      // 未生成时应当是「放弃」而不是「取消」(参考产品: generating ? cancel-gen : discard-gen)
       const discard = st.btns?.find((b) => /workflow:discard-gen/.test(b.ctl));
       rec("materials", "未生成时按钮是「放弃」(不是「取消」)", discard ? "ok" : "ERR", `按钮=${JSON.stringify(st.btns?.map((b) => b.ctl).filter(Boolean))}`);
       const close = await probeAction(cdp, `[data-control="${discard ? "workflow:discard-gen" : "workflow:cancel-gen"}"]`, { wait: 1500, keepOverlays: true });

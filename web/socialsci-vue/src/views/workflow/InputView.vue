@@ -477,14 +477,14 @@ onMounted(async () => {
   >
     <PhaseProgressBar />
     <div class="wf-body">
-    <!-- 闭源页头: `mb-8`(32px) 包住 h1.text-2xl(24px) + p.text-sm + `mt-1`(4px)。
+    <!-- 参考产品页头: `mb-8`(32px) 包住 h1.text-2xl(24px) + p.text-sm + `mt-1`(4px)。
          2026-09-16 修: 我方原先 h1 22px / 副文案 13px / 下间距 18px —— 整条阶梯都塌了一档。 -->
     <div class="wf-head">
       <h1 class="wf-h1">选题界定</h1>
       <p class="wf-sub">请输入你的研究主题、研究框架和额外要求，AI智能体将据此规划框架设计</p>
     </div>
 
-    <!-- 研究主题 + 字数预估(闭源同一行: 主题 flex-1 + 字数 w-36, 都带红色 *) -->
+    <!-- 研究主题 + 字数预估(参考产品同一行: 主题 flex-1 + 字数 w-36, 都带红色 *) -->
     <section class="wf-card">
       <div class="topic-row">
         <div class="topic-main">
@@ -632,7 +632,7 @@ onMounted(async () => {
       </div>
     </section>
 
-        <!-- 额外要求(闭源此处是 textarea, 不是单行 input —— 长要求写不进一行)。
+        <!-- 额外要求(参考产品此处是 textarea, 不是单行 input —— 长要求写不进一行)。
          ⚠ V425 从左栏移到右栏: 原先左栏三张卡(大纲/额外要求/研究方法)比右栏高 356px,
          右下角空出一大块。挪过来后两栏底边只差个位数。
          为什么不挪「研究方法」: 它的 method-grid 是 repeat(auto-fit, minmax(190px,1fr)) ——
@@ -648,7 +648,7 @@ onMounted(async () => {
       ></textarea>
     </section>
 
-<!-- agent 引导提问(闭源: 默认折叠的手风琴, 标题栏带「（推荐）」) -->
+<!-- agent 引导提问(参考产品: 默认折叠的手风琴, 标题栏带「（推荐）」) -->
     <section class="wf-card clarify-card">
       <button
         type="button"
@@ -699,7 +699,7 @@ onMounted(async () => {
             <p class="cq-guidance">{{ q.guidance }}</p>
             <textarea v-model="q.answer" class="cq-input" rows="2" placeholder="你的回答…" @input="setAnswer(q, ($event.target as HTMLTextAreaElement).value)"></textarea>
           </div>
-          <!-- 第二轮追问(闭源: 答完一轮可再问一轮, 集中补齐仍模糊的点) -->
+          <!-- 第二轮追问(参考产品: 答完一轮可再问一轮, 集中补齐仍模糊的点) -->
           <div class="clarify-next">
             <button
               type="button" class="btn-clarify-run"
@@ -716,7 +716,7 @@ onMounted(async () => {
     </div>
     </div>
 
-    <!-- 底部操作(闭源: 主按钮在左 flex-1, 返回在右) -->
+    <!-- 底部操作(参考产品: 主按钮在左 flex-1, 返回在右) -->
     <div class="wf-actions">
       <button
         type="button"

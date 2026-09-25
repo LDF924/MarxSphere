@@ -1,7 +1,7 @@
 // scripts/probe-merged-review-round.mjs — 合稿页「三轮主流程」端到端实测
 //
 // 由来(2026-09-16): 合稿页的三轮卡(合并→审查→修订)在结构上是**我方独有**的容器,
-//   闭源把这三件事分散在「空态 + 合并完成后的两栏」里。容器不同没关系, 但三轮里
+//   参考产品把这三件事分散在「空态 + 合并完成后的两栏」里。容器不同没关系, 但三轮里
 //   「审查」与「修订」两步此前**从没有过一次端到端证据** —— 没有任何门禁、探针或单测
 //   覆盖过 doReview / doRevise / adoptRevision。它们是否真的打到后端、返回的报告结构
 //   前端是否吃得下, 全是未知。
@@ -185,7 +185,7 @@ try {
       const okAdopt = activated && after !== before && Math.abs(after - pendingLen) < pendingLen * 0.05;
       rec("修订·采用", okAdopt ? "ok" : "ERR",
         `采用前 ${before} 字 → 采用后 ${after} 字 (修订稿卡片报 ${pendingLen} 字) | activate 200=${activated} | 请求=${adopt.apiReqs.map(x => `${x.method} ${short(x.url)}→${x.status}`).join(" ")}`);
-      // 采用后必须落库 —— 重新加载页面看还在不在(闭源语义: 采用即替换当前合稿)
+      // 采用后必须落库 —— 重新加载页面看还在不在(参考产品语义: 采用即替换当前合稿)
       await cdp("Page.reload");
       await sleep(9000);
       const persisted = await evalTop(cdp, `(() => { const t = document.querySelector('.finale-card .f-area.body'); return t ? t.value.length : -1; })()`);

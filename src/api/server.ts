@@ -10461,7 +10461,7 @@ except Exception as e:
   app.post("/api/research/materials/reorder", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     // taskId 是参考产品(及素材列表接口)对"项目"的叫法, 本项目其余路由叫 projectId —— 两者都收,
-    //   作为归属校验的收窄条件(参考产品前端发 {taskId, ids}, 见 .claude/socialsci-probe/full/index-xpWAkSSw.js)。
+    //   作为归属校验的收窄条件(参考产品前端发 {taskId, ids})。
     const body = request.body as { ids?: string[]; projectId?: string; taskId?: string };
     if (!Array.isArray(body?.ids)) return reply.code(400).send({ error: "缺少 ids" });
     const projectId = body.projectId || body.taskId;
