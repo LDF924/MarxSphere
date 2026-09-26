@@ -39,7 +39,7 @@ try {
 // V397 桌面端: 启动前自举数据库迁移（迁移文件幂等, 首次启动安全执行）
 // 多副本: 迁移带 pg_advisory_lock, 并发启动时只有一个真正应用, 其余等锁。
 // 原来是 fire-and-forget —— 迁移失败也照常 listen, 等于对着半迁移的 schema 提供服务。
-import { migrate } from "./db/migrate.js";
+import { migrate, checkSchemaDrift, formatSchemaDrift } from "./db/migrate.js";
 
 // V405(P0 成本账本): 启动后 seed 平台默认模型单价(仅插缺省, 不覆盖 admin 调价)
 import { seedDefaultPrices } from "./services/cost-ledger-service.js";
@@ -47,7 +47,37 @@ setTimeout(() => { void seedDefaultPrices(); }, 2500);
 
 // 先迁移再监听: 迁移失败直接退出(而不是带病启动), 容器编排会重启并重试
 migrate()
-  .then(() => { console.log("[sag] 数据库迁移完成"); })
+  .then(async () => {
+    console.log("[sag] 数据库迁移完成");
+    /**
+     * 迁移过后再看一眼"库里的记录 vs 本分支的 migrations/"是否对得上。
+     *
+     * 起因: `migrate()` 只补"本地有、库里没有"的, **从不检查反方向** ——
+     * 于是"在带新迁移的分支跑过、再切回旧分支启动"时, 旧分支的迁移全都"已应用"
+     * 被逐个静默跳过, 服务带着比代码新的 schema 起来且毫无提示。
+     * 详见 db/migrate.ts 里 checkSchemaDrift 的注释。
+     *
+     * 刻意**不阻断启动**: 与 startup-check 的既有口径一致(只有强制模式下的 JWT_SECRET 致命)。
+     * 有时就是想用旧分支连上去看两眼, 那也该能看 —— 但必须知道风险在哪。
+     */
+    try {
+      const drift = await checkSchemaDrift();
+      const { ok, lines } = formatSchemaDrift(drift, {
+        migrationsDir: process.env.SAG_ROOT ? `${process.env.SAG_ROOT}/migrations` : "<模块相对>/migrations",
+      });
+      if (!ok) {
+        console.warn("═══ schema 漂移自检 ═══");
+        for (const l of lines) console.warn(l);
+        console.warn("═══ 检查结束 ═══");
+        logger.warn({ dbOnly: drift.dbOnly.length, localOnly: drift.localOnly.length }, "schema drift detected");
+      } else {
+        console.log(`[sag] ${lines[0]}`);
+      }
+    } catch (e) {
+      // 自检本身失败不该影响启动 —— 它只是个提示器, 不是门禁
+      console.warn("[sag] schema 漂移自检未能完成:", String((e as Error)?.message || e).slice(0, 200));
+    }
+  })
   .catch((e: unknown) => {
     console.error("[sag] 数据库迁移失败, 拒绝带病启动:", String((e as Error)?.message || e).slice(0, 300));
     process.exit(1);
