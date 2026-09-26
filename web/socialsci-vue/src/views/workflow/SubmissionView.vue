@@ -29,6 +29,7 @@ import { toast } from "@/shared/ui";
 import { DECLARATIONS, checkDeclarations, normDeclarations, type Declarations } from "@/shared/declarations";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
+import ReviewResponsePanel from "./ReviewResponsePanel.vue";
 
 const store = useWorkflowStore();
 
@@ -167,14 +168,8 @@ onMounted(async () => {
         <p class="sv-tpl-line">参照：{{ d.template }}</p>
       </section>
 
-      <!-- 返修区占位 —— 批 6 在此落地。先留清晰的位置, 而不是等做的时候再改结构 -->
-      <section class="sv-card sv-future">
-        <h2 class="sv-h2">审稿意见与返修</h2>
-        <p class="sv-muted">
-          投稿后收到审稿意见、逐条回应、生成修订稿 —— 这一块正在建设中。
-          届时与上面的声明同在本区，投稿相关的事不必两处找。
-        </p>
-      </section>
+      <!-- 返修区 —— 批6 落地。与声明同区: 投稿相关的事不必两处找 -->
+      <ReviewResponsePanel />
     </div>
   </div>
   </WorkflowShell>
@@ -223,5 +218,4 @@ onMounted(async () => {
 .sv-badge.is-thin { color: #D9A441; border: 1px solid #D9A441; }
 .sv-p-label { color: var(--wf-text); }
 .sv-p-detail { color: var(--wf-faint); }
-.sv-future { border-style: dashed; }
 </style>

@@ -14,6 +14,7 @@ import * as materials from "./research-materials-service.js";
 import { generateChapter, generateComponent, applyDeAITier } from "./paper-outline-service.js";
 import { retrieveLiterature, buildCitationMaterialBody, type LiteratureHit } from "./research-literature-retrieval.js";
 import * as researchEvidence from "./research-evidence-service.js";
+import * as reviewResponse from "./review-response-service.js";
 
 export interface ExecCtx {
   taskId: string;
@@ -1341,6 +1342,31 @@ ${evidenceSummary.slice(0, 4000)}
     } catch { return JSON.stringify(reviewReport).slice(0, 1000); }
   })();
   const scoreLine = reviewReport.overallScore !== undefined ? `${reviewReport.overallScore} 分 ${reviewReport.grade ?? ""}` : "";
+  /**
+   * 外部审稿意见 —— **这是批6 与既有 revise 分支的唯一接口**。
+   *
+   * 为什么单独一条通道而不是并进 `reviewReport`: 两者是**来源不同的两种东西** ——
+   *   `reviewReport` 是平台自审的产出(分数/维度/建议), 这里是人(编辑部/审稿人)写的意见。
+   *   混在一起会让"系统觉得哪里不行"与"审稿人要求改什么"分不开, 而用户恰恰要分清。
+   *
+   * 只取**已处理且非未采纳**的条目(buildRevisionInput 里的判据): 用户标了"未采纳"的意见
+   *   若也塞进去, 模型会照着改 —— 而那正是用户不想改的。
+   *
+   * 取不到(没录过意见/都没处理)时是空串, 整段不出现 —— 与"没这条通道时"完全一致,
+   *   所以这条改动**不影响**任何既有的 revise 调用。
+   */
+  const externalComments = await (async (): Promise<string> => {
+    try {
+      const r = await reviewResponse.listReviewResponses(ctx.userId, ctx.projectId);
+      return reviewResponse.buildRevisionInput((r?.items ?? []) as never[]);
+    } catch {
+      // 旁路增强: 读不到意见不该让修订整条失败(而 reviewReport 缺失才是硬错误, 见上面那句 throw)
+      return "";
+    }
+  })();
+  const externalBlock = externalComments
+    ? `\n【审稿意见(需逐条落实)】\n${externalComments}\n`
+    : "";
   // step1: 修订正文 — 直出修订后 markdown 全文(不进 JSON, 防超长转义)
   const r1 = await fetchLlm({
     url: ep.url, key: ep.key, model: ep.model,
@@ -1349,7 +1375,7 @@ ${evidenceSummary.slice(0, 4000)}
 【审稿报告】${scoreLine}
 ${checksBrief}
 【优先建议】${Array.isArray(reviewReport.topSuggestions) ? (reviewReport.topSuggestions as string[]).join("; ") : ""}
-
+${externalBlock}
 【待修订全文】
 ${fulltext}
 

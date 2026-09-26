@@ -34,10 +34,21 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function startCdp({ preferredPort, label, tmpPrefix = "edge-cdp", windowSize = "1440,900" }) {
   const port = await resolveCdpPort(preferredPort);
   const userData = mkdtempSync(path.join(tmpdir(), tmpPrefix));
+  /**
+   * `SAG_CDP_LANG` —— **仅用于在本地复刻 CI 的语言环境**。
+   *
+   * 由来(2026-09-27): CI 的 headless Chromium 没有中文 locale, 外壳的 `detectBrowserLanguage()`
+   *   因此返回 "en", 界面整个变英文 —— 而有的探针按中文文案找元素, 于是**本地绿、CI 红**。
+   *   这类差异光看 CI 日志排查要 40 分钟一轮; 能在本地把环境造出来, 几秒就能验证。
+   *   例: `SAG_CDP_LANG=en-US node scripts/probe-batch01.mjs`
+   *
+   * 默认不传, 行为与改动前完全一致。
+   */
+  const langArg = process.env.SAG_CDP_LANG ? [`--lang=${process.env.SAG_CDP_LANG}`] : [];
   const proc = spawn(
     resolveBrowser({ label }),
     [`--remote-debugging-port=${port}`, `--user-data-dir=${userData}`, "--headless=new",
-     "--disable-gpu", `--window-size=${windowSize}`, "--no-first-run", "about:blank"],
+     "--disable-gpu", `--window-size=${windowSize}`, "--no-first-run", ...langArg, "about:blank"],
     { stdio: "ignore" },
   );
   let ws, msgId = 0;

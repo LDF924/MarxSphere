@@ -116,6 +116,7 @@ import { attachSse } from "./stream-utils.js";
 // SocialSci P0-2: 素材库 + DAG 执行引擎
 import * as researchMaterials from "../services/research-materials-service.js";
 import * as researchEvidence from "../services/research-evidence-service.js";
+import * as reviewResponse from "../services/review-response-service.js";
 import * as researchExec from "../services/research-exec-engine.js";
 // SocialSci P0-3: 审稿任务流 + 期刊库/标准库
 import * as reviewService from "../services/review-service.js";
@@ -11989,6 +11990,112 @@ ${dataBlock}
     const r = await researchEvidence.syncHypothesesFromAnalysis(user.id, projectId);
     if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
     return r;
+  });
+
+  // ─── 投稿与返修(批6) ───
+  // 外部审稿意见在此前**平台侧零实现**: `/api/review/*` 是"我方当审稿人",
+  // `phase5_revise` 吃的是系统自审报告。这一组路由补的是真实科研里最硬的一环:
+  // 收意见 → 逐条回应 → 出修订稿 → 交回应信。
+
+  /** 投稿记录 */
+  app.get("/api/research/projects/:projectId/submissions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const r = await reviewResponse.listSubmissions(user.id, projectId);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  app.put("/api/research/projects/:projectId/submissions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { submissions?: Array<Record<string, unknown>> };
+    const r = await reviewResponse.saveSubmissions(
+      user.id, projectId,
+      (Array.isArray(body?.submissions) ? body.submissions : []).map((s) => ({
+        ...(s.id ? { id: String(s.id) } : {}),
+        journalName: String(s.journalName ?? ""), submittedOn: String(s.submittedOn ?? ""),
+        status: String(s.status ?? "submitted"), note: String(s.note ?? ""),
+        round: Number(s.round) || 1,
+      }))
+    );
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /** 审稿意见条目(可按轮次过滤) */
+  app.get("/api/research/projects/:projectId/review-responses", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const q = request.query as { round?: string };
+    const round = q?.round && /^\d+$/.test(q.round) ? Number(q.round) : undefined;
+    const r = await reviewResponse.listReviewResponses(user.id, projectId, round);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  app.put("/api/research/projects/:projectId/review-responses", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { items?: Array<Record<string, unknown>>; round?: number };
+    const r = await reviewResponse.saveReviewResponses(
+      user.id, projectId,
+      (Array.isArray(body?.items) ? body.items : []).map((it) => ({
+        ...(it.id ? { id: String(it.id) } : {}),
+        round: Number(it.round) || undefined, reviewerLabel: String(it.reviewerLabel ?? ""),
+        seq: Number.isInteger(it.seq) ? Number(it.seq) : undefined,
+        kind: String(it.kind ?? "revise"), quote: String(it.quote ?? ""), comment: String(it.comment ?? ""),
+        response: String(it.response ?? ""), responseType: String(it.responseType ?? ""),
+        revisionRefs: Array.isArray(it.revisionRefs) ? (it.revisionRefs as unknown[]).map(Number) : [],
+      })),
+      Number(body?.round) || undefined
+    );
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /**
+   * 粘贴一大段审稿意见 → 拆条落库。
+   *
+   * 拆条走**启发式**(见 review-response-service.splitReviewComments 的长注释):
+   * 拆条是格式问题不是理解问题, 而 LLM 拆条会**改写原文** —— 而原文是要原样引用给编辑部的。
+   */
+  app.post("/api/research/projects/:projectId/review-responses/import", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { text?: string; round?: number; reviewerLabel?: string };
+    const text = String(body?.text ?? "");
+    if (!text.trim()) return reply.code(400).send({ error: "没有可解析的内容" });
+    if (text.length > 200_000) return reply.code(400).send({ error: "内容过长(上限 20 万字符)" });
+    const r = await reviewResponse.importReviewComments(user.id, projectId, text, {
+      round: Number(body?.round) || undefined,
+      reviewerLabel: String(body?.reviewerLabel ?? ""),
+    });
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
+  });
+
+  /** 拆分预览(不落库)—— 让用户在写入前先看一眼拆得对不对, 拆错可改 */
+  app.post("/api/research/projects/:projectId/review-responses/split-preview", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { text?: string };
+    const parts = reviewResponse.splitReviewComments(String(body?.text ?? ""));
+    return { ok: true, count: parts.length, parts };
+  });
+
+  /** 回应信(给编辑部的逐条回复) */
+  app.post("/api/research/projects/:projectId/review-responses/letter", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { items?: Array<Record<string, unknown>>; title?: string };
+    const items = (Array.isArray(body?.items) ? body.items : []).map((it) => ({
+      round: Number(it.round) || 1, seq: Number(it.seq) || 0,
+      reviewerLabel: String(it.reviewerLabel ?? ""), kind: String(it.kind ?? "revise"),
+      quote: String(it.quote ?? ""), comment: String(it.comment ?? ""),
+      response: String(it.response ?? ""), responseType: String(it.responseType ?? ""),
+      revisionRefs: Array.isArray(it.revisionRefs) ? (it.revisionRefs as unknown[]).map(Number) : [],
+    }));
+    return { ok: true, markdown: reviewResponse.buildResponseLetter(items, projectId, String(body?.title ?? "")) };
   });
 
   /**

@@ -147,8 +147,18 @@ try {
     // ⚠ 导航项在**折叠的分类下拉**里 —— 展开之前 DOM 里根本没有它, 所以"未展开就找不到"
     //   是**设计如此**, 不是缺陷。第一版把这条写成断言, 恒红; 而我差点当成入口没生效。
     //   正确的验法是: 展开 → 点它 → 看是否真的到了统计台。
+    //
+    // ⚠⚠ 2026-09-27 修一处**CI 专属假失败**: 这里原本写死匹配中文「科研中心」,
+    //   而外壳是**双语**的 —— `label: t("科研中心", "Research")`。CI 的 headless Chromium
+    //   **没有中文 locale → 界面全英文**(实测, 见 ci-vs-local-env-differences 那条记录),
+    //   于是 `no-trigger` / `no-item`, 连着后面三条(iframe/hash/正文)一起假红。
+    //   判据改成**中英双认**: 应用只有这两种语言, 两个都试就与环境无关。
+    //   (教训不是"CI 又出幺蛾子", 是**我知道这条差异还写了硬编码中文**。)
     const opened = await evalTop(cdp, `(() => {
-      const trig = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim().startsWith("科研中心"));
+      const trig = [...document.querySelectorAll("button")].find((b) => {
+        const s = (b.textContent || "").trim();
+        return s.startsWith("科研中心") || s.startsWith("Research");
+      });
       if (!trig) return "no-trigger";
       trig.click();
       return "clicked";
@@ -159,7 +169,10 @@ try {
     const clicked = await evalTop(cdp, `(() => {
       const els = [...document.querySelectorAll("button,a,li,div,span")];
       // 取**最内层**匹配项: 外层容器也跟着含这段文字, 点它会落空
-      const hits = els.filter((e) => (e.textContent || "").trim() === "数据分析台");
+      const hits = els.filter((e) => {
+        const s = (e.textContent || "").trim();
+        return s === "数据分析台" || s === "Statistics";
+      });
       const hit = hits[hits.length - 1];
       if (!hit) return "no-item";
       hit.click();
@@ -169,7 +182,10 @@ try {
     await sleep(5000);
 
     const r = await evalTop(cdp, `(() => {
-      const f = document.querySelector('iframe[title^="数据分析台"]');
+      // ⚠ iframe 的 title 也是双语(「数据分析台」/「Statistics」)—— 只按中文找同样是 CI 专属假失败
+      // ⚠⚠ 这个注释**不能写反引号**: 它整个在 JS 模板串内部, 反引号会把模板串提前闭合
+      //    (本仓踩过同一个坑, 见 writing-cabin 审计那条记录)
+      const f = document.querySelector('iframe[title^="数据分析台"], iframe[title^="Statistics"]');
       if (!f) return JSON.stringify({ found: false, h: "", len: 0 });
       try { return JSON.stringify({ found: true, h: String(f.contentWindow.location.hash), len: (f.contentWindow.document.body.innerText || "").length }); }
       catch (e) { return JSON.stringify({ found: true, h: "ERR:" + e.message, len: 0 }); }
@@ -177,6 +193,10 @@ try {
     const o = JSON.parse(String(r));
     t("外壳挂上了「数据分析台」iframe", o.found === true, `实测 ${r}`);
     t("落在 /soc/#/statistics", String(o.h).includes("/statistics"), `实测 hash=${o.h}`);
+    /**
+     * `len > 100` 的判据在英文下**也成立**(英文正文比中文短, 但一整个统计台远超 100)。
+     * 真要防的是"页面空白", 不是"中文"
+     */
     t("统计台真的渲染出内容(不是空白)", o.len > 100, `正文长度=${o.len}`);
   }
 
