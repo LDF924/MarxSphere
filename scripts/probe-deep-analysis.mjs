@@ -177,6 +177,94 @@ try {
     })()`);
     rec("[互文对照] 选够 2 篇后按钮解禁", it1?.已选 >= 2 && it1?.按钮禁用 === false, JSON.stringify(it1));
   }
+
+  /**
+   * ⑥ 批8 新接的 15 条能力(V425 A2 之后, 2026-09-27) —— 逐条验"打到对的端点 + 字段名对得上"。
+   *
+   * 由来: 一轮契约对账查出 24 条**后端已实现、前端零引用**的科研路由, 这里接上其中 15 条。
+   *   接线成本最低(都是声明式 `cap({...})`), 但**最容易静默失效**的也在这里 ——
+   *   字段名写错就是恒 400, 而 400 在界面上表现为"点了没反应或一句看不懂的错"。
+   *
+   * 判据取**必填字段非空**: 后端对这些字段是"缺了直接 400", 所以"非空"就是"这条真能用"。
+   * 仍然沿用上面的做法 —— 命中即 abort, 不烧模型。
+   */
+  const NEW_CAPS = {
+    school: { need: ["schoolName"], fill: true, emptyRequired: true },
+    viewcmp: { need: ["topic", "scholars"] },
+    debate: { need: ["debateTopic"], fill: true },
+    scholar: { need: ["scholarName"], fill: true, emptyRequired: true },
+    frontier: { need: ["discipline"] },
+    gap: { need: ["topic"] },
+    framework: { need: ["topic", "researchType"] },
+    argchain: { need: ["claim", "conclusion"] },
+    methodrec: { need: ["topic", "researchType"] },
+    counter: { need: ["claim", "argumentText"] },
+    reviewgen: { need: ["topic"] },
+    paragraph: { need: ["coreIdea"] },
+    components: { need: ["title"] },
+    citation: { need: ["rawText", "format"] },
+    styleadapt: { need: ["text", "scene"] },
+  };
+  for (const [id, spec] of Object.entries(NEW_CAPS)) {
+    await evalTop(cdp, `window.__daSpy = []; 1`);
+    const clicked = await evalTop(cdp, `(() => {
+      const c = document.querySelector('[data-control="workflow:deep-${id}"]');
+      if (!c) return false;
+      c.click(); return true;
+    })()`);
+    if (!clicked) { rec(`[${id}] chip 存在`, false, "找不到 chip"); continue; }
+    await sleep(650);
+
+    /**
+     * ⚠ 必填**没有可预填来源**的那两项(学派名/学者姓名), 默认就该是禁用的 ——
+     *   实测它们此前**没被拦**: 默认为空、按钮可点, 打出去拿一个后端 400。
+     *   所以这里先断言"空着时禁用", 再填上解禁, 而不是一味地要求"默认可点"。
+     */
+    if (spec.emptyRequired) {
+      const dis = await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="workflow:deep-run"]'); return b ? !!b.disabled : null; })()`);
+      rec(`[${id}] 必填为空时按钮禁用(不打出必然 400 的请求)`, dis === true, `按钮禁用=${dis}`);
+    }
+
+    // 需要用户手填的(学派名/学者姓名/争鸣议题)先填上, 否则按钮按设计禁用
+    if (spec.fill) {
+      await evalTop(cdp, `(() => {
+        const inp = document.querySelector('.da-params input.da-input, .da-params textarea.da-area');
+        if (!inp) return false;
+        const proto = inp.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(inp, ${JSON.stringify("探针测试值")});
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`);
+      await sleep(500);
+      // 「观点对比」要 ≥2 位学者(多行)
+      if (id === "viewcmp") {
+        await evalTop(cdp, `(() => {
+          const inp = document.querySelector(".da-params textarea.da-area, .da-params input.da-input");
+          if (!inp) return false;
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(inp, "学者甲\\n学者乙");
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        })()`);
+        await sleep(500);
+      }
+    }
+
+    const enabled = await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="workflow:deep-run"]'); return b ? !b.disabled : null; })()`);
+    if (enabled !== true) {
+      rec(`[${id}] 默认参数可点(必填已预填)`, false, `按钮禁用=${enabled}`);
+      continue;
+    }
+    await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-run"]').click(); return 1; })()`);
+    await sleep(1100);
+    const spy = await evalTop(cdp, `(window.__daSpy || []).filter(r => r.url.includes('/api/') && !r.url.includes('/research/'))`);
+    const hit = (spy ?? []).find((r) => r.body);
+    let body = null;
+    try { body = hit?.body ? JSON.parse(hit.body) : null; } catch { body = null; }
+    const missing = body ? spec.need.filter((k) => body[k] === undefined || body[k] === "" || (Array.isArray(body[k]) && !body[k].length)) : spec.need;
+    rec(`[${id}] 打到对的端点且必填字段齐全`,
+      !!hit && !!body && missing.length === 0,
+      hit ? `${hit.url} 缺=${JSON.stringify(missing)}` : `没发请求(按钮禁用或未命中) spy=[${(spy ?? []).map((r) => r.url).join(",")}]`);
+  }
 } catch (e) {
   console.error("探针异常:", e.message);
 } finally {

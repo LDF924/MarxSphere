@@ -79,6 +79,24 @@ type Cap = {
   needsDocs?: boolean;
   /** HTTP 方法 —— argument-tree 是 GET(query 参数), 其余是 POST */
   method?: "GET" | "POST";
+  /**
+   * 这些字段**非空**才放行。
+   *
+   * 为什么需要它: 后端对这几项是"缺了直接 400", 而**界面上不拦就会让用户点到一个 400** ——
+   *   本面板的原则就是"缺必填项时按钮禁用, 而不是点下去拿一个 400"(见 ready 的注释)。
+   *   2026-09-27 批8 实测踩到: 学派脉络/学者谱系这两项的必填**没有可预填的来源**
+   *   (库里没有"当前学派"这种东西), 于是默认空、按钮却可点 → 打出去拿 400。
+   */
+  required?: string[];
+  /**
+   * 这一项**特有的**放行条件(通用条件——required 非空、文档已选——由 ready 统一管)。
+   *
+   * 为什么还需要它: 有几条是"输入为空不报错、而是给一个假结论"——
+   *   · `/writing/counter` 的 `argumentText` 空 → `weakPoints` 恒空 → 恒判「论证较审慎」;
+   *   · `/academic/view-comparison` 少于 2 位学者 → 400。
+   *   这两种都该**在界面上拦住**, 而不是让用户点下去拿一个看起来正常的错误答案。
+   */
+  extraReady?: (v: Record<string, string>) => boolean;
 };
 
 const CAPS: Cap[] = [
@@ -163,6 +181,156 @@ const CAPS: Cap[] = [
       { key: "concept", label: "概念", type: "text", fill: () => props.topic },
     ],
   },
+
+  // ══════════════════════════════════════════════════════════════
+  // 2026-09-27 补(批8): 15 条**后端已实现、前端零引用**的能力。
+  //
+  // 由来: 一轮全量契约对账查出 24 条写作舱零引用的科研路由, 这里接其中 15 条
+  //   (其余的重叠于已有机制, 或属别的产品线)。接之前**逐条实打了一遍**, 结论:
+  //     · **11 条真能出结果**;
+  //     · **4 条依赖知识库检索**(debate / scholar / gap / review)—— 库空时返回
+  //       **HTTP 200 但带 `error` 字段**(不是 4xx)。本面板 run() 已把那句 `error`
+  //       当"提示"而不是"成功"(见那里的注释), 所以直接接上即可。
+  //       实测四条各自的文案是「知识库中未检索到该…相关文本/文献」——
+  //       用户看到的是**具体原因**, 而不是"分析完了没结论"。
+  //
+  // ⚠ 全部 15 条**都不落库**(算完就丢) —— 这是后端既有语义, 不是本面板的取舍。
+  //   要留下得另调 POST /api/research/materials, 本批不做(计划里写的是"先接通、落库另议")。
+  // ══════════════════════════════════════════════════════════════
+
+  // ── 学术研究(5 条) ──
+  {
+    id: "school", label: "学派脉络", path: "/academic/school",
+    desc: "梳理某个学派的形成、核心主张、代表人物与内部分歧。需要知识库里有相关文献。",
+    fields: [{ key: "schoolName", label: "学派名", type: "text", hint: "如「法兰克福学派」「剑桥资本争论」。", fill: () => "", emptyByDesign: true }],
+    body: (v) => ({ schoolName: v.schoolName, topK: 8 }),
+    required: ["schoolName"],
+  },
+  {
+    id: "viewcmp", label: "观点对比", path: "/academic/view-comparison",
+    desc: "对比若干位学者就同一主题的核心观点：共识、分歧、聚类。**至少 2 位**。",
+    fields: [{
+      key: "scholars", label: "学者", type: "list", hint: "每行一位，≥2 位。",
+      fill: () => props.sectionTitles.slice(0, 2).join("\n"),
+    }],
+    body: (v) => ({ topic: props.topic, scholars: splitLines(v.scholars) }),
+    /** 后端 <2 位直接 400 —— 拦在界面上, 别让用户点下去拿一个必然失败 */
+    extraReady: (v) => splitLines(v.scholars).length >= 2,
+  },
+  {
+    id: "debate", label: "学术争鸣还原", path: "/academic/debate",
+    desc: "还原某个议题上的论争：谁跟谁在争、争的是什么、各自依据。需要知识库支持。",
+    fields: [{ key: "debateTopic", label: "争鸣议题", type: "text", fill: () => props.topic }],
+    body: (v) => ({ debateTopic: v.debateTopic, topK: 8 }),
+  },
+  {
+    id: "scholar", label: "学者思想谱系", path: "/academic/scholar",
+    desc: "某位学者的思想来源、演进与影响。需要知识库里有该学者的文本。",
+    fields: [{ key: "scholarName", label: "学者姓名", type: "text", fill: () => "", emptyByDesign: true }],
+    body: (v) => ({ scholarName: v.scholarName, topK: 8 }),
+    required: ["scholarName"],
+  },
+  {
+    id: "frontier", label: "学科前沿动态", path: "/academic/frontier",
+    desc: "某学科当前的热点方向与代表性文献。",
+    fields: [{ key: "discipline", label: "学科", type: "text", fill: () => "政治经济学" }],
+    body: (v) => ({ discipline: v.discipline, topK: 8 }),
+  },
+
+  // ── 研究设计(5 条) ──
+  {
+    id: "gap", label: "研究空白识别", path: "/writing/gap",
+    desc: "从既有文献里找出还没被回答的问题，作为选题依据。需要知识库支持。",
+    fields: [{ key: "topic", label: "研究主题", type: "text", fill: () => props.topic }],
+    body: (v) => ({ topic: v.topic, topK: 8 }),
+  },
+  {
+    id: "framework", label: "研究框架设计", path: "/writing/framework",
+    desc: "按研究类型给出可用的分析框架与结构模板。",
+    fields: [
+      { key: "topic", label: "研究主题", type: "text", fill: () => props.topic },
+      { key: "researchType", label: "研究类型", type: "select", options: ["理论研究", "实证研究", "混合研究", "历史研究"], fill: () => "理论研究" },
+    ],
+    body: (v) => ({ topic: v.topic, researchType: v.researchType }),
+  },
+  {
+    id: "argchain", label: "论证链条补全", path: "/writing/argument-chain",
+    desc: "从「主张」推到「结论」，找出中间缺的环节并补上，并给出断裂度评分。",
+    fields: [
+      { key: "claim", label: "起点主张", type: "text", fill: () => props.claim },
+      { key: "conclusion", label: "要推出的结论", type: "text", fill: () => props.topic },
+    ],
+    body: (v) => ({ claim: v.claim, conclusion: v.conclusion }),
+  },
+  {
+    id: "methodrec", label: "研究方法适配", path: "/writing/method",
+    desc: "按研究类型推荐可用的方法，并说明各自的适用条件。",
+    fields: [
+      { key: "topic", label: "研究主题", type: "text", fill: () => props.topic },
+      { key: "researchType", label: "研究类型", type: "select", options: ["理论研究", "实证研究", "混合研究", "历史研究"], fill: () => "实证研究" },
+    ],
+    body: (v) => ({ topic: v.topic, researchType: v.researchType }),
+  },
+  {
+    id: "counter", label: "反方视角", path: "/writing/counter",
+    desc: "站在对立面攻击自己的论证并指出薄弱点。「本方论证」**必填** —— 空着等于让模型对着空气反驳。",
+    fields: [
+      { key: "claim", label: "本方主张", type: "text", fill: () => props.claim },
+      {
+        key: "argumentText", label: "本方论证（要被反驳的那段）", type: "textarea",
+        hint: "默认取当前正文。⚠ 留空时后端返回的 weakPoints 恒空、恒判「论证较审慎」—— 那是**假结论**，所以本项必填。",
+        fill: () => props.text.slice(0, 2000),
+      },
+    ],
+    body: (v) => ({ claim: v.claim, argumentText: v.argumentText }),
+    /** ⚠ 论证留空时后端不报错, 返回的 weakPoints 恒空 + 恒判「论证较审慎」—— 假结论 */
+    extraReady: (v) => !!v.argumentText?.trim(),
+  },
+
+  // ── 写作输出(5 条) ──
+  {
+    id: "reviewgen", label: "文献综述生成", path: "/writing-out/review",
+    desc: "按主题检索知识库，生成带引用的综述初稿。需要知识库支持。",
+    fields: [{ key: "topic", label: "综述主题", type: "text", fill: () => props.topic }],
+    body: (v) => ({ topic: v.topic, topK: 10 }),
+  },
+  {
+    id: "paragraph", label: "段落扩写", path: "/writing-out/paragraph",
+    desc: "把一句核心意思扩成一段完整论证，并给出理论依据与可改进点。",
+    fields: [
+      { key: "coreIdea", label: "核心意思", type: "text", fill: () => props.claim },
+      { key: "style", label: "语体", type: "select", options: ["期刊论文", "学位论文", "工作论文"], fill: () => "期刊论文" },
+    ],
+    body: (v) => ({ coreIdea: v.coreIdea, topic: props.topic, style: v.style }),
+  },
+  {
+    id: "components", label: "要件按规范生成", path: "/writing-out/components",
+    desc: "按模板一次生成全套要件（摘要/关键词/引言/结论/英文摘要）—— 与合稿页逐项生成**不同**：这条适合初稿阶段。",
+    fields: [
+      { key: "title", label: "标题", type: "text", fill: () => props.topic },
+      { key: "method", label: "研究方法", type: "text", fill: () => "", emptyByDesign: true },
+      { key: "type", label: "论文类型", type: "select", options: ["期刊论文", "学位论文"], fill: () => "期刊论文" },
+    ],
+    body: (v) => ({ title: v.title, topic: props.topic, method: v.method, findings: props.claim, type: v.type }),
+  },
+  {
+    id: "citation", label: "引文格式化", path: "/writing-out/citation",
+    desc: "把随手记的文献信息转成规范体例。**先尝试确定性转换**（能自动转的不花模型），剩余交模型。",
+    fields: [
+      { key: "rawText", label: "待规范化的文献", type: "textarea", hint: "每行一条，可混着不同来源格式。", fill: () => props.text.slice(0, 1500) },
+      { key: "format", label: "目标体例", type: "select", options: ["GB/T 7714", "APA", "MLA"], fill: () => "GB/T 7714" },
+    ],
+    body: (v) => ({ rawText: v.rawText, format: v.format }),
+  },
+  {
+    id: "styleadapt", label: "语体适配", path: "/writing-out/style",
+    desc: "把一段文字改成目标载体要的语体，并标出改了什么、有没有口语化残留。",
+    fields: [
+      { key: "text", label: "原文", type: "textarea", fill: () => props.text.slice(0, 2000) },
+      { key: "scene", label: "目标载体", type: "select", options: ["期刊论文", "学位论文", "党校期刊", "工作论文"], fill: () => "期刊论文" },
+    ],
+    body: (v) => ({ text: v.text, scene: v.scene }),
+  },
 ];
 
 const splitLines = (s: string) => String(s ?? "").split("\n").map((x) => x.trim()).filter(Boolean);
@@ -190,7 +358,7 @@ function switchTo(id: string) {
   void valsOf(active.value);
 }
 
-/** 缺必填项时按钮禁用 —— 而不是点下去拿一个 400 */
+/** 缺必填项时按钮禁用 —— 而不是点下去拿一个 400 或一个假结论 */
 const ready = computed(() => {
   const cap = active.value;
   const v = valsOf(cap);
@@ -200,7 +368,16 @@ const ready = computed(() => {
   if (cap.needsDocs && docIds.value.length < 2) return false;
   if (cap.id === "system") return splitLines(v.propositions).length >= 2;
   if (cap.id === "concept") return !!v.concept?.trim();
-  if (cap.fields.some((f) => f.key === "claim")) return !!v.claim?.trim();
+  /**
+   * ⚠ 原句是"任一字段叫 claim 就要求它非空" —— 对 theory/premise 成立, 保留不动。
+   *   新接的 argchain 里 claim 是**起点主张**、methodrec 根本没有 claim,
+   *   不能让它们被这条误伤 —— 所以把它们作为例外列出, 而不是改这条的语义。
+   *   (改语义会影响 premise 之外的既有项, 而那些我没逐个验过。)
+   */
+  if (cap.fields.some((f) => f.key === "claim") && cap.id !== "argchain") return !!v.claim?.trim();
+  // ⚠ 后端"缺了直接 400"的那些字段 —— 空着就别让点(实测这两条会打出一个看不懂的 400)
+  if (cap.required?.some((k) => !String(v[k] ?? "").trim())) return false;
+  if (cap.extraReady && !cap.extraReady(v)) return false;
   return true;
 });
 
