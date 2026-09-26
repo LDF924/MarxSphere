@@ -59,10 +59,35 @@ try {
   ].filter(Boolean);
   const envFile = envCandidates.find((p) => existsSync(p));
   const envArgs = envFile ? [`--env-file=${envFile}`] : [];
+  /**
+   * ⚠ 2026-09-26 修: 播种必须写进**服务端读的那个 data 目录**。
+   *
+   * blob-store 的根是 `DATA_DIR || <SAG_ROOT>/data`（src/services/storage-paths.ts:27）。
+   *   · 服务端由 `scripts/start-api-worktree-4173.cmd` 起, 它显式设了
+   *     `DATA_DIR=<主仓>/data` —— 因为 worktree 里那份 data 是陈旧副本, 服务读主仓的;
+   *   · 而这里 spawn 的 tsx 子进程**没有** DATA_DIR, 于是回落到 `<SAG_ROOT>/data`,
+   *     在 worktree 里跑就是**worktree 的 data**。
+   *   两边指向不同目录 → 播下的文件服务端看不见 → 取图 404(实测就是这个症状)。
+   *
+   * 与 4173 口径对齐: 显式把 DATA_DIR 指到启动器用的那一个。
+   * 探针的约定是"不 import 应用代码", 所以这里照抄启动器的推导方式(由 git 公共目录定位主仓),
+   * 而不是从 storage-paths 里读 —— 那样会把这层耦合带进探针。
+   */
+  const mainRoot = (() => {
+    if (process.env.SAG_MAIN_ROOT) return process.env.SAG_MAIN_ROOT;
+    try {
+      // `--git-common-dir` 在 linked worktree 里返回的是 **`<主仓>/.git`**（已经绝对），
+      //   所以 `..` 一次就够 —— 写成 `dirname(...)+".."` 会多剥一层，推到 C:/Users 去。
+      //   （与 start-api-worktree-4173.cmd 的做法一致：它也是 `"%GITCOMMON%\.."` 再 %%~fI。）
+      const common = execFileSync("git", ["rev-parse", "--git-common-dir"], { encoding: "utf-8" }).trim();
+      return path.resolve(common, "..");
+    } catch { return ""; }
+  })();
+  const dataDir = process.env.DATA_DIR || (mainRoot ? path.join(mainRoot, "data") : "");
   const seededOut = execFileSync(
     process.execPath,
     ["node_modules/tsx/dist/cli.mjs", ...envArgs, "scripts/lib/seed-viz-file.ts", `probe-authed-${Date.now()}.png`, "audit"],
-    { encoding: "utf-8" }
+    { encoding: "utf-8", env: { ...process.env, ...(dataDir ? { DATA_DIR: dataDir } : {}) } }
   );
   // tsx/npm 会往 stdout 混警告 —— 挑出形如 /api/... 的那一行, 别假设"最后一行就是"
   const PATH = String(seededOut)

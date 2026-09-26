@@ -111,6 +111,7 @@ import { agentExecLogService } from "../services/agent-exec-log.js";
 import { getLlmEndpoint, fetchLlm } from "../ai/llm-common.js";
 // SocialSci P0-1: 科研项目/DAG 工作台 + SSE 工具
 import * as researchPipeline from "../services/research-pipeline-service.js";
+import { RESEARCH_STAGES } from "../services/research-stages.js";
 import { attachSse } from "./stream-utils.js";
 // SocialSci P0-2: 素材库 + DAG 执行引擎
 import * as researchMaterials from "../services/research-materials-service.js";
@@ -708,6 +709,11 @@ export function buildHttpServer() {
     "/api/paper-outline/",  // 论文大纲: 生成正文/要件烧 LLM(导出已豁免, 见 budget-gate)
     "/api/academic/",       // 学术场景
     "/api/writing/",        // 写作场景
+    // 2026-09-26 补: 写作输出(S51-S55: 段落扩写/要件生成/引文格式化/语体适配/综述生成)
+    //   **全在闸门之外**, 却在计费表里(`POINTS_FEATURE_RULES` 的 `prefix:/api/writing-out/`)——
+    //   于是超额用户走这条既不被 402 拦住、又照常记账, 是"两家各记一半"的漏账。
+    //   同源的还有归属校验那处(见 scenarioSourceCheck 的正则)。
+    "/api/writing-out/",
     "/api/classical/",      // 经典文本
     "/api/theory/",         // 理论思辨
     // 2026-09-24 补: 文献提取矩阵**之前不在闸门里** —— 而它是全仓单次调用最贵的端点
@@ -743,8 +749,11 @@ export function buildHttpServer() {
       const sourceId = body.sourceId || body.projectId || body.documentIds?.[0];
       if (!sourceId || typeof sourceId !== "string") return;
       // 场景 API 前缀才校验（避免误伤 reason/其他已校验路径）
+      // 2026-09-26 补 writing-out: 它下面有 5 个吃 sourceId 的端点(综述/空白识别等按库检索),
+      //   漏在这个正则外 → 传别人的 sourceId 不做归属校验, 直接把他人私有库的内容检索出来。
+      //   同一族的 academic/writing/quality/theory/classical 都在, 单独漏了它。
       const url = request.url.split("?")[0];
-      if (!/^\/api\/(classical|academic|writing|quality|theory|scenarios)/.test(url)) return;
+      if (!/^\/api\/(classical|academic|writing-out|writing|quality|theory|scenarios)/.test(url)) return;
       const access = await authService.verifySourceAccess(jwtPayload.uid, sourceId);
       if (!access.allowed) {
         return reply.code(403).send({ error: { code: "FORBIDDEN", message: "无权访问该数据源" } });
@@ -1561,9 +1570,13 @@ export function buildHttpServer() {
     const { generateChapter } = await import("../services/paper-outline-service.js");
     return generateChapter(body);
   });
-  // 论文要件(摘要/关键词/结论): POST /api/paper-outline/component
+  // 论文要件(摘要/关键词/结论/讨论): POST /api/paper-outline/component
+  //   ⚠ 加档位要**三处同时改**: 这里、paper-outline-service 的 COMPONENT_SPEC 与类型、
+  //     以及前端的 label 表与 sections 过滤白名单(见 FinalizeView.genComponent)。
+  //     只改这里的话, 前端传上来的新 kind 会被 zod 挡在 400, 报错倒是不静默 —— 但改少了别处
+  //     就会变成"参数过了、产出按错误的档生成"(旧实现是嵌套三元, 未知档静默按结论走)。
   const outlineComponentSchema = z.object({
-    kind: z.enum(["abstract", "keywords", "conclusion"]),
+    kind: z.enum(["abstract", "keywords", "conclusion", "discussion"]),
     topic: z.string().min(1).max(500),
     thesis: z.string().max(1000).optional(),
     sections: z.array(z.string()).max(30),
@@ -1597,6 +1610,9 @@ export function buildHttpServer() {
       needsManual: z.boolean().optional(),
       sources: z.array(z.string().max(40)).max(10).optional(),
     }).optional(),
+    // 2026-09-26: 投稿声明(作者贡献/基金/利益冲突/致谢/数据可得性)。
+    //   与 references 一样是可选的 —— 没填就不输出这一节(空标题会让编辑以为"声明了但没写")。
+    declarations: z.record(z.string().max(4000)).optional(),
   });
   app.post("/api/paper-outline/export", async (request, reply) => {
     const body = outlineExportSchema.parse(request.body);
@@ -1607,6 +1623,7 @@ export function buildHttpServer() {
       references: body.references
         ? { text: body.references.text ?? "", needsManual: body.references.needsManual ?? false, sources: body.references.sources ?? [] }
         : undefined,
+      declarations: body.declarations,
     });
     if (!result.ok || !result.base64) {
       return reply.code(502).send({ error: { code: "OUTLINE_EXPORT_FAILED", message: result.error ?? "docx 导出失败" } });
@@ -12437,46 +12454,54 @@ ${dataBlock}
     const st = await pool.query(
       `select distinct on (label) label, version, id, created_at
          from research_versions
-        where project_id=$1 and label in ('phase2_architecture','phase3_materials','phase4_text','phase5_final')
+        where project_id=$1 and label = any($2::text[])
         order by label, version desc`,
-      [q.projectId]);
+      [q.projectId, RESEARCH_STAGES.map((s) => s.versionLabel).filter(Boolean)]);
     const byLabel = new Map<string, { id: string; version: number; label: string; status: string | null; created_at: string }>();
     for (const row of st.rows as Array<{ label: string; version: number; id: string; created_at: string }>) {
       byLabel.set(row.label, { id: row.id, version: row.version, label: row.label, status: null, created_at: row.created_at });
     }
-    // 阶段 → (版本标签, 该阶段的节点键)
-    const stageNodeKeys: Array<[string, string, string[]]> = [
-      ["phase2", "phase2_architecture", ["sections"]],
-      ["phase3", "phase3_materials", ["materials"]],
-      ["phase4", "phase4_text", ["sections"]],
-    ];
+    /**
+     * 阶段 → (版本标签, 该阶段的节点键) —— **从真源取**，不再手写。
+     *
+     * ⚠ 2026-09-26 改。原先这里是硬编码的三元组数组，只覆盖 phase2/3/4，
+     *   而 `phase5Stale` 直接写死 `false` —— 于是**合稿阶段的门禁永远不会触发**
+     *   （注释里自认"只有 phase5Version 是真查的"）。现在每个阶段的 stale 都由
+     *   `research-stages.ts` 的 `staleNodeKeys` 驱动，phase6 一并有了真判据。
+     *
+     *   顺带修掉一个更隐蔽的：原来页面里的字段名（phase2/3/4/5）与**阶段号**是两套东西
+     *   （`phase3` 其实是"文献与资料"= 新编号 4）。所以下面的映射按阶段表**算出来**，
+     *   字段名统一用 `phase${ph}`，前端也照这个读。
+     */
+    const stagesWithVersion = RESEARCH_STAGES.filter((s) => !!s.versionLabel);
     const nodes = await pool.query(
       `select node_key, updated_at from research_nodes where project_id=$1`,
       [q.projectId]);
     const nodeUpdated = new Map<string, string>();
     for (const n of nodes.rows as Array<{ node_key: string; updated_at: string }>) nodeUpdated.set(n.node_key, n.updated_at);
     const phaseState: Record<string, { version: unknown; stale: boolean }> = {};
-    for (const [name, label, keys] of stageNodeKeys) {
-      const v = byLabel.get(label);
-      if (!v) { phaseState[name] = { version: null, stale: false }; continue; }
+    for (const stage of stagesWithVersion) {
+      const v = byLabel.get(stage.versionLabel!);
+      if (!v) { phaseState[`phase${stage.ph}`] = { version: null, stale: false }; continue; }
       const pubAt = new Date(v.created_at).getTime();
       // 该阶段的节点在这个版本之后又被写过 → 版本落后于内容
-      const stale = keys.some((k) => {
+      const stale = stage.staleNodeKeys.some((k) => {
         const u = nodeUpdated.get(k);
         return !!u && new Date(u).getTime() > pubAt + 1000;
       });
-      phaseState[name] = { version: { id: v.id, version: v.version, label: v.label }, stale };
+      phaseState[`phase${stage.ph}`] = { version: { id: v.id, version: v.version, label: v.label }, stale };
     }
+    const pv = (ph: number) => phaseState[`phase${ph}`] ?? { version: null, stale: false };
     return {
       success: true,
       state: {
         taskId: q.projectId,
         inputVersion: project.workbench_snapshot?.phase2VersionId ? { id: project.workbench_snapshot.phase2VersionId } : null,
-        phase2Version: phaseState.phase2.version, phase2Stale: phaseState.phase2.stale,
-        phase3Version: phaseState.phase3.version, phase3Stale: phaseState.phase3.stale,
-        phase4Version: phaseState.phase4.version, phase4Stale: phaseState.phase4.stale,
-        phase5Version: last ? { id: last.id, version: last.version, label: last.label, status: last.status } : null,
-        phase5Stale: false,
+        // 各阶段的版本与 stale 按真源逐条给出（此前 phase3~5 是硬编码常量或恒 false）
+        phase2Version: pv(2).version, phase2Stale: pv(2).stale,
+        phase4Version: pv(4).version, phase4Stale: pv(4).stale,
+        phase5Version: pv(5).version, phase5Stale: pv(5).stale,
+        phase6Version: pv(6).version, phase6Stale: pv(6).stale,
         publishedVersion: project.published_version ?? 0,
         updatedAt: new Date().toISOString(),
       },

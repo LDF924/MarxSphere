@@ -58,7 +58,28 @@ function renderBodyValue(v: unknown, ctx: MetaRunContext): unknown {
     for (const [k, inner] of Object.entries(v as Record<string, unknown>)) out[k] = renderBodyValue(inner, ctx);
     return out;
   }
+  // 标量按模板渲染后转字符串; **数组保持数组** —— 有端点的 zod 校验直接要 string[],
+  //   转成字符串会被拒(实测: 大纲的 sections 传字符串 → 400 "Expected array, received string")。
+  //
+  //   `{{user.X | split}}` 也走这条: 它渲染出的是**真数组**。给"字段面板一个输入框、
+  //   端点要 string[]"的能力用(academic/view-comparison 的 scholars, 见 splitList)。
+  const m = String(v ?? "").trim().match(/^\{\{\s*user\.(\w+)\s*\|\s*split\s*\}\}$/);
+  if (m) return splitList(ctx.userValues[m[1]]);
   return renderTemplate(String(v ?? ""), ctx);
+}
+
+/**
+ * 把"一个输入框里填的多个值"切成分组 —— 给要求 `string[]` 的端点用。
+ *
+ * 由来(2026-09-26): `academic/view-comparison` 的后端 zod 要 `scholars: string[]` 且 ≥2 个,
+ *   而画布上的字段面板对每个字段只能产出一个字符串。原本只能靠连线喂 JSON 数组,
+ *   用户根本不会那么做, 于是那个节点永远 400("需要 topic 和至少 2 位学者")。
+ *   现在字段里填「迈克尔·曼、查尔斯·蒂利」这种顿号分隔的写法即可。
+ *
+ * 分隔符取中文顿号/中英文逗号/分号/换行 —— 中文学者名、学科名里几乎不会出现这些字符。
+ */
+function splitList(v: unknown): string[] {
+  return String(v ?? "").split(/[、,，;；\n]+/).map((s) => s.trim()).filter(Boolean);
 }
 
 /**

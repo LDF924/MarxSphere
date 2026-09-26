@@ -71,6 +71,30 @@ async function main() {
   CDP_PORT = await resolveCdpPort(CDP_PORT);
   const token = await loginToken("audit", "audit123456"); // 不存在则自动注册(CI 空库)
 
+  /**
+   * 前置自检: 实证台能不能起 python。
+   *
+   * 由来(2026-09-27): CI 上这一套红了很久, 而**症状完全指错了方向** ——
+   *   唯一的失败是 `runs=0`, 看着像"绑定没生效"或"列表接口坏了", 实际是
+   *   后端根本没配 `EMPIRICAL_PYTHON`(`empirical-service.ts` 用 `|| ""` 刻意留空,
+   *   意思是"没配就别跑"), 于是实证 run 起不来、结果不落库、列表自然是空的。
+   *   同一份代码在本地全过 —— 因为本地 `.env` 里指着一个装了全套的 venv。
+   *
+   * 所以**先问一句再往下跑**: 缺 python 就明说缺 python, 别让调用方对着一句
+   * `runs=0` 去猜是绑定问题还是接口问题。
+   */
+  const empMeta = await apiCall("GET", "/empirical/meta", token);
+  const pyReady = empMeta?.venvReady === true;
+  console.log(`  前置: 实证台 python = ${pyReady ? "就绪" : "**未配置**"}  (python=${empMeta?.python ?? "?"})`);
+  if (!pyReady) {
+    console.log("");
+    console.log("  ⚠ 后端没有可用的 python 解释器 —— 实证 run 起不来, 下面几条断言必然红。");
+    console.log("    服务端的判据是 `EMPIRICAL_PYTHON` 环境变量(empirical-service.ts 用 `|| \"\"`, ");
+    console.log("    刻意留空表示\"没配就别跑\", 所以它**不会回退到 PATH 里的 python**)。");
+    console.log("    CI 的修法是在启动后端那一步设上它; 本地则是 .env 里指向 venv。");
+    console.log("");
+  }
+
   // ── 造测试课题 ──
   const created = await apiCall("POST", "/research/projects", token, {
     title: `证据链探针-${Date.now()}`, status: "active", phase: 4, phaseLabel: "章节写作",
@@ -329,20 +353,30 @@ async function main() {
         // ⚠ 实证 runner 的参数名是 `y` / `xs`; 统计台才是 dependentVar/independentVars
         projectId: empId, method: "ols", params: { y: "y", xs: ["x", "z"] },
       });
-      // 实证 run 是异步任务 → 轮询结果
+      // 实证 run 是异步任务 → 轮询结果。
+      // ⚠ 状态词只有 `running` / `done` / `error`(见 empirical-service 的 TaskRec) ——
+      //   原先这里等的是 `"completed"`, 那个词**从来不会出现**; 实际只靠 `st.result` 兜住。
+      //   这里把**最终状态**记下来: 它决定下面那条 `runs=0` 断言该怎么解读。
       const taskId = runRes?.taskId ?? runRes?.task?.id ?? "";
+      let finalStatus = taskId ? "pending" : "no-task-id";
+      let finalErr = "";
       for (let i = 0; i < 15 && taskId; i++) {
         await sleep(2000);
         const st = await apiCall("GET", `/empirical/result/${taskId}`, token);
-        if (st?.status === "completed" || st?.result) break;
+        finalStatus = String(st?.status ?? "?");
+        if (st?.status === "done" || st?.status === "error") { finalErr = String(st?.error ?? "").slice(0, 200); break; }
+        if (st?.result) break;
       }
       const bind = await apiCall("PUT", `/research/projects/${pid}/empirical-binding`, token, { empiricalProjectId: empId });
       check("实证台-绑定真落库", bind?.ok === true, JSON.stringify(bind).slice(0, 120));
       const b2 = await apiCall("GET", `/research/projects/${pid}/empirical-binding`, token);
       check("实证台-绑定可回读", b2?.empiricalProjectId === empId, `读回 ${b2?.empiricalProjectId}`);
       const runs = await apiCall("GET", `/research/projects/${pid}/empirical-runs`, token);
+      // 诊断串带上任务终态 —— 这一条红了 96 小时才被读懂, 就是因为只有 `runs=0`:
+      //   "任务 error" 与 "任务 done 但没落库" 是两回事, 前者查环境、后者查代码。
       check("实证台-绑定后列出该课题的运行", (runs?.runs ?? []).length > 0,
-        `runs=${(runs?.runs ?? []).length} 首条 stage=${runs?.runs?.[0]?.stage}`);
+        `runs=${(runs?.runs ?? []).length} 首条 stage=${runs?.runs?.[0]?.stage}`
+        + ` · 任务状态=${finalStatus}${finalErr ? ` · ${finalErr}` : ""}`);
       // 真采集: 把实证运行的系数抽进发现台账
       empRunId = runs?.runs?.[0]?.id ?? "";
       if (empRunId) {

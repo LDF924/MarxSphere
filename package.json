@@ -20,7 +20,7 @@
     "dev:desktop": "npm run build:electron && node scripts/dev-desktop.mjs",
     "build:electron": "node electron/build.mjs",
     "build:desktop": "node scripts/build-desktop.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && vue-tsc -p web/socialsci-vue/tsconfig.json --noEmit",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:setup": "npm run db:migrate && npm run seed",
     "seed": "tsx src/db/seed.ts",
@@ -41,7 +41,9 @@
     "verify:ui": "node scripts/verify-ui.mjs",
     "verify:ui:all": "node scripts/verify-ui.mjs --all",
     "build:soc": "node scripts/build-soc.mjs",
-    "build:soc:to-main": "node scripts/build-soc.mjs --to-main"
+    "build:soc:to-main": "node scripts/build-soc.mjs --to-main",
+    "restart:4173": "node scripts/restart-4173.mjs",
+    "restart:4173:fast": "node scripts/restart-4173.mjs --no-build"
   },
   "dependencies": {
     "@embedpdf/core": "2.14.4",

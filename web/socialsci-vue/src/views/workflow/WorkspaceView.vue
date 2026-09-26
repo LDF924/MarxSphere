@@ -9,6 +9,7 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import type { Section } from "./stores/workflow";
 import { createTask, getTask, getNode, putNode } from "@/shared/tasks";
+import { mustPhase } from "@/shared/stages";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
 import { toast, confirmDialog } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
@@ -810,11 +811,12 @@ async function enterFinalize() {
     toast(`还有 ${pendingCount.value} 个一级章节未完成, 全部完成后再进入合并定稿`, "warning");
     return;
   }
-  store.setPhase(5);
-  // 2026-09-15: 把本轮正文发布成 phase4_text 版本 —— 合稿前的"Phase 4 已完成"凭证。
-  //   此前没有任何地方写过 phase4 版本, /versions/current 的 phase4Version 恒为 null,
-  //   参考产品那条"请先完成当前 Phase 4 正文生成, 再进行合稿"的门禁根本无从触发。
-  await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase4_text" } }).catch(() => null);
+  store.setPhase(mustPhase("finalize"));
+  // 2026-09-15: 把本轮正文发布成 phase5_text 版本 —— 合稿前的"正文已完成"凭证。
+  //   此前没有任何地方写过该版本, /versions/current 的 phase4Version 恒为 null,
+  //   那条"请先完成当前正文生成, 再进行合稿"的门禁根本无从触发。
+  // 2026-09-26: 标签随「研究实施」插入而重编号(旧 phase4_text → 新 phase5_text), 迁移 157 已改历史行。
+  await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase5_text" } }).catch(() => null);
   void router.push("/workflow/finalize");
 }
 

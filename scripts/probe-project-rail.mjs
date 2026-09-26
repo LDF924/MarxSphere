@@ -89,8 +89,8 @@ try {
   })()`);
   await sleep(400);
 
-  // ④ 快捷键门禁: 在 A(phase=1) 上测 —— 往前只能一格, 往回自由。
-  //    刻意放在"切到 B"之前: B 是新项目(phase=0), 在它上面 Alt+3 本来就该被拦。
+  // ④ 快捷键门禁: 在 A(phase=1) 上测 —— 一律可去, 不再有"没走过不能看"那道门。
+  //    刻意放在"切到 B"之前: B 是新项目(phase=0)。
   /**
    * ⚠ V425 **反向断言**: 从前这里是"Alt+3 越级被拦", 现在必须**放行**。
    *
@@ -98,11 +98,19 @@ try {
    * 拿空项目直接用 URL 访问四页全部正常渲染; 判据 `store.phase` 记的是"你点到哪儿了"
    * 而不是"你做完了什么"; 真正的依赖检查在各页按钮上, 本来就是准的; 参考产品也没有这道门。
    * 所以这条断言必须跟着翻过来 —— 否则它会把正确的改动当成回归挡住。
+   *
+   * ⚠ 2026-09-26 再修一次: 原来写死 `includes("/workflow/materials")` —— 而加了
+   *   「研究实施」(第 3 步) 之后, **Alt+3 本来就该去 /workflow/implement**。
+   *   这个文件自己上面那段就记着"写死目的地会把正确改动当回归", 我又犯了同一类。
+   *   改成**结构性**判据: "不再被拦"的唯一含义是 **hash 真的动了**。
+   *   （被拦的表现是 hash 一动不动 —— 见 PhaseProgressBar 里"拦截与没生效从 hash 上看一样"那条教训。）
    */
+  const beforeJump = String(await evalTop(cdp, `location.hash`));
   await evalTop(cdp, `(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '3', altKey: true, bubbles: true })); return 1; })()`);
   await sleep(1600);
-  const jumped = await evalTop(cdp, `location.hash`);
-  rec("Alt+3 可直达后面阶段(不再被拦)", String(jumped).includes("/workflow/materials"), `hash=${jumped}`);
+  const jumped = String(await evalTop(cdp, `location.hash`));
+  rec("Alt+3 可直达后面阶段(不再被拦)", jumped !== beforeJump && jumped.includes("/workflow/"),
+    `hash=${jumped}(跳跃前 ${beforeJump})`);
 
   await evalTop(cdp, `(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '2', altKey: true, bubbles: true })); return 1; })()`);
   await sleep(1600);

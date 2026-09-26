@@ -11,11 +11,25 @@
 //   node scripts/verify-ui.mjs --only fusion-tabs,editor-ai6-verify
 //
 // 前置: 4173 已起。脚本自己会做登录与导航。
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import * as path from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 从 .env 读库连接串 —— 只给**收尾清理**用。
+ * 候选顺序与探针一致: 环境变量 → cwd → 仓库根(worktree 是三级上去)。
+ * 读不到就返回空串, 清理脚本据此自己跳过(它不该让门禁失败)。
+ */
+function readDbUrl() {
+  const cands = [process.env.SAG_ENV_FILE, path.join(process.cwd(), ".env"), path.join(process.cwd(), "..", "..", "..", ".env")].filter(Boolean);
+  const hit = cands.find((p) => existsSync(p));
+  if (!hit) return "";
+  const m = readFileSync(hit, "utf8").match(/^DATABASE_URL=(.*)$/m);
+  return m ? m[1].trim() : "";
+}
 /**
  * 门禁默认打 4173(生产产物)。要验**本 worktree** 的后端/前端时给 env:
  *   API_BASE=http://127.0.0.1:4373 WEB=http://127.0.0.1:4373 node scripts/verify-ui.mjs
@@ -47,6 +61,28 @@ const SUITES = [
   { key: "materials-actions", file: "probe-materials-actions.mjs", desc: "素材页 20 动作: 增删改/来源/审视/编排/文献结构化" },
   { key: "workspace-actions", file: "probe-workspace-actions.mjs", desc: "创作台 16 动作: 面板/编辑/保存/素材/阶段门禁(不含 LLM)" },
   { key: "input-actions", file: "probe-input-clarify-and-phase.mjs", desc: "选题界定 10 项: 草稿存与恢复/方法卡/来源/新项目(含真建项目)" },
+  // 2026-09-26 加。这一批修的四条全是"静态看都对、跑起来才错"的类型:
+  //   ①素材交接在**没有项目**时会被读后即删(**静默丢数据**, 无任何报错)
+  //   ②删项目后掉进"模块建设中"占位页, 没有返回入口
+  //   ③版本历史入口此前只在第 5 步(另两页发布了版本却退不回去)
+  //   ④数据分析台(Vue, 1218 行)外壳里没有入口, 只能手改 URL
+  //   这四条的共同点是:**类型检查与单测都照不到** —— 它们长在路由/导航/localStorage 上。
+  { key: "batch01", file: "probe-batch01.mjs", desc: "批1 回归: 交接不丢/占位页消亡/版本入口五页/数据台入口" },
+  // 2026-09-26 加。阶段模型真源化 + 重编号(迁移 157): 编号从 1..5 变成 1,2,4,5,6。
+  //   这一批的风险全在"号对了但名错了"上 —— 类型检查抓不到(号只是个 number),
+  //   只有真浏览器能验"这个号的节点上写着哪个中文名、Alt+N 跳到哪一页"。
+  { key: "batch02", file: "probe-batch02.mjs", desc: "批2 回归: 阶段号重排/旧项目落点/Alt+N 跳页" },
+  // 2026-09-26 加。论文要件加「讨论」档 —— 这一档最易静默失效的是**落点**:
+  //   显示走 order 排序, 只管数组 splice 不生效(我第一版就是那么写的)。
+  //   ⚠ **不进 data 组**: 它默认只验结构与落点(不烧模型), 真生成那步要 PROBE_LLM=1。
+  //     我第一版标了 data:true, 那等于把最有价值的排序断言也关在默认门禁外 ——
+  //     而那条根本不花钱。**成本高的部分不该拖累不花钱的部分。**
+  { key: "batch04", file: "probe-batch04.mjs", desc: "批4 回归: 讨论档落点(结论之前) + 未知档被挡" },
+  // 2026-09-26 加。投稿声明独立一区 —— 这一批最易静默失效的是**存储位置**:
+  //   第一版只写节点不写 store, 而导出读 store → "填了声明, 导出时那段是空的"。
+  //   探针 ③ 同时验节点与快照, ⑤ 解压 ZIP 真读 论文.md。
+  //   整套**不烧模型**（声明只能人填, 本页没有任何 LLM 调用）。
+  { key: "batch05", file: "probe-batch05.mjs", desc: "批5 回归: 五项声明落库/完整性检查/导出带声明" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
   //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
   //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
@@ -186,6 +222,15 @@ console.log(`UI 门禁: 跑 ${chosen.length}/${SUITES.length} 套` + (wantAll ? 
 console.log(`前置: ${BASE} 已起\n`);
 
 /**
+ * 本轮开始时刻 —— 收尾清理用它界定"哪些是这次跑出来的"。
+ *
+ * ⚠ 必须在**跑套件之前**取。曾经想过用"最后一个套件结束时刻"之类的写法, 但那样界不定边界:
+ *   套件之间还有间隔, 期间新建的会被漏掉。用开始时刻是**宁可多清一点**的方向,
+ *   而这个方向是安全的 —— 见 cleanup-run-projects.mjs 里"只按时间、不按标题"那段说明。
+ */
+const RUN_STARTED_AT = new Date().toISOString();
+
+/**
  * 这个套件到底算不算失败。
  *
  * ⚠ 2026-09-23 修, 起因是 CI 上看到这一行:
@@ -244,6 +289,30 @@ function runOne(suite) {
 // 串行: 每个套件都要起浏览器并连 4173, 并发会互相抢端口/抢资源
 const results = [];
 for (const s of chosen) results.push(await runOne(s));
+
+/**
+ * 收尾: 清掉**本轮**新建的测试项目。
+ *
+ * 由来: 30 套里只有 3 套声明了清理, 其余探针建的种子不收尾 → 逐轮累积,
+ *   audit 名下涨到 176(哨兵 400 就断门禁)。放在这里而不是逐个探针补,
+ *   是因为**新探针不用做任何事**, 而且它同时是"探针自己忘了清"的安全网。
+ *
+ * 三条纪律(都写进 lib/cleanup-run-projects.mjs 的注释了, 这里只记要点):
+ *   · 只按 `created_at >= 本轮开始` 判, **不按标题** —— 标题匹配会误伤真实项目;
+ *   · **软删**(status='deleted'), 可逆 —— 批量动作一旦判据有偏差, 可逆与否决定代价;
+ *   · **失败不影响结论** —— 它是收尾动作不是验证动作, 出任何错都只打一行提示。
+ */
+try {
+  const out = execFileSync(
+    process.execPath,
+    [path.join(here, "lib", "cleanup-run-projects.mjs"), RUN_STARTED_AT, "--apply"],
+    { encoding: "utf-8", env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL || readDbUrl() }, timeout: 30_000 },
+  ).trim();
+  const m = /clean:(\d+)/.exec(out);
+  if (m && m[1] !== "0") console.log(`\n🧹 已清理本轮产生的测试项目 ${m[1]} 个(软删, 可逆)`);
+} catch (e) {
+  console.log(`\n(收尾清理跳过: ${String(e?.message ?? e).slice(0, 80)})`);
+}
 
 // ⚠ 用 `bad` 而不是 `code`: 有的套件 exit 0 却自己算出失败(见 suiteFailed 的注释)。
 //    这里曾经只认退出码, 于是汇总行会说"全部通过"而逐行躺着 ❌ 0/5。

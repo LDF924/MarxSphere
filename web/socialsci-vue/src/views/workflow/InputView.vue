@@ -390,7 +390,9 @@ async function deleteCurrentProject() {
     // 清指针再回列表页 —— 留着会在下一次挂载时把已删项目又拉回来
     localStorage.removeItem("lastTask_workflow");
     store.resetLocal();
-    router.push("/workflow");
+    // 落在**本页**而不是哨兵路径 `/workflow`: 那条路径原先挂的是 PlaceholderView
+    //   ("模块建设中"), 删完项目会被丢进一个没有导航也没有返回入口的死页。
+    void router.push("/workflow/input");
   } catch (e) {
     toast(`删除失败: ${(e as Error).message}`, "error");
   } finally { deleting.value = false; }

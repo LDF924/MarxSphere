@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { ToastHost, ConfirmHost } from "./shared/ui";
 import { collectDomActions, onActionInvoked, reportActions } from "./shared/actions-bridge";
-import { HANDOFF_KEY, installWorkflowRouteBridge, reportSocRoute } from "./shared/workflow-bridge";
+import { HANDOFF_KEY, installWorkflowRouteBridge, reportSocRoute, resetHandoffClaim } from "./shared/workflow-bridge";
 
 // ── 当前页可执行动作 → 上报 React 外壳的科研助手(V416) ──
 // 全站一处接线: 只要按钮带 data-control 就会被自动收集上报, 各视图不用各自写桥接代码。
@@ -26,6 +26,15 @@ const onExternalMaterial = (e: MessageEvent) => {
       kind: d.kind ?? "note", title: d.title ?? "外部素材", markdown: d.markdown, at: Date.now(),
     }));
   } catch { /* localStorage 不可用时只能丢 */ }
+  /**
+   * ⚠ 必须放回读取标志。
+   *
+   * 2026-09-26 修：`claimed` 是模块级内存标志，readRaw 有内容就置 true。
+   * 上一条素材被消费后它**停在 true**，于是第二条投递进来、MaterialsView 重新挂载时
+   * claimHandoff 直接返回 null —— 素材在 localStorage 里躺着却永远导不进来。
+   * 每次写入都是「一条新的、还没被消费的素材」，标志必须跟着回到未消费态。
+   */
+  resetHandoffClaim();
   // 交完再引导到素材页(读方主动取, 与编辑器交接同一套约定)
   if (!route.path.startsWith("/workflow/materials")) void router.push("/workflow/materials");
 };

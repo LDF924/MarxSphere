@@ -9,12 +9,12 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { createTask, getTask, mergeNode } from "@/shared/tasks";
 import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
+import { declarationsToMarkdown } from "@/shared/declarations";
 import { toast, confirmDialog } from "@/shared/ui";
 import { q, authedBlob } from "@/shared/api";
 import { renderMdWithLatex, loadKatex } from "@/shared/markdown";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
-import VersionHistoryPanel from "./VersionHistoryPanel.vue";
 import DeepAnalysisPanel from "./DeepAnalysisPanel.vue";
 import SubmissionCheckPanel from "./SubmissionCheckPanel.vue";
 
@@ -95,61 +95,25 @@ const reviewReport = ref<Record<string, unknown> | null>(null);
 //   contradictions/circular/weakPoints/jumps · overlapVerdict/risks/citationNeeded), 逐个映射成
 //   一串可读文本。**不编造条目**: 拿不到就显示"未发现问题", 而不是凑一句安慰话。
 // ── V425 A1: 版本历史抽屉 ──
-// 抽屉可回滚的节点**只列写作舱真的会写的三个**: 输入/素材由 store 写, 章节与合稿由本页写。
-//   不列 analysis/dag 等 —— 那些节点的写入方是主控 Agent 与编排引擎, 用户在合稿页把它回滚掉,
-//   下一步引擎再跑一次就覆盖了, 属于"看着能点、点了没用"的假能力。
-const VH_NODES = [
-  // 顺序 = 抽屉打开时的默认选中优先级: 前三个是天天在改的, 「研究信息」只在录入完成时写过一次
-  { key: "sections", label: "章节与正文" },
-  { key: "materials", label: "素材" },
-  { key: "finalize", label: "合稿" },
-  { key: "input", label: "研究信息" },
-];
-const vhOpen = ref(false);
+// 版本历史面板 + 它的入口已提到外壳(WorkflowShell.vue, 2026-09-26)。
+//   原先这套(VH_NODES / vhOpen / activeVhNode / currentPayloadForDiff / onNodeRolledBack)
+//   全在本页, 于是**只有合稿页能回滚** —— 而发布版本的是架构页与素材页, 它们改坏了没有回头路。
+//   搬走后本页与其余四页一样, 只消费外壳提供的入口。
 
 /**
- * 供版本对比用的"当前内容"。
+ * 合稿页**额外**要做的：回滚了 finalize 节点后，把只存在于项目列上的字段补拉一次。
  *
- * 从 **store** 现取, 而不是向后端再查一遍 —— 界面上看到的才是权威(后端拿的是最近一次
- * 落库的快照, 用户刚敲的字可能还没落盘, 那样对比出来的"当前"是错的)。
- * 形状必须与历史 payload 一致, 否则 diff 会把每个字段都当成"变了":
- *   · sections 节点 → `{sections: [...]}`(与写入时的形状相同)
- *   · finalize  节点 → 合稿那几个字段(与 mergeNode 写进去的键同名)
- * 输入/素材节点不在这里给(null), 对比视图会如实显示"没有可对比的内容" ——
- * 给一个空对象会让它显示成"全部删除了", 那是误导。
- */
-const currentPayloadForDiff = computed<Record<string, unknown> | null>(() => {
-  switch (activeVhNode.value) {
-    case "sections":
-      return { sections: store.sections ?? [] };
-    case "finalize":
-      return {
-        mergedTitle: store.mergedTitle ?? "",
-        mergedAbstract: store.mergedAbstract ?? "",
-        mergedKeywords: store.mergedKeywords ?? "",
-        mergedFullText: store.mergedFullText ?? "",
-        mergedReferences: store.mergedReferences ?? "",
-      };
-    default:
-      return null;
-  }
-});
-
-/** 抽屉里当前选中的节点 —— 对比要知道"拿哪一份当前态来比" */
-const activeVhNode = ref("sections");
-
-/**
- * 回滚了自己正在看的那个节点之后, 必须把 store 重新拉一遍 ——
- *   否则界面还停在回滚**之前**的内容上(后端已经变了), 用户会以为回滚没生效,
- *   然后在旧内容上继续编辑 → saveProject 把旧内容又写回去, 回滚被静默抵消。
- * 这是"读改写"三种失效里最隐蔽的一种, 前后端都看不出来。
+ * 外壳的 onNodeRolledBack 已经统一 loadProject() 了；这里再补 refreshMerged() 是因为
+ * review_result / merge_generated 这两项在工作台快照里读不到，得单独查项目列。
+ * 不补的后果：在别的页回滚掉 finalize 之后回到本页，审查报告卡片还挂着上一次的结果。
+ *
+ * ⚠ 2026-09-26 修: 版本抽屉搬到外壳时, 我这个函数**一度没有任何调用方** ——
+ *   注释写着"留在合稿页做", 实际却是死的(我把面板移走时把 @changed 一起带走了)。
+ *   现在挂在外壳的 `node-rolled-back` 事件上。
  */
 async function onNodeRolledBack(nodeKey: string) {
-  try {
-    await store.loadProject();
-    if (nodeKey === "finalize") await refreshMerged();
-    toast("已按回滚后的内容刷新页面", "success");
-  } catch { /* loadProject 自身吞错; 刷新失败不该再弹一次 */ }
+  if (nodeKey !== "finalize") return;
+  try { await refreshMerged(); } catch { /* 容忍：报告拉不到不该报错 */ }
 }
 
 const QUALITY_KINDS = [
@@ -397,7 +361,9 @@ async function exportBundle() {
       method: "POST",
       // V425: 带上投稿前检查里选的目标体例 —— 后端据此设行距(高校学报是固定 20 磅, 其余 1.5 倍)。
       //   不传则后端按 1.5 倍兜底; 传了才是"按体例导出"这句话成立的前提。
-      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock(), formatTarget: docxFormatTarget.value || undefined },
+      // 2026-09-26: 带上投稿声明 —— 期刊收的是 Word 稿, 声明不在里面等于没交。
+      //   与 md/html 两条路共用同一份 store.declarations（不是页面局部）。
+      body: { paperTitle: store.mergedTitle || store.title || "未命名论文", nodes, references: referenceBlock(), formatTarget: docxFormatTarget.value || undefined, declarations: store.declarations ?? {} },
     });
     if (!r.base64) throw new Error("后端未返回文档内容");
     downloadBase64(r.base64, safeFileName(store.mergedTitle || store.title, "docx"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -427,9 +393,34 @@ async function exportPptx() {
   } finally { pptxBusy.value = false; }
 }
 
-/** 论文要件(摘要/关键词/结论)生成 — 后端 LLM 产出, 结果并回对应章节 */
-async function genComponent(kind: "abstract" | "keywords" | "conclusion") {
-  const label = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[kind];
+/**
+ * 论文要件 → 生成参数。
+ *
+ * ⚠ 2026-09-26 加「讨论」时重构成表。四处**必须同时改**，缺一处就静默不生效
+ *   （后端也一样：paper-outline-service 的 COMPONENT_SPEC + server.ts 的 zod enum）：
+ *     ① 这里（label / 放置位置）
+ *     ② `genComponent` 的入参类型
+ *     ③ sections 过滤白名单（否则要件标题会被当成正文章节回传给模型）
+ *     ④ 模板里的按钮
+ */
+const COMPONENTS = {
+  abstract: { label: "摘要", at: "front" },
+  keywords: { label: "关键词", at: "front" },
+  conclusion: { label: "结论", at: "end" },
+  /**
+   * 讨论 —— 放在**结论之前**，不是最前。
+   *
+   * 摘要/关键词属于"前置部分"（标题页下方），挂 order:-1 是对的；
+   * 而讨论是正文的一节，真实论文里顺序是 结果 → **讨论** → 结论。
+   * 直接照抄摘要的 placement 会把它插到全文最前面，读起来完全不对。
+   */
+  discussion: { label: "讨论", at: "before-conclusion" },
+} as const;
+type ComponentKind = keyof typeof COMPONENTS;
+
+/** 论文要件生成 — 后端 LLM 产出, 结果并回对应章节 */
+async function genComponent(kind: ComponentKind) {
+  const { label, at } = COMPONENTS[kind];
   const nodes = buildOutlineTree();
   const topic = store.mergedTitle || store.title || "";
   if (!topic) { toast("请先填写论文标题", "warning"); return; }
@@ -439,15 +430,51 @@ async function genComponent(kind: "abstract" | "keywords" | "conclusion") {
       method: "POST",
       body: {
         kind, topic,
-        sections: nodes.map((n) => n.title).filter((t) => !["摘要", "关键词", "结论"].includes(t)),
+        // 过滤掉**所有要件标题**再回传，否则模型会把"讨论"当成正文的一章去参照自己
+        sections: nodes.map((n) => n.title).filter((t) => !Object.values(COMPONENTS).some((c) => c.label === t)),
         chapterContents: collectGeneratedContents(30),
       },
     });
     if (!r.content) throw new Error("后端未返回内容");
-    // 并回同级章节: 已有同名就覆盖内容, 没有就补一个挂在最前
+    /**
+     * 并回章节。三种放置位置各有理由：
+     *   front             — 摘要/关键词在标题页下方，order:-1 挂在最前
+     *   end               — 结论排在最后
+     *   before-conclusion — 讨论在结果之后、结论之前（真实论文的顺序）
+     * 已有同名就覆盖内容，没有才新建 —— 重复点"生成"不该堆出两节讨论。
+     */
     const existing = (store.sections ?? []).find((s) => s.title === label);
-    if (existing) existing.content = r.content;
-    else store.sections.unshift({ id: `gen-${kind}-${Date.now()}`, title: label, level: 1, parentId: null, order: -1, content: r.content, status: "generated" });
+    if (existing) {
+      existing.content = r.content;
+    } else {
+      /**
+       * ⚠ 放置靠 **order 字段**，不是数组位置。
+       *
+       * 显示与导出都走 `[...sections].sort((a,b) => a.order - b.order)`
+       * （本文件三处，含 buildOutlineTree）—— 所以**只管 splice 是没用的**，
+       * 渲染时会按 order 重新排回去。我第一版就是先写了 splice，看着对、实际不生效。
+       *
+       * 讨论要落在结论**之前**：把结论及其后所有一级章节的 order 各 +1 腾出位置，
+       * 自己取结论原来的 order。
+       */
+      const l1 = store.sections.filter((s) => s.level === 1);
+      const conclusion = l1.find((s) => s.title === COMPONENTS.conclusion.label);
+      let order: number;
+      if (at === "front") {
+        order = -1;
+      } else if (at === "before-conclusion" && conclusion) {
+        const base = conclusion.order ?? 0;
+        // 结论及其后的同级章节整体后移 —— 只挪结论会与它的后继撞号, 排序退化成不稳定插入序
+        for (const s of l1) if ((s.order ?? 0) >= base) s.order = (s.order ?? 0) + 1;
+        order = base;
+      } else {
+        order = l1.length ? Math.max(...l1.map((s) => s.order ?? 0)) + 1 : 0;
+      }
+      store.sections.push({
+        id: `gen-${kind}-${Date.now()}`, title: label, level: 1, parentId: null,
+        order, content: r.content, status: "generated",
+      });
+    }
     /**
      * ⚠ 必须**快照 + sections 节点双写**。
      *
@@ -534,16 +561,19 @@ async function doMerge() {
     toast(`还有 ${l1.length - withContent.length} 个一级章节未完成, 不能合稿`, "warning");
     return;
   }
-  // 参考产品第 ④ 条: 正文节点比已发布的 Phase 4 版本新 → 版本已过期, 先重新发布再合稿。
-  //   2026-09-15 接通 —— 此前 phase4Version/Stale 是后端写死的 null/false, 这条门禁等于不存在,
+  // 参考产品第 ④ 条: 正文节点比已发布的「正文」版本新 → 版本已过期, 先重新发布再合稿。
+  //   2026-09-15 接通 —— 此前该字段是后端写死的 null/false, 这条门禁等于不存在,
   //   用户改了正文后直接合稿会拿到与当前内容不符的版本快照。
+  //   ⚠ 2026-09-26: 字段随「研究实施」插入而重编号 —— 「章节写作」由第 4 阶段变成第 5 阶段,
+  //     所以读的是 `phase5Version/phase5Stale`(旧代码读 phase4*)。这是**最容易漏的一类**:
+  //     字段名对不上时后端不报错, 它只是永远返回 undefined, 门禁静默失效。
   try {
-    const st = await q<{ state?: { phase4Version?: unknown; phase4Stale?: boolean } }>(
+    const st = await q<{ state?: { phase5Version?: unknown; phase5Stale?: boolean } }>(
       `/research/versions/current?projectId=${store.taskId}`);
-    if (st.state?.phase4Version && st.state.phase4Stale) {
+    if (st.state?.phase5Version && st.state.phase5Stale) {
       const ok = await confirmDialog({
-        title: "Phase 4 正文已变更",
-        message: "当前正文比已发布的 Phase 4 版本新。直接合稿会以最新正文为准，但版本凭证会落后于内容。是否继续？",
+        title: "正文已变更",
+        message: "当前正文比已发布的版本新。直接合稿会以最新正文为准，但版本凭证会落后于内容。是否继续？",
         okText: "仍然合稿", cancelText: "先去重新生成",
       });
       if (!ok) return;
@@ -1037,8 +1067,20 @@ async function doExport() {
   try {
     const title = store.mergedTitle || store.input.title || "未命名论文";
     const safeName = title.replace(/[\\/:*?"<>|]/g, "_");
+    /**
+     * 投稿声明块 —— md 与 html **两条路都要用**，所以在分支外算一次。
+     *
+     * ⚠ 接在**参考文献之后**：期刊排版里声明就在那个位置，不是正文的一部分。
+     * ⚠ 只在真有声明时才加这一段 —— 空标题会让编辑以为"声明了这一项但没写"，
+     *   而"没写"与"声明了没有"在投稿语境里是两件事（尤其利益冲突）。
+     * ⚠ 判据走 `store.declarations`（不是页面局部 ref），否则在别的页导出会丢。
+     *
+     * （第一版把这行写在 md 分支里，html 分支引用时就报 `Cannot find name 'declBlock'` ——
+     *   类型检查当场抓到。两条路共用一份，本来就该在分支外。）
+     */
+    const declBlock = declarationsToMarkdown(store.declarations ?? {});
     if (exportFmt.value === "md") {
-      const md = `# ${title}\n\n## 摘要\n\n${store.mergedAbstract}\n\n**关键词：**${store.mergedKeywords}\n\n## 正文\n\n${store.mergedFullText}\n\n## 参考文献\n\n${mdRefs()}`;
+      const md = `# ${title}\n\n## 摘要\n\n${store.mergedAbstract}\n\n**关键词：**${store.mergedKeywords}\n\n## 正文\n\n${store.mergedFullText}\n\n## 参考文献\n\n${mdRefs()}${declBlock ? `\n\n## 声明\n\n${declBlock}` : ""}`;
       downloadText(`${safeName}.md`, md);
     } else if (exportFmt.value === "html") {
       const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -1066,6 +1108,7 @@ table.rf-table tbody tr:last-child td{border-bottom:2px solid #000}
 ${bodyToHtml(store.mergedFullText)}
 <h2>参考文献</h2>
 <div class="refs">${mdRefs().split("\n").map((l) => `<div class="ref-item">${esc(l)}</div>`).join("")}</div>
+${declBlock ? `<h2>声明</h2>\n<div class="refs decls">${declBlock.split("\n\n").map((p) => `<div class="decl-item">${esc(p)}</div>`).join("")}</div>` : ""}
 </body></html>`;
       downloadText(`${safeName}.html`, html);
     } else if (exportFmt.value === "docx" || exportFmt.value === "pdf") {
@@ -1163,7 +1206,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <WorkflowShell>
+  <WorkflowShell @node-rolled-back="onNodeRolledBack">
   <div
     class="workflow-page wf-page"
     :data-assistant-async-busy="(mergeRunning || reviewRunning || reviseRunning) ? 'true' : 'false'"
@@ -1171,18 +1214,8 @@ onMounted(async () => {
   >
     <PhaseProgressBar />
     <div class="wf-body">
-    <!-- 版本次级入口放在页头 —— 而不是塞进下面的导出卡。
-         导出卡整块带 `v-if="store.mergedFullText"`(没合稿时不渲染), 而"我上次合的那版哪去了"
-         恰恰最常发生在**合稿之前**; 而且只读节点历史(章节/素材的每次改动)与合稿无关。 -->
-    <div class="vh-entry">
-      <button class="vh-entry-btn" data-control="workflow:version-history" @click="vhOpen = true">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        版本历史
-      </button>
-    </div>
+    <!-- 版本历史入口已移到外壳(WorkflowShell 右下浮标) —— 那里五页都有。
+         原先这里有个带「版本历史」文字的按钮, 现在全站一个入口, 不再各写一份。 -->
     <!-- 页头。参考产品是**居中**的: `mb-4 flex items-center justify-center text-center`
          (见 full/FinalizeView-*.js 的 Ke 常量)。我方原先左对齐 —— 与参考产品不是同一版式。
          注意这一页的页头与 sections/materials 不同: 那两页是左对齐, 只有这页居中。 -->
@@ -1427,6 +1460,8 @@ onMounted(async () => {
         :text="analysisText"
         :topic="store.mergedTitle || store.title || store.input.title"
         :sources="citationSources"
+        :declarations="store.declarations"
+        @goto-declarations="router.push('/workflow/submission')"
       />
     </div>
     <div v-if="store.mergeGenerated" class="finale-card">
@@ -1473,6 +1508,12 @@ onMounted(async () => {
         <span>继续加工</span>
         <button class="btn-preview" data-control="workflow:send-to-editor" @click="sendToEditor">
           送学术文本工作台
+        </button>
+        <!-- 投稿要件(作者贡献/基金/利益冲突/致谢/数据可得性)在独立一区 ——
+             它们是**投稿时交给期刊**的, 不是正文的一章, 所以不进章节目录。
+             从这一页给出口: 定稿之后紧接着就是投稿。 -->
+        <button class="btn-preview" data-control="workflow:goto-submission" @click="router.push('/workflow/submission')">
+          投稿要件与声明
         </button>
         <button class="btn-back-ws" data-control="workflow:back" @click="router.push('/workflow/workspace')">返回工作台</button>
       </div>
@@ -1530,6 +1571,10 @@ onMounted(async () => {
         <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('keywords')" data-control="workflow:gen-keywords">
           {{ componentBusy === "keywords" ? "生成中…" : "生成关键词" }}
         </button>
+        <!-- 讨论排在结论之前生成 —— 结论要总结全文, 讨论尚未成文时生成结论会漏掉"讨论发现了什么" -->
+        <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('discussion')" data-control="workflow:gen-discussion">
+          {{ componentBusy === "discussion" ? "生成中…" : "生成讨论" }}
+        </button>
         <button class="btn-preview" :disabled="!!componentBusy" @click="genComponent('conclusion')" data-control="workflow:gen-conclusion">
           {{ componentBusy === "conclusion" ? "生成中…" : "生成结论" }}
         </button>
@@ -1568,18 +1613,6 @@ onMounted(async () => {
       </div>
     </div>
     </div>
-
-    <!-- 版本历史抽屉(V425 A1) —— 挂在页面根上, 与导出卡是否渲染无关:
-         合稿之前的版本也值得看(最常见的问题是"我上一版合稿哪去了")。 -->
-    <VersionHistoryPanel
-      :open="vhOpen"
-      :project-id="store.taskId"
-      :node-keys="VH_NODES"
-      :current-node-payload="currentPayloadForDiff"
-      @close="vhOpen = false"
-      @changed="onNodeRolledBack"
-      @node-change="activeVhNode = $event"
-    />
   </div>
 </WorkflowShell>
 </template>
@@ -1589,16 +1622,8 @@ onMounted(async () => {
 .workflow-page { width: 100%; box-sizing: border-box; }
 /* 页头(居中版式, 参考产品 `mb-4 flex items-center justify-center text-center` + `text-sm mt-1`) */
 .wf-head-center { margin-bottom: 16px; text-align: center; }
-/* 版本次级入口(V425 A1): 右对齐的轻量按钮, 压在页头上方 —— 它是"查看"不是"主流程",
-   所以不做成主按钮, 也不占用轮次行的位置。 */
-.vh-entry { display: flex; justify-content: flex-end; margin-bottom: 4px; }
-.vh-entry-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 13px; border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
-  background: var(--wf-raised); color: var(--wf-muted); font-size: var(--wf-f-sm); cursor: pointer;
-  transition: color .15s, border-color .15s, background .15s;
-}
-.vh-entry-btn:hover { color: var(--wf-text); border-color: var(--wf-line-strong); background: var(--wf-surface); }
+/* 版本历史入口的样式(.vh-entry / .vh-entry-btn)**已随按钮一起删掉** ——
+   入口提到外壳了(WorkflowShell 右下浮标), 样式也在那边。留着是死 CSS。 */
 .wf-h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--wf-text); }
 .wf-sub { margin: 4px 0 0; font-size: 13px; color: var(--wf-muted); }
 /* V424 两栏: 轮次流(左, 略宽) + 终稿内容(右)。

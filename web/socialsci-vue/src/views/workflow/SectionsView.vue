@@ -9,6 +9,7 @@ import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import type { Section } from "./stores/workflow";
 import { listSkillCards, batchGenerateSkillCards, createTask, getTask, mergeNode } from "@/shared/tasks";
+import { mustPhase } from "@/shared/stages";
 import { markWorkflowReady } from "@/shared/workflow-bridge";
 import { toast } from "@/shared/ui";
 import { q, describeTaskError } from "@/shared/api";
@@ -480,8 +481,19 @@ async function confirmSections() {
     await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase2_architecture" } })
       .catch(() => null);
   }
-  store.setPhase(3);
-  void router.push("/workflow/materials");
+  /**
+   * 下一步去哪 —— **按研究类型分岔**（2026-09-26 加「研究实施」时引入）。
+   *
+   * 定量/混合研究：研究设计之后有"跑数据"这一段，去第 3 步「研究实施」；
+   * 定性研究：没有数据集与统计分析，直接去第 4 步「文献与资料」。
+   *
+   * ⚠ 判据必须是 `store.stages`（真源按研究类型过滤后的可见表），**不能写 `mustPhase("implement")`**
+   *   —— 那会让定性研究跳进一个它进度条上根本不存在的节点。用可见表查"下一步"，
+   *   拿不到就退回可见表的第二个……见下面 `nextVisibleKey`，它把这件事说清楚了。
+   */
+  const nextKey = store.stages.some((s) => s.key === "implement") ? "implement" : "materials";
+  store.setPhase(mustPhase(nextKey));
+  void router.push(store.stages.find((s) => s.key === nextKey)?.path ?? "/workflow/materials");
 }
 
 // ── A2 假设解析(参考产品同名函数: 定性空; stepAnalysisTexts[2] ①json conceptModel ②行正则 ③兜底配对) ──

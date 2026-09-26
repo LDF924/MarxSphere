@@ -166,6 +166,11 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
   };
   try {
     // SocialSci 补漏组4: 专用执行器分派(P3 子任务/P4 批量/P5 合稿; review/viz/statistics 由对应面板直连)
+    //
+    // ⚠ 这张表**没有 default 执行器**: 未命中的 jobKind 静默落到 `runLlmJob`(通用 LLM)。
+    //   后果不是报错, 而是"任务显示成功、产物却不对" —— 加新阶段/新 jobKind 时最容易漏的一处。
+    //   2026-09-26 加「研究实施」时一并补上它的两个 jobKind; 并在下面把**未命中**显式记一笔,
+    //   免得下次还是靠人记得来看这个注释。
     const executorMap: Record<string, (task: any, ctx: ExecCtx) => Promise<{ text: string; structured?: unknown }>> = {
       analyze: runAnalyzeArchitecture,
       "material-plan": runMaterialPlan,
@@ -173,6 +178,12 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
       "theory-generate": runTheoryGenerate,
       "table-generate": runTableGenerate,
       "data-analysis": runDataAnalysisPlan,
+      // 研究实施(第 3 阶段): 数据说明 + 结果解读。
+      //   这两个刻意走通用 LLM 执行器(runLlmJob) —— 它们要的是"把已有分析结果写成可读段落",
+      //   而 `runLlmJob` 里的素材注入(**materialsCtx**)正好提供分析结果/发现上下文。
+      //   登记在这里是为了**语义可见**: 它们是有意走通用路径的, 不是漏配。
+      "data-prep": runLlmJob,
+      "result-interpret": runLlmJob,
       chapter_batch: runChapterBatch,
       phase4_batch: runChapterBatch,
       review: runPhase5,
@@ -183,6 +194,11 @@ export async function executeReadyTask(taskId: string): Promise<{ ok: boolean; e
       phase5_revise: runPhase5,
     };
     const executor = executorMap[ctx.jobKind];
+    if (!executor) {
+      // 未登记的 jobKind 会静默走通用 LLM —— 大多数情况没问题, 但**每次都是猜的**。
+      // 留一条日志, 让"新加的 jobKind 忘了登记"在日志里看得见, 而不是只体现在产物不对上。
+      console.warn(`[research-exec] 未登记的 jobKind="${ctx.jobKind}" → 回落通用 LLM 执行器(若这是有意的, 请登记进 executorMap)`);
+    }
     const result = executor ? await executor(task, ctx) : await runLlmJob(task, ctx);
     await markDone(taskId, result);
     return { ok: true };

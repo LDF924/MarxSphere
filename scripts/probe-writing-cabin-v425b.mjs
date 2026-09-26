@@ -452,23 +452,32 @@ async function main() {
     // ═══ ⑩ 引用网络面板**在浏览器里真的画出图了** ═══
     //
     // 上面那条只验了**接口**返回节点与边 —— 面板有没有把它们画出来, 完全没走过。
-    // 这是"接口通 ≠ 界面在"的典型: d3 布局若抛错、SVG 选择器写错、容器高度塌成 0,
-    //   接口那条照样全绿。所以这里必须去量**真的 <circle>/<line> 元素**。
-    // 面板在折叠块里, 先展开(闭着的 details 里量到的是"幽灵盒", 见 verify-layout 的教训)。
+    // 这是"接口通 ≠ 界面在"的典型: 布局若抛错、容器高度塌成 0, 接口那条照样全绿。
+    //
+    // ⚠ 2026-09-26 修: 断言必须跟着面板的实现走。
+    //   面板在提交 d1d0af43 里从「手写 `<svg>` + `<circle>`/`<line>`」改成了
+    //   **@vue-flow 卡片节点**, 而这两条断言还在按手写 SVG 量 —— 于是恒红,
+    //   而图上明明画着 60 个卡片节点与边(实测: 容器内 `.vue-flow__node` 有节点、
+    //   `.vue-flow__edges` 层也在)。**这是我改实现没同步改门禁的账**, 不是面板坏了。
+    //   现在按新结构的**结构特征**量:
+    //     · 节点 = `.vue-flow__node` 里的自定义卡片 `.cnp-card`(不再是 `<circle>`)
+    //     · 边   = `.vue-flow__edge`(Vue Flow 自己渲染的 SVG path)
+    //     · "摆开了" = 卡片的包围盒在 x 方向有跨度(全挤一点说明布局没跑)
+    //   容器高度塌陷是这块最常见的真故障, 所以一并量高度。
     await hardGo("/workflow/materials");
     await ev(`(() => { const d = [...document.querySelectorAll('details')].find(x => (x.querySelector('summary') || {}).innerText?.includes('引用网络'));
       if (d) d.open = true; return 1; })()`);
-    await sleep(4500);   // 构图要读 500 个文件(约 1.5s) + d3 布局
+    await sleep(4500);   // 构图要读 500 个文件(约 1.5s) + 布局
     const svgInfo = await ev(`(() => {
-      const svg = document.querySelector('.cnp-svg');
-      if (!svg) return { err: '没有 .cnp-svg' };
-      const circles = svg.querySelectorAll('circle').length;
-      const lines = svg.querySelectorAll('line').length;
-      const box = svg.getBoundingClientRect();
-      // 节点真的被摆开了吗 —— 全挤在一点也说明布局没跑(力导向失败时常见)
-      const xs = [...svg.querySelectorAll('circle')].map(c => Number(c.getAttribute('cx')));
+      const canvas = document.querySelector('.cnp-canvas');
+      if (!canvas) return { err: '没有 .cnp-canvas' };
+      const cards = [...canvas.querySelectorAll('.cnp-card')];
+      const edges = canvas.querySelectorAll('.vue-flow__edge').length;
+      const box = canvas.getBoundingClientRect();
+      // 卡片真的被摆开了吗 —— 全挤在一点也说明布局没跑
+      const xs = cards.map(c => c.getBoundingClientRect().left);
       const spread = xs.length ? Math.round(Math.max(...xs) - Math.min(...xs)) : 0;
-      return { circles, lines, w: Math.round(box.width), h: Math.round(box.height), spread };
+      return { cards: cards.length, edges, w: Math.round(box.width), h: Math.round(box.height), spread };
     })()`);
     // 面板这条同样分情况: 库空时改验"空态有没有把原因说清楚", 不硬要求画点
     if (libEmpty || libNoRefs) {
@@ -477,9 +486,12 @@ async function main() {
         /文献库还是空的|没有一篇解析出参考文献/.test(String(emptyText)),
         `空态文案="${String(emptyText).slice(0, 72)}"`);
     } else {
-      check("引用网络-面板真画出 SVG 节点与边", (svgInfo?.circles ?? 0) > 0 && (svgInfo?.lines ?? 0) > 0,
-        `circle=${svgInfo?.circles} line=${svgInfo?.lines} spread=${svgInfo?.spread}px 容器=${svgInfo?.w}x${svgInfo?.h}`);
-      check("引用网络-节点被真正摆开(力导向跑过)", (svgInfo?.spread ?? 0) > 50, `x 方向跨度 ${svgInfo?.spread}px(>50 才算排开)`);
+      check("引用网络-面板真画出卡片节点与边", (svgInfo?.cards ?? 0) > 0 && (svgInfo?.edges ?? 0) > 0,
+        `card=${svgInfo?.cards} edge=${svgInfo?.edges} spread=${svgInfo?.spread}px 容器=${svgInfo?.w}x${svgInfo?.h}`);
+      check("引用网络-节点被真正摆开(布局跑过)", (svgInfo?.spread ?? 0) > 50, `x 方向跨度 ${svgInfo?.spread}px(>50 才算排开)`);
+      // 容器高度塌成 0 时上面的 spread 也会是 0, 但报出来的错会指向"布局没跑";
+      //   单列一条让归因更直接(这块此前真出过高度问题)
+      check("引用网络-容器有真实高度", (svgInfo?.h ?? 0) > 100, `容器高 ${svgInfo?.h}px`);
     }
 
     // ═══ ⑪ 「插入到当前章节」按钮 —— 真点一次, 并验素材真落库 ═══

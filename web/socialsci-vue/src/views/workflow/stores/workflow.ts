@@ -9,6 +9,7 @@ import { ref, computed } from "vue";
 import { listTasks, getNode, putNode, saveWorkbench, getWorkbench } from "@/shared/tasks";
 import { q } from "@/shared/api";
 import { K, readResume } from "@/shared/constants";
+import { stageTitle, normResearchType, visibleStages, type ResearchType } from "@/shared/stages";
 
 export interface Section {
   id: string;
@@ -91,6 +92,15 @@ export const useWorkflowStore = defineStore("workflow", () => {
   const mergedAbstract = ref("");
   const mergedKeywords = ref("");
   const mergedReferences = ref("");
+  /**
+   * 投稿声明（作者贡献/基金/利益冲突/致谢/数据可得性）。
+   *
+   * ⚠ 必须进 store 而不是只留在 SubmissionView 的局部 ref —— 导出四条链路
+   *   （前端 md/html、后端 docx、ZIP 整包）都要读它。留在页面局部的话，
+   *   用户在这一页填完、切到合稿页导出，声明就凭空不见了（不报错）。
+   *   与 merged_* 同样的处境 —— 见那份"必须快照+节点双写"的注释。
+   */
+  const declarations = ref<Record<string, string>>({});
   const mergeGenerated = ref(false);
   const isFinalized = ref(false);
   const reviewResult = ref<Record<string, unknown> | null>(null);
@@ -174,6 +184,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
         mergedAbstract: mergedAbstract.value,
         mergedKeywords: mergedKeywords.value,
         mergedReferences: mergedReferences.value,
+        declarations: declarations.value,
         mergeGenerated: mergeGenerated.value,
         isFinalized: isFinalized.value,
         reviewResult: reviewResult.value,
@@ -278,6 +289,7 @@ export const useWorkflowStore = defineStore("workflow", () => {
       if (snap.mergedAbstract) mergedAbstract.value = String(snap.mergedAbstract);
       if (snap.mergedKeywords) mergedKeywords.value = String(snap.mergedKeywords);
       if (snap.mergedReferences) mergedReferences.value = String(snap.mergedReferences);
+      if (snap.declarations && typeof snap.declarations === "object") declarations.value = snap.declarations as Record<string, string>;
       if (typeof snap.mergeGenerated === "boolean") mergeGenerated.value = snap.mergeGenerated;
       if (typeof snap.isFinalized === "boolean") isFinalized.value = snap.isFinalized;
       if (snap.reviewResult) reviewResult.value = snap.reviewResult as Record<string, unknown>;
@@ -323,10 +335,18 @@ export const useWorkflowStore = defineStore("workflow", () => {
     } catch { /* 旧后端不认这两个字段时跳过, 快照路径不受影响 */ }
   }
 
-  /** 阶段推进的唯一入口 —— phase 与 phaseLabel 必须成对更新, 否则会出现"第 4 步 · 文献与资料"这种错配 */
+  /**
+   * 阶段推进的唯一入口 —— phase 与 phaseLabel **必须成对更新**，否则会出现
+   * "第 4 步 · 文献与资料"这种错配。
+   *
+   * ⚠ 2026-09-26 改: 原来是条**无 default 的三元链**
+   *   `ph === 1 ? "选题界定" : ph === 2 ? … : "统稿定稿"` ——
+   *   `ph=6` 会**静默**写成「统稿定稿」。中文名现在从 `shared/stages.ts` 取，
+   *   那是唯一真源；认不出的阶段号给空串（诚实），不再猜一个。
+   */
   function setPhase(ph: number): void {
     phase.value = ph;
-    phaseLabel.value = ph === 1 ? "选题界定" : ph === 2 ? "框架设计" : ph === 3 ? "文献与资料" : ph === 4 ? "章节写作" : "统稿定稿";
+    phaseLabel.value = stageTitle(ph);
     void saveProject();
     void syncPhaseToProject();
   }
@@ -378,15 +398,32 @@ export const useWorkflowStore = defineStore("workflow", () => {
     localStorage.removeItem(K.lastTaskWorkflow);
   }
 
+  /**
+   * 本课题的研究类型 —— 「研究实施」这类阶段要不要显示，唯一依据就是它。
+   *
+   * 取自 `input.researchMethod`（选题界定页填的），由 `normResearchType` 归一；
+   * **空值按定量**处理，与 InputView 里 `inferMethod` 的兜底口径一致。
+   */
+  const researchType = computed<ResearchType>(() => normResearchType(input.value.researchMethod));
+
+  /**
+   * 本课题**看得到**的阶段（进度条与快捷键共用）。
+   *
+   * ⚠ 用 computed 而不是让调用方自己 filter：五个页面各 filter 一次必然分叉，
+   *   而分叉的表现是"进度条上有 6 个节点、快捷键只能按到 5 个"这类对不上的怪象。
+   */
+  const stages = computed(() => visibleStages(researchType.value));
+
   return {
     taskId, phase, phaseLabel, input, sections, variables, hypotheses, stepAnalysisTexts,
     skillThinking, skillStep, skillError, project,
+    researchType, stages,
     inputVersionId, phase2VersionId, phase3VersionId, phase4VersionId, phase5VersionId,
     phase2Stale, phase3Stale, phase4Stale, phase5Stale,
     materials, materialAllocation, materialReviewReport, statisticsFileId,
     sectionsOrder, activeSectionId, textFlow,
     mergedFullText, mergedTitle, mergedAbstract, mergedKeywords, mergedReferences,
-    mergeGenerated, isFinalized, reviewResult, exportStatus, exportFormat, exportedAt,
+    mergeGenerated, isFinalized, reviewResult, exportStatus, exportFormat, exportedAt, declarations,
     title, level1Sections, activeSection, totalWordCount,
     ensureTask, saveProject, loadProject, loadMaterials, saveMaterials, goto, setPhase, resetLocal,
     hasSavedProject, refreshHasSavedProject, switchProject, clearContent

@@ -10,7 +10,8 @@ import { useWorkflowStore } from "./stores/workflow";
 import { q, describeTaskError } from "@/shared/api";
 import { toast, confirmDialog } from "@/shared/ui";
 import { putNode } from "@/shared/tasks";
-import { claimHandoff, gotoWorkbenchModule } from "@/shared/workflow-bridge";
+import { mustPhase } from "@/shared/stages";
+import { claimHandoff, commitHandoff, resetHandoffClaim, gotoWorkbenchModule } from "@/shared/workflow-bridge";
 import { renderMd } from "@/shared/markdown";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
@@ -314,7 +315,20 @@ async function loadMaterials() {
  */
 async function importExternalMaterials() {
   const h = claimHandoff();
-  if (!h || !store.taskId) return;
+  if (!h) return;
+  /**
+   * ⚠ 没有项目时**不能**把这条素材丢掉。
+   *
+   * 2026-09-26 修：此前这里是 `if (!h || !store.taskId) return;` —— 而 claimHandoff 当时
+   * 是"读后即删"，于是用户在**还没有项目**（首次进入写作舱的常态）时从评审页/绘图页
+   * 收下素材，内容当场被删空、之后再怎么刷新都导不进来，界面上却弹了"已送入"。
+   * 现在 claim 只读不删，这里显式放回标志，等用户建好项目再回来时会重新读到。
+   */
+  if (!store.taskId) {
+    resetHandoffClaim();
+    toast("有外部素材待入本课题 —— 先在「选题界定」创建项目，回到本页即会自动导入", "info");
+    return;
+  }
   try {
     await q("/research/materials", {
       method: "POST",
@@ -327,9 +341,15 @@ async function importExternalMaterials() {
         meta: { platformType: h.kind, importedAt: new Date().toISOString() },
       },
     });
+    // 落库成功才消费它 —— 这是唯一会删掉交接内容的地方
+    commitHandoff();
     await loadMaterials();
     toast(`已从外部模块导入素材「${h.title}」`, "success");
-  } catch { /* 单条失败不阻断 */ }
+  } catch (e) {
+    // 写入失败同样不消耗：内容留在 localStorage，用户重试/刷新还能再导一次
+    resetHandoffClaim();
+    toast(`外部素材导入失败：${(e as Error).message}（内容已保留，可稍后重试）`, "error");
+  }
 }
 
 /** 外部来源 → research_materials.kind（后端只认这 7 个值） */
@@ -788,8 +808,8 @@ function wordCountOf(m: Material): number {
  *   第 3 步的位置结构上就丢了; 而且回来这一步得自己找路(外壳没有"返回写作舱"的入口)。
  *   现在外壳会显示「← 返回研途写作舱」, 且恢复到你离开时的那一页。
  */
-function gotoModule(mod: "statistics" | "viz") {
-  const view = mod === "statistics" ? "empirical-research" : "plot-agent";
+function gotoModule(mod: "statistics" | "viz" | "statistics-lab") {
+  const view = mod === "statistics" ? "empirical-research" : mod === "viz" ? "plot-agent" : "statistics";
   // 用 route.path 而不是写死 "/workflow/materials": 这组按钮在资料页的几个分区里都渲染,
   //   将来若挪到别的页, 上报的仍是当时真实的路径
   if (gotoWorkbenchModule(view, { label: "研途写作舱 · 文献与资料", path: route.path })) return;
@@ -1463,11 +1483,12 @@ async function publishAndEnter() {
   publishing.value = true;
   try {
     // publish 版本(POST publish → research_versions 指针快照)
-    // 2026-09-15: 标签改成阶段语义的 phase3_materials —— /versions/current 靠标签找各阶段
-    //   最新版本(合稿门禁"请先完成当前 Phase 4"要读它)。原先写的是中文「素材版本」,
-    //   后端认不出, phase3Version 永远是 null。
-    await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase3_materials" } }).catch(() => null);
-    store.setPhase(4);
+    // 2026-09-15: 标签改成阶段语义的 phase4_materials —— /versions/current 靠标签找各阶段
+    //   最新版本(合稿门禁要读它)。原先写的是中文「素材版本」, 后端认不出。
+    // 2026-09-26: 标签与阶段号随「研究实施」插入而重编号(旧 phase3_materials → 新 phase4_materials),
+    //   迁移 157 已把历史行一并改过。
+    await q(`/research/projects/${store.taskId}/publish`, { method: "POST", body: { label: "phase4_materials" } }).catch(() => null);
+    store.setPhase(mustPhase("workspace"));
     toast("素材版本已发布, 进入章节写作", "success");
     void router.push("/workflow/workspace");
   } catch {
@@ -1648,6 +1669,16 @@ onMounted(async () => {
           <span class="sc-tile-left">
             <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
             <span class="sc-tile-text">前往科研绘图模块进行分析</span>
+          </span>
+          <span class="sc-arrow">›</span>
+        </button>
+        <!-- 2026-09-26 新增: 统计台(Vue 的 17 法文件级分析)。
+             上面那个 `goto-statistics` 去的是 React 实证台(课题级), 与它粒度不同, 两者并存。
+             之前这个 Vue 统计台在外壳里没有入口, 用户根本到不了 —— 只能手改 URL。 -->
+        <button class="sc-tile wide" data-control="workflow:goto-statistics-lab" @click="gotoModule('statistics-lab')">
+          <span class="sc-tile-left">
+            <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" stroke-linecap="round" /><circle cx="10" cy="4" r="1.6" /></svg></span>
+            <span class="sc-tile-text">前往数据分析台（17 种统计方法）</span>
           </span>
           <span class="sc-arrow">›</span>
         </button>

@@ -10,6 +10,8 @@ import { useWorkflowStore } from "./stores/workflow";
 import { computed, ref, watch } from "vue";
 import { toast, confirmDialog } from "@/shared/ui";
 import { createTask } from "@/shared/tasks";
+import { q } from "@/shared/api";
+import { MAX_PHASE } from "@/shared/stages";
 
 const router = useRouter();
 const store = useWorkflowStore();
@@ -17,13 +19,15 @@ const store = useWorkflowStore();
 /** 横向滚动容器 —— 用于把当前阶段滚到中央(参考产品同名函数 的语义) */
 const wrapperRef = ref<HTMLElement | null>(null);
 
-const NODES = [
-  { ph: 1, key: "input", title: "选题界定", path: "/workflow/input" },
-  { ph: 2, key: "sections", title: "框架设计", path: "/workflow/sections" },
-  { ph: 3, key: "materials", title: "文献与资料", path: "/workflow/materials" },
-  { ph: 4, key: "workspace", title: "章节写作", path: "/workflow/workspace" },
-  { ph: 5, key: "finalize", title: "统稿定稿", path: "/workflow/finalize" }
-];
+/**
+ * 阶段节点 —— **从真源取**，不在本文件里再写一份。
+ *
+ * ⚠ 2026-09-26 改：这里原先是硬编码的 5 个四元组，且下面两处把阶段号 `Math.min(5, …)`
+ *   **硬夹**。加阶段时的静默后果：新节点的 `n.ph` 永远大于被夹住的 cur，
+ *   于是**永远不会变成 active**，点击后的滚动定位也失效 —— 不报错，只是"那个点看着像坏的"。
+ *   现在节点列表与可见性都来自 `shared/stages.ts`（本课题看得到哪些阶段由 store 说了算）。
+ */
+const NODES = computed(() => store.stages);
 /** 研究主题步(未完成过选题界定 → 主题未成; 视为 done 态当 phase>0 或有标题) */
 const topicDone = computed(() => store.phase >= 1 || !!store.input.title.trim() || !!store.taskId);
 
@@ -45,14 +49,20 @@ const viewing = ref(0);
 /** 路由一落地就同步 viewing: 用户直接开某页 URL 时, 该页对应的节点也该是 viewing */
 const routePh = computed(() => {
   const p = String(router.currentRoute.value?.path ?? "");
-  const hit = NODES.find((n) => p.startsWith(n.path));
+  const hit = NODES.value.find((n) => p.startsWith(n.path));
   return hit?.ph ?? 0;
 });
 watch(routePh, (v) => { if (v) viewing.value = v; }, { immediate: true });
 
+/**
+ * 节点状态。
+ *
+ * ⚠ 2026-09-26：原来第二行是 `Math.max(1, Math.min(5, store.phase || 1))` ——
+ *   阶段号上限**硬夹在 5**。加阶段后新节点的 ph > 5，永远不会等于 cur，
+ *   于是它**永远不会变成 active**（看起来像"这个点是坏的"）。现在上限取真源的最大阶段号。
+ */
 function nodeState(n: { ph: number }) {
-  // store.phase 编号: 1=选题界定 2=框架设计 3=文献与资料 4=章节写作 5=统稿定稿
-  const cur = Math.max(1, Math.min(5, store.phase || 1));
+  const cur = Math.max(1, Math.min(MAX_PHASE, store.phase || 1));
   if (n.ph < cur) return "done";
   if (n.ph === cur) return "active";
   if (n.ph === viewing.value) return "viewing";
@@ -94,7 +104,8 @@ function centerCurrentNode() {
   requestAnimationFrame(() => {
     const wrap = wrapperRef.value;
     if (!wrap) return;
-    const cur = Math.max(1, Math.min(5, store.phase || 1));
+    // 同 nodeState：上限取真源，不硬夹 —— 夹住会让新阶段滚不到（见那边的说明）
+    const cur = Math.max(1, Math.min(MAX_PHASE, store.phase || 1));
     const node = wrap.querySelector<HTMLElement>(`.ppb-node[data-phase="${cur}"]`);
     if (!node) return;
     wrap.scrollTo({ left: Math.max(0, node.offsetLeft - (wrap.clientWidth - node.offsetWidth) / 2), behavior: "smooth" });
@@ -119,8 +130,19 @@ function isSectionGenerated(s: { status?: string; content?: string }): boolean {
  *   框架设计 `N 章节` / 文献与资料 `N 条` / 章节写作 `已生成/总数` / 统稿定稿 `已定稿|待确认`
  * 2026-09-15 修: 原实现里素材写成「N 素材」、章节写作写成「N 章节」, 且合稿节点的 metric 完全没做。
  */
+/**
+ * 节点上的计数（产物量）。
+ *
+ * ⚠ 末尾那个 `return ""` 是"加阶段后静默无计数"的来源 —— 新节点不会报错, 只是不显示任何数字。
+ *   所以**每加一个 key 都要在这里加一条**, 并想清楚那个阶段的"做完了多少"用什么衡量。
+ *   加「研究实施」时补了 implement 一条; 没有可算的量时返回 "" 是诚实的(不显示),
+ *   但**别让它成为漏加分支的默认结果** —— 这就是为什么下面按 key 逐条列而不是查表兜底:
+ *   查表兜底会让漏加变得不可见。
+ */
 function nodeMetric(n: { key: string }): string {
   if (n.key === "sections") return store.level1Sections.length ? `${store.level1Sections.length} 章节` : "";
+  // 研究实施: 用"跑过几次分析"衡量 —— 它没有自己的产物实体(结果归入素材与台账)
+  if (n.key === "implement") return implementRuns.value > 0 ? `${implementRuns.value} 次分析` : "";
   if (n.key === "materials") return store.materials.length ? `${store.materials.length} 条` : "";
   if (n.key === "workspace") {
     const total = store.level1Sections.length || 1;
@@ -130,6 +152,25 @@ function nodeMetric(n: { key: string }): string {
   if (n.key === "finalize") return store.isFinalized ? "已定稿" : store.mergeGenerated ? "待确认" : "";
   return "";
 }
+
+/**
+ * 本课题跑过多少次分析 —— 供「研究实施」节点的计数。
+ *
+ * 进度条在每个页面都渲染，所以这里自己拉一次而不是从别处传：数据很小（一个数组），
+ * 而且**不能因为"某个页面没传"就不显示** —— 那正是这一批要消灭的那类静默。
+ */
+const implementRuns = ref(0);
+watch(
+  () => store.taskId,
+  async (id) => {
+    if (!id) { implementRuns.value = 0; return; }
+    try {
+      const r = await q<{ analyses?: unknown[] }>(`/research/projects/${id}/analyses`);
+      implementRuns.value = Array.isArray(r.analyses) ? r.analyses.length : 0;
+    } catch { implementRuns.value = 0; }
+  },
+  { immediate: true },
+);
 
 /**
  * 新项目(参考产品 ppb-new-btn: 确认后 `createTaskWithTitle("未命名","workflow")` + 切到新任务)。

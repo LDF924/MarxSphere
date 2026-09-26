@@ -319,18 +319,38 @@ export const WORKBENCH_CAPABILITIES: CapabilityDef[] = [
     fields: [{ name: "documentGroup", label: "版本组", type: "string", required: true, placeholder: "同一文本的多个版本归组名" }],
   }),
   // ── 学术研究(5 场景) ──
+  /**
+   * ⚠ 2026-09-26 修: 这一段原本把 5 个能力的 body 全写成 `{ text: "{{inputs}}" }`,
+   *   而这五个端点**没有一个读 `text`** —— 各有自己的必填字段:
+   *     school → schoolName · view-comparison → topic + scholars[] · debate → debateTopic
+   *     scholar → scholarName · frontier → discipline
+   *   后端对缺字段直接 400（`server.ts:1196-1223` / `:1830`），所以画布上跑这五个节点
+   *   **必然失败**，而且报的是"缺少 XXX"这种与用户操作对不上的错。
+   *   同文件的 classical 那一段本来是正确写法（逐个给真实字段名），academic 这段没跟着改。
+   *
+   *   同时补上 `fields`: 没有它, 画布上这五个节点没有可填的输入框, 用户只能靠连线喂数据 ——
+   *   而这几个能力本来就是"手动填一个学者名/学科名"就能跑的。
+   */
   ...[
-    ["academic/school", "学派脉络", "学派谱系与师承共现"],
-    ["academic/view-comparison", "观点对比", "多学者观点聚类对比"],
-    ["academic/debate", "争鸣还原", "学术争论的时间线与焦点"],
-    ["academic/scholar", "学者谱系", "学者关系网络与产出脉络"],
-    ["academic/frontier", "学科前沿", "学科热点与前沿方向"],
-  ].map(([path, label, desc]) => cap({
+    ["academic/school", "学派脉络", "学派谱系与师承共现", "schoolName", "学派/流派名", "例如: 法兰克福学派"],
+    ["academic/view-comparison", "观点对比", "多学者观点聚类对比", "topic", "对比主题", "例如: 国家自主性"],
+    ["academic/debate", "争鸣还原", "学术争论的时间线与焦点", "debateTopic", "争论主题", "例如: 国家能力与经济发展"],
+    ["academic/scholar", "学者谱系", "学者关系网络与产出脉络", "scholarName", "学者姓名", "例如: 迈克尔·曼"],
+    ["academic/frontier", "学科前沿", "学科热点与前沿方向", "discipline", "学科名", "例如: 比较政治经济学"],
+  ].map(([path, label, desc, field, fieldLabel, fieldPh]) => cap({
     id: `academic:${path.split("/")[1]}`, label: `学术·${label}`, category: "推理" as CapabilityCategory, kind: "endpoint" as CapabilityKind, cost: "medium" as const,
-    description: desc, inputs: ["text"], outputs: ["report"], risk: "safe" as const,
-    endpoint: { path: `/api/${path}`, method: "POST" as const, body: { text: "{{inputs}}" } },
+    description: desc, inputs: [field], outputs: ["report"], risk: "safe" as const,
+    endpoint: { path: `/api/${path}`, method: "POST" as const, body: { [field]: `{{${field}}}`, ...(path === "academic/view-comparison" ? { scholars: "{{user.scholars | split}}" } : {}) } },
     artifact: { where: "scenarios", label: "学术研究" },
-    step: { id: path.split("/")[1].replace(/-/g, "_"), kind: "tool_call" as const, label: `学术·${label}`, with: { endpoint: `/api/${path}`, body: { text: "{{inputs}}" } } },
+    step: { id: path.split("/")[1].replace(/-/g, "_"), kind: "tool_call" as const, label: `学术·${label}`, with: { endpoint: `/api/${path}`, body: { [field]: `{{${field}}}`, ...(path === "academic/view-comparison" ? { scholars: "{{user.scholars | split}}" } : {}) } } },
+    fields: [
+      { name: field, label: fieldLabel, type: "string" as const, required: true, placeholder: fieldPh },
+      // view-comparison 的后端 zod 要 `scholars: string[]` 且 ≥2 个(`server.ts:1203`)。
+      //   字段面板只能给一个字符串 → 用 `| split` 在运行时切成数组(见 meta-skill-runtime.renderBodyValue)。
+      ...(path === "academic/view-comparison"
+        ? [{ name: "scholars", label: "对比学者(至少 2 位，顿号或逗号分隔)", type: "string" as const, required: true, placeholder: "例如: 迈克尔·曼、查尔斯·蒂利" }]
+        : []),
+    ],
   })),
   // ── 政经C刊 ──
   cap({

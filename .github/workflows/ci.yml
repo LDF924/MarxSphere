@@ -93,6 +93,19 @@ jobs:
           LLM_API_KEY: dummy
           EMBEDDING_API_KEY: dummy
           HTTP_PORT: 4173
+          # ⚠ 2026-09-27 补。**必须显式设**, 不能指望它回退到 PATH 里的 python ——
+          #   `empirical-service.ts` 与 `empirical-pipeline-service.ts` 用的是
+          #   `process.env.EMPIRICAL_PYTHON || ""`, 那个空串是**刻意的守卫**
+          #   ("V412: PYTHON 未配置时直接返回未安装, 避免 execFile("") 报错")。
+          #   于是没配 = 实证台整条 python 通路不起作用(实证 run 起不来 → 结果不落库 →
+          #   写作舱「本章依据」列出的运行恒为空)。
+          #   绝大多数同类服务(statistics-job / viz-exec / citation-verify / jupyter)
+          #   都写成 `|| "python"`, 只有这两个是空串 —— 所以这条**只在这两个服务上**会踩。
+          #
+          #   代价(实测): 漏了它 CI 会红 96 小时以上, 而且症状**完全指错方向** ——
+          #   probe-research-evidence 唯一的失败是 `runs=0`, 看着像绑定/接口的问题,
+          #   实际是"后端没有可用的 python"。本地因为 .env 里指着一个装好的 venv 而全过。
+          EMPIRICAL_PYTHON: python
         run: |
           echo "--- PG 连通性检查 ---"
           node -e "const {Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query('select 1').then(r=>{console.log('PG OK:',r.rows[0]);process.exit(0)}).catch(e=>{console.error('PG QUERY FAIL:',e.message);process.exit(1)})).catch(e=>{console.error('PG CONNECT FAIL:',e.message);process.exit(1)})"

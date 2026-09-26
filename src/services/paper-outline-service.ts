@@ -3,6 +3,7 @@
 // 参考 Respal「大纲编辑器/人机双写」体验(参考产品, 仅借鉴交互思路, 不涉源码)
 // 架构: 大纲 JSON 前端持有(localStorage 持久化) + 分章生成走 LLM + docx 导出走 python-docx
 import { getRoleModel } from "./llm-model-registry.js";
+import { declarationsToMarkdown } from "./declarations.js";
 import { getLlmEndpoint, fetchLlm, parseLlmJson } from "../ai/llm-common.js";
 
 export interface OutlineNode {
@@ -243,6 +244,17 @@ export async function generateChapter(input: {
    *   多一句"落到研究问题"的要求, 最坏只是让模型多写一句转折。
    */
   const isLitReview = /文献(综述|回顾|梳理|述评)|研究综述|相关研究|既有研究|文献综述/.test(input.title ?? "");
+  /**
+   * 讨论/结论类章节的专属要求(⑩)。
+   *
+   * 由来(2026-09-26): 与上面 isLitReview 是**同一类病** —— 章节类型不同, 但对模型的要求
+   *   此前只对"综述"做了区分, 讨论章拿到的指令与普通章节一字不差。
+   *   于是它写成"结果的复述"而不是"结果的解释": 把前面的系数再念一遍,
+   *   却不回答"这意味着什么、与既有研究是否一致、为什么"。
+   *
+   * 判据同样用标题, 且**判错也不有害** —— 多一句"要解释不要罗列", 最坏只是让模型多写一句过渡。
+   */
+  const isDiscussion = /讨论|结论|结语|余论|研究局限|研究展望|政策启示/.test(input.title ?? "");
   // 目标字数 → 提示词里的区间(±20%); 没给就用原来的兜底区间
   const wcHint = input.targetWordCount && input.targetWordCount > 0
     ? `${Math.round(input.targetWordCount * 0.8)}-${Math.round(input.targetWordCount * 1.2)}字(本章配额约 ${input.targetWordCount} 字)`
@@ -276,6 +288,14 @@ ${input.evidenceBlock ? `\n${input.evidenceBlock.slice(0, 12000)}\n` : ""}
     : ""}${
   isLitReview
     ? `\n5. **这是文献综述章, 不是文献罗列**。每一组文献梳理完必须落到"它对本研究意味着什么": 已解决到什么程度、留下了什么问题、本研究填补的是哪一条。段落之间要有**递进关系**(由宽到窄、由共识到分歧), 不要按"作者A说…作者B说…"平铺。末尾要自然收束到本研究的问题与假设(可用上面【核心论点】与【研究设计约束】里的措辞)。`
+    : ""}${
+  isDiscussion && !isLitReview
+    ? `\n6. **这是讨论/结论章, 重点是"解释"不是"复述"**。不要把前文的系数与结论再罗列一遍, 而要:
+  ① 回答"这些发现意味着什么" —— 回应【核心论点】里提出的问题, 明说哪一条得到支持、哪一条没有;
+  ② 与既有研究对话 —— 结论与谁一致、与谁相悖, 并给出**可能的原因**(样本/时期/测度/机制差异), 而不是只断言"与某某一致";
+  ③ 讲清理论与政策启示 —— 要有推导链条, 不写"具有重要现实意义"这类空话;
+  ④ 局限要**具体** —— 说清是数据覆盖、识别策略还是外推边界上的局限, 并说明它影响的是哪一个结论的强度;
+  ⑤ 不引入正文里没有出现过的新数据或新文献。`
     : ""}`;
 
   const answer = await llmJson(prompt, input.model, 6000);
@@ -289,10 +309,39 @@ ${input.evidenceBlock ? `\n${input.evidenceBlock.slice(0, 12000)}\n` : ""}
 }
 
 /**
- * 生成摘要/引言/结论等"论文要件"章节(特殊逻辑)
+ * 论文要件 → 各档的生成要求。
+ *
+ * ⚠ 2026-09-26 重构：原先这一坨是**嵌套三元**
+ *   `kind === "abstract" ? A : kind === "keywords" ? B : C`。
+ *   第 3 档之后的分支**永远走不到** —— 加第四档时，新档会静默落进 `C`（结论的要求），
+ *   产出物完全不对但**不报错**。改成查表后，加档只需加一行；查不到会显式抛错。
+ */
+const COMPONENT_SPEC: Record<string, { cn: string; requirement: string }> = {
+  abstract: { cn: "摘要", requirement: "摘要 200-400 字, 涵盖目的/方法/结果/结论四要素" },
+  keywords: { cn: "关键词", requirement: "3-5 个关键词, 用「；」分隔" },
+  conclusion: { cn: "结论", requirement: "结论 300-600 字, 总结全文论点+研究贡献+展望" },
+  /**
+   * 「讨论」—— 2026-09-26 新增。
+   *
+   * 为什么单独要它：摘要/关键词/结论此前都有生成入口，**唯独没有讨论**。
+   * 而讨论是论文里最难写、也最需要系统支撑的一节：它要回答"结果意味着什么、
+   * 与既有文献怎么对话、理论贡献在哪、局限是什么"—— 这正是实证研究里
+   * 从"数据"走到"学术贡献"的那一步。此前只能靠用户手写。
+   *
+   * 结构照真实期刊要求定：结果解读 → 与既有文献对话 → 理论贡献 → 与引言呼应 → 局限与展望。
+   * 它**最吃证据**：凡涉及本文发现处必须来自【研究证据】，不得另编。
+   */
+  discussion: {
+    cn: "讨论",
+    requirement: "讨论 500-1000 字, 依次写: ①主要发现及其含义(回应研究问题) ②与既有文献的对话(一致/相悖之处及可能原因) ③理论与政策启示 ④研究局限(数据/方法/外推边界, 要具体不要套话) ⑤后续研究方向。**不重复结果章的数字罗列**, 重点是解释与对话",
+  },
+};
+
+/**
+ * 生成摘要/关键词/结论/讨论等"论文要件"章节(特殊逻辑)
  */
 export async function generateComponent(input: {
-  kind: "abstract" | "keywords" | "conclusion";
+  kind: "abstract" | "keywords" | "conclusion" | "discussion";
   topic: string;
   thesis?: string;
   sections: string[];     // 正文各章标题
@@ -307,7 +356,7 @@ export async function generateComponent(input: {
    */
   deAITone?: boolean | DeAITier;
   /**
-   * 研究证据摘要 —— 摘要/结论里写的"研究发现"必须与真实结果一致。
+   * 研究证据摘要 —— 摘要/结论/讨论里写的"研究发现"必须与真实结果一致。
    *
    * 2026-09-25: 结论章此前是**凭空生成**的: prompt 只拿到"论文主题 + 章节标题 + 各章要点前 500 字",
    * 而结论恰恰是最该说清"本文发现了什么"的地方。没有这条时, 模型只能把各章开头复述一遍,
@@ -315,9 +364,14 @@ export async function generateComponent(input: {
    */
   evidenceSummary?: string;
 }): Promise<ChapterResult> {
-  const kindCn = { abstract: "摘要", keywords: "关键词", conclusion: "结论" }[input.kind];
+  const spec = COMPONENT_SPEC[input.kind];
+  // 显式抛错而不是静默回退 —— 旧的嵌套三元对未知 kind 会悄悄按"结论"生成
+  if (!spec) throw new Error(`未知的论文要件类型: ${input.kind}`);
+  const kindCn = spec.cn;
   const chapters = input.sections.map((s, i) => `第${i + 1}章 ${s}`).join("；");
-  const bodies = (input.chapterContents ?? []).map((c) => c.slice(0, 500)).join("\n");
+  // 讨论比摘要更需要看到各章内容(它要与正文对话), 给它更长的切片
+  const sliceLen = input.kind === "discussion" ? 1200 : 500;
+  const bodies = (input.chapterContents ?? []).map((c) => c.slice(0, sliceLen)).join("\n");
   const tier: DeAITier | null = !input.deAITone ? null : input.deAITone === true ? "medium" : input.deAITone;
   const tierSpec = tier ? DEAI_TIER_PROMPT[tier] : null;
   // 摘要/关键词本来就是新写的, 没有"原文"可冻结 —— 只传处理方式, 不传冻结清单(那是给改写正文用的)
@@ -327,17 +381,18 @@ export async function generateComponent(input: {
 【论文主题】${input.topic}
 ${input.thesis ? `【核心论点】${input.thesis}` : ""}
 【章节结构】${chapters}
-${bodies ? `【各章要点(摘要用)】\n${bodies}` : ""}
-${input.evidenceSummary ? `\n【研究证据(摘要/结论里凡涉及数据与结论, 必须以此为准, 不得另编)】\n${input.evidenceSummary.slice(0, 6000)}\n` : ""}
+${bodies ? `【各章要点(${input.kind === "discussion" ? "讨论需据此与正文对话" : "摘要用"})】\n${bodies}` : ""}
+${input.evidenceSummary ? `\n【研究证据(${input.kind === "keywords" ? "参考" : "摘要/结论/讨论里凡涉及数据与结论, 必须以此为准, 不得另编"})】\n${input.evidenceSummary.slice(0, 6000)}\n` : ""}
 
 要求:
-1. ${input.kind === "abstract" ? "摘要 200-400 字, 涵盖目的/方法/结果/结论四要素" : input.kind === "keywords" ? "3-5 个关键词, 用「；」分隔" : "结论 300-600 字, 总结全文论点+研究贡献+展望"}${
+1. ${spec.requirement}${
   input.evidenceSummary && input.kind !== "keywords"
     ? "\n   其中「结果/发现」部分必须来自【研究证据】: 有具体数值就原样写(含显著性), 没有就作定性表述, 不得编造数字。"
     : ""}
 2. 输出 JSON: {"content":"${input.kind === "keywords" ? "关键词:…" : "内容"}"}${deAI}`;
 
-  const answer = await llmJson(prompt, input.model, 3000);
+  // 讨论要写 500-1000 字且要解释, 3000 tokens 不够它展开
+  const answer = await llmJson(prompt, input.model, input.kind === "discussion" ? 4000 : 3000);
   const content = String(answer?.content ?? "").trim();
   return { id: input.kind, title: kindCn, content, wordCount: content.replace(/\s/g, "").length };
 }
@@ -385,8 +440,18 @@ export async function exportOutlineDocx(input: {
   fontName?: string; // R7(参考产品 formatPresets.docxFont): 默认 SimSun, 编辑器按预览预设传
   fontSize?: number; // R7: 正文字号(pt), 同样来自预览预设; 缺省走 python 侧默认
   references?: ReferenceListInfo; // V417: 参考文献 + 著录完整性(补录提醒)
-  /** V425: 目标体例 —— 决定行距与页边距(见下方 LAYOUT 表) */
+  /**
+   * V425: 目标体例 —— 决定行距与页边距(见下方 LAYOUT 表)
+   */
   formatTarget?: "期刊论文" | "学位论文" | "党校期刊" | "高校学报";
+  /**
+   * 投稿声明（作者贡献/基金/利益冲突/致谢/数据可得性）—— 2026-09-26 加。
+   *
+   * ⚠ 这段**在 Word 导出里也得有**：期刊编辑部收的就是 Word 稿，声明不在里面等于没交。
+   *   与前端 md/html 是两条独立路径（那边在 FinalizeView 里拼），所以加了字段两边都要改 ——
+   *   只改一边会出现"网页导出有、Word 里没有"，而两者都叫"导出"，用户不会想到是不同代码。
+   */
+  declarations?: Record<string, string>;
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
   const fontName = input.fontName || "SimSun";
@@ -416,7 +481,7 @@ export async function exportOutlineDocx(input: {
   const bodyFontSize = Number(input.fontSize) > 0 ? Number(input.fontSize) : 0;
   const refs = input.references ?? { text: "", needsManual: false, sources: [] };
   const script = `
-import sys, json, base64, io
+import sys, json, base64, io, re
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -428,6 +493,8 @@ body_size = ${bodyFontSize > 0 ? bodyFontSize : "None"}
 references_text = ${JSON.stringify(refs.text ?? "")}
 refs_needs_manual = ${refs.needsManual ? "True" : "False"}
 refs_sources = ${JSON.stringify(refs.sources ?? [])}
+# 投稿声明: 拼好的 Markdown 段(空串=不输出这一节)
+declarations_md = ${JSON.stringify(declarationsToMarkdown(input.declarations))}
 # V425: 体例决定的行距(见服务端 LAYOUT 表的注释)
 spacing_mode = ${JSON.stringify(layout.spacingMode)}
 spacing_value = ${layout.spacingValue}
@@ -533,6 +600,25 @@ if references_text.strip() and refs_sources:
     for run in src_note.runs:
         set_run(run, 10)
 
+# ── 投稿声明(2026-09-26): 接在参考文献之后, 与期刊排版一致 ──
+# 只在真有内容时输出 —— 空标题会让编辑以为"声明了这一项但没写"。
+if declarations_md.strip():
+    doc.add_heading("声明", level=1)
+    for para in declarations_md.split("\\n\\n"):
+        if not para.strip():
+            continue
+        p = doc.add_paragraph()
+        # 形如 "**作者贡献声明**：张三：..." —— 把 ** 之间的标题加粗, 其余按正文
+        m = re.match(r"^\\*\\*(.+?)\\*\\*：(.*)$", para.strip(), re.S)
+        if m:
+            r1 = p.add_run(m.group(1) + "：")
+            r1.bold = True
+            set_run(r1, 10)
+            r2 = p.add_run(m.group(2))
+            set_run(r2, 10)
+        else:
+            set_run(p.add_run(para), 10)
+
 buf = io.BytesIO()
 doc.save(buf)
 print(json.dumps({"ok": True, "base64": base64.b64encode(buf.getvalue()).decode()}))
@@ -559,7 +645,7 @@ export async function exportOutlinePptx(input: {
 }): Promise<{ ok: boolean; base64?: string; error?: string }> {
   const items = flattenForDocx(input.nodes);
   const script = `
-import sys, json, base64, io
+import sys, json, base64, io, re
 from pptx import Presentation
 from pptx.util import Pt, Inches
 

@@ -88,7 +88,7 @@ import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream �
 
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
-const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
+const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
 
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
@@ -115,6 +115,24 @@ const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
     title: "学术文本工作台",
     vueRoute: "/editor",
     hint: "在线学术编辑器: 富文本写作 + AI 选区改写 + 图表/版本",
+  },
+  /**
+   * 数据分析台 —— 2026-09-26 补。
+   *
+   * 这个 Vue 视图(1218 行, 17 方法注册表 + SSE 流式结果)一直是**建好但用户到不了**的:
+   * 路由在 `web/socialsci-vue/src/router.ts` 里，但外壳的 FUSION_TABS 没有对应项，
+   * 五个 React tab 里也没有它，soc 内部原来那个跳转按钮又被改指到了 React 实证台。
+   * 结果只有手改 URL 才能打开 —— 那等于没有。
+   *
+   * 与 React 侧「实证研究」(`empirical-research`)**并存**，不是替换：
+   *   · 实证台面向"课题级"的问卷/信效度/回归/证据账本；
+   *   · 这个统计台面向"文件级"的 17 种统计方法 + 流式结果。
+   *   两者共用同一批 `/statistics-jobs` 后端，用户按习惯选。
+   */
+  statistics: {
+    title: "数据分析台",
+    vueRoute: "/statistics",
+    hint: "17 种统计方法: 上传数据文件 → 选变量与方法 → 流式结果与图表",
   },
 };
 import { P2OView } from "./components/P2OView";
@@ -161,7 +179,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -682,6 +700,32 @@ function AppShell() {
     };
     window.addEventListener("message", onRoute);
     return () => window.removeEventListener("message", onRoute);
+  }, []);
+
+  // ── 子应用说"这个按钮此刻点不了"(2026-09-26 补上接收端) ──
+  /**
+   * `action-blocked` 是 soc 侧 App.vue 的 invokeFromShell 发的：科研助手点了某个动作，
+   * 但那个元素当前 disabled 或不可见（`getClientRects()` 为空，例如藏在未展开的 <details> 里），
+   * 点击落不下去。
+   *
+   * ⚠ 这条消息**从 2026-09-16 起就只发不收** —— 全仓只有发送方。后果正是子应用注释里
+   *   想避免的那件事："用户点了助手里的按钮，页面毫无反应，也没有任何提示"。
+   *   静默失效只是从 iframe 内部挪到了外壳，问题本身没解决。
+   *
+   * 现在接住并显式告知。"隐藏"与"禁用"给不同说法：前者是"要先展开某个区域"，
+   * 后者是"有前置条件没满足"——两者用户要做的事完全不同，合并成一句就没用了。
+   */
+  useEffect(() => {
+    const onBlocked = (e: MessageEvent) => {
+      const d = e.data as { source?: string; type?: string; id?: string; reason?: string } | null;
+      if (d?.source !== "marxsphere-soc" || d.type !== "action-blocked") return;
+      const what = String(d.id ?? "").split(":").pop() || "该动作";
+      setError(d.reason === "disabled"
+        ? `「${what}」当前不可用 —— 请先在页面上满足它的前置条件（例如填好必填项、或先完成上一步）`
+        : `「${what}」当前不可见 —— 它所在的面板可能处于收起状态，请先在页面上展开对应区域再试`);
+    };
+    window.addEventListener("message", onBlocked);
+    return () => window.removeEventListener("message", onBlocked);
   }, []);
 
   // V417: 子应用(iframe 里的 soc 视图, 如评审页)请求把内容送给别的模块 —— soc 不能直接投递给另一个 iframe,
@@ -1967,8 +2011,10 @@ function AppShell() {
             />
           )}
           {/* 回程: 写作舱跳出去过(资料页 → 数据分析/科研绘图), 就留一条一键回来的路。
-              只在这些视图里显示 —— 平时不给顶栏添东西。 */}
-          {leaveOrigin && (workspaceView === "empirical-research" || workspaceView === "plot-agent") ? (
+              只在这些视图里显示 —— 平时不给顶栏添东西。
+              2026-09-26: 补上 "statistics" —— 它是写作舱第二个科学计算出口(文件级 17 法),
+                不给回程按钮的话用户从这里出去就回不到原来那一页了。 */}
+          {leaveOrigin && (workspaceView === "empirical-research" || workspaceView === "plot-agent" || workspaceView === "statistics") ? (
             <button
               type="button"
               onClick={returnToWorkflow}
@@ -2346,6 +2392,9 @@ function AppShell() {
               <ErrorBoundary><FusionPanel panelKey="viz" tab={{ ...FUSION_TABS.plot, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "editor" ? (
               <ErrorBoundary><FusionPanel panelKey="editor" tab={{ ...FUSION_TABS.editor, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+            ) : workspaceView === "statistics" ? (
+              // 数据分析台(Vue) —— 与 React 侧「实证研究」并存, 见 FUSION_TABS.statistics 的由来说明
+              <ErrorBoundary><FusionPanel panelKey="statistics" tab={{ ...FUSION_TABS.statistics, onBack: () => navigateView("empirical-research") }} /></ErrorBoundary>
             ) : workspaceView === "site-content" ? (
               <ErrorBoundary><SiteContentPanel onNavigate={(v) => navigateView(v)} /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
@@ -2862,7 +2911,7 @@ function MainWorkspaceTabs(props: {
   /** 导航分组色点（finesse：分组视觉标识，色相按职能区分；后台/系统组不显示色点更干净） */
   const GROUP_DOTS: Record<string, string> = {
     assistant: "hsl(43 96% 60%)", chat: "hsl(43 96% 60%)", reason: "hsl(43 96% 60%)", ask: "hsl(43 96% 60%)",
-    literature: "hsl(150 45% 50%)", sciverse: "hsl(150 45% 50%)", scenarios: "hsl(150 45% 50%)", education: "hsl(160 60% 45%)", "empirical-research": "hsl(160 60% 45%)", "format-eval": "hsl(160 60% 50%)",
+    literature: "hsl(150 45% 50%)", sciverse: "hsl(150 45% 50%)", scenarios: "hsl(150 45% 50%)", education: "hsl(160 60% 45%)", "empirical-research": "hsl(160 60% 45%)", statistics: "hsl(160 60% 45%)", "format-eval": "hsl(160 60% 50%)",
     truth: "hsl(214 60% 55%)", memory: "hsl(214 60% 55%)", documents: "hsl(214 60% 55%)", "graphiti-ingest": "hsl(214 60% 55%)", "cognee-ingest": "hsl(214 60% 55%)", graph: "hsl(214 60% 55%)", sources: "hsl(214 60% 55%)",
     policy: "hsl(28 70% 55%)", vault: "hsl(28 70% 55%)",
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
@@ -2898,7 +2947,22 @@ function MainWorkspaceTabs(props: {
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
         { value: "empirical-research", label: t("实证研究", "Empirical") },
-        // 2026-09-09: Notebook/统计工作台已并入实证研究「统计·Notebook」区段(双栏联动), 移除旧独立入口
+        /**
+         * 数据分析台(Vue, `/soc/#/statistics`) —— 2026-09-26 重新显出。
+         *
+         * ⚠ 这里有一段来回，先记清楚免得后人不明就里：
+         *   · 2026-09-09 **有意**把它并进了「实证研究」的「统计·Notebook」区段，菜单项被移除，
+         *     只留 hash 深链（下面那行原注释就是这次合并留下的）。
+         *   · 但"并进去"实际只做了一半：实证台用的是自己的 `statsApiReact.ts` + React 面板，
+         *     **没有**渲染这个 1218 行的 Vue 统计台。于是它不是"被合并"，是"被隐藏" ——
+         *     用户没有任何入口，只能手改 URL。
+         *   · 2026-09-26 用户决定：**两者并存**。理由是它们粒度不同 ——
+         *     实证台面向"课题级"（问卷/信效度/回归/证据账本），
+         *     这个统计台面向"文件级"（17 种统计方法 + SSE 流式结果 + 历史任务）。
+         *     后端是同一批 `/statistics-jobs`，不存在两套实现分叉的问题。
+         */
+        { value: "statistics", label: t("数据分析台", "Statistics") },
+        // 2026-09-09: Notebook 已并入实证研究「统计·Notebook」区段(双栏联动), 移除旧独立入口
         { value: "structure", label: t("结构解析", "Structure") },        // 2026-08-29: 图/表/公式/算法解析 (Agentero 对照)
         { value: "citation-verify", label: t("引文核验", "Citation Verify") },  // V399: 三维核验 (citation-lab 移植)
         { value: "format-eval", label: t("格式智能评测", "Format Eval") },      // 2026-09-03: 论文格式评测 (规则引擎+LLM)

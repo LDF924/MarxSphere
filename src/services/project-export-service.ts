@@ -18,6 +18,7 @@
 import { deflateRawSync } from "node:zlib";
 import { pool } from "../db/pool.js";
 import { getWorkbenchSnapshot } from "./chapter-skill-service.js";
+import { declarationsToMarkdown } from "./declarations.js";
 import { listMaterials } from "./research-materials-service.js";
 import { listVersions, listNodeHistory } from "./research-pipeline-service.js";
 import { exportOutlineDocx, type OutlineNode } from "./paper-outline-service.js";
@@ -35,6 +36,8 @@ interface WbSnapshot {
   mergedKeywords?: string;
   mergedFullText?: string;
   mergedReferences?: string;
+  /** 投稿声明（作者贡献/基金/利益冲突/致谢/数据可得性），键见 services/declarations.ts */
+  declarations?: Record<string, string>;
 }
 
 // ── 最小 zip 写入器 ──
@@ -348,6 +351,18 @@ export async function exportProjectBundle(userId: string, projectId: string): Pr
   }
   const refs = String(snap.mergedReferences ?? "").trim();
   if (refs) bodyParts.push("## 参考文献", "", refs, "");
+  /**
+   * 投稿声明 —— 接在**参考文献之后**（期刊排版里声明就在那个位置）。
+   *
+   * ⚠ 这段**与前端导出是两条独立路径**（前端 md/html 在 FinalizeView 里自己拼），
+   *   所以加了字段两边都要改 —— 只改一边会出现"网页导出有声明、ZIP 里没有"，
+   *   而两者都叫"导出"，用户不会想到它们走的是不同代码。
+   *   （同一形状的坑本文件注释里已记过一次: ZIP 内的 Word 与前端 exportDocx 也是两条路。）
+   *
+   * ⚠ 只在与已有内容时才加 —— 空标题会让编辑以为"声明了这一项但没写"。
+   */
+  const declText = declarationsToMarkdown(snap.declarations);
+  if (declText) bodyParts.push("## 声明", "", declText, "");
   entries.push({ name: "论文.md", data: Buffer.from(bodyParts.join("\n"), "utf8") });
 
   // ② 章节逐篇(便于单独取用某一章)
@@ -367,6 +382,10 @@ export async function exportProjectBundle(userId: string, projectId: string): Pr
         paperTitle: mergedTitle,
         nodes: buildTree(sections),
         references: { text: refs, needsManual: !refs, sources: [] },
+        // ⚠ 带上投稿声明 —— **这里与前端 exportDocx 是两条独立路径**（注释早已记过:
+        //   "ZIP 内的 Word 与前端 exportDocx 是两条独立路径，只改前端不会影响 ZIP 内的 Word"）。
+        //   不接的话: 网页导出 Word 有声明、ZIP 里的 Word 没有, 而两者都叫"导出 Word"。
+        declarations: snap.declarations,
       });
       if (r.ok && r.base64) entries.push({ name: "论文.docx", data: Buffer.from(r.base64, "base64") });
       else notes.push(`Word 未能生成：${r.error ?? "导出器未返回内容"}`);

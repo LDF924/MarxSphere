@@ -20,6 +20,8 @@ import { useWorkflowStore } from "./stores/workflow";
 import { listProjects, archiveProject, deleteProject, type SocProject } from "@/shared/tasks";
 import { toast, confirmDialog } from "@/shared/ui";
 import EmptyState from "./EmptyState.vue";
+import VersionHistoryPanel from "./VersionHistoryPanel.vue";
+import { stageTitle } from "@/shared/stages";
 
 const store = useWorkflowStore();
 const router = useRouter();
@@ -76,7 +78,8 @@ const visible = computed(() => {
 const hiddenArchived = computed(() => projects.value.filter((p) => p.status === "archived").length);
 
 const STATUS_LABEL: Record<string, string> = { active: "进行中", "in-progress": "进行中", archived: "已归档", done: "已完成" };
-const PHASE_LABEL = ["", "选题界定", "框架设计", "文献与资料", "章节写作", "统稿定稿"];
+/** 阶段号 → 中文名。取自真源, 认不出给空串(旧实现会错写成「统稿定稿」) */
+const phaseLabel = (ph: number) => stageTitle(ph);
 
 function fmtDay(iso?: string): string {
   if (!iso) return "";
@@ -171,17 +174,111 @@ async function doArchive(p: SocProject) {
  *   跳到合稿页并不会让那些按钮失效, 它们照样拦得住"真的不该做"的动作。
  *   而进度条节点现在已经放行(见 PhaseProgressBar 的 goNode), 快捷键若还守着旧规则,
  *   就会出现"鼠标能去、键盘不能"的两套规则打架。
- * `ph` 用的是 1..5 的阶段号, 与 `store.phase` 同一套取值。
+ * `ph` 就是 store 里的阶段号（来自 shared/stages.ts）。
  */
-const STEPS = [
-  { key: "1", ph: 1, route: "/workflow/input", title: "选题界定" },
-  { key: "2", ph: 2, route: "/workflow/sections", title: "框架设计" },
-  { key: "3", ph: 3, route: "/workflow/materials", title: "文献与资料" },
-  { key: "4", ph: 4, route: "/workflow/workspace", title: "章节写作" },
-  { key: "5", ph: 5, route: "/workflow/finalize", title: "统稿定稿" },
-];
+/**
+ * 快捷键步骤表 —— 与进度条**同一份真源**，只是把索引位当按键。
+ *
+ * ⚠ 2026-09-26 改：原先是硬编码 5 条，且按下 Alt+N 时用 `want = STEPS.findIndex(...) + 1`
+ *   **从数组下标反推阶段号**。加一个阶段后，只要有一处的顺序与 `ph` 对不上，
+ *   快捷键就会**静默跳错页**（不报错，只是去的地方不对）。
+ *   现在 `ph` 直接从阶段表来，键位序号与 `ph` 解耦。
+ *
+ * 键位只覆盖**本课题看得到的**阶段（定性研究不显示「研究实施」）——
+ * 否则按 Alt+3 会跳到一个进度条上根本没有的节点，用户对不上号。
+ */
+const STEPS = computed(() =>
+  store.stages.map((s, i) => ({
+    key: String(i + 1),
+    ph: s.ph,
+    route: s.path,
+    title: s.title,
+  })),
+);
 
 const helpOpen = ref(false);
+
+/**
+ * ── 版本历史（2026-09-26 从合稿页提到外壳） ──
+ *
+ * 由来：这个抽屉此前**只挂在合稿页**（FinalizeView.vue）。而发布版本的动作散在三页上 ——
+ *   架构页发 `phase2_architecture`、素材页发 `phase3_materials`、创作台发 `phase4_text` ——
+ *   也就是说用户在前两页把东西改坏了，**当场没有回头路**，得先跳到第 5 步才能回滚。
+ *   两页发布、却只有一页能撤销，是明显的错配。
+ *
+ * 放外壳的理由与项目栏、快捷键一致：这三样都是**跨页共用**的东西，各页各写一份必然分叉。
+ * 外壳自己渲染抽屉、自己管开合，五个页面零改动就有了入口。
+ *
+ * `nodeKeys` 里各节点的**中文标签**与回滚后的刷新责任都与具体页面相关，但那不影响这里 ——
+ * 回滚后统一走 store.loadProject()，store 是五页共用的同一份状态。
+ */
+const vhOpen = ref(false);
+/**
+ * 回滚发生后广播给各页 —— 有页面对"回滚了哪个节点"还有**额外**的事要做。
+ *
+ * 目前只有合稿页用到: 它要补拉 `review_result` / `merge_generated`
+ * (那两项只在项目列上, 工作台快照里读不到)。
+ * 其余四页不需要关心, 所以用 emit 而不是让每页都去 watch。
+ */
+const emit = defineEmits<{ (e: "node-rolled-back", nodeKey: string): void }>();
+/** 抽屉可回滚的节点。与 FinalizeView 原来的 VH_NODES 同一份口径（那边已改为引用这里） */
+const VH_NODES = [
+  // 顺序 = 抽屉打开时的默认选中优先级: 前三个是天天在改的, 「研究信息」只在录入完成时写过一次
+  { key: "sections", label: "章节与正文" },
+  { key: "materials", label: "素材" },
+  { key: "finalize", label: "合稿" },
+  { key: "input", label: "研究信息" },
+];
+/** 抽屉里当前选中的节点 —— 对比要知道"拿哪一份当前态来比" */
+const activeVhNode = ref("sections");
+
+/**
+ * 供版本对比用的"当前内容"。
+ *
+ * 从 **store** 现取, 而不是向后端再查一遍 —— 界面上看到的才是权威(后端拿的是最近一次
+ * 落库的快照, 用户刚敲的字可能还没落盘, 那样对比出来的"当前"是错的)。
+ * 形状必须与历史 payload 一致, 否则 diff 会把每个字段都当成"变了"。
+ * 输入/素材节点不在这里给(null), 对比视图会如实显示"没有可对比的内容" ——
+ * 给一个空对象会让它显示成"全部删除了", 那是误导。
+ */
+const currentPayloadForDiff = computed<Record<string, unknown> | null>(() => {
+  switch (activeVhNode.value) {
+    case "sections":
+      return { sections: store.sections ?? [] };
+    case "finalize":
+      return {
+        mergedTitle: store.mergedTitle ?? "",
+        mergedAbstract: store.mergedAbstract ?? "",
+        mergedKeywords: store.mergedKeywords ?? "",
+        mergedFullText: store.mergedFullText ?? "",
+        mergedReferences: store.mergedReferences ?? "",
+      };
+    default:
+      return null;
+  }
+});
+
+/**
+ * 回滚之后必须把 store 重新拉一遍 ——
+ *   否则界面还停在回滚**之前**的内容上(后端已经变了), 用户会以为回滚没生效,
+ *   然后在旧内容上继续编辑 → saveProject 把旧内容又写回去, 回滚被静默抵消。
+ * 这是"读改写"三种失效里最隐蔽的一种, 前后端都看不出来。
+ *
+ * 这里从 FinalizeView 的 `onNodeRolledBack` 搬过来，两处差异：
+ *   · 原版在合稿页还会顺带 `refreshMerged()`（拿 review_result 等**列上才有**的字段）。
+ *     那一步留在合稿页做 —— 其余页没有那几个字段的展示位，多拉一次没有意义。
+ *     代价：在别页回滚 finalize 后回到合稿页，审查报告要等本页挂载时的 refreshMerged 才补齐，
+ *     这在原来的时序上本来就是这样（合稿页两个加载都在挂载时跑）。
+ *   · 文案不再写死"刷新页面"：回滚素材/章节时本页不受影响，说"页面"会让人以为整页重载了。
+ */
+async function onNodeRolledBack(nodeKey: string) {
+  try {
+    await store.loadProject();
+    // 广播: 各页若对"回滚了某个节点"还有额外动作, 在这里响应(合稿页要补拉只存在于列上的字段)
+    emit("node-rolled-back", nodeKey);
+    toast(`已回滚「${VH_NODES.find((n) => n.key === nodeKey)?.label ?? nodeKey}」，内容已重新载入`, "success");
+  } catch { /* loadProject 自身吞错; 刷新失败不该再弹一次 */ }
+}
 
 /**
  * 在输入框里打字时**一律不劫持**。
@@ -210,12 +307,12 @@ function onKeydown(e: KeyboardEvent) {
   }
   if (e.key === "?") { e.preventDefault(); helpOpen.value = !helpOpen.value; return; }
   if (e.key === "Escape") { helpOpen.value = false; return; }
-  // Alt+1..5 切阶段
+  // Alt+数字 切阶段（键位 = 该课题可见阶段的序号，阶段号从真源来）
   if (e.altKey) {
-    const i = STEPS.findIndex((s) => s.key === e.key);
-    if (i >= 0) {
+    const hit = STEPS.value.find((s) => s.key === e.key);
+    if (hit) {
       e.preventDefault();
-      const want = i + 1;
+      const want = hit.ph;
       /**
        * ⚠ 光改 `store.phase` **不会换页** —— 这一页是 vue-router 的独立路由。
        *   我第一版只调了 store.goto(), 结果按快捷键什么都没发生(hash 一动不动),
@@ -228,7 +325,7 @@ function onKeydown(e: KeyboardEvent) {
        *   · 往前走 → 标量跟着走(用户确实是往下一步去了)。
        */
       if (want > store.phase) store.goto(want);
-      void router.push(STEPS[i].route);
+      void router.push(hit.route);
     }
   }
 }
@@ -277,7 +374,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
             </div>
             <div class="wfs-item-meta">
               <span class="wfs-badge" :class="`is-${p.status}`">{{ STATUS_LABEL[p.status] ?? p.status }}</span>
-              <span>{{ PHASE_LABEL[p.phase] || "未开始" }}</span>
+              <span>{{ phaseLabel(p.phase) || "未开始" }}</span>
               <span class="wfs-dot">·</span>
               <span>{{ fmtDay(p.updatedAt) }}</span>
             </div>
@@ -314,8 +411,33 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
     <!-- 右: 快捷键浮标 -->
     <div class="wfs-keys">
+      <!-- 版本历史入口(2026-09-26 从合稿页提到外壳): 五页都有，不再只有第 5 步能回滚 -->
+      <button
+        v-if="store.taskId"
+        class="wfs-keys-btn wfs-vh-btn"
+        data-control="workflow:version-history"
+        title="版本历史与回滚"
+        @click="vhOpen = true"
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v4h4" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
       <button class="wfs-keys-btn" data-control="workflow:keys-help" title="快捷键(?)" @click="helpOpen = !helpOpen">?</button>
     </div>
+
+    <!-- 版本历史抽屉 —— 挂在外壳上, 与当前是哪一页无关。
+         ⚠ 不能挪进 `<slot />`: 那槽位在主区的滚动容器里, 抽屉是 fixed 浮层, 会被裁切。 -->
+    <VersionHistoryPanel
+      :open="vhOpen"
+      :project-id="store.taskId"
+      :node-keys="VH_NODES"
+      :current-node-payload="currentPayloadForDiff"
+      @close="vhOpen = false"
+      @changed="onNodeRolledBack"
+      @node-change="activeVhNode = $event"
+    />
 
     <Transition name="wf-fade">
       <div v-if="helpOpen" class="wfs-help-mask" @click.self="helpOpen = false">
@@ -406,13 +528,16 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .wfs-loading { margin: 10px; font-size: var(--wf-f-sm); color: var(--wf-faint); }
 
 /* ── 快捷键 ── */
-.wfs-keys { position: fixed; right: 14px; bottom: 14px; z-index: 40; }
+.wfs-keys { position: fixed; right: 14px; bottom: 14px; z-index: 40; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .wfs-keys-btn {
   width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--wf-line); background: var(--wf-raised); color: var(--wf-faint);
   font-size: 14px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
 }
 .wfs-keys-btn:hover { color: var(--wf-text); border-color: var(--wf-line-strong); }
+/* 版本历史入口比快捷键常驻 —— 它不是"帮助", 是撤销改坏内容的唯一出口, 给更强的存在感 */
+.wfs-vh-btn { border-color: var(--wf-line-strong); color: var(--wf-text-2); }
 .wfs-help-mask { position: fixed; inset: 0; z-index: 96; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; }
 .wfs-help { width: 360px; max-width: 92vw; padding: 18px 22px; background: var(--wf-surface); border: 1px solid var(--wf-line); border-radius: var(--wf-r); }
 .wfs-help h3 { margin: 0 0 12px; font-size: var(--wf-f-lg); color: var(--wf-text); }

@@ -18,8 +18,15 @@
  * 这一版**不**做「格式化 Word 导出」: `POST /api/format-eval/format` 收的是 docx 字节,
  *   而写作舱手上是 markdown。转 docx 要先走 paper-outline 导出, 那是另一条链路,
  *   硬接会得到一个"点了没反应"的按钮。宁可少一项, 不做假的。
+ *
+ * ④ 投稿要件(2026-09-26 加): 五项声明(作者贡献/基金/利益冲突/致谢/数据可得性)填齐没有。
+ *   ⚠ **不在这里另写一套判据** —— 复用 `shared/declarations` 的 `checkDeclarations`。
+ *     另写一套的后果是"同一件事两套规则", 界面上出现"声明页说齐了、检查页说缺"这种自相矛盾。
+ *     声明是**结构化数据**(用户在声明区填的), 判据比在正文里搜"作者贡献声明"这几个字准得多 ——
+ *     后者会被"正文里恰好提到这个词"骗过。
  */
 import { computed, onMounted, ref } from "vue";
+import { checkDeclarations } from "@/shared/declarations";
 import { toast } from "@/shared/ui";
 import { q } from "@/shared/api";
 
@@ -30,7 +37,16 @@ const props = defineProps<{
   topic: string;
   /** 比对源文本的候选 —— 库里的文献素材正文 */
   sources: Array<{ id: string; title: string; text: string }>;
+  /** 投稿声明（作者贡献/基金/利益冲突/致谢/数据可得性）—— 来自 store.declarations */
+  declarations?: Record<string, string>;
 }>();
+
+/** 去「投稿与要件」页的跳转由父组件处理（本组件不持有 router 语义） */
+defineEmits<{ (e: "goto-declarations"): void }>();
+
+/** 声明完整性 —— 复用声明页那个判据, 不另写一套 */
+const declProblems = computed(() => checkDeclarations(props.declarations ?? {}));
+const declMissingRequired = computed(() => declProblems.value.filter((p) => p.kind === "missing").length);
 
 // ── ① 选刊 ──
 interface Journal { id: string; name: string; level: string; org?: string; topicTags?: string[]; style?: string }
@@ -172,6 +188,32 @@ const plgRows = computed(() => flatten(plgResult.value).filter((r) => r.v.trim()
 <template>
   <div class="sub">
     <!-- ① 选刊 -->
+    <!-- ⓪ 投稿要件(2026-09-26): 放在最前 —— 声明没填齐, 后面三项做了也白做(编辑部会退回) -->
+    <section class="sub-sec">
+      <h4 class="sub-h"><span class="sub-n">0</span>投稿要件</h4>
+      <p v-if="!declProblems.length" class="sub-ok" data-assistant-clear="1">
+        五项声明都已填写 —— 可在「投稿与要件」页修改。
+      </p>
+      <template v-else>
+        <p class="sub-note" data-assistant-clear="1">
+          还有 {{ declProblems.length }} 项没处理好{{ declMissingRequired ? `（其中 ${declMissingRequired} 项必填留空）` : "" }}。
+          声明在投稿时要单独交给编辑部, 不随正文走。
+        </p>
+        <ul class="sub-decls">
+          <li v-for="p in declProblems" :key="p.key">
+            <span class="sub-dbadge" :class="p.kind === 'missing' ? 'is-missing' : 'is-thin'">
+              {{ p.kind === "missing" ? "待填" : "偏短" }}
+            </span>
+            <span class="sub-dlabel">{{ p.label }}</span>
+            <span class="sub-ddetail">{{ p.detail }}</span>
+          </li>
+        </ul>
+        <button class="sub-golink" data-control="workflow:sub-goto-decls" @click="$emit('goto-declarations')">
+          去填写 ›
+        </button>
+      </template>
+    </section>
+
     <section class="sub-sec">
       <h4 class="sub-h"><span class="sub-n">1</span>选刊</h4>
       <p v-if="journalsNote" class="sub-note">{{ journalsNote }}</p>
@@ -371,4 +413,18 @@ const plgRows = computed(() => flatten(plgResult.value).filter((r) => r.v.trim()
 .sub-pairwise { margin-top: var(--wf-s3); border-top: 1px dashed var(--wf-line-soft); padding-top: var(--wf-s2); }
 .sub-pairwise > summary { cursor: pointer; font-size: var(--wf-f-xs); color: var(--wf-faint); }
 .sub-pairwise[open] > summary { margin-bottom: var(--wf-s2); }
+.sub-ok { margin: 4px 0 0; font-size: 13px; color: #6FBF8B; }
+.sub-decls { list-style: none; margin: 8px 0 0; padding: 0; }
+.sub-decls li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 12.5px; }
+.sub-dbadge { font-size: 11px; padding: 0 6px; border-radius: var(--wf-r-pill); flex-shrink: 0; }
+.sub-dbadge.is-missing { color: #E0714F; border: 1px solid #E0714F; }
+.sub-dbadge.is-thin { color: #D9A441; border: 1px solid #D9A441; }
+.sub-dlabel { color: var(--wf-text); }
+.sub-ddetail { color: var(--wf-faint); }
+.sub-golink {
+  margin-top: 8px; padding: 4px 12px; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--wf-line); border-radius: var(--wf-r-sm);
+  background: var(--wf-raised); color: var(--wf-text-2);
+}
+.sub-golink:hover { color: var(--wf-text); border-color: var(--wf-line-strong); }
 </style>

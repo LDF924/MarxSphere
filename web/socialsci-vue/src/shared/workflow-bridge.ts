@@ -95,22 +95,11 @@ export function sendMarkdownToEditor(markdown: string, title: string): boolean {
   return false;
 }
 
-/** 写入交接内容（同窗口的其它 Vue 视图在挂载时主动取） */
-export function writeHandoff(payload: WorkflowHandoff): boolean {
-  try {
-    localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** 读后即删（否则下次手动进写作舱会被旧内容重复灌入） */
-export function readHandoff(): WorkflowHandoff | null {
+/** 解析交接内容 —— **纯读，不产生任何副作用**（删除是 commitHandoff 的事） */
+function readRaw(): WorkflowHandoff | null {
   try {
     const raw = localStorage.getItem(HANDOFF_KEY);
     if (!raw) return null;
-    localStorage.removeItem(HANDOFF_KEY);
     const parsed = JSON.parse(raw) as WorkflowHandoff;
     if (!parsed?.markdown) return null;
     return parsed;
@@ -157,13 +146,49 @@ export function writePendingRoute(path: string): void {
   try { localStorage.setItem(PENDING_ROUTE_KEY, path); } catch { /* 忽略 */ }
 }
 
+/**
+ * 「本会话内这条交接已经取过了」的内存标志。
+ *
+ * 用途收窄为**防重复解析**, 不再承担"已消费"的语义 —— 内容的删除由 commitHandoff 决定。
+ * (第一版改写时把这个声明连同 `let claimed = false` 一起删了, 只留下引用:
+ *  `claimHandoff` 一上来就抛 ReferenceError, 即**导入素材整条链直接不工作**。
+ *  而根 tsconfig 不覆盖 soc 子应用, `npm run typecheck` 照不到 —— 见下面 verify 脚本的说明。)
+ */
 let claimed = false;
-/** 交接内容只允许被消费一次（多个视图都挂载监听时防重复导入） */
+
+/**
+ * 取外部投递的素材（**只取，不删**）。
+ *
+ * ⚠ 2026-09-26 重做。原实现是「读后即删 + 无条件置 claimed」，在**还没有项目**时会丢数据：
+ *   MaterialsView 的调用顺序是「先 claim、再判 taskId」——
+ *   于是没有项目时读到了也存不进去，而素材已经被删掉，之后再建好项目也永远导不进来。
+ *   用户会看到 toast 说"已送入"，内容却没了。
+ *
+ * 现在把「读到了」与「用掉了」分成两件事：
+ *   · claimHandoff 只读，不改 localStorage —— 拿不到没关系，内容还在，下次挂载还能再试；
+ *   · commitHandoff 才删 —— 只有**真的写进素材库之后**才调。
+ */
 export function claimHandoff(): WorkflowHandoff | null {
   if (claimed) return null;
-  const h = readHandoff();
+  const h = readRaw();
   if (h) claimed = true;
   return h;
+}
+
+/** 交接内容**真正落库成功**后调用 —— 这是唯一会删掉它的地方 */
+export function commitHandoff(): void {
+  try { localStorage.removeItem(HANDOFF_KEY); } catch { /* 忽略 */ }
+  claimed = true;
+}
+
+/**
+ * 允许重新取一次交接内容。
+ *
+ * 用在"当前存不进去"的分支上：没有项目 / 写入失败时调用，好让用户建好项目、
+ * 或下次回到这一页时还能把它导进来（否则内存标志会让它这一整个会话都取不到）。
+ */
+export function resetHandoffClaim(): void {
+  claimed = false;
 }
 
 /** 打 `__socReady.workflow` 标 —— 让 React 外壳知道可以往写作舱投递了 */
