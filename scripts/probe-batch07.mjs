@@ -171,6 +171,26 @@ try {
       const has2 = !!String(back2.body?.proposals?.grant?.content ?? "").length;
       t("⚠ 生成第二类没冲掉第一类", has1 && has2, `proposal=${has1} grant=${has2}`);
 
+      /**
+       * 剩下两类(伦理/预注册)也真跑一遍。
+       *
+       * ⚠ 它们与上面两类**走同一个 generateProposal**, 差别只在 spec —— 但"同一条代码路径"
+       *   恰恰是本仓反复栽跟头的假设(批7 的 proposal/grant 能过不代表另两类能)。
+       *   这两份是交给**伦理委员会**的材料, 缺一节就是材料不齐, 值得多花一次调用。
+       */
+      for (const k of ["ethics", "prereg"]) {
+        const g = await api(token, `/research/projects/${pid}/proposals/generate`, "POST", { kind: k });
+        const c = String(g.body?.content ?? "");
+        const cn = k === "ethics" ? "伦理审查材料" : "预注册方案";
+        t(`${cn} 能生成且七节齐全`,
+          g.body?.ok === true && c.length > 800 && ["一、", "二、", "三、", "四、", "五、", "六、", "七、"].every((x) => c.includes(x))
+          && !c.includes("本节未能生成"),
+          `ok=${g.body?.ok} ${c.length} 字 缺=[${["一、", "二、", "三、", "四、", "五、", "六、", "七、"].filter((x) => !c.includes(x)).join("")}]`);
+      }
+      const back4 = await api(token, `/research/projects/${pid}/proposals`);
+      const keys4 = Object.keys(back4.body?.proposals ?? {}).filter((k) => String(back4.body.proposals[k]?.content ?? "").length);
+      t("四类互不覆盖, 都在库里", keys4.length === 4, `实测 ${JSON.stringify(keys4)}`);
+
       // 刷新后仍在 + 可手改
       await runInSoc(`w.location.href = w.location.origin + "/soc/index.html#/workflow/proposals"; return 1;`);
       await sleep(3000);
@@ -178,7 +198,7 @@ try {
       await sleep(6500);
       await goto("/workflow/proposals");
       const shown = await runInSoc(`return w.document.querySelectorAll(".pp-dot").length;`);
-      t("刷新后两份都标着已生成", Number(shown) === 2, `实测 ${shown}`);
+      t("刷新后四份都标着已生成", Number(shown) === 4, `实测 ${shown}`);
 
       /**
        * ⚠ 点完**要等一帧**再查 —— 第一版把"点击"与"查文本框"写在同一个 evalTop 里,
@@ -207,8 +227,9 @@ try {
 
       // 合集导出
       const exp = await api(token, `/research/projects/${pid}/proposals/export`);
-      t("合集导出含两份", String(exp.body?.markdown ?? "").includes("开题报告") && String(exp.body?.markdown ?? "").includes("基金申报书"),
-        `长度 ${String(exp.body?.markdown ?? "").length}`);
+      const expMd = String(exp.body?.markdown ?? "");
+      t("合集导出含四类", ["开题报告", "基金申报书", "伦理审查材料", "预注册方案"].every((x) => expMd.includes(x)),
+        `长度 ${expMd.length} 缺=[${["开题报告", "基金申报书", "伦理审查材料", "预注册方案"].filter((x) => !expMd.includes(x)).join(",")}]`);
     }
   } else {
     console.log("\n(跳过 ⑤ 真生成 —— 设 PROBE_LLM=1 启用)");
