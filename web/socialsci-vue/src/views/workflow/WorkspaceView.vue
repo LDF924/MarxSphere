@@ -35,6 +35,56 @@ function toggleExpand(id: string) {
   else next.add(id);
   expandedIds.value = next;
 }
+
+/**
+ * 正文上下那三块核查面板(引文核查 / 本章依据 / 正文数字核验)的展开状态。
+ *
+ * 它们**默认展开**(各自 `<details open>`), 因为它们的信息是"写这章时要看的";
+ * 但默认全开时它们和正文抢同一份中栏高度 —— 实测 1600x1000 下三块全开,
+ * 正文只剩 262px(见 `.md-block` 那段注释)。用户把某块收起来, 本来就是为了腾地方给正文,
+ * 那么**换章、切页面回来都不该把它重新弹开** —— 否则每次回来都要再收一遍。
+ *
+ * 所以状态落 localStorage(不是按章记): "我要不要看核查面板"是人的习惯, 不是章节的属性。
+ */
+const PANEL_OPEN_KEY = "sag:workflow:panels-open";
+type PanelKey = "cite" | "evidence" | "number" | "summary";
+function readPanelOpen(): Record<PanelKey, boolean> {
+  // summary(写作要点速览) **默认收起** —— 它是"生成完之后顺带看一眼"的信息,
+  //   不是写正文时一直要盯着的; 而上面三块是写的时候就该在场(所以默认展开)。
+  const def: Record<PanelKey, boolean> = { cite: true, evidence: true, number: true, summary: false };
+  try {
+    const raw = localStorage.getItem(PANEL_OPEN_KEY);
+    if (!raw) return def;
+    const got = JSON.parse(raw) as Partial<Record<PanelKey, boolean>>;
+    // 逐键判, 不整体替换 —— 将来加了第四块, 老用户存的那份 JSON 里没有它, 仍走默认 true
+    return {
+      cite: got.cite ?? def.cite,
+      evidence: got.evidence ?? def.evidence,
+      number: got.number ?? def.number,
+      summary: got.summary ?? def.summary,
+    };
+  } catch {
+    return def; // 存坏了就退回默认, 不要让一条坏数据把整页的折叠块卡死
+  }
+}
+const panelOpen = ref<Record<PanelKey, boolean>>(readPanelOpen());
+function setPanelOpen(key: PanelKey, open: boolean) {
+  if (panelOpen.value[key] === open) return;
+  panelOpen.value = { ...panelOpen.value, [key]: open };
+  try {
+    localStorage.setItem(PANEL_OPEN_KEY, JSON.stringify(panelOpen.value));
+  } catch { /* 隐私模式/配额满: 记不住就算了, 不影响本次会话内的展开收起 */ }
+}
+/**
+ * `toggle` 事件**会冒泡** —— 这几个面板内部还有自己的 `<details>`(如"写作要点速览"、
+ * 素材分组), 不挡住的话收一个内层小结就会把外层整块也标记成"用户收起来了",
+ * 而且下一次进来真的就整块不展开了。只认事件源就是该 `<details>` 本身的那一次。
+ */
+function onPanelToggle(key: PanelKey, e: Event) {
+  if (e.target !== e.currentTarget) return;
+  setPanelOpen(key, (e.currentTarget as HTMLDetailsElement).open);
+}
+
 async function selectSection(s: Section) {
   // V417: 切章前若正在编辑且内容有改动 → 先问, 别静默丢弃。
   //   原实现直接 `editing=false; editText=""`(注释自己都写了"未保存草稿丢弃"),
@@ -1346,7 +1396,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
           <textarea
             v-model="thinkPrompt"
             class="think-input"
-            rows="3"
+            rows="5"
             placeholder="本章的写作思路…(留空则用系统生成的写作指导)"
             data-control="workflow:section-think"
           ></textarea>
@@ -1412,20 +1462,32 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
             <span class="md-save-state">{{ editDirty ? "未保存" : "已同步" }}</span>
             <button v-if="mdTab === 'write' && editDirty" class="btn-save" data-control="workflow:save-section" @click="saveEdit">保存修改</button>
           </div>
-          <!-- V417: 生成时后端正则抽取的结论/数据/论点/遗留 —— 原先存了但从没显示过 -->
-          <details v-if="summaryBlocks.length" class="summary-box">
-            <summary>写作要点速览（自动抽取）</summary>
-            <div v-for="b in summaryBlocks" :key="b.title" class="summary-block">
-              <strong>{{ b.title }}</strong>
-              <p>{{ b.body }}</p>
-            </div>
-          </details>
         </div>
+
+        <!-- V417: 生成时后端正则抽取的结论/数据/论点/遗留 —— 原先存了但从没显示过。
+             ⚠ 2026-09-26 **从 `.md-block` 里面搬到了外面**。
+             它原先长在正文块内部(紧跟在 .md-foot 之后), 于是展开它就是在正文块**里面**
+             抢空间: `.editor-area` 是 `flex: 1`, 而正文框在里面再 `flex: 1` ——
+             整条链上没有任何地板, 一展开就把正文压窄。
+             用户报的正是这个("点写作要点速览展开后, 研究设计正文的输入框就收缩")。
+             搬到外面之后它和引文核查/本章依据/数字核验**同一层级**,
+             抢的是 `.center-main` 的预算, 而那边有 `.md-block { min-height }` 兜底。 -->
+        <details
+          v-if="summaryBlocks.length" class="summary-box"
+          :open="panelOpen.summary" @toggle="onPanelToggle('summary', $event)"
+        >
+          <summary>写作要点速览（自动抽取）</summary>
+          <div v-for="b in summaryBlocks" :key="b.title" class="summary-block">
+            <strong>{{ b.title }}</strong>
+            <p>{{ b.body }}</p>
+          </div>
+        </details>
 
         <!-- 引文核查(V425 加法): 就放在正文下面 —— 核的是"你正在写的这一章"。
              后端 /api/citations/verify 早就有了(外壳"引文核验"视图在用), 只是写作舱一直没接;
-             而引用对不对, 恰恰只有写到这里才看得出来。不调 LLM, 纯 Crossref/OpenAlex 查证。 -->
-        <details class="cite-box" open>
+             而引用对不对, 恰恰只有写到这里才看得出来。不调 LLM, 纯 Crossref/OpenAlex 查证。
+             `:open` + `@toggle` 而非写死 open: 收起状态要跨切章/切页保留(见 script 里的 panelOpen) -->
+        <details class="cite-box" :open="panelOpen.cite" @toggle="onPanelToggle('cite', $event)">
           <summary>引文核查（本章正文）</summary>
           <CitationCheckPanel :text="activeSection.content ?? ''" :refs="storeReferences" />
         </details>
@@ -1433,7 +1495,7 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
         <!-- 本章依据(2026-09-25 加法): 真实科研里正文是先有依据再动笔的。
              放在正文**上面**不是排版偏好 —— 顺序即语义: 先定这一章依据什么数据/回归/假设,
              再写。素材页那个"插入到章节"是反的(先成文、再补证据)。 -->
-        <details class="evidence-box" open>
+        <details class="evidence-box" :open="panelOpen.evidence" @toggle="onPanelToggle('evidence', $event)">
           <summary>本章依据（素材 / 分析结果 / 假设 / 发现）</summary>
           <ChapterEvidencePanel
             :project-id="store.taskId"
@@ -1445,8 +1507,9 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 
         <!-- 正文数字核验(2026-09-25 加法): "真实科研"的硬判据 ——
              正文里写出来的数字必须能对上分析结果。放在正文下面: 写完才核。
-             与「引文核查」并列: 一个核引用是否真实存在, 一个核数据是否对得上自己的结果。 -->
-        <details class="evidence-box">
+             与「引文核查」并列: 一个核引用是否真实存在, 一个核数据是否对得上自己的结果。
+             `after-md` 只是把它的上边距对齐引文核查那块(两块都在正文下方) -->
+        <details class="evidence-box after-md" :open="panelOpen.number" @toggle="onPanelToggle('number', $event)">
           <summary>正文数字核验（正文 ↔ 本章依据）</summary>
           <NumberCheckPanel
             :project-id="store.taskId"
@@ -1652,7 +1715,14 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   color: var(--wf-muted); font-size: 12px; cursor: pointer;
 }
 .btn-save { border-color: #2B4A73; color: #6FA8F5; }
-.editor-area { flex: 1; min-height: 0; display: flex; }
+/**
+ * ⚠ 2026-09-26 加 `min-height`: 光给 `.md-block` 地板不够。
+ *   `.editor-area` 自己也是 `flex: 1`, 块内任何新增元素(此前是"写作要点速览"那个
+ *   <.details>, 现在已搬出去)都会先压缩它, 一路压到正文框只剩一两行。
+ *   260px ≈ 正文 14px/1.9 行高(26.6px) 容 8 行 + 上下 padding 28px, 是"能安心写字"的下限;
+ *   真放不下时由 `.center-main` 的 `overflow-y: auto` 接管滚动, 而不是继续压正文。
+ */
+.editor-area { flex: 1; min-height: 260px; display: flex; }
 .content-textarea {
   flex: 1; resize: none; border: 1px solid var(--wf-line); border-radius: 10px; padding: 14px;
   font-size: 14px; line-height: 1.9; font-family: inherit;
@@ -1683,21 +1753,43 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   margin: 10px 0 0; border: 1px solid var(--wf-line); border-radius: 8px;
   background: var(--wf-surface); padding: 8px 12px;
 }
+/* 与引文核查/本章依据同一套高度治理: 封顶 + 块内滚动 + 不被压扁。
+   它刚从 .md-block 里搬出来, 现在和它们抢同一份预算 —— 不给上限又会是新的挤压源。 */
+.cite-box, .evidence-box, .summary-box { max-height: 40vh; overflow-y: auto; flex-shrink: 0; }
+
 .summary-box summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); }
 .summary-block { margin-top: 8px; }
 .summary-block strong { display: block; font-size: 12px; color: #5FD0B4; margin-bottom: 3px; }
 .summary-block p { margin: 0; font-size: 12.5px; line-height: 1.7; color: #C7D2E0; white-space: pre-wrap; }
 /* 引文核查块 —— 与上方"写作要点速览"同一形态, 免得两种折叠块长得不一样 */
+/**
+ * 正文下面这一排 `<details>` 与 `.md-block` **共用同一个高度预算**, 所以它们自己也得封顶 ——
+ * 否则展开一个长清单就能把正文顶到只剩一行(见 `.md-block` 那段注释里的实测三个数)。
+ *
+ * `max-height` 取 **40vh** 而不是固定 px: 视口高时多给点、矮时少给点; 配合
+ * `.md-block { min-height: 320px }` 与 `.editor-area { min-height: 260px }`,
+ * 正文框在任何 >= 700px 的视口下都有一个不会被动摇的下限。
+ * `overflow: auto` 让超出部分在块内滚动 —— 尺寸可控, 内容不丢。
+ *
+ * ⚠ 2026-09-26 这批块从 3 个变成了 4 个(「写作要点速览」从 `.md-block` **里面**搬了出来)。
+ *   搬它的理由见 template 里那段注释: 它原先在正文块内部展开, 直接抢正文的空间。
+ *   每多一个这样的块, 中栏就多一份"可以和正文抢高度"的预算 —— 加新块时请一并
+ *   确认 `.editor-area` 的地板还兜得住。
+ */
 .cite-box {
   margin: 10px 0 0; border: 1px solid var(--wf-line); border-radius: 8px;
   background: var(--wf-surface); padding: 8px 12px;
+  max-height: 40vh; overflow-y: auto; flex-shrink: 0;
 }
 .cite-box > summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); margin-bottom: 8px; }
 /* 本章依据块 —— 与引文核查同一形态; 区别只是它排在正文**上面**(顺序即语义: 先依据后动笔) */
 .evidence-box {
   margin: 0 0 10px; border: 1px solid var(--wf-line); border-radius: 8px;
   background: var(--wf-surface); padding: 8px 12px;
+  max-height: 40vh; overflow-y: auto; flex-shrink: 0;
 }
+/* 排在正文下面的依据块(数字核验) margin 口径与引文核查一致, 免得两块间距不等 */
+.after-md .evidence-box { margin: 10px 0 0; }
 .evidence-box > summary { cursor: pointer; font-size: 12.5px; color: var(--wf-muted); margin-bottom: 8px; }
 .right-rail {
   width: clamp(240px, 19vw, 400px); flex-shrink: 0; border-left: 1px solid var(--wf-line);
@@ -1750,7 +1842,21 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
   width: 100%; box-sizing: border-box; padding: 9px 12px;
   border: 1px solid var(--wf-line); border-radius: 9px; background: var(--wf-surface-2);
   color: #DCE6F2; font-size: 12.5px; line-height: 1.65; font-family: inherit;
-  max-width: 76ch;
+  /* ⚠ 2026-09-26: 原为 `max-width: 76ch`(硬编码, 12.5px 字号下约 557px)。
+     2026-09-22 那轮把中栏所有子块的裸 `ch` 上限统一迁到 `--wf-field-max`(见上方
+     `.center-main .content-textarea` 那段注释), **唯独漏了这个** —— 于是它成了全文件
+     仅存的一处。实测 1600 视口: 中栏内容宽 904px, 而它只有 557px, 右侧白空 347px。
+
+     改的时候我先照抄了同一个 `var(--wf-field-max, 120ch)`, 结果**还是不齐** ——
+     `ch` 是**用哪个元素算就用哪个元素的字号**: 正文框 14px → 120ch = 985px(不生效),
+     思考框 12.5px → 120ch = 880px(生效), 于是 904px 的中栏里它又短了 24px。
+     同一个变量在两个元素上解析出两个长度, 这本身就说明 `ch` 不适合做"同一列内多个控件
+     共用一条上限"的载体。
+
+     这一列里的对齐基准是**容器**(`.think-head` 与 `.content-textarea` 都是撑满),
+     所以这里也撑满。超宽屏的可读性上限由正文框自己那条 985px 兜住, 而思考框本来就只有
+     三行高、内容也短, 不承担长文阅读。 */
+  max-width: 100%;
   outline: none; resize: none;
 }
 .think-input:focus { border-color: #4B5E8C; }
@@ -1787,7 +1893,28 @@ onUnmounted(() => { stopPoll(); stopAiPoll(); });
 .gen-alt-note { margin: 6px 0 0; font-size: 11.5px; color: var(--wf-muted); line-height: 1.6; }
 
 /* 编辑/预览双 tab */
-.md-block { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/**
+ * ⚠ 2026-09-26: 这个 `min-height` 是**必须的**, 不是排版偏好。
+ *
+ * 中栏(`.center-main`)是 `flex-direction: column` 且高度由视口定死, 正文块下面还挂着
+ * 三四个 `<details>`(引文核查 / 本章依据 / 正文数字核验), 它们都是默认的
+ * `flex: 0 1 auto` —— **内容多高就占多高, 没有上限**。
+ *
+ * 于是空间不够时, 收缩的账全记在正文头上: `.md-block` 是 `flex: 1 1 0%`(basis 为 0)
+ * 又显式写了 `min-height: 0`(等于主动放弃了自动最小尺寸保护), 而里面的
+ * `.content-textarea` 是 `flex: 1` 且**没有任何地板** —— 一路收缩到只剩一行。
+ *
+ * 实测 1600x1000, 项目「门禁-写作舱-1790344438971」本章 39 字:
+ *   三块全展开 → 正文 **262px**; 只折叠「引文核查」→ 立刻涨到 **332px**;
+ *   再折叠「本章依据」→ **387px**。也就是说正文的可用高度**由下面那些折叠块的
+ *   展开状态决定**, 打开一个核查面板就能把正在写的正文挤掉一半。
+ *
+ * 320px 这个数(2026-09-26 从 240 提上来的): 块内固定开销 = tabs 32 + md-foot 17 +
+ * 间距, 再给 `.editor-area` 的 260px 地板留出位置。用户报过"输入框太低看着费劲",
+ * 260px(约 8 行正文) 是"能安心写字"的下限, 而**保护这个下限需要外层先有 320px**。
+ * 若将来中栏更窄, 由 `overflow-y: auto` 接管滚动, 而不是继续压正文。
+ */
+.md-block { flex: 1; min-height: 320px; display: flex; flex-direction: column; }
 .md-tabs { display: inline-flex; border: 1px solid var(--wf-line); border-radius: 9px; overflow: hidden; width: fit-content; margin-bottom: 8px; }
 .md-tab {
   padding: 6px 16px; border: 0; background: var(--wf-surface-2); color: var(--wf-muted);
