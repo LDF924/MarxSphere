@@ -117,6 +117,7 @@ import { attachSse } from "./stream-utils.js";
 import * as researchMaterials from "../services/research-materials-service.js";
 import * as researchEvidence from "../services/research-evidence-service.js";
 import * as reviewResponse from "../services/review-response-service.js";
+import * as proposalService from "../services/proposal-service.js";
 import * as researchExec from "../services/research-exec-engine.js";
 // SocialSci P0-3: 审稿任务流 + 期刊库/标准库
 import * as reviewService from "../services/review-service.js";
@@ -12096,6 +12097,114 @@ ${dataBlock}
       revisionRefs: Array.isArray(it.revisionRefs) ? (it.revisionRefs as unknown[]).map(Number) : [],
     }));
     return { ok: true, markdown: reviewResponse.buildResponseLetter(items, projectId, String(body?.title ?? "")) };
+  });
+
+  // ─── 申报与审查(批7) ───
+  // 开题报告 / 基金申报 / 伦理审查 / 预注册 —— 这四件事平台此前**后端零实现**,
+  // 站内仅有的提及全是提示文案(指向用户本机的技能包)。项目**开始之前**要交的材料,
+  // 平台一样都不出。见 proposal-service.ts 的长注释。
+
+  /** 四类文书的固定节次(前端要据此渲染"哪几节"与进度) */
+  app.get("/api/research/proposals/specs", async () => ({ specs: proposalService.PROPOSAL_SPECS }));
+
+  /**
+   * 生成一份文书。
+   *
+   * ⚠ 是**同步**接口且逐节生成(七节), 单次要一分钟以上 —— 前端必须给进度反馈
+   *   (本仓踩过"点了没反应"的坑: 同步 LLM 接口没有流式时, 用户以为按钮死了)。
+   *   不建 job 的理由: 它是个**单次产出**不是流水线, 建 job 会让"生成中断"变成
+   *   一个要恢复的状态, 而重跑一次的成本只是再等一分钟。
+   */
+  app.post("/api/research/projects/:projectId/proposals/generate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as Record<string, unknown>;
+    const owned = await pool.query(`select id, title from research_projects where id=$1 and user_id=$2`, [projectId, user.id]);
+    if (!owned.rows.length) return reply.code(404).send({ error: "项目不存在" });
+
+    /**
+     * 上下文**优先取项目里已有的东西**(研究设计节点 / 假设台账), 而不是让用户重填一遍。
+     * 填过的东西再填一次, 是这类工具最常见的浪费。
+     *
+     * ⚠ 用 `buildDesignBlock`(已有)而不是自己拼 design 节点: 它把方法 id 译成了
+     *   "选了这个方法意味着什么"的口径说明(如 ols → "不得由相关推断因果"),
+     *   而 id 原样丢给模型是个空词。同理假设台账走 `listHypotheses`。
+     */
+    const [designBlock, hyps, wb] = await Promise.all([
+      researchEvidence.buildDesignBlock(user.id, projectId).catch(() => ""),
+      researchEvidence.listHypotheses(user.id, projectId).catch(() => null),
+      chapterSkill.getWorkbenchSnapshot(user.id, projectId).catch(() => null),
+    ]);
+    const hypList = (hyps?.hypotheses ?? []) as Array<{ code?: string; text?: string; verdict?: string; evidenceRef?: string }>;
+    const evidence = hypList.length
+      ? hypList.map((h) => `${h.code ?? ""} ${h.text ?? ""}${h.verdict ? ` [${h.verdict}]` : ""}${h.evidenceRef ? ` (${h.evidenceRef})` : ""}`).join("\n")
+      : "";
+    const snap = (wb?.snapshot ?? {}) as Record<string, unknown>;
+    const inp = (snap.input ?? {}) as Record<string, unknown>;
+
+    const r = await proposalService.generateProposal({
+      kind: String(body?.kind ?? ""),
+      topic: String(body?.topic ?? snap.mergedTitle ?? inp.title ?? (owned.rows[0] as { title?: string }).title ?? ""),
+      discipline: String(body?.discipline ?? inp.researchMethod ?? ""),
+      design: String(body?.design ?? designBlock),
+      literature: String(body?.literature ?? ""),
+      evidence: String(body?.evidence ?? evidence),
+      requirements: String(body?.requirements ?? inp.requirements ?? ""),
+      model: body?.model ? String(body.model) : undefined,
+    });
+    if (!r.ok) return reply.code(400).send({ error: r.error });
+
+    /**
+     * 落库 —— 写 `proposal` 节点, 四类文稿按 kind 分键装在同一节点里。
+     * ⚠ **读改写而不是整节点覆盖**: 生成「基金申报」不该把已生成的「开题报告」冲掉。
+     *   本仓在 workbench 快照上踩过同一形状的坑(整份覆写导致别处数据消失)。
+     */
+    const cur = await researchPipeline.getNode(user.id, projectId, "proposal").catch(() => null);
+    const prev = (cur?.payload ?? {}) as Record<string, unknown>;
+    const next = { ...prev, [r.kind]: { content: r.content, title: r.title, generatedAt: new Date().toISOString() } };
+    await researchPipeline.putNode(user.id, projectId, "proposal", next, { sourceRole: "editor", note: `生成${r.title}` }).catch(() => null);
+    return r;
+  });
+
+  /** 读已生成的文书 */
+  app.get("/api/research/projects/:projectId/proposals", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const node = await researchPipeline.getNode(user.id, projectId, "proposal").catch(() => null);
+    return { proposals: (node?.payload ?? {}) as Record<string, unknown> };
+  });
+
+  /**
+   * 手改某一节后存回。
+   * ⚠ 生成物**必须可编辑** —— 这几份是用户要签字交上去的材料, "生成的不能改"等于没用。
+   */
+  app.put("/api/research/projects/:projectId/proposals/:kind", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind } = request.params as { projectId: string; kind: string };
+    const body = request.body as { content?: string };
+    if (typeof body?.content !== "string") return reply.code(400).send({ error: "缺少 content" });
+    if (!proposalService.getSpec(kind)) return reply.code(400).send({ error: `未知的文书类型: ${kind}` });
+    const cur = await researchPipeline.getNode(user.id, projectId, "proposal").catch(() => null);
+    const prev = (cur?.payload ?? {}) as Record<string, unknown>;
+    const spec = proposalService.getSpec(kind)!;
+    const next = { ...prev, [kind]: { ...(prev[kind] as object ?? {}), content: body.content, title: spec.cn, editedAt: new Date().toISOString() } };
+    const w = await researchPipeline.putNode(user.id, projectId, "proposal", next, { sourceRole: "user", note: `修改${spec.cn}` });
+    if (!w.ok) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true, version: w.version };
+  });
+
+  /** 合集导出(markdown) —— 四份已生成的拼成一份, 供一次性下载 */
+  app.get("/api/research/projects/:projectId/proposals/export", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const owned = await pool.query(`select title from research_projects where id=$1 and user_id=$2`, [projectId, user.id]);
+    if (!owned.rows.length) return reply.code(404).send({ error: "项目不存在" });
+    const node = await researchPipeline.getNode(user.id, projectId, "proposal").catch(() => null);
+    const md = proposalService.proposalsToMarkdown(
+      (node?.payload ?? {}) as Record<string, { content?: string }>,
+      String((owned.rows[0] as { title?: string }).title ?? ""));
+    if (!md) return reply.code(404).send({ error: "还没有生成过任何申报材料" });
+    return { ok: true, markdown: md };
   });
 
   /**

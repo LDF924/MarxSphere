@@ -914,6 +914,12 @@ onUnmounted(() => {
     <!-- 底部操作 -->
     <div class="wf-actions">
       <button class="btn-back" data-control="workflow:back" @click="router.push('/workflow/input')">返回修改</button>
+      <!-- 申报与审查(批7): 开题/基金/伦理/预注册 —— 这四份是**项目开始之前**要交的,
+           而框架设计正是它们的来源(研究问题/方法/样本都在这一页定)。
+           放在这里而不是底部导航: 用户在这一页定完设计, 紧接着就会想到"要写开题了"。 -->
+      <button class="btn-back" data-control="workflow:goto-proposals" @click="router.push('/workflow/proposals')">
+        申报与审查（开题/基金/伦理）
+      </button>
       <button class="btn-primary" :disabled="!canConfirm" data-control="workflow:confirm-sections" @click="confirmSections">
         确认框架设计, 进入文献与资料
       </button>

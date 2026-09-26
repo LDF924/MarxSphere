@@ -28,6 +28,10 @@ export const router = createRouter({
     // **不进进度条**：它是"定稿之后、投出去之前"的事务，不是研究流程的一步。
     // 批 6 的返修也落在这个区里（投稿相关的事不必两处找）。
     { path: "/workflow/submission", component: () => import("./views/workflow/SubmissionView.vue"), meta: { title: "投稿与要件", fixedLayout: true } },
+    // 2026-09-27 新增(批7): 申报与审查。
+    // ⚠ **不进进度条** —— 这四份材料(开题/基金/伦理/预注册)是**项目开始之前**就要交的,
+    //   与后面五步在时间上不重叠。把它们塞进任何一步都会让那一步名不副实。
+    { path: "/workflow/proposals", component: () => import("./views/workflow/ProposalsView.vue"), meta: { title: "申报与审查", fixedLayout: true } },
     // —— M6 可视化 DAG(产品线 B) ——
     { path: "/workbench/quick", component: () => import("./views/quick/QuickModeView.vue"), meta: { title: "可视化DAG编排模式", quickAgent: true } },
     // —— M3 数据分析 ——
