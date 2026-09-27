@@ -76,35 +76,75 @@ const CLICK_FAB = `(() => {
   return false;
 })()`;
 
-/** 打开视图并读助手面板内容 */
-async function read(view) {
+/**
+ * 打开视图并读助手面板内容。
+ *
+ * ## 2026-09-27 改：固定 3200+900ms → 轮询到"面板有内容"
+ *
+ * 这一套是全门禁最慢的一个（294 秒），而它**串行访问 48 个视图**，每视图固定睡 4.1 秒
+ *   （`waitForTimeout(3200)` + evaluate 里那个 `setTimeout(..., 900)`）——
+ *   48 × 4.1 ≈ 197 秒，占了它自己的三分之二、整个门禁的五分之一。
+ *
+ * 判据改成"面板出现了、且里面的 label 已经有字"，有就走。上限仍是 4 秒，
+ *   所以**最坏情况与旧行为完全一致**，只是不再无条件等满。
+ *
+ * ⚠ 三个必须留意的点（都是这一改法容易踩的）：
+ *   ① **FAB 只点一次**。反复点会把已经展开的面板又收起来 —— 用"面板在不在"当闸门。
+ *   ② `hint` 不参与就绪判据。有些视图**本来就没有**说明文案，而调用方正是要统计那种情况；
+ *      把它算进"没好"会让那些视图一直等到超时，还会把它们从统计里筛掉（假绿）。
+ *   ③ `page.goto("about:blank")` 保留 —— 它是用来清掉上一个视图的面板的，
+ *      少了它就会读到上一个视图的 label（跨视图串味）。
+ */
+const READ_PANEL = `(() => {
+  const q = (s) => document.querySelector(s);
+  if (!q('[data-assistant-panel]')) {
+    const all = [...document.querySelectorAll('button')].filter((b) => /科研助手/.test(b.textContent || ''));
+    const vis = all.filter((e) => !!(e.offsetWidth || e.offsetHeight));
+    window.__lastFab = { matched: all.length, visible: vis.length };
+    if (vis.length) vis[0].click();
+  }
+  const panelEl = q('[data-assistant-panel]');
+  let host = panelEl; while (host && getComputedStyle(host).position !== 'fixed') host = host.parentElement;
+  const panel = host && host.querySelector('[data-assistant-panel]');
+  if (!panel) return { ok: false };
+  const txt = (e) => (e && e.textContent || '').trim();
+  const box = panel.querySelector('div[class*="bg-slate-800/60"]');
+  if (!box) return { ok: false };
+  const label = txt(box).replace(/^当前在\\s*/, '');
+  if (!label) return { ok: false };
+  const ps = [...box.querySelectorAll(':scope > p')];
+  const actions = [];
+  for (const s of panel.querySelectorAll('span')) { const v = txt(s); if (v.startsWith('▶')) actions.push(v); }
+  return { ok: true, label, hint: ps.length > 1 ? txt(ps[1]) : '', actions };
+})()`;
+
+/**
+ * 读一次面板。
+ *
+ * @param {string} view
+ * @param {{needActions?: boolean}} [opts] needActions: 等到**动作列表非空**再返回。
+ *   ⚠ 这个选项是必须的，别省。面板里的 label 与动作是**两批**渲染的：
+ *   label 先有、动作随后填进来。第一版只等 label，于是 ②（主功能页可执行动作）
+ *   在 11 个页面上读到空列表 —— 实测复现（`缺: literature, paper-outline, dag-workbench…`）。
+ *   原来的写法之所以没暴露，是因为它点完 FAB 又固定等了 900ms，正好覆盖了那段填充时间。
+ *   需要动作的调用方**必须**传 `needActions`；只读 label/hint 的（①）不用，
+ *   否则没有任何动作的页面会白等到超时。
+ */
+async function read(view, opts = {}) {
   await page.goto("about:blank");
   await page.goto(`${BASE}/#${view}`, { waitUntil: "domcontentloaded", timeout: 45000 });
-  await page.waitForTimeout(3200);
-  return page.evaluate(() => {
-    // 点可见的那个(见 CLICK_FAB 注释)
-    void (() => { const all = [...document.querySelectorAll("button")].filter((b) => /科研助手/.test(b.textContent || "")); const vis = all.filter((e) => !!(e.offsetWidth || e.offsetHeight)); window.__lastFab = { matched: all.length, visible: vis.length }; if (vis.length) vis[0].click(); })();
-    return new Promise((res) => setTimeout(() => {
-      // 2026-09-15: 展开时 FAB 已隐藏(用户要求去掉重复的「收起」按钮), 不能再靠按钮文案
-      //   反查容器 —— 直接从面板本身往上找 fixed 宿主。
-      const panelEl = document.querySelector('[data-assistant-panel]');
-      let host = panelEl; while (host && getComputedStyle(host).position !== "fixed") host = host.parentElement;
-      const panel = host?.querySelector('[data-assistant-panel]');
-      if (!panel) { res({ ok: false }); return; }
-      const txt = (e) => (e?.textContent || "").trim();
-      const box = panel.querySelector('div[class*="bg-slate-800/60"]');
-      const actions = [];
-      for (const s of panel.querySelectorAll("span")) { const v = txt(s); if (v.startsWith("▶")) actions.push(v); }
-      // label 与 hint 是两个独立的 <p>: 第一个是"当前在 X"(X 在 span 里), 第二个才是说明
-      const ps = box ? [...box.querySelectorAll(":scope > p")] : [];
-      res({
-        ok: true,
-        label: (txt(box) || "").replace(/^当前在\s*/, ""),
-        hint: ps.length > 1 ? txt(ps[1]) : "",
-        actions,
-      });
-    }, 900));
-  });
+  const t0 = Date.now();
+  let last = { ok: false };
+  for (;;) {
+    const r = await page.evaluate(READ_PANEL).catch(() => null);
+    if (r && r.ok) {
+      last = r;
+      if (!opts.needActions || r.actions.length > 0) return r;
+    }
+    // 上限 4000ms ≈ 原来的 3200 + 900 —— 最坏不快于旧行为
+    if (Date.now() - t0 >= 4000) return last;
+    await page.waitForTimeout(200);
+  }
 }
 
 console.log("═══ ① 页面名 + 功能说明（全站 48 视图）═══");
@@ -124,7 +164,7 @@ t("每个视图都有功能说明", noHint === 0, noHint ? `${noHint} 个缺说�
 console.log("\n═══ ② 主功能页的“当前页可执行” ═══");
 const noAct = [];
 for (const v of WITH_ACTIONS) {
-  const r = await read(v);
+  const r = await read(v, { needActions: true });
   if (!r.ok) { noAct.push(`${v}(面板没打开)`); continue; }
   if (r.actions.length === 0) noAct.push(v);
   else console.log(`  ${v.padEnd(20)} ${r.actions.join(" | ")}`);
@@ -138,7 +178,7 @@ console.log("\n═══ ②b 禁用/隐藏的按钮不该出现在列表里 ═
   const listed = r.actions.join(" ");
   t("policy 不列出 disabled 的「检索」", r.ok && !/检索/.test(listed), `实际列出: ${listed || "(空)"}`);
   // 编排页 7 个 DAG 行各有一个「🎬 演示」→ 去重后只应出现 1 次
-  const d = await read("dag-workbench");
+  const d = await read("dag-workbench", { needActions: true });
   const demo = d.actions.filter((a) => /演示/.test(a)).length;
   t("同名动作按 id 去重(编排页 7 行只出 1 条演示)", demo === 1, `实际 ${demo} 条`);
 }

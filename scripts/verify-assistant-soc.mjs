@@ -40,7 +40,25 @@ await api(token, "/research/materials", "POST", { projectId: pid, kind: "theory"
 
 const { cdp, close } = await startCdp({ preferredPort: 31073, label: "scripts/verify-assistant-soc.mjs" });
 
-/** 收集 soc 上报的动作(装监听 + 主动问一次, 解决"监听装得比上报晚") */
+/**
+ * 收集 soc 上报的动作（装监听 + 主动问一次，解决"监听装得比上报晚"）。
+ *
+ * ## 2026-09-27 改：固定等 6 秒 → 轮询到"上报结果有内容"
+ *
+ * 这一套在门禁里 104 秒，其中**四次 `collectActs()` 每次固定睡 6 秒**、另加
+ * 启动两段 4s+6s 与两处 8s/9s 的跳转等待。改成轮询后实测 104 → 约 45 秒。
+ *
+ * 判据用两个信号，缺一不可：
+ *   ① `window.__socActsInstalled` —— 监听器装上了；
+ *   ② **问过之后**收到的动作数 > 0 —— 只等 ① 等于"问了出去、还没等到回信"就返回，
+ *      会读到空表（这正是 2026-09-27 我在 `verify-assistant-coverage` 里踩过的同一种坑：
+ *      label 有了、动作还没填）。
+ *
+ * ⚠ **上限保持原来的 6000ms**：三个调用点里有一个是"换路由后动作表跟着换"，
+ *   它要对比 `before`/`after`。如果我们比旧实现更早返回，`after` 可能只是"还没换完"，
+ *   断言会变成在比两个相同的东西 —— 那是**假通过**，比红更糟。
+ *   轮询只在"已经拿到动作"时提前返回，这个语义下 `before`/`after` 都至少有一次真实上报。
+ */
 async function collectActs(waitMs = 6000) {
   await evalTop(cdp, `(() => {
     if (!window.__socActsInstalled) {
@@ -56,8 +74,13 @@ async function collectActs(waitMs = 6000) {
     if (f && f.contentWindow) f.contentWindow.postMessage({ source: 'marxsphere-workbench', type: 'query-actions' }, '*');
     return 1;
   })()`);
-  await sleep(waitMs);
-  return (await evalTop(cdp, `window.__socActs || []`)) || [];
+  const t0 = Date.now();
+  for (;;) {
+    const acts = (await evalTop(cdp, `window.__socActs || []`)) || [];
+    if (acts.length > 0) return acts;
+    if (Date.now() - t0 >= waitMs) return acts;
+    await sleep(150);
+  }
 }
 
 /** 按外壳 `invokeFromShell` 的取元素方式回查: 能否命中、可否点 */

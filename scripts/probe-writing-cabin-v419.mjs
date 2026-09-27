@@ -99,6 +99,21 @@ try {
   //   否则后面的排序段落"看不到请求", 而顺序其实**已经变了**(实测: 顺序 ok/落库 ok/请求 DEAD,
   //   三条自相矛盾)。spy 是页内注入, 跨导航不保留。
   await spyInstall(cdp);
+  /**
+   * ⚠ 读 `before` 之前**必须等卡片渲染出来**，不能拿到就数。
+   *
+   * 工具栏（搜索/类别/批量）是**静态**的 —— 页面一渲染就在，所以旧写法"到这儿就能读到 before"
+   * 一直没暴露。但 `.mat-card` 要等素材数据回来才有，而这两者之间差着几百毫秒。
+   *
+   * 2026-09-27 实测：`openSoc` 从"固定等 15 秒"改成"就绪即走"之后，这一条开始偶发
+   * `卡片 0 → 1`：`before` 读到 0（卡片还没出来），输入关键词后卡片才渲染并被筛成 1，
+   * 于是 `after < before` 不成立。**这不是产品坏了，是断言读早了一步** ——
+   * 以前被那 15 秒顺带掩盖着，属于"靠死等掩盖的时序假设"。等一下就对了。
+   */
+  for (let i = 0; i < 30; i++) {
+    if (await evalTop(cdp, `document.querySelectorAll('.mat-card').length > 0`).catch(() => false)) break;
+    await sleep(200);
+  }
   const before = await evalTop(cdp, `document.querySelectorAll('.mat-card').length`);
   const bar = await evalTop(cdp, `(() => ({
     search: !!document.querySelector('[data-control="workflow:mat-search"]'),
