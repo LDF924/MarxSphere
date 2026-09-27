@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveBrowser } from "./lib/find-browser.mjs";
 import { resolveCdpPort } from "./lib/cdp-port.mjs";
 
@@ -194,14 +195,42 @@ async function main() {
          */
         const fs = await import("node:fs");
         const pathMod = await import("node:path");
-        const candidates = [
-          process.env.SAG_ENV_FILE,
-          pathMod.join(process.cwd(), ".env"),
-          pathMod.join(process.cwd(), "..", "..", "..", ".env"),
-        ].filter(Boolean);
-        const envFile = candidates.find((p) => fs.existsSync(p));
-        if (!envFile) throw new Error(`找不到 .env(试过: ${candidates.join(", ")})`);
-        const url = fs.readFileSync(envFile, "utf8").match(/^DATABASE_URL=(.*)$/m)[1].trim();
+        /**
+         * ⚠ 2026-09-27 再修一次: 原来那三档候选全是**相对 cwd** 的 ——
+         *   在 CI 里 cwd 是 `/home/runner/work/MarxSphere/MarxSphere`,
+         *   `../../..` 上溯出去是 `/home/runner`, 那里当然没有 `.env`
+         *   (CI 的配置是**环境变量** `DATABASE_URL`, 不落文件)。
+         *   于是 CI 上每次都打印"清理临时课题失败(需手动删)", 每跑一次在 **CI 的库**里
+         *   留一个测试课题 —— 不致命, 但那句"需手动删"在 CI 里没人能手动删。
+         *
+         * 现在按可靠性排序, 且**不再依赖 cwd**:
+         *   ① `DATABASE_URL` 环境变量直取 —— **CI 走这条**(它本来就没有 .env 文件);
+         *   ② 从**脚本自身位置**逐级上溯找 `.env`, 由近及远直到文件系统根。
+         *
+         * ⚠ 为什么用"逐级上溯"而不是写死 `../../..`: 我先写死了三级 ——
+         *   而 worktree 的深度是 `<repo>/.claude/worktrees/<name>/scripts`,
+         *   到主仓是**四级**。写死级数就是在赌目录结构, 而目录结构会变。
+         */
+        let url = String(process.env.DATABASE_URL ?? "").trim();
+        if (!url) {
+          const tried = [];
+          let dir = pathMod.dirname(fileURLToPath(import.meta.url));
+          for (let i = 0; i < 6; i++) {
+            const p = pathMod.join(dir, ".env");
+            tried.push(p);
+            if (fs.existsSync(p)) {
+              url = fs.readFileSync(p, "utf8").match(/^DATABASE_URL=(.*)$/m)?.[1]?.trim() ?? "";
+              break;
+            }
+            const up = pathMod.dirname(dir);
+            if (up === dir) break;
+            dir = up;
+          }
+          if (!url) {
+            if (process.env.SAG_ENV_FILE) tried.unshift(process.env.SAG_ENV_FILE);
+            throw new Error(`没有 DATABASE_URL 环境变量, 也没找到 .env(试过: ${tried.join(", ")})`);
+          }
+        }
         // 顺手清掉**历次残留**: 只删自己这一次留下的, 早先被跳过的会永远留在库里
         const c = new pg.Client({ connectionString: url }); await c.connect();
         const d = await c.query("delete from empirical_projects where title = $2 or (id = $1 and title = $2)",

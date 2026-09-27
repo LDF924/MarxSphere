@@ -44,7 +44,9 @@ const SUB_STATUS = new Set(["submitted", "under_review", "revision_requested", "
 export async function listSubmissions(userId: string, projectId: string) {
   if (!(await assertOwned(userId, projectId))) return null;
   const r = await pool.query(
-    `select id, journal_name, submitted_on, status, note, round, created_at
+    `select id, journal_name, submitted_on, status, note, round, created_at,
+            license, license_note, oa_choice, oa_note,
+            proof_checked, proof_notes, accepted_on
        from research_submissions where project_id=$1 order by created_at desc`,
     [projectId]);
   return {
@@ -58,6 +60,14 @@ export async function listSubmissions(userId: string, projectId: string) {
       note: String(s.note ?? ""),
       round: Number(s.round ?? 1),
       createdAt: s.created_at,
+      // ── 批9: 录用之后的出版事务 ──
+      license: String(s.license ?? ""),
+      licenseNote: String(s.license_note ?? ""),
+      oaChoice: String(s.oa_choice ?? ""),
+      oaNote: String(s.oa_note ?? ""),
+      proofChecked: s.proof_checked === true,
+      proofNotes: String(s.proof_notes ?? ""),
+      acceptedOn: s.accepted_on ? toDateStr(s.accepted_on) : "",
     })),
   };
 }
@@ -72,6 +82,9 @@ function toDateStr(v: unknown): string {
 
 export interface SubmissionInput {
   id?: string; journalName?: string; submittedOn?: string; status?: string; note?: string; round?: number;
+  // ── 批9: 录用之后的出版事务 ──
+  license?: string; licenseNote?: string; oaChoice?: string; oaNote?: string;
+  proofChecked?: boolean; proofNotes?: string; acceptedOn?: string;
 }
 
 export async function saveSubmissions(
@@ -91,17 +104,33 @@ export async function saveSubmissions(
       // 日期格式非法时存 null 而不是抛错: 用户可能正在输入(前端是逐字保存的),
       //   一个半截的 "2026-0" 不该把整次保存打回来。
       const on = /^\d{4}-\d{2}-\d{2}$/.test(String(s.submittedOn ?? "")) ? String(s.submittedOn) : null;
+      // ── 批9: 录用之后的出版事务。日期同 submittedOn 一样按格式校验, 非法存 null ——
+      //   用户可能正逐字输入, 一个半截的日期不该把整次保存打回来。
+      const acceptedOn = /^\d{4}-\d{2}-\d{2}$/.test(String(s.acceptedOn ?? "")) ? String(s.acceptedOn) : null;
+      const license = String(s.license ?? "").slice(0, 40);
+      const licenseNote = String(s.licenseNote ?? "").slice(0, 2000);
+      const oaChoice = String(s.oaChoice ?? "").slice(0, 40);
+      const oaNote = String(s.oaNote ?? "").slice(0, 2000);
+      const proofChecked = s.proofChecked === true;
+      const proofNotes = String(s.proofNotes ?? "").slice(0, 4000);
       if (s.id) {
         const upd = await client.query(
-          `update research_submissions set journal_name=$3, submitted_on=$4, status=$5, note=$6, round=$7, updated_at=now()
+          `update research_submissions
+              set journal_name=$3, submitted_on=$4, status=$5, note=$6, round=$7, updated_at=now(),
+                  license=$8, license_note=$9, oa_choice=$10, oa_note=$11,
+                  proof_checked=$12, proof_notes=$13, accepted_on=$14
             where id=$1 and project_id=$2 returning id`,
-          [s.id, projectId, journalName, on, status, note, round]);
+          [s.id, projectId, journalName, on, status, note, round,
+           license, licenseNote, oaChoice, oaNote, proofChecked, proofNotes, acceptedOn]);
         if (upd.rows.length) { keep.push(String(s.id)); continue; }
       }
       const ins = await client.query(
-        `insert into research_submissions (id, project_id, journal_name, submitted_on, status, note, round)
-         values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-        [randomUUID(), projectId, journalName, on, status, note, round]);
+        `insert into research_submissions
+           (id, project_id, journal_name, submitted_on, status, note, round,
+            license, license_note, oa_choice, oa_note, proof_checked, proof_notes, accepted_on)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
+        [randomUUID(), projectId, journalName, on, status, note, round,
+         license, licenseNote, oaChoice, oaNote, proofChecked, proofNotes, acceptedOn]);
       if (ins.rows[0]) keep.push(String(ins.rows[0].id));
     }
     // 与假设台账同一套全量保存语义: 库里多出来的删掉, 这样"界面上删了"刷新后真的没了
@@ -235,7 +264,90 @@ export async function saveReviewResponses(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ③ 粘贴的一大段 → 条目(启发式优先)
+// ③ 传播与复用: 成果转化 + 后续研究方向(批9)
+// ═══════════════════════════════════════════════════════════════
+
+export interface FollowupInput {
+  id?: string; kind?: string; title?: string; detail?: string; happenedOn?: string;
+}
+
+const FOLLOWUP_KINDS = new Set(["translation", "direction"]);
+
+/**
+ * 读取。`kind` 可过滤; 不传则两类一起给(界面要在一个区里分两组显示)。
+ *
+ * ⚠ 为什么两类共用一张表: 形状完全相同(一条短记录 + 说明 + 可选日期),
+ *   拆两张会让 CRUD 各抄一遍; 语义差别只在"已发生的转化"与"待做的方向"。
+ *   查询侧永远按 kind 分别渲染, 不需要跨 kind 的 join。
+ */
+export async function listFollowups(userId: string, projectId: string, kind?: string) {
+  if (!(await assertOwned(userId, projectId))) return null;
+  const args: unknown[] = [projectId];
+  let where = "project_id=$1";
+  if (kind && FOLLOWUP_KINDS.has(kind)) { args.push(kind); where += ` and kind=$${args.length}`; }
+  const r = await pool.query(
+    `select id, kind, title, detail, happened_on, sort_order
+       from research_followups where ${where} order by kind, sort_order, created_at`,
+    args);
+  return {
+    followups: r.rows.map((f) => ({
+      id: String(f.id),
+      kind: String(f.kind ?? "direction"),
+      title: String(f.title ?? ""),
+      detail: String(f.detail ?? ""),
+      // date 列走 toDateStr, 不走 toISOString(东八区会退一天 —— 与投稿日期同一条教训)
+      happenedOn: f.happened_on ? toDateStr(f.happened_on) : "",
+    })),
+  };
+}
+
+export async function saveFollowups(
+  userId: string, projectId: string, items: FollowupInput[]
+): Promise<{ ok: boolean; error?: string; followups?: unknown[] }> {
+  if (!(await assertOwned(userId, projectId))) return { ok: false, error: "项目不存在" };
+  const clean = items.slice(0, 200);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const keep: string[] = [];
+    for (let i = 0; i < clean.length; i++) {
+      const f = clean[i];
+      const kind = FOLLOWUP_KINDS.has(String(f.kind)) ? String(f.kind) : "direction";
+      const title = String(f.title ?? "").slice(0, 300);
+      const detail = String(f.detail ?? "").slice(0, 4000);
+      const on = /^\d{4}-\d{2}-\d{2}$/.test(String(f.happenedOn ?? "")) ? String(f.happenedOn) : null;
+      if (f.id) {
+        const upd = await client.query(
+          `update research_followups
+              set kind=$3, title=$4, detail=$5, happened_on=$6, sort_order=$7, updated_at=now()
+            where id=$1 and project_id=$2 returning id`,
+          [f.id, projectId, kind, title, detail, on, i]);
+        if (upd.rows.length) { keep.push(String(f.id)); continue; }
+      }
+      const ins = await client.query(
+        `insert into research_followups (id, project_id, kind, title, detail, happened_on, sort_order)
+         values ($1,$2,$3,$4,$5,$6,$7) returning id`,
+        [randomUUID(), projectId, kind, title, detail, on, i]);
+      if (ins.rows[0]) keep.push(String(ins.rows[0].id));
+    }
+    // 与假设台账/投稿记录同一套全量保存语义: 库里多出来的删掉, 界面上删了刷新后真的没了
+    if (keep.length) {
+      await client.query(`delete from research_followups where project_id=$1 and id <> all($2::uuid[])`, [projectId, keep]);
+    } else {
+      await client.query(`delete from research_followups where project_id=$1`, [projectId]);
+    }
+    await client.query("commit");
+    return { ok: true, ...(await listFollowups(userId, projectId)) ?? {} };
+  } catch (e) {
+    await client.query("rollback").catch(() => null);
+    return { ok: false, error: String((e as Error).message ?? e).slice(0, 200) };
+  } finally {
+    client.release();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ④ 粘贴的一大段 → 条目(启发式优先)
 // ═══════════════════════════════════════════════════════════════
 
 /**

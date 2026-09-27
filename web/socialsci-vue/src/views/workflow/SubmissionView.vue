@@ -30,6 +30,7 @@ import { DECLARATIONS, checkDeclarations, normDeclarations, type Declarations } 
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
 import ReviewResponsePanel from "./ReviewResponsePanel.vue";
+import PostAcceptancePanel from "./PostAcceptancePanel.vue";
 
 const store = useWorkflowStore();
 
@@ -170,6 +171,11 @@ onMounted(async () => {
 
       <!-- 返修区 —— 批6 落地。与声明同区: 投稿相关的事不必两处找 -->
       <ReviewResponsePanel />
+
+      <!-- 录用与传播 —— 批9 落地。顺序就是真实顺序:
+           投稿记录 → 意见返修 → 录用 → 出版事务 → 传播。
+           不新开第三个区(批6/批9 的计划都明确了这一点)。 -->
+      <PostAcceptancePanel />
     </div>
   </div>
   </WorkflowShell>

@@ -117,6 +117,7 @@ import { attachSse } from "./stream-utils.js";
 import * as researchMaterials from "../services/research-materials-service.js";
 import * as researchEvidence from "../services/research-evidence-service.js";
 import * as reviewResponse from "../services/review-response-service.js";
+import * as postAcceptance from "../services/post-acceptance.js";
 import * as proposalService from "../services/proposal-service.js";
 import * as researchExec from "../services/research-exec-engine.js";
 // SocialSci P0-3: 审稿任务流 + 期刊库/标准库
@@ -12018,6 +12019,13 @@ ${dataBlock}
         journalName: String(s.journalName ?? ""), submittedOn: String(s.submittedOn ?? ""),
         status: String(s.status ?? "submitted"), note: String(s.note ?? ""),
         round: Number(s.round) || 1,
+        // ── 批9: 录用之后的出版事务。⚠ 路由这里**必须显式透传** ——
+        //   本仓踩过"service 早就支持某列, 但路由没转发, 中间层把字段丢了"这个坑
+        //   (见上面 materials 那段注释: 结果那些列在前端看永远是空的)。
+        license: String(s.license ?? ""), licenseNote: String(s.licenseNote ?? ""),
+        oaChoice: String(s.oaChoice ?? ""), oaNote: String(s.oaNote ?? ""),
+        proofChecked: s.proofChecked === true, proofNotes: String(s.proofNotes ?? ""),
+        acceptedOn: String(s.acceptedOn ?? ""),
       }))
     );
     if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
@@ -12082,6 +12090,43 @@ ${dataBlock}
     const body = request.body as { text?: string };
     const parts = reviewResponse.splitReviewComments(String(body?.text ?? ""));
     return { ok: true, count: parts.length, parts };
+  });
+
+  // ─── 录用之后的出版事务与传播复用(批9) ───
+  // 17 环节里的第 16(录用出版)、17(传播与复用)。**不含 LLM 生成** ——
+  // 版权/OA 是标准条款的选择、校样要看到校样, 编出来都是有害的。见 post-acceptance.ts 的注释。
+
+  /** 版权许可 / 开放获取 / 校样清单的选项表(前端据此渲染, 不写死) */
+  app.get("/api/research/post-acceptance/options", async () => ({
+    licenses: postAcceptance.LICENSE_OPTIONS,
+    oa: postAcceptance.OA_OPTIONS,
+    proofChecklist: postAcceptance.PROOF_CHECKLIST,
+  }));
+
+  /** 成果转化 + 后续研究方向 */
+  app.get("/api/research/projects/:projectId/followups", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const q = request.query as { kind?: string };
+    const r = await reviewResponse.listFollowups(user.id, projectId, q?.kind);
+    if (!r) return reply.code(404).send({ error: "项目不存在" });
+    return r;
+  });
+
+  app.put("/api/research/projects/:projectId/followups", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId } = request.params as { projectId: string };
+    const body = request.body as { followups?: Array<Record<string, unknown>> };
+    const r = await reviewResponse.saveFollowups(
+      user.id, projectId,
+      (Array.isArray(body?.followups) ? body.followups : []).map((f) => ({
+        ...(f.id ? { id: String(f.id) } : {}),
+        kind: String(f.kind ?? "direction"), title: String(f.title ?? ""),
+        detail: String(f.detail ?? ""), happenedOn: String(f.happenedOn ?? ""),
+      }))
+    );
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 400).send({ error: r.error });
+    return r;
   });
 
   /** 回应信(给编辑部的逐条回复) */

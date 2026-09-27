@@ -366,6 +366,13 @@ function switchTo(id: string) {
   result.value = null;
   savedOk.value = false;
   error.value = "";
+  /**
+   * ⚠ 清掉上一次的文档选择 —— 这两项的分析结论**绑定特定文本**,
+   *   留着旧选择会让"换了一项、却没换文档"时把结论存成对错文档做的。
+   *   清空后按钮按设计禁用(`ready` 里那两条), 用户重新选一次, 代价很小。
+   */
+  docId.value = "";
+  docIds.value = [];
   void valsOf(active.value);
 }
 
@@ -496,6 +503,26 @@ const SKIP = new Set(["topic", "discipline", "target", "concept", "claim", "theo
  */
 const saving = ref(false);
 const savedOk = ref(false);
+
+/**
+ * 这次分析**作用于哪些知识库文档** —— 只有 needsDoc / needsDocs 那两项会有值。
+ *
+ * ⚠ 为什么必须记下来: 那两项的结论是**针对特定文本**的（"这篇的论证结构是这样"），
+ *   离开文档就失去意义。不记的话, 存下来的素材过几天再看就是一段**不知道在说谁**的 JSON ——
+ *   等于把"可回看"做成了"看不懂"。第一版只存结论, 就是这个下场。
+ *   非文档型能力返回空串, 它的分析对象是整篇正文/主题。
+ */
+function docScope(): string {
+  const cap = active.value;
+  if (cap.needsDoc && docId.value) {
+    return docs.value.find((d) => d.id === docId.value)?.title ?? docId.value;
+  }
+  if (cap.needsDocs && docIds.value.length) {
+    return docIds.value.map((id) => docs.value.find((d) => d.id === id)?.title ?? id).join("、");
+  }
+  return "";
+}
+
 async function saveToMaterials() {
   const cap = active.value;
   const r = result.value;
@@ -503,17 +530,19 @@ async function saveToMaterials() {
   saving.value = true;
   try {
     const body = JSON.stringify(blocks.value.map((b) => ({ [b.k]: b.v })), null, 2);
+    const scope = docScope();
     const res = await q<{ id?: string }>("/research/materials", {
       method: "POST",
       body: {
         projectId: props.projectId,
         kind: "note",
-        title: `${cap.label} · ${props.topic || "未命名"}`.slice(0, 200),
+        // 标题带上文档名 —— 素材列表里一眼能看出"这是对哪篇做的"
+        title: `${cap.label}${scope ? ` · ${scope}` : ""} · ${props.topic || "未命名"}`.slice(0, 200),
         // 标题在正文里保留一层, 因为素材卡片可能独立于本面板被看到(搜索结果/导出)
-        contentMd: `## ${cap.label}\n\n> 来自「深度分析」，分析对象：${props.topic || "（未填主题）"}\n\n\`\`\`json\n${body}\n\`\`\``,
+        contentMd: `## ${cap.label}\n\n> 来自「深度分析」，分析对象：${scope ? `知识库文档《${scope}》` : (props.topic || "（未填主题）")}\n\n\`\`\`json\n${body}\n\`\`\``,
         sourceType: "deep_analysis",
-        notes: `capability=${cap.id}`,
-        meta: { capability: cap.id, capabilityLabel: cap.label, topic: props.topic },
+        notes: `capability=${cap.id}${scope ? ` | docs=${scope}` : ""}`,
+        meta: { capability: cap.id, capabilityLabel: cap.label, topic: props.topic, ...(scope ? { docTitles: scope } : {}) },
       },
     });
     if (!res?.id) throw new Error("后端未返回素材 id");

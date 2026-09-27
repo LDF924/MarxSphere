@@ -146,10 +146,22 @@ try {
       return { 有选择器: !!sel, 选项数: sel ? sel.options.length : 0, 首项标题: sel ? (sel.options[0]?.text || '').trim().slice(0, 40) : "",
                按钮禁用: run ? !!run.disabled : null, 提示: hint.replace(/\s+/g,' ').trim().slice(0, 40) };
     })()`);
-    // 两种合法形态: 有文档→出选择器且可点; 无文档→给提示且按钮禁用(而不是发一个必然 400 的请求)
-    const okShape = st?.有选择器 ? st.选项数 > 0 && st.按钮禁用 === false
-                                : st?.按钮禁用 === true && /没有可选文档/.test(st?.提示 ?? "");
-    rec(`[${id}] 文档型参数有可用的输入形态`, okShape, JSON.stringify(st));
+    /**
+     * 两种合法形态: 有文档→出选择器且**能选**; 无文档→给提示且按钮禁用(而不是发一个必然 400 的请求)。
+     *
+     * ⚠ 2026-09-27 修一处**自相矛盾**: 这里原先是 `有选择器 ? 选项数>0 && 按钮禁用===false : ...`
+     *   —— 要求"有选择器就必须能点"。但选择器第一项是**空占位**("请选择文档"),
+     *   所以刚切过去时"有选择器但没选", 按钮**按设计就该禁用**。这条断言当时能过,
+     *   只是因为上一版换能力时**不清文档选择**(别的用例选过、残留着), 于是切过来就是选中的。
+     *   我把"换能力清选择"做对之后, 这条就开始红 —— 红的是**断言里的旧前提**, 不是产品。
+     *   现在只要求"有选择器且选项非空且选择器可用", 已选/未选都能过。
+     */
+    const okShape = st?.有选择器
+      ? st.选项数 > 0
+      : st?.按钮禁用 === true && /没有可选文档/.test(st?.提示 ?? "");
+    // 默认(未选)时必须禁用 —— 这才是"不许打出必然 400 的请求"那一半
+    const guardOk = !st?.有选择器 || st?.按钮禁用 === true;
+    rec(`[${id}] 文档型参数有可用的输入形态`, okShape && guardOk, JSON.stringify(st));
     // 列出来的必须**不是编辑器文档** —— 这两项读 source_chunks, 拿编辑器 id 会查到空
     // (实测踩过: 选择器列了 30 篇编辑器稿件, 后端一条 chunk 都查不到)
     rec(`[${id}] 文档选项带真实标题(不是空壳)`, !st?.有选择器 || (st?.首项标题 ?? "").length > 0,
@@ -287,6 +299,68 @@ try {
       return !!card.querySelector('[data-control="workflow:deep-save"]');
     })()`);
     rec("[存入素材] 没有结果时不显示存入按钮", noBtn === false, `按钮存在=${noBtn}`);
+  }
+
+  /**
+   * ⑧ 文档型能力的**文档作用域**(2026-09-27 加)。
+   *
+   * 论证结构拆解 / 互文对照 的结论是**针对特定文本**的("这篇的论证结构是这样"),
+   * 离开文档就失去意义。第一版存素材时不记文档名 —— 存下来是一段**不知道在说谁**的 JSON,
+   * 等于把"可回看"做成"看不懂"。这里验的是:
+   *   ① 切到文档型能力时**文档选择被清空**(换能力不带旧文档, 否则会把结论错记到别的文档上);
+   *   ② 选中文档后按钮解禁(说明选择真的被认);
+   *   ③ 选中文档的标题能在界面上读到 —— 存素材时用的就是它。
+   *
+   * ⚠ 不烧模型: 只验到"选择被认下"为止, 不发分析请求。
+   */
+  for (const id of ["argstruct", "intertextual"]) {
+    // 先选一个文档(两项都要), 再切走、切回来, 看选择是不是被清了
+    await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-${id}"]').click(); return 1; })()`);
+    await sleep(1200);
+    const picked = await evalTop(cdp, `(() => {
+      const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+      if (sel && sel.options.length > 1) { sel.selectedIndex = 1; sel.dispatchEvent(new Event('change', { bubbles: true })); return "picked-single"; }
+      const box = document.querySelector('.da-docitem input');
+      if (box) { box.click(); return "picked-multi"; }
+      return "no-picker";
+    })()`);
+    await sleep(600);
+    // 切到另一项再切回来
+    const other = id === "argstruct" ? "intertextual" : "argstruct";
+    await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-${other}"]').click(); return 1; })()`);
+    await sleep(700);
+    await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-${id}"]').click(); return 1; })()`);
+    await sleep(1200);
+    const cleared = await evalTop(cdp, `(() => {
+      const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+      if (sel) return sel.value === "" || sel.selectedIndex <= 0 ? "cleared" : "kept";
+      const on = document.querySelectorAll('.da-docitem.on').length;
+      return on === 0 ? "cleared" : "kept";
+    })()`);
+    rec(`[${id}] 换能力后文档选择被清空(不把结论错记到别的文档上)`,
+      cleared === "cleared", `切换前=${picked} 切换后=${cleared}`);
+
+    // 选一个/两个之后按钮应解禁 —— 证明选择真被 ready 认到
+    await evalTop(cdp, `(() => {
+      const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+      if (sel && sel.options.length > 1) { sel.selectedIndex = 1; sel.dispatchEvent(new Event('change', { bubbles: true })); return 1; }
+      const boxes = [...document.querySelectorAll('.da-docitem input')];
+      const need = ${id === "intertextual" ? 2 : 1};
+      for (let i = 0; i < Math.min(need, boxes.length); i++) boxes[i].click();
+      return 1;
+    })()`);
+    await sleep(800);
+    const enabled = await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="workflow:deep-run"]'); return b ? !b.disabled : null; })()`);
+    rec(`[${id}] 选中文档后按钮解禁(选择真被认)`, enabled === true, `按钮可用=${enabled}`);
+
+    // 存素材时写进标题的文档名, 必须能在界面上读到
+    const nameShown = await evalTop(cdp, `(() => {
+      const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+      if (sel && sel.selectedIndex > 0) return sel.options[sel.selectedIndex].text.trim();
+      const on = document.querySelector('.da-docitem.on span');
+      return on ? on.textContent.trim() : "";
+    })()`);
+    rec(`[${id}] 选中文档的标题可读(存素材时就用它)`, String(nameShown).length > 0, `读到=${JSON.stringify(String(nameShown).slice(0, 40))}`);
   }
 } catch (e) {
   console.error("探针异常:", e.message);
