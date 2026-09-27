@@ -25,14 +25,44 @@
 import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, readFileSync } from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const noBuild = process.argv.includes("--no-build");
 const PORT = Number(process.env.HTTP_PORT || 4173);
-/** 与启动器同一口径（它也有默认值），用于下面的"日志真的在写吗"自检 */
-const LOG_FILE = process.env.SAG_API_LOG || path.join(process.env.TEMP || "/tmp", "sag-api-4173.log");
+/**
+ * 日志落点 —— 必须与**启动器**同一套优先级, 否则这里的自检会查错文件。
+ *
+ * ⚠ 2026-09-27 修一处**假告警**: 这里原先只看 `SAG_API_LOG`, 而启动器自 2026-09-27 起
+ *   会读 `.env` 的 `SAG_LOG_FILE`(启动器改了, 见其注释)。于是设了 `SAG_LOG_FILE` 之后,
+ *   日志明明在写, 这里的自检却盯着 `%TEMP%\sag-api-4173.log` 报"日志没有写入"。
+ *   **假告警比不告警更糟** —— 它会训练人忽略这条提示。
+ *
+ * 优先级与启动器一致: 环境变量 SAG_LOG_FILE > .env 的 SAG_LOG_FILE > SAG_API_LOG > 默认。
+ * 这条路只跑在 node 里, 读 .env 是几行的事(不需要 .cmd 那套绕法)。
+ */
+function resolveLogFile(repoRoot) {
+  if (process.env.SAG_LOG_FILE) return process.env.SAG_LOG_FILE;
+  // 主仓 .env: 与启动器同法推导(worktree 的 .git 是文件, 指向主仓 .git)
+  let mainRoot = process.env.SAG_MAIN_ROOT || "";
+  if (!mainRoot) {
+    try {
+      const common = execFileSync("git", ["-C", repoRoot, "rev-parse", "--git-common-dir"], { encoding: "utf8" }).trim();
+      mainRoot = path.resolve(repoRoot, common, "..");
+    } catch { /* 推不出来就算了 */ }
+  }
+  for (const p of [mainRoot ? path.join(mainRoot, ".env") : "", path.join(repoRoot, ".env")].filter(Boolean)) {
+    try {
+      if (!existsSync(p)) continue;
+      const m = readFileSync(p, "utf8").match(/^[ \t]*SAG_LOG_FILE[ \t]*=[ \t]*(.*)$/m);
+      if (m) return m[1].trim().replace(/^["']|["']$/g, "");
+    } catch { /* 读不到继续 */ }
+  }
+  if (process.env.SAG_API_LOG) return process.env.SAG_API_LOG;
+  return path.join(process.env.TEMP || "/tmp", "sag-api-4173.log");
+}
+const LOG_FILE = resolveLogFile(repoRoot);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

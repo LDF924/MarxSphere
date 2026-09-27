@@ -89,7 +89,29 @@ rem Port: override to run a worktree instance alongside the main one.
 if not defined HTTP_PORT set "HTTP_PORT=4173"
 
 if not defined SAG_NODE set "SAG_NODE=node"
-if not defined SAG_API_LOG set "SAG_API_LOG=%TEMP%\sag-api-4173.log"
+rem Log file. Precedence: already-set SAG_LOG_FILE > .env's SAG_LOG_FILE > SAG_API_LOG
+rem   > the %TEMP% default.
+rem NOTE 2026-09-27: SAG_LOG_FILE used to be a DEAD variable -- .env sets it but
+rem   nothing in the repo ever read it, so changing it did nothing. Wiring it up
+rem   needed one non-obvious step: **.env does NOT reach the cmd environment**.
+rem   The launcher passes `tsx --env-file=<.env>`, which is *tsx* loading the file
+rem   into node -- a completely separate mechanism. So cmd can only see it by
+rem   reading the file itself.
+rem
+rem   Do NOT route this through `for /f ... node scripts/read-env-value.mjs SAG_LOG_FILE
+rem   "<path with = in it>"`: **cmd's for/f treats an `=` inside an argument as an
+rem   option separator** and swallows it ("filename, directory name, or volume label
+rem   syntax is incorrect", command never runs). Verified today -- that is exactly how
+rem   the first attempt at this failed. The `--env-file=<path>` form above is fine
+rem   (it is passed to node, not to for/f); only the for/f argument needs to dodge it.
+rem   So: plain findstr, no `=`, no inner quotes.
+rem   (Keep these rem lines ASCII-only -- cmd.exe parses .cmd in the OEM codepage;
+rem    UTF-8 Chinese inside a rem line mis-decodes and swallows later commands.
+rem    This file's header says so, and I still tripped over it once today.)
+if not defined SAG_LOG_FILE if exist "%SAG_ENV%" for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b /c:"SAG_LOG_FILE=" "%SAG_ENV%"`) do set "SAG_LOG_FILE=%%B"
+if not defined SAG_LOG_FILE if defined SAG_API_LOG set "SAG_LOG_FILE=%SAG_API_LOG%"
+if not defined SAG_LOG_FILE set "SAG_LOG_FILE=%TEMP%\sag-api-4173.log"
+set "SAG_API_LOG=%SAG_LOG_FILE%"
 
 if not exist "%SAG_ENV%" (
   echo [FAIL] main repo .env not found: %SAG_ENV%
@@ -102,6 +124,7 @@ echo [worktree] SAG_ROOT: %SAG_ROOT%
 echo [worktree] DATA_DIR: %DATA_DIR%
 echo [worktree] env     : %SAG_ENV%
 echo [worktree] port    : %HTTP_PORT%
+echo [worktree] log     : %SAG_LOG_FILE%
 
 set "TSX=%WT%\node_modules\tsx\dist\cli.mjs"
 if exist "%TSX%" (
