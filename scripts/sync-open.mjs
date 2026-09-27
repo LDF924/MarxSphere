@@ -33,7 +33,7 @@ const OPEN = process.env.SAG_OPEN_ROOT || path.resolve(__dirname, "..", "..", "S
 const LOG_FLAG = process.argv.indexOf("--log");
 const LOG_FILE = LOG_FLAG > -1 ? process.argv[LOG_FLAG + 1] : process.env.SAG_SYNC_LOG || "";
 /** 本次运行的账 —— 各处只填事实, 最后**恰好写一次**(见 finish) */
-const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, commit: "", pushed: false };
+const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0, commit: "", pushed: false };
 /**
  * 收尾: 写日志 + 按原语义退出。
  *
@@ -56,6 +56,7 @@ function writeLog(code, note) {
     run.commit ? `提交=${run.commit}` : "提交=无",
     run.pushed ? "push=ok" : (NO_PUSH ? "push=跳过" : "push=未执行"),
     `残留=${run.ghosts}`,
+    `排除残留=${run.excludedStale}`,
     `${secs}s`,
   ];
   if (note) parts.push(note);
@@ -204,6 +205,28 @@ try {
 } catch { /* open 仓无 git / 读不到 → 跳过检测 */ }
 const ghosts = openTracked.filter((rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)));
 run.ghosts = ghosts.length;
+
+/**
+ * 第二类残留: **主仓还在, 但被 EXCLUDE_FILE 挡住了**。
+ *
+ * 由来(2026-09-27): 上面那条只查 `!existsSync(main/rel)`, 于是漏掉这一种 ——
+ *   文件在 main 里**好端端地存在**, 只是 `excluded()` 把它挡在同步之外。结果:
+ *   它既不会被更新, 也不会被报成残留, 只在 open 仓里**冻结成一个旧版本**。
+ *
+ *   实测就是这 4 个: `run-eval-one-by-one.bat/.ps1`、`start-web.cmd`、`start_sag.bat`
+ *   —— open 里躺着 8 月 18 日的副本, 而 main 早已改过; 直到 2026-09-27 新加的
+ *   `shell-script-encoding` 门禁在 CI 上把它们指出来, 才发现这回事。
+ *   (那三个旧副本里正好还留着中文注释 —— 门禁报的是真事。)
+ *
+ * 判据与上面的 ghosts 不同, 所以单独一组: 主仓存在 + 在同步范围内 + 被排除 + open 仍跟踪。
+ * **同样只报不删** —— 排除是**有意的**(逆向材料、本地脚本), 该不该从公开仓清掉得人来定。
+ */
+const excludedStale = openTracked.filter((rel) =>
+  inSyncScope(rel) &&
+  existsSync(path.join(MAIN, rel)) &&
+  excluded(rel, statSync(path.join(MAIN, rel)).isDirectory())
+);
+run.excludedStale = excludedStale.length;
 // 有残留时用独立退出码, 让外部脚本/CI 能感知(原来无论如何都返回 0, 警告只打在
 // stdout —— 不盯着终端就等于静默, 2026-09-12 讨论确认这是真实风险)。
 // 2 = "同步成功但有残留待人工清理", 与 1 = "同步失败" 区分; 同步本身仍照常完成。
@@ -219,11 +242,34 @@ if (ghosts.length) {
   console.log(`  → 该提示同时写入 open 仓的提交信息, 供事后 git log 追溯。`);
 }
 
+/**
+ * 第二类残留的报告 —— ⚠ 它**不改退出码**。
+ *
+ * 为什么不并入上面那段: 上面那类是"main 已删"(基本可以断定是孤儿, 该报错催人清);
+ *   这一类是"有意排除但仍被 open 跟踪"—— 排除本身正当, 只是那份副本会**冻结**。
+ *   要不要从公开仓清掉, 得看内容(逆向材料必须清, 本地工具脚本无所谓), 不是脚本能定的。
+ *   所以只提示, 不参与退出码 —— 否则每次同步都会因为这类"待定"而返回非 0, 那个信号很快就没人看了。
+ */
+if (excludedStale.length) {
+  console.log(`\n[sync-open] ℹ️ 另有 ${excludedStale.length} 个文件「main 还在、但被排除表挡住」(sync 永不更新它们):`);
+  for (const g of excludedStale) console.log(`  · ${g}`);
+  console.log(`  它们在 open 仓里会**冻结在旧版本** —— 该不该清掉请人工判断:`);
+  console.log(`    cd ${OPEN} && git rm -- ${excludedStale.slice(0, 3).map((g) => JSON.stringify(g)).join(" ")}${excludedStale.length > 3 ? " …" : ""}`);
+  console.log(`  (2026-09-27 实测: 这类副本在 open 仓里躺了 40 天没被发现, 直到新加的脚本编码门禁在 CI 上报出来。)\n`);
+}
+
 // 留痕: 把残留写进提交信息, 这样即使没人盯终端, git log 里也查得到
-const GHOST_NOTE = ghosts.length
-  ? "\n\n[sync-open 残留提示] open 仓有 " + ghosts.length + " 个文件在 main 已删但仍被跟踪, 需人工清理:\n"
-    + ghosts.slice(0, 10).map((g) => "  - " + g).join("\n")
-    + (ghosts.length > 10 ? "\n  … 等 " + ghosts.length + " 个" : "")
+const GHOST_NOTE = (ghosts.length || excludedStale.length)
+  ? "\n\n[sync-open 残留提示] open 仓有需人工确认的文件:\n"
+    + (ghosts.length
+      ? "  ① main 已删但仍被跟踪(" + ghosts.length + " 个)——多半是孤儿:\n"
+        + ghosts.slice(0, 10).map((g) => "    - " + g).join("\n")
+        + (ghosts.length > 10 ? "\n    … 等 " + ghosts.length + " 个" : "")
+      : "")
+    + (excludedStale.length
+      ? "\n  ② main 还在、但被排除表挡住(sync 永不更新)(" + excludedStale.length + " 个):\n"
+        + excludedStale.slice(0, 10).map((g) => "    - " + g).join("\n")
+      : "")
   : "";
 
 if (DRY) { console.log("[sync-open] --dry-run: 未复制"); finish(ghosts.length ? GHOST_EXIT : 0, "dry-run"); }
