@@ -6,8 +6,87 @@ on:
   pull_request:
 
 jobs:
+
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: sag_lite
+          POSTGRES_USER: sag_lite
+          POSTGRES_PASSWORD: sag_lite_pass
+        ports:
+          - 5540:5432
+        options: >-
+          --health-cmd "pg_isready -U sag_lite -d sag_lite"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # ⚠ 必须是 22, 不能是 20。2026-09-23 定位: CI 从 9-11 起连续红了 13 天,
+          #   其中一条根因就是这里 —— `pdfjs-dist@6`(9-15 引入) 的 engines 写着
+          #   `node >=22.13.0 || >=24`, 它内部用了 `Promise.withResolvers()`,
+          #   而那是 Node 22 才有的 API。在 Node 20 上表现为:
+          #     TypeError: Promise.withResolvers is not a function
+          #   版本号要与 package.json 的 engines 以及本地保持一致(本地实测 v24 通过)。
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build vendor packages (pdf2obsidian dist is gitignored, pnpm workspace)
+        run: |
+          cd vendor/pdf2obsidian
+          corepack enable
+          pnpm install --no-frozen-lockfile
+          pnpm -r --filter "./packages/**" build
+      - name: Typecheck (backend + frontend)
+        run: npm run typecheck
+      - name: Setup Python (v399 integration tests deps)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install python deps
+        # ⚠ 这份清单要能覆盖 **CI 真跑到的每一条 python 路径**, 否则失败会以别种面貌出现。
+        #   2026-09-23 系统排查(CI 连续红了 13 天)把每一处挖出来对了一遍:
+        #     · statsmodels      — scripts/empirical_runner.py 的 ologit 分支
+        #                          (`from statsmodels.miscmodels.ordinal_model import OrderedModel`)。
+        #                          少了它 → ImportError 被外层 except 吞掉 → tables 为空 →
+        #                          用例挂在 `expected 0 to be greater than 0` —— **长得像断言失败**。
+        #     · openpyxl         — scripts/xlsx2csv.py。少了它 → /api/files/upload 对 .xlsx
+        #                          返回 400「xlsx 解析失败」→ 统计台的上传整条链断掉。
+        #     · python-docx      — scripts/empirical_table_docx.py 与 review_annotations.py
+        #                          (`from docx import Document`)。少了它 → /paper-outline/export
+        #                          抛 Python traceback / 502 → 编辑器导出 Word 与导入 Word 双双失败。
+        #     · matplotlib       — scripts/jupyter_runner.py 与 viz_runner.py(绘图)。
+        #   本地之所以全过: .env 的 EMPIRICAL_PYTHON 指向一个装了全套的 venv —— **那只对本机成立**,
+        #   CI 用的是 setup-python 的干净解释器。**改这里的清单时, 请对着上面的脚本再核一遍。**
+        run: pip install pandas scipy requests numpy statsmodels openpyxl python-docx matplotlib
+      - name: Unit tests (154)
+        env:
+          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
+          # 外部学术 API(OpenAlex/Unpaywall/Crossref)在 CI runner 共享 IP 上不可靠 → 跳过 [network] 用例
+          # 网络用例已在本地真实网络验证(23/23)
+          SKIP_NETWORK_TESTS: "1"
+        run: npm test
+      - name: Frontend build (React 外壳 + Vue 子应用)
+        run: |
+          npx vite build
+          # Vue 子应用必须单独构建, 产物落 web/dist/soc —— 根 vite build 不含它。
+          # 少了这步, 外壳里那 5 个 FusionPanel 的 iframe 会指向不存在的 /soc/index.html,
+          # 下面的 UI 门禁(fusion-tabs)必然失败。
+          npm run build:socialsci-vue
+
+  ui-gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -47,9 +126,6 @@ jobs:
           pnpm install --no-frozen-lockfile
           pnpm -r --filter "./packages/**" build
 
-      - name: Typecheck (backend + frontend)
-        run: npm run typecheck
-
       - name: Setup Python (v399 integration tests deps)
         uses: actions/setup-python@v5
         with:
@@ -70,14 +146,6 @@ jobs:
         #   本地之所以全过: .env 的 EMPIRICAL_PYTHON 指向一个装了全套的 venv —— **那只对本机成立**,
         #   CI 用的是 setup-python 的干净解释器。**改这里的清单时, 请对着上面的脚本再核一遍。**
         run: pip install pandas scipy requests numpy statsmodels openpyxl python-docx matplotlib
-
-      - name: Unit tests (154)
-        env:
-          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
-          # 外部学术 API(OpenAlex/Unpaywall/Crossref)在 CI runner 共享 IP 上不可靠 → 跳过 [network] 用例
-          # 网络用例已在本地真实网络验证(23/23)
-          SKIP_NETWORK_TESTS: "1"
-        run: npm test
 
       - name: Frontend build (React 外壳 + Vue 子应用)
         run: |
@@ -131,7 +199,7 @@ jobs:
           name: server-log
           path: /tmp/server-fail.log
 
-      - name: UI 视图门禁 (真浏览器)
+      - name: UI 视图门禁 (真浏览器) — 分片 ${{ matrix.shard }}
         env:
           DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
           HTTP_PORT: 4173
@@ -170,15 +238,17 @@ jobs:
           #   实测: 前一版就这么写, 失败时 annotation 里只有 GitHub 自己那句
           #   "Process completed with exit code 1", 我想补的那两条一条都没出现。
           set +e
-          npm run verify:ui 2>&1 | tee /tmp/verify-ui.log
+          npm run verify:ui -- --shard=${{ matrix.shard }} 2>&1 | tee /tmp/verify-ui.log
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" -ne 0 ]; then
             # 尽量把**失败原因**塞进 annotation(匿名可读, 不用下载任何东西)。
             # ⚠ grep 必须覆盖 `FAIL` —— 环境哨兵的失败行就是 `FAIL  <中文名> — <详情>`,
             #   不含 ❌; 只 grep ❌ 会把"哨兵拦下了"这种最可能的失败整段漏掉。
-            echo "::error title=UI 门禁失败::$(grep -E 'FAIL|❌|失败:|套通过|套全部通过|项异常' /tmp/verify-ui.log | tail -10 | tr '\n' '~' | cut -c1-6000)"
-            echo "::error title=逐套结论::$(grep -E '^(✅|❌) ' /tmp/verify-ui.log | tail -30 | tr '\n' '~' | cut -c1-6000)"
+            # ⚠⚠ 标题里必须带**分片号**。5 个分片同时可能红, 而 annotation 是按 job 出的 ——
+            #   不带分片号的话, 五个 red 标题一模一样, 排查时先要花时间对哪条属于哪片。
+            echo "::error title=UI 门禁失败 [${{ matrix.shard }}]::$(grep -E 'FAIL|❌|失败:|套通过|套全部通过|项异常' /tmp/verify-ui.log | tail -10 | tr '\n' '~' | cut -c1-6000)"
+            echo "::error title=逐套结论 [${{ matrix.shard }}]::$(grep -E '^(✅|❌) ' /tmp/verify-ui.log | tail -30 | tr '\n' '~' | cut -c1-6000)"
           fi
           exit $rc
         shell: bash
@@ -188,6 +258,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: verify-ui-log
+          name: verify-ui-log-${{ matrix.shard }}
           path: /tmp/verify-ui.log
           if-no-files-found: ignore

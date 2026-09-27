@@ -78,15 +78,32 @@ export async function startCdp({ preferredPort, label, tmpPrefix = "edge-cdp", w
       if (r.exceptionDetails) return "JSERR:" + String(r.exceptionDetails.exception?.description ?? "").slice(0, 200);
       return r.result?.value;
     };
+    /**
+     * 删临时 profile 目录 —— **必须是"退避重试 + 永不抛"**。
+     *
+     * ⚠ 2026-09-27（门禁改并发后）实测：原来是一次 `setTimeout(…, 800)` 后直接 `rmSync`。
+     *   并发下机器更忙、Chromium 退出更慢，800ms 时它的文件句柄还没释放，删除抛
+     *   `EPERM, Permission denied: …\\?\C:\…\Temp\edge-<suite>XXXX`。
+     *   而 `setTimeout` 里的异常**没人接**，直接冒成进程级未捕获异常 ⇒ **整个套件崩掉**
+     *   （症状是那一套的断言成片 FAIL，看着像产品坏了，其实是清理失败）。
+     *
+     * 判据改成"删得掉就删，删不掉再等一会儿"：最多退避 5 次（0.8/1.6/2.4/3.2/4.0s）。
+     * 仍然删不掉就**放弃** —— 它落在系统 temp 里，不影响结论，不该因为一个清理动作
+     * 把整套断言判死。这与 `cleanup-run-projects` 那条"收尾动作失败不影响结论"同一条纪律。
+     */
+    const cleanup = (attempt = 1) => {
+      try { rmSync(userData, { recursive: true, force: true }); }
+      catch { if (attempt < 5) setTimeout(() => cleanup(attempt + 1), 800 * attempt); }
+    };
     const close = () => {
       try { ws?.close(); } catch { /* ignore */ }
-      proc.kill();
-      setTimeout(() => rmSync(userData, { recursive: true, force: true }), 800);
+      try { proc.kill(); } catch { /* ignore */ }
+      cleanup();
     };
     return { cdp, ev, close, port };
   } catch (e) {
     try { proc.kill(); } catch { /* ignore */ }
-    rmSync(userData, { recursive: true, force: true });
+    try { rmSync(userData, { recursive: true, force: true }); } catch { /* 同 close: 清理失败不该盖住真正的错 */ }
     throw e;
   }
 }

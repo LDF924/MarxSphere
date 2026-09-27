@@ -149,6 +149,18 @@ export async function openSoc(cdp, base, route, token, pid, wait = 7000, suffix 
   const r = await cdp("Page.addScriptToEvaluateOnNewDocument", { source: boot }).catch(() => null);
   const injectedId = r?.identifier ?? null;
 
+  /**
+   * 超时上限 = 调用方给的 `wait` 的 **2 倍**。
+   *
+   * ⚠ 这一条是并发改动的**必要配套**，不加就会把"慢"变成"错"：
+   *   旧实现是 `navigate + 等 wait` → 写 token → `reload + 再等 wait`，总共 **2×wait** 才断言；
+   *   新实现只有一次加载，如果超时上限还用 `wait`，**总耐心只剩一半**。
+   *   机器一忙（门禁并发跑时）就会比旧实现更早放弃，然后断言拿着半渲染的页面报错 ——
+   *   看着像产品坏了，其实是等待预算被我砍了一半。
+   *
+   * 上限**不花钱**：健康时 873ms 就轮询到并返回，这个值只在被压慢时才会碰到。
+   */
+  const capMs = Math.max(wait * 2, 8000);
   try {
     await cdp("Page.navigate", { url: `${base}${suffix}#${route}` });
 
@@ -172,11 +184,20 @@ export async function openSoc(cdp, base, route, token, pid, wait = 7000, suffix 
     if (fresh !== true) await cdp("Page.reload");
 
     const t0 = Date.now();
+    let timedOut = false;
     for (;;) {
       const ok = await evalTop(cdp, READY).catch(() => false);
       if (ok === true) break;
-      if (Date.now() - t0 >= wait) break;      // 超时就用当前状态继续 —— 断言自己会报"页面不对"
+      if (Date.now() - t0 >= capMs) { timedOut = true; break; }
       await sleep(120);
+    }
+    /**
+     * 超时**要说出来**。静默超时会让"页面没准备好"伪装成"断言失败" ——
+     * 而两者的排查方向完全不同（等得不够 vs 功能坏了）。
+     * 打一行到 stderr（gate 会把子进程 stderr 一起收进日志）。
+     */
+    if (timedOut) {
+      process.stderr.write(`\n  [openSoc] 等就绪超时(${capMs}ms)：${route} —— 这一跳之后断言可能都在看半渲染的页面\n`);
     }
   } finally {
     /**

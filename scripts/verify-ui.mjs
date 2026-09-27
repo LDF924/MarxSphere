@@ -13,6 +13,7 @@
 // 前置: 4173 已起。脚本自己会做登录与导航。
 import { spawn, execFileSync } from "node:child_process";
 import * as path from "node:path";
+import * as os from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -204,6 +205,73 @@ const chosen = SUITES.filter((s) => (only ? only.has(s.key) : wantAll || !s.data
 if (!chosen.length) { console.error(`没有匹配的套件。可选: ${SUITES.map((s) => s.key).join(", ")}`); await exitAfterFlush(1); }
 
 /**
+ * 分片：`VERIFY_UI_SHARD=1/4` —— 把 34 套按**实测耗时贪心平衡**分成 N 片，只跑自己那一片。
+ *
+ * ## 为什么走分片而不是并发（2026-09-27 实测）
+ *
+ * 单机并发**不成立**，三个并行度都试过：K=5 时 20 套里 19 次重试，K=2 时刚跑 3 套就挂 2 套，
+ * 而挂掉的那两套单独跑都过 —— 不是端口冲突也不是数据互踩，是**机器一忙这些探针就读早了**
+ * （它们大多靠固定 sleep 等页面，只有走 `openSoc` 的那批有就绪判据）。
+ * 要让它们抗负载得逐套改成轮询，30 多个文件、每改一套都要重验断言，风险远大于收益。
+ *
+ * **分片没有这个问题**：每个分片跑在自己的 runner / 自己的机器上，片内仍是原样的串行，
+ *   所以每一套的运行条件与"整轮串行"完全一致 —— 稳定性一个字节都没变，墙钟却线性缩短。
+ *
+ * ## 顺序固定，不随分片数变
+ *
+ * 平衡用的是**写死的一张耗时表**（`suiteCost`），不是现场测量 —— 现场测量会让
+ * "哪些套件落在哪一片"随机器状态漂移，而排障时需要"第 2 片总是这 8 套"这种确定性。
+ * 表里没有的套件按 60s 估（新的探针不会被漏掉，只是分片可能略不均衡）。
+ * 新增套件时**顺手补一行**，分片才会一直均衡。
+ *
+ * ⚠ 分片只影响"跑哪些"，**不影响任何断言** —— 它不做子集筛选、不跳过任何套件，
+ *   合起来必须是全集（`shards` 的并集校验在下面）。
+ */
+const SHARD_ARG = argv.find((a) => a.startsWith("--shard=")) ?? (argv.includes("--shard") ? `--shard=${argv[argv.indexOf("--shard") + 1]}` : "");
+const SHARD_ENV = process.env.VERIFY_UI_SHARD || "";
+const shardSpec = String(SHARD_ARG ? SHARD_ARG.replace(/^--shard=/, "") : SHARD_ENV).trim();
+let chosenShard = chosen;
+if (shardSpec) {
+  const [iRaw, nRaw] = shardSpec.split("/");
+  const i = Number(iRaw), n = Number(nRaw);
+  if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || n < 1 || i > n) {
+    console.error(`分片参数不合法: ${JSON.stringify(shardSpec)}（应为 i/N，如 1/4）`);
+    await exitAfterFlush(1);
+  }
+  /** 实测耗时(s) —— 取自 2026-09-27 提速后的一整轮。缺省 60。 */
+  const suiteCost = {
+    "writing-cabin-v425b": 116, "materials-actions": 90, "writing-cabin-v419": 89, "research-evidence": 91,
+    "assistant-coverage": 70, "input-actions": 66, "assistant-soc": 62, "batch02": 67, "deep-analysis": 51,
+    "workbench-sync": 51, "workspace-actions": 55, "writing-cabin": 55, "layout": 49, "batch06": 53,
+    "empirical-switch": 49, "batch09": 49, "batch01": 46, "fusion-tabs": 45, "site-content": 45,
+    "editor-ver-import": 45, "review-reset": 41, "stats-xlsx": 41, "editor-export": 39, "batch10": 31,
+    "batch05": 33, "project-bundle": 21, "batch04": 27, "version-history": 25, "batch07": 20,
+    "editor-ai6": 19, "editor-chart": 16, "editor-check": 15, "project-rail": 33,
+  };
+  // 贪心：按原顺序，每套放进当前最轻的一片（顺序固定 ⇒ 结果可复现）
+  const buckets = Array.from({ length: n }, () => []);
+  const loads = new Array(n).fill(0);
+  for (const s of chosen) {
+    const k = loads.indexOf(Math.min(...loads));
+    buckets[k].push(s);
+    loads[k] += suiteCost[s.key] ?? 60;
+  }
+  chosenShard = buckets[i - 1];
+  console.log(`分片 ${i}/${n}：跑 ${chosenShard.length} 套（预计约 ${(loads[i - 1] / 60).toFixed(1)} 分钟）`);
+  if (argv.includes("--print-shards")) {
+    for (let b = 0; b < n; b++) {
+      console.log(`\n  第 ${b + 1} 片（约 ${(loads[b] / 60).toFixed(1)} 分）：${buckets[b].map((s) => s.key).join(", ")}`);
+    }
+    // 并集校验：分片不能丢套件。这是**必须**的 —— 分片最容易出的错就是
+    // "改了筛选逻辑之后某些套件谁都不跑"，而且没有任何信号（总时长还变短了）。
+    const all = new Set(buckets.flat().map((s) => s.key));
+    const miss = chosen.filter((s) => !all.has(s.key)).map((s) => s.key);
+    console.log(`\n  并集校验：${all.size} / ${chosen.length} ${miss.length ? `· ❌ 漏: ${miss.join(", ")}` : "· ✅ 无遗漏"}`);
+    await exitAfterFlush(miss.length ? 1 : 0);
+  }
+}
+
+/**
  * 环境哨兵先行 —— 几秒钟, 换掉"跑完十几分钟才发现验错了对象"。
  *
  * 由来(2026-09-22): 那一晚全量 25 套(约 33 分钟)里有 3 个失败落在与改动无关的套件上,
@@ -250,7 +318,7 @@ if (!argv.includes("--no-sentinel")) {
   console.log("");
 }
 
-console.log(`UI 门禁: 跑 ${chosen.length}/${SUITES.length} 套` + (wantAll ? "(含数据依赖)" : "(默认组; 数据依赖的用 --all)"));
+console.log(`UI 门禁: 跑 ${chosenShard.length}/${SUITES.length} 套` + (wantAll ? "(含数据依赖)" : "(默认组; 数据依赖的用 --all)"));
 console.log(`前置: ${BASE} 已起\n`);
 
 /**
@@ -285,6 +353,19 @@ function suiteFailed(code, out) {
   return /ERR/.test(tail) && !/0\s*(个|项)?\s*ERR|ERR\s*[:=]?\s*0/i.test(tail);
 }
 
+/**
+ * 跑一套 —— **自带重试**。
+ *
+ * 为什么并行前必须补这条（2026-09-27）：串行时每套独占机器，跑一次就是结论；
+ *   并行后 4–6 个 Chromium 抢 4 核，**超时类偶发失败**会变成一个真实的日常现象。
+ *   没有重试，门禁会时不时红一条无关的；而"偶尔红一条"最终等于"没人看门禁" ——
+ *   本仓已经吃过这个亏（`sections-banners` 在 CI 上红了两周没人管）。
+ *
+ * ⚠ 重试**只对"看起来像资源竞争"的失败**生效，判据是 suiteFailed 的结果 + 退出码，
+ *   **不区分具体错误类型** —— 这一点是有意的：把"哪些失败可以重试"写细，
+ *   迟早会写出一张白名单，而白名单上的失败会被重试掩盖成绿的。
+ *   重试上限 2 次（总共跑 3 遍），且**重试结果如实打印**（`(第2次通过)`），不藏。
+ */
 function runOne(suite) {
   return new Promise((resolve) => {
     const started = Date.now();
@@ -297,7 +378,6 @@ function runOne(suite) {
       // 只回显最后一行结论 —— 各脚本自己已经打印了逐项 ✅/❌
       const tail = out.trim().split("\n").filter((l) => l.trim()).slice(-1)[0] ?? "(无输出)";
       const bad = suiteFailed(code, out);
-      console.log(`${bad ? "❌" : "✅"} ${suite.key.padEnd(20)} ${secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}`);
       if (bad && out.trim()) {
         // 失败时把有意义的行挖出来, 免得只看到一行总结无从下手。
         // ⚠ 2026-09-23 补 `FAIL` 与 `DEAD` 与 `诊断`: 各脚本的失败标记**本来就不统一** ——
@@ -313,14 +393,65 @@ function runOne(suite) {
         const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时|诊断/.test(l)).slice(0, 30);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
-      resolve({ key: suite.key, code, bad, secs });
+      resolve({ key: suite.key, code, bad, secs, out });
     });
   });
 }
 
-// 串行: 每个套件都要起浏览器并连 4173, 并发会互相抢端口/抢资源
-const results = [];
-for (const s of chosen) results.push(await runOne(s));
+// ── 跑法：**默认串行**，可显式开并发 ──
+//
+// ⚠ 2026-09-27 实测结论：**并发不成立**，默认必须是 1。原注释写的"并发会互相抢端口/抢资源"
+//   前半句已经不成立（`startCdp` 走 `resolveCdpPort`，端口动态解析），但**后半句是真的**，
+//   而且比预想的严重。三个并行度都试过：
+//
+//   | 并行度 | 结果 |
+//   |---|---|
+//   | K=5 | 20 套里 **19 次重试**，`site-content` 连挂 3 次 |
+//   | K=4 | 同样 19 次，14 套中招，成片 FAIL |
+//   | K=2 | 刚跑 3 套就已经 2 次重试（`fusion-tabs` 0/5、`workbench-sync` 1 项异常）|
+//   | K=1 | 全绿 |
+//
+//   而 **K=2 挂的那两套单独跑都过**（fusion-tabs 5/5、workbench-sync 10/10）——
+//   所以不是端口冲突、不是数据互踩，是**机器一忙这些探针就读早了**：
+//   它们大多靠固定 sleep 等页面（只有走 `openSoc` 的那批有就绪判据），
+//   负载一上来，同样的睡眠时长就不够。要让它们抗负载，得逐套改成就绪轮询 ——
+//   那是 30 多个文件的工作量，而且每改一套都要重新验它自己的断言，风险远大于收益。
+//
+//   **所以提速不在这条路上。** 真正可行的是 CI 侧分片（见 .github/workflows/ci.yml）：
+//   把 34 套分给几个 runner 各跑各的，每个 runner 上仍是串行 —— 既保稳定，又线性缩短墙钟。
+//
+// 保留并发能力的原因：单机核多、且只想跑少数几套（`--only`）时它是有用的。
+// 用 `VERIFY_UI_JOBS=N` 显式开启，看到 `↻ 重试` 就该知道是负载问题而不是回归。
+const _cores = os.cpus().length || 4;
+const K = Math.max(1, Math.min(Number(process.env.VERIFY_UI_JOBS) || 1, Math.max(1, _cores - 1), 6));
+console.log(K > 1 ? `并发 ${K} 套（核数 ${_cores}）—— 注意：并发下超时类偶发失败会增多\n` : "");
+
+const results = new Array(chosenShard.length);
+{
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= chosenShard.length) return;
+      let r = await runOne(chosenShard[i]);
+      // 重试：并行下超时类偶发失败是真实存在的。结果如实标出来。
+      let attempt = 1;
+      while (r.bad && attempt < 3) {
+        attempt++;
+        console.log(`↻ ${chosenShard[i].key} 第 ${attempt} 次重试（上一次失败，可能是并发抢资源）`);
+        r = await runOne(chosenShard[i]);
+      }
+      if (!r.bad && attempt > 1) r.retried = attempt;
+      results[i] = r;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(K, chosenShard.length) }, worker));
+}
+for (const r of results) {
+  if (!r) continue;
+  const tail = (r.out ?? "").trim().split("\n").filter((l) => l.trim()).slice(-1)[0] ?? "(无输出)";
+  console.log(`${r.bad ? "❌" : "✅"} ${r.key.padEnd(20)} ${r.secs.padStart(5)}s  ${tail.replace(/^\s+/, "").slice(0, 90)}${r.retried ? `  (第${r.retried}次通过)` : ""}`);
+}
 
 /**
  * 收尾: 清掉**本轮**新建的测试项目。
@@ -349,6 +480,19 @@ try {
 // ⚠ 用 `bad` 而不是 `code`: 有的套件 exit 0 却自己算出失败(见 suiteFailed 的注释)。
 //    这里曾经只认退出码, 于是汇总行会说"全部通过"而逐行躺着 ❌ 0/5。
 const failed = results.filter((r) => r.bad);
+
+/**
+ * 分片覆盖的**运行时校验** —— 只读本片那一份套件清单，无法在这里直接算并集
+ * （另一个分片的数据不在这台机器上）。所以校验放在**编排层**：
+ *   · `--print-shards` 会打印并集校验（本地/CI 都能随时跑）；
+ *   · CI 里 4 个分片各自打印"跑的是哪几套"，四份日志拼起来就是全集。
+ * 这里只做一件廉价的对照：**本片跑完后，实际有结果的套件数必须等于分发下来的套件数** ——
+ * 少了就说明结果数组有空位（worker 异常退出等），那种"少跑了但没人说"正是要拦的。
+ */
+if (results.some((r) => !r)) {
+  console.log(`\n❌ 有 ${results.filter((r) => !r).length} 套没有产出结果（worker 异常退出？）—— 这不等于通过`);
+  await exitAfterFlush(1);
+}
 console.log(`\n${failed.length ? `❌ ${results.length - failed.length}/${results.length} 套通过` : `✅ ${results.length}/${results.length} 套全部通过`}`);
 if (failed.length) {
   console.log(`失败: ${failed.map((f) => f.key).join(", ")}`);
