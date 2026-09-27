@@ -1,12 +1,18 @@
 <script setup lang="ts">
 /**
- * ProposalsView(申报与审查) — 开题报告 / 基金申报 / 伦理审查 / 预注册。
+ * ProposalsView(申报与审查) — 项目**开始前**要交的文书 + 项目**进行中/结束时**要交的检查表。
  *
  * ## 为什么单开一页
  *
- * 这四份材料是**项目开始之前**就要交的, 与写作舱后面五步(选题→框架→实施→资料→写作→定稿)
- * 在时间上**不重叠** —— 塞进任何一步都会让那一步名不副实。而它们又都属于同一个场景:
- * "把研究方案写成能交上去的文书"。
+ * 开题 / 基金 / 伦理 / 预注册这四份材料是**项目开始之前**就要交的, 与写作舱后面
+ * 五步(选题→框架→实施→资料→写作→定稿)在时间上**不重叠** —— 塞进任何一步都会让那一步名不副实。
+ * 而它们又都属于同一个场景: "把研究方案写成能交上去的文书"。
+ *
+ * ⚠ 2026-09-27 扩了这页的含义: 加上**中期检查与结项验收**后, 这页不再是"项目开始前"专用,
+ *   而是"**向管理机构交材料**"这件事的落点 —— 开题/基金/伦理/预注册在项目前,
+ *   中期检查在项目中, 结项验收在项目后。三者的形态还恰好互补:
+ *   前四份是**生成**(平台按固定节次写), 后两份是**填表**(用户上传自己的检查表, 平台只搬数据)。
+ *   为什么后者不能也做成生成, 见 CheckupPanel.vue 开头那段 —— 一句话: 平台的表平台写不了。
  *
  * ## 为什么上下文由后端自己取, 本页只传 kind
  *
@@ -25,6 +31,7 @@ import { useWorkflowStore } from "./stores/workflow";
 import { toast } from "@/shared/ui";
 import WorkflowShell from "./WorkflowShell.vue";
 import PhaseProgressBar from "./PhaseProgressBar.vue";
+import CheckupPanel from "./CheckupPanel.vue";
 
 interface Spec { key: string; cn: string; audience: string; sections: Array<{ title: string; spec: string }> }
 interface Doc { content?: string; title?: string; generatedAt?: string; editedAt?: string }
@@ -123,8 +130,10 @@ onMounted(async () => { await store.loadProject().catch(() => null); await load(
       <header class="wf-head">
         <h1 class="wf-h1">申报与审查</h1>
         <p class="wf-sub">
-          研究开始前要交的材料：开题报告 / 基金申报 / 伦理审查 / 预注册。
-          自动带上项目里已填的**研究设计**与**假设台账** —— 不用重填一遍。
+          向管理机构交的材料：<b>开题报告 / 基金申报 / 伦理审查 / 预注册</b>（项目开始前）+
+          <b>中期检查 / 结项验收</b>（项目中与项目后）。
+          前四份平台按固定节次生成，自动带上项目里已填的**研究设计**与**假设台账**；
+          后两份是**填表** —— 上传你自己那份检查表，平台只把项目里已有的数据搬进去，填不了的不编。
         </p>
       </header>
       <PhaseProgressBar />
@@ -186,6 +195,9 @@ onMounted(async () => { await store.loadProject().catch(() => null); await load(
             </div>
           </section>
         </template>
+
+        <!-- 中期检查 / 结项验收 —— 与上面四份的形态相反: 那四份是"生成", 这两份是"填表" -->
+        <CheckupPanel v-if="pid" />
       </div>
     </div>
   </WorkflowShell>

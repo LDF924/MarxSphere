@@ -119,6 +119,7 @@ import * as researchEvidence from "../services/research-evidence-service.js";
 import * as reviewResponse from "../services/review-response-service.js";
 import * as postAcceptance from "../services/post-acceptance.js";
 import * as proposalService from "../services/proposal-service.js";
+import * as checkupService from "../services/checkup-service.js";
 import * as researchExec from "../services/research-exec-engine.js";
 // SocialSci P0-3: 审稿任务流 + 期刊库/标准库
 import * as reviewService from "../services/review-service.js";
@@ -12142,6 +12143,94 @@ ${dataBlock}
       revisionRefs: Array.isArray(it.revisionRefs) ? (it.revisionRefs as unknown[]).map(Number) : [],
     }));
     return { ok: true, markdown: reviewResponse.buildResponseLetter(items, projectId, String(body?.title ?? "")) };
+  });
+
+  // ─── 中期检查 / 结项验收(2026-09-27) ───
+  // 17 环节里此前被明确排除的两项。**不含 LLM 生成** —— 形态是
+  // 「上传检查表 → 逐项对着填 → 缺失项明确留空」, 见 checkup-service.ts 开头的长注释。
+  //
+  // ⚠ auto 项的取值与三分类是**每次读取时现算**的(不存快照), 因为存快照必然漂移,
+  //   而"检查表里写着 12 章、实际有 15 章"是会被受理方当场抓出来的。
+
+  /** 读到一份; 没有就返回空文档(空态是正常状态, 不是 404) */
+  app.get("/api/research/projects/:projectId/checkup/:kind", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind } = request.params as { projectId: string; kind: string };
+    if (!checkupService.CHECKUP_KINDS.includes(kind as never)) {
+      return reply.code(400).send({ error: `未知的检查类型: ${kind}（应为 midterm / final）` });
+    }
+    const doc = await checkupService.getCheckup(user.id, projectId, kind as never);
+    if (!doc) return reply.code(404).send({ error: "项目不存在" });
+    return { doc };
+  });
+
+  /**
+   * 上传/粘贴一份检查表 → 拆条 → 三分类 → 落库。**替换而非追加**(同一项目同一类只留一份)。
+   * 前端把文件解析成文本后走这条(文件解析用既有的 /api/files/extract-text, 不另造)。
+   */
+  app.put("/api/research/projects/:projectId/checkup/:kind", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind } = request.params as { projectId: string; kind: string };
+    if (!checkupService.CHECKUP_KINDS.includes(kind as never)) {
+      return reply.code(400).send({ error: `未知的检查类型: ${kind}（应为 midterm / final）` });
+    }
+    const body = request.body as { text?: string; sourceName?: string };
+    const r = await checkupService.putCheckup(user.id, projectId, kind as never, String(body?.text ?? ""), String(body?.sourceName ?? ""));
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error });
+    return r;
+  });
+
+  /** 改一项的填写内容 —— 打 edited 标记，之后重算不再覆盖用户改的值 */
+  app.patch("/api/research/projects/:projectId/checkup/:kind/items/:seq", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind, seq } = request.params as { projectId: string; kind: string; seq: string };
+    if (!checkupService.CHECKUP_KINDS.includes(kind as never)) {
+      return reply.code(400).send({ error: `未知的检查类型: ${kind}` });
+    }
+    const body = request.body as { value?: string };
+    const r = await checkupService.setItemValue(user.id, projectId, kind as never, Number(seq), String(body?.value ?? ""));
+    if (!r.ok) return reply.code(r.error === "项目不存在" ? 404 : 422).send({ error: r.error });
+    return r;
+  });
+
+  /**
+   * 导出 —— 一条路由出两种格式。
+   *
+   * `md`  : Markdown（含每个 auto 项的来源标注 + platform_missing 的集中清单）
+   * `docx`: `{ nodes, paperTitle }` —— **交回前端走既有的 `/paper-outline/export`**。
+   *         为什么不在这里直接出 docx: 那条路要 python-docx 子进程与一整套版式参数
+   *         （字体/字号/行距/页边距/参考文献块），在这里再写一遍必然与它漂移。
+   *         但节点的**拼装**在后端（`exportCheckupDocxNodes`），前端只做转发 ——
+   *         两条导出路径必须同源，否则会出现"复制出来有来源标注、Word 里没有"。
+   */
+  app.get("/api/research/projects/:projectId/checkup/:kind/export", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind } = request.params as { projectId: string; kind: string };
+    if (!checkupService.CHECKUP_KINDS.includes(kind as never)) {
+      return reply.code(400).send({ error: `未知的检查类型: ${kind}` });
+    }
+    const doc = await checkupService.getCheckup(user.id, projectId, kind as never);
+    if (!doc) return reply.code(404).send({ error: "项目不存在" });
+    if (!doc.items.length) return reply.code(422).send({ error: "还没有这份检查表，请先上传" });
+    const proj = await pool.query(`select title from research_projects where id=$1 and user_id=$2`, [projectId, user.id]);
+    const title = String(proj.rows[0]?.title ?? "");
+    const fmt = String((request.query as { format?: string })?.format ?? "md");
+    if (fmt === "docx") {
+      return { ok: true, paperTitle: `${title} · ${checkupService.CHECKUP_CN[doc.kind]}`, nodes: checkupService.exportCheckupDocxNodes(doc, title) };
+    }
+    return { ok: true, markdown: checkupService.exportCheckupMarkdown(doc, title) };
+  });
+
+  /** 删掉整份（重新上传前的清空，或存错了） */
+  app.delete("/api/research/projects/:projectId/checkup/:kind", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { projectId, kind } = request.params as { projectId: string; kind: string };
+    if (!checkupService.CHECKUP_KINDS.includes(kind as never)) {
+      return reply.code(400).send({ error: `未知的检查类型: ${kind}` });
+    }
+    const r = await checkupService.deleteCheckup(user.id, projectId, kind as never);
+    if (!r.ok) return reply.code(404).send({ error: "项目不存在" });
+    return { ok: true };
   });
 
   // ─── 申报与审查(批7) ───

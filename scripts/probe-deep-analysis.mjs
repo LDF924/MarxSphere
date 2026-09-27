@@ -314,16 +314,37 @@ try {
    * ⚠ 不烧模型: 只验到"选择被认下"为止, 不发分析请求。
    */
   for (const id of ["argstruct", "intertextual"]) {
-    // 先选一个文档(两项都要), 再切走、切回来, 看选择是不是被清了
     await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-${id}"]').click(); return 1; })()`);
-    await sleep(1200);
-    const picked = await evalTop(cdp, `(() => {
+    await sleep(1500);
+
+    /**
+     * ⚠ **先看有没有得选**, 没有就跳过并明说 —— 不能默默不跑。
+     *
+     * 2026-09-27(CI): 这一段在 CI 上红了 4 条(`按钮可用=false` / `读到=""`)。
+     * 根因是 **CI 的库是空的**: 文档选择器只有"请选择文档"一个空占位,
+     * 下面的 `sel.selectedIndex = 1` 落空, 于是"选中文档后解禁"永远等不到。
+     * 本地全绿是因为本机有 30 篇语料 —— 典型的"本地有数据、CI 没有"。
+     *
+     * 这一段**只在有文档时才有意义**, 所以判空跳过是正确切法, 与 §④ 的
+     * `没有可选文档` 分支同源。但**必须打印出来**: 静默跳过会让人以为"验过了"。
+     */
+    const pickable = await evalTop(cdp, `(() => {
       const sel = document.querySelector('[data-control="workflow:deep-doc"]');
-      if (sel && sel.options.length > 1) { sel.selectedIndex = 1; sel.dispatchEvent(new Event('change', { bubbles: true })); return "picked-single"; }
-      const box = document.querySelector('.da-docitem input');
-      if (box) { box.click(); return "picked-multi"; }
-      return "no-picker";
+      if (sel) return sel.options.length > 1 ? "single" : "";
+      return document.querySelectorAll('.da-docitem input').length ? "multi" : "";
     })()`);
+    if (!pickable) {
+      console.log(`  skip  [${id}] 库里没有可选的语料文档 —— 选择相关断言跳过(§④ 已验过空态: 给提示且禁用)`);
+      continue;
+    }
+
+    // 先选一个文档(两项都要), 再切走、切回来, 看选择是不是被清了
+    const picked = pickable === "single"
+      ? await evalTop(cdp, `(() => {
+          const sel = document.querySelector('[data-control="workflow:deep-doc"]');
+          sel.selectedIndex = 1; sel.dispatchEvent(new Event('change', { bubbles: true })); return "picked-single";
+        })()`)
+      : await evalTop(cdp, `(() => { document.querySelector('.da-docitem input').click(); return "picked-multi"; })()`);
     await sleep(600);
     // 切到另一项再切回来
     const other = id === "argstruct" ? "intertextual" : "argstruct";
