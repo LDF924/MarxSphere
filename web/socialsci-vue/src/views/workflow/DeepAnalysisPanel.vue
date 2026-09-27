@@ -41,7 +41,15 @@ const props = defineProps<{
   claim: string;
   /** 章节标题列表(用作"现实案例/命题"的默认值 —— 比空表单好填得多) */
   sectionTitles: string[];
+  /**
+   * 研究项目 id —— **存入素材库**要用。
+   *
+   * 可选: 没传时"存入素材"按钮不出现(而不是存到一个不知道是哪儿的项目上)。
+   * 本面板挂在合稿页, 那里一定有 projectId; 留成可选是为了别的调用点不必强行拼一个。
+   */
+  projectId?: string;
 }>();
+const emit = defineEmits<{ (e: "saved", payload: { title: string }): void }>();
 
 type Field = {
   key: string;
@@ -194,8 +202,10 @@ const CAPS: Cap[] = [
   //       实测四条各自的文案是「知识库中未检索到该…相关文本/文献」——
   //       用户看到的是**具体原因**, 而不是"分析完了没结论"。
   //
-  // ⚠ 全部 15 条**都不落库**(算完就丢) —— 这是后端既有语义, 不是本面板的取舍。
-  //   要留下得另调 POST /api/research/materials, 本批不做(计划里写的是"先接通、落库另议")。
+  // ⚠ **后端不落库**(算完就丢) —— 这是这些接口的既有语义。
+  //   2026-09-27 补了落库: 面板加「存入素材库」按钮(见 saveToMaterials), 由**前端**显式调用
+  //   POST /api/research/materials 落成一条 `note` 素材。为什么不改后端: 那 15 条是**通用能力**,
+  //   别的调用方(画布节点/Agent 工具)可能只想要结果不想留痕 —— 落库该由**用的人**决定。
   // ══════════════════════════════════════════════════════════════
 
   // ── 学术研究(5 条) ──
@@ -354,6 +364,7 @@ function valsOf(cap: Cap): Record<string, string> {
 function switchTo(id: string) {
   activeId.value = id;
   result.value = null;
+  savedOk.value = false;
   error.value = "";
   void valsOf(active.value);
 }
@@ -429,6 +440,7 @@ async function run() {
   running.value = true;
   error.value = "";
   result.value = null;
+  savedOk.value = false;
   try {
     const v = valsOf(cap);
     const base = cap.body ? cap.body(v) : { topic: props.topic, text: props.text, ...v };
@@ -457,10 +469,63 @@ async function run() {
 /**
  * 结果字段渲染: 跳过路由信息与纯技术字段, 其余原样铺开。
  *
+/**
+ * 结果字段渲染: 跳过路由信息与纯技术字段, 其余原样铺开。
+ *
  * 显式给出 computed 的泛型 —— 两个 return 分支类型不一致时(空数组的字面量 vs Object.entries
  * 的元组) TS 会推断成联合类型, 模板里 `b.k` / `b.v` 就取不到。
  */
 const SKIP = new Set(["topic", "discipline", "target", "concept", "claim", "theory", "rules"]);
+
+/**
+ * 把这批能力的结论**存进素材库**。
+ *
+ * 由来(2026-09-27): 这 26 条能力此前**全是"算完就丢"** —— 后端不落库, 前端也只显示在面板里。
+ *   用户花一分钟等一次 LLM, 翻页就没了。而它们的结论(学派脉络/研究空白/反方视角/
+ *   论证断裂度…)恰恰是后面写正文时要反复回看的东西。
+ *
+ * 落成 `note` 而不是新建 kind:
+ *   `POST /api/research/materials` 的 kind 是**七种白名单**(note/citation/data_result/
+ *   figure/file/theory/table), 不在表里会被**静默降级成 note**(本仓踩过: 传 literature
+ *   被写成 note 而没有任何报错)。所以这里**主动选 note**, 而不是塞一个"更贴切"的字符串
+ *   然后指望它被接受 —— 那只会得到一条 kind 看着对、实际是 note 的记录。
+ *   来源的区分靠 `sourceType`(自由文本)与 `meta`, 不靠 kind。
+ *
+ * ⚠ `sectionIds` 不传: 这一批能力的输入是**整篇正文**或主题, 不针对某一章;
+ *   硬挂一章会让"素材按章过滤"把这条显到不该出现的章节里。
+ */
+const saving = ref(false);
+const savedOk = ref(false);
+async function saveToMaterials() {
+  const cap = active.value;
+  const r = result.value;
+  if (!props.projectId || !r || saving.value) return;
+  saving.value = true;
+  try {
+    const body = JSON.stringify(blocks.value.map((b) => ({ [b.k]: b.v })), null, 2);
+    const res = await q<{ id?: string }>("/research/materials", {
+      method: "POST",
+      body: {
+        projectId: props.projectId,
+        kind: "note",
+        title: `${cap.label} · ${props.topic || "未命名"}`.slice(0, 200),
+        // 标题在正文里保留一层, 因为素材卡片可能独立于本面板被看到(搜索结果/导出)
+        contentMd: `## ${cap.label}\n\n> 来自「深度分析」，分析对象：${props.topic || "（未填主题）"}\n\n\`\`\`json\n${body}\n\`\`\``,
+        sourceType: "deep_analysis",
+        notes: `capability=${cap.id}`,
+        meta: { capability: cap.id, capabilityLabel: cap.label, topic: props.topic },
+      },
+    });
+    if (!res?.id) throw new Error("后端未返回素材 id");
+    savedOk.value = true;
+    toast("已存入素材库（资料页 · 笔记）", "success");
+    emit("saved", { title: cap.label });
+  } catch (e) {
+    toast(`存入失败: ${(e as Error).message}`, "error");
+  } finally {
+    saving.value = false;
+  }
+}
 const blocks = computed<Array<{ k: string; v: unknown }>>(() => {
   const r = result.value;
   if (!r) return [];
@@ -562,6 +627,17 @@ function isObjList(v: unknown): boolean {
         <template v-if="result">
           <!-- 后端主动说"查不到"时原样显示 —— 这不是失败, 但也不是"分析完了没结论" -->
           <p v-if="typeof result.error === 'string'" class="da-soft">{{ result.error }}</p>
+
+          <!-- 存入素材库 —— 这一批能力后端**不落库**(算完就丢), 用户翻页就没了。
+               只在真有内容、且调用方给了 projectId 时出现(没有项目就没有可存的地方)。 -->
+          <div v-if="props.projectId && blocks.length" class="da-saverow">
+            <button
+              class="da-save" :disabled="saving || savedOk"
+              data-control="workflow:deep-save"
+              @click="saveToMaterials"
+            >{{ savedOk ? "已存入素材库" : (saving ? "存入中…" : "存入素材库") }}</button>
+            <span class="da-hint">存到「文献与资料 · 笔记」，之后写正文时可反复回看。</span>
+          </div>
           <div v-for="b in blocks" :key="b.k" class="da-block">
             <h4 class="da-block-title">{{ b.k }}</h4>
             <!-- 对象数组: 每条一张小卡, 保留键名 -->
@@ -637,6 +713,9 @@ function isObjList(v: unknown): boolean {
 .da-soft { margin: 0 0 12px; padding: 9px 12px; border-radius: var(--wf-r-sm);
   background: var(--wf-raised); border: 1px solid var(--wf-line-strong); color: var(--wf-text-2); font-size: var(--wf-f-sm); line-height: 1.7; }
 .da-result { min-height: 180px; }
+.da-saverow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.da-save { font-size: 12.5px; padding: 4px 12px; cursor: pointer; border-radius: var(--wf-r-pill); border: 1px solid var(--wf-accent, #6FBF8B); background: var(--wf-bg); color: var(--wf-accent, #6FBF8B); }
+.da-save:disabled { opacity: .55; cursor: default; }
 .da-block { margin-bottom: 16px; }
 .da-block-title {
   margin: 0 0 7px; font-size: var(--wf-f-sm); font-weight: 600; color: var(--wf-muted);

@@ -371,7 +371,25 @@ async function main() {
       check("实证台-绑定真落库", bind?.ok === true, JSON.stringify(bind).slice(0, 120));
       const b2 = await apiCall("GET", `/research/projects/${pid}/empirical-binding`, token);
       check("实证台-绑定可回读", b2?.empiricalProjectId === empId, `读回 ${b2?.empiricalProjectId}`);
-      const runs = await apiCall("GET", `/research/projects/${pid}/empirical-runs`, token);
+      /**
+       * ⚠ **轮询等待落库, 不能查一次就断言** —— 2026-09-27 实测定位。
+       *
+       * `POST /empirical/run` 完成后, `pipeline_runs` 那一行是由一个**后台跟踪器**
+       * (`empirical-service.trackRunToPipeline`) 写的: 它自己每 1.5s 轮询任务状态,
+       * 发现 done 才 insert。而本探针一看到 `st.result` 就往下走 ——
+       * **两个轮询周期错开**, 于是查列表时那一行还没写。
+       *
+       * 这是**探针的竞态, 不是产品缺陷**: 实测诊断串给的是
+       * `runs=0 … · 任务状态=done` —— 任务明明跑完了, 只是落库还没到。
+       * 之前连红三次都被读成"绑定坏了", 就是因为没有这句诊断。
+       *
+       * 等 10 次 × 1.5s = 15s, 覆盖跟踪器的一个完整轮询周期有余。
+       */
+      let runs = await apiCall("GET", `/research/projects/${pid}/empirical-runs`, token);
+      for (let i = 0; i < 10 && !(runs?.runs ?? []).length; i++) {
+        await sleep(1500);
+        runs = await apiCall("GET", `/research/projects/${pid}/empirical-runs`, token);
+      }
       // 诊断串带上任务终态 —— 这一条红了 96 小时才被读懂, 就是因为只有 `runs=0`:
       //   "任务 error" 与 "任务 done 但没落库" 是两回事, 前者查环境、后者查代码。
       check("实证台-绑定后列出该课题的运行", (runs?.runs ?? []).length > 0,

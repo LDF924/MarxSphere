@@ -1424,6 +1424,7 @@ onMounted(async () => {
         :topic="store.mergedTitle || store.title || store.input.title"
         :claim="store.project?.logicFlow || store.mergedAbstract || ''"
         :section-titles="(store.sections ?? []).map((s) => s.title).filter(Boolean)"
+        :project-id="store.taskId"
       />
 
       <!-- 修订轮 -->

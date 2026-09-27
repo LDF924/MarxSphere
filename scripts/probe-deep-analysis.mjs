@@ -251,7 +251,12 @@ try {
 
     const enabled = await evalTop(cdp, `(() => { const b = document.querySelector('[data-control="workflow:deep-run"]'); return b ? !b.disabled : null; })()`);
     if (enabled !== true) {
-      rec(`[${id}] 默认参数可点(必填已预填)`, false, `按钮禁用=${enabled}`);
+      /**
+       * ⚠ 变量 `enabled` 是 **`!disabled`**, 所以文案必须写「按钮可用=」。
+       *   第一版写成了「按钮禁用=${enabled}」—— **反的**。后果不是报错, 是**把人指错方向**:
+       *   实测过一次打印 `按钮禁用=true` 而那一项其实是可用的, 看日志的人会去查"为什么禁用了"。
+       */
+      rec(`[${id}] 默认参数可点(必填已预填)`, false, `按钮可用=${enabled}`);
       continue;
     }
     await evalTop(cdp, `(() => { document.querySelector('[data-control="workflow:deep-run"]').click(); return 1; })()`);
@@ -264,6 +269,24 @@ try {
     rec(`[${id}] 打到对的端点且必填字段齐全`,
       !!hit && !!body && missing.length === 0,
       hit ? `${hit.url} 缺=${JSON.stringify(missing)}` : `没发请求(按钮禁用或未命中) spy=[${(spy ?? []).map((r) => r.url).join(",")}]`);
+  }
+
+  /**
+   * ⑦ 落库(2026-09-27 加) —— 这一批能力后端**不落库**, 面板给了「存入素材库」按钮。
+   *
+   * 前面的断言全是"拦请求 + abort", 优点是不烧模型, 缺点也正在此: **它验不到存进去没有**。
+   * 落库这条必须走真请求 —— 但要真出结果就得先跑一次 LLM。所以做法是:
+   * **人工种一条结果进面板的 data 层**(不现实) 或 **真跑一次**(烧模型) 二选一。
+   * 这里选第三条: **直接验那个按钮的行为契约** ——
+   *   按钮不在结果为空时出现; 出现时点了会打 /research/materials 且 kind=note。
+   *   前半段现在就能验(结果为空), 后半段归 PROBE_LLM。
+   */
+  {
+    const noBtn = await evalTop(cdp, `(() => {
+      const card = document.querySelector('[data-control="workflow:deep-analysis"]');
+      return !!card.querySelector('[data-control="workflow:deep-save"]');
+    })()`);
+    rec("[存入素材] 没有结果时不显示存入按钮", noBtn === false, `按钮存在=${noBtn}`);
   }
 } catch (e) {
   console.error("探针异常:", e.message);
