@@ -1,31 +1,41 @@
-' run-script-hidden.vbs — 通用静默执行 bash 脚本（无窗口）
-' 用法: wscript.exe run-script-hidden.vbs "C:\path\script.sh" [arg1] [arg2] ...
-' - bash 用 -lc (login shell) 加载完整 PATH（计划任务环境 PATH 不完整）
-' - ws.Run 参数 0 = 隐藏窗口
+' run-script-hidden.vbs -- run a bash script silently (no window).
+' Usage: wscript.exe run-script-hidden.vbs "C:\path\script.sh" [arg1] [arg2] ...
+' - bash is invoked with -lc (login shell) so the full PATH is loaded
+'   (the PATH in a scheduled-task environment is incomplete).
+' - ws.Run arg 0 = hidden window.
 '
-' V415(2026-09-13): bash 原来写死 D:\Git\bin\bash.exe —— 换机器必挂。
-'   改为依次探测: SAG_BASH 环境变量 → PATH 上的 bash → 常见 Git for Windows 安装位置。
-'   都找不到时弹一个可见的错误框(静默脚本最怕的就是"什么都没发生")。
+' V415(2026-09-13): bash used to be hardcoded to D:\Git\bin\bash.exe -- that
+'   breaks on any other machine. Now it probes, in order: the SAG_BASH env var,
+'   bash on PATH, then the usual Git for Windows install locations.
+'   If none is found it shows a VISIBLE error box (the worst failure mode for a
+'   silent script is "nothing happened and nothing said why").
+'
+' NOTE: keep this file ASCII-only. VBScript reads the file in the ANSI codepage,
+'   so UTF-8 Chinese here decodes to mojibake -- the MsgBox text below used to be
+'   Chinese and popped up garbled.
 Set ws = CreateObject("Wscript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 q = Chr(34)
-' 把 Windows 反斜杠路径转成 bash 正斜杠
+' Convert a Windows backslash path to bash forward slashes
 script = Replace(WScript.Arguments(0), "\", "/")
 args = ""
 For i = 1 To WScript.Arguments.Count - 1
   args = args & " " & WScript.Arguments(i)
 Next
 
-' ── 找 bash ──
+' --- locate bash ---
 bash = ""
 If Len(ws.ExpandEnvironmentStrings("%SAG_BASH%")) > 0 And ws.ExpandEnvironmentStrings("%SAG_BASH%") <> "%SAG_BASH%" Then
   If fso.FileExists(ws.ExpandEnvironmentStrings("%SAG_BASH%")) Then bash = ws.ExpandEnvironmentStrings("%SAG_BASH%")
 End If
 If bash = "" Then
-  ' PATH 上的 bash: **不要用 ws.Exec("cmd /c where bash")** —— WshShell.Exec 会弹一个控制台窗口。
-  ' 本脚本由计划任务每 5~30 分钟拉起一次(进程看门狗/入库看门狗/WAL 同步), 每个周期闪一下,
-  ' 用户看到的就是"命令行莫名其妙闪几次"。改为遍历 PATH 目录 + FileExists: 不启进程, 无窗口。
-  ' (2026-09-13: 这个坑是我加探测时引入的 —— 改前脚本只有 ws.Run 隐藏启动。)
+  ' bash on PATH: do NOT use ws.Exec("cmd /c where bash") -- WshShell.Exec pops a
+  ' console window. This script is launched by a scheduled task every 5-30 min
+  ' (process watchdog / ingest watchdog / WAL sync), so it would flash a console
+  ' every cycle and the user would just see "why do command windows keep flashing".
+  ' Walking the PATH dirs with FileExists starts no process at all, so no window.
+  ' (2026-09-13: that flashing was introduced by me when I added this probe --
+  '  before it, the script only ever used the hidden ws.Run.)
   For Each d In Split(ws.ExpandEnvironmentStrings("%PATH%"), ";")
     d = Trim(d)
     If Len(d) > 0 Then
@@ -40,8 +50,9 @@ If bash = "" Then
   Next
 End If
 If bash = "" Then
-  ' 常见 Git for Windows 安装位置(含 PATH 里只有 git 没有 bash 的情况;
-  ' 本机实测 bash 在 D:\Git\usr\bin, 而 D:\Git\bin\bash.exe 并不存在)
+  ' Usual Git for Windows install locations (covers the case where PATH has git
+  ' but not bash; measured on this machine, bash lives in D:\Git\usr\bin while
+  ' D:\Git\bin\bash.exe does not exist).
   For Each c In Array( _
       ws.ExpandEnvironmentStrings("%ProgramFiles%\Git\bin\bash.exe"), _
       ws.ExpandEnvironmentStrings("%ProgramFiles(x86)%\Git\bin\bash.exe"), _
@@ -57,8 +68,9 @@ If bash = "" Then
 End If
 
 If bash = "" Then
-  MsgBox "找不到 bash.exe，无法执行 " & script & vbCrLf & vbCrLf & _
-         "请设置环境变量 SAG_BASH 指向 bash.exe（Git for Windows 通常在 C:\Program Files\Git\bin\bash.exe）。", 16, "SAG 启动失败"
+  MsgBox "bash.exe not found, cannot run " & script & vbCrLf & vbCrLf & _
+         "Set the SAG_BASH environment variable to point at bash.exe " & _
+         "(Git for Windows usually installs it at C:\Program Files\Git\bin\bash.exe).", 16, "SAG failed to start"
   WScript.Quit 1
 End If
 

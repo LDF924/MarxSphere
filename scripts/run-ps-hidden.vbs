@@ -1,8 +1,12 @@
-' run-ps-hidden.vbs — 通用静默执行 PowerShell 脚本（无窗口）
-' 用法: wscript.exe run-ps-hidden.vbs "C:\path\script.ps1" [arg1] [arg2] ...
-' - 与 run-script-hidden.vbs 对称：那个跑 bash，这个跑 PowerShell
-' - ws.Run 参数 0 = 隐藏窗口，False = 不等待
-' - -ExecutionPolicy Bypass 保证在受限策略下也能跑
+' run-ps-hidden.vbs -- run a PowerShell script silently (no window).
+' Usage: wscript.exe run-ps-hidden.vbs "C:\path\script.ps1" [arg1] [arg2] ...
+' - The counterpart of run-script-hidden.vbs: that one runs bash, this one runs
+'   PowerShell.
+' - ws.Run arg 0 = hidden window, False = do not wait.
+' - -ExecutionPolicy Bypass so it still runs under a restricted policy.
+'
+' NOTE: keep this file ASCII-only. VBScript reads the file in the ANSI codepage,
+'   so UTF-8 Chinese here decodes to mojibake.
 Set ws = CreateObject("Wscript.Shell")
 q = Chr(34)
 script = WScript.Arguments(0)

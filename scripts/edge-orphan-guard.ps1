@@ -1,24 +1,34 @@
-# edge-orphan-guard.ps1 — 回收孤儿 / 长期挂起的 headless Edge
+# edge-orphan-guard.ps1 -- reclaim orphaned / long-idle headless Edge processes.
 #
-# 为什么要有它(血泪教训, 第二次):
-#   2026-09-08 socialsci 深采遗留 headless Edge, 白烧 20 小时 CPU。
-#     事后写了清理脚本 —— 但它只认
-#     edge-probe-profile, 且靠人记得手动跑, 所以没拦住下一次。
-#   2026-09-10 11:19 又冒出 --user-data-dir=...\Temp\edge-smoke-cdp 的
-#     headless Edge, 父进程(33532)死后仍存活 32 小时,
-#     GPU 子进程累计烧 178 分钟 CPU。→ 本次改为无人值守定时守卫。
+# Why this exists (a hard-learned lesson, the second time):
+#   2026-09-08  a socialsci deep-scrape left a headless Edge behind; it burned
+#     20 hours of CPU. A cleanup script was written afterwards -- but it only
+#     matched `edge-probe-profile`, and it depended on someone remembering to
+#     run it by hand, so it did not stop the next occurrence.
+#   2026-09-10 11:19  another headless Edge appeared with
+#     --user-data-dir=...\Temp\edge-smoke-cdp; it survived 32 hours after its
+#     parent (pid 33532) died, and its GPU children burned 178 minutes of CPU.
+#     -> That is why this is now an unattended scheduled guard.
 #
-# 判定规则(保守, 绝不碰日常浏览器):
-#   A. broker 的父进程已不存在   → 孤儿, 杀整棵进程树
-#   B. headless 且存活 > 3 小时  → 探针会话不可能这么久, 视为遗弃, 杀整棵进程树
-# 只处理 msedge.exe 的 broker(命令行不含 --type=)。
-# 父进程健在、且非 headless 的实例一律不动(那是用户正在用的浏览器)。
+# Decision rules (conservative -- never touches a browser you are actually using):
+#   A. broker whose parent process no longer exists  -> orphan; kill the whole tree
+#   B. headless and alive > 3 hours                  -> no probe session lasts that
+#                                                       long; treat as abandoned,
+#                                                       kill the whole tree
+# Only msedge.exe brokers are considered (the command line without --type=).
+# An instance whose parent is alive, or that is not headless, is left alone.
 #
-# 由 schtasks 任务 SAG-EdgeOrphanGuard 每 30 分钟静默调用(经 run-script-hidden.vbs)。
+# Invoked silently every 30 minutes by the scheduled task SAG-EdgeOrphanGuard
+#   (via run-script-hidden.vbs).
+#
+# NOTE: keep this file ASCII-only (and BOM-free). Windows PowerShell 5.1 reads a
+#   BOM-less .ps1 as ANSI, so the Chinese that used to be in these comments was
+#   decoded as mojibake. Keep Chinese out, or save as UTF-8 WITH BOM.
 
 $ErrorActionPreference = 'Continue'
 
-# 脚本在 <repo>/scripts/ 下, 回推仓库根(原来写死 C:\Users\<某台机器>\SAG-main)
+# This script lives in <repo>/scripts/; derive the repo root from its location
+# (it used to hardcode one machine's path).
 $SagRoot = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $SagRoot 'logs'
 $Log    = Join-Path $LogDir 'edge-orphan-guard.log'
@@ -33,7 +43,7 @@ $STALE_HOURS = 3
 
 $all = Get-CimInstance Win32_Process
 
-# 只看 msedge.exe 的 broker（不带 --type= 的那个主进程）
+# Only msedge.exe brokers (the main process, whose command line has no --type=).
 $brokers = @()
 foreach ($p in $all) {
   if ($p.Name -ne 'msedge.exe') { continue }
@@ -42,7 +52,7 @@ foreach ($p in $all) {
 }
 
 if ($brokers.Count -eq 0) {
-  # 无 broker，静默退出（不写日志，避免每 30 分钟刷一行噪音）
+  # No broker: exit silently (no log line, so we do not write noise every 30 min).
   exit 0
 }
 
@@ -66,7 +76,7 @@ foreach ($b in $brokers) {
 
   $cmd = if ($b.CommandLine) { $b.CommandLine.Substring(0, [Math]::Min(160, $b.CommandLine.Length)) } else { '(no cmdline)' }
 
-  # 杀掉整棵进程树
+  # Kill the whole process tree.
   $out = & taskkill /PID $b.ProcessId /T /F 2>&1 | Out-String
   $ok = ($LASTEXITCODE -eq 0)
 
@@ -77,13 +87,13 @@ foreach ($b in $brokers) {
   $killed += $b.ProcessId
 }
 
-# 顺带清理：无进程占用的陈旧 Edge 临时 profile（>12 小时）
+# Also clean up stale Edge temp profile dirs that no process is using (>12 h).
 $tmp = Join-Path $env:LOCALAPPDATA 'Temp'
 $cleaned = 0
 foreach ($d in (Get-ChildItem $tmp -Directory -Force -ErrorAction SilentlyContinue)) {
   if ($d.Name -notmatch '^edge[-_]') { continue }
   if (((Get-Date) - $d.LastWriteTime).TotalHours -lt 12) { continue }
-  # 有进程正在用这个 profile 就跳过
+  # Skip if some process is currently using this profile.
   $inUse = ($all | Where-Object { $_.CommandLine -and $_.CommandLine -match [regex]::Escape($d.Name) } | Measure-Object).Count -gt 0
   if ($inUse) { continue }
   try {

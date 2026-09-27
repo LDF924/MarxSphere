@@ -295,7 +295,193 @@ function buildTree(sections: Array<Record<string, unknown>>): OutlineNode[] {
 }
 
 /** 导出给单测用: zip 组装器自己写的格式代码, 必须能被**独立实现**读出来才算对 */
-export const __testables = { buildZip, safeName, crc32 };
+export const __testables = { buildZip, safeName, crc32, toCsv };
+
+/**
+ * CSV 单元格转义。
+ *
+ * 三件事都要做, 少一件就会在 Excel 里错列:
+ *   · 含 `,` `"` 换行 → 整个字段加双引号, 内部的双引号翻倍;
+ *   · **前导 `=` `+` `-` `@` → 前面加一个单引号**。这是 CSV 注入: Excel 会把
+ *     `=cmd|...` 当公式执行。导出的是**用户自己的数据**, 但那个数据可能来自
+ *     问卷回收(别人填的)—— 用户打开自己导出的 CSV 不该被执行代码。
+ *   · null/undefined → 空(不是字符串 "null")。
+ */
+function toCsvCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  let s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** 表头 + 数据行 → CSV 文本。BOM 由调用方决定加不加(Excel 认 BOM 不认 UTF-8 裸中文)。 */
+function toCsv(columns: string[], rows: unknown[][]): string {
+  const head = columns.map(toCsvCell).join(",");
+  const body = rows.map((r) => (Array.isArray(r) ? r : [r]).map(toCsvCell).join(","));
+  return [head, ...body].join("\r\n") + "\r\n";
+}
+
+/**
+ * 组装"复现材料"一节的条目。
+ *
+ * 输入从平台自己的表里取, 不要求前端传任何东西 —— 用户点"整包导出"时不该还要
+ * 勾一遍要带哪些分析。
+ *
+ * **返回的是 entries + notes 而不是直接 push**: 让调用方决定搁哪儿, 且 notes 会进
+ * README 的「未包含」一节(某一块取不到时要说明为什么, 不能让用户以为包里齐全)。
+ */
+async function buildReproducibility(
+  userId: string, projectId: string
+): Promise<{ entries: Entry[]; notes: string[] }> {
+  const entries: Entry[] = [];
+  const notes: string[] = [];
+
+  // 研究项目 → 绑定的实证课题(跨 id 空间; 没绑定就是"没跑过分析", 不是错误)
+  //   ⚠ 绑定是 `research_projects.empirical_project_id` **一个列**, 不是单独的关联表
+  //     (迁移 155 的设计; 与 getEmpiricalBinding 同源)。
+  const bind = await pool.query(
+    `select empirical_project_id from research_projects where id=$1 and user_id=$2`,
+    [projectId, userId]).catch(() => ({ rows: [] as unknown[] }));
+  const empId = String((bind.rows[0] as { empirical_project_id?: string } | undefined)?.empirical_project_id ?? "");
+  if (!empId) {
+    notes.push("未包含复现材料：本项目尚未绑定实证课题，平台里没有可导出的数据与分析记录。");
+    return { entries, notes };
+  }
+
+  // ① 数据本体 —— 每个版本一个 CSV。
+  //   ⚠ `data` 列是迁移 092 加的: 092 之前 `empirical_data_versions` 只存 columns/n_rows,
+  //     数据本体压根不在库里。老版本可能为 null, 这时**如实写进 README**而不是出一个空 CSV。
+  const vers = await pool.query(
+    `select id, name, columns, n_rows, data, created_at from empirical_data_versions
+      where project_id=$1 order by created_at asc limit 20`,
+    [empId]).catch(() => ({ rows: [] as unknown[] }));
+  let dataFiles = 0;
+  for (let i = 0; i < vers.rows.length; i++) {
+    const v = vers.rows[i] as { name?: string; columns?: unknown; data?: unknown };
+    const cols = Array.isArray(v.columns) ? (v.columns as unknown[]).map(String) : [];
+    const rows = Array.isArray(v.data) ? (v.data as unknown[][]) : [];
+    if (!cols.length || !rows.length) {
+      notes.push(`数据版本「${String(v.name ?? i + 1)}」没有数据本体(该版本创建于平台开始存数据行之前), 未包含其 CSV。`);
+      continue;
+    }
+    // BOM: Excel 打开不带 BOM 的 UTF-8 CSV 会把中文列名显示成乱码
+    const csv = "﻿" + toCsv(cols, rows);
+    entries.push({ name: `复现材料/数据/${pad(i + 1)}-${safeName(String(v.name ?? "数据版本"), "数据版本")}.csv`, data: Buffer.from(csv, "utf8") });
+    dataFiles++;
+  }
+
+  // ② 分析脚本 + 结果 —— 一次运行一组。
+  //   `stata_code` 与 `python_result` **是两次不同的分析**(实证台两种跑法), 各自都可能为空。
+  const runs = await pool.query(
+    `select id, stage, input_snapshot, python_result, stata_code, warnings, created_at
+       from empirical_pipeline_runs where project_id=$1 order by created_at asc limit 50`,
+    [empId]).catch(() => ({ rows: [] as unknown[] }));
+  let scriptN = 0, resultN = 0;
+  const index: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < runs.rows.length; i++) {
+    const r = runs.rows[i] as Record<string, unknown>;
+    const seq = pad(i + 1);
+    const stage = String(r.stage ?? "run");
+    const slug = `${seq}-${safeName(stage, "run")}`;
+    const code = String(r.stata_code ?? "").trim();
+    if (code) {
+      // 脚本用 .do 后缀: 它就是 Stata 代码(实证台的 stata_code 列)。用 .txt 会让人
+      // 以为里面是说明文字, 用 .do 则双击就能被 Stata 关联。
+      entries.push({ name: `复现材料/脚本/${slug}.do`, data: Buffer.from(code + "\n", "utf8") });
+      scriptN++;
+    }
+    const result: Record<string, unknown> = {
+      stage,
+      ranAt: r.created_at,
+      input: r.input_snapshot ?? {},
+      result: r.python_result ?? {},
+    };
+    const warn = Array.isArray(r.warnings) ? r.warnings : [];
+    if (warn.length) result.warnings = warn;
+    if (Object.keys(result.result as object).length || scriptN) {
+      entries.push({ name: `复现材料/结果/${slug}.json`, data: Buffer.from(JSON.stringify(result, null, 2), "utf8") });
+      resultN++;
+    }
+    index.push({
+      seq: i + 1, stage, at: r.created_at,
+      hasScript: !!code,
+      nTables: Array.isArray((r.python_result as { tables?: unknown[] } | null)?.tables)
+        ? ((r.python_result as { tables: unknown[] }).tables.length) : 0,
+      warnings: warn.length,
+    });
+  }
+
+  // ③ 投稿记录 —— 与复现无关, 但属"研究可追溯"的一部分, 放同一节不另开目录
+  const subs = await pool.query(
+    `select journal_name, submitted_on, status, round, note from research_submissions
+      where project_id=$1 order by created_at asc limit 50`,
+    [projectId]).catch(() => ({ rows: [] as unknown[] }));
+  const subMd = submissionsSection(subs.rows as Array<Record<string, unknown>>);
+
+  // ④ 索引 + 复现说明 —— 这一节自己的 README, 讲清"从哪开始、缺什么"
+  const idxLines = [
+    "# 复现材料",
+    "",
+    `本项目绑定的实证课题：**${empId}**`,
+    "",
+    "## 包里有什么",
+    "",
+    `- \`数据/\` —— ${dataFiles} 个数据版本(CSV，UTF-8 带 BOM，Excel 可直接打开)`,
+    `- \`脚本/\` —— ${scriptN} 份分析脚本(Stata \`.do\`)`,
+    `- \`结果/\` —— ${resultN} 份分析结果(JSON：输入参数、结果、警告)`,
+    subs.rows.length ? `- \`投稿记录.md\` —— ${subs.rows.length} 条投稿记录` : "",
+    "",
+    "## 怎么用",
+    "",
+    "1. 先看 `结果/` 里每份 JSON 的 `input` 字段 —— 那里是那次分析用的变量、样本量与参数；",
+    "2. 用 `数据/` 里对应的 CSV 重建数据；",
+    "3. 用 `脚本/` 里同序号的 `.do` 重跑，与 `结果/` 对照。",
+    "",
+    "## ⚠ 分享前请确认",
+    "",
+    "**`数据/` 里是原始研究数据。** 如果里面有个人信息、未脱敏的受访者内容或受限数据，",
+    "请先自行确认是否可以对外提供 —— 平台无从判断数据的敏感程度。",
+    "对应的对外承诺见 `论文.md` 的「声明」一节(数据可得性声明)。",
+    "",
+    ...(index.length ? [
+      "## 全部分析运行",
+      "",
+      "| # | 阶段 | 时间 | 有脚本 | 表格数 | 警告 |",
+      "| --- | --- | --- | --- | --- | --- |",
+      ...index.map((x) => `| ${x.seq} | ${x.stage} | ${x.at ? new Date(String(x.at)).toLocaleString("zh-CN") : ""} | ${x.hasScript ? "是" : "否"} | ${x.nTables} | ${x.warnings} |`),
+      "",
+    ] : []),
+    "## 未包含",
+    "",
+    "- 平台侧的检索库与图谱数据（那是平台资产，不是本研究的数据）；",
+    "- 数据清洗过程本身（平台的管道步骤代码未留存原文，只有每一步的输入与结果）。",
+    "",
+  ].filter((l) => l !== "").join("\n");
+  entries.push({ name: "复现材料/README.md", data: Buffer.from(idxLines, "utf8") });
+  if (subs.rows.length) entries.push({ name: "复现材料/投稿记录.md", data: Buffer.from(subMd, "utf8") });
+
+  if (!dataFiles && !scriptN && !resultN) {
+    notes.push("复现材料一节只有说明文件：该课题下没有可导出的数据版本或分析运行记录。");
+  }
+  return { entries, notes };
+}
+
+function submissionsSection(rows: Array<Record<string, unknown>>): string {
+  const CN: Record<string, string> = {
+    submitted: "已投出", under_review: "外审中", revision_requested: "退修",
+    accepted: "已录用", rejected: "已拒稿", withdrawn: "已撤稿",
+  };
+  const lines = ["# 投稿记录", "", "| 轮次 | 期刊 | 投出日期 | 状态 | 备注 |", "| --- | --- | --- | --- | --- |"];
+  for (const r of rows) {
+    // date 列: 不走 toISOString()(东八区会退一天), 取本地年月日
+    const d = r.submitted_on instanceof Date ? r.submitted_on : null;
+    const ds = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : "";
+    lines.push(`| ${Number(r.round ?? 1)} | ${String(r.journal_name ?? "")} | ${ds} | ${CN[String(r.status ?? "")] ?? String(r.status ?? "")} | ${String(r.note ?? "")} |`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+
 
 export interface BundleResult { ok: boolean; buffer?: Buffer; fileName?: string; error?: string; notes?: string[] }
 
@@ -411,7 +597,26 @@ export async function exportProjectBundle(userId: string, projectId: string): Pr
   // ⑥ 研究信息
   entries.push({ name: "研究信息.md", data: Buffer.from(inputSection(snap.input), "utf8") });
 
-  // ⑦ README —— 说清楚**包是什么、里面有什么、没有什么**。
+  // ⑦ 复现材料(批9) —— 让这个包从"论文打包"变成**研究可复现包**。
+  //
+  // 由来(2026-09-27): 此前包里只有**成品的文字**(论文/章节/素材清单/版本沿革),
+  //   而"别人能不能照着重跑一遍"要的三样一样都没有: 数据、分析脚本、分析结果。
+  //   而这三样**平台里本来就存着**:
+  //     · `empirical_data_versions.data`(迁移 092 存的数据本体, 不是只有列定义);
+  //     · `empirical_pipeline_runs.stata_code`(那次分析的脚本);
+  //     · 同表的 `python_result`(结果) 与 `input_snapshot`(参数/变量/样本量)。
+  //   只差把它们打进包里 —— 所以这是**扩展而非新服务**。
+  //
+  // ⚠ 数据是**真实研究数据**。打包出来会被发邮件/传网盘/上传附件 —— 而平台无从判断
+  //   其中有没有个人信息。所以:
+  //     · README 里**显式警告**这一节包含原始数据, 分享前请自行确认合规;
+  //     · 数据可得性声明(批5 用户在「投稿与要件」填的)一并放进 README —— 两者是
+  //       同一件事的两面(一个是"我承诺给什么", 一个是"我实际给了什么")。
+  const repro = await buildReproducibility(userId, projectId);
+  for (const e of repro.entries) entries.push(e);
+  notes.push(...repro.notes);
+
+  // ⑧ README —— 说清楚**包是什么、里面有什么、没有什么**。
   //   不写这一段, 用户看到素材清单里只有文本会以为附件丢了。
   const docxEntry = entries.find((e) => e.name === "论文.docx");
   const chapCount = entries.filter((e) => e.name.startsWith("章节/")).length;
