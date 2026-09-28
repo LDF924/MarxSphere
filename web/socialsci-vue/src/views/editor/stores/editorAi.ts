@@ -20,6 +20,22 @@ export interface AiModelOption {
   roles: string[];
 }
 
+/**
+ * 题名/摘要动作的结构化结果(`job.result` 原样)。
+ *
+ * 2026-09-29: prompt 一直在要求模型并列 5 个标题候选(`editor-service.ts` 的 TITLE_PROMPT),
+ *   但结果被 `renderTitleContent` 压成一段 markdown, 界面只拿到字符串 —— 候选是**死的**,
+ *   用户没法单独挑一个。这里把结构带出来, 让候选变成可点的。
+ */
+export interface TitleResultShape {
+  title?: string;
+  abstract?: string;
+  keywords?: string[];
+  alternatives?: string[];
+  issues?: string[];
+  reason?: string;
+}
+
 export const useEditorAiStore = defineStore("editor-ai", () => {
   const panelOpen = ref(false);
   const activeTab = ref("check");
@@ -73,7 +89,7 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
   }
 
   /** 挂载恢复(参考产品 recoverActiveJob): localStorage 有 jobId → retry 重排队 → 重连 stream */
-  async function recoverActiveJob(handlers: { onDelta?: (t: string) => void; onDone?: (content?: string) => void } = {}): Promise<boolean> {
+  async function recoverActiveJob(handlers: { onDelta?: (t: string) => void; onDone?: (content?: string, result?: unknown) => void } = {}): Promise<boolean> {
     const saved = localStorage.getItem(K.editorActiveJobId);
     if (!saved) return false;
     try {
@@ -91,11 +107,20 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
     }
   }
 
+  /**
+   * 最近一次动作的**结构化结果**(`job.result` 原样)。
+   *
+   * 界面读它把题名候选渲染成可点的列表; 拿不到结构(老任务 / 非结构化动作)时降级回
+   * 那段 markdown —— 所以两个都要留, 不能只留一个。
+   */
+  const lastResult = ref<unknown>(null);
+
   /** 单次动作 job(assistDocument 语义: 累积全文返回; 失败 \n错误: 尾缀) */
   async function assistDocument(action: string, text: string, context: string, documentId?: string, mode?: string): Promise<string> {
     isLoading.value = true;
     lastJobStatus.value = "running";
     lastActionLabel.value = action;
+    lastResult.value = null;
     let acc = "";
     streamingContent.value = "";
     const body: Record<string, unknown> = {
@@ -115,11 +140,12 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
           acc += t;
           streamingContent.value = acc;
         },
-        onDone: (content) => {
+        onDone: (content, result) => {
           if (content) {
             acc = content;
             streamingContent.value = content;
           }
+          lastResult.value = result ?? null;
           clearJob();
         },
         onError: (message) => {
@@ -151,7 +177,7 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
   /** 连接 job 流(delta/model/done/error) */
   async function listenJob(
     jobId: string,
-    handlers: { onDelta?: (t: string) => void; onDone?: (content?: string) => void; onError?: (message: string) => void }
+    handlers: { onDelta?: (t: string) => void; onDone?: (content?: string, result?: unknown) => void; onError?: (message: string) => void }
   ): Promise<void> {
     await streamAiJob(jobId, {
       onDelta: handlers.onDelta,
@@ -160,7 +186,7 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
       },
       onDone: (p) => {
         lastJobStatus.value = "completed";
-        handlers.onDone?.(p?.content);
+        handlers.onDone?.(p?.content, p?.result);
       },
       onError: (e) => {
         lastJobStatus.value = "failed";
@@ -189,7 +215,7 @@ export const useEditorAiStore = defineStore("editor-ai", () => {
 
   return {
     panelOpen, activeTab, isLoading, streamingContent, currentModel, activeJobId,
-    lastJobStatus, panelWidth, lastActionLabel,
+    lastJobStatus, panelWidth, lastActionLabel, lastResult,
     modelOptions, modelBusy, loadModels, setModel,
     persistJob, clearJob, recoverActiveJob, assistDocument, listenJob,
     cancelCurrentJob, resetJobState, isBusy

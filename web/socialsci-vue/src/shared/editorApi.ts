@@ -79,7 +79,14 @@ export const editorApi: EditorApi = {
 export interface AiJobSseHandlers {
   onDelta?: (content: string) => void;
   onModel?: (model: string) => void;
-  onDone?: (payload: { content?: string; message_id?: string; conversation_id?: string }) => void;
+  /**
+   * `result` 是后端 `job.result` 原样透传(见 editor-ai-job-service.ts 的 sse.send("done", …))。
+   *
+   * 2026-09-29 补: 此前只透传了 content/message_id/conversation_id, 而**结构化结果在 result 里** ——
+   *   题名候选(alternatives)正是在那里面。不透传的话界面只能拿到一段拼好的 markdown,
+   *   候选就只能是文本, 用户没法单独挑一个。
+   */
+  onDone?: (payload: { content?: string; message_id?: string; conversation_id?: string; result?: unknown }) => void;
   onError?: (err: { message: string; is_retriable?: boolean }) => void;
 }
 
@@ -138,7 +145,8 @@ export async function streamAiJob(
           handlers.onDone?.({
             content: payload.content !== undefined ? String(payload.content) : undefined,
             message_id: payload.message_id !== undefined ? String(payload.message_id) : undefined,
-            conversation_id: payload.conversation_id !== undefined ? String(payload.conversation_id) : undefined
+            conversation_id: payload.conversation_id !== undefined ? String(payload.conversation_id) : undefined,
+            result: payload.result
           });
           return;
         } else if (ev === "error") {

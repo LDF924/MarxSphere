@@ -15,23 +15,44 @@ function fileToBase64(file: File): Promise<string> {
 }
 import type { ReviewResult, ReviewSettings } from "./stores/review";
 
-// ── 文件文本提取(参考产品 POST /api/files/extract-text multipart; 我方 base64 JSON) ──
+/**
+ * 上传并抽取稿件正文(2026-09-29 改)。
+ *
+ * 此前走 `/files/extract-text` —— 那条路由**不落库、不返回 fileId**(临时文件当场删掉),
+ * 于是 `review_jobs.source_file_id` 永远写不进值, 用户也没法"再审一次那份文件"
+ * (重新选一遍就得重传)。现在两步走:
+ *   ① `POST /files/upload`  落 blob + 登记 user_files → 拿到**真 fileId**
+ *   ② `GET  /files/:id/text` 服务端抽正文(抽完存回 user_files.text, 下次直接读)
+ *
+ * ⚠ 扫描件在 ② 会返回 `needsOcr: true` 而不是失败 —— 识别是分钟级的, 不能同步等。
+ *   调用方据此提示用户去走「识别文字」, OCR 完成后同一 fileId 就能取到正文。
+ */
 export async function extractFileText(file: File): Promise<{
   text: string;
   fileId?: string;
+  needsOcr?: boolean;
+  extraction?: string;
+  error?: string;
   metadata?: { sourceType?: string; pageCount?: number; extractedPages?: number; reviewChunkCount?: number; truncated?: boolean; extractionWarnings?: string[] };
 }> {
   const base64 = await fileToBase64(file);
   const lower = file.name.toLowerCase();
   const sourceType = lower.endsWith(".pdf") ? "pdf" : lower.endsWith(".docx") || lower.endsWith(".doc") ? "docx" : "txt";
-  const r = await q<{ text?: string; fileId?: string; ok?: boolean; sourceType?: string; pageCount?: number; extractedPages?: number; truncated?: boolean }>(`/files/extract-text`, {
+  const up = await q<{ fileId?: string }>(`/files/upload`, {
     method: "POST",
     body: { filename: file.name, base64, mime: file.type || "application/octet-stream" }
   });
+  const fileId = up.fileId;
+  if (!fileId) throw new Error("上传没有返回文件 id");
+  const r = await q<{ text?: string; ok?: boolean; sourceType?: string; pageCount?: number; extractedPages?: number; truncated?: boolean; needsOcr?: boolean; extraction?: string; error?: string }>(
+    `/files/${encodeURIComponent(fileId)}/text`, { method: "GET" });
   const text = r.text ?? "";
   return {
     text,
-    fileId: r.fileId,
+    fileId,
+    needsOcr: r.needsOcr === true,
+    extraction: r.extraction,
+    error: r.error,
     metadata: {
       sourceType: r.sourceType ?? sourceType,
       pageCount: r.pageCount,
@@ -70,6 +91,8 @@ export async function createReviewJob(body: {
   settings?: ReviewSettings;
   sidebarTaskId?: string;
   sourceFileId?: string;
+  sourceFileName?: string;
+  sourceFileType?: string;
 }): Promise<{ job: ReviewJob; truncated?: boolean }> {
   // 我方后端返回 {jobId, segmentCount, dimensions}(SSE 流驱动执行)
   const r = await q<{ jobId?: string; job?: ReviewJob; truncated?: boolean }>(`/review/jobs`, {
@@ -80,7 +103,10 @@ export async function createReviewJob(body: {
       text: body.content,
       settings: body.settings,
       sidebarTaskId: body.sidebarTaskId,
-      sourceFileId: body.sourceFileId
+      // 三个 source* 一起发 —— 后端三个都在, 只发 id 的话文件名/类型列全是空串
+      sourceFileId: body.sourceFileId,
+      sourceFileName: body.sourceFileName,
+      sourceFileType: body.sourceFileType
     }
   });
   if (r.job) return { job: r.job };

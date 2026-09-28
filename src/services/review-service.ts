@@ -232,6 +232,9 @@ export async function listReviewJobs(userId: string, limit = 50, offset = 0) {
      )
      select j.id, j.kind, j.title, j.journal_id, j.standard_id, j.status, j.created_at, j.updated_at,
             j.retry_of, ch.depth as attempt_index,
+            -- 2026-09-29: 这三列此前**只写不读** —— 建 job 时落了库, 列表却不 select 它们,
+            --   于是"这份审稿审的是哪个文件"在历史里查不出来(前端 review 页想显示文件名也拿不到)。
+            j.source_file_id, j.source_file_name, j.source_file_type,
             result->'paperTitle' as paper_title, result->'wordCount' as word_count
        from review_jobs j join chain ch on ch.id = j.id
       where not exists (select 1 from review_jobs c2 where c2.retry_of = j.id)

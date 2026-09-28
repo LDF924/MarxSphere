@@ -259,6 +259,41 @@ function insertAtCursor() {
   toast("已插入到光标处", "success");
 }
 
+/**
+ * 题名候选的**逐条可点**(2026-09-29)。
+ *
+ * 由来(用户: "编辑器题名候选并列 —— service 一次只跑一个 prompt, 连调三次才能并列"):
+ *   实测前提**不成立** —— prompt 一直在要求模型一次并列 5 个候选(`editor-service.ts` 的
+ *   TITLE_PROMPT), 后端也一直在解析 `alternatives`。断的是**展示**: `renderTitleContent`
+ *   把候选拼进一段 markdown, 面板用单个字符串 + v-html 整段渲染, 于是候选只是文本 ——
+ *   用户只能整段复制或整段插入, 挑不了第 3 个。
+ *
+ * 现在按结构化结果渲染成可点条目。**降级保留**: 拿不到结构(老任务 / 模型没按 JSON 回)时
+ * 回落到原来那段 markdown, 不把已有能力弄丢。
+ */
+const titleCandidates = computed<string[]>(() => {
+  // 只在题名动作下生效 —— 摘要的 issues / 关键词都不该长成"可点候选"的样子
+  if (store.lastActionLabel !== "title") return [];
+  const r = store.lastResult as { alternatives?: unknown; title?: unknown } | null;
+  if (!r || typeof r !== "object") return [];
+  const alt = Array.isArray(r.alternatives) ? r.alternatives.map(String).filter((s) => s.trim()) : [];
+  const top = typeof r.title === "string" && r.title.trim() ? [r.title] : [];
+  // 推荐的那个排最前, 且不与候选重复(模型有时会把推荐项也放进 alternatives)
+  return [...new Set([...top, ...alt])];
+});
+const chosenCandidate = ref("");
+
+/** 用选中的候选替换: 有选区就换选区, 没有就插到光标 —— 与既有「替换选中内容」同一套语义 */
+function pickCandidate(text: string) {
+  if (!props.editor || !text.trim()) return;
+  const ed = props.editor;
+  const { from, to } = ed.state.selection;
+  if (from === to) ed.chain().focus().insertContent(text).run();
+  else ed.chain().focus().insertContentAt({ from, to }, text).run();
+  chosenCandidate.value = text;
+  toast("已插入所选标题", "success");
+}
+
 // ── 图表生成 ──
 // 数据来源: none(仅示意) / empirical(统一分析台当前数据集) / stats(已保存统计结果) / paste(手动粘贴) / workshop(工坊已有图)
 type ChartSource = "none" | "empirical" | "stats" | "paste" | "workshop";
@@ -717,6 +752,24 @@ onUnmounted(() => {
       </div>
       <div class="ade-result-card__content">
         <div v-if="store.isBusy && !store.streamingContent" style="padding: 14px; color: #8B9BB1; font-size: 12px">正在整理建议…</div>
+        <!--
+          题名候选: 结构化渲染成可点条目(点一条即插入正文)。没有结构时下面的 markdown 兜底。
+        -->
+        <div v-else-if="titleCandidates.length" class="title-cands" data-testid="title-candidates">
+          <p class="title-cands__hint">点一条直接插入正文(共 {{ titleCandidates.length }} 个候选)</p>
+          <button
+            v-for="(c, i) in titleCandidates"
+            :key="i"
+            type="button"
+            class="title-cand"
+            :class="{ 'is-chosen': chosenCandidate === c }"
+            :data-control="`editor:title-candidate-${i}`"
+            @click="pickCandidate(c)"
+          >
+            <span class="title-cand__idx">{{ i === 0 ? "推荐" : i }}</span>
+            <span class="title-cand__text">{{ c }}</span>
+          </button>
+        </div>
         <div v-else-if="resultText" class="markdown-body" style="padding: 12px 14px; max-height: 42vh; overflow-y: auto" v-html="renderedHtml"></div>
       </div>
       <div v-if="resultText" class="ade-result-card__actions">
@@ -1043,5 +1096,46 @@ onUnmounted(() => {
 }
 .ade-result-card__actions button:hover {
   background: #1E2A48;
+}
+/* 题名候选: 一列可点条目 —— 点一条即插入正文(不再是整段 markdown 里挑不出单个) */
+.title-cands {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.title-cands__hint {
+  margin: 0 0 2px;
+  font-size: 11px;
+  color: #8B9BB1;
+}
+.title-cand {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #E8EEF7;
+  background: #11192C;
+  border: 1px solid #222F44;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.title-cand:hover { background: #16203a; border-color: #4D84CB; }
+.title-cand.is-chosen { border-color: #5FD0B4; }
+.title-cand__idx {
+  flex: 0 0 auto;
+  min-width: 26px;
+  padding: 1px 5px;
+  font-size: 10px;
+  text-align: center;
+  color: #6FA6E8;
+  background: #1E2A48;
+  border-radius: 4px;
 }
 </style>

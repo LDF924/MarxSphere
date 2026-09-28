@@ -209,10 +209,12 @@ export const REVIEW_TOOLS: AgentToolDef[] = [
     description:
       "提交一篇论文发起 AI 审稿(分段审阅 → 逐维度评分卡 → 大修/小修问题清单)。"
       + "**耗时分钟级、单次几毛到几块**(3 万字 ≈ 8-10 段 LLM + 1 次汇总), 所以工具是**后台启动立刻返回**, 不阻塞对话。"
-      + "跑完后用 view_review_job 取报告。稿件文本上限 12 万字符(超出截断)。",
+      + "跑完后用 view_review_job 取报告。稿件文本上限 12 万字符(超出截断)。"
+      + "稿件来源二选一: 直接给 text, 或给 fileId(用 view_review_files 查已上传的稿件, 服务端自己抽正文)。",
     params: {
-      text: { type: "string", required: true, desc: "论文全文(纯文本; 扫描版 PDF 需先 OCR 成文字再提交)" },
-      title: { type: "string", desc: "论文标题(省略则从正文推断)" },
+      text: { type: "string", desc: "论文全文(纯文本)。与 fileId 二选一; 扫描版 PDF 请改用 fileId(会自动走文本层, 抽不到会告诉你先去做 OCR)" },
+      fileId: { type: "string", desc: "已上传稿件的文件 id(用 view_review_files 查)。给了它就自动取正文, 不用再贴 text" },
+      title: { type: "string", desc: "论文标题(省略则从正文推断; 用 fileId 时默认取文件名)" },
       journalId: { type: "string", desc: "按某本期刊的投稿规则审(uuid; 用 view_review_journals 查; 省略则用默认标准)" },
       standardId: { type: "string", desc: "按某套评审标准审(uuid; 用 view_review_standards 查)" },
       strictness: { type: "string", desc: "严格度: lax(从宽, 只指硬伤) / standard(适中, 默认) / strict(顶刊外审尺度)" },
@@ -222,8 +224,33 @@ export const REVIEW_TOOLS: AgentToolDef[] = [
     run: async (a) => safeCall(async () => {
       const id = needUser();
       if ("error" in id) return id.error;
-      const text = String(a.text ?? "");
-      if (!text.trim()) return "（需要 text: 论文全文）";
+
+      /**
+       * 稿件来源(2026-09-29 用户: "审稿的上传 PDF 要先 file_read/pdf_parse 拿到文本再建 job ——
+       *   后端没有 fileId → 纯文本这个能力")。此前只有 text 一条路, 于是用户想审自己上传的
+       *   PDF 时, 只能先把正文粘贴进来。现在 fileId 是等价入口: 服务端按 id 取字节、抽文本。
+       *
+       * ⚠ 扫描件在这里**不自动等 OCR**: 识别是分钟级的, 工具是后台启动立刻返回的语义,
+       *   在工具里阻塞几分钟会把对话一起卡住。抽不到就明确告诉用户下一步去哪。
+       */
+      let text = String(a.text ?? "");
+      let srcFileId = "", srcFileName = "", srcFileType = "";
+      const fileId = String(a.fileId ?? "").trim();
+      if (fileId) {
+        const { ensureFileText } = await import("./file-text-service.js");
+        const r = await ensureFileText(id.uid, fileId);
+        if (!r.ok) {
+          if (r.needsOcr) {
+            return `（这份文件是扫描件, 没有文字层 —— ${r.error}）\n先到「研途写作舱 → 资料 → 上传」用「识别文字」把它 OCR 成文本, 再回来用这个 fileId 建审稿。`;
+          }
+          return `（读不到这份文件的正文: ${r.error}）`;
+        }
+        text = r.text;
+        srcFileId = r.fileId; srcFileName = r.fileName; srcFileType = r.ext;
+        if (!text.trim()) return "（这份文件抽出来是空的 —— 换个文件或直接用 text 传正文）";
+      }
+      if (!text.trim()) return "（需要 text 或 fileId: 论文全文）";
+
       const trunc = text.length > MAX_REVIEW_CHARS;
       const body = text.slice(0, MAX_REVIEW_CHARS);
       const jid = normalizeJournalId(String(a.journalId ?? ""));
@@ -234,9 +261,11 @@ export const REVIEW_TOOLS: AgentToolDef[] = [
       // 与 /api/review/jobs 端点逐句对应(settings 是面板契约, 顶层 id 是老路径, 两个都发 → service 自己读数组合)
       const r = await review.createReviewJob({
         userId: id.uid,
-        title: String(a.title ?? "").trim() || "对话发起的审稿",
+        // 用 fileId 时标题默认取文件名 —— 用户看到的原名比"对话发起的审稿"有用得多
+        title: String(a.title ?? "").trim() || srcFileName.replace(/\.[^.]+$/, "") || "对话发起的审稿",
         text: body,
         kind: "text",
+        ...(srcFileId ? { sourceFileId: srcFileId, sourceFileName: srcFileName, sourceFileType: srcFileType } : {}),
         ...(("id" in jid) ? { journalId: jid.id } : {}),
         ...(sid && uuidRe.test(sid) ? { standardId: sid } : {}),
         settings: {
@@ -249,12 +278,50 @@ export const REVIEW_TOOLS: AgentToolDef[] = [
       void driveReviewJob(id.uid, r.id).catch(() => { /* 失败由 runReviewJob 落库成 failed */ });
       const waitSec = Number(a.waitSec) || 0;
       const dims = (r.dimensions ?? []).map((d) => String((d as { name?: string }).name ?? "")).filter(Boolean);
+      const src = srcFileId ? `稿件: ${srcFileName || srcFileId}` : "稿件: 对话内提交的文本";
       const head = `【审稿已发起】任务 ${r.id.slice(0, 8)}…（${body.length} 字 · ${r.segmentCount} 段${trunc ? " · **已截断到 12 万字符**" : ""}）`
+        + `\n${src}`
         + `\n维度: ${dims.join(" / ") || "默认 7 维"}`
         + `\n已在后台开审(分钟级、会产生 LLM 费用), 现在就可以去「论文评审」页看进度; 完成后用 view_review_job("${r.id.slice(0, 8)}…") 取报告。`;
       if (waitSec <= 0) return head;
       const w = await waitForReviewJob(id.uid, r.id, waitSec);
       return `${head}\n\n${w.summary}`;
+    }),
+  },
+
+  /**
+   * 读 —— 列出「已上传、可以拿来审稿」的稿件。
+   *
+   * 由来(2026-09-29): review_job_create 现在能吃 fileId, 但对话里没法知道有哪些 id ——
+   *   用户说"审一下我昨天传的那篇", AI 得先看得见它。与 view_viz_data_files 同形。
+   */
+  {
+    name: "view_review_files", label: "可选稿件文件", risk: "safe",
+    description: "列出本人已上传的文件(带文件 id 与是否已抽出正文), 返回的 fileId 可直接喂给 review_job_create",
+    params: {
+      limit: { type: "number", desc: "返回条数(默认 10, 上限 30)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const id = needUser();
+      if ("error" in id) return id.error;
+      const { pool } = await import("../db/pool.js");
+      const limit = Math.min(Math.max(Number(a.limit) || 10, 1), 30);
+      const r = await pool.query(
+        `select id, filename, size_bytes, extraction, char_count, created_at
+           from user_files where user_id=$1 order by created_at desc limit $2`, [id.uid, limit]);
+      const rows = r.rows as Array<Record<string, unknown>>;
+      if (!rows.length) return "【稿件文件】还没有上传过文件 —— 到「论文评审」页上传稿件, 或直接 review_job_create 时用 text 传全文。";
+      const cn: Record<string, string> = {
+        "": "待抽取", native: "文本", "text-layer": "PDF 文字层", mammoth: "Word", ocr: "OCR 识别", failed: "抽取失败",
+      };
+      const body = rows.map((f, i) => {
+        const ext = String(f.extraction ?? "");
+        const chars = Number(f.char_count) > 0 ? `${Number(f.char_count)} 字` : "";
+        return `${i + 1}. ${String(f.filename).slice(0, 46)} — ${cn[ext] ?? ext}${chars ? " · " + chars : ""}`
+          + `${ext === "failed" ? "（正文抽不出来, 可能是扫描件, 先去「识别文字」）" : ""}`
+          + `\n   fileId: file_${String(f.id)}`;
+      });
+      return `【稿件文件】${rows.length} 个\n${body.join("\n")}`;
     }),
   },
 

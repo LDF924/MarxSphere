@@ -40,6 +40,11 @@ export interface OcrJob {
   filePath: string;
   /** 一行人类可读进度 —— 对齐 viz_jobs.current_step, 前端原样显示 */
   currentStep: string;
+  /**
+   * 发起这次识别的 user_files.id(裸 uuid); 空 = 不是在上传件上发起的。
+   * 完成后正文会写回该文件的 text 列 —— 评审页那条「去识别文字」才有回程。
+   */
+  sourceFileId?: string;
   /** 识别出的 Markdown 正文。完成后才有 */
   text: string;
   charCount: number;
@@ -105,7 +110,7 @@ export function countActiveOcrJobs(userId: string): number {
  *
  * @param buf 源文件字节。写盘是必须的 —— MinerU 那条链只吃真实文件路径
  */
-export function createOcrJob(input: { userId: string; fileName: string; buf: Buffer }): { ok: true; job: OcrJob } | { ok: false; error: string } {
+export function createOcrJob(input: { userId: string; fileName: string; buf: Buffer; sourceFileId?: string }): { ok: true; job: OcrJob } | { ok: false; error: string } {
   if (countActiveOcrJobs(input.userId) >= MAX_ACTIVE_PER_USER) {
     return { ok: false, error: `同时最多跑 ${MAX_ACTIVE_PER_USER} 个识别任务，等这一个完成再试。` };
   }
@@ -126,6 +131,7 @@ export function createOcrJob(input: { userId: string; fileName: string; buf: Buf
   }
   const job: OcrJob = {
     id, userId: input.userId, status: "queued", fileName: safeName, filePath,
+    sourceFileId: input.sourceFileId ? String(input.sourceFileId) : undefined,
     currentStep: "排队中", text: "", charCount: 0, cancelled: false, createdAt: Date.now(),
   };
   jobs.set(id, job);
@@ -241,6 +247,22 @@ async function run(job: OcrJob): Promise<void> {
     job.charCount = text.length;
     job.status = "done";
     setStep(job, `识别完成（${text.length} 字）`);
+
+    /**
+     * 写回**发起它的那份上传件**(2026-09-29)。
+     *
+     * 不写回的话, 评审页那条「扫描件 → 去识别文字 →」就是个绕不回来的圈: 用户识别完回去
+     * 重选文件, 那是**另一次上传**产生的新 user_files 行, 正文仍在旧的那份上。
+     * 失败只记日志 —— 识别本身已经成功了, 不该因为这一步把整个任务判失败。
+     */
+    if (job.sourceFileId) {
+      try {
+        const { attachOcrText } = await import("./file-text-service.js");
+        await attachOcrText(job.userId, job.sourceFileId, text);
+      } catch (e) {
+        console.warn("[ocr] 回填上传件正文失败(识别结果仍在任务里):", String((e as Error).message).slice(0, 120));
+      }
+    }
   } catch (e) {
     if (job.cancelled) return;
     const { userMessage, canRetry } = translateOcrError(redactToken(String((e as Error)?.message ?? e), rawToken));
@@ -259,13 +281,13 @@ async function run(job: OcrJob): Promise<void> {
 async function persist(job: OcrJob): Promise<void> {
   try {
     await pool.query(
-      `insert into ocr_jobs (id, user_id, status, file_name, file_path, current_step, text, char_count, error, created_at, updated_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9, to_timestamp($10 / 1000.0), now())
+      `insert into ocr_jobs (id, user_id, status, file_name, file_path, current_step, text, char_count, error, created_at, updated_at, source_file_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9, to_timestamp($10 / 1000.0), now(), $11)
        on conflict (id) do update set
          status = excluded.status, current_step = excluded.current_step,
          text = excluded.text, char_count = excluded.char_count,
          error = excluded.error, updated_at = now()`,
-      [job.id, job.userId, job.status, job.fileName, job.filePath, job.currentStep, job.text, job.charCount, job.error ?? "", job.createdAt]
+      [job.id, job.userId, job.status, job.fileName, job.filePath, job.currentStep, job.text, job.charCount, job.error ?? "", job.createdAt, job.sourceFileId ?? ""]
     );
   } catch (e) {
     console.warn("[ocr] 任务落库失败(内存副本仍可用):", String((e as Error).message).slice(0, 120));
@@ -293,7 +315,7 @@ export async function restoreOcrJobs(): Promise<{ restored: number; reaped: numb
     reaped = stale.rowCount ?? 0;
 
     const r = await pool.query(
-      `select id, user_id, status, file_name, file_path, current_step, text, char_count, error,
+      `select id, user_id, status, file_name, file_path, current_step, text, char_count, error, source_file_id,
               (extract(epoch from created_at) * 1000)::bigint as created_ms
        from ocr_jobs
        where created_at > now() - interval '1 day'
@@ -309,6 +331,8 @@ export async function restoreOcrJobs(): Promise<{ restored: number; reaped: numb
         fileName: String(row.file_name ?? ""),
         filePath: String(row.file_path ?? ""),
         currentStep: String(row.current_step ?? ""),
+        // 一起恢复 —— 漏了它, 重启后重试这条链就丢掉了"写回哪份文件"的回程信息
+        sourceFileId: row.source_file_id ? String(row.source_file_id) : undefined,
         text: String(row.text ?? ""),
         charCount: Number(row.char_count ?? 0),
         error: row.error ? String(row.error) : undefined,
@@ -339,6 +363,8 @@ export function publicOcrJob(job: OcrJob, withText = false): Record<string, unkn
     currentStep: job.currentStep,
     charCount: job.charCount,
     error: job.error ?? "",
+    // 发起时指向的那份上传件 —— 前端据此显示"识别完会写回哪份文件"
+    sourceFileId: job.sourceFileId ? `file_${job.sourceFileId}` : "",
     createdAt: new Date(job.createdAt).toISOString(),
     ...(withText ? { text: job.text } : {}),
   };

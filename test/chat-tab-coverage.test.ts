@@ -15,7 +15,7 @@
  *   ④ **只读工具不许误登**: 登了会让只读会话白白丢掉它。
  */
 import { describe, it, expect } from "vitest";
-import { buildAgentTools, WRITE_TOOLS, TOOL_MIN_ROLE_KEYS } from "../src/services/agent-tool-router.js";
+import { buildAgentTools, WRITE_TOOLS, TOOL_MIN_ROLE_KEYS, minRoleOf } from "../src/services/agent-tool-router.js";
 
 /**
  * 每个 tab 的**核心能力** → 它的 agent 工具名。
@@ -43,12 +43,12 @@ const TABS: Array<{ tab: string; why: string; tools: string[] }> = [
   },
   {
     tab: "论文质量评审",
-    why: "建审稿 job 是核心能力; 期刊库/标准库是它的输入",
+    why: "建审稿 job 是核心能力; 期刊库/标准库是它的输入; view_review_files 是建 job 的 fileId 来源",
     tools: [
       "review_job_create", "view_review_jobs", "view_review_job", "review_job_cancel",
       "review_job_retry", "view_review_stats", "view_review_journals",
       "review_guide_parse", "view_review_standards", "review_standard_parse",
-      "review_export_report",
+      "review_export_report", "view_review_files",
     ],
   },
   {
@@ -91,6 +91,45 @@ describe("五个工作台在对话侧可达", () => {
       "`checkToolRole` 的缺省是 **manager**(不是 reader)—— 不登记 = 对话里的 analyst 根本用不了, " +
         "而这条路径**不报错**, 只是那个工具永远不可用。",
     ).toEqual([]);
+  });
+});
+
+describe("上传文件在对话侧可达(文件台账那批)", () => {
+  /**
+   * 由来(2026-09-29): 用户报"审稿的上传 PDF 要先 file_read/pdf_parse 拿到文本再建 job ——
+   *   后端没有 fileId → 纯文本这个能力"。补齐后, 对话侧必须真的够得着这一整条:
+   *   列文件 → 读正文 → (扫描件)识别 → 建审稿。
+   *
+   * ⚠ 与上面五个 tab 一样, 缺一条都**不报错**, 只是用户在对话里够不着。
+   */
+  const FILE_TOOLS = [
+    "view_review_files",   // 列已上传文件(拿 fileId 的唯一入口)
+    "view_file_text",      // fileId → 正文
+    "ocr_file",            // 扫描件 → 识别(写完正文写回文件)
+    "view_ocr_job",        // 识别进度
+    "review_job_create",   // 拿 fileId 直接建审稿
+  ];
+
+  it("五条都在 buildAgentTools 里", async () => {
+    const names = new Set((await buildAgentTools({})).map((t) => t.name));
+    const missing = FILE_TOOLS.filter((n) => !names.has(n));
+    expect(missing, `这条链缺了: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("读的三个是 reader, **ocr_file 必须是 analyst**(它烧外部额度并起后台任务)", () => {
+    const known = new Set(TOOL_MIN_ROLE_KEYS);
+    const missing = FILE_TOOLS.filter((n) => !known.has(n));
+    expect(missing, "缺省是 manager ⇒ analyst 用不了, 而这条路径不报错").toEqual([]);
+    expect(minRoleOf("ocr_file"), "识别的执行者不该是只读会话").toBe("analyst");
+    expect(minRoleOf("view_file_text")).toBe("reader");
+    expect(minRoleOf("view_ocr_job")).toBe("reader");
+  });
+
+  it("ocr_file 在 WRITE_TOOLS 里, 读的三个不在", () => {
+    expect(WRITE_TOOLS.has("ocr_file"), "只读会话能烧 MinerU 额度 + 起后台任务").toBe(true);
+    for (const n of ["view_review_files", "view_file_text", "view_ocr_job"]) {
+      expect(WRITE_TOOLS.has(n), `${n} 是只读的, 登进 WRITE_TOOLS 会让只读会话白白丢掉它`).toBe(false);
+    }
   });
 });
 
@@ -150,7 +189,7 @@ describe("只读工具不该被误登为写", () => {
     "view_editor_doc", "view_editor_versions", "editor_fulltext_check",
     "editor_rewrite", "editor_title_abstract", "editor_citation_check",
     "view_review_job", "view_review_stats", "view_review_journals", "view_review_standards",
-    "review_guide_parse", "review_export_report",
+    "review_guide_parse", "review_export_report", "view_review_files",
     "view_orch_capabilities", "view_orch_runs", "view_orch_run_detail", "view_orch_events",
     "view_orch_graph_get", "orch_nl_to_dag",
   ];

@@ -41,6 +41,8 @@ const pastedText = computed({
 });
 const uploadFileName = ref("");
 const uploadChunked = ref(false);
+/** 选中的文件是扫描件(服务端抽不到文字层)—— 界面据此给出「去识别文字」的出口 */
+const scanNeedsOcr = ref(false);
 const submitting = ref(false);
 const journals = ref<JournalRecord[]>([]);
 const standards = ref<StandardRecord[]>([]);
@@ -66,9 +68,17 @@ const canSubmit = computed(() => {
 async function onFileSelected(file: File) {
   if (!file) return;
   uploadFileName.value = file.name;
+  scanNeedsOcr.value = false;
   try {
     toast("正在提取文本…", "info");
     const r = await extractFileText(file);
+    // 扫描件: 服务端抽不到文字层, 但**不是失败** —— 下一步是 OCR(分钟级, 要用户自己决定做不做)
+    if (r.needsOcr) {
+      scanNeedsOcr.value = true;
+      store.setPaper({ content: "", title: file.name.replace(/\.[^.]+$/, ""), fileName: file.name, sourceFileId: r.fileId, sourceType: "pdf" });
+      toast(r.error || "这份 PDF 没有文字层(扫描件)。", "warning");
+      return;
+    }
     store.setPaper({ content: r.text, title: file.name.replace(/\.[^.]+$/, ""), fileName: file.name, sourceFileId: r.fileId, sourceType: r.metadata?.sourceType ?? "txt" });
     uploadChunked.value = (r.metadata?.reviewChunkCount ?? 1) > 1;
     if (r.metadata?.truncated) {
@@ -78,16 +88,27 @@ async function onFileSelected(file: File) {
       // 清掉状态: 否则文件卡片显示"✓ 已读取"而实际没取到正文, 用户不知道该怎么办
       uploadFileName.value = "";
       store.setPaper({ content: "", title: "", fileName: "", sourceFileId: "", sourceType: "" });
-      toast("提取文本不足 100 字, 请改用粘贴或检查文件", "error");
+      toast(r.error || "提取文本不足 100 字, 请改用粘贴或检查文件", "error");
       return;
     }
-    toast(`文本提取完成(${r.text.length} 字)`, "success");
+    // OCR 出来的正文有错字是常态 —— 告诉用户这份是可核对的, 别把识别稿当原文
+    const viaOcr = r.extraction === "ocr";
+    toast(`文本提取完成(${r.text.length} 字)${viaOcr ? " · 来自 OCR 识别, 建议核对个别字词" : ""}`, "success");
   } catch (e) {
     toast(`提取失败: ${(e as Error).message}`, "error");
   }
 }
 
 // ── 设置项 ──
+/**
+ * 扫描件的出路 —— 写作舱资料页的上传区带「识别文字」。
+ *
+ * 走**外跳回程**(全站既有约定: 写作舱 ↔ 外壳双向), 把用户送过去; 回来时评审页的
+ * 上传 tab 还开着, 重新选同一个文件即可 —— 那时 `/files/:id/text` 会读到 OCR 写回的正文。
+ */
+function goOcr() {
+  window.location.hash = "#/workflow/materials";
+}
 const journalOptions = computed(() => journals.value);
 const standardOptions = computed(() => standards.value);
 function selectJournal(id: string) {
@@ -174,7 +195,11 @@ async function submitReview() {
         modelId: store.settings.modelId || undefined
       },
       sidebarTaskId: taskId || undefined,
-      sourceFileId: store.paperSourceFileId || undefined
+      // 三个一起发: 此前只发 id, 而后端三条列都在 —— source_file_name/type 永远空串,
+      //   "这份审稿审的是哪个文件"在历史列表里查不出来
+      sourceFileId: store.paperSourceFileId || undefined,
+      sourceFileName: store.paperFileName || undefined,
+      sourceFileType: store.paperSourceType || undefined
     });
     if (truncated) toast(`稿件超出单次审稿上限 ${MAX_REVIEW_CHARS} 字, 本次只审前 ${MAX_REVIEW_CHARS} 字`, "warning");
     store.currentJobId = job.id;
@@ -1269,9 +1294,17 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
               <div class="upload-zone-inner">
                 <span class="upload-icon">📄</span>
                 <p>{{ uploadFileName || "点击选择文件(支持 .pdf 文字版 / .docx / .txt)" }}</p>
-                <p v-if="uploadFileName" class="upload-done">✓ 已读取</p>
+                <p v-if="uploadFileName && !scanNeedsOcr" class="upload-done">✓ 已读取</p>
+                <p v-else-if="scanNeedsOcr" class="upload-done upload-done--warn">⚠ 扫描件, 尚无正文</p>
               </div>
             </label>
+            <!--
+              扫描件的出路(2026-09-29): 服务端抽不到文字层时返回 needsOcr, 光给一句
+              "请先做识别文字"而没有入口, 用户看完不知道去哪儿点 —— 提示必须自带下一步。
+            -->
+            <div v-if="scanNeedsOcr" class="chunk-note">
+              这份 PDF 没有文字层(是扫描件), 没法直接审。<a class="scan-go" href="#" @click.prevent="goOcr">去「识别文字」→</a>
+            </div>
             <div v-if="uploadChunked" class="chunk-note">文档较长, 将分 {{ Math.ceil((store.paperContent.length || 1) / 2000) }} 段审稿后汇总全文结论</div>
           </template>
 
@@ -1776,6 +1809,8 @@ onUnmounted(() => { stopWatch(); stopBatchPoll(); });
 .upload-icon { font-size: 32px; }
 .upload-zone-inner p { margin: 6px 0; font-size: 13px; color: #8B9BB1; }
 .upload-done { color: #5FD0B4 !important; font-weight: 600; }
+.upload-done--warn { color: #E8B96B !important; }
+.scan-go { color: #6FA6E8; text-decoration: underline; margin-left: 2px; }
 .chunk-note {
   margin-top: 8px;
   padding: 7px 11px;

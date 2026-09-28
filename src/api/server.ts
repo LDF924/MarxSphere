@@ -12661,13 +12661,36 @@ ${dataBlock}
   // 归属: 与 /api/ocr/* 同批, LOCAL_ONLY_PREFIXES 里已登记(见该常量)。
   app.post("/api/ocr/jobs", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { filename?: string; base64?: string; mime?: string };
-    if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容" });
+    const body = request.body as { filename?: string; base64?: string; mime?: string; fileId?: string };
     const filename = body.filename ?? "file.pdf";
-    const buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
-    if (buf.length === 0) return reply.code(400).send({ error: "文件内容为空" });
     const { ocrJobService } = await import("../services/ocr-job-service.js");
-    const r = ocrJobService.createOcrJob({ userId: user.id, fileName: filename, buf });
+    /**
+     * 两种发起方式:
+     *   (a) 直接传字节(既有路径, 写作舱素材上传走这条);
+     *   (b) 传 fileId —— 指着一份**已上传**的文件识别。识别完正文会写回那份文件的 text 列,
+     *       于是评审页那条「扫描件 → 去识别文字」有回程(2026-09-29)。
+     * 二选一, fileId 优先(它有回程, 语义更完整)。
+     */
+    const srcFileId = String(body?.fileId ?? "").trim();
+    const { rawFileId } = await import("../services/file-text-service.js");
+    let buf: Buffer;
+    if (srcFileId) {
+      const r = await pool.query(`select filename, mime, storage_rel from user_files where id=$1 and user_id=$2`,
+        [rawFileId(srcFileId), user.id]);
+      if (!r.rows.length) return reply.code(404).send({ error: "文件不存在或不属于你" });
+      const { getObject } = await import("../services/blob-store.js");
+      const bytes = await getObject(String(r.rows[0].storage_rel ?? ""));
+      if (!bytes) return reply.code(404).send({ error: "文件字节已丢失, 请重新上传" });
+      buf = bytes;
+    } else {
+      if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容(或给 fileId 指向已上传的文件)" });
+      buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
+    }
+    if (buf.length === 0) return reply.code(400).send({ error: "文件内容为空" });
+    const r = ocrJobService.createOcrJob({
+      userId: user.id, fileName: filename, buf,
+      ...(srcFileId ? { sourceFileId: rawFileId(srcFileId) } : {}),
+    });
     if (!r.ok) return reply.code(429).send({ error: r.error });
     return { job: ocrJobService.publicOcrJob(r.job) };
   });
@@ -12776,6 +12799,36 @@ ${dataBlock}
        values ($1,$2,$3,$4,$5,$6,$7)`,
       [id, user.id, body.filename ?? "upload.bin", body.mime ?? "application/octet-stream", rawBuf.length, rel, JSON.stringify(profile)]);
     return { fileId: `file_${id}`, filename: body.filename ?? "upload.bin", profile };
+  });
+
+  /**
+   * 文件正文(fileId → 纯文本)。
+   *
+   * 由来(2026-09-29): 这条路由此前**不存在**, 于是"上传的那份 PDF 正文是什么"没人能回答 ——
+   *   审稿建 job 只能让用户粘贴全文, `review_jobs.source_file_id` 永远写不进值。
+   *   邻近那条 `/api/files/extract-text` 解决的是另一半问题(手上**已有字节**, 当场抽一次就丢),
+   *   它对扫描件是硬失败, 也不落库。这条不一样: 它按 **id** 取, 抽完存进 user_files.text。
+   *
+   * ⚠ 扫描件**不在这里等 OCR**(分钟级, 同步等会把连接与前端轮询一起拖死):
+   *   返回 needsOcr=true 让调用方去走「识别文字」, OCR 完成后经 attachOcrText 写回同一列。
+   */
+  app.get("/api/files/:fileId/text", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { fileId } = request.params as { fileId: string };
+    const force = String((request.query as { force?: string })?.force ?? "") === "1";
+    const { ensureFileText } = await import("../services/file-text-service.js");
+    const r = await ensureFileText(user.id, fileId, { force });
+    // 抽不出正文**不是**服务端错误: 扫描件要用户去做 OCR, 那是 200 + needsOcr。
+    // 只有"文件不存在/字节丢了"才是 404。
+    if (!r.ok && !r.needsOcr && !r.text) {
+      if (/不存在|不属于你|字节已丢失/.test(r.error)) return reply.code(404).send({ error: r.error, code: "FILE_NOT_FOUND" });
+      return reply.code(200).send({ fileId: r.fileId, filename: r.fileName, ext: r.ext, ok: false, text: "", charCount: 0, pageCount: r.pageCount, extraction: r.extraction, needsOcr: r.needsOcr, error: r.error });
+    }
+    return {
+      ok: r.ok, fileId: r.fileId, filename: r.fileName, ext: r.ext,
+      text: r.text, charCount: r.charCount, pageCount: r.pageCount,
+      extraction: r.extraction, needsOcr: r.needsOcr, error: r.error,
+    };
   });
 
   // 文件剖析(读库 profile)

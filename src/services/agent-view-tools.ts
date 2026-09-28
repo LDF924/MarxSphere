@@ -775,6 +775,130 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       return `【投稿要件·${cn}】\n` + s.slice(0, 1200);
     }),
   },
+  /**
+   * 写 —— **会起一次 MinerU 识别(分钟级 + 烧外部额度)**, 所以是自跑的后台任务, 立刻返回任务号。
+   *
+   * 由来(2026-09-29 用户: "审稿的上传 PDF 要先 file_read/pdf_parse 拿到文本再建 job ——
+   *   后端没有 fileId → 纯文本这个能力"): 对话侧此前**没有任何工具**能碰 OCR ——
+   *   MinerU 只挂在写作舱的素材上传按钮后面。于是用户在对话里说"识别一下我传的那份扫描件",
+   *   AI 只能回"我做不到"。
+   *
+   * ⚠ 三条:
+   *   ① 不阻塞 —— 识别是分钟级的, 工具立刻返回任务号(与 review_job_create 同一语义);
+   *   ② 传 fileId 时, 识别完正文会**写回那份文件**(ocr-job-service 的 sourceFileId) ——
+   *      于是后续 review_job_create(fileId=…) 直接能审;
+   *   ③ 没配 MinerU 密钥时明确说去哪儿配, 不报一句"失败"让用户猜。
+   */
+  {
+    name: "ocr_file", label: "识别扫描件", risk: "safe",
+    description: "把扫描版 PDF(没有文字层的图片版)交给 MinerU 识别成文字。**后台跑, 分钟级**, 立刻返回任务号; 用 view_file_text 轮询取结果。传 fileId 时识别完的正文会写回那份文件, 之后可以直接拿来审稿。",
+    params: {
+      fileId: { type: "string", required: true, desc: "要识别的文件 id(用 view_review_files 查; 目前只支持 PDF)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const uid = currentUserId();
+      if (!uid) return "（需要登录身份 — 对话触发的工具会带上传入者身份; 后台任务里没有）";
+      const fileId = String(a.fileId ?? "").trim();
+      if (!fileId) return "（需要 fileId）";
+
+      const { effectiveToken } = await import("./service-token-store.js");
+      if (!(await effectiveToken("mineru"))) {
+        return "（平台没有配置 OCR 密钥 —— 到「设置 → 外部服务密钥」填一个 MinerU 密钥再来。）";
+      }
+
+      const { rawFileId } = await import("./file-text-service.js");
+      const { pool } = await import("../db/pool.js");
+      const row = await pool.query(`select filename, storage_rel from user_files where id=$1 and user_id=$2`,
+        [rawFileId(fileId), uid]);
+      if (!row.rows.length) return "（文件不存在或不属于你）";
+      const fileName = String(row.rows[0].filename ?? "file.pdf");
+      if (!/\.pdf$/i.test(fileName)) {
+        // MinerU 那条链吃的是 PDF; 其它格式走 file-text-service 的常规抽取就够了
+        return `（「${fileName}」不是 PDF —— 扫描件识别只针对 PDF。其它格式直接用 view_file_text 取正文即可。）`;
+      }
+      const { getObject } = await import("./blob-store.js");
+      const buf = await getObject(String(row.rows[0].storage_rel ?? ""));
+      if (!buf) return "（文件字节已丢失, 请重新上传）";
+
+      const { ocrJobService } = await import("./ocr-job-service.js");
+      const r = ocrJobService.createOcrJob({ userId: uid, fileName, buf, sourceFileId: rawFileId(fileId) });
+      if (!r.ok) return `（${r.error}）`;
+      return [
+        `【识别已开始】任务 ${String(r.job.id).slice(0, 8)}… · 文件「${fileName}」`,
+        "MinerU 正在识别(分钟级, 会消耗外部额度)。",
+        `识别完成后正文会**写回这份文件** —— 那时直接 review_job_create(fileId="${fileId}") 就能审, 或用 view_file_text 取全文。`,
+        "用 view_ocr_job(jobId=…) 看进度。",
+      ].join("\n");
+    }),
+  },
+
+  /**
+   * 读 —— 看识别进度 / 取结果。与 ocr_file 配套(同 review_job_create + view_review_job 的分工)。
+   */
+  {
+    name: "view_ocr_job", label: "识别任务进度", risk: "safe",
+    description: "查看扫描件识别任务的状态与结果(done 时返回识别出的正文前若干字)",
+    params: {
+      jobId: { type: "string", required: true, desc: "ocr_file 返回的任务号" },
+      maxChars: { type: "number", desc: "返回正文的最大字数(默认 2000; 要看全文用 view_file_text)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const uid = currentUserId();
+      if (!uid) return "（需要登录身份 — 对话触发的工具会带上传入者身份; 后台任务里没有）";
+      const { ocrJobService } = await import("./ocr-job-service.js");
+      const job = ocrJobService.getOcrJob(uid, String(a.jobId ?? "").trim());
+      if (!job) return "（任务不存在或不属于你 —— 识别任务只在内存里保留一段时间, 服务重启后就查不到了; 正文若已写回文件, 用 view_file_text 取。）";
+      const cn: Record<string, string> = { queued: "排队中", running: "识别中", done: "已完成", failed: "失败", cancelled: "已取消" };
+      const head = `【识别任务】${cn[job.status] ?? job.status} · ${job.fileName}${job.currentStep ? ` · ${job.currentStep}` : ""}`;
+      if (job.status !== "done") return `${head}${job.error ? `
+原因: ${job.error}` : ""}`;
+      const n = Math.min(Math.max(Number(a.maxChars) || 2000, 200), 20_000);
+      const body = job.text.slice(0, n);
+      return `${head}
+共 ${job.charCount} 字${job.charCount > n ? `(下面只给前 ${n} 字)` : ""}
+
+${body}`;
+    }),
+  },
+
+  /**
+   * 读 —— **按 fileId 取正文**。
+   *
+   * 由来(2026-09-29): 对话侧此前只能看到上传文件的**元信息**
+   *   (view_viz_data_files: 文件名 + 行列数, view_review_files: 文件名 + 是否已抽正文),
+   *   却**看不见内容**。用户说"帮我看看我传的那篇稿子写得怎么样", AI 手上只有一个文件名。
+   *   file-text-service 就是补这个的: 按 id 取字节 → 抽文本(抽过就读库)。
+   *
+   * ⚠ 扫描件会返回 needsOcr, 不是失败 —— 告诉用户下一步是 ocr_file。
+   */
+  {
+    name: "view_file_text", label: "读上传文件正文", risk: "safe",
+    description: "按 fileId 取一份已上传文件的**正文**(PDF 文字层/Word/纯文本/表格都行)。返回前若干字; 扫描件会提示改用 ocr_file 先识别。",
+    params: {
+      fileId: { type: "string", required: true, desc: "文件 id(用 view_review_files 或 view_viz_data_files 查)" },
+      maxChars: { type: "number", desc: "返回的最大字数(默认 3000; 上限 20000 —— 要整篇请用审稿那条链, 不要往对话里灌)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const uid = currentUserId();
+      if (!uid) return "（需要登录身份 — 对话触发的工具会带上传入者身份; 后台任务里没有）";
+      const fileId = String(a.fileId ?? "").trim();
+      if (!fileId) return "（需要 fileId）";
+      const { ensureFileText } = await import("./file-text-service.js");
+      const r = await ensureFileText(uid, fileId);
+      if (r.needsOcr) {
+        return `【${r.fileName}】没有文字层(扫描件) —— 先用 ocr_file(fileId="${r.fileId}") 识别, 识别完正文会写回这份文件。`;
+      }
+      if (!r.ok) return `（读不到正文: ${r.error}）`;
+      const n = Math.min(Math.max(Number(a.maxChars) || 3000, 200), 20_000);
+      const body = r.text.slice(0, n);
+      const viaOcr = r.extraction === "ocr" ? " · **由 OCR 识别, 可能有错字**" : "";
+      return `【${r.fileName}】${r.charCount} 字 · 来源 ${r.extraction}${viaOcr}`
+        + `${r.charCount > n ? `(下面只给前 ${n} 字)` : ""}
+
+${body}`;
+    }),
+  },
+
 ];
 
 /**
