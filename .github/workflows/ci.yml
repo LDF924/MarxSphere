@@ -86,7 +86,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
+        # 每项两列: `shard` 是人读的分片号("3/5", 传给 verify-ui 的 --shard),
+        # `tag` 是**能进 artifact 名**的形式("3-5")。
+        #
+        # ⚠ 为什么要多一个字段(2026-09-28, 代价是把 CI 整个弄停过): GitHub Actions 的
+        #   表达式**没有 `replace()`** —— 那是 Azure Pipelines 的语法。我写了
+        #    `${{ replace(matrix.shard, '/', '-') }}`, 未知函数让**整个 workflow 文件失效**:
+        #   GitHub 不创建 CI run, 只在 Actions 页留一条 0.0 分钟的 "failure"。
+        #   从"分片红"变成"根本没有门禁", 比原来那个 bug 严重得多, 而且**没有任何测试会红**
+        #   (单测/类型检查/本地门禁全绿, 它们都不读 ci.yml)。
+        #   所以这里改成**纯字符串**, 不用任何函数 —— 没有可写错的余地。
+        #   另一条路是在 `env:` 里用 bash `${VAR//\//-}` 转, 但那要 `shell: bash` 才成立,
+        #   而 step 名里的表达式展开与 shell 无关 —— 用数据比用表达式稳。
+        include:
+          - shard: "1/5"
+            tag: "1-5"
+          - shard: "2/5"
+            tag: "2-5"
+          - shard: "3/5"
+            tag: "3-5"
+          - shard: "4/5"
+            tag: "4-5"
+          - shard: "5/5"
+            tag: "5-5"
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -258,13 +280,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          # ⚠ 分片号形如 "3/5", 直接拼进 name 会得到一个**含 `/` 的 artifact 名** ——
-          #   upload-artifact **不接受** `/`(NTFS 等文件系统不允许), 于是这一步自己也红:
+          # ⚠ 用矩阵里的 `tag`("3-5"), **不要**用 `shard`("3/5") —— upload-artifact
+          #   **不接受** `/`(NTFS 等文件系统不允许), 直接拼会得到:
           #     The artifact name is not valid: verify-ui-log-3/5 …
-          #   后果比"少个日志"更糟 —— 它把**真正的失败原因**（上一步的 artifact 收集）
-          #   一起变成红步, 排查时先要分辨哪条红才是真因。
-          #   实测于 2026-09-28 的分片 CI(run 36383231103)。
-          #   用 replace 把 `/` 换成 `-`, 得到 verify-ui-log-3-5。
-          name: verify-ui-log-${{ replace(matrix.shard, '/', '-') }}
+          #   那一步自己也红, 排查时先要分辨"哪条红才是真因"(实测于 run 36383231103)。
+          name: verify-ui-log-${{ matrix.tag }}
           path: /tmp/verify-ui.log
           if-no-files-found: ignore
