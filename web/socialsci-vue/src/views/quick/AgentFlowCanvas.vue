@@ -4,7 +4,7 @@
  * 用 npm @vue-flow/core(参考产品 L1-13472 即库本体); 布局: 顺序横排 + module 类节点下排
  * 三色边体系: agent-edge-(自动链)/manual-edge-(用户拖); active 目标 → #7184f5 2.4px animated
  */
-import { ref, computed, provide, watch, onMounted } from "vue";
+import { ref, computed, provide, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { VueFlow, type Node, type Connection, type EdgeChange, type NodeChange } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { MiniMap } from "@vue-flow/minimap";
@@ -34,6 +34,14 @@ export interface BizNode {
   executionDetail?: string;
   outputPreview?: string;
   artifactCount?: number;
+  /**
+   * V416: 实际消费了哪些上游节点的产出(`MetaStepRun.inputsFrom`, 由运行时的进度回填)。
+   *
+   * 与 `input` 的区别很重要: `input` 是**能力的声明**(这张卡片按规格需要什么),
+   * 这里是**这一次运行真的吃了谁**。参考产品「节点输入」在跑完后展示的是后者。
+   * 没跑过时为空数组 —— 那时不要编一个"上游产出"充数。
+   */
+  inputsFrom?: string[];
   /** V415: 该节点对应哪个编排能力(来自 /api/orchestrator/capabilities) */
   capabilityId?: string;
   /** V415: 节点参数(覆盖能力默认值; 渲染 {{outputs.x}} / {{inputs}} 模板) */
@@ -285,11 +293,19 @@ function onEdgesChange(changes: EdgeChange[]) {
 }
 function onNodesChange(changes: NodeChange[]) {
   // V415: 只上报拖拽结束的位置变化(旧实现整个忽略 → 位置从不持久化, 保存/重进就弹回自动布局)
+  let moved = false;
   for (const ch of changes) {
     if (ch.type === "position" && ch.position && !ch.dragging) {
       emit("nodes-moved", { id: String(ch.id).replace(/^agent-/, ""), position: { x: ch.position.x, y: ch.position.y } });
+      moved = true;
     }
   }
+  /**
+   * V416: 拖拽落点也会影响泳道边界 —— 把一个主链节点拖到很下面, "主链"那条框要跟着长高。
+   * ⚠ 只在**拖拽结束**时重算(而不是每一帧): 计算要做 min/max 扫全量节点, 拖拽期间
+   *   每帧算一次纯属浪费, 而且框跟着手抖在视觉上很吵。
+   */
+  if (moved) computeLanes();
 }
 
 /**
@@ -395,18 +411,56 @@ const edgeMarks = computed(() => {
 });
 watch(
   () => [props.nodes, props.edges] as const,
-  () => buildLayout(),
+  () => {
+    buildLayout();
+    /**
+     * V416: 等一帧再量泳道 —— `buildLayout` 只写了 flowNodes, vue-flow 还没把节点
+     *   挂进 DOM、更没量出宽高; 同一 tick 里算边界会拿到未落定的尺寸。
+     *   `nextTick` 后 DOM 已更新(位置是我们自己给的不依赖测量, 所以这一帧足够)。
+     */
+    void nextTick(() => {
+      // 首次算泳道前先挂上视口观察器, 再量一次 —— 首帧节点可能还没进 DOM, 量出来是空的
+      watchViewport();
+      computeLanes();
+    });
+  },
   { deep: true }
 );
-onMounted(() => buildLayout());
+onMounted(() => { buildLayout(); void nextTick(() => { watchViewport(); computeLanes(); }); });
 
 /**
  * V415: 把"缩放/平移到全部节点可见"暴露给上层。
  * 用途: 点能力项的 ➕ 后新节点可能落在当前视野外(尤其中小窗口), 用户会以为"没加上" ——
  * 上层加完节点调一次 fit 就能把它带进视野。
  */
-const flowRef = ref<{ fitView?: (opts?: unknown) => void } | null>(null);
-defineExpose({ fitView: () => flowRef.value?.fitView?.({ padding: 0.15, duration: 200 }) });
+const flowRef = ref<{
+  fitView?: (opts?: unknown) => void;
+  getViewport?: () => { x: number; y: number; zoom: number };
+  setCenter?: (x: number, y: number, opts?: unknown) => void;
+} | null>(null);
+/**
+ * V416: 把某个节点滚进视野 —— 「在画布打开工作界面」这个动作的落点。
+ *
+ * 为什么要用 `setCenter` 自己算而不用库里的 fitView({nodes:[...]}):
+ *   fitView 会**顺手改缩放**(它要"装下"目标), 而用户此时的缩放是他自己调的 ——
+ *   点一下"在画布打开"就把画布拉远, 会让人丢失方向感。setCenter 只平移, 缩放保持。
+ * 拿不到实例时**什么都不做**(返回 false, 由上层换一种方式告知), 不抛错。
+ */
+defineExpose({
+  fitView: () => flowRef.value?.fitView?.({ padding: 0.15, duration: 200 }),
+  focusNode: (id: string): boolean => {
+    const f = flowRef.value;
+    if (!f?.setCenter || !f?.getViewport) return false;
+    const n = flowNodes.value.find((x: { id: string }) => x.id === id);
+    if (!n?.position) return false;
+    const vp = f.getViewport();
+    // vue-flow 的节点 position 是**流坐标**, setCenter 收的也是流坐标 —— 直接传节点中心
+    const w = Number(n.width) || 180;
+    const h = Number(n.height) || 120;
+    f.setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: vp.zoom, duration: 260 });
+    return true;
+  },
+});
 
 const nodeColor = (n: Node) => {
   const st = (n.data as BizNode | undefined)?.state;
@@ -414,6 +468,141 @@ const nodeColor = (n: Node) => {
   if (st === "completed") return "#5FD0B4";
   return "#c3ccdc";
 };
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * V416: 泳道与「模块调度」区(对齐参考产品图 11)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * 参考产品把画布按 PHASE 横向分泳道(研究定义/研究框架/素材编排/正文生成)外加一条
+ * MODULE SCHEDULER 底栏。**我方不照抄那五条泳道** —— 理由要说清楚, 免得日后被当成漏做:
+ *
+ *   · 它那五条是**它自己的固定五阶段产品结构**(phrase1..5); 我方这个画布是**自由 DAG**:
+ *     节点来自 100 项能力、可以任意连、可以一个都没有。硬套五条泳道等于把用户的图
+ *     塞进一个我们没有的阶段模型里, 而且图里没有对应节点时泳道只能是空壳(装饰)。
+ *   · 我方真正有的两条带: **主链**与**模块调度**。后者不是新概念 ——
+ *     `BizNode.standalone` 与 `AgentFlowCanvas` 里那条 y=340 的下排布局**早就在了**,
+ *     只是一直没有可见的区隔, 用户看到的是"下面莫名其妙飘着一排节点"。
+ *
+ * 所以这件事的做法是**给已有的两条带补上可见的标题与边界**, 而不是造五条没有的泳道。
+ *
+ * ⚠ `standalone` 在 QuickModeView 里从来没被赋过值(grep 0 命中), 而模板图里确实有底部
+ *   模块行 —— 所以判据不能只看这个字段。这里按**能力的 category** 兜底认模块节点:
+ *   模块调度 / 统计分析 / 科研绘图 / 实证 这四类属于"分析模块", 而不是写作主链。
+ *   这样模板图(它们的 category 就是这几个)能正确落到下排, 已保存的图也不受影响。
+ */
+const MODULE_CATEGORIES = new Set(["模块调度", "统计分析", "科研绘图", "实证"]);
+const isModuleNode = (n: BizNode): boolean => !!n.standalone || MODULE_CATEGORIES.has(n.module);
+
+/** 泳道分区: 主链 / 模块调度。见下面 V416 那段说明。 */
+type Lane = "main" | "module";
+
+/**
+ * ⚠ 坐标系: **屏幕坐标**(相对画布容器), 不是流坐标。
+ *
+ * 第一版我把它当成流坐标写进 `<VueFlow>` 的默认插槽里, 以为"跟节点同一坐标系就能跟着动"。
+ * 实测两件事全错: ① 默认插槽渲染在 `.vue-flow` 里而**不在** `.vue-flow__viewport` 里
+ * (vue-flow 1.48.2 的默认插槽是**兄弟层**, 不是子层), 所以它既不缩放也不平移;
+ * ② `z-index: 0` 被 `.vue-flow__pane` 盖住, 边框根本看不见(截图里整条泳道是隐形的)。
+ * 现在: 画在 VueFlow 之外、`z-index` 提到 pane 之上、边界从 DOM 实拍取(见 computeLanes)。
+ */
+interface LaneRect { key: Lane; title: string; x: number; y: number; w: number; h: number; color: string }
+const lanes = ref<LaneRect[]>([]);
+
+const LANE_META: Record<Lane, { title: string; color: string }> = {
+  main: { title: "主链", color: "#4D84CB" },
+  module: { title: "模块调度", color: "#9B7BE0" },
+};
+
+/**
+ * ⚠ 泳道边界从 **DOM 实拍**取, 不自己算变换。
+ *
+ * 走过的三条路, 记下来免得再绕:
+ *   ① 流坐标 + 放进 `<VueFlow>` 默认插槽 —— **错**: 默认插槽渲染在 `.vue-flow` 里而不是
+ *      `.vue-flow__viewport` 里(vue-flow 1.48.2), 既不跟平移缩放, 还被 pane 盖住(整条隐形)。
+ *   ② 自己拿 `viewport` 做 `x*zoom+tx` 换算 + `@viewport-change` 触发 —— **错**:
+ *      实测点两次缩放按钮, 节点宽度 ×1.44 而泳道纹丝不动 ⇒ 那个事件没有按预期派发到外层组件。
+ *   ③ 现在: 节点卡片的 `getBoundingClientRect()` 本来就是**屏幕坐标**(vue-flow 的变换已经
+ *      作用在 DOM 上), 直接量它、减掉画布容器的 rect 即可。变换口径永远与 vue-flow 自身一致,
+ *      不存在"我算的和他做的不一样"; 触发用 MutationObserver 盯视口元素的 `style`
+ *      (缩放/平移必然改它), 不依赖任何 emit 契约。
+ */
+function computeLanes() {
+  const root = canvasEl.value;
+  if (!root) { lanes.value = []; return; }
+  const base = root.getBoundingClientRect();
+  const groups: Record<Lane, Array<{ x: number; y: number; w: number; h: number }>> = { main: [], module: [] };
+  for (const n of props.nodes) {
+    // 节点卡在 vue-flow 里的 DOM id 是 `agent-<bizId>`(见 buildLayout)
+    const el = root.querySelector(`.vue-flow__node[data-id="agent-${CSS.escape(n.id)}"]`) as HTMLElement | null;
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) continue;
+    groups[isModuleNode(n) ? "module" : "main"].push({
+      x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height,
+    });
+  }
+  const PAD_X = 26, PAD_TOP = 34, PAD_BOTTOM = 22, MARGIN = 20;
+  const out: LaneRect[] = [];
+  for (const key of ["main", "module"] as Lane[]) {
+    const pts = groups[key];
+    if (!pts.length) continue;   // 空的泳道**不画** —— 空壳泳道是纯装饰, 参考产品图里也没有空的
+    const left = Math.min(...pts.map((p) => p.x));
+    const top = Math.min(...pts.map((p) => p.y));
+    const right = Math.max(...pts.map((p) => p.x + p.w));
+    const bottom = Math.max(...pts.map((p) => p.y + p.h));
+    const px = MARGIN + PAD_X, py = MARGIN + PAD_TOP;
+    out.push({
+      key, title: LANE_META[key].title, color: LANE_META[key].color,
+      x: left - px, y: top - py,
+      w: right - left + px * 2, h: bottom - top + py + MARGIN + PAD_BOTTOM,
+    });
+  }
+  lanes.value = out;
+}
+
+/**
+ * 视口变换一改就重算泳道 —— 不依赖 vue-flow 的 emit 契约。
+ *
+ * ⚠ 盯的元素是 `.vue-flow__transformationpane`, **不是** `.vue-flow__viewport`。
+ *   我第一版盯的是后者, 结果盯了个空: 实测(2026-09-28)点缩放按钮时
+ *   `.vue-flow__viewport` 的 `style` 属性**始终是 null**, 而真正带
+ *   `matrix(zoom,0,0,zoom,tx,ty)` 的是它的子元素 `.vue-flow__transformationpane`。
+ *   MutationObserver 挂错元素**不会有任何报错**, 只是永远不触发 —— 表现与"没写这段"一模一样。
+ *   所以这里附一条自检: 挂不上就打一行, 免得再静默失效。
+ */
+let laneObserver: MutationObserver | null = null;
+function watchViewport() {
+  const root = canvasEl.value;
+  if (!root || laneObserver) return;
+  const vp = root.querySelector(".vue-flow__transformationpane");
+  if (!vp) {
+    console.warn("[AgentFlowCanvas] 找不到 .vue-flow__transformationpane — 泳道不会跟随缩放/平移");
+    return;
+  }
+  laneObserver = new MutationObserver(() => {
+    // 同一帧内可能连续变更, 合并到下一帧只算一次
+    void nextTick(() => computeLanes());
+  });
+  laneObserver.observe(vp, { attributes: true, attributeFilter: ["style"] });
+}
+onUnmounted(() => { laneObserver?.disconnect(); laneObserver = null; });
+
+/**
+ * 「可执行」的真判据。
+ *
+ * 与后端启动前置**同口径**(见 `startOrchestration`: 非空才让跑), 但这里更严一档 ——
+ * 后端对未绑能力的节点会**静默退化**成通用 LLM 生成(`dagNodeToMetaStep` 的 else 分支),
+ * 那意味着你排的那一步不会做你以为它做的事。所以这里把它标出来。
+ */
+const executable = computed<{ ok: boolean; why: string }>(() => {
+  if (!props.nodes.length) return { ok: false, why: "画布是空的" };
+  const unbound = props.nodes.filter((n) => !n.capabilityId);
+  if (unbound.length) {
+    return { ok: false, why: `${unbound.length} 个节点未绑定能力: ${unbound.slice(0, 2).map((n) => n.id).join(", ")}${unbound.length > 2 ? " …" : ""}` };
+  }
+  return { ok: true, why: `${props.nodes.length} 个节点都已绑定能力` };
+});
 </script>
 
 <template>
@@ -444,8 +633,35 @@ const nodeColor = (n: Node) => {
       <MiniMap :node-color="nodeColor" pannable zoomable />
       <Controls />
     </VueFlow>
+    <!--
+      V416: 泳道区隔。**放在 VueFlow 之外** —— 第一版放进默认插槽, 实测默认插槽渲染在
+      `.vue-flow` 里而不是 `.vue-flow__viewport` 里, 于是既不跟平移缩放、还低于 pane。
+      边界取自节点卡片的实际屏幕位置(见 computeLanes), 视口一变就重算。
+    -->
+    <div
+      v-for="ln in lanes"
+      :key="'lane-' + ln.key"
+      class="flow-lane"
+      :style="{ left: ln.x + 'px', top: ln.y + 'px', width: ln.w + 'px', height: ln.h + 'px', borderColor: ln.color + '55' }"
+    >
+      <span class="flow-lane-title" :style="{ color: ln.color, borderColor: ln.color + '66' }">{{ ln.title }}</span>
+    </div>
     <div class="flow-toolbar">
+      <!--
+        V416: 「可执行」徽标(参考产品图 11 右上角那个绿徽标)。
+        ⚠ **它必须是真判据, 不能是恒定绿灯** —— 一个永远绿的徽标比没有更糟。
+        判据与后端 startOrchestration 的前置一致: 有节点 + 每个节点都绑了已登记的能力。
+        没绑能力的节点后端会退化成通用 LLM 生成(见 dagNodeToMetaStep), 那是意外行为而不是设计,
+        所以这里判"不可执行"并说明原因 —— 让人有机会改, 而不是跑完了才发现那步只是泛泛生成。
+      -->
       <span class="flow-zone-chip">标准工作流 · 主流程</span>
+      <span
+        class="flow-exec-chip"
+        :class="executable.ok ? 'is-ok' : 'is-blocked'"
+        :title="executable.why"
+        :data-executable="executable.ok ? '1' : '0'"
+      >{{ executable.ok ? "可执行" : "不可执行" }}</span>
+      <span v-if="!executable.ok" class="flow-exec-why">{{ executable.why }}</span>
     </div>
 
     <!-- V415: 只剩"边的删除钮" —— 节点卡片自带 ✕, 再挂一个圆形按钮是重复的(用户指出)。
@@ -491,8 +707,7 @@ const nodeColor = (n: Node) => {
   min-height: 20px;
   padding: 0 8px;
   border-left: 2px solid #43C9CD;
-  color: #9FB0C6;
-  font-size: 10px;
+  color: #9FB0C6;  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -520,4 +735,23 @@ const nodeColor = (n: Node) => {
   font-size: 13px; cursor: pointer; transform: translate(-50%, -50%);
 }
 .canvas-kill:hover { background: #B4544E; color: #FFF; }
+
+/* V416: 泳道区隔(屏幕坐标, 随平移缩放重算) + 「可执行」徽标 */
+/* ⚠ z-index 必须高于 .vue-flow__pane(vue-flow 默认 1 附近) —— 第一版是 0, 边框被 pane 整体盖住 */
+.flow-lane {
+  position: absolute; z-index: 2; pointer-events: none;
+  border: 1px dashed; border-radius: 12px; background: rgba(77, 132, 203, 0.035);
+}
+.flow-lane-title {
+  position: absolute; top: -9px; left: 12px; padding: 0 7px;
+  font-size: 10px; letter-spacing: 0.08em; line-height: 16px;
+  background: #0D1626; border-left: 2px solid; white-space: nowrap;
+}
+.flow-exec-chip {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 0 9px;
+  margin-left: auto; border-radius: 10px; font-size: 10.5px; letter-spacing: 0.04em;
+}
+.flow-exec-chip.is-ok { background: #14281F; color: #5FD0B4; border: 1px solid #24503C; }
+.flow-exec-chip.is-blocked { background: #2A2414; color: #E8B54A; border: 1px solid #5A4A1E; }
+.flow-exec-why { font-size: 10px; color: #7A8AA0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
 </style>

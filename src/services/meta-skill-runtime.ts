@@ -511,6 +511,15 @@ export interface MetaSkillExecutor {
   authToken?: string;
   /** V415: 运行状态变化回调(编排层据此落库 —— 刷新/换设备后仍能查到跑到哪了) */
   onStatus?: (ctx: MetaRunContext, stepLog: MetaStepRun[]) => void;
+  /**
+   * V416: 事件回调 —— 每次状态迁移喊一声, 由编排层落成事件流(计划历史浮层用)。
+   *
+   * 与 `onStatus` 的区别是**粒度**: onStatus 传的是"此刻的全量快照"(整行覆盖, 只留最后态),
+   *   这里传的是"刚发生的那一件事"(追加, 永不覆盖)。参考产品的「计划历史」要的是后者 ——
+   *   "先 node.diagnosed 再 node.failed"这种**顺序**在快照里读不出来。
+   * 不注册时是空操作。
+   */
+  onEvent?: (event: string, opts: { nodeId?: string; message?: string }) => void;
   /** V415: 调用方指定 runId(编排层要先返回 id 再后台跑, 不能等运行时自己生成) */
   runId?: string;
   /**
@@ -720,6 +729,17 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
   // 而 outputs/userValues/status/cancelled 等共享状态仍走原型链落到真正的 ctx —— 无需改动
   // renderTemplate 与 defaultStepExecutor 的签名。
   const stepLimit = concurrencyLimit();
+  /**
+   * V416: 事件流(计划历史浮层的数据源)。
+   *
+   * ⚠ 为什么用**注册回调**而不是在这里直接 import `orchestrator-event-log`:
+   *   运行时是**执行引擎**, 不该绑定"谁在听"。直接在引擎里写库会让单测、脚本、
+   *   以及将来可能的非 DB 消费者都被迫带上一张表。所以引擎只负责在事件点喊一声,
+   *   落不落库、落到哪里, 由编排层(orchestrator-service)决定。
+   * 没注册时是空操作 —— 单测路径行为与改动前完全一致。
+   */
+  const emitEvent = opts.onEvent;
+
   const runStep = async (stepId: string, step: MetaStepDef): Promise<void> => {
     const log = logOf(stepId);
     // V415: user_input 步骤**不占并发槽**(见调度处的说明), 所以它可能在等了很久之后
@@ -734,6 +754,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
     log.status = "running";
     log.startedAt = Date.now();
     onStep({ ...log });
+    emitEvent?.("node.running", { nodeId: stepId });
 
     if (step.kind === "user_input") {
       // 必填字段已齐(预置/上游提供) → 跳过等待直接继续; 否则挂起等前端提交
@@ -746,12 +767,14 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
         onStep({ ...log });
         ctx.outputs[stepId] = outStr;
         done.add(stepId);
+        emitEvent?.("node.done", { nodeId: stepId, message: log.label || "" });
         return;
       }
       log.status = "waiting_input";
       log.waitingFields = fields.map((f) => ({ name: f.name, prompt: f.prompt || f.name, required: !!f.required }));
       ctx.status = "waiting_input";
       onStep({ ...log });
+      emitEvent?.("node.waiting_input", { nodeId: stepId, message: "等待补充信息后继续" });
       const got = await waitForUserInput(ctx, opts.userInputTimeoutMs ?? 5 * 60_000);
       if (!got) {
         // V415: 取消/暂停与"等待超时"要分开报 —— 前者是用户操作, 后者是异常。
@@ -764,6 +787,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
         } else {
           log.status = "failed"; log.error = "用户输入等待超时"; onStep({ ...log });
         }
+        emitEvent?.("node.failed", { nodeId: stepId, message: log.error });
         failed.add(stepId);
         return;
       }
@@ -795,6 +819,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
       log.durationMs = Date.now() - (log.startedAt || Date.now());
       onStep({ ...log });
       done.add(stepId);
+      emitEvent?.("node.done", { nodeId: stepId, message: log.label || "" });
       // 条件路由: 命中 → 立刻补跑目标(它可能是只为路由存在的节点, 被排除在可调度集之外)
       if (step.route) {
         const hit = step.route.find((r) => evalCondition(r.when, ctx));
@@ -810,6 +835,10 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
     } catch (e: any) {
       log.status = "failed"; log.error = String(e?.message || e).slice(0, 300);
       onStep({ ...log });
+      // V416: 这条 error **就是**给用户看的中文诊断(引擎里抛出的都是人话: "质量门未通过: …"
+      //   / "用户输入等待超时" / "上游步骤失败, 跳过"), 原样进事件流。
+      //   注意: 这里不加"诊断"前缀式的假包装 —— 裸到的 e.message 是什么就记什么。
+      emitEvent?.("node.failed", { nodeId: stepId, message: log.error });
       failed.add(stepId);
       // on_failure 备胎
       const fb = fallbackOf.get(stepId);
@@ -881,6 +910,7 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
         const l = logOf(s.id);
         l.status = "failed"; l.error = "上游步骤失败, 跳过";
         onStep({ ...l });
+        emitEvent?.("node.skipped", { nodeId: s.id, message: "上游步骤失败, 跳过" });
         failed.add(s.id);
         pending--;
       }
@@ -897,6 +927,12 @@ async function runMetaSkillInner(def: MetaSkillDef, ctx: MetaRunContext, stepLog
   const status: "done" | "failed" | "paused" | "cancelled" =
     aborted ? (ctx.status as "paused" | "cancelled") : failed.size > 0 ? "failed" : "done";
   ctx.status = status;
+  // V416: 运行终态也进事件流 —— 浮层的时间线要能收尾。
+  // 被接管的那份(pauseAborted)已经在上面 return 掉了, 不会在这里重复发终态。
+  emitEvent?.(
+    status === "done" ? "job.done" : status === "failed" ? "job.failed" : status === "paused" ? "job.paused" : "job.cancelled",
+    { message: status === "failed" ? "本次执行有步骤失败" : "" },
+  );
   let output = "";
   if (def.final_text_mode?.startsWith("step:")) {
     output = ctx.outputs[def.final_text_mode.slice(5)] ?? "（指定步骤无输出）";

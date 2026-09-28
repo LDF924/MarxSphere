@@ -47,35 +47,142 @@ interface Material {
 const materials = ref<Material[]>([]);
 const expandedCats = ref<Set<string>>(new Set(["literature"]));
 const publishing = ref(false);
-const editDialog = ref<{ open: boolean; kind: string; material: Material }>({ open: false, kind: "literature", material: {} as Material });
+const editDialog = ref<{
+  open: boolean; kind: string; material: Material;
+  /**
+   * V416: 文献类手动添加弹层的**关联章节**。
+   *
+   * 参考产品的 `newMaterial.sectionId` 就在这个弹层里(它的保存按钮判据是
+   * `references.filter(r => r.title.trim() && r.author.trim()).length === 0 || !sectionId`),
+   * 而我方原先只在**生成**弹层里有章节选择、手动添加靠"默认挂第一章"(`saveManual` 里
+   * `store.level1Sections[0].id`) —— 于是手动加的文献/表格永远落在第一章, 想改只能事后去"编排"。
+   */
+  sectionId: string;
+}>({ open: false, kind: "literature", material: {} as Material, sectionId: "" });
 
 /**
- * 「手动添加 X」弹层的**标题栏拖拽**(2026-09-24 你要求)。
+ * 「手动添加 X」弹层的拖拽(2026-09-24 起; 2026-09-28 按反馈改了两处)。
  *
  * 为什么用 JS 位移而不是 CSS `resize`/`position` 那套: 弹层是 `modal-mask`(fixed inset-0
  * 的遮罩)+ 居中的 `modal-card`, 拖动只该动卡片。给卡片加个 `transform: translate(dx,dy)` 最省事,
  * **不碰遮罩、不碰关闭逻辑**(`@click.self` 仍然只认"点遮罩空白处")。
  *
- * ⚠ 为什么监听挂在 window 而不是在标题栏上: 指针移出标题栏(甚至移出窗口)时事件就不再落到标题栏上,
+ * ⚠ 为什么监听挂在 window 而不是卡片上: 指针移出卡片(甚至移出窗口)时事件就不再落到卡片上,
  *   拖动会中途卡住。挂 window 的 pointermove/pointerup 才跟得住, 用完立刻摘掉。
  * ⚠ 拖到一半关掉弹层要**复位** —— 否则下次打开会带着上次的位移出现在角落(实测过这种"弹层自己跑偏")。
+ *
+ * ── 2026-09-28 的两处修改(用户反馈) ────────────────────────────────────────
+ *
+ * ① **整个卡片都能拖**, 不再只有标题栏。
+ *    原来的判据是"从 `.modal-head--drag` 上按下"。问题是卡片里**大面积是文字**(标签、说明、
+ *    示例块), 用户很自然地在正文上按住拖 —— 而那时**一点反应都没有**, 看起来就是"不能拖"。
+ *    现在整卡可拖, 例外只有三类**需要正常交互**的元素:
+ *      · 表单控件(`input/textarea/select`) —— 能拖的话就选不中文字了
+ *      · 按钮(`button`) —— 能拖的话"想点"会变成"拖走"
+ *      · 可滚动容器(`.refs-list` / `.art-out` 这类) —— 能拖的话滚不动
+ *    这几类上按下不启动拖动, 其余位置一律可拖。
+ *
+ * ② **拖不出视口**(钳制)。这是真踩到的一个坑: 拖上去之后卡片的**标题栏跑到视口外**,
+ *    而卡片本身比视口高(实测 582px vs 568px) —— 于是**连抓手都够不着, 再也拖不回来**。
+ *    判据: 卡片顶部不能高过视口顶, 底部不能低于视口底(它比视口高时以顶部为准, 保证抓手可见)。
  */
 const editDrag = ref({ dx: 0, dy: 0 });
 const editDragging = ref(false);
+/** 卡片元素引用 —— 钳制位移时要知道卡片自身尺寸 */
+const editCardEl = ref<HTMLElement | null>(null);
+
+/**
+ * 这一次按下**是否真的拖动过**。
+ *
+ * ⚠ 2026-09-28 踩到(用户的第二个问题就是它): 在卡片上按下、拖到卡片外松手时,
+ *   浏览器会把 click 派发到**按下与松手的共同祖先**上 —— 也就是 `.modal-mask`,
+ *   于是 `@click.self="closeAdd"` 判定"用户点了遮罩空白处" → **弹层自己关了**。
+ *   表现得就像"拖着拖着卡片凭空消失"(而且拖得越远越容易触发)。
+ *
+ *   修法: 拖动过就不把这次 click 当"点遮罩"。标志在 pointerup 之后的 click 里读并清 ——
+ *   事件顺序是 pointerup → click, 所以在 click 处理里读是安全的, 不需要定时器。
+ */
+const editDragMoved = ref(false);
+
+/** 遮罩点击: 只有"没在拖动"时才算"点空白处关闭"(见 editDragMoved 的说明) */
+function onEditMaskClick() {
+  if (editDragMoved.value) { editDragMoved.value = false; return; }
+  closeAdd();
+}
+
+/** 这些元素上按下不启动拖动(否则会吃掉它们自己的交互) */
+function isDragBlocked(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.closest) return false;
+  if (el.closest("button, input, textarea, select, a")) return true;
+  /**
+   * ⚠ `label` **只在它真装了控件时**才算禁区。
+   *   我第一版把 `label` 一律排除, 结果这个弹层里的红字提示(「表格请用 Tab 键分隔各列」)
+   *   包在 `<label class="f-label-row">` 里 —— 那只是一行文字, 却成了拖不动的区域。
+   *   判据: label 里有没有 input/select/textarea/button。
+   */
+  const lbl = el.closest("label");
+  if (lbl && lbl.querySelector("input, textarea, select, button")) return true;
+  // 可滚动容器: 在它上面按下要能滚动, 不能变成拖拽
+  let p: HTMLElement | null = el;
+  while (p && p !== editCardEl.value) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight + 2) return true;
+    p = p.parentElement;
+  }
+  return false;
+}
+
+/**
+ * 把位移钳到"卡片仍可见且抓手够得着"的范围。
+ * ⚠ 卡片比视口高时**以顶部为准**(bottom 不设限) —— 否则上钳制与下钳制会互相顶掉,
+ *   结果还是能拖出去(第一版就是这么错的)。
+ */
+function clampDrag(dx: number, dy: number): { dx: number; dy: number } {
+  const card = editCardEl.value;
+  if (!card) return { dx, dy };
+  const base = card.getBoundingClientRect();
+  // getBoundingClientRect 已含当前位移 —— 反推"没有位移时"的原始框, 才能算边界
+  const w0 = base.width, h0 = base.height;
+  const left0 = base.left - editDrag.value.dx;
+  const top0 = base.top - editDrag.value.dy;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // 至少要保证标题栏(约 56px)在视口内可见, 否则抓手就找不到了
+  const GRIP = 56;
+  const minDx = -left0 + 8;                              // 左边不出界(留 8px)
+  const maxDx = vw - 8 - (left0 + w0);                   // 右边不出界
+  const minDy = -top0 + 8;                               // 顶边不出界 —— 抓手可见的关键
+  const maxDy = (h0 > vh - GRIP)
+    ? Number.POSITIVE_INFINITY                            // 比视口高: 只锁顶, 让下面自然溢出
+    : vh - 8 - (top0 + h0);
+  return {
+    dx: Math.min(Math.max(dx, minDx), Math.max(minDx, maxDx)),
+    dy: Math.min(Math.max(dy, minDy), Math.max(minDy, maxDy)),
+  };
+}
+
 function startEditDrag(e: PointerEvent) {
-  // 点在关闭按钮上时不启动拖动(否则"想关"变成"拖走")
-  if ((e.target as HTMLElement)?.closest("button")) return;
+  if (isDragBlocked(e.target)) return;
+  // 防文本选中: 不 preventDefault 的话拖一路会把卡片里的文字刷蓝
   e.preventDefault();
+  editDragMoved.value = false;
   const sx = e.clientX - editDrag.value.dx, sy = e.clientY - editDrag.value.dy;
   editDragging.value = true;
-  const move = (ev: PointerEvent) => { editDrag.value = { dx: ev.clientX - sx, dy: ev.clientY - sy }; };
+  const move = (ev: PointerEvent) => {
+    const next = clampDrag(ev.clientX - sx, ev.clientY - sy);
+    // 只有真动了才算"拖动过"(给遮罩 click 那边用, 见 editDragMoved)
+    if (next.dx !== editDrag.value.dx || next.dy !== editDrag.value.dy) editDragMoved.value = true;
+    editDrag.value = next;
+  };
   const up = () => {
     editDragging.value = false;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);   // 触屏被打断时也要摘监听, 否则一直跟着手
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
 }
 
 // ── 5 分类定义(参考产品 ze  ──
@@ -745,7 +852,26 @@ function removeRefAt(i: number) {
     .join("\n");
 }
 /** 单条手动录入一行(题目必填; 其余可空) */
-const newRef = ref({ title: "", author: "", year: "", source: "", doi: "" });
+const newRef = ref({ raw: "", title: "", author: "", year: "", source: "", doi: "", gbRef: "", abstract: "" });
+/**
+ * V416: 「解析引用」—— 把 `newRef.raw` 那一整条引用拆进下面的字段。
+ *
+ * 复用**批量解析同一个解析器**(`parseBulkRefs`)而不是另写一套: 两条路如果分头实现,
+ * 同一串引用"批量粘"和"单条粘"会得到不同结果, 而用户看不出为什么。
+ * 只在解析出东西时覆盖字段 —— 用户已经手填的内容不该被一次失败的空解析抹掉。
+ */
+function parseNewRef() {
+  const raw = newRef.value.raw.trim();
+  if (!raw) { toast("先粘贴一条引用", "warning"); return; }
+  const got = parseBulkRefs(raw)[0];
+  if (!got) { toast("没解析出内容, 请检查格式或直接手填下面的字段", "warning"); return; }
+  if (got.title) newRef.value.title = String(got.title);
+  if (got.author) newRef.value.author = String(got.author);
+  if (got.source) newRef.value.source = String(got.source);
+  if (got.year) newRef.value.year = String(got.year);
+  if (got.doi) newRef.value.doi = String(got.doi);
+  toast("已拆进下面的字段, 请核对", "success");
+}
 function addRefRow() {
   const r = newRef.value;
   if (!r.title.trim()) { toast("请填写文献题目", "warning"); return; }
@@ -755,20 +881,33 @@ function addRefRow() {
     title: r.title.trim(), authors: r.author.trim(), author: r.author.trim(),
     source: r.source.trim(), venue: r.source.trim(), year: r.year.trim(),
     ...(r.doi.trim() ? { doi: r.doi.trim() } : {}),
+    ...(r.gbRef.trim() ? { gbRef: r.gbRef.trim() } : {}),
+    ...(r.abstract.trim() ? { abstract: r.abstract.trim() } : {}),
   });
   // 与批量解析同口径: 同步维护 `[N] 著录` 文本
   m.contentMd = m.references
     .map((x, i) => `[${i + 1}] ${[x.authors || x.author, x.title, x.source || x.venue, x.year].filter(Boolean).join(". ")}`)
     .join("\n");
-  newRef.value = { title: "", author: "", year: "", source: "", doi: "" };
+  newRef.value = { raw: "", title: "", author: "", year: "", source: "", doi: "", gbRef: "", abstract: "" };
 }
 
 // ── 手动添加 ──
 function openAdd(kind: string) {
-  editDialog.value = { open: true, kind, material: { id: "", kind, title: "", contentMd: "", references: [] } };
+  editDialog.value = {
+    open: true, kind,
+    material: { id: "", kind, title: "", contentMd: "", references: [] },
+    sectionId: store.level1Sections[0]?.id ?? "",
+  };
 }
 
-/** 变量角色色(SectionsView/WorkspaceView 同款 5 色) —— 文献弹层的「研究变量参考」chips 用 */
+/**
+ * 变量角色色(SectionsView/WorkspaceView 同款 5 色) —— 文献弹层的「研究变量参考」chips 用。
+ *
+ * 键名用**简称**「中介/调节/控制」不是全称: `role` 的真实取值来自 `SectionsView.vue` 的
+ *   `VAR_ROLES = ["自变量", "因变量", "中介", "调节", "控制"]`, 所以全称键在这里是死键。
+ * ⚠ 2026-09-28 我一度以为"全称查不到 → 落到兜底蓝"是缺陷, 加了三个全称键 —— **判错了**,
+ *   真实取值就是简称, 原表已全覆盖。留着这条以免下次再按假设去"修"一遍。
+ */
 function roleColor(role: string): string {
   const qn: Record<string, string> = {
     "自变量": "#4D84CB", "因变量": "#E0714F", "中介": "#D9A441", "调节": "#9B7BE0", "控制": "#8494AA",
@@ -780,7 +919,21 @@ function roleColor(role: string): string {
 
 /** 编辑已有素材(参考产品素材卡 hover 出现的「编辑」; 与新建共用同一弹层, 靠 material.id 区分) */
 function openEdit(m: Material) {
-  editDialog.value = { open: true, kind: catOf(String(m.kind ?? "")), material: { ...m } };
+  const ids = Array.isArray(m.sectionIds) ? m.sectionIds : [];
+  /**
+   * ⚠ 用 `||` 逐级兜底, **不能用 `??`**。
+   *
+   * 踩过(2026-09-28): 写成 `ids[0] ?? m.sectionId ?? store.level1Sections[0]?.id` 时,
+   *   后端给没有章节的素材返回的是**空串** `""` 而不是 `null` —— 而 `??` 只跳过 null/undefined,
+   *   **空串它会当成有值收下**。于是下拉停在"请选择章节"上(值 = ""), 保存按钮跟着置灰,
+   *   表现是"编辑素材时保存点不动"。实测: option 有三个(占位 + 两个章节)但 value 为空。
+   *   `||` 会把空串也当作"没有", 正好是这里要的语义。
+   */
+  const picked = ids[0] || m.sectionId || store.level1Sections[0]?.id || "";
+  editDialog.value = {
+    open: true, kind: catOf(String(m.kind ?? "")), material: { ...m },
+    sectionId: picked,
+  };
 }
 
 /** 素材卡上的章节徽标(参考产品: 灰色小徽标, 显示挂到的章/子节名, 最多 80px 截断) */
@@ -931,6 +1084,7 @@ async function saveManual() {
   // 表格素材 → table(后端白名单外仍可存; normalizeKind 归 data/表格素材),
   // 数据分析素材(上传图/实证产物) → figure/data_result 归 dataAnalysis
   const kindMap: Record<string, string> = { literature: "citation", data: "table", theory: "theory", dataAnalysis: "figure", document: "file" };
+  const sectionIds = editDialog.value.sectionId ? [editDialog.value.sectionId] : [];
   // 编辑已有素材(有 id): 走 PUT 只改标题与内容 —— 不要重新建一条,
   //   否则"编辑"会变成"复制一份"(参考产品素材卡的编辑是就地改)。
   if (m.id) {
@@ -938,7 +1092,8 @@ async function saveManual() {
       await q(`/research/materials/${m.id}`, {
         method: "PUT",
         // references 必须一起传 —— 否则编辑一条已有的文献素材会把它的结构化条目抹掉
-        body: { title: m.title, contentMd: m.contentMd ?? "", references: m.references ?? [] },
+        // sectionIds 同理: 弹层里选了章节就该改过去(它原来不在 payload 里, 所以编辑时改章节是空的)
+        body: { title: m.title, contentMd: m.contentMd ?? "", references: m.references ?? [], sectionIds },
       });
       toast("素材已更新", "success");
       closeAdd();
@@ -953,7 +1108,8 @@ async function saveManual() {
     title: m.title,
     contentMd: m.contentMd ?? "",
     ...(Array.isArray(m.references) && m.references.length ? { references: m.references } : {}),
-    sectionIds: store.level1Sections.length ? [store.level1Sections[0].id] : []
+    // 章节取弹层里选的那个(原来是"默认第一章"—— 用户改不了)
+    sectionIds,
   });
   if (created) {
     toast("素材已添加", "success");
@@ -1007,13 +1163,31 @@ async function uploadDataFile(file: File | undefined) {
   }
 }
 
+/**
+ * 上传体积上限(2026-09-28 用户要求从 25MB 放开到 100MB)。
+ *
+ * ⚠ 这两个数**必须与后端对齐**, 否则就是一个"界面让你选、后台必然失败"的死区。
+ *   它们之间隔着三个陷阱, 改的时候三个都要看:
+ *     ① 文件走 JSON+base64, **请求体会变成 4/3 倍** ⇒ 后端 `bodyLimit` 要按 4/3 反推;
+ *     ② 后端 `--max-old-space-size=1200`, 而 base64 → JSON.parse → Buffer 的峰值约
+ *        **4.3 倍文件大小** ⇒ 这才是真正的天花板(100MB 文件峰值 ~430MB, 安全; 300MB 会 OOM);
+ *     ③ 图片走 data-url **直接内联进素材内容**存库, 不是走 extract-text ⇒ 它有独立的上限。
+ *
+ *   为什么图片仍是 8MB 而不是跟着涨到 100MB: 它内联进 `contentMd` 落库, 一张 100MB 的图
+ *   变成 ~133MB 的文本进 PG —— 那是另一个量级的问题(改的是存储形态, 不只是个数字)。
+ *   所以这一条**不跟着放开**, 等真需要内联大图时再单独处理。
+ */
+const maxImg = 8 * 1024 * 1024;
+const maxFile = 100 * 1024 * 1024;
+function uploadLimitText(isImg: boolean): string {
+  return isImg ? "8MB" : "100MB";
+}
+
 async function uploadMaterialFile(catKey: string, file: File | undefined) {
   if (!file) return;
   const isImg = catKey === "dataAnalysis";
-  const maxImg = 8 * 1024 * 1024;
-  const maxFile = 25 * 1024 * 1024;
   if (file.size > (isImg ? maxImg : maxFile)) {
-    toast(`文件超过大小限制(${isImg ? "8MB" : "25MB"})`, "warning");
+    toast(`文件超过大小限制(${uploadLimitText(isImg)})`, "warning");
     return;
   }
   const toDataUrl = (f: File): Promise<string> =>
@@ -1044,11 +1218,37 @@ async function uploadMaterialFile(catKey: string, file: File | undefined) {
       text = await file.text();
     } else {
       const base64 = await toDataUrl(file);
+      /**
+       * ⚠ 2026-09-28 修: 原来失败一律报「文件解析失败(不支持的类型?)」——
+       *   把**体积超限**也报成了格式问题。实测: 超过上限时后端在读完 body 前断连,
+       *   前端拿到的是 ECONNRESET(不是 4xx), 于是用户对着一个 .pdf 被告知"不支持的类型"。
+       *
+       *   两种失败要分开: `ApiError`(服务端**真的回答了**, 带着具体原因 ——
+       *   如"该 PDF 未提取到文字(可能是扫描件)") 原样转达; 连不上/被重置(没有 status)
+       *   才说"可能太大或网络中断"。**不能一概而论** —— 那会对扫描件也补一句"可能太大"。
+       */
       const r = await q<{ ok?: boolean; text?: string; error?: string }>("/files/extract-text", {
         method: "POST",
         body: { filename: file.name, base64, mime: file.type }
-      }).catch((e) => ({ ok: false as const, error: String((e as { message?: string }).message ?? e) }));
-      if (!r?.ok) { toast((r as { error?: string }).error ?? "文件解析失败(不支持的类型?)", "error"); return; }
+      }).catch((e: unknown) => ({
+        ok: false as const,
+        __serverMsg: typeof (e as { status?: number }).status === "number" ? String((e as { message?: string }).message ?? "") : "",
+        __netErr: typeof (e as { status?: number }).status === "number" ? "" : String((e as { message?: string }).message ?? e),
+      }));
+      if (!r?.ok) {
+        const serverMsg = String((r as { __serverMsg?: string }).__serverMsg ?? "");
+        const netErr = String((r as { __netErr?: string }).__netErr ?? "");
+        const detail = (r as { error?: string }).error;
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        toast(
+          detail ? detail
+            : serverMsg ? serverMsg
+            : netErr ? `读取失败(${file.name}, ${sizeMB}MB) —— 文件可能过大或网络中断, 请重试或换小一点的文件`
+            : `没能读出这份文件(${file.name}), 请确认它不是扫描件/加密文件`,
+          "error",
+        );
+        return;
+      }
       text = (r as { text?: string }).text ?? "";
     }
     const created = await createMaterial({
@@ -2286,24 +2486,73 @@ onMounted(async () => {
 
     <!-- 手动添加弹层 -->
     <Teleport to="body">
-      <div v-if="editDialog.open" class="modal-mask" @click.self="closeAdd">
+      <div v-if="editDialog.open" class="modal-mask" @click.self="onEditMaskClick">
+        <!-- 整卡可拖(表单控件/按钮/可滚动区除外, 见 isDragBlocked) —— 原来只有标题栏能拖, 用户按正文没反应 -->
         <div
+          ref="editCardEl"
           class="modal-card modal-card--draggable"
           :class="{ 'is-dragging': editDragging }"
           :style="{ transform: `translate(${editDrag.dx}px, ${editDrag.dy}px)` }"
+          @pointerdown="startEditDrag"
         >
-          <div class="modal-head modal-head--drag" title="按住可拖动" @pointerdown="startEditDrag">
+          <div class="modal-head modal-head--drag" title="按住任意处可拖动">
             <h3>手动添加{{ CATS.find((c) => c.key === editDialog.kind)?.label }}</h3>
             <button class="modal-x" @click="closeAdd">×</button>
           </div>
           <div class="modal-body">
+            <!--
+              V416: 关联章节。参考产品 MaterialEditorDialog 的第一项就是它(`newMaterial.sectionId`),
+              而且是弹层级的必选 —— 不是我方原先那种"保存时默默挂到第一章"。
+              这里**默认选中第一章**(所以不会挡住任何原来能存的操作), 但用户能改。
+              ⚠ 项目**一个章节都没有**时整个不显示: 那时它是个填不了的必填项,
+                而强制选中等于把"存素材"这条路堵死(见下方保存按钮 disabled 的说明)。
+            -->
+            <div v-if="store.sections.length" class="f-row">
+              <label>关联章节 <i class="req">*</i></label>
+              <select v-model="editDialog.sectionId" class="f-input">
+                <option value="" disabled>请选择章节</option>
+                <option v-for="sec in store.sections" :key="sec.id" :value="sec.id">{{ allocOptionLabel(sec) }}</option>
+              </select>
+            </div>
             <div class="f-row">
               <label>标题 *</label>
               <input v-model="editDialog.material.title" class="f-input" placeholder="素材标题" />
             </div>
             <div class="f-row">
-              <label>内容</label>
-              <textarea v-model="editDialog.material.contentMd" class="f-textarea" rows="6" placeholder="素材内容(文本/文献引用格式)…"></textarea>
+              <label class="f-label-row">
+                <span>内容</span>
+                <!--
+                  参考产品这两句提示是**按类型**出现的(它的渲染条件是 type==="data" / type==="theory"):
+                    data   → 「表格请用 Tab 键分隔各列」
+                    theory → 「支持 Markdown 格式」
+                  照抄同一套条件 —— 不给自己加第三种类型提示, 那些在参考产品里没有。
+                -->
+                <span v-if="editDialog.kind === 'data'" class="f-hint-warn">表格请用 Tab 键分隔各列</span>
+                <span v-else-if="editDialog.kind === 'theory'" class="f-hint-warn">支持 Markdown 格式</span>
+              </label>
+              <!-- 占位符也按类型走(参考产品是三支: 默认 / data / theory) -->
+              <textarea
+                v-model="editDialog.material.contentMd"
+                class="f-textarea"
+                rows="6"
+                :placeholder="editDialog.kind === 'data'
+                  ? '粘贴表格数据（用 Tab 键分隔各列）'
+                  : editDialog.kind === 'theory'
+                    ? '输入理论框架、概念定义、研究模型等内容...'
+                    : '素材内容(文本/文献引用格式)…'"
+              ></textarea>
+              <!-- 表格示例块(参考产品图 2 那块「示例:」) -->
+              <pre v-if="editDialog.kind === 'data'" class="f-example">示例：
+年份	大型企业	中小企业	总计
+2020	45%	32%	38%
+2021	52%	38%	45%</pre>
+              <!-- Markdown 说明块(参考产品图 3 那块) -->
+              <div v-else-if="editDialog.kind === 'theory'" class="f-example md-help">
+                支持 Markdown 格式:
+                <div>- **加粗**、*斜体*</div>
+                <div>- ## 标题层级</div>
+                <div>- &gt; 引用</div>
+              </div>
             </div>
             <!--
               结构化文献条目(参考产品 MaterialEditorDialog 的逐字段表单)。
@@ -2330,24 +2579,41 @@ onMounted(async () => {
                   <button type="button" class="ri-del" title="删除此条" @click="removeRefAt(ri)">×</button>
                 </div>
               </div>
-              <!-- 单条手动录入(作者/年份/来源/DOI 逐字段) -->
+              <!--
+                单条手动录入。字段集对齐参考产品 MaterialEditorDialog 的 `文献条目` 卡:
+                  粘贴完整引用 + 解析引用 / 文献标题* / 作者* / 期刊·来源 / 年份 / DOI·链接 / GB/T 引用格式 / 摘要·备注
+                V416 补了后两项(GB 引用 / 摘要) —— 它们原来无处可填, 而 `references[]` 里
+                `gbRef` 与 `abstract` 是**真字段**(批量解析会填), 手填路径却缺, 于是同一份数据
+                两种录入方式填出来的形状不一样。
+              -->
               <div class="ref-add">
-                <input v-model="newRef.title" class="rf-in wide" placeholder="题目 *" />
-                <input v-model="newRef.author" class="rf-in" placeholder="作者" />
-                <input v-model="newRef.year" class="rf-in narrow" placeholder="年份" />
-                <input v-model="newRef.source" class="rf-in" placeholder="期刊/来源" />
-                <input v-model="newRef.doi" class="rf-in" placeholder="DOI" />
+                <textarea
+                  v-model="newRef.raw"
+                  class="rf-raw"
+                  rows="2"
+                  placeholder="粘贴完整引用（APA / GB / 其他格式），再点右侧「解析引用」自动拆字段"
+                ></textarea>
+                <button type="button" class="btn-manual" data-control="workflow:parse-one-ref" @click="parseNewRef">解析引用</button>
+                <div class="rf-grid">
+                  <input v-model="newRef.title" class="rf-in wide" placeholder="文献标题 *" />
+                  <input v-model="newRef.author" class="rf-in" placeholder="作者(如: 张三, 李四)" />
+                  <input v-model="newRef.source" class="rf-in" placeholder="期刊/来源" />
+                  <input v-model="newRef.year" class="rf-in narrow" placeholder="年份" />
+                  <input v-model="newRef.doi" class="rf-in wide" placeholder="DOI / 链接" />
+                </div>
+                <input v-model="newRef.gbRef" class="rf-in full" placeholder="GB/T 引用格式(如: 张三, 李四. 文献标题[J]. 管理世界, 2023, 35(1): 1-10.)" />
+                <input v-model="newRef.abstract" class="rf-in full" placeholder="摘要 / 备注: 可填写文献摘要或重要观点" />
                 <button type="button" class="btn-manual" data-control="workflow:add-ref-row" @click="addRefRow">添加此条</button>
               </div>
             </div>
             <!-- B2 文献批量粘贴解析(仅文献类) -->
             <div v-if="editDialog.kind === 'literature'" class="bulk-ref-box">
-              <details>
-                <summary class="bulk-summary">📋 批量粘贴文献(每行或每段一条, APA/GB/混合)</summary>
+              <details open>
+                <summary class="bulk-summary">📋 批量粘贴引用(每行或每段一条文献, 支持 APA / GB / 混合格式)</summary>
                 <div class="bulk-body">
-                  <textarea v-model="bulkRefText" class="f-textarea" rows="4" placeholder="郭峰,王靖一.测度中国数字普惠金融发展[J].经济学(季刊),2020,19(4).&#10;Stiglitz J E, Weiss A. Credit Rationing in Markets with Imperfect Information[J]. AER, 1981, 71(3): 393-410."></textarea>
+                  <textarea v-model="bulkRefText" class="f-textarea" rows="4" placeholder="如：&#10;张三, 李四. 数字化转型研究[J]. 管理世界, 2023, 35(1): 1-10.&#10;Wang, W. (2022). Digital transformation. Journal of Management, 30(2), 15-30."></textarea>
                   <div class="bulk-actions">
-                    <button type="button" class="btn-manual" @click="runBulkParse" data-control="workflow:bulk-parse">解析</button>
+                    <button type="button" class="btn-manual primary" @click="runBulkParse" data-control="workflow:bulk-parse">批量解析</button>
                     <button type="button" v-if="parsedRefs.length" class="btn-manual" @click="applyParsedRefs" data-control="workflow:apply-parsed-recs">应用 {{ parsedRefs.length }} 条到内容</button>
                   </div>
                   <div v-if="parsedRefs.length" class="parsed-list">
@@ -2368,7 +2634,19 @@ onMounted(async () => {
           </div>
           <div class="modal-foot">
             <button class="btn-back" @click="closeAdd">取消</button>
-            <button class="btn-primary" @click="saveManual" data-control="workflow:save-manual">保存</button>
+            <!--
+              参考产品图 2/3 的保存按钮是**未选章节就置灰**的(它的判据里含 `!sectionId`)。
+              ⚠ 但我方**不能无条件照抄**: 项目还没有章节时(框架设计尚未完成)这个下拉是不显示的,
+                这时若还按 `!sectionId` 置灰, 保存就**永远点不动** —— 素材再也存不进去。
+                实测踩过: 探针在空章节项目上建表格素材, 三条断言同时挂。
+              所以只在"有章节可绑"时才要求必须选: 有章节 → 未选就灰; 没章节 → 照常可存。
+            -->
+            <button
+              class="btn-primary"
+              :disabled="store.sections.length > 0 && !editDialog.sectionId"
+              @click="saveManual"
+              data-control="workflow:save-manual"
+            >保存</button>
           </div>
         </div>
       </div>
@@ -2737,9 +3015,33 @@ onMounted(async () => {
 .modal-mask { position: fixed; inset: 0; z-index: 70; /* 2026-09-16: 深色主题下 20% 黑几乎不可见, 弹层与页面无分离感(参考产品是浅色底所以 20% 够用) */
   background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 520px; max-width: 95vw; background: var(--wf-surface); border-radius: 16px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25); }
-/* 可拖拽弹层: 标题栏当抓手。`touch-action:none` 是必须的 —— 否则触屏上按下会在拖动前触发滚动 */
-.modal-head--drag { cursor: grab; touch-action: none; user-select: none; }
-.modal-card--draggable.is-dragging .modal-head--drag { cursor: grabbing; }
+/**
+ * ⚠ 2026-09-28: 给可拖拽弹层**封顶高度 + 内容区滚动**。
+ *
+ * 踩过: 手动添加文献的弹层加了几行(章节下拉 + GB 引用 + 摘要)之后高到 **884px**,
+ *   而视口只有 748 —— 底部「保存」被推到 `y=872`, **整个掉出可点区域**(命中测试返回 null)。
+ *   更早那次实测里卡片是 939px。表现就是"保存按钮点了没反应"。
+ *   现在: 卡片最高不超过视口, 超出部分由 `.modal-body` 自己滚 —— 标题栏与底部按钮**始终在**。
+ */
+.modal-card--draggable { touch-action: none; max-height: calc(100vh - 24px); display: flex; flex-direction: column; }
+.modal-card--draggable .modal-body { overflow-y: auto; min-height: 0; }
+/**
+ * ⚠ 必须有这条: 上面给 `.modal-body` 加了滚动 + 高度受限于卡片之后, 它成了一个**受限高度的
+ *   flex 列容器** —— 而 flex 子项的默认 `flex-shrink: 1` 会把它们**压缩**, 不是让容器滚。
+ *   实测(2026-09-28): `.bulk-ref-box` 是 `overflow:hidden`, 被压扁后它里面的
+ *   「批量解析」按钮**直接被裁掉** —— 不可见、命中测试也打不到(elementFromPoint 在那个坐标
+ *   返回的是 `.bulk-ref-box` 自己)。表现是"点批量解析没反应 / 弹出请填写文献题目"。
+ *   禁掉收缩之后, 子项保持自然高度, 由 `.modal-body` 滚动 —— 这正是加 max-height 的目的。
+ */
+.modal-card--draggable .modal-body > * { flex-shrink: 0; }
+.modal-head--drag { cursor: grab; user-select: none; }
+.modal-card--draggable.is-dragging { cursor: grabbing; }
+.modal-card--draggable.is-dragging * { cursor: grabbing; }
+/* 整卡可拖之后, 正文里能正常选字的只剩表单控件 —— 其余区域按下即拖, 选中文字反而会碍事 */
+.modal-card--draggable .modal-body { user-select: none; }
+.modal-card--draggable input,
+.modal-card--draggable textarea,
+.modal-card--draggable select { user-select: text; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--wf-line); }
 .modal-head h3 { margin: 0; font-size: 16px; color: var(--wf-text); }
 .modal-x { border: 0; background: none; font-size: 20px; color: var(--wf-muted); cursor: pointer; }
@@ -2825,6 +3127,23 @@ onMounted(async () => {
 .bulk-summary { padding: 8px 12px; font-size: 12.5px; color: #2563eb; cursor: pointer; background: var(--wf-raised); }
 .bulk-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .bulk-actions { display: flex; gap: 8px; }
+
+/* V416: 手动添加弹层 —— 标签右侧的类型提示 / 示例块 / 单条录入的分行布局 */
+.f-label-row { display: flex; align-items: baseline; gap: 8px; }
+/* 参考产品那两句提示是红/橙色(chartuse 提示块), 与普通说明区分开 */
+.f-hint-warn { font-size: 11px; font-weight: 400; color: #D9706A; }
+.f-example {
+  margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--wf-surface);
+  border: 1px solid var(--wf-line); color: var(--wf-faint);
+  font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.md-help { font-family: inherit; }
+/* 单条录入: 粘贴框占一整行, 字段两列一行, 按钮靠左 */
+.ref-add { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.rf-raw { background: var(--wf-surface); border: 1px dashed var(--wf-line-strong); border-radius: 6px; color: var(--wf-text); font-size: 12px; padding: 6px 8px; font-family: inherit; resize: vertical; }
+.rf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.rf-in.full { width: 100%; }
+.btn-manual.primary { background: #B4544E; border-color: #B4544E; color: #FFF; align-self: flex-start; }
 .parsed-list { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--wf-line); padding-top: 8px; }
 .parsed-item { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; }
 .pi-num { color: var(--wf-faint); font-size: 10px; flex-shrink: 0; }

@@ -119,10 +119,28 @@ async function onPickFile(ev: Event) {
         rd.onerror = () => reject(new Error("读取文件失败"));
         rd.readAsDataURL(f);
       });
+      // 同 MaterialsView: 服务端真给了原因就原样转达; 只有连不上/被重置才提"可能太大"
       const r = await q<{ ok?: boolean; text?: string; error?: string }>("/files/extract-text", {
         method: "POST", body: { filename: f.name, base64, mime: f.type },
-      }).catch((e) => ({ ok: false as const, error: String((e as { message?: string }).message ?? e) }));
-      if (!r?.ok) { toast((r as { error?: string }).error ?? "文件解析失败", "error"); return; }
+      }).catch((e: unknown) => ({
+        ok: false as const,
+        __serverMsg: typeof (e as { status?: number }).status === "number" ? String((e as { message?: string }).message ?? "") : "",
+        __netErr: typeof (e as { status?: number }).status === "number" ? "" : String((e as { message?: string }).message ?? e),
+      }));
+      if (!r?.ok) {
+        const serverMsg = String((r as { __serverMsg?: string }).__serverMsg ?? "");
+        const netErr = String((r as { __netErr?: string }).__netErr ?? "");
+        const detail = (r as { error?: string }).error;
+        const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+        toast(
+          detail ? detail
+            : serverMsg ? serverMsg
+            : netErr ? `读取失败(${f.name}, ${sizeMB}MB) —— 文件可能过大或网络中断, 请重试或换小一点的文件`
+            : `没能读出这份文件(${f.name}), 请确认它不是扫描件/加密文件`,
+          "error",
+        );
+        return;
+      }
       text = (r as { text?: string }).text ?? "";
     }
     if (!text.trim()) { toast("这份文件里没读到文字（扫描件需先 OCR）", "error"); return; }

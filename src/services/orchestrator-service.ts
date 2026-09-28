@@ -12,6 +12,7 @@
 // 运行状态落 orchestrator_runs 表: 刷新/换设备/进程重启后仍查得到跑到哪一步(旧实现全在前端内存)。
 import { pool } from "../db/pool.js";
 import { persistRunSnapshot } from "./orchestrator-run-store.js";
+import { recordRunEvent, listRunEvents, type RunEvent as RunEventName } from "./orchestrator-event-log.js";
 import { listCapabilities, graphToMetaSkill, type CapabilityDef } from "./capability-registry.js";
 import { ORCHESTRATOR_TEMPLATES, getTemplate, type OrchestratorTemplate } from "./orchestrator-templates.js";
 import {
@@ -126,12 +127,29 @@ function launch(def: MetaSkillDef, runId: string, opts: StartRunOptions, graph: 
   const caller = opts.userId ? { userId: opts.userId, tenantId: opts.tenantId } : undefined;
   setOrchestratorCaller(caller, runId);
   const onStatus = (ctx: MetaRunContext, stepLog: MetaStepRun[]) => { void persist(ctx.runId, ctx, stepLog, { graph, source: opts.source }); };
+  /**
+   * V416: 事件流落库(计划历史浮层的数据源)。
+   *
+   * 运行时是执行引擎, 不直接写库(见 `MetaSkillExecutor.onEvent` 的说明); 落到这里是因为
+   *   **只有编排层知道 runId 与"这次运行是从哪来的"**。
+   *
+   * ⚠ `job.batch_started` 在这里发而不是在运行时里发: 运行时是纯 DAG 调度器, 它不知道
+   *   "整张图"的概念(它只看见一串步骤)。参考产品那条 job.batch_started 的语义是
+   *   "这批节点开始跑了", 对应的正是 launch 这一刻。所以它是**真的**, 不是凑数。
+   */
+  recordRunEvent(runId, "job.created", { message: "已创建执行计划" });
+  recordRunEvent(runId, "job.started", { message: "执行已启动", payload: { steps: def.steps.length, source: opts.source ?? "ui" } });
+  recordRunEvent(runId, "job.batch_started", { message: `开始调度 ${def.steps.length} 个节点`, payload: { nodes: def.steps.map((s) => s.id) } });
+  const onEvent = (event: string, o: { nodeId?: string; message?: string }) => {
+    recordRunEvent(runId, event as RunEventName, o);
+  };
   void runMetaSkill(def, opts.input ?? "", {
     model: opts.model,
     userValues: opts.userValues,
     authToken: opts.authToken,
     runId,
     onStatus,
+    onEvent,
     role: toolRoleFor(opts.source),
     runSource: opts.source ?? "ui",
     // 编排里的步骤以只读检索与 LLM 生成为主, 天然幂等 —— 中断后重跑不会造成重复副作用,
@@ -361,6 +379,9 @@ export async function resumeRun(runId: string, caller?: { userId?: string; tenan
     runId, outputs: snap.outputs, completed: snap.completed, userValues: snap.userValues,
   }, {
     onStatus: (ctx, stepLog) => { void persist(ctx.runId, ctx, stepLog, { graph: snap.graph, source: snap.source }); },
+    // V416: 续跑同样要有事件流 —— 否则浮层的时间线在恢复点会断掉(只有前半段),
+    //   看着像"恢复之后什么都没发生"。补一条 job.batch_started 标明是新的一批。
+    onEvent: (event, o) => { recordRunEvent(runId, event as RunEventName, o); },
     role: toolRoleFor(snap.source),
     runSource: snap.source ?? "ui",
     pausePolicy: "abort",
@@ -527,4 +548,25 @@ export async function capabilityStats(): Promise<{ total: number; byKind: Record
     byCategory[c.category] = (byCategory[c.category] ?? 0) + 1;
   }
   return { total: caps.length, byKind, byCategory };
+}
+
+/**
+ * V416: 读一次运行的事件流(计划历史浮层的数据源)。
+ *
+ * 与 `getRunProgress` 的区别是**维度**: 进度回答"现在每步是什么状态"(快照, 只留最后态);
+ *   这里回答"这次运行依次发生过什么"(时间线, 永不覆盖)。
+ *
+ * 表不存在(老库还没迁移)时**返回空数组而不是抛错** —— 浮层这时该显示空态
+ *   ("暂无执行事件"是真实答案), 不该整页报错。但**要在返回值里说明是哪种空**:
+ *   真没事件 vs 表都没建, 对排查是两件事。
+ */
+export async function getRunEventLog(
+  runId: string, sinceSeq = 0,
+): Promise<{ events: Array<{ seq: number; event: string; nodeId: string; message: string; createdAt: string }>; available: boolean }> {
+  try {
+    return { events: await listRunEvents(runId, sinceSeq), available: true };
+  } catch (e) {
+    console.warn(`[orchestrator] 事件流不可用: ${String((e as Error)?.message ?? e).slice(0, 150)}`);
+    return { events: [], available: false };
+  }
 }

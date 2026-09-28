@@ -236,3 +236,57 @@ export function stepStatusToNodeState(s: OrchStepRun["status"]): string {
   if (s === "waiting_input") return "paused";
   return "draft";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V416: 运行事件流(计划历史浮层的数据源)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OrchRunEvent {
+  seq: number;
+  event: string;
+  nodeId: string;
+  message: string;
+  createdAt: string;
+}
+
+/**
+ * 事件名 → 中文说明。
+ *
+ * ⚠ 新增后端事件时**必须同时**在这里加一条, 否则浮层只能显示裸英文名(job.xxx),
+ *   而那对用户是没有意义的一行字。`EVENT_LABEL[ev.event] ?? ev.event` 的兜底是
+ *   **故意留的**: 宁可显示英文名, 也不要显示"未知事件"把信息抹掉。
+ */
+export const EVENT_LABEL: Record<string, string> = {
+  "job.created": "已创建执行计划",
+  "job.started": "执行已启动",
+  "job.batch_started": "开始调度本批节点",
+  "job.done": "执行完成",
+  "job.failed": "执行失败",
+  "job.paused": "执行已暂停",
+  "job.cancelled": "执行已取消",
+  "node.running": "节点开始执行",
+  "node.done": "节点完成",
+  "node.failed": "节点失败",
+  "node.waiting_input": "节点等待补充信息",
+  "node.skipped": "节点被跳过",
+};
+
+/** 事件名的配色族: job.* 是整次运行的粗粒度事件, node.* 落在具体节点上 */
+export function eventFamily(event: string): "job" | "node" {
+  return event.startsWith("job.") ? "job" : "node";
+}
+
+/**
+ * 读一次运行的事件流。
+ *
+ * 传 `since` 只取增量(前端轮询时用), 不传取全量。
+ * `available:false` = 事件表还没迁到(老库), 与"表在但没事件"要分开对用户说。
+ */
+export async function fetchRunEvents(
+  runId: string, since = 0,
+): Promise<{ events: OrchRunEvent[]; available: boolean }> {
+  const r = await q<{ ok: boolean; events?: OrchRunEvent[]; available?: boolean }>(
+    `/orchestrator/events?runId=${encodeURIComponent(runId)}&since=${since}`,
+  );
+  return { events: r.events ?? [], available: r.available !== false };
+}

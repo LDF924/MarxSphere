@@ -341,7 +341,26 @@ export function buildHttpServer() {
   }
   const app = Fastify({
     // V412: 全局请求体上限 30MB（问卷文件解析/附件上传需要；默认 1MB 会挡掉 base64 大文件）
-    bodyLimit: 30 * 1024 * 1024,
+    //
+    // ⚠ 2026-09-28 修: 30MB **不够** —— 界面承诺"最大 25 MB", 而文件是走 JSON+base64 上来的,
+    //   base64 把体积撑到 **4/3 倍**: 25MB 文件 → 33.3MB 请求体 → 撞上 30MB 上限 →
+    //   Fastify 在**读完 body 之前**就断连, 客户端拿到的是 ECONNRESET 而不是一个 4xx。
+    //   实测天花板: 22MB 文件(29.3MB 请求体) 过, 23MB 文件(30.7MB) 挂。
+    //   前端按 25MB 放行 → 用户看到的是"文件解析失败(不支持的类型?)" —— **把"太大"报成了"格式不对"**。
+    //   所以上限必须**按最坏情况反推**: 25MB 文件 → 33.3MB, 再留一点余量给 JSON 包裹与中文文件名。
+    //   这条是全局上限, 调它会让所有路由都能收大 body —— 对附件/数据文件上传是必要的
+    //   (它们本来就只走 base64 这一条路), 且比"某个路由悄悄 500"要诚实。
+    //   2026-09-28 二次调整: 界面上的附件上限从 25MB 放开到 **100MB**, 这里跟着按 4/3 反推
+    //   (100MB → 133.3MB), 再留余量给 JSON 包裹与中文文件名 ⇒ 140MB。
+    //
+    //   ⚠ **真正的天花板不是这个数, 是内存**。启动参数是 `--max-old-space-size=1200`(1.2GB),
+    //     而这条链路的内存峰值约 **4.3 倍文件大小**(base64 串 4/3 → JSON.parse 再复制一份 →
+    //     Buffer.from 第三份)。100MB 文件 ⇒ 峰值 ~430MB, 在 1.2GB 里安全;
+    //     **300MB 文件 ⇒ 峰值 >1.2GB, 后端 OOM 直接崩** —— 那不是"报错", 是进程死掉。
+    //     所以要再往上放, 必须先改成**二进制流式落盘**(去掉 base64 这一段), 只调这个数字不够。
+    //     实测过的死区教训: 23MB 文件(30.7MB 请求体)撞 30MB 上限时, 客户端拿到的是
+    //     ECONNRESET 而不是 4xx, 用户被告知"文件解析失败(不支持的类型?)"。
+    bodyLimit: 140 * 1024 * 1024,
     logger: {
       level: config.LOG_LEVEL,
       base: {
@@ -7322,6 +7341,22 @@ except Exception as e:
     const { listRuns } = await import("../services/orchestrator-service.js");
     const q = request.query as { limit?: string };
     return { ok: true, runs: await listRuns(Number(q.limit) || 30) };
+  });
+  /**
+   * V416: 一次运行的事件流(计划历史浮层的数据源)。
+   *
+   * 与 /progress 的分工: progress 给"每步现在什么状态"(快照), 这里给"依次发生过什么"(时间线)。
+   * `since` 是游标 —— 前端轮询时只取增量, 不用每次重拉全量。
+   * `available:false` 表示**事件表都还没建**(老库未迁移), 与"表在但这次运行没事件"是两回事,
+   *   浮层要能分开说 —— 前者是环境问题, 后者是真的"暂无执行事件"。
+   */
+  app.get("/api/orchestrator/events", async (request) => {
+    const { getRunEventLog } = await import("../services/orchestrator-service.js");
+    const q = request.query as { runId?: string; since?: string };
+    const runId = String(q.runId || "");
+    if (!runId) return { ok: false, events: [], available: true, error: "runId 必填" };
+    const r = await getRunEventLog(runId, Number(q.since) || 0);
+    return { ok: true, events: r.events, available: r.available };
   });
   // V415: Agent 编排开关 —— 前端可见可切(env 为总闸; env 未开时前端只读展示)
   app.get("/api/orchestrator/settings", async () => {

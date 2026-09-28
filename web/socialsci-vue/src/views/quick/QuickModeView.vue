@@ -24,6 +24,7 @@ import {
   listGraphs, loadGraph, saveGraph, deleteGraph, fetchAgentSetting, updateAgentSetting,
   fetchMetaSkills, fetchMetaSkillGraph, type OrchMetaSkill,
   RUN_STATUS_META, COST_META, stepStatusToNodeState,
+  fetchRunEvents, EVENT_LABEL, eventFamily, type OrchRunEvent, type OrchStepRun,
   type OrchCapability, type OrchTemplate, type OrchProgress, type OrchRunRecord, type OrchGraph, type AgentOrchSetting,
 } from "@/shared/orchApi";
 
@@ -60,6 +61,8 @@ interface ChatMsg {
 let msgSeq = 0;
 const messages = ref<ChatMsg[]>([]);
 const input = ref("");
+/** V416: 「让 Agent 调整此节点」要把整理好的上下文填进这个输入框, 需要拿到元素引用 */
+const inputEl = ref<HTMLTextAreaElement | null>(null);
 const chatScroll = ref<HTMLElement | null>(null);
 function nowHM() { const n = new Date(); return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`; }
 function pushMsg(p: Partial<ChatMsg> & { role: "user" | "agent" }) {
@@ -450,6 +453,8 @@ const selectedCap = computed(() => capById(selectedNode.value?.capabilityId));
 const paramFields = computed(() => selectedCap.value?.fields ?? []);
 /** V415: 某节点在这张图里的入边条数(= 直接依赖数)。连线是唯一依据, 不另存一份依赖关系。 */
 function depCountOf(id: string): number { return userEdges.value.filter((e) => e.target === id).length; }
+/** V416: 上游节点 id 列表 —— 「让 Agent 调整此节点」要把依赖列出来给它看 */
+function depIdsOf(id: string): string[] { return userEdges.value.filter((e) => e.target === id).map((e) => e.source); }
 
 function onNodeSelected(n: BizNode) {
   selectedNode.value = n;
@@ -691,6 +696,56 @@ function graphPayload(): OrchGraph {
   };
 }
 
+/**
+ * AGENT HANDOFF —— 启动前的授权确认层(参考产品图 14)。
+ *
+ * 参考产品那张图的要点有两条, 都是"把用户要授权的东西摊开":
+ *   ① 「该授权只对这份计划有效」—— 授权**绑定这一版图**;
+ *   ② 「N 个工具节点」+ **逐条列出**将执行的节点(不是只说"N 个节点")。
+ *
+ * 我方原来只有一个空态覆盖层 `canvas-start-gate`(画布是空的 → 提示去加节点), 没有
+ *   "确认后才启动"这一层。现在补上: 点「开始执行」先出这个确认层, 确认才真发请求。
+ *
+ * ⚠ 授权绑版本怎么落实(不能只是一句话): 记下**确认那一刻**的图指纹, 确认与请求之间
+ *   若图又被人改了(理论上不会, 弹层挡住交互, 但代码上可能), 就作废这次授权让人重看。
+ *   指纹用节点(id+能力+参数)+边拼出来 —— 简单、稳定、能覆盖"改了参数"这类肉眼可见的变化。
+ */
+const handoffOpen = ref(false);
+/** 确认那一刻的图指纹; 为空表示还没有待确认的授权 */
+const handoffFingerprint = ref("");
+
+function graphFingerprint(): string {
+  const g = graphPayload();
+  return JSON.stringify({
+    n: g.nodes.map((n) => [n.id, n.capabilityId ?? "", n.params ?? {}]),
+    e: g.edges.map((e) => [e.source, e.target]),
+  });
+}
+/** 将被执行的节点(参考产品图 14 那个灰色块逐行列出的东西) */
+const handoffNodes = computed(() =>
+  nodes.value.map((n) => ({ id: n.id, cap: n.capabilityId || "（未绑定能力）", title: n.title })),
+);
+
+function openHandoff() {
+  if (locked.value) return;
+  if (!nodes.value.length) { toast("画布是空的: 先从左侧能力面板拖节点进来, 或选一个模板", "error"); return; }
+  handoffFingerprint.value = graphFingerprint();
+  handoffOpen.value = true;
+}
+
+async function confirmHandoff() {
+  if (graphFingerprint() !== handoffFingerprint.value) {
+    // 图在确认期间变了 → 那句"该授权只对这份计划有效"必须有实际约束, 否则是空话
+    handoffOpen.value = false;
+    handoffFingerprint.value = "";
+    toast("画板内容刚有改动, 授权已作废, 请重新确认", "warning");
+    return;
+  }
+  handoffOpen.value = false;
+  handoffFingerprint.value = "";
+  await startExecution();
+}
+
 async function startExecution() {
   if (locked.value) return;
   if (!nodes.value.length) { toast("画布是空的: 先从左侧能力面板拖节点进来, 或选一个模板", "error"); return; }
@@ -749,6 +804,10 @@ function applyProgress(p: OrchProgress) {
       artifactCount: s.status === "done" && outLen ? outLen : undefined,
       outputPreview: s.status === "done" ? (s.output ?? "").slice(0, 120) : undefined,
       executionDetail: s.inputsFrom?.length ? `← 依赖 ${s.inputsFrom.join(" + ")}` : undefined,
+      // V416: 运行时真的消费了谁的产出 —— 节点详情「模块产物」与「查看诊断」都读它。
+      // ⚠ 每次都用 `s.inputsFrom ?? []` **显式覆盖**(而不是"没有就留着上次的"):
+      //   重跑一次之后上游可能变了, 残留的旧依赖会让诊断给出错误的因果。
+      inputsFrom: s.inputsFrom ?? [],
     };
   });
 
@@ -994,6 +1053,226 @@ const STEP_LABEL: Record<string, string> = {
   done: "完成", running: "执行中", failed: "失败", pending: "待执行", waiting_input: "等待输入",
 };
 const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * V416: 计划历史(PLAN HISTORY) —— 计划版本与执行记录
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * 对齐参考产品截图: 浮层里两段 —— 「执行记录」(本图跑过的各次运行) 与
+ * 「当前事件」(该次运行的实时事件时间线: 时间 + 事件名 + 所属节点)。
+ *
+ * ## 为什么必须新做后端(而不是"渲染一下已有数据")
+ *
+ * 本仓原来只有 `orchestrator_runs.step_log_json`, 是**每步最后一次状态的快照**, 而且
+ * 写入方 `on conflict do update` 是**整行覆盖** —— 同一节点的 pending→running→done
+ * 只留得下最后一个。所以"先诊断再失败"这种**顺序**在库里**天生读不出来**。
+ * 这不是渲染缺口, 是数据缺口。于是加了 `orchestrator_run_events`(迁移 161) +
+ * 运行时 onEvent 钩子(见 `meta-skill-runtime.ts` 的 `MetaSkillExecutor.onEvent`)。
+ *
+ * ## 两个必须分开的对用户说法
+ *
+ * `historyAvailable === false` 表示**事件表都没建**(老库没迁移) —— 那是环境问题;
+ * `events.length === 0` 而 available 为真, 才是真的"暂无执行事件"。
+ * 混成一句话会让"环境没迁移"看着像"这次运行什么都没发生", 排查时方向全错。
+ */
+const openHistory = ref(false);
+const historyRunId = ref("");
+const historyEvents = ref<OrchRunEvent[]>([]);
+const historyAvailable = ref(true);
+const historyLoading = ref(false);
+let historyTimer: ReturnType<typeof setInterval> | null = null;
+
+/** 执行记录列表: 复用「运行记录」那份(同一次后端读取, 不另开接口) */
+const historyRuns = computed(() => runs.value);
+
+async function loadHistoryEvents() {
+  if (!historyRunId.value) { historyEvents.value = []; return; }
+  const r = await fetchRunEvents(historyRunId.value).catch(() => null);
+  if (!r) return;
+  historyEvents.value = r.events;
+  historyAvailable.value = r.available;
+}
+
+/**
+ * 打开浮层。
+ *
+ * 默认选中**本页自己那次运行**(`runId`), 没有才选最新一次。
+ *
+ * ⚠ 2026-09-28 改: 第一版是"优先选任何 running/waiting_input/paused 的运行",
+ *   结果**永远选中一条死掉的旧运行** —— 探针实测库里躺着 **63 条 status='running'** 的历史行
+ *   (进程重启不会把内存里的运行写回首态, 这些行就一直挂着)。于是浮层打开时显示的
+ *   永远不是用户刚跑的那次, 时间线全是别人的。
+ *   `runs` 列表里的 status 是**历史残留**, 不是"现在真的在跑"; 唯一可靠的"这次"是
+ *   本页记着的 `runId`(它由 startRun 赋值、由轮询更新)。所以判据换成它。
+ */
+async function openPlanHistory() {
+  openHistory.value = true;
+  await loadRuns();
+  const mine = runId.value && runs.value.some((r) => r.runId === runId.value) ? runId.value : "";
+  historyRunId.value = mine || runs.value[0]?.runId || "";
+  historyLoading.value = true;
+  await loadHistoryEvents();
+  historyLoading.value = false;
+  stopHistoryPoll();
+  historyTimer = setInterval(() => { void loadHistoryEvents(); }, 1500);
+}
+function stopHistoryPoll() {
+  if (historyTimer) { clearInterval(historyTimer); historyTimer = null; }
+}
+function closePlanHistory() {
+  stopHistoryPoll();
+  openHistory.value = false;
+}
+async function pickHistoryRun(id: string) {
+  historyRunId.value = id;
+  historyLoading.value = true;
+  await loadHistoryEvents();
+  historyLoading.value = false;
+}
+onUnmounted(stopHistoryPoll);
+
+/** 事件时间戳 → HH:MM:SS(参考产品那条时间线的粒度到秒) */
+function evTime(iso: string): string {
+  if (!iso) return "--:--:--";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "--:--:--";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+/** 事件名 → 中文。查不到就显示原名(见 EVENT_LABEL 的注释: 宁可显示英文名也不抹成"未知") */
+function evLabel(event: string): string {
+  return EVENT_LABEL[event] ?? event;
+}
+/** 节点 id → 画布上的节点标题, 认不出就用 id 本身 */
+function evNodeLabel(nodeId: string): string {
+  if (!nodeId) return "";
+  return nodes.value.find((n) => n.id === nodeId)?.title ?? nodeId;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// V416: 节点详情抽屉的四件事(对齐参考产品图 12 / 16 / 17)
+//   · 查看诊断      —— 这个节点失败时到底说了什么
+//   · 展开模块产物  —— 节点输入/产物的**原始结构化值**, 不做美化
+//   · 在画布打开工作界面 —— 把节点滚到视野中央(不改缩放)
+//   · 让 Agent 调整此节点 —— 把"这张卡片该怎么改"发进对话
+//
+// ⚠ 这三格 TASK INSPECTOR(AGENT / ATTEMPT / QUALITY)的处置, 逐条说明免得日后被当成漏做:
+//   · AGENT    —— **显示**, 但显示的是真实执行角色。编排层的角色是 `runSource` 决定的
+//                 (ui→manager / agent→analyst, 见 orchestrator-service 的 toolRoleFor),
+//                 参考产品那个 "DAG Agent" 是它自家的产品名, 我们没有同名概念, 不编。
+//   · ATTEMPT  —— **不做**。2026-09-28 实测: 编排链路上**根本没有重试** ——
+//                 `grep -n "retry|重试|attempt" meta-skill-runtime.ts orchestrator-service.ts`
+//                 只有一行注释命中, `orchestrator_runs` 也没有 attempts 列。
+//                 一个恒显示 0 的三格比没有更糟(参考产品自己图 12 里那一格就是 "—")。
+//   · QUALITY  —— **节点级没有**。全站唯一的质量分是**整篇稿子**的 `review_result.overallScore`
+//                 (写进 finalize 节点的 payload); 编排的质量门 `llm_gate` 只产出
+//                 `{pass, reason}` 一个布尔, 不是一个分数。所以这一格不做。
+//   结论: 三格只做出一个真的(AGENT), 另外两个如实缺席。这与参考产品图 12 里
+//   "ATTEMPT=0 / QUALITY=—" 的显示效果一致 —— 它那两个格子本身也是空的。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 取这次运行里该节点的步骤记录(诊断 / 上游输入 / 用时都从这里来) */
+const selectedStep = computed<OrchStepRun | null>(() => {
+  const id = selectedNode.value?.id;
+  if (!id) return null;
+  const recent = progress.value?.stepLog ?? [];
+  const cached = runs.value.find((x) => x.runId === runId.value);
+  const fromRun = cached?.stepLog ?? [];
+  // 内存进度优先: 它是最新的; 运行结束后 progress 会留在最后一次快照上, 所以两者通常一致
+  return recent.find((s) => s.stepId === id) ?? fromRun.find((s) => s.stepId === id) ?? null;
+});
+
+/**
+ * 诊断文本 —— **失败时才有, 没有就不显示**。
+ *
+ * 引擎里最后留下的 `error` 是给用户看的中文(`"质量门未通过: …"` / `"上游步骤失败, 跳过"`),
+ * 不是错误码, 所以这里原样展示即可。**不编**一句"运行正常"之类的话去填这个位置:
+ * 参考产品图 15 那种"当前进度: 本次节点已完成…"只有在真有 executionDetail 时才出现。
+ */
+const selectedDiagnosis = computed<string>(() => {
+  const s = selectedStep.value;
+  if (!s) return "";
+  return String(s.error ?? "").trim();
+});
+
+/** 节点产物: 跑完后的输出(原始文本)。空就是空 —— 不拿 outputPreview 冒充。 */
+const selectedArtifact = computed<string>(() => {
+  const s = selectedStep.value;
+  if (!s || s.status !== "done") return "";
+  return String(s.output ?? "");
+});
+
+/**
+ * 模块产物表(参考产品图 17): 字段名 → 值。
+ *
+ * 值的来源按可靠性排序 —— **有真的就用真的, 没有就明确写"尚未执行", 不编**:
+ *   ① 这次运行的原始输出 + 该能力的 `outputs` 声明(声明是"产出什么字段"的真源)
+ *   ② 还没跑过 → 返回空数组, 浮层显示"尚未执行"
+ * 图 17 那种 `title / outline / sectionsList` 逐字段的表, 对应的是**输入**侧;
+ *   输出侧我们只知道能力声明的字段名与一段文本, 所以第二段如实标成"原始输出"。
+ */
+const artifactRows = computed<Array<{ name: string; value: string }>>(() => {
+  const n = selectedNode.value;
+  const s = selectedStep.value;
+  if (!n) return [];
+  const rows: Array<{ name: string; value: string }> = [];
+  // 输入: 参数表单里的**实际值**(原始值, 不是渲染后的文案 —— 图 16 的要点就是这个)
+  for (const [k, v] of Object.entries(n.params ?? {})) {
+    if (v === "" || v === undefined || v === null) continue;
+    rows.push({ name: k, value: typeof v === "string" ? v : JSON.stringify(v) });
+  }
+  // 上游实际喂进来的产出(运行时回填的 inputsFrom)
+  const deps = s?.inputsFrom ?? [];
+  if (deps.length) {
+    rows.push({
+      name: "inputsFrom",
+      value: deps.map((d) => `${evNodeLabel(d)}(${d})`).join(" → "),
+    });
+  }
+  return rows;
+});
+
+// ── 查看诊断 ──
+const openDiagnosis = ref(false);
+function viewDiagnosis() { openDiagnosis.value = true; }
+// ── 展开模块产物 ──
+const openArtifact = ref(false);
+function viewArtifactTable() { openArtifact.value = true; }
+
+// ── 在画布打开工作界面: 把节点滚进视野并选中 ──
+function focusNodeOnCanvas() {
+  const n = selectedNode.value;
+  if (!n) return;
+  canvasRef.value?.focusNode?.(n.id);
+  toast(`已定位到节点「${n.title}」`, "info");
+}
+
+/**
+ * 让 Agent 调整此节点。
+ *
+ * 做法: 把这张卡片的**真实上下文**(能力/参数/依赖/诊断)拼成一条消息发进对话区,
+ * 人再补充要求。**不直接替用户改参数** —— 参考产品这一条也是"交给 Agent", 不是"自动改"。
+ */
+function askAgentToAdjust() {
+  const n = selectedNode.value;
+  if (!n) return;
+  const deps = depIdsOf(n.id);
+  const lines = [
+    `【调整节点】${n.title}(id: ${n.id})`,
+    `能力: ${n.capabilityId || "未绑定"}`,
+    deps.length ? `上游: ${deps.map((d) => `${evNodeLabel(d)}(${d})`).join(", ")}` : "上游: 无",
+    paramFields.value.length
+      ? `当前参数:\n${paramFields.value.map((f) => `  ${f.label}(${f.name}) = ${String((n.params ?? {})[f.name] ?? "(未设)")}`).join("\n")}`
+      : "",
+    selectedDiagnosis.value ? `上次失败原因: ${selectedDiagnosis.value}` : "",
+    "",
+    "请说明要怎么改(改哪个参数 / 换成哪个能力 / 调整上下游连接), 我照着改。",
+  ].filter(Boolean);
+  input.value = lines.join("\n");
+  inputEl.value?.focus();
+  toast("已把该节点信息填进对话, 补上你的要求后发送", "info");
+}
 </script>
 
 <template>
@@ -1042,6 +1321,9 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
         </select>
         <button class="hdr-btn" :disabled="locked" @click="openTemplates = true">模板库</button>
         <button class="hdr-btn" @click="openRuns = true; loadRuns()">运行记录</button>
+        <!-- V416: 计划历史 —— 与「运行记录」是**两个视角**: 那边是"每步现在什么状态"(快照),
+             这里是"依次发生过什么"(时间线, 含 node.failed 的中文诊断)。 -->
+        <button class="hdr-btn" data-control="quick:plan-history" @click="openPlanHistory()">计划历史</button>
         <button class="hdr-btn" :disabled="locked" @click="openGraphs = true; loadMyGraphs()">我的编排</button>
         <button class="hdr-btn" @click="openSettings = true">设置</button>
       </div>
@@ -1097,11 +1379,11 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
           </article>
         </div>
         <div class="composer">
-          <textarea v-model="input" rows="2" placeholder="描述研究需求…(节点与连线决定实际执行)" @keydown.enter.exact.prevent="pushMsg({ role: 'user', text: input }); input = ''"></textarea>
+          <textarea ref="inputEl" v-model="input" rows="2" placeholder="描述研究需求…(节点与连线决定实际执行)" @keydown.enter.exact.prevent="pushMsg({ role: 'user', text: input }); input = ''"></textarea>
           <button class="send-button" :disabled="!input.trim()" @click="pushMsg({ role: 'user', text: input }); input = ''">↗</button>
         </div>
         <div class="run-actions">
-          <button v-if="runState === 'draft'" class="run-btn" @click="startExecution">开始执行</button>
+          <button v-if="runState === 'draft'" class="run-btn" data-control="quick:start-run" @click="openHandoff">开始执行</button>
           <template v-else-if="runState === 'running'">
             <button class="run-btn pause" @click="pauseRun">暂停</button>
             <button class="run-btn danger" @click="cancelRun">取消</button>
@@ -1389,6 +1671,17 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
             </div>
           </header>          <div class="node-panel-detail">
             <p v-if="selectedCap" class="drawer-desc">{{ selectedCap.description }}</p>
+            <!--
+              V416: TASK INSPECTOR —— 只放**有真数据**的那一格。
+              ⚠ AGENT 显示的是真实执行角色(ui→manager / agent→analyst), 不是参考产品那个
+                产品名 "DAG Agent"。ATTEMPT / QUALITY 不做(后端没有这两个量, 见本段注释头)。
+            -->
+            <div class="inspector">
+              <div class="insp-cell">
+                <span class="insp-key">AGENT</span>
+                <span class="insp-val">{{ runSource === "agent" ? "analyst 权限" : "manager 权限" }}</span>
+              </div>
+            </div>
             <div class="drawer-row"><label>能力</label><span>{{ selectedNode.capabilityId || "（未绑定, 按通用生成执行）" }}</span></div>
             <div class="drawer-row"><label>输入</label><span>{{ selectedNode.input || "上游产出" }}</span></div>
             <div class="drawer-row"><label>输出</label><span>{{ selectedNode.output || "text" }}</span></div>
@@ -1401,6 +1694,19 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
             </div>
             <div v-if="selectedNode.executionDetail" class="drawer-hint">{{ selectedNode.executionDetail }}</div>
             <div v-if="selectedNode.outputPreview" class="drawer-live-output">{{ selectedNode.outputPreview }}</div>
+
+            <!-- V416: 失败诊断 —— 有才显示。引擎留下的就是给用户看的中文, 没有就不占位 -->
+            <div v-if="selectedDiagnosis" class="drawer-diag">
+              <span class="diag-label">本次失败原因</span>
+              <p class="diag-text">{{ selectedDiagnosis }}</p>
+            </div>
+
+            <!-- V416: 两个整宽动作按钮(参考产品图 12 的落点: 一个定位画布, 一个交给 Agent) -->
+            <div class="node-actions">
+              <button class="workspace-secondary wide" data-control="quick:focus-node" @click="focusNodeOnCanvas">在画布打开工作界面</button>
+              <button class="workspace-secondary wide" data-control="quick:ask-agent-node" @click="askAgentToAdjust">让 Agent 调整此节点 ↗</button>
+              <button class="workspace-secondary wide" data-control="quick:node-artifact" @click="viewArtifactTable">展开模块产物 ↗</button>
+            </div>
 
             <template v-if="paramFields.length">
               <div class="panel-section-title">节点参数</div>
@@ -1532,6 +1838,180 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
             </div>
           </template>
         </div>
+      </div>
+    </div>
+
+    <!--
+      V416: 计划历史浮层(PLAN HISTORY)。
+      ⚠ 按参考产品图 13 的要点: **空态与有记录态是同一个组件**, 不是两个 —— 两处空态
+        (「暂无执行记录」/「暂无执行事件」) 就是同一段模板在列表为空时渲染的内容。
+        做成两个组件的话, 以后改一处忘了另一处, 空态会慢慢长成另一个样子。
+    -->
+    <div v-if="openHistory" class="modal-shell" @click.self="closePlanHistory">
+      <div class="modal-card wide">
+        <header class="modal-head">
+          <div class="ph-head">
+            <span class="ph-kicker">PLAN HISTORY</span>
+            <strong>计划版本与执行记录</strong>
+          </div>
+          <button class="workspace-close" @click="closePlanHistory">×</button>
+        </header>
+        <div class="modal-body ph-body">
+          <!-- 执行记录: 本图跑过的各次运行 -->
+          <div class="ph-section">
+            <h4 class="ph-sec-title">执行记录</h4>
+            <div v-if="!historyRuns.length" class="palette-empty">暂无执行记录</div>
+            <div v-else class="ph-runs">
+              <button
+                v-for="r in historyRuns"
+                :key="r.runId"
+                class="ph-run"
+                :class="{ 'is-on': r.runId === historyRunId }"
+                @click="pickHistoryRun(r.runId)"
+              >
+                <i class="ph-run-dot" :class="runMetaOf(r.status).cls"></i>
+                <span class="ph-run-id">{{ (r.graphId || r.runId).slice(0, 12) }}</span>
+                <span class="ph-run-name">{{ r.graphName || (r.input || "").slice(0, 24) || "未命名编排" }}</span>
+                <span class="ph-run-state">{{ runMetaOf(r.status).label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 当前事件: 实时事件时间线 -->
+          <div class="ph-section">
+            <h4 class="ph-sec-title">
+              当前事件
+              <span v-if="historyRunId" class="ph-sec-sub">{{ historyRunId }}</span>
+            </h4>
+            <!-- 两种"空"要分开说: 表没迁到 vs 真的没事件 -->
+            <div v-if="!historyAvailable" class="palette-empty">
+              本环境还没有事件记录(数据库未迁移到迁移 161), 只能看上面的执行记录
+            </div>
+            <div v-else-if="historyLoading && !historyEvents.length" class="palette-empty">读取中…</div>
+            <div v-else-if="!historyEvents.length" class="palette-empty">暂无执行事件</div>
+            <ol v-else class="ph-events">
+              <li v-for="ev in historyEvents" :key="ev.seq" class="ph-ev" :class="'fam-' + eventFamily(ev.event)">
+                <span class="ph-ev-time">{{ evTime(ev.createdAt) }}</span>
+                <span class="ph-ev-name">{{ ev.event }}</span>
+                <span class="ph-ev-node">{{ evNodeLabel(ev.nodeId) }}</span>
+                <span class="ph-ev-msg">{{ ev.message || evLabel(ev.event) }}</span>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      V416: 展开模块产物(参考产品图 17)。
+      ⚠ 图 17 的要点有两条, 都照做:
+        ① 左列固定字段名, 右列**自动换行**(长值不撑破) —— 见 .art-table 的 grid 定义;
+        ② 展示的是**原始值**(含 JSON 数组), 不做美化 —— 用户要能核对 "Agent 到底拿到了什么"。
+      没有可展示的行时**显示"尚未执行"**, 不编一份假输入出来。
+    -->
+    <div v-if="openArtifact && selectedNode" class="modal-shell" @click.self="openArtifact = false">
+      <div class="modal-card wide">
+        <header class="modal-head">
+          <div class="ph-head">
+            <span class="ph-kicker">{{ selectedNode.module }}</span>
+            <strong>{{ selectedNode.title }} · 模块产物</strong>
+          </div>
+          <button class="hdr-btn" data-control="quick:artifact-diagnosis" @click="openArtifact = false; viewDiagnosis()">查看诊断</button>
+          <button class="workspace-close" @click="openArtifact = false">×</button>
+        </header>
+        <div class="modal-body">
+          <div v-if="!artifactRows.length && !selectedArtifact" class="palette-empty">
+            尚未执行 —— 这个节点还没跑过, 没有可展开的输入与产物
+          </div>
+          <template v-else>
+            <h4 v-if="artifactRows.length" class="ph-sec-title">节点输入(原始值)</h4>
+            <table v-if="artifactRows.length" class="art-table">
+              <tbody>
+                <tr v-for="row in artifactRows" :key="row.name">
+                  <td class="art-k">{{ row.name }}</td>
+                  <td class="art-v">{{ row.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <template v-if="selectedArtifact">
+              <h4 class="ph-sec-title">本次产出(原始输出)</h4>
+              <pre class="art-out">{{ selectedArtifact }}</pre>
+            </template>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      V416: 查看诊断。
+      参考产品图 17 里它是抽屉右上角的一个入口。**只在真有诊断时才是一个动作** ——
+      否则点了会得到一个空浮层。所以: 无诊断时按钮禁用并说明原因, 而不是点了没反应。
+    -->
+    <div v-if="openDiagnosis && selectedNode" class="modal-shell" @click.self="openDiagnosis = false">
+      <div class="modal-card">
+        <header class="modal-head">
+          <div class="ph-head">
+            <span class="ph-kicker">DIAGNOSIS</span>
+            <strong>{{ selectedNode.title }} · 诊断</strong>
+          </div>
+          <button class="workspace-close" @click="openDiagnosis = false">×</button>
+        </header>
+        <div class="modal-body">
+          <template v-if="selectedDiagnosis">
+            <h4 class="ph-sec-title">失败原因</h4>
+            <p class="diag-text">{{ selectedDiagnosis }}</p>
+          </template>
+          <div v-else-if="selectedStep" class="diag-ok">
+            这次运行里该节点没有失败记录(状态: {{ stepLabel(selectedStep.status) }})。
+          </div>
+          <div v-else class="palette-empty">
+            该节点还没有运行记录 —— 先执行一次才谈得上诊断
+          </div>
+          <template v-if="selectedStep">
+            <h4 class="ph-sec-title">这一步的执行事实</h4>
+            <table class="art-table">
+              <tbody>
+                <tr><td class="art-k">stepId</td><td class="art-v">{{ selectedStep.stepId }}</td></tr>
+                <tr><td class="art-k">kind</td><td class="art-v">{{ selectedStep.kind }}</td></tr>
+                <tr><td class="art-k">status</td><td class="art-v">{{ selectedStep.status }}</td></tr>
+                <tr v-if="selectedStep.durationMs !== undefined"><td class="art-k">durationMs</td><td class="art-v">{{ selectedStep.durationMs }}</td></tr>
+                <tr v-if="selectedStep.inputsFrom?.length"><td class="art-k">inputsFrom</td><td class="art-v">{{ selectedStep.inputsFrom.join(", ") }}</td></tr>
+              </tbody>
+            </table>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      V416: AGENT HANDOFF —— 启动确认层(参考产品图 14)。
+      与下面那个 `canvas-start-gate`(空画布提示)是**两件事**, 不要合并:
+        gate 说的是"画布是空的, 去加节点"; 这里是"图已经建好, 请确认要授权执行什么"。
+      参考产品那张图把将执行的节点**逐条列出来**, 而不是只说"N 个节点" —— 照做。
+    -->
+    <div v-if="handoffOpen" class="modal-shell" @click.self="handoffOpen = false">
+      <div class="modal-card">
+        <div class="modal-body handoff-body">
+          <span class="handoff-kicker">AGENT HANDOFF</span>
+          <h3 class="handoff-title">画板流程已构筑，是否启动？</h3>
+          <p class="handoff-note">确认后，Agent 将按当前版本执行。该授权只对这份计划有效。</p>
+          <div class="handoff-box">
+            <span class="handoff-box-title">{{ handoffNodes.length }} 个工具节点</span>
+            <ol class="handoff-list">
+              <li v-for="n in handoffNodes" :key="n.id">
+                <code>{{ n.id }}</code>
+                <span class="handoff-sep">·</span>
+                <span class="handoff-cap">{{ n.cap }}</span>
+              </li>
+            </ol>
+          </div>
+        </div>
+        <footer class="workspace-panel-footer">
+          <button class="workspace-secondary" @click="handoffOpen = false">返回</button>
+          <div>
+            <button class="workspace-primary handoff-go" data-control="quick:handoff-confirm" @click="confirmHandoff">确认并启动</button>
+          </div>
+        </footer>
       </div>
     </div>
 
@@ -2049,4 +2529,89 @@ const stepLabel = (s: string) => STEP_LABEL[s] ?? s;
   .dag-panel { border-left: 0; border-top: 1px solid var(--line); }
   .workspace-panel { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 60%; }
 }
+
+/* V416: 计划历史浮层 */
+.ph-head { display: flex; flex-direction: column; gap: 2px; }
+.ph-kicker { font-size: 9.5px; letter-spacing: 0.14em; color: #7A8AA0; }
+.ph-head strong { font-size: 13.5px; color: #E8EEF7; }
+.ph-body { display: flex; flex-direction: column; gap: 16px; }
+.ph-section { display: flex; flex-direction: column; gap: 7px; }
+.ph-sec-title { margin: 0; font-size: 11px; font-weight: 600; color: #9FB0C6; letter-spacing: 0.05em; }
+.ph-sec-sub { margin-left: 8px; font-weight: 400; color: #5C6B80; font-size: 10px; }
+.ph-runs { display: flex; flex-direction: column; gap: 4px; max-height: 168px; overflow-y: auto; }
+/* 执行记录那一行: 状态圆点 + 短 id + 图名 + 右侧状态字(参考产品图 10 的卡片形态) */
+.ph-run {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 6px 10px; border: 1px solid #1E2A40; border-radius: 7px;
+  background: #0D1526; color: #DCE6F2; font-size: 11.5px; cursor: pointer;
+}
+.ph-run:hover { border-color: #2E3E5C; }
+.ph-run.is-on { border-color: #4D84CB; background: #13203A; }
+.ph-run-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: #5C6B80; }
+/* 运行中 = 蓝点(参考产品图 10: 蓝点 + 右侧"运行中") */
+.ph-run-dot.st-running { background: #4D84CB; }
+.ph-run-dot.st-completed { background: #5FD0B4; }
+.ph-run-dot.st-failed { background: #D9706A; }
+.ph-run-dot.st-paused, .ph-run-dot.st-waiting { background: #E8B54A; }
+.ph-run-dot.st-cancelled, .ph-run-dot.st-draft { background: #5C6B80; }
+.ph-run-id { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: #9FC0E8; flex-shrink: 0; }
+.ph-run-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #A3B3C8; }
+.ph-run-state { color: #7A8AA0; flex-shrink: 0; }
+.ph-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+/* 时间线一行: 时间(等宽, 不跳动) + 事件名 + 节点 + 说明。长说明换行, 不撑破容器 */
+.ph-ev {
+  display: grid; grid-template-columns: 62px 132px minmax(70px, auto) 1fr;
+  gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: 5px; font-size: 11px;
+  border-left: 2px solid transparent;
+}
+.ph-ev.fam-job { border-left-color: #4D84CB; }
+.ph-ev.fam-node { border-left-color: #2E3E5C; }
+.ph-ev-time { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: #6B7A90; }
+.ph-ev-name { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: #9FC0E8; }
+.ph-ev-node { color: #A3B3C8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-ev-msg { color: #7A8AA0; line-height: 1.6; overflow-wrap: anywhere; }
+
+/* V416: 节点详情 —— TASK INSPECTOR / 诊断 / 动作按钮 */
+.inspector { display: flex; gap: 8px; margin: 8px 0 2px; }
+.insp-cell { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 6px 9px; border: 1px solid #1E2A40; border-radius: 7px; background: #0D1526; }
+.insp-key { font-size: 9px; letter-spacing: 0.1em; color: #6B7A90; }
+.insp-val { font-size: 11.5px; color: #DCE6F2; }
+.drawer-diag { margin: 8px 0; padding: 8px 10px; border: 1px solid #4A2A2A; border-left: 2px solid #D9706A; border-radius: 6px; background: #1E1414; }
+.diag-label { font-size: 9.5px; letter-spacing: 0.08em; color: #D9706A; }
+.diag-text { margin: 5px 0 0; font-size: 11.5px; line-height: 1.65; color: #E0C4C2; overflow-wrap: anywhere; }
+.diag-ok { font-size: 11.5px; line-height: 1.7; color: #6FD08C; }
+/* 两个整宽动作按钮(参考产品图 12) */
+.node-actions { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 2px; }
+.workspace-secondary.wide { width: 100%; justify-content: center; }
+/* 模块产物表: 左列固定字段名, 右列自动换行(图 17 的布局要点) */
+.art-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.art-table .art-k {
+  width: 132px; vertical-align: top; padding: 6px 9px 6px 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px; color: #9FC0E8; overflow-wrap: anywhere; border-bottom: 1px solid #1A2333;
+}
+.art-table .art-v {
+  vertical-align: top; padding: 6px 0; font-size: 11.5px; line-height: 1.7;
+  color: #DCE6F2; overflow-wrap: anywhere; white-space: pre-wrap; border-bottom: 1px solid #1A2333;
+}
+.art-out {
+  margin: 0; padding: 10px; max-height: 40vh; overflow: auto; border: 1px solid #1E2A40; border-radius: 7px;
+  background: #0D1526; color: #DCE6F2; font-size: 11px; line-height: 1.7;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+/* V416: AGENT HANDOFF 确认层 */
+.handoff-body { display: flex; flex-direction: column; gap: 8px; }
+.handoff-kicker { font-size: 9.5px; letter-spacing: 0.14em; color: #9B7BE0; }
+.handoff-title { margin: 0; font-size: 15px; color: #E8EEF7; }
+.handoff-note { margin: 0; font-size: 11.5px; line-height: 1.7; color: #A3B3C8; }
+.handoff-box { margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: #0D1526; border: 1px solid #1E2A40; }
+.handoff-box-title { font-size: 11px; color: #9FB0C6; }
+.handoff-list { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 34vh; overflow-y: auto; }
+.handoff-list li { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; flex-wrap: wrap; }
+.handoff-list code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; color: #9FC0E8; }
+.handoff-sep { color: #4A5A72; }
+.handoff-cap { color: #7A8AA0; overflow-wrap: anywhere; }
+/* 紫底主按钮(参考产品图 14: 「确认并启动」是紫色, 与普通主色区分开) */
+.handoff-go { background: #7c3aed !important; border-color: #7c3aed !important; color: #F1F5F9 !important; }
+.handoff-go:hover { background: #6d31d6 !important; }
 </style>

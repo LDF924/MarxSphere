@@ -46,7 +46,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 2026-09-13 编排画布重写后, 原来的「可视化DAG编排模式|标准工作流|科研 Agent」全被替换,
 // 这条门禁就误报失败 —— 但它要验的是"iframe 里是本子应用而非 React 兜底", 与具体文案无关。
 const TABS = [
-  { label: "研途写作舱", route: "/workflow/input", want: /选题界定|框架设计|素材|工作流/ },
+  {
+    label: "研途写作舱", route: "/workflow/input", want: /选题界定|框架设计|素材|工作流/,
+    // 这行的 hint 是**五个阶段**不是一句话 —— 头栏必须把前缀与阶段分开显示(见下面那段断言)
+    hintLead: "阶段化论文研究",
+    hintSteps: ["选题界定", "框架设计", "文献与资料", "章节写作", "统稿定稿"],
+  },
   { label: "课题流程编排", route: "/workbench/quick", want: /课题流程编排|能力节点|可用能力/ },
   { label: "论文质量评审", route: "/review", want: /审稿|评审|期刊|标准/ },
   { label: "成果可视化工坊", route: "/viz", want: /绘图|图表|可视化/ },
@@ -181,6 +186,53 @@ async function main() {
       const wantOk = t.want.test(info?.inner ?? "");
       const pass = clicked === true && srcOk && notReact && wantOk;
       check(`${t.label.padEnd(8)}`, pass, `src=${srcOk ? "ok" : info?.src} 非React=${notReact} 内容命中=${wantOk}`);
+
+      /**
+       * 2026-09-28 加: **头栏必须是一行** —— 标题与说明(以及写作舱那几个阶段胶囊)排在同一行。
+       *
+       * 走了三次弯路, 每次都靠用户指出:
+       *   ① 原来标题一行、hint 一行 ⇒ 用户: "栏目全是两行";
+       *   ② 我理解成"五个阶段挤成一行不行", 把它拆成了**三行** ⇒ 更糟;
+       *   ③ 用户要的是 **标题与说明同一行**, 而且**五个 tab 全部**都是(不只是写作舱)。
+       *
+       * ⚠ 所以判据不能只验写作舱, 也**不能**再验"药丸与前缀的相对位置"——
+       *   那验的是"说明块内部怎么排", 而真正被要求的是"标题与说明块在一起"。
+       *   现在直接量: 标题与说明的**垂直区间是否重叠**(同一条水平带)。
+       */
+      const oneLine = await ev(`(() => {
+        const title = [...document.querySelectorAll('span')]
+          .find(e => (e.innerText||'').trim() === ${JSON.stringify(t.label)});
+        if (!title) return null;
+        const row = title.parentElement;                       // 标题与说明共用的那一行
+        const dot = [...row.children].find(e => (e.innerText||'').trim() === '·');
+        // 说明块: 有胶囊就用第一个胶囊, 否则就是那段纯文字
+        const pills = [...row.querySelectorAll('span')]
+          .filter(e => getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)');
+        const hintSpans = [...row.querySelectorAll('span')].filter(e => e !== title && e !== dot && !pills.includes(e));
+        const probe = pills[0] ?? hintSpans.find(e => (e.innerText||'').trim().length > 4);
+        if (!probe) return null;
+        /**
+         * ⚠ 判据是**垂直区间是否重叠**, 不是"盒子 top 相等"。
+         *   我第一次写成 top 相等, 结果全红(标题 top=75 / 说明 top=79 差 4px)——
+         *   但那是 items-baseline 的正常效果: 标题 13px、说明 10px 对齐的是**基线**,
+         *   盒子顶端本来就差几个像素。**同一行的正确判据是它们占据同一条水平带**。
+         */
+        const rect = (e) => e.getBoundingClientRect();
+        const overlaps = (a, b) => Math.max(rect(a).top, rect(b).top) < Math.min(rect(a).bottom, rect(b).bottom);
+        const tops = (list) => new Set(list.map(e => Math.round(rect(e).top / 4))).size;   // 4px 量化后还剩几个值
+        return {
+          titleTop: Math.round(rect(title).top), probeTop: Math.round(rect(probe).top),
+          sameRow: overlaps(title, probe),
+          probeText: (probe.innerText||'').trim().slice(0, 24),
+          pillsRowCount: pills.length ? tops(pills) : 0,
+        };
+      })()`);
+      check(
+        `  └ 标题与说明同一行`,
+        oneLine?.sameRow === true && (oneLine?.pillsRowCount ?? 1) <= 1,
+        oneLine ? `标题top=${oneLine.titleTop} 说明top=${oneLine.probeTop} 说明="${oneLine.probeText}" 胶囊行数=${oneLine.pillsRowCount}` : "找不到标题元素",
+      );
+
       if (!pass) {
         console.log(`      内首段: ${(info?.inner || "(空)").slice(0, 130)}`);
         /**

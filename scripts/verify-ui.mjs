@@ -116,6 +116,19 @@ const SUITES = [
   //     ② **三分类退化成单一分类** —— 全判 auto 会填出编的内容, 全判 manual 则功能等于没做,
   //        所以探针同时断言"三类都出现过"与"平台没有的项确实留空"。
   { key: "batch10", file: "probe-batch10.mjs", desc: "批10 回归: 检查表上传/拆条/三分类/手改不被覆盖/导出同源" },
+  // 2026-09-28 加。DAG 编排补齐: 计划历史 / 节点详情四件事 / 启动确认层 / 泳道与可执行徽标。
+  //   这一批的**核心是一条新后端链路** —— `orchestrator_run_events`(迁移 161) + 运行时的
+  //   onEvent 钩子。它最危险的失效方式是**静默退化成快照**: 原来只有 step_log_json,
+  //   而它 `on conflict do update` 整行覆盖, 同一节点的 pending→running→done 只剩最后一个。
+  //   所以探针不只看"浮层有没有渲染", 而是**真起一次运行**再断言事件流里
+  //   `node.running` 出现在 `node.failed` **之前** —— 顺序是快照表表达不了的那个东西。
+  //   ⚠ 成本: 起的那条链是"质量门 + 备胎", 质量门会调一次 LLM(maxTokens 200)。很小但非零。
+  { key: "batch11", file: "probe-batch11.mjs", desc: "批11 回归: 事件流落库/计划历史/节点详情四件事/启动确认层/泳道与可执行徽标" },
+  // 2026-09-28 加。素材弹层对齐参考产品(图 1–9)。这一批里**实质性的一条是章节归属**:
+  //   原先手动添加的素材保存时**默默挂到第一章**(`store.level1Sections[0]`), 用户改不了 ——
+  //   所以探针不看"下拉在不在", 而是选第二章 → 保存 → **查库里的 section_ids**。
+  //   ⚠ 它自建项目与章节(不靠已有数据), 因此空库 CI 上也能跑。
+  { key: "batch12", file: "probe-batch12.mjs", desc: "批12 回归: 弹层提示与示例/章节归属真落库/拖拽三态/接近上限的附件真能传" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
   //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
   //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
@@ -245,6 +258,7 @@ if (shardSpec) {
     "workbench-sync": 51, "workspace-actions": 55, "writing-cabin": 55, "layout": 49, "batch06": 53,
     "empirical-switch": 49, "batch09": 49, "batch01": 46, "fusion-tabs": 45, "site-content": 45,
     "editor-ver-import": 45, "review-reset": 41, "stats-xlsx": 41, "editor-export": 39, "batch10": 31,
+    "batch11": 50, "batch12": 140,
     "batch05": 33, "project-bundle": 21, "batch04": 27, "version-history": 25, "batch07": 20,
     "editor-ai6": 19, "editor-chart": 16, "editor-check": 15, "project-rail": 33,
   };

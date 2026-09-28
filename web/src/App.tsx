@@ -95,6 +95,8 @@ const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
     title: "研途写作舱",
     vueRoute: "/workflow/input",
     hint: "阶段化论文研究: 选题界定 → 框架设计 → 文献与资料 → 章节写作 → 统稿定稿",
+    // 这行是**五个阶段**不是一句话 —— 按胶囊逐项渲染, 窄屏整块换行而不是截断(见 FusionTabDef.hintList)
+    hintList: true,
   },
   dag: {
     title: "课题流程编排",

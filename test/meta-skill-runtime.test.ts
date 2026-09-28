@@ -221,3 +221,59 @@ describe("meta-skill-runtime", () => {
     expect(result.output).toContain("数字劳动");
   });
 });
+
+/**
+ * V416: 事件流(计划历史浮层的数据源)。
+ *
+ * 为什么必须锁: 参考产品「计划历史」展示的是**顺序** —— "先 node.diagnosed 再 node.failed"。
+ *   而这份顺序在本仓是**新加的**: 原来只有 orchestrator_runs.step_log_json 的状态快照,
+ *   它是 on conflict do update 整行覆盖, 同一节点的 pending→running→done 只剩最后一个。
+ *   如果哪天有人把 emitEvent 去掉(它看起来"只是根日志"), 浮层会静默退化成"只有终态",
+ *   而且**不会有任何报错** —— 正是本仓反复踩的那类静默失效。这里锁住事件名与顺序。
+ */
+describe("meta-skill-runtime 事件流(V416)", () => {
+  const def: MetaSkillDef = {
+    id: "ev_flow", name: "事件流测试", description: "d", final_text_mode: "raw",
+    steps: [
+      { id: "a", kind: "llm_chat", with: { task: "{{inputs}}" } },
+      { id: "b", kind: "llm_chat", depends_on: ["a"], with: { task: "{{outputs.a}}" } },
+    ],
+  };
+
+  async function runWithEvents(failIds = new Set<string>()) {
+    const events: Array<{ event: string; nodeId?: string; message?: string }> = [];
+    const r = await runMetaSkill(def, "输入", {
+      stepExecutor: fakeExecutor({}, failIds),
+      onEvent: (event, o) => events.push({ event, nodeId: o.nodeId, message: o.message }),
+    });
+    return { r, events };
+  }
+
+  it("成功路径: 每个节点先 node.running 后 node.done, 收尾有 job.done", async () => {
+    const { r, events } = await runWithEvents();
+    expect(r.status).toBe("done");
+    expect(events.map((e) => e.event)).toEqual([
+      "node.running", "node.done",
+      "node.running", "node.done",
+      "job.done",
+    ]);
+    expect(events.map((e) => e.nodeId)).toEqual(["a", "a", "b", "b", undefined]);
+  });
+
+  it("失败路径: node.running → node.failed, 且 message 是给用户看的中文原因", async () => {
+    const { r, events } = await runWithEvents(new Set(["a"]));
+    expect(r.status).toBe("failed");
+    const failed = events.find((e) => e.event === "node.failed");
+    expect(failed?.nodeId).toBe("a");
+    expect(failed?.message).toContain("模拟失败"); // 引擎抛的是人话, 原样记
+    // b 依赖 a, 应当记为 node.skipped 而不是假装跑过
+    expect(events.some((e) => e.event === "node.skipped" && e.nodeId === "b")).toBe(true);
+    expect(events.some((e) => e.event === "job.failed")).toBe(true);
+  });
+
+  it("不注册 onEvent 时是空操作(单测/脚本路径行为不变)", async () => {
+    const r = await runMetaSkill(def, "输入", { stepExecutor: fakeExecutor({}) });
+    expect(r.status).toBe("done");
+    expect(r.outputs.a).toBeTruthy();
+  });
+});
