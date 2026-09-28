@@ -12,6 +12,17 @@ interface ToastItem {
   category: string;
 }
 
+/**
+ * V418: 分类 → 中文标签。**漏掉的分类会显示成"系统告警"**, 不会报错 ——
+ * 所以新增分类时这里必须同步(原先是三元链, 加一类就要再套一层, 更容易漏)。
+ */
+const ALERT_CATEGORY_LABELS: Record<string, string> = {
+  circuit_breaker: "熔断",
+  degradation: "检索降级",
+  reflection: "反思修正",
+  token: "密钥",
+};
+
 export function AlertToast({ onOpenAlerts }: { onOpenAlerts?: () => void }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastMaxId = useRef<string | null>(null);
@@ -56,7 +67,12 @@ export function AlertToast({ onOpenAlerts }: { onOpenAlerts?: () => void }) {
         >
           {t.level === "critical" ? <AlertOctagon className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
           <button onClick={onOpenAlerts} className="min-w-0 flex-1 text-left">
-            <div className="text-[11px] font-semibold">{t.category === "circuit_breaker" ? "熔断" : t.category === "degradation" ? "检索降级" : t.category === "reflection" ? "反思修正" : "系统告警"}</div>
+            {/*
+              V418: 原先是个三元链, 末尾一律"系统告警"。加"密钥"分类时改成了查表 ——
+              三元链每加一类都要再套一层, 而漏掉的那类**不会报错**, 只会显示成"系统告警",
+              让人以为是别的问题。查表至少把映射集中在一处。
+            */}
+            <div className="text-[11px] font-semibold">{ALERT_CATEGORY_LABELS[t.category] ?? "系统告警"}</div>
             <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 opacity-90">{t.message}</p>
           </button>
           <button onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))} className="shrink-0 rounded p-0.5 opacity-60 hover:opacity-100">

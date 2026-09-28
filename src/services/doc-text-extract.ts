@@ -38,7 +38,25 @@ export interface ExtractResult {
   extractedPages?: number;
   truncated?: boolean;
   extractionWarnings?: string[];
+  /**
+   * 这段文字是怎么来的 —— `"text-layer"` 是 PDF 自带的文本层, `"mineru-ocr"` 是
+   * 扫描件经 MinerU 识别得到的。
+   *
+   * ⚠ 2026-09-28 加的。在此之前**没有任何字段记录提取方式**, 于是"这段正文是 OCR 出来的"
+   *   这件事到了素材库里就消失了 —— 而 OCR 结果有错字是常态, 用户有权知道该不该复核。
+   *   缺省 undefined 表示"老路径, 文本层"(不用 "text-layer" 显式填, 免得动到既有调用方)。
+   */
+  extractionMethod?: "text-layer" | "mineru-ocr";
 }
+
+/**
+ * 扫描件判定 —— 抽不到文本层**且**页数超过这个值。
+ *
+ * ⚠ 为什么不是"抽不到就补 OCR": OCR 要花几十秒到几分钟、要烧外部额度, 而"一页空白"
+ *   这种输入补 OCR 也一样是空的。给它一个小门槛, 让空页/封面这种情况**当场失败**,
+ *   而不是让用户等两分钟再看到失败。
+ */
+export const OCR_MIN_PAGES = 3;
 
 /** 统一入口: 按扩展名分派, 失败返回可读错误而不是乱码文本 */
 export async function extractDocumentText(

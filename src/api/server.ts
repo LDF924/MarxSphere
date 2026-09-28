@@ -397,6 +397,13 @@ export function buildHttpServer() {
     "/api/llm/models",
     "/api/eval",
     "/api/memory/context",  // V381: 会话上下文清理, 仅本机
+    /**
+     * V418: 外部服务密钥(填/换/校验)。与 /api/settings、/api/tokens 同类 ——
+     *   它能**写入一个会被平台拿去调用外部付费接口的密钥**, 属于部署方的配置面。
+     *   不放开给外部令牌: 拿到 sag_xxx 的第三方能改 MinerU 密钥, 等于能把 OCR 结果
+     *   导向自己控制的账号(对方文档会被送去解析)。需要远程改的走本机或部署脚本。
+     */
+    "/api/service-tokens",
   ];
   // V381: 26 个工作台 tab 功能 → 所需令牌权限映射
   // 规则: 精确前缀匹配(先长后短), 命中即要求对应权限。
@@ -468,6 +475,9 @@ export function buildHttpServer() {
     ["/api/review", "scenarios"],          // 论文质量评审
     ["/api/paper-outline", "scenarios"],   // 写作舱后端
     ["/api/research", "scenarios"],        // 研途写作舱(项目/节点/素材/执行引擎)
+    // V418: 文档 OCR — 一次任务烧一次外部 OCR 额度 + 在服务端落一个文件,
+    //   与 /api/p2o 同性质(都是"解析一份文档"), 给 p2o 权限
+    ["/api/ocr", "p2o"],
     ["/api/materials", "scenarios"],
     ["/api/editor", "documents"],
     ["/api/viz", "documents"],
@@ -599,6 +609,8 @@ export function buildHttpServer() {
     else if (url.startsWith("/api/openai")) kind = "reason"; // OpenAI 兼容端点走 reason 成本配额
     // V395-11: P2O 走独立次数配额（PDF 解析烧 MinerU/LLM, 不与 other 混桶）
     else if (url.startsWith("/api/p2o/tasks") && request.method === "POST") kind = "p2o";
+    // V418: 文档 OCR 与 p2o 同性质(一次任务烧一次外部 OCR + 一次 LLM 拉直), 同样独立计费
+    else if (url.startsWith("/api/ocr/jobs") && request.method === "POST") kind = "p2o";
 
     // 全局熔断: DeepSeek 429 连续超阈值 → reason/search 外部请求 503
     if ((kind === "reason" || kind === "search") && breakers.deepseek429.isOpen()) {
@@ -1320,6 +1332,56 @@ export function buildHttpServer() {
     const body = (request.body ?? {}) as { id?: string };
     const n = await alertService.markAlertsRead(body.id);
     return { ok: true, marked: n };
+  });
+
+  // ─── V418: 外部服务密钥（值 + 有效期 + 校验）───
+  //
+  // ⚠ 安全约定(与 /api/agent/credentials 一致): **任何响应都不含密钥本体**。
+  //   列表只回脱敏视图(末 6 位 + 日期 + 上次校验结论); 校验路由只回一句结论。
+  //   加字段前先问: 这个字段能不能反推出密钥?
+  app.get("/api/service-tokens", async () => {
+    const { listServiceTokens } = await import("../services/service-token-store.js");
+    return { tokens: await listServiceTokens() };
+  });
+  app.put("/api/service-tokens/:service", async (request, reply) => {
+    const { service } = request.params as { service: string };
+    const body = (request.body ?? {}) as { token?: string; issuedAt?: string | null; expiresAt?: string | null; note?: string };
+    const { saveServiceToken } = await import("../services/service-token-store.js");
+    // token 传空 = 只改日期/备注(已经配好的人不该被逼着再贴一遍密钥)
+    const r = await saveServiceToken({
+      service,
+      token: body.token,
+      issuedAt: body.issuedAt ?? null,
+      expiresAt: body.expiresAt ?? null,
+      note: body.note,
+    });
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "SERVICE_TOKEN_BAD_REQUEST" });
+    const { listServiceTokens } = await import("../services/service-token-store.js");
+    const list = await listServiceTokens();
+    return { ok: true, token: list.find((t) => t.service === service) ?? null };
+  });
+  /**
+   * 校验。body.token 给了就**只测不存**(表单里"先测一下再保存"),
+   * 没给就用当前生效的那个并**把结论落库**。
+   * 判据是远端状态码, 不是到期日 —— 详见 service-token-store.verifyServiceToken 的注释。
+   */
+  app.post("/api/service-tokens/:service/verify", async (request, reply) => {
+    const { service } = request.params as { service: string };
+    const body = (request.body ?? {}) as { token?: string };
+    const { verifyServiceToken } = await import("../services/service-token-store.js");
+    const r = await verifyServiceToken(service, body.token);
+    if (r.status === "not_configured") return reply.code(400).send({ error: r.message, code: "SERVICE_TOKEN_NOT_CONFIGURED" });
+    return { ok: r.ok, status: r.status, message: r.message };
+  });
+  app.delete("/api/service-tokens/:service", async (request) => {
+    const { service } = request.params as { service: string };
+    const { clearServiceToken } = await import("../services/service-token-store.js");
+    return { ok: await clearServiceToken(service) };
+  });
+  /** 立刻跑一轮巡检(不等每天那次) —— 面板上的"检查一次"也走它 */
+  app.post("/api/service-tokens/patrol", async () => {
+    const { runServiceTokenPatrol } = await import("../services/service-token-patrol.js");
+    return { ok: true, ...(await runServiceTokenPatrol()) };
   });
 
   // 告警 demo（前端一键触发各类型演示）
@@ -12590,6 +12652,50 @@ ${dataBlock}
     } finally {
       try { fs.unlinkSync(tmp); } catch { /* ignore */ }
     }
+  });
+
+  // ═══ V418: 扫描版文档 OCR(上传 → 后台识别 → 文本回填素材) ═══
+  //
+  // 由来: 上面那条 extract-text 对扫描件是死路 —— 报"未提取到文字"之后没有下一步。
+  //   这组路由就是那个"下一步": 建任务、后台跑 MinerU、轮询取回文本。
+  // 归属: 与 /api/ocr/* 同批, LOCAL_ONLY_PREFIXES 里已登记(见该常量)。
+  app.post("/api/ocr/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { filename?: string; base64?: string; mime?: string };
+    if (!body?.base64) return reply.code(400).send({ error: "缺少 base64 文件内容" });
+    const filename = body.filename ?? "file.pdf";
+    const buf = Buffer.from(String(body.base64).replace(/^data:[^;]+;base64,/, ""), "base64");
+    if (buf.length === 0) return reply.code(400).send({ error: "文件内容为空" });
+    const { ocrJobService } = await import("../services/ocr-job-service.js");
+    const r = ocrJobService.createOcrJob({ userId: user.id, fileName: filename, buf });
+    if (!r.ok) return reply.code(429).send({ error: r.error });
+    return { job: ocrJobService.publicOcrJob(r.job) };
+  });
+  app.get("/api/ocr/jobs/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { ocrJobService } = await import("../services/ocr-job-service.js");
+    const job = ocrJobService.getOcrJob(user.id, id);
+    if (!job) return reply.code(404).send({ error: "任务不存在或不属于你" });
+    return { job: ocrJobService.publicOcrJob(job, true) };
+  });
+  app.post("/api/ocr/jobs/:id/cancel", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { ocrJobService } = await import("../services/ocr-job-service.js");
+    return { ok: ocrJobService.cancelOcrJob(user.id, id) };
+  });
+  app.delete("/api/ocr/jobs/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { ocrJobService } = await import("../services/ocr-job-service.js");
+    return { ok: await ocrJobService.deleteOcrJob(user.id, id) };
+  });
+  /** OCR 能力是否就绪(前端据此决定给不给用户「转 OCR」这条路) */
+  app.get("/api/ocr/capability", async () => {
+    const { effectiveToken } = await import("../services/service-token-store.js");
+    const ready = !!(await effectiveToken("mineru"));
+    return { ready, hint: ready ? "" : "平台没有配置 OCR 密钥，扫描件暂时无法识别。到「设置 → 外部服务密钥」填一个 MinerU 密钥。" };
   });
 
   // ═══ SocialSci 补漏组3: 用户文件/默认任务/viz_data节点/知识库会话 ═══

@@ -27,6 +27,9 @@ const LEVEL_STYLES: Record<AlertItem["level"], { badge: string; icon: React.Reac
 const CATEGORY_LABELS: Record<string, string> = {
   degradation: "降级", timeout: "超时", circuit_breaker: "熔断", failure: "失败",
   reflection: "反思", retry: "重试", success: "完成", ingestion: "入库", eval: "评测",
+  // V418: 外部服务密钥到期/校验失败。不加这一条的话, 告警中心会把"密钥快过期了"
+  // 原样显示成英文 category 名 —— 而这恰恰是**最需要一眼看懂**的那条
+  token: "密钥",
 };
 
 export function AlertsPanel() {

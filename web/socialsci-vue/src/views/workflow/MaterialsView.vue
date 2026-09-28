@@ -4,7 +4,7 @@
  * 5 分类手风琴(文献检索/表格素材/理论素材/数据分析素材/附件素材) + AI 生成 + 手动添加 + 发布版本
  * 数据: 后端 research_materials CRUD + 素材节点; kind: citation/theory/data_result/figure/file
  */
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { q, describeTaskError } from "@/shared/api";
@@ -42,6 +42,8 @@ interface Material {
   tableData?: { columns: string[]; rows: unknown[][] };
   references?: Array<{ title: string; author?: string; source?: string; year?: string; gbRef?: string; venue?: string; doi?: string; volume?: string; issue?: string; pages?: string; authors?: string; excerpt?: string }>;
   source?: { sourceStatus?: { wanfang?: string; ncpssd?: string; internal?: string } };
+  /** V418: 后端附加元数据。附件类会带 `extractionMethod`('text-layer' | 'mineru-ocr') */
+  meta?: { extractionMethod?: string; [k: string]: unknown };
 }
 
 const materials = ref<Material[]>([]);
@@ -1214,6 +1216,7 @@ async function uploadMaterialFile(catKey: string, file: File | undefined) {
     // 附件: 文本类直接读; docx/pdf 走后端 extract-text
     const ext = (file.name.split(".").pop() ?? "").toLowerCase();
     let text = "";
+    let usedOcr = false;
     if (["txt", "md", "csv", "tsv"].includes(ext)) {
       text = await file.text();
     } else {
@@ -1240,6 +1243,22 @@ async function uploadMaterialFile(catKey: string, file: File | undefined) {
         const netErr = String((r as { __netErr?: string }).__netErr ?? "");
         const detail = (r as { error?: string }).error;
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        /**
+         * V418: 扫描件是**唯一**一种"再试一次不会有不同结果、但有明确出路"的失败。
+         *   原先它和后端其它 422 走同一句 toast, 用户看完就没下一步了。
+         *   所以在这一支里单独给「识别文字」按钮, 直接接上 OCR 任务。
+         *
+         * ⚠ 判据是**后端那句话**而不是本地猜: "未提取到文字"是 extractDocumentText
+         *   在文本层为空时的固定措辞(只对 PDF 出现)。本地猜(看扩展名/看体积)会误伤
+         *   —— 加密 PDF、坏 PDF 都会失败, 但它们 OCR 也读不了, 给按钮等于骗人。
+         */
+        const isScanned = /未提取到文字|扫描件/.test(String(detail ?? ""));
+        if (isScanned && await ocrReady()) {
+          // 先把 base64 拿到手(toDataUrl 读的是刚传的同一个 File, 不会重复上传)
+          const b64 = await toDataUrl(file);
+          await startOcr(file.name, b64);
+          return;
+        }
         toast(
           detail ? detail
             : serverMsg ? serverMsg
@@ -1255,9 +1274,11 @@ async function uploadMaterialFile(catKey: string, file: File | undefined) {
       kind: "file",
       title: file.name,
       contentMd: text.slice(0, 100_000),
-      sectionIds: store.level1Sections.length ? [store.level1Sections[0].id] : []
+      sectionIds: store.level1Sections.length ? [store.level1Sections[0].id] : [],
+      // V418: 记下这段文字是怎么来的。OCR 结果有错字是常态, 到了素材库不该无迹可寻
+      meta: usedOcr ? { extractionMethod: "mineru-ocr" } : undefined
     });
-    if (created) { toast("附件已上传为素材", "success"); await loadMaterials(); }
+    if (created) { toast(usedOcr ? "附件已上传为素材（文字由 OCR 识别）" : "附件已上传为素材", "success"); await loadMaterials(); }
     else toast("上传失败", "error");
   } catch (e) {
     toast(`上传失败: ${(e as Error).message}`, "error");
@@ -1402,6 +1423,141 @@ async function importLitHits() {
 }
 
 const planDialog = ref<{ open: boolean; state: "running" | "ready" | "executing" | "failed"; plan?: { literatureSearch: PlanItem[]; textTables: PlanItem[]; dataAnalysis: PlanItem[] }; counts?: { lit: number; tab: number; ana: number }; msg?: string }>({ open: false, state: "ready" });
+
+// ─── V418: 扫描版 PDF 的 OCR 落点 ───────────────────────────────────────────
+//
+// 由来: 用户上传扫描版 PDF 时, 后端 `extractDocumentText` 抽不到文本层 → 报
+//   「该 PDF 未提取到文字(可能是扫描件)」。在那之前**没有下一步**, 因为平台虽有 OCR
+//   能力(MinerU), 但它只挂在 Agent 工具上, 上传链路碰不到。
+// 现在: 建一个后台任务识别 → 轮询进度 → 完成后把文本填进「手动添加附件」弹层。
+//   ⚠ 刻意**不替用户直接落素材**: OCR 有错字是常态, 文本先经人眼与「保存」才入库
+//     —— 与"粘贴文本"走同一条路径。
+interface OcrJobView {
+  id: string; status: "queued" | "running" | "done" | "failed" | "cancelled";
+  fileName: string; currentStep: string; charCount: number; error: string;
+  createdAt: string; text?: string;
+}
+const ocrState = ref<{ open: boolean; jobId: string; fileName: string; status: OcrJobView["status"] | ""; step: string; error: string; busy: boolean }>({ open: false, jobId: "", fileName: "", status: "", step: "", error: "", busy: false });
+let ocrTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopOcrPoll() {
+  if (ocrTimer) { clearInterval(ocrTimer); ocrTimer = null; }
+}
+
+/**
+ * OCR 能力是否就绪。**没有密钥时不能给出这条路** ——
+ * 建了任务也只会失败, 用户白等一两分钟看到"密钥未配置"。
+ * 缓存一次即可(密钥不会在一分钟内变了), 但失败不缓存(下次可能就好了)。
+ */
+let ocrCapCache: { ready: boolean; hint: string } | null = null;
+async function ocrReady(): Promise<boolean> {
+  if (!ocrCapCache) {
+    try {
+      // 只有**成功拿到**的结论才缓存; 查询失败不缓存 —— 否则一次网络抖动会让
+      // 整个会话都不再给「识别文字」这条路, 而用户不知道是为什么
+      const r = await q<{ ready?: boolean; hint?: string }>("/ocr/capability");
+      ocrCapCache = { ready: !!r.ready, hint: r.hint ?? "" };
+    } catch {
+      toast("查询识别能力失败，请稍后重试。", "warning");
+      return false;
+    }
+  }
+  if (!ocrCapCache.ready) {
+    toast(ocrCapCache.hint || "平台没有配置 OCR 密钥，扫描件暂时无法识别。", "warning");
+    return false;
+  }
+  return true;
+}
+
+/** ① 发起: 把文件交给后端建 OCR 任务 */
+async function startOcr(fileName: string, base64: string) {
+  ocrState.value = { open: true, jobId: "", fileName, status: "queued", step: "提交中", error: "", busy: true };
+  try {
+    const r = await q<{ job?: OcrJobView }>("/ocr/jobs", { method: "POST", body: { filename: fileName, base64 } });
+    const id = r.job?.id ?? "";
+    if (!id) throw new Error("后端没有返回任务号");
+    ocrState.value.jobId = id;
+    ocrState.value.status = "queued";
+    ocrState.value.step = r.job?.currentStep || "排队中";
+    startOcrPoll();
+  } catch (e) {
+    ocrState.value.busy = false;
+    ocrState.value.status = "failed";
+    ocrState.value.error = (e as Error).message;
+  }
+}
+
+/**
+ * ② 轮询。
+ * ⚠ 每轮都判 `ocrState.jobId === id` —— 用户可能在任务跑着的时候换一份文件重试,
+ *   旧定时器回来时会把新任务的状态改写掉(审稿那条链踩过这个坑, 那里加的也是同一道判断)。
+ * ⚠ 网络抖动不该立刻判失败: 单轮失败跳过, 连续 3 次才报错。
+ */
+function startOcrPoll() {
+  stopOcrPoll();
+  const id = ocrState.value.jobId;
+  let netFails = 0;
+  let ticks = 0;
+  ocrTimer = setInterval(async () => {
+    if (ocrState.value.jobId !== id) { stopOcrPoll(); return; }
+    ticks += 1;
+    if (ticks > 600) { stopOcrPoll(); ocrState.value.busy = false; ocrState.value.status = "failed"; ocrState.value.error = "识别时间过长（超过 10 分钟），已停止等待。任务可能仍在服务端跑，稍后重试即可。"; return; }
+    try {
+      const r = await q<{ job?: OcrJobView }>(`/ocr/jobs/${id}`);
+      netFails = 0;
+      const j = r.job;
+      if (!j) return;
+      ocrState.value.step = j.currentStep || ocrState.value.step;
+      ocrState.value.status = j.status;
+      if (j.status === "done") { stopOcrPoll(); ocrState.value.busy = false; }
+      else if (j.status === "failed" || j.status === "cancelled") {
+        stopOcrPoll(); ocrState.value.busy = false; ocrState.value.error = j.error || (j.status === "cancelled" ? "已取消" : "识别失败");
+      }
+    } catch (e) {
+      netFails += 1;
+      if (netFails >= 3) { stopOcrPoll(); ocrState.value.busy = false; ocrState.value.status = "failed"; ocrState.value.error = `查询任务状态失败：${(e as Error).message}`; }
+    }
+  }, 2000);
+}
+
+async function cancelOcr() {
+  const id = ocrState.value.jobId;
+  stopOcrPoll();
+  ocrState.value.busy = false;
+  ocrState.value.status = "cancelled";
+  ocrState.value.error = "已取消";
+  if (id) await q(`/ocr/jobs/${id}/cancel`, { method: "POST" }).catch(() => { /* 取消失败不回滚本地状态 —— 用户已经不想等了 */ });
+  ocrState.value.open = false;
+}
+
+/** ③ 回填: 把识别出的文本交给「补录」弹层, 由用户确认后落库 */
+async function adoptOcr() {
+  const id = ocrState.value.jobId;
+  if (!id) return;
+  ocrState.value.busy = true;
+  try {
+    const r = await q<{ job?: OcrJobView }>(`/ocr/jobs/${id}`);
+    const text = r.job?.text ?? "";
+    if (!text.trim()) { toast("识别结果为空，无法补录", "warning"); return; }
+    const base = ocrState.value.fileName.replace(/\.[^.]+$/, "") || "扫描件";
+    editDialog.value = {
+      open: true, kind: "document",
+      material: {
+        title: base,
+        // 附一行来源标注: OCR 出来的文本有错字是常态, 读者/作者都该知道它从哪来
+        contentMd: `> 本段文字由 OCR 识别自《${ocrState.value.fileName}》，可能存在识别错误，引用前请核对原文。\n\n${text.slice(0, 100_000)}`,
+      } as Material,
+      sectionId: store.level1Sections[0]?.id || "",
+    };
+    ocrState.value.open = false;
+    toast("已填入待补录素材，请核对后保存", "info");
+  } catch (e) {
+    toast(`取回识别结果失败：${(e as Error).message}`, "error");
+  } finally {
+    ocrState.value.busy = false;
+  }
+}
+
 
 /**
  * 页面级异步状态埋点(参考产品 MaterialsView: busy = 计划生成中 || 素材生成中 || dataBusy,
@@ -1710,6 +1866,15 @@ onMounted(async () => {
   const nonEmpty = Object.entries(grouped.value).filter(([, list]) => list.length).map(([k]) => k);
   if (nonEmpty.length) expandedCats.value = new Set(nonEmpty);
 });
+
+/**
+ * V418: 卸载时停掉 OCR 轮询。
+ *
+ * ⚠ 这个页面此前**一个定时器都不清**(pollGenTask / pollPlan / waitJobDone 三处都只在
+ *   完成或关弹层时清), 用户切走路由后定时器还在跑。那三处是既有问题, 这行的意思是
+ *   **至少新加的这一个不要跟着犯**。
+ */
+onUnmounted(() => { stopOcrPoll(); });
 </script>
 
 <template>
@@ -1849,9 +2014,9 @@ onMounted(async () => {
           <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5a2 2 0 012-2h12v18H6a2 2 0 01-2-2V5zM8 7h8M8 11h8" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
           <span class="sc-tile-text">添加理论</span>
         </button>
-        <label class="sc-tile" data-control="workflow:upload-attachment">
+        <label class="sc-tile" data-control="workflow:upload-attachment" :class="{ 'is-busy': ocrState.open && ocrState.busy }">
           <span class="sc-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.5V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h9M16 3v4M8 3v4M3 9h18" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
-          <span class="sc-tile-text">上传附件</span>
+          <span class="sc-tile-text">{{ ocrState.open && ocrState.busy ? `识别中 ${ocrState.step}` : "上传附件" }}</span>
           <input type="file" accept=".pdf,.docx,.txt,.md,.csv,.tsv" style="display: none" @change="(ev) => { const f = (ev.target as HTMLInputElement).files?.[0]; (ev.target as HTMLInputElement).value = ''; if (f) void uploadMaterialFile('document', f); }" />
         </label>
       </div>
@@ -2177,6 +2342,8 @@ onMounted(async () => {
                 <span v-if="m.sectionId || (m as any).sectionIds?.length" class="sec-chip">📎 已关联</span>
                 <!-- B5: 文献来源徽章(参考产品: 文献库检索/内部资料 + sourceStatus completed/empty/failed) -->
                 <span v-if="mKindBadge(m)" class="src-badge" :class="mKindBadge(m)!.cls">{{ mKindBadge(m)!.text }}</span>
+                <!-- V418: 这段文字是 OCR 出来的。有错字是常态, 作者该知道它从哪来 -->
+                <span v-if="m.meta?.extractionMethod === 'mineru-ocr'" class="src-badge ocr-badge" title="本素材的文字由 OCR 识别得到，可能存在识别错误，引用前请核对原文">OCR</span>
                 <span class="mat-words">{{ wordCountOf(m) }} 字</span>
                 <span class="mat-date">{{ m.createdAt ? m.createdAt.slice(0, 10).replace(/-/g, "/") : "" }}</span>
                 <button class="mat-src-btn" data-control="workflow:open-sources" title="查看该素材的来源文献/出处" @click.stop="openSources(m)">来源</button>
@@ -2486,6 +2653,32 @@ onMounted(async () => {
 
     <!-- 手动添加弹层 -->
     <Teleport to="body">
+      <!-- V418: 扫描版 PDF 识别进度。无遮罩(不挡页面) —— 识别要一两分钟, 期间用户该能继续干别的 -->
+      <Teleport to="body">
+        <div v-if="ocrState.open" class="ocr-panel" data-control="workflow:ocr-panel">
+          <div class="ocr-head">
+            <span class="ocr-title">扫描件识别</span>
+            <button class="modal-x" @click="cancelOcr">×</button>
+          </div>
+          <p class="ocr-file">{{ ocrState.fileName }}</p>
+          <p class="ocr-step" :class="{ 'is-bad': ocrState.status === 'failed' }">
+            <span v-if="ocrState.busy" class="ocr-spin" />
+            {{ ocrState.status === "failed" ? ocrState.error : ocrState.status === "done" ? "识别完成" : ocrState.step }}
+          </p>
+          <div class="ocr-acts">
+            <button
+              v-if="ocrState.status === 'done'"
+              class="btn-primary"
+              data-control="workflow:ocr-adopt"
+              :disabled="ocrState.busy"
+              @click="adoptOcr"
+            >补录为素材</button>
+            <button v-else-if="!ocrState.busy && ocrState.status === 'failed'" class="btn-back" @click="cancelOcr">关闭</button>
+            <span v-else class="ocr-hint">识别期间可以继续做别的事</span>
+          </div>
+        </div>
+      </Teleport>
+
       <div v-if="editDialog.open" class="modal-mask" @click.self="onEditMaskClick">
         <!-- 整卡可拖(表单控件/按钮/可滚动区除外, 见 isDragBlocked) —— 原来只有标题栏能拖, 用户按正文没反应 -->
         <div
@@ -3240,5 +3433,31 @@ onMounted(async () => {
 .src-gray { background: var(--wf-line-soft); color: var(--wf-muted); border-color: var(--wf-line); }
 .src-red { background: #2A1C1C; color: #4D84CB; border-color: #3A2323; }
 .src-plain { background: var(--wf-raised); color: var(--wf-muted); border-color: var(--wf-line); }
+
+/* ─── V418: 扫描件识别 ─── */
+/* 徽标用琥珀色而不是蓝色: 它与"来源"类徽标不同性质, 是一条**质量提示**(可能有错字) */
+.ocr-badge { background: #2A2418; color: #D9A441; border-color: #3A3222; }
+/* 上传磁贴在被识别任务占用时给个提示态 —— 否则用户会以为点了没反应 */
+.sc-tile.is-busy { opacity: 0.75; cursor: default; }
+/* 浮层**不加遮罩**: 识别要一两分钟, 挡住页面等于把用户钉在原地 */
+.ocr-panel {
+  position: fixed; right: 20px; bottom: 20px; z-index: 60;
+  width: 300px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid var(--wf-line-strong); background: var(--wf-surface);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.ocr-head { display: flex; align-items: center; justify-content: space-between; }
+.ocr-title { font-size: 12px; font-weight: 600; color: var(--wf-text); }
+.ocr-file { margin: 4px 0 0; font-size: 11px; color: var(--wf-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocr-step { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: var(--wf-muted); }
+.ocr-step.is-bad { color: #D9706A; }
+.ocr-acts { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+.ocr-hint { font-size: 10px; color: var(--wf-faint); }
+.ocr-spin {
+  width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%;
+  border: 2px solid var(--wf-line-strong); border-top-color: #4D84CB;
+  animation: ocr-rot 0.8s linear infinite;
+}
+@keyframes ocr-rot { to { transform: rotate(360deg); } }
 
 </style>

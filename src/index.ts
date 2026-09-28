@@ -206,6 +206,27 @@ startupTask("proactive-research", () => startProactiveResearchScheduler(), { del
 import { restoreAgentSettings } from "./services/agent-settings.js";
 startupTask("agent-settings-restore", () => restoreAgentSettings(), { delayMs: 20000 });
 
+// V418: 外部服务密钥 —— ① 把库里存的灌回 process.env(下游是同步读 env 的, 不灌就会出现
+//   "界面上显示新的、实际调用还用旧值"这种两边都看着正常的分叉); ② 启动每日巡检
+//   (到期前提醒 + 太久没验过就真打一次远端)。由来: MinerU 的 OCR token 悄悄过期 11 天没人知道。
+import { restoreServiceTokens } from "./services/service-token-store.js";
+import { startServiceTokenPatrolScheduler } from "./services/service-token-patrol.js";
+startupTask("service-token-restore", async () => {
+  const restored = await restoreServiceTokens();
+  if (restored.length > 0) console.log(`[service-token] 已加载: ${restored.join(", ")}`);
+}, { delayMs: 6000 });
+// V418: OCR 任务恢复 —— 把 DB 里近期的任务灌回内存(不然重启后轮询查不到, 前端永远转圈),
+//   并把进程崩了留下的"假进行中"置为 failed。
+import { restoreOcrJobs } from "./services/ocr-job-service.js";
+startupTask("ocr-job-restore", async () => {
+  const r = await restoreOcrJobs();
+  if (r.restored > 0 || r.reaped > 0) console.log(`[ocr] 任务恢复: ${r.restored} 条, 中断 ${r.reaped} 条已标记失败`);
+}, { delayMs: 7000 });
+// 关闭: SAG_TOKEN_PATROL=0
+if (process.env.SAG_TOKEN_PATROL !== "0") {
+  startupTask("service-token-patrol", () => startServiceTokenPatrolScheduler(), { delayMs: 90_000 });
+}
+
 // viz: 卡死绘图任务自愈 — 重启后遗留的 running/queued 没有执行者, 会让观察流永久挂住
 import { reapStaleVizJobs } from "./services/viz-job-service.js";
 startupTask("viz-stale-reap", () => reapStaleVizJobs(), { delayMs: 22000 });

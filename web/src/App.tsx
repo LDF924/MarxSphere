@@ -159,6 +159,7 @@ import { AskPanel } from "./components/AskPanel";
 import { SciversePanel } from "./components/SciversePanel";
 import { SkillsPanel } from "./components/SkillsPanel";
 import { ApiTokensPanel } from "./components/ApiTokensPanel";
+import { ServiceTokensPanel } from "./components/ServiceTokensPanel";
 import { DocsPanel } from "./components/DocsPanel";
 import { AlertsPanel } from "./components/AlertsPanel";
 import { ImPanel } from "./components/ImPanel";
@@ -2275,6 +2276,11 @@ function AppShell() {
                 />
                 <div className="mx-auto mt-4 max-w-4xl">
                   <ApiTokensPanel />
+                </div>
+                {/* V418: 外部服务密钥(填/换/看有效期/校验)。与对外令牌同一栏 —
+                    两者都是"平台拿去调外部接口的密钥", 放在一起用户才知道去哪找 */}
+                <div className="mx-auto mt-4 max-w-4xl">
+                  <ServiceTokensPanel />
                 </div>
               </section>
             ) : workspaceView === "assistant" ? (
