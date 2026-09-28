@@ -2263,6 +2263,8 @@ export const WRITE_TOOLS = new Set<string>([
   // V417 补登: 这几个原先不在名单里, 但都是写/执行类 —— 只读会话不该拿到
   "doc_edit", "view_skill_run", "view_task_create", "meta_invoke",
   "patch_learner_profile", "record_learning_event", "education_service",
+  // V419: 写作舱的两个生成工具(会落库 + 烧 LLM), 只读会话不该拿到
+  "research_proposal_generate", "research_component_generate",
 ]);
 
 // ═══ V393-4/5: Agent 权限分级 + 工具级审批 ═══
@@ -2370,6 +2372,18 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   view_documents_stats: "reader",
   view_alerts: "reader",
   view_traces: "reader",
+  // V419: 研途写作舱的六个只读工具。**必须登记** —— 缺省是 reader 没错, 但本表是
+  //   工具→最低角色的**白名单式**声明, 不登记就意味着后来调高某类工具时这里会静默漏掉
+  //   (本仓记过: 新工具必须同时改 TOOL_MIN_ROLE 与 WRITE_TOOLS)。
+  view_research_projects: "reader",
+  view_research_materials: "reader",
+  view_research_evidence: "reader",
+  view_research_hypotheses: "reader",
+  view_research_outline: "reader",
+  view_research_submission: "reader",
+  // V419: 生成类要 analyst(写操作); 两个 view_ 是 reader
+  research_proposal_generate: "analyst",
+  research_component_generate: "analyst",
   // PDF 工具: parse 只读, convert 写文件
   pdf_parse: "reader",
   pdf_convert: "manager",

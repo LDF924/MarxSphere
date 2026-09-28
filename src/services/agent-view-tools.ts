@@ -4,6 +4,7 @@
 // 原则：只读优先、结果截断、异常兜底为「（不可用: …）」不抛断工具循环。
 import type { AgentToolDef } from "./agent-tool-router.js";
 import { selfBaseUrl } from "./base-urls.js";
+import { currentUserId } from "./request-context.js";
 
 /** 安全地执行服务调用，异常兜底为可读文本（不抛断工具循环） */
 async function safeCall(fn: () => Promise<string>): Promise<string> {
@@ -465,7 +466,329 @@ export const VIEW_TOOLS: AgentToolDef[] = [
       return `【Trace】${traces.length} 条\n` + traces.map((t, i) => `${i + 1}. ${String(t.name ?? "?").slice(0, 40)} — ${t.durationMs ?? 0}ms`).join("\n");
     }),
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // V419: 研途写作舱(研究写作舱)的六项能力工具化。
+  //
+  // 由来(2026-09-29 用户: "AI 对话好久没更新其调用工具和能力, 因为我们不是新增几个页面吗"):
+  //   写作舱那几批新增的东西(投稿要件/评审返修/开题基金/中期检查/复现包, 以及更早的
+  //   素材库/证据账本/假设台账/章节正文)**在对话侧是零覆盖** —— 实测: agent 工具 0 个、
+  //   编排能力 0 个、编排模板 0 个。用户在对话里说"看看我的假设检验结论", AI 根本够不着。
+  //   那次修复改的是**工具名显示**(前端手抄清单), 没碰"对话能用什么" —— 两件事。
+  //
+  // ## 为什么全做成只读
+  //   · 与既有 view_* 同一原则("只读优先") —— 读错没有代价, 写错要人去收拾;
+  //   · 写作舱的写操作(生成/发布/改节点)在界面上都有确认层, 从对话里绕过去不合适。
+  //   所以这六个都是 risk:"safe" 的读工具。
+  //
+  // ## 为什么直连 service 而不是走 HTTP
+  //   写作舱端点全部要求登录(requireUser), 而对话触发工具时**没有那个人的 request**。
+  //   直连 service 并显式传 currentUserId() 才对 —— 身份由 server 的 handler 包进
+  //   AsyncLocalStorage, 这里把它取出来用(与 withRequestContext 的说明同源)。
+  //
+  // ## 项目怎么定位
+  //   projectId 可省略 —— 对话里说"看看我的素材"时没人会去报 UUID。省略时取该用户
+  //   **最近更新的**一个非删除/非归档项目, 并在结果里**明说是哪一个**, 免得以为看的是别的项目。
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    name: "view_research_projects", label: "研究项目台账", risk: "safe",
+    description: "列出当前用户的研究项目(研途写作舱): 标题/阶段/状态/最近更新。用于总览手上在写哪些论文, 或拿到 projectId",
+    params: {},
+    run: async () => safeCall(async () => {
+      const uid = currentUserId();
+      if (!uid) return "（需要登录身份 — 对话触发的工具会带上传入者身份; 后台任务里没有）";
+      const { listProjects } = await import("./research-pipeline-service.js");
+      // ⚠ listProjects 返回**扁平数组**(活跃在前、归档在后; 见该函数的 return), 不是 {active, archived}
+      const all = await listProjects(uid) as Array<Record<string, unknown>>;
+      if (!all.length) return "【研究项目】还没有项目。到「研途写作舱 → 选题界定」建一个。";
+      const active = all.filter((p) => p.status !== "archived");
+      const archived = all.filter((p) => p.status === "archived");
+      const line = (p: Record<string, unknown>, i: number) => {
+        const ph = p.phase_label ?? p.phaseLabel ?? "";
+        return `${i + 1}. ${String(p.title ?? "(无题)").slice(0, 40)} — 阶段 ${p.phase ?? "?"}${ph ? "(" + String(ph) + ")" : ""} · ${p.status ?? ""} · ${String(p.updated_at ?? "").slice(0, 10)}`;
+      };
+      let out = `【研究项目】活跃 ${active.length} 个` + (archived.length ? ` / 归档 ${archived.length} 个` : "") + "\n" + active.slice(0, 10).map(line).join("\n");
+      if (archived.length) out += "\n（归档）\n" + archived.slice(0, 5).map(line).join("\n");
+      return out;
+    }),
+  },
+  {
+    name: "view_research_materials", label: "素材库检索", risk: "safe",
+    description: "检索某个研究项目已整理的素材(文献条目/理论/表格/数据结果/图/附件), 可按关键词过滤",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+      kind: { type: "string", desc: "素材类型: citation(文献)/theory(理论)/table(表格)/data_result(数据结果)/figure(图)/file(附件)/note(笔记)" },
+      query: { type: "string", desc: "关键词, 在标题与正文里找" },
+      limit: { type: "number", desc: "返回条数(默认8, 上限20)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const { listMaterials } = await import("./research-materials-service.js");
+      const all = await listMaterials(ctx.uid, ctx.projectId, a.kind ? String(a.kind) : undefined) as Array<Record<string, unknown>>;
+      const kw = String(a.query ?? "").trim().toLowerCase();
+      const hit = kw ? all.filter((m) => `${m.title ?? ""} ${m.contentMd ?? m.content_md ?? ""}`.toLowerCase().includes(kw)) : all;
+      const top = hit.slice(0, Math.min(Math.max(Number(a.limit) || 8, 1), 20));
+      if (!top.length) return `【素材】项目「${ctx.title}」${kw ? `没有匹配「${kw}」的` : "还没有"}素材（共 ${all.length} 条）`;
+      const body = top.map((m, i) => `${i + 1}. [${m.kind ?? "?"}] ${String(m.title ?? "(无题)").slice(0, 40)} — ${String(m.contentMd ?? m.content_md ?? "").replace(/\s+/g, " ").slice(0, 80)}`).join("\n");
+      return `【素材】项目「${ctx.title}」命中 ${hit.length}/${all.length} 条\n` + body;
+    }),
+  },
+  {
+    name: "view_research_evidence", label: "章节证据检索", risk: "safe",
+    description: "查看某研究项目里「哪一章挂了哪些证据」— 也就是章节依据区写入的引用/数据/图表清单",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+      sectionId: { type: "string", desc: "只看某一章; 省略则全部章节" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const { listEvidence } = await import("./research-evidence-service.js");
+      const r = await listEvidence(ctx.uid, ctx.projectId, a.sectionId ? String(a.sectionId) : undefined);
+      if (!r) return `（项目「${ctx.title}」不存在或不属于你）`;
+      const items = ((r as { items?: Array<Record<string, unknown>> }).items ?? (r as unknown as Array<Record<string, unknown>>)) || [];
+      if (!Array.isArray(items) || !items.length) return `【章节证据】项目「${ctx.title}」还没有挂证据 — 在「章节写作 → 本章依据」里选。`;
+      const bySection = new Map<string, Array<Record<string, unknown>>>();
+      for (const e of items) {
+        const k = String(e.sectionId ?? e.section_id ?? "(未挂章)");
+        const list = bySection.get(k);
+        if (list) list.push(e); else bySection.set(k, [e]);
+      }
+      const rows = [...bySection.entries()].slice(0, 8).map(([sec, list]) =>
+        `· ${sec.slice(0, 12)}: ${list.length} 条 (${list.slice(0, 4).map((x) => String(x.kind ?? "")).join("/")})`);
+      return `【章节证据】项目「${ctx.title}」共 ${items.length} 条, 分布在 ${bySection.size} 章\n` + rows.join("\n");
+    }),
+  },
+  {
+    name: "view_research_hypotheses", label: "假设检验台账", risk: "safe",
+    description: "查看某研究项目的假设检验台账: 每条假设的检验结论(支持/不支持/待检验)与证据来源",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const { listHypotheses } = await import("./research-evidence-service.js");
+      const r = await listHypotheses(ctx.uid, ctx.projectId);
+      if (!r) return `（项目「${ctx.title}」不存在或不属于你）`;
+      const items = ((r as { items?: Array<Record<string, unknown>> }).items ?? (r as unknown as Array<Record<string, unknown>>)) || [];
+      if (!Array.isArray(items) || !items.length) return `【假设台账】项目「${ctx.title}」还没有假设 — 在「研究实施」里登记。`;
+      const verdictCn: Record<string, string> = { supported: "支持", rejected: "不支持", pending: "待检验", partial: "部分支持" };
+      const rows = items.slice(0, 15).map((h, i) => {
+        const ref = h.evidenceRef ?? h.evidence_ref;
+        return `${i + 1}. ${String(h.code ?? "")} ${String(h.text ?? h.statement ?? "").slice(0, 60)} → ${verdictCn[String(h.verdict ?? "")] ?? h.verdict ?? "?"}${ref ? ` (证据: ${String(ref).slice(0, 30)})` : ""}`;
+      });
+      return `【假设台账】项目「${ctx.title}」共 ${items.length} 条\n` + rows.join("\n");
+    }),
+  },
+  {
+    name: "view_research_outline", label: "论文大纲与正文检索", risk: "safe",
+    description: "查看某研究项目的章节树与已写正文(按章)。用于回答「第三章写了什么」「哪几节还没写」",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+      query: { type: "string", desc: "关键词, 在章节标题与正文里找; 省略则只列结构" },
+      limit: { type: "number", desc: "返回节数(默认10, 上限20)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const { listNodes } = await import("./research-pipeline-service.js");
+      const nodes = await listNodes(ctx.uid, ctx.projectId) as Array<Record<string, unknown>>;
+      if (!Array.isArray(nodes) || !nodes.length) return `【大纲】项目「${ctx.title}」还没有章节 — 先在「框架设计」搭结构。`;
+      const kw = String(a.query ?? "").trim().toLowerCase();
+      const secs = kw ? nodes.filter((n) => `${n.title ?? ""} ${n.content ?? ""}`.toLowerCase().includes(kw)) : nodes;
+      const top = secs.slice(0, Math.min(Math.max(Number(a.limit) || 10, 1), 20));
+      const rows = top.map((n, i) => {
+        const body = String(n.content ?? "").replace(/\s+/g, " ");
+        return `${i + 1}. ${String(n.title ?? "(无题)").slice(0, 40)} — ${body ? `${body.length} 字: ${body.slice(0, 60)}…` : "（未写）"}`;
+      });
+      return `【大纲】项目「${ctx.title}」共 ${nodes.length} 节${kw ? `, 命中 ${secs.length} 节` : ""}\n` + rows.join("\n");
+    }),
+  },
+  {
+    name: "view_research_submission", label: "投稿与返修台账", risk: "safe",
+    description: "查看某研究项目的投稿记录、外部审稿意见的逐条回应状态、以及开题/基金/伦理等申报稿",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const SELF_BASE = selfBaseUrl();
+      const out: string[] = [];
+      // 三块各自可能为空 —— 一块失败不该把整条工具打断(与 safeCall 同一原则, 只是粒度更细)
+      const grab = async (path: string, pick: (j: any) => string | null) => {
+        try {
+          const r = await fetch(`${SELF_BASE}${path}`);
+          if (!r.ok) return null;
+          return pick(await r.json());
+        } catch { return null; }
+      };
+      const subs = await grab(`/api/research/projects/${ctx.projectId}/submissions`, (j) => {
+        const items = j?.submissions ?? [];
+        return items.length ? `投稿 ${items.length} 次: ` + items.slice(0, 5).map((s: any) => `${s.journalName ?? "?"}(${s.status ?? "?"})`).join(", ") : null;
+      });
+      if (subs) out.push(subs);
+      const resp = await grab(`/api/research/projects/${ctx.projectId}/review-responses`, (j) => {
+        const items = j?.items ?? j?.responses ?? [];
+        if (!items.length) return null;
+        const byType: Record<string, number> = {};
+        for (const it of items) { const k = String(it.responseType ?? it.response_type ?? "未处理"); byType[k] = (byType[k] ?? 0) + 1; }
+        return `审稿意见 ${items.length} 条: ` + Object.entries(byType).map(([k, v]) => `${k} ${v}`).join(" / ");
+      });
+      if (resp) out.push(resp);
+      const prop = await grab(`/api/research/projects/${ctx.projectId}/proposals`, (j) => {
+        const items = j?.proposals ?? [];
+        return items.length ? `申报稿 ${items.length} 份: ` + items.slice(0, 5).map((p: any) => `${p.kind ?? "?"}(${p.status ?? "?"})`).join(", ") : null;
+      });
+      if (prop) out.push(prop);
+      if (!out.length) return `【投稿台账】项目「${ctx.title}」还没有投稿记录 / 审稿意见 / 申报稿。`;
+      return `【投稿台账】项目「${ctx.title}」\n· ` + out.join("\n· ");
+    }),
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // V419: 写作舱的**生成**能力(前面六个是只读; 这两个会真的产出并落库)。
+  //
+  // 为什么这两个破例做成写工具: 用户说的是"调用工具**和能力**" —— 光能查不能做,
+  //   等于把写作舱那几批新页面(申报稿/投稿要件)在对话里变成只读的展览。
+  //   `view_task_create` 早就开了这个先例(`risk:"safe"` + 后台 spawn), 这里同一形态。
+  //
+  // ⚠ 两者都**必须登记进 WRITE_TOOLS** —— 只读会话(评审)不该拿到它们。
+  //   本仓记过: 新工具要同时改 TOOL_MIN_ROLE 与 WRITE_TOOLS, 只写 risk:"safe" 挡不住。
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    name: "research_proposal_generate", label: "生成申报稿", risk: "review",
+    description: "为某个研究项目生成一份申报/审查稿(开题报告/基金申请书/伦理审查/预注册)。上下文自动取该项目已有的研究设计与假设台账, 不必重填",
+    params: {
+      projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
+      kind: { type: "string", required: true, desc: "类型: proposal(开题报告) / grant(基金申报) / ethics(伦理审查) / preregistration(预注册)" },
+      topic: { type: "string", desc: "研究主题(省略则用项目里的)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const ctx = await resolveProject(String(a.projectId ?? ""));
+      if ("error" in ctx) return ctx.error;
+      const kind = String(a.kind ?? "").trim();
+      /**
+       * ⚠ 取值**从真源推导**, 不手抄。
+       *
+       * 我第一版在这里写死了一份 `{proposal, grant, ethics, preregistration}` —— 而
+       * `PROPOSAL_SPECS` 里第四类实际叫 **`prereg`**。实测: 调它返回
+       * 「未知的文书类型: preregistration」, 而工具说明里明明写着"预注册"。
+       * 这就是本仓反复出现的那一类 —— **手抄一份清单, 然后它烂掉**。
+       * 所以改法不是"把 preregistration 改成 prereg", 而是**根本不再持有这份清单**。
+       */
+      const { PROPOSAL_SPECS } = await import("./proposal-service.js");
+      const SPEC_BY_KEY = new Map(PROPOSAL_SPECS.map((x) => [x.key as string, x.cn as string]));
+      if (!SPEC_BY_KEY.has(kind)) {
+        return `（kind 需为 ${[...SPEC_BY_KEY.keys()].join(" / ")}；中文分别是 ${[...SPEC_BY_KEY.values()].join("/")}）`;
+      }
+
+      /**
+       * ⚠ **直连 service, 不走自家 HTTP 端点**。
+       *
+       * 我第一版是 `fetch(selfBaseUrl() + "/api/research/projects/…/proposals/generate")` ——
+       * 实测返回 `（生成失败 401: 未登录）`。原因: `AgentToolDef.run(args)` 的签名里
+       * **没有调用者的 token**, 而那个端点有 `requireUser`; 本机豁免只对"带 Bearer 的
+       * 本机请求"成立, 服务器对自己的 fetch 不带 Authorization。
+       *
+       * 同文件的其它 view_* 工具全是直连 service 的 —— 那不是风格问题, 是**这条链只能这样**。
+       * 下面这段与 server.ts 里那个端点**逐句对应**(上下文优先取项目已有的东西),
+       * 改端点时要同步改这里。
+       */
+      const [researchEvidence, chapterSkill, proposalService, researchPipeline] = await Promise.all([
+        import("./research-evidence-service.js"),
+        import("./chapter-skill-service.js"),
+        import("./proposal-service.js"),
+        import("./research-pipeline-service.js"),
+      ]);
+      const [designBlock, hyps, wb] = await Promise.all([
+        researchEvidence.buildDesignBlock(ctx.uid, ctx.projectId).catch(() => ""),
+        researchEvidence.listHypotheses(ctx.uid, ctx.projectId).catch(() => null),
+        chapterSkill.getWorkbenchSnapshot(ctx.uid, ctx.projectId).catch(() => null),
+      ]);
+      const hypList = ((hyps as { hypotheses?: Array<Record<string, unknown>> } | null)?.hypotheses ?? []) as Array<{ code?: string; text?: string; verdict?: string; evidenceRef?: string }>;
+      const evidence = hypList.length
+        ? hypList.map((h) => `${h.code ?? ""} ${h.text ?? ""}${h.verdict ? ` [${h.verdict}]` : ""}${h.evidenceRef ? ` (${h.evidenceRef})` : ""}`).join("\n")
+        : "";
+      const snap = ((wb as { snapshot?: Record<string, unknown> } | null)?.snapshot ?? {}) as Record<string, unknown>;
+      const inp = (snap.input ?? {}) as Record<string, unknown>;
+
+      const r = await proposalService.generateProposal({
+        kind,
+        topic: String(a.topic ?? "").trim() || String(snap.mergedTitle ?? inp.title ?? ctx.title ?? ""),
+        discipline: String(inp.researchMethod ?? ""),
+        design: String(designBlock),
+        evidence,
+      });
+      if (!r.ok) return `（生成失败: ${String(r.error ?? "").slice(0, 160)}）`;
+
+      // 落库: 写 `proposal` 节点, 四类文稿按 kind 分键装在同一节点里。
+      // ⚠ **读改写而不是整节点覆盖** —— 生成「基金申报」不该把已生成的「开题报告」冲掉。
+      const cur = await researchPipeline.getNode(ctx.uid, ctx.projectId, "proposal").catch(() => null);
+      const prev = ((cur as { payload?: Record<string, unknown> } | null)?.payload ?? {}) as Record<string, unknown>;
+      const next = { ...prev, [r.kind]: { content: r.content, title: r.title, generatedAt: new Date().toISOString() } };
+      await researchPipeline.putNode(ctx.uid, ctx.projectId, "proposal", next, { sourceRole: "editor", note: `生成${r.title}` }).catch(() => null);
+
+      const secs = (r.content ?? "").split(/^##\s+/m).length - 1;
+      return `【申报稿】已在项目「${ctx.title}」生成「${SPEC_BY_KEY.get(kind)}」（${Math.max(secs, 1)} 节, ${String(r.content ?? "").length} 字）\n到「研途写作舱 → 申报与审查」查看与编辑。`;
+    }),
+  },
+  {
+    name: "research_component_generate", label: "生成投稿要件", risk: "review",
+    description: "为某篇论文生成投稿要件: 摘要与关键词 / 结论 / 讨论。需给出论文主题与 (可选)章节要点",
+    params: {
+      kind: { type: "string", required: true, desc: "要件类型: abstract(摘要+关键词) / conclusion(结论) / discussion(讨论)" },
+      topic: { type: "string", required: true, desc: "论文主题" },
+      thesis: { type: "string", desc: "核心论点(选填, 让要件贴合主线)" },
+    },
+    run: async (a) => safeCall(async () => {
+      const kind = String(a.kind ?? "").trim();
+      const KINDS = ["abstract", "conclusion", "discussion"];
+      if (!KINDS.includes(kind)) return `（kind 需为 ${KINDS.join(" / ")}）`;
+      const topic = String(a.topic ?? "").trim();
+      if (!topic) return "（需要 topic：论文主题）";
+
+      /**
+       * 直连 service(与上一个工具同一理由 —— run(args) 拿不到 token; 端点要么要登录、
+       * 要么根本拿不到调用者身份)。`/api/paper-outline/component` 的处理器只有一行:
+       * `generateComponent(outlineComponentSchema.parse(request.body))`, 所以这里
+       * 等价于把那份 body 直接给它 —— 但**不 zod 校验**: 参数形状由上面的 params 声明约束。
+       */
+      const { generateComponent } = await import("./paper-outline-service.js");
+      const r = await generateComponent({ kind, topic, thesis: String(a.thesis ?? "") || undefined } as never);
+      const body = (r as { data?: { body?: unknown } })?.data?.body ?? (r as { text?: unknown })?.text ?? "";
+      const s = typeof body === "string" ? body : body ? JSON.stringify(body) : "";
+      if (!s) return `（生成返回了空内容 — 到「统稿定稿」页看，或换个 topic 再试）`;
+      const cn = { abstract: "摘要与关键词", conclusion: "结论", discussion: "讨论" }[kind as "abstract" | "conclusion" | "discussion"];
+      return `【投稿要件·${cn}】\n` + s.slice(0, 1200);
+    }),
+  },
 ];
+
+/**
+ * 把 projectId 解析成"某个真实属于该用户的项目"。
+ *
+ * 省略时取最近更新的一个 —— 对话里没人会去报 UUID。但结果里**必须带上标题**:
+ * 用户以为看的是甲项目、实际取的是乙项目, 是那种最难发现的误会(数据全对, 只是项目不对)。
+ */
+async function resolveProject(projectId: string): Promise<{ uid: string; projectId: string; title: string } | { error: string }> {
+  const uid = currentUserId();
+  if (!uid) return { error: "（需要登录身份 — 对话触发的工具会带上传入者身份; 后台任务里没有）" };
+  const { listProjects } = await import("./research-pipeline-service.js");
+  const all = await listProjects(uid) as Array<Record<string, unknown>>;
+  const active = all.filter((p) => p.status !== "archived");
+  if (!active.length) return { error: "【研究项目】还没有项目。到「研途写作舱 → 选题界定」建一个。" };
+  const id = projectId.trim();
+  if (id) {
+    const hit = active.find((p) => String(p.id) === id);
+    if (!hit) return { error: `（项目 ${id.slice(0, 8)}… 不在你的活跃项目里 — 先用 view_research_projects 查 id）` };
+    return { uid, projectId: id, title: String(hit.title ?? "(无题)") };
+  }
+  const first = active[0];
+  return { uid, projectId: String(first.id), title: String(first.title ?? "(无题)") };
+}
 
 /** 模板任务创建（防循环依赖，内部转调） */
 async function createAgentTaskFromTemplateSafe(templateId: string, goal: string) {

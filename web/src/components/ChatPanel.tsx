@@ -198,6 +198,19 @@ const TOOL_META: Record<string, { label?: string; source: string }> = {
   view_eval_report: { label: "评测报告", source: "Agent 评测（任务统计）" },
   view_ingest_status: { label: "入库监控", source: "Graphiti/Cognee 索引" },
   view_education_profile: { label: "学情画像", source: "自适应学习（PostgreSQL）" },
+  /**
+   * V419: 研途写作舱的八项能力。
+   * ⚠ 这里**只写 source** —— label 以后端为准(见本表头部说明)。
+   *   两边都写会让后来者以为要手工同步 label, 那是这次刚拆掉的结构。
+   */
+  view_research_projects: { source: "研途写作舱（research_projects）" },
+  view_research_materials: { source: "研途写作舱·素材库（research_materials）" },
+  view_research_evidence: { source: "研途写作舱·章节依据（research_chapter_evidence）" },
+  view_research_hypotheses: { source: "研途写作舱·假设台账（research_hypotheses）" },
+  view_research_outline: { source: "研途写作舱·章节树（research_nodes）" },
+  view_research_submission: { source: "研途写作舱·投稿与返修" },
+  research_proposal_generate: { source: "研途写作舱·申报与审查（会落库）" },
+  research_component_generate: { source: "论文要件生成（会落库）" },
 };
 
 /**
