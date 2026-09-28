@@ -66,7 +66,20 @@ jobs:
         #   本地之所以全过: .env 的 EMPIRICAL_PYTHON 指向一个装了全套的 venv —— **那只对本机成立**,
         #   CI 用的是 setup-python 的干净解释器。**改这里的清单时, 请对着上面的脚本再核一遍。**
         run: pip install pandas scipy requests numpy statsmodels openpyxl python-docx matplotlib
-      - name: Unit tests (154)
+      - name: Apply DB migrations
+        # ⚠ 2026-09-29 补。**此前 CI 起了 PG 却从不迁移** —— 建出的库是空的, 而单测全绿。
+        #   之所以一直没暴露: 碰库的 11 个测试文件**全部 `vi.mock("../src/db/pool.js")`**
+        #   (mock 掉 pool, 只断言 SQL 文本与参数, 从不真发查询), 所以空库看不出来。
+        #   于是这条约定没人写下来, 直到 file-text-service 那条**真解析 fixture、真走 DB**
+        #   的测试进来 —— 它在本地(库已迁移)全过, 在 CI 报 `relation "user_files" does not exist`。
+        #   两条路选哪条: 把那条测试也改成 mock(只验 SQL 形状, 丢掉真解析的覆盖),
+        #   或者补上这一步(CI 有了真 schema, 将来任何真跑库的测试都站得住)。选后者。
+        env:
+          DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
+        run: npm run db:migrate
+      - name: Unit tests
+        # ⚠ 不要在这里写死数量 —— 它每加一个测试就过期一次(上一版写的是 "(154)",
+        #   而当时实际已经 140 个文件 / 1200+ 用例)。真实数量看 npm test 的输出。
         env:
           DATABASE_URL: postgres://sag_lite:sag_lite_pass@localhost:5540/sag_lite
           # 外部学术 API(OpenAlex/Unpaywall/Crossref)在 CI runner 共享 IP 上不可靠 → 跳过 [network] 用例
