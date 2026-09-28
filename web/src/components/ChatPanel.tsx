@@ -138,8 +138,26 @@ function CitationStrip({ citations, onOpenCitation }: { citations: MarkdownCitat
   );
 }
 
-/** V399: 工具元数据 — 英文工具名 → 中文功能名 + 数据源/数据库（工具链展示） */
-const TOOL_META: Record<string, { label: string; source: string }> = {
+/**
+ * V418: 工具元数据 —— 后端实时清单 + 这张表的中文补充。
+ *
+ * ## 这张表为什么会烂掉(2026-09-29 用户: "AI 对话好久没更新其调用工具和能力了")
+ *
+ * 它原来是一份**手抄的**清单, 而且**只有它**: `TOOL_META[name] ?? {label: name}` ——
+ * 没登记的工具直接把英文原样显示。实测差距: 后端 **75 个工具, 它只登记了 38 个**,
+ * 剩下 37 个(此后新加的 pdf_parse / orch_run / meta_invoke / format_eval /
+ * browser_control / view_openalex_search / 教育六件套 / wiki_query …)在对话里
+ * 全显示成英文原名, 用户看到的工具链是"半中半英"。
+ *
+ * ## 修法: 中文名以**后端**为准
+ *
+ * 后端 `buildAgentTools` 返回的每一项本来就带 `label`(全是中文, 实测 75/75),
+ * 而 `/api/agent/tools` 早就把它暴露出来了(AgentConsole 一直在用)。所以:
+ *   · **有实时数据时, `label` 用后端的** —— 以后加工具, 对话里**自动**就是中文名;
+ *   · 这张表只补后端给不了的那半件 —— `source`(数据源/数据库), 那是展示口径不是工具属性。
+ * 这样"新增工具忘了改前端"这一类失效**从根上没有了**: 前端不再持有工具清单。
+ */
+const TOOL_META: Record<string, { label?: string; source: string }> = {
   // Agent 工具
   sag_search: { label: "知识库检索", source: "PostgreSQL + 向量库（SAG 四源）" },
   sag_get_event: { label: "事件详情", source: "PostgreSQL（事件表）" },
@@ -182,12 +200,36 @@ const TOOL_META: Record<string, { label: string; source: string }> = {
   view_education_profile: { label: "学情画像", source: "自适应学习（PostgreSQL）" },
 };
 
-function toolMeta(name: string): { label: string; source: string } {
-  return TOOL_META[name] ?? { label: name, source: "内置" };
+/**
+ * 后端的实时工具表(name → 中文 label)。模块级缓存 + 单次在飞的请求 ——
+ * 工具链里每张卡都要查一次, 不能每张卡各发一个请求。
+ */
+let liveToolLabels: Record<string, string> = {};
+let liveToolsInflight: Promise<void> | null = null;
+function ensureLiveToolLabels(): Promise<void> {
+  if (!liveToolsInflight) {
+    liveToolsInflight = fetch("/api/agent/tools")
+      .then((r) => r.json())
+      .then((j: { tools?: Array<{ name: string; label: string }> }) => {
+        liveToolLabels = Object.fromEntries((j.tools ?? []).map((t) => [t.name, t.label]));
+      })
+      .catch(() => { liveToolsInflight = null; }); // 失败允许下次重试
+  }
+  return liveToolsInflight;
+}
+
+/**
+ * ⚠ `labels` 是**参数**不是模块常量: 拿到实时表后要触发重渲染, 所以由组件从 state 传进来。
+ *   直接读模块变量的话, 首次渲染时它还空着, 而且表到位后**不会重渲** —— 名字就永远停在英文。
+ */
+function toolMeta(name: string, labels: Record<string, string> = liveToolLabels): { label: string; source: string } {
+  const known = TOOL_META[name];
+  // 后端 label 优先(它就是 75/75 的中文名); 没有实时数据时退回这张表的兜底
+  return { label: labels[name] || known?.label || name, source: known?.source ?? "内置" };
 }
 
 /** V399: 工具链合并面板 — 默认折叠，摘要（N 次调用 · 成功率 · 总耗时），展开看每步详情 */
-function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
+function ToolChain({ calls, labels }: { calls: McpToolCallRecord[]; labels: Record<string, string> }) {
   const [open, setOpen] = useState(false);
   const okCount = calls.filter((c) => c.status === "SUCCEEDED").length;
   const totalMs = calls.reduce((s, c) => s + (c.durationMs ?? 0), 0);
@@ -208,13 +250,13 @@ function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
         </span>
         {totalMs > 0 ? <span className="shrink-0 text-[10px]">{(totalMs / 1000).toFixed(1)}s</span> : null}
         <span className="min-w-0 flex-1 truncate text-[10px] opacity-70">
-          {calls.map((c) => toolMeta(c.toolName).label).join(" → ")}
+          {calls.map((c) => toolMeta(c.toolName, labels).label).join(" → ")}
         </span>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
       {open ? (
         <div className="space-y-1.5 border-t border-border/60 p-2">
-          {calls.map((call, i) => <ToolCallCard key={call.id} call={call} index={i + 1} />)}
+          {calls.map((call, i) => <ToolCallCard key={call.id} call={call} index={i + 1} labels={labels} />)}
         </div>
       ) : null}
     </div>
@@ -222,10 +264,10 @@ function ToolChain({ calls }: { calls: McpToolCallRecord[] }) {
 }
 
 /** V399: 工具链时间线卡片 — 序号 + 工具名 + 参数摘要 + 结果摘要 + 耗时，可展开详情 */
-function ToolCallCard({ call, index }: { call: McpToolCallRecord; index: number }) {
+function ToolCallCard({ call, index, labels }: { call: McpToolCallRecord; index: number; labels: Record<string, string> }) {
   const [open, setOpen] = useState(false);
   const ok = call.status === "SUCCEEDED";
-  const meta = toolMeta(call.toolName);
+  const meta = toolMeta(call.toolName, labels);
   const argsText = Object.entries(call.arguments ?? {})
     .map(([k, v]) => `${k}=${typeof v === "string" ? (v.length > 40 ? v.slice(0, 40) + "…" : v) : JSON.stringify(v).slice(0, 40)}`)
     .join(" · ");
@@ -294,6 +336,13 @@ function ReasoningBlock({ text, streaming = false }: { text: string; streaming?:
 }
 
 export const ChatPanel: FC<ChatPanelProps> = (props) => {
+  /**
+   * V418: 工具中文名以**后端**为准(见上方 TOOL_META 的说明)。
+   * 自己拉而不是从 App 传 —— 这张表只在这个组件里用, 多一层 prop 就多一个"忘了传"的机会。
+   * 拉失败就空着, toolMeta 会退回本文件的兜底表, 不会比改之前更差。
+   */
+  const [toolLabels, setToolLabels] = useState<Record<string, string>>({});
+  useEffect(() => { void ensureLiveToolLabels().then(() => setToolLabels({ ...liveToolLabels })); }, []);
   const [draft, setDraft] = useState("");
   const [draftImages, setDraftImages] = useState<ChatDraftImage[]>([]);
   // 会话回放导出(2026-08-29, 借鉴 Inno Agent case-exporter)
@@ -694,7 +743,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                           <CitationStrip citations={citationsFor(message)} onOpenCitation={props.onOpenCitation} />
                         ) : null}
                         {toolCallsFor(message.id).length > 0 ? (
-                          <ToolChain calls={toolCallsFor(message.id)} />
+                          <ToolChain calls={toolCallsFor(message.id)} labels={toolLabels} />
                         ) : null}
                         <div className={cn("mt-1 text-[10px]", isUser ? "text-muted-foreground/70" : "text-muted-foreground/70")}>
                           {formatDate(message.createdAt)}
