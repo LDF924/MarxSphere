@@ -512,7 +512,14 @@ export async function buildAgentTools(opts?: {
       },
     },
     {
-      name: "run_code", label: "代码执行", risk: "safe",
+      // ⚠ risk 从 "safe" 改成 "review"(2026-09-28)。
+      //   它带 `profile: workspace-write / full-access`, 也就是**任意代码执行** ——
+      //   标 safe 是错的。V417 那次安全审计(见 agent-autonomy.ts 的注释)已经把
+      //   runtime_exec / run_command / file_write 等改成了 review, **漏了这一个**。
+      //   后果不只是"标注不准": `auto-edit` 档的规则是"risk=safe 自动执行",
+      //   所以留着 safe 就等于"切到 auto-edit 就能无审批跑任意 Python" ——
+      //   于是 2026-09-28 想修"编排默认跑不动"时, 差点把默认档切到 auto-edit 而不自知。
+      name: "run_code", label: "代码执行", risk: "review",
       description: "执行 Python/JS 代码 — 本机沙箱(默认)/WSL/SSH 远程(WSL 直连; SSH 需配 AGENT_SSH_*)",
       params: {
         language: { type: "string", required: true, desc: "python 或 javascript" },
@@ -2082,7 +2089,13 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     },
   });
   tools.push({
-    name: "orch_run", label: "触发编排", risk: "safe",
+    // ⚠ risk 从 "safe" 改成 "review"(2026-09-28)。
+    //   编排里的节点可以绑**任意 agent 工具** —— 包括 file_write / run_code / sag_ingest。
+    //   所以 orch_run 是一个**提权旁路**: 只要放行它, 就能借编排去跑那些本身要审批的工具。
+    //   权限门那侧已经把"编排的执行角色"按来源钉死了(画布 ui→manager, agent→analyst,
+    //   见 orchestrator-service 的 toolRoleFor), 但那是**角色**闸; 这一档管的是
+    //   "要不要人看一眼" —— 一个能间接跑任意工具的入口, 不该因为它自己"只是个入口"就免审。
+    name: "orch_run", label: "触发编排", risk: "review",
     description: "触发一条编排(画布 DAG): 多步管道, 上游产出按连线流入下游, 步数较多、成本较高。仅在开关打开且任务确实需要多步编排时使用",
     params: {
       templateId: { type: "string", desc: "编排模板 id(如 tpl_five_stage / tpl_lit_review; 先调 orch_list 查)" },
@@ -2156,7 +2169,9 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
   });
   // V404-22: doc_edit — agent 原子编辑知识库文档(WriterLease 协议: 持锁→apply→自动释放)
   tools.push({
-    name: "doc_edit", label: "文档编辑", risk: "safe",
+    // ⚠ risk 从 "safe" 改成 "review"(2026-09-28): 它**改知识库文档** —— 会写。
+    //   与 file_write / sag_ingest 同类, 那两者早就是 review 了, 这个漏了。
+    name: "doc_edit", label: "文档编辑", risk: "review",
     description: "原子编辑知识库文档(文本替换): 自动持 WriterLease→应用变更(乐观锁冲突返回最新版可重试)→释放。需先读文档拿到内容与偏移",
     params: {
       documentId: { type: "string", required: true, desc: "文档 id(uuid)" },

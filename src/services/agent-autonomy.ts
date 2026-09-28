@@ -11,15 +11,53 @@ export const AUTONOMY_LABELS: Record<AutonomyLevel, string> = {
 };
 
 /**
- * V417 缺省从 "auto-edit" 改为 "suggest"。
+ * 缺省自主级别 = "auto-edit"。
  *
- * 缘由(2026-09-14 安全审计): auto-edit 下 `risk==="safe"` 的工具**全部自动执行、无需审批**,
- *   而当时 runtime_exec / run_code 这类"任意代码执行"的能力都标着 risk:"safe" ——
- *   等于开箱即用地无审批执行任意 Python。suggest 是"只读放行、其余走审批",
- *   对首次部署与多租户是安全的那一侧。
- *   需要自动执行的部署显式设 AGENT_AUTONOMY=auto-edit(或 full-auto)即可, 行为可预期。
+ * ## 为什么从 suggest 回到 auto-edit(2026-09-28, 两轮的结论)
+ *
+ * V417(2026-09-14)把它从 auto-edit 改成 suggest, 理由是安全审计发现
+ * **`runtime_exec` / `run_code` 这类"任意代码执行"的能力当时标着 risk:"safe"** ——
+ * 而 auto-edit 的规则是"safe 自动执行", 于是开箱即用地能无审批跑任意 Python。
+ * 那个判断**是对的**, suggest 当时确实是安全的那一侧。
+ *
+ * 但 suggest 有一个当时没被看见的后果:**在编排里, "需要审批" == "失败"**。
+ * 编排是在 HTTP 请求之外跑的后台任务, 没有"停下来等人点同意"这一态 ——
+ * `executeAgentTool` 返回 `requiresApproval: true` 时, 步骤直接记 failed。
+ * 于是平台的旗舰模板**默认跑不完**(2026-09-28 实测):
+ *
+ *   tpl_five_stage(标准五阶段论文)
+ *     intake         done        ← 澄清输入正常
+ *     analyze        failed      工具 llm_write 需要审批（当前自主级别: 建议模式）
+ *     materials      failed      上游步骤失败, 跳过
+ *     material_plan  failed      上游步骤失败, 跳过
+ *     draft          failed      上游步骤失败, 跳过
+ *     gate           failed      上游步骤失败, 跳过
+ *
+ * 也就是说: **安全档把功能关掉了, 而不是把危险挡住**。那不是"更安全", 是"更没用"。
+ *
+ * ## 为什么现在回到 auto-edit 是安全的
+ *
+ * 安全审计指出的那个真问题**已经修掉了** —— 本轮逐个核对了全部 `risk:"safe"` 的 agent 工具
+ * (共 40 个), 把三个不该是 safe 的改成了 review:
+ *   · `run_code`  —— 任意代码执行(还带 workspace-write/full-access 档), 原来的 safe 是错的
+ *   · `orch_run`  —— 能触发含任意工具的编排, 是**提权旁路**
+ *   · `doc_edit`  —— 改知识库文档, 会写
+ * 其余 safe 都是检索/生成/教育档案读取, 确实低危。危险的那批
+ * (runtime_exec / run_command / file_write / sag_ingest / apply_patch)**V417 那次已经改了**。
+ *
+ * 于是 auto-edit 现在的语义是准的: **safe 自动跑, review 一律要审批**。
+ * 它比 suggest 可用(常规科研编排不再被自己的安全档拦死), 又比 full-auto 保守
+ * (写文件/跑命令/入库仍然必须人点)。
+ *
+ * ## 什么时候该显式设成别的
+ *
+ * · 首次部署、多租户、或想让每一步都过人眼 → 显式 `AGENT_AUTONOMY=suggest`
+ * · 完全无人值守的批处理 → `AGENT_AUTONOMY=full-auto`(仍有 guardian 兜底)
+ *
+ * ⚠ 无论哪一档, **guardian 策略层都还在**(见 agent-guardian-service): 它是独立的一道,
+ *   按"风险等级 × 用户授权度"判, 不因这里换成 auto-edit 而失效。
  */
-let autonomyLevel: AutonomyLevel = (process.env.AGENT_AUTONOMY as AutonomyLevel) || "suggest";
+let autonomyLevel: AutonomyLevel = (process.env.AGENT_AUTONOMY as AutonomyLevel) || "auto-edit";
 
 export function getAutonomyLevel(): AutonomyLevel {
   return autonomyLevel;

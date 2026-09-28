@@ -16,7 +16,9 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import AgentFlowCanvas from "./AgentFlowCanvas.vue";
 import type { BizNode } from "./AgentFlowCanvas.vue";
+import { useRouter } from "vue-router";
 import { useDraggablePanel } from "./useDraggablePanel";
+import { STAGES, type StageDef, type StageStepDef } from "@/shared/stages";
 import { toast, confirmDialog } from "@/shared/ui";
 import { q } from "@/shared/api";
 import {
@@ -27,6 +29,8 @@ import {
   fetchRunEvents, EVENT_LABEL, eventFamily, type OrchRunEvent, type OrchStepRun,
   type OrchCapability, type OrchTemplate, type OrchProgress, type OrchRunRecord, type OrchGraph, type AgentOrchSetting,
 } from "@/shared/orchApi";
+
+const router = useRouter();
 
 // ── 状态 ──
 const capabilities = ref<OrchCapability[]>([]);
@@ -72,6 +76,26 @@ function pushMsg(p: Partial<ChatMsg> & { role: "user" | "agent" }) {
 
 // ── 能力面板 ──
 const paletteCollapsed = ref(false);
+/**
+ * 面板视图: `cap` = 按能力类别(原来的); `stage` = 按研究阶段。
+ * 见模板里那段注释 —— 同一批能力换一种组织方式, 让"我在第几步"的人找得到。
+ */
+const capMode = ref<"cap" | "stage">("cap");
+/**
+ * 阶段视图用的阶段表。
+ *
+ * ⚠ **刻意不做"按研究类型过滤"**, 虽然 `visibleStages()` 就是干这个的。
+ *   原因是本页**不持有项目上下文**: 它是编排画布, 既不注入 workflow store,
+ *   也没有 researchMethod —— 要拿就得从 `lastTask_workflow` 指针去后端读一次。
+ *   为一行展示值加一次请求不划算, 更要紧的是**读不到时会静默显示错的阶段集合**
+ *   (比如把定量项目的「研究实施」藏起来), 而用户不会知道是"没读到"还是"本来就没有"。
+ *
+ *   所以这里列**全部**阶段, 用 `appliesTo` 把"对当前研究类型不适用"的那档**标出来**
+ *   而不是藏掉 —— 定性项目会看到「研究实施」带一句「定量/混合研究适用」,
+ *   这比"它凭空消失了"诚实, 也让"A 阶段为什么没有"这个问题有答案。
+ *   (研究类型的真源仍在项目里, 阶段页与进度条照旧按它过滤 —— 那里有上下文。)
+ */
+const ALL_STAGES = computed(() => STAGES);
 const capQuery = ref("");
 const capCategory = ref("");
 const categories = computed(() => ["", ...Array.from(new Set(capabilities.value.map((c) => c.category)))]);
@@ -438,6 +462,14 @@ function loadGraphInto(nodesIn: OrchGraph["nodes"], edgesIn: OrchGraph["edges"],
   selectedNode.value = null;
 }
 
+/** V416: 模板库里"展开看内部结构"的那个模板 id(空 = 都收起) */
+const expandedTplId = ref("");
+
+/** 某节点连到哪些节点 —— 让展开区能看出**流向**, 而不只是一串节点名 */
+function nextOf(t: OrchTemplate, nodeId: string): string[] {
+  return t.graph.edges.filter((e) => e.source === nodeId).map((e) => e.target);
+}
+
 async function applyTemplate(id: string) {
   const t = templates.value.find((x) => x.id === id);
   if (!t) return;
@@ -497,6 +529,86 @@ function nextFreePosition(existing: BizNode[]): { x: number; y: number } {
     }
   }
   return { x: maxX + CELL_X, y: maxY };
+}
+
+/**
+ * V416: 阶段视图的三个动作 —— 单跑一步 / 把一步加成节点 / 去它所属的阶段页。
+ *
+ * ## 单跑一步为什么要"造一张只有这一个节点的图"
+ *
+ * 编排后端能跑的**最小单位就是一个图**(`POST /orchestrator/run` 要 `{graph}`),
+ * 没有"跑某个能力"这种端点。所以"只跑这一步" = 造一张只含它的单节点图, 走**同一条**
+ * 启动链 (startRun → 同一个后端 → 同样的权限/审批/审计)。
+ *
+ * ⚠ 刻意**不**另开一条"直调能力"的捷径: 那会绕开权限闸门与审计。
+ *   实测过裸调端点会被审批闸门拦下("建议模式 — 每步工具调用都需审批"),
+ *   而那是**设计如此** —— 单步执行必须和整图执行受同一套约束。
+ *
+ * 与"加到画布"的区别: 单跑是**用完就走**(不留节点), 加节点是**留下它当这张图的一部分**。
+ * 两个都要: 前者用于"我只想重跑这一步看看", 后者用于"我要把它编排进流程"。
+ */
+async function runSingleStep(stage: StageDef, step: StageStepDef) {
+  if (locked.value) return;
+  if (!step.capabilityId) { toast("这一步没有可直接执行的能力, 请到所属页面做", "info"); return; }
+  const cap = capById(step.capabilityId);
+  if (!cap) {
+    // 这里**不该发生** —— 表里的 capabilityId 有单测保证都真实存在(见 test/stage-steps.test.ts)。
+    // 真出现了说明表与注册表脱节了, 明说而不是静默跑一个空节点。
+    toast(`能力 ${step.capabilityId} 不在当前能力表里 —— 阶段步骤表与注册表可能脱节了`, "error");
+    return;
+  }
+  const nodeId = `step-${stage.key}-${step.key}`;
+  try {
+    const r = await startRun({
+      // 单节点图: 它就是"只跑这一步"的载体
+      graph: {
+        name: `单步 · ${stage.title} · ${step.label}`,
+        nodes: [{ id: nodeId, capabilityId: step.capabilityId, title: step.label, params: step.params }],
+        edges: [],
+      },
+      text: step.label,
+      model: model.value || undefined,
+    });
+    runId.value = r.runId;
+    runSource.value = "ui";
+    runState.value = "running";
+    lastDone = new Set();
+    pushMsg({ role: "user", text: `单跑一步: ${stage.title} · ${step.label}` });
+    pushMsg({
+      role: "agent", kind: "plan",
+      items: [{ label: step.label, module: stage.title, nodeId }],
+    });
+    startPoll(r.runId);
+    toast(`已启动「${step.label}」单步执行(不影响画布上的图)`, "success");
+  } catch (e) {
+    toast(`单步执行启动失败: ${(e as Error).message}`, "error");
+  }
+}
+
+/** 把某一步加成画布上的节点(留下它当这张图的一部分) */
+function addStepAsNode(stage: StageDef, step: StageStepDef) {
+  if (locked.value || !step.capabilityId) return;
+  const cap = capById(step.capabilityId);
+  if (!cap) { toast(`能力 ${step.capabilityId} 不在当前能力表里`, "error"); return; }
+  addCapability(cap);
+  // 参数用"这一步要产出什么", 而不是能力的通用默认值 —— 否则加出来的节点是空的
+  const added = nodes.value[nodes.value.length - 1];
+  if (added?.id) {
+    const merged = { ...(added.params ?? {}), ...(defaultParams(cap)), ...(step.params ?? {}) };
+    nodes.value = nodes.value.map((n) => (n.id === added.id
+      ? { ...n, title: step.label, params: merged }
+      : n));
+  }
+  toast(`已把「${step.label}」加到画布`, "success");
+}
+
+/** 没有可执行能力的步: 去它所属的阶段页做(那里本来就能做, 只是形状不是能挂 DAG 的同步步骤) */
+function gotoStepPage(stage: StageDef, step: StageStepDef) {
+  // ⚠ 这是 **soc 内部换页**, 用 router.push(与 MaterialsView 等页同一手法)。
+  //   不要用 viewArtifact 那条 —— 它 postMessage 给 React 壳切**外壳级 tab**,
+  //   而阶段页都在同一个 soc 子应用里, 走那条会绕出去再绕回来。
+  void router.push(step.pageHint || stage.path);
+  toast(`「${step.label}」在「${stage.title}」页做`, "info");
 }
 
 function addCapability(cap: OrchCapability, position?: { x: number; y: number }) {
@@ -1416,11 +1528,49 @@ function askAgentToAdjust() {
           <input v-model="capQuery" class="palette-search" placeholder="搜索能力…" />
           <button class="palette-toggle" title="收起" @click="paletteCollapsed = true">«</button>
         </header>
+        <!--
+          V416: 「按能力 / 按阶段」两个视图。
+          ⚠ 为什么要有"按阶段"这一档: 能力面板是按**能力类别**(检索/写作/实证…)平的,
+            而一个刚刚开始写论文的人脑子里的组织方式是**研究阶段**(我在第几步、这一步该做什么)。
+            同一批能力换一种排法, 用户才找得到。两边指向的是同一批能力, 不是两套东西。
+        -->
+        <div class="palette-modes">
+          <button class="palette-mode" :class="{ 'is-on': capMode === 'cap' }" @click="capMode = 'cap'">按能力</button>
+          <button class="palette-mode" :class="{ 'is-on': capMode === 'stage' }" @click="capMode = 'stage'">按研究阶段</button>
+        </div>
         <!-- V415: 自由创作节点 —— 平台里没有现成能力、但用户就是想加一步"按我的提示词做点事"时用。
              后端把没有 capabilityId 的节点当 llm_chat 执行(见 capability-registry 的 dagNodeToMetaStep),
              所以这里不需要新端点, 只需要一个能填标题+提示词的入口。 -->
         <button v-if="!locked" class="palette-create" @click="openCreateNode">＋ 创作能力节点</button>
-        <div class="palette-cats">
+
+        <!-- 阶段视图: 六个阶段各自列出内部步骤, 可执行的点「跑」(只跑这一步), 也可「加」到画布 -->
+        <div v-if="capMode === 'stage'" class="stage-list">
+          <div v-for="st in ALL_STAGES" :key="st.key" class="stage-block">
+            <div class="stage-head">
+              <span class="stage-ph">{{ st.ph }}</span>
+              <strong>{{ st.title }}</strong>
+              <!-- 不适用当前研究类型时**标出来**而不是藏掉(见 ALL_STAGES 的说明) -->
+              <span v-if="st.appliesTo" class="stage-when">定量/混合研究适用</span>
+            </div>
+            <div
+              v-for="(step, i) in st.steps ?? []"
+              :key="step.key"
+              class="stage-step"
+              :class="{ 'is-manual': !step.capabilityId }"
+            >
+              <span class="ss-no">{{ i + 1 }}</span>
+              <span class="ss-label">{{ step.label }}</span>
+              <!-- 有能力的步: 两个动作 —— 单跑 / 加到画布; 没能力的只给落点 -->
+              <template v-if="step.capabilityId">
+                <button class="ss-btn" :disabled="locked" data-run-step="1" :title="'只跑这一步(' + step.capabilityId + ')'" @click="runSingleStep(st, step)">▶ 跑</button>
+                <button class="ss-btn" :disabled="locked" title="加到画布(建一个节点)" @click="addStepAsNode(st, step)">＋</button>
+              </template>
+              <button v-else class="ss-btn ss-go" :title="'到「' + st.title + '」页做这一步'" @click="gotoStepPage(st, step)">去页面</button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="palette-cats">
           <button v-for="c in categories" :key="c" class="palette-cat" :class="{ 'is-on': capCategory === c }" @click="capCategory = c">{{ c || "全部" }}</button>
         </div>
         <div class="palette-list">
@@ -1746,16 +1896,46 @@ function askAgentToAdjust() {
     <!-- 模板库 -->
     <div v-if="openTemplates" class="modal-shell" @click.self="openTemplates = false">
       <div class="modal-card wide">
-        <header class="modal-head"><strong>内置编排模板</strong><span>选中即载入画布, 之后可自由改</span><button class="workspace-close" @click="openTemplates = false">×</button></header>
+        <header class="modal-head"><strong>内置编排模板</strong><span>选中即载入画布, 之后可自由改 · 点「展开」先看内部结构</span><button class="workspace-close" @click="openTemplates = false">×</button></header>
         <div class="modal-body tpl-grid">
-          <div v-for="t in templates" :key="t.id" class="tpl-card" @click="applyTemplate(t.id); openTemplates = false">
+          <div
+            v-for="t in templates"
+            :key="t.id"
+            class="tpl-card"
+            :class="{ 'is-open': expandedTplId === t.id }"
+            @click="applyTemplate(t.id); openTemplates = false"
+          >
             <div class="tpl-head">
               <strong>{{ t.name }}</strong>
               <span class="tpl-cost" :class="COST_META[t.costEstimated ?? t.cost].cls">{{ COST_META[t.costEstimated ?? t.cost].label }}</span>
             </div>
             <p>{{ t.description }}</p>
             <small>{{ t.scenario }}</small>
-            <div class="tpl-meta">{{ t.graph.nodes.length }} 节点 · {{ t.graph.edges.length }} 条连线</div>
+            <div class="tpl-meta">
+              {{ t.graph.nodes.length }} 节点 · {{ t.graph.edges.length }} 条连线
+              <!--
+                V416: 「展开」把这条模板内部的**节点与连线**摊开。
+                前端本来就有完整 graph(templates 接口就带着), 所以不用改后端。
+                ⚠ 展开按钮必须 stop 掉卡片的点击 —— 否则"想看结构"会变成"载入画布并关窗"。
+              -->
+              <button
+                class="tpl-expand"
+                :data-control="'quick:tpl-expand-' + t.id"
+                @click.stop="expandedTplId = expandedTplId === t.id ? '' : t.id"
+              >{{ expandedTplId === t.id ? "收起 ▾" : "展开 ▸" }}</button>
+            </div>
+            <!-- 展开区: 逐条列出节点, 并标出它连到哪里 -->
+            <div v-if="expandedTplId === t.id" class="tpl-graph" @click.stop>
+              <div class="tpl-graph-title">内部结构(载入画布后会变成节点与连线)</div>
+              <div v-for="(n, i) in t.graph.nodes" :key="n.id" class="tpl-node">
+                <span class="tn-no">{{ i + 1 }}</span>
+                <span class="tn-id">{{ n.id }}</span>
+                <span class="tn-title">{{ n.title }}</span>
+                <span v-if="capById(n.capabilityId)" class="tn-cap">{{ capById(n.capabilityId)!.label }}</span>
+                <span v-else class="tn-cap tn-cap-none">{{ n.capabilityId || "未绑能力" }}</span>
+                <span v-if="nextOf(t, n.id).length" class="tn-to">→ {{ nextOf(t, n.id).join(", ") }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2614,4 +2794,55 @@ function askAgentToAdjust() {
 /* 紫底主按钮(参考产品图 14: 「确认并启动」是紫色, 与普通主色区分开) */
 .handoff-go { background: #7c3aed !important; border-color: #7c3aed !important; color: #F1F5F9 !important; }
 .handoff-go:hover { background: #6d31d6 !important; }
+
+/* V416: 能力面板的「按能力 / 按研究阶段」两个视图 + 阶段步骤列表 */
+.palette-modes { display: flex; gap: 4px; padding: 0 8px 6px; }
+.palette-mode {
+  flex: 1; padding: 4px 0; border: 1px solid #1E2A42; border-radius: 6px;
+  background: #0F172A; color: #7A8AA0; font-size: 11px; cursor: pointer;
+}
+.palette-mode:hover { color: #DCE6F2; border-color: #2E3E5C; }
+.palette-mode.is-on { background: #1B2C4A; border-color: #4D84CB; color: #E8EEF7; }
+.stage-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 10px; display: flex; flex-direction: column; gap: 10px; }
+.stage-block { border: 1px solid #1E2A42; border-radius: 8px; background: #101A2E; padding: 7px 8px; }
+.stage-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.stage-ph {
+  width: 18px; height: 18px; border-radius: 5px; background: #4D84CB; color: #0A1120;
+  font-size: 10px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0;
+}
+.stage-head strong { font-size: 12px; color: #E8EEF7; }
+.stage-when { margin-left: auto; font-size: 9.5px; color: #E8B54A; }
+/* 一步一行: 序号 + 名称 + 动作 */
+.stage-step { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11.5px; }
+.stage-step.is-manual .ss-label { color: #7A8AA0; }
+.ss-no {
+  width: 15px; height: 15px; border-radius: 50%; background: #1E2A42; color: #9FB0C6;
+  font-size: 9px; display: grid; place-items: center; flex-shrink: 0;
+}
+.ss-label { flex: 1; min-width: 0; color: #DCE6F2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-btn {
+  flex-shrink: 0; padding: 2px 7px; border: 1px solid #1E2A42; border-radius: 5px;
+  background: #16233A; color: #9FC0E8; font-size: 10px; cursor: pointer;
+}
+.ss-btn:hover:not(:disabled) { background: #1B2C4A; border-color: #4D84CB; color: #E8EEF7; }
+.ss-btn:disabled { opacity: 0.4; cursor: default; }
+.ss-go { color: #A3B3C8; }
+
+/* V416: 模板库的"展开看内部结构" */
+.tpl-card.is-open { border-color: #4D84CB; }
+.tpl-expand {
+  margin-left: auto; padding: 1px 7px; border: 1px solid #1E2A42; border-radius: 5px;
+  background: #16233A; color: #9FC0E8; font-size: 10px; cursor: pointer;
+}
+.tpl-expand:hover { background: #1B2C4A; border-color: #4D84CB; color: #E8EEF7; }
+.tpl-meta { display: flex; align-items: center; gap: 8px; }
+.tpl-graph { margin-top: 8px; padding: 8px; border-top: 1px dashed #1E2A42; display: flex; flex-direction: column; gap: 3px; }
+.tpl-graph-title { font-size: 10px; color: #7A8AA0; margin-bottom: 3px; }
+.tpl-node { display: flex; align-items: baseline; gap: 6px; font-size: 11px; flex-wrap: wrap; }
+.tn-no { width: 14px; height: 14px; border-radius: 50%; background: #1E2A42; color: #9FB0C6; font-size: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.tn-id { font-family: ui-monospace, Consolas, monospace; color: #9FC0E8; font-size: 10px; }
+.tn-title { color: #DCE6F2; }
+.tn-cap { color: #7A8AA0; font-size: 10px; }
+.tn-cap-none { color: #E8B54A; }
+.tn-to { color: #5C6B80; font-size: 10px; margin-left: auto; }
 </style>

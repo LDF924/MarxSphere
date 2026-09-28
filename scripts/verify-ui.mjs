@@ -129,6 +129,13 @@ const SUITES = [
   //   所以探针不看"下拉在不在", 而是选第二章 → 保存 → **查库里的 section_ids**。
   //   ⚠ 它自建项目与章节(不靠已有数据), 因此空库 CI 上也能跑。
   { key: "batch12", file: "probe-batch12.mjs", desc: "批12 回归: 弹层提示与示例/章节归属真落库/拖拽三态/接近上限的附件真能传" },
+  // 2026-09-28 加。阶段内部步骤(用户: "能执行每一个环节里的每一步")。
+  //   最危险的失效方式是**编一个不存在的 capabilityId** —— 界面上有「▶ 跑」按钮、
+  //   点下去必然失败, 而失败在几百毫秒之后, 看不出是"本来就不支持"还是"跑挂了"。
+  //   所以探针不数按钮, 而是把每个可跑步骤的能力 id 拿去**后端能力表里反查**。
+  //   单步执行那条也验后端**真的起了一次单节点运行**, 不是"界面上转了个圈"。
+  //   ⚠ 成本: 只读 + 一次 user_input 节点的运行(不产生 LLM 调用)。
+  { key: "batch13", file: "probe-batch13.mjs", desc: "批13 回归: 阶段步骤真源/可跑能力反查/单步真起运行/模板可展开" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。
   //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
   //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
@@ -258,7 +265,7 @@ if (shardSpec) {
     "workbench-sync": 51, "workspace-actions": 55, "writing-cabin": 55, "layout": 49, "batch06": 53,
     "empirical-switch": 49, "batch09": 49, "batch01": 46, "fusion-tabs": 45, "site-content": 45,
     "editor-ver-import": 45, "review-reset": 41, "stats-xlsx": 41, "editor-export": 39, "batch10": 31,
-    "batch11": 50, "batch12": 140,
+    "batch11": 50, "batch12": 140, "batch13": 40,
     "batch05": 33, "project-bundle": 21, "batch04": 27, "version-history": 25, "batch07": 20,
     "editor-ai6": 19, "editor-chart": 16, "editor-check": 15, "project-rail": 33,
   };
