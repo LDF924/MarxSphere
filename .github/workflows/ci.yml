@@ -258,6 +258,13 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: verify-ui-log-${{ matrix.shard }}
+          # ⚠ 分片号形如 "3/5", 直接拼进 name 会得到一个**含 `/` 的 artifact 名** ——
+          #   upload-artifact **不接受** `/`(NTFS 等文件系统不允许), 于是这一步自己也红:
+          #     The artifact name is not valid: verify-ui-log-3/5 …
+          #   后果比"少个日志"更糟 —— 它把**真正的失败原因**（上一步的 artifact 收集）
+          #   一起变成红步, 排查时先要分辨哪条红才是真因。
+          #   实测于 2026-09-28 的分片 CI(run 36383231103)。
+          #   用 replace 把 `/` 换成 `-`, 得到 verify-ui-log-3-5。
+          name: verify-ui-log-${{ replace(matrix.shard, '/', '-') }}
           path: /tmp/verify-ui.log
           if-no-files-found: ignore

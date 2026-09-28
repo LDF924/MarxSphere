@@ -9,9 +9,11 @@
 //   ⑤ AGENT HANDOFF: 逐条列出将执行的节点 + 授权绑版本(改图后授权作废)
 //   ⑥ 泳道与「可执行」徽标 —— 徽标必须是**真判据**(未绑能力的节点让它变红)
 //
-// ⚠ **不烧模型**: ① 用的是**必然失败**的一条链(给一个不存在的能力 id), 跑得极快、
-//   不产生任何 LLM 调用, 而且正好用来验 node.failed 那条诊断。真跑一条全绿的链会烧钱
-//   且慢, 对本批要验的东西(事件流有没有、"先失败后终态"顺序对不对)没有额外价值。
+// ⚠ **不烧模型**: ① 用的是一条**确定性失败**的链 —— 给端点型能力传一个非法参数, 后端纯参数校验
+//   返回 400(不碰 LLM), 正好用来验 node.failed 那条诊断。真跑一条全绿的链既烧钱又慢,
+//   对本批要验的东西(事件流有没有、"先失败后终态"的顺序对不对)没有额外价值。
+//   ⚠ 触发器必须是**确定**的: 我曾用 LLM 质量门, 本机失败而 CI 不失败(`callLlm` 失败是返回
+//   {error} 而非抛 ⇒ 空文本 ⇒ `pass !== false` ⇒ 软门通过) —— 那正是这一批 CI 红的原因。
 //
 // 用法: node scripts/probe-batch11.mjs   (需 4173 已起, 产物已重建)
 import { startCdp, loginToken, sleep, evalTop } from "./lib/cdp-editor.mjs";
@@ -35,28 +37,19 @@ if (!token) { console.error("登录失败: 4173 未起或缺 verify 账号"); pr
 
 // ═══ ① 后端事件流 ═══════════════════════════════════════════════════════════
 console.log("\n① 事件流真的落库");
-/**
- * 起一条**必然走到 node.failed** 的运行。
- *
- * 触发器怎么选 —— 这一条我试错了两次, 记下来免得下次再绕:
- *   ✗ 第一版用 `io:quality-gate` 单独一个节点 → **没失败**: 引擎对"无备胎质量门判定不过"
- *     的处理是**软门**(追加 note 后仍算 done)。全绿。
- *   ✗ 第二版用 `academic:school` 不给必填参数 → **也没失败**: endpoint 类不会因缺参抛错,
- *     它把未渲染的 `{{schoolName}}` 原样传下去, 服务返回一个**带 error 字段的 200**,
- *     那一步仍记 done(所以"缺参"在编排层是**静默降级**, 不是失败)。
- *   ✓ 现在: `io:quality-gate` **配上一个 on_failure 目标** —— 引擎那条分支才是
- *     `if (step.on_failure) throw new Error("质量门未通过: …")`。没有备胎就走软门,
- *     有备胎才抛。这是唯一一条**确定性**走到 node.failed 的路径。
- *
- * 代价: quality-gate 会调一次 LLM(maxTokens 200)。在 CI 上 `LLM_API_KEY=dummy`,
- *   那次调用直接失败 → 一样抛 → 一样有 node.failed。两条路都能验到。
- */
 const runRes = await api(token, "/orchestrator/run", "POST", {
   graph: {
     name: "probe-batch11-事件流",
+    // 触发器要**确定性**, 而且不能依赖 LLM —— 这一条我改过三版才对:
+    //   ✗ `io:quality-gate` 单独一个节点 → 引擎对"无备胎质量门判定不过"是**软门**(追加 note 后仍算 done);
+    //   ✗ 质量门 + on_failure 备胎 → 本机确实失败(LLM 判 pass=false), 但 **CI 上不会**:
+    //     `callLlm` 失败是**返回 {error} 而不是抛**, 质量门拿到空文本就 `pass !== false` ⇒ 走软门;
+    //     我原来在注释里假设"CI 的 dummy key 会让它抛", 那是错的 —— CI 就是这么红的。
+    //   ✓ 现在: 给端点型能力传一个**非法参数**(kind 不在枚举里) ⇒ 纯 zod 校验返回 400 ⇒
+    //     `callEndpoint` 对非 2xx 是**确定性抛错** ⇒ node.failed。全程不碰 LLM, 本机与 CI 完全一致。
+    //     (实测对照: 同样传空参数反而**不失败** —— 后端会优雅降级返回带 error 字段的 200。)
     nodes: [
-      { id: "probe11_gate", capabilityId: "io:quality-gate", title: "探针质量门", onFailure: "probe11_fb" },
-      { id: "probe11_fb", capabilityId: "io:quality-gate", title: "探针备胎" },
+      { id: "probe11_gate", capabilityId: "outline:component", title: "探针必然失败节点", params: { kind: "probe-bogus" } },
     ],
     edges: [],
   },
