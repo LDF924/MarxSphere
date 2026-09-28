@@ -235,10 +235,26 @@ function ensureLiveToolLabels(): Promise<void> {
  * ⚠ `labels` 是**参数**不是模块常量: 拿到实时表后要触发重渲染, 所以由组件从 state 传进来。
  *   直接读模块变量的话, 首次渲染时它还空着, 而且表到位后**不会重渲** —— 名字就永远停在英文。
  */
+/**
+ * V420: 工具名**前缀 → 所属工作台**。给"数据源"那半件兜底。
+ *
+ * 为什么不给 69 个新工具逐个写进上面那张表: 那正是这次刚拆掉的病(手抄清单会烂)。
+ * 前缀是**结构性**的(工具名本来就按模块命名), 所以按族推导既短又不会随工具增删而失准。
+ * `label` 一直以后端为准, 这里只管 `source`。
+ */
+const FAMILY_SOURCE: Array<[RegExp, string]> = [
+  [/^view_research_|^research_/, "研途写作舱"],
+  [/^view_viz_|^viz_/, "成果可视化工坊"],
+  [/^view_editor_|^editor_/, "学术文本工作台"],
+  [/^view_review_|^review_/, "论文质量评审"],
+  [/^view_orch_|^orch_/, "课题流程编排"],
+];
+
 function toolMeta(name: string, labels: Record<string, string> = liveToolLabels): { label: string; source: string } {
   const known = TOOL_META[name];
-  // 后端 label 优先(它就是 75/75 的中文名); 没有实时数据时退回这张表的兜底
-  return { label: labels[name] || known?.label || name, source: known?.source ?? "内置" };
+  // 后端 label 优先(后端的每一项都带中文名); 没有实时数据时退回那张表的兜底
+  const source = known?.source ?? FAMILY_SOURCE.find(([re]) => re.test(name))?.[1] ?? "内置";
+  return { label: labels[name] || known?.label || name, source };
 }
 
 /** V399: 工具链合并面板 — 默认折叠，摘要（N 次调用 · 成功率 · 总耗时），展开看每步详情 */

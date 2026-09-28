@@ -1932,6 +1932,14 @@ plt.title("${title || '表1 描述统计'}"); plt.tight_layout(); plt.show()`,
     },
     // V399: 33 视图能力工具化 — 政策库/知识页/图谱/外部学术/技能/资料库/C刊/记忆
     ...(await import("./agent-view-tools.js")).VIEW_TOOLS,
+    // V420(viz): 成果可视化工坊的能力工具化
+    ...(await import("./agent-viz-tools.js")).VIZ_TOOLS,
+    // V420(editor): 学术文本工作台的能力工具化
+    ...(await import("./agent-editor-tools.js")).EDITOR_TOOLS,
+    // V420(review): 论文质量评审的能力工具化
+    ...(await import("./agent-review-tools.js")).REVIEW_TOOLS,
+    // V420(orch): 课题流程编排的能力工具化
+    ...(await import("./agent-orch-tools.js")).ORCH_TOOLS,
     // V399: gongwen-draft 公文起草（Rimagination 开源; 政策建议→23 种公文格式, 先查先核再写）
     {
       name: "gongwen_draft", label: "公文起草", risk: "safe",
@@ -2265,6 +2273,40 @@ export const WRITE_TOOLS = new Set<string>([
   "patch_learner_profile", "record_learning_event", "education_service",
   // V419: 写作舱的两个生成工具(会落库 + 烧 LLM), 只读会话不该拿到
   "research_proposal_generate", "research_component_generate",
+  // V420: 四组新工具里的写/执行类(33 条) —— 只读(评审)会话不该拿到
+  "viz_job_create",
+  "viz_job_cancel",
+  "viz_job_retry",
+  "viz_artifact_to_materials",
+  "editor_doc_create",
+  "editor_doc_delete",
+  "editor_doc_write",
+  "editor_doc_lock",
+  "editor_doc_restore",
+  "editor_ai_job",
+  "editor_set_model",
+  "review_job_create",
+  "review_job_cancel",
+  "review_job_retry",
+  "review_job_delete",
+  "review_journal_create",
+  "review_journal_update",
+  "review_journal_delete",
+  "review_journal_batch_parse",
+  "review_journal_reparse",
+  "review_standard_create",
+  "review_standard_update",
+  "review_standard_delete",
+  "review_standard_set_default",
+  "orch_run_step",
+  "orch_run_graph",
+  "orch_graph_save",
+  "orch_graph_delete",
+  "orch_control",
+  "orch_resume",
+  "orch_settings_set",
+  "orch_dag_propose",
+  "orch_dag_decide",
 ]);
 
 // ═══ V393-4/5: Agent 权限分级 + 工具级审批 ═══
@@ -2381,6 +2423,11 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   view_research_hypotheses: "reader",
   view_research_outline: "reader",
   view_research_submission: "reader",
+
+  // V420: 四组新工具 —— **每一条都必须登记**。checkToolRole 的缺省是 manager,
+  //   不登记 = 对话里的 analyst 角色根本用不了(那不是"少做", 是"白接")。
+  view_viz_jobs: "reader", view_viz_job: "reader", view_viz_job_dataset: "reader", view_viz_data_files: "reader", viz_artifact_export: "reader", view_viz_models: "reader", view_editor_docs: "reader", view_editor_doc: "reader", view_editor_versions: "reader", editor_fulltext_check: "reader", editor_rewrite: "reader", editor_title_abstract: "reader", editor_citation_check: "reader", view_editor_ai_job: "reader", editor_chart_code: "reader", editor_export_docx: "reader", view_editor_model: "reader", view_review_jobs: "reader", view_review_job: "reader", view_review_stats: "reader", view_review_journals: "reader", review_guide_parse: "reader", view_review_guide_split: "reader", view_review_standards: "reader", review_standard_parse: "reader", review_export_report: "reader", view_orch_capabilities: "reader", view_orch_runs: "reader", view_orch_run_detail: "reader", view_orch_events: "reader", view_orch_graphs: "reader", view_orch_graph_get: "reader", view_orch_meta_to_graph: "reader", view_orch_settings: "reader", view_orch_dag_proposals: "reader", orch_nl_to_dag: "reader",
+  viz_job_create: "analyst", viz_job_cancel: "analyst", viz_job_retry: "analyst", viz_artifact_to_materials: "analyst", editor_doc_create: "analyst", editor_doc_delete: "analyst", editor_doc_write: "analyst", editor_doc_lock: "analyst", editor_doc_restore: "analyst", editor_ai_job: "analyst", editor_set_model: "analyst", review_job_create: "analyst", review_job_cancel: "analyst", review_job_retry: "analyst", review_job_delete: "analyst", review_journal_create: "analyst", review_journal_update: "analyst", review_journal_delete: "analyst", review_journal_batch_parse: "analyst", review_journal_reparse: "analyst", review_standard_create: "analyst", review_standard_update: "analyst", review_standard_delete: "analyst", review_standard_set_default: "analyst", orch_run_step: "analyst", orch_run_graph: "analyst", orch_graph_save: "analyst", orch_graph_delete: "analyst", orch_control: "analyst", orch_resume: "analyst", orch_settings_set: "analyst", orch_dag_propose: "analyst", orch_dag_decide: "analyst",
   // V419: 生成类要 analyst(写操作); 两个 view_ 是 reader
   research_proposal_generate: "analyst",
   research_component_generate: "analyst",

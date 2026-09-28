@@ -655,11 +655,21 @@ export const VIEW_TOOLS: AgentToolDef[] = [
   //   等于把写作舱那几批新页面(申报稿/投稿要件)在对话里变成只读的展览。
   //   `view_task_create` 早就开了这个先例(`risk:"safe"` + 后台 spawn), 这里同一形态。
   //
-  // ⚠ 两者都**必须登记进 WRITE_TOOLS** —— 只读会话(评审)不该拿到它们。
-  //   本仓记过: 新工具要同时改 TOOL_MIN_ROLE 与 WRITE_TOOLS, 只写 risk:"safe" 挡不住。
+  // ## 为什么是 risk:"safe" 而不是 "review"
+  //
+  // 我第一版标的是 review, **标错了**。本仓 `agent-autonomy.ts` 的审计结论写着:
+  //   "其余 safe 都是检索/**生成**/教育档案读取, 确实低危" ——
+  //   生成=safe 是既定语义(`llm_write` / `summarize` / `chart_template` / `gongwen_draft`
+  //   全是 safe)。而 review 的语义是 **"一律要审批"**, 在**编排里"需要审批"就是"失败"**
+  //   (后台任务没有"停下等人点同意"这一态)—— 标 review 等于把这两个能力从编排里拿掉。
+  //   它们产出的是**新**内容、写进的是用户自己项目里的产物节点, 不覆盖别人已写的东西,
+  //   与 doc_edit(改知识库既有文档)不是一回事。
+  //
+  // ⚠ 但两者仍**必须登记进 WRITE_TOOLS** —— 只读会话(评审)不该拿到它们(会烧 LLM + 落库)。
+  //   本仓记过: 新工具要同时改 TOOL_MIN_ROLE 与 WRITE_TOOLS, 只写 risk 挡不住。
   // ─────────────────────────────────────────────────────────────────────────────
   {
-    name: "research_proposal_generate", label: "生成申报稿", risk: "review",
+    name: "research_proposal_generate", label: "生成申报稿", risk: "safe",
     description: "为某个研究项目生成一份申报/审查稿(开题报告/基金申请书/伦理审查/预注册)。上下文自动取该项目已有的研究设计与假设台账, 不必重填",
     params: {
       projectId: { type: "string", desc: "项目 id; 省略则用最近更新的那个项目" },
@@ -736,7 +746,7 @@ export const VIEW_TOOLS: AgentToolDef[] = [
     }),
   },
   {
-    name: "research_component_generate", label: "生成投稿要件", risk: "review",
+    name: "research_component_generate", label: "生成投稿要件", risk: "safe",
     description: "为某篇论文生成投稿要件: 摘要与关键词 / 结论 / 讨论。需给出论文主题与 (可选)章节要点",
     params: {
       kind: { type: "string", required: true, desc: "要件类型: abstract(摘要+关键词) / conclusion(结论) / discussion(讨论)" },
