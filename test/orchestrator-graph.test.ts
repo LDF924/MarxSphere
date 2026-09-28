@@ -10,9 +10,14 @@
 // 两处都靠端到端实测才发现(单测当时全绿), 所以补成单测钉住。
 
 import { describe, it, expect, beforeAll } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { dagNodeToMetaStep, graphToMetaSkill, listCapabilities, type CapabilityDef } from "../src/services/capability-registry.js";
 import { ORCHESTRATOR_TEMPLATES } from "../src/services/orchestrator-templates.js";
 import { renderTemplate, type MetaRunContext } from "../src/services/meta-skill-runtime.js";
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** 造一个最小能力表: 一个工具型(读 with.args) + 一个端点型(读 with.body) + 一个 LLM 型(读 with 顶层) */
 const CAPS = [
@@ -107,9 +112,11 @@ describe("graphToMetaSkill: 边就是依赖", () => {
 });
 
 /**
- * 占位符合法性: 运行时只替换 {{inputs}}/{{user.x}}/{{outputs.x}}。
- * 其它 {{X}} 只有一种合法情形 —— X 是**该能力自己的字段名**, 语义是"值由字段面板填"
- * (能力自带模板里有这种写法, 如 {{concept}}/{{claim}}/{{tool}})。
+ * 占位符合法性: 运行时认 {{inputs}}/{{user.x}}/{{outputs.x}}, 以及**裸字段名**。
+ *
+ * 裸名 {{X}} 的合法条件是 X 是**该能力自己声明的字段名** —— 语义是"值来自字段面板"。
+ * (2026-09-29 修: 它原来只是"被允许写", 实际渲染成 [未渲染:{{X}}] 发给端点, 见
+ *  meta-skill-runtime.renderTemplate 里裸名那一段与 test/orchestrator-params.test.ts。)
  * 既不是内置又不是自己字段的, 就是拼错的字段名, 运行时渲染成 [未渲染:…] 发给端点。
  */
 const SYSTEM_PLACEHOLDER = /^(inputs?|user\.[\w-]+|outputs?\.[\w-]+)$/;
@@ -177,6 +184,36 @@ describe("模板完整性: 每个内置模板都要真的能跑", () => {
     expect(broken).toEqual([]);
   });
 
+  it("**模板节点的参数键必须是该能力声明过的字段**(死键在这一条被拦)", () => {
+    // 由来(2026-09-29): tpl_empirical 给 stat:run 传 `method`, 而它读的是 `tool`;
+    //   给 viz:render 传 `prompt`, 而它读的是 `message`。
+    //   两个都是**死键**: 合并进 body 后端点不认(或忽略), 而画布上相关参数行照常显示、
+    //   用户填了也不生效 —— 表现是"这个模板一跑就缺参数/画不出图", 查不出原因。
+    const capById = new Map(realCaps.map((c) => [c.id, c]));
+    const dead: string[] = [];
+    for (const t of templates) {
+      for (const n of t.graph.nodes) {
+        if (!n.params || !n.capabilityId) continue;
+        const cap = capById.get(n.capabilityId);
+        if (!cap) continue;
+        const fields = new Set((cap.fields ?? []).map((f) => f.name));
+        const declared = new Set([...fields, ...(cap.inputs ?? []), ...(cap.outputs ?? [])]);
+        // 少数几处是通用数据字段(不登记为 fields, 但运行时确实读)
+        const universal = new Set(["input", "text", "csv", "params", "system", "task", "criteria"]);
+        for (const k of Object.keys(n.params)) {
+          if (!declared.has(k) && !universal.has(k)) {
+            dead.push(`${t.id}:${n.id}(${n.capabilityId}) 传了 ${k} —— 该能力认: ${[...fields].join(", ") || "(无 fields)"}`);
+          }
+        }
+      }
+    }
+    expect(
+      dead,
+      "这些参数名该能力不认识。写错名字不会报错: 参数被合进 body 后端点忽略,\n" +
+        "而画布上参数行照常显示, 用户填了也不生效 —— 只能靠人肉比对能力注册表才发现。",
+    ).toEqual([]);
+  });
+
   it("能力自带模板里的 {{占位符}} 都必须有来源(拼错字段名会在这里被拦)", () => {
     const bad: string[] = [];
     for (const c of realCaps) {
@@ -228,9 +265,82 @@ describe("renderTemplate: 模板占位符的行为边界", () => {
     expect(out).toBe("body=上游产出 out=A");
   });
 
-  it("自定义字段名不是模板 —— 渲染成标记而不是静默留空", () => {
-    // 这就是端点型能力模板里**不该**出现的东西: {{mode}} 只能由节点参数换成字面值。
-    // 静默留空会让"模板写错"看起来像"上游没产出", 所以显式标记出来。
+  it("字段名为空(userValues 里没有)时仍然显式标记, 不静默留空", () => {
+    // ⚠ 这条**不是**在说 {{mode}} 不该出现在模板里 —— 2026-09-29 起它是合法的:
+    //   只要 mode 是该能力声明的字段, 运行时就会去 userValues 取(见 orchestrator-params.test.ts)。
+    //   这里验的是**取不到**的情形(字段没值/名字拼错): 那时必须留痕, 否则"模板写错"
+    //   看起来就像"上游没产出"。
     expect(renderTemplate("{{mode}}", ctx())).toContain("未渲染");
+    expect(renderTemplate("{{拼错的名字}}", ctx())).toContain("未渲染");
+  });
+});
+
+/**
+ * 前端侧的同一条契约: **模板载入画布时, 字段默认值必须补上**。
+ *
+ * 由来(2026-09-29): `loadGraphInto` 原来写的是
+ *   `params: n.params ? { ...n.params } : defaultParams(cap)`
+ * —— 二选一。于是**模板节点永远拿不到字段默认值**: 模板没给的字段是 undefined,
+ * 面板上连那一行都不出现(参数行按 params 的键渲染), 用户想填也没地方填;
+ * 端点拿到空串只能报"参数不合法"。而 `fields[].default` 正是为"没人填时也别做空"准备的。
+ *
+ * ⚠ 这个文件在 Vue SFC 的 `<script setup>` 里, 单测 import 不了 —— 与
+ *   `test/stage-steps.test.ts` 同一手法: 文本解析。写法一变它会红, 那是**要的**
+ *   (契约就是"合并而不是二选一", 换写法时应该有人确认一遍)。
+ */
+describe("frontend: 模板载入画布时的参数合并", () => {
+  it("defaultParams 与模板参数是**合并**, 不是二选一", () => {
+    const src = fs.readFileSync(
+      path.join(ROOT, "web", "socialsci-vue", "src", "views", "quick", "QuickModeView.vue"),
+      "utf8",
+    );
+    // 二选一的写法(旧)
+    const eitherOr = /n\.params\s*\?\s*\{\s*\.\.\.n\.params\s*\}\s*:\s*\(?\s*cap\s*\?/;
+    expect(
+      eitherOr.test(src),
+      "loadGraphInto 又变回二选一了: 模板节点会丢掉字段默认值 —— 面板上没有可填行, 端点收到空参数。",
+    ).toBe(false);
+    // 合并的写法(新): defaultParams(cap) 打底, 模板参数覆盖
+    expect(
+      /\.\.\.defaultParams\(cap\)[\s\S]{0,80}\.\.\.\(?\s*n\.params/ .test(src),
+      "没找到「默认值打底 + 模板参数覆盖」的写法 —— 契约变了请同步本测试",
+    ).toBe(true);
+  });
+});
+
+/**
+ * 端到端: **照真实链路**走一遍 —— 能力的默认字段值被塞进节点参数, 再经 dagNodeToMetaStep
+ * 合并、renderTemplate 渲染, 结果里不该有未渲染标记。
+ *
+ * 由来(2026-09-29): 我第一版写成了"直接渲染能力注册表的 step.with", 结果 18 个能力全红 ——
+ *   而那 18 处**全部在 `step.with.body` 里、且名字都是该能力声明的字段**。body 正是
+ *   `params[nested]` 会**整体替换**的那个槽(见 dagNodeToMetaStep), 所以那些裸占位符
+ *   是"给字段留的种子", 运行时被参数值盖掉, 根本不参与渲染。
+ *   照真实链路走就对了: 种子进 params → 合并 → 渲染。
+ *
+ * 判据用"渲染结果里没有未渲染标记", 不是"模板里没有裸占位符" —— 后者会把上面那 18 处
+ * 误报成 bug, 逼着人把标记改掉(而那些标记是有用的: 它们告诉字段面板"这里该填什么")。
+ */
+describe("端到端: 按真实链路合并 + 渲染后不该有未渲染标记", () => {
+  it("每个能力: 用默认字段值起一张单节点图 → 渲染后的 with 无未渲染标记", async () => {
+    const caps = await listCapabilities();
+    const bad: string[] = [];
+    for (const c of caps) {
+      if (!c.step?.with) continue;
+      const w = c.step.with as Record<string, any>;
+      if (!w.endpoint) continue; // 端点型才有"请求体必须合法"的硬约束
+      // 模拟画布: 字段默认值进 params(模板没给的字段也补上, 这正是 loadGraphInto 修的那点)
+      const params: Record<string, unknown> = {};
+      for (const f of c.fields ?? []) if (f.default !== undefined) params[f.name] = f.default;
+      const step = dagNodeToMetaStep({ id: "n", capabilityId: c.id, params }, caps, []);
+      const rendered = JSON.stringify(step.with);
+      const leaked = [...rendered.matchAll(/未渲染:\{\{([\w.| -]+)\}\}/g)].map((m) => m[1]);
+      if (leaked.length) bad.push(`${c.id}: ${[...new Set(leaked)].join(", ")}`);
+    }
+    expect(
+      bad,
+      "这些能力的请求体里还留着未渲染的占位符 —— 会被原样发给端点。\n" +
+        "两种成因: ① 字段没登记/名字对不上(面板填不了); ② 有 default 却没被塞进 params。",
+    ).toEqual([]);
   });
 });

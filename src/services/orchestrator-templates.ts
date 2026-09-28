@@ -111,10 +111,10 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
       nodes: [
         { id: "clarify", capabilityId: "io:clarify", title: "确认数据与假设" },
         { id: "reliability", capabilityId: "emp:reliability", title: "信效度检验" },
-        { id: "describe", capabilityId: "stat:run", title: "描述统计", params: { method: "describe" } },
-        { id: "crosstab", capabilityId: "stat:run", title: "交叉表", params: { method: "crosstab" } },
+        { id: "describe", capabilityId: "stat:run", title: "描述统计", params: { tool: "describe" } },
+        { id: "crosstab", capabilityId: "stat:run", title: "交叉表", params: { tool: "crosstab" } },
         { id: "regression", capabilityId: "emp:regression", title: "回归分析" },
-        { id: "viz", capabilityId: "viz:render", title: "结果可视化", params: { prompt: "把回归系数与显著性画成分组柱状图, 标注 ***/**/*" } },
+        { id: "viz", capabilityId: "viz:render", title: "结果可视化", params: { message: "把回归系数与显著性画成分组柱状图, 标注 ***/**/*" } },
       ],
       edges: chain(["clarify", "reliability", "describe", "crosstab", "regression", "viz"]),
     },
@@ -242,7 +242,11 @@ export const ORCHESTRATOR_TEMPLATES: OrchestratorTemplate[] = [
         { id: "kb", capabilityId: "tool:sag_search", title: "知识库检索", params: { query: "{{outputs.source}}", topK: 15 } },
         { id: "external", capabilityId: "tool:view_sciverse_search", title: "外部学术检索", params: { query: "{{outputs.source}}", limit: 8 } },
         { id: "library", capabilityId: "tool:view_literature_search", title: "文献库检索", params: { query: "{{outputs.source}}", limit: 8 } },
-        { id: "policy", capabilityId: "tool:policy_search", title: "政策文件检索", params: { query: "{{outputs.source}}" } },
+        // ⚠ 键名是 keyword 不是 query —— policy_search 工具只声明了 keyword(required),
+        //   写 query 是**死键**: 合并进 args 后被工具忽略, 而 required 的 keyword 拿不到值,
+        //   于是这一步**必然失败**。2026-09-29 由 test/orchestrator-graph.test.ts 的
+        //   "模板参数键必须是已声明字段"那条门禁抓出来(与 tpl_empirical 的 method/prompt 同一类)。
+        { id: "policy", capabilityId: "tool:policy_search", title: "政策文件检索", params: { keyword: "{{outputs.source}}" } },
         { id: "merge", capabilityId: "tool:llm_write", title: "去重汇编与综述", params: { topic: "把四路检索结果去重后汇编成综述(标注每条来源):\n知识库: {{outputs.kb}}\n外部: {{outputs.external}}\n文献库: {{outputs.library}}\n政策: {{outputs.policy}}", length: "长" } },
       ],
       edges: [

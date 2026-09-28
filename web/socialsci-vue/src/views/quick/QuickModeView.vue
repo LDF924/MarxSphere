@@ -444,7 +444,19 @@ function loadGraphInto(nodesIn: OrchGraph["nodes"], edgesIn: OrchGraph["edges"],
       input: cap?.inputs.join(" / ") || "上游产出",
       output: cap?.outputs.join(" / ") || "text",
       capabilityId: n.capabilityId,
-      params: n.params ? { ...n.params } : (cap ? defaultParams(cap) : undefined),
+      /**
+       * ⚠ 模板自带的参数要**盖在字段默认值之上**, 不是二选一。
+       *
+       * 原来写的是 `n.params ? {...n.params} : defaultParams(cap)` —— 模板节点**永远拿不到
+       * 字段默认值**。后果(2026-09-29 查"模板参数有死键"时挖出来的):
+       *   · `{{tool}}` / `{{message}}` 这类占位符是给字段面板用的, 值从 node.params 取;
+       *     模板没给该字段时它是 undefined, 渲染成 `[未渲染:{{tool}}]` 发给端点;
+       *   · 面板上那一行也**不存在**(参数行按 params 的建渲染), 用户连填的地方都没有;
+       *   · 而 `stat:run` 的 fields 里 tool 有 `default: "describe"` —— 那正是为了
+       *     "没人填时也别把节点做空"准备的, 却从没被用上。
+       * 合并之后: 字段全在(面板有行)、默认值生效、模板自己要给的仍然说了算。
+       */
+      params: cap ? { ...defaultParams(cap), ...(n.params ?? {}) } : n.params,
       artifact: cap?.artifact,
       canvasPosition: pos.get(n.id),
     } as BizNode;
@@ -559,11 +571,21 @@ async function runSingleStep(stage: StageDef, step: StageStepDef) {
   }
   const nodeId = `step-${stage.key}-${step.key}`;
   try {
+    /**
+     * ⚠ 参数用 `defaultParams(cap)` 打底, 不能只传 `step.params`。
+     *
+     * 与 `loadGraphInto` 同一处修复(2026-09-29): 能力注册表的模板 body 里写的是
+     * `{ dataVersionId: "{{dataVersionId}}" }` 这种**给字段留的种子**, 而 renderTemplate
+     * 不认裸名 —— 参数里没有该键时, 那个占位符会**原样**发给端点。
+     * 看 stage 表就知道这坑有多真: 「信效度检验」`emp:reliability` 与「回归分析」
+     * `emp:regression` 这两步**根本没给 params**(它们的 dataVersionId/code 只能由人填),
+     * 于是单跑这两步必然发出一个字面量 `{{dataVersionId}}`。
+     */
     const r = await startRun({
       // 单节点图: 它就是"只跑这一步"的载体
       graph: {
         name: `单步 · ${stage.title} · ${step.label}`,
-        nodes: [{ id: nodeId, capabilityId: step.capabilityId, title: step.label, params: step.params }],
+        nodes: [{ id: nodeId, capabilityId: step.capabilityId, title: step.label, params: { ...defaultParams(cap), ...(step.params ?? {}) } }],
         edges: [],
       },
       text: step.label,

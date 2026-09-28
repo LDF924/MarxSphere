@@ -144,6 +144,11 @@ const SUITES = [
   //   在 CI(dummy key)上跑必然红, 而"一个自称不该进默认门的套件天天红着"正是这里
   //   记录过的教训。手动跑: `node scripts/probe-batch14.mjs`。
   { key: "batch14", file: "probe-batch14.mjs", desc: "批14 回归: 密钥面板/校验落库/到期日提醒/扫描件OCR全链路/密钥不外泄", data: true },
+  // 2026-09-29 加。模板参数在画布上真的接对了(用户: "要修" 那两条死键)。
+  //   最难的失效是**参数名写错**: 合并进 body 后被端点忽略, 界面上参数行照常显示、
+  //   用户填了也不生效 —— 只能靠人肉比对能力注册表。探针把节点参数读回来跟能力表对。
+  //   ⚠ 成本: 一次端点调用(描述统计, 不需要 LLM)。
+  { key: "batch15", file: "probe-batch15.mjs", desc: "批15 回归: 模板参数真接对(死键/裸占位符/关键字名)" },
   // 失败态分支: SectionsView 六个动作**全部**长在失败/分析中/缺指导三种横幅里, 成功态断言照不到。  //   做法是真跑一次 analyze 并在几秒内取消 → 驱动出失败横幅(LLM 实际只跑几秒, 成本很低)。
   //   ⚠ 2026-09-23 加 `data: true` —— 它**一直该在这里**。探针自己的文件头就写着
   //     "analyze 是真调 LLM 的, 所以本探针按需手跑, **不进默认门禁**",
@@ -272,7 +277,7 @@ if (shardSpec) {
     "workbench-sync": 51, "workspace-actions": 55, "writing-cabin": 55, "layout": 49, "batch06": 53,
     "empirical-switch": 49, "batch09": 49, "batch01": 46, "fusion-tabs": 45, "site-content": 45,
     "editor-ver-import": 45, "review-reset": 41, "stats-xlsx": 41, "editor-export": 39, "batch10": 31,
-    "batch11": 50, "batch12": 140, "batch13": 40,
+    "batch11": 50, "batch12": 140, "batch13": 40, "batch15": 45,
     "batch05": 33, "project-bundle": 21, "batch04": 27, "version-history": 25, "batch07": 20,
     "editor-ai6": 19, "editor-chart": 16, "editor-check": 15, "project-rail": 33,
   };
