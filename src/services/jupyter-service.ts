@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // jupyter-service.ts — 轻量 notebook 单元执行（2026-08-27, ScienceX 通用计算环境）
 // 设计: 复用实证沙箱 spawn 模式(独立 venv + input.json → result.json), 无完整 Jupyter 依赖
 // 核心: 单元格代码 → venv 执行 → 输出/图表/持久变量回传（variables 模拟 notebook 内核状态）

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
  * workbench-sync.ts — 工作台「快照 ↔ 节点」的唯一口径真源。
  *

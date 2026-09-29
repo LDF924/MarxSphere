@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learning-events-graph-sync.ts — 学习事件→知识图谱同步(V395, 2026-08-30)
 // 深水区①: 强证据学习事件写入 Neo4j 知识图谱(Learner/Concept 节点 + MASTERS/STRUGGLES_WITH 关系)
 // 设计:

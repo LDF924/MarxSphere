@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
  * authed-image.ts — 带鉴权 + 重试的图片取用(参考产品 `ye()` 的等价物)
  *

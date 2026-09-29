@@ -455,7 +455,7 @@ const chatPanel = ref<InstanceType<typeof VizChatPanelV2> | null>(null);
 
 async function onEmpiricalSeed(e: MessageEvent) {
   const d = e.data;
-  if (!d || d.source !== "marxsphere-app" || d.type !== "empirical-viz-seed") return;
+  if (!d || d.source !== "socioseek-app" || d.type !== "empirical-viz-seed") return;
   if (!d.csv?.trim()) {
     toast("未携带数据, 请重新在分析台点击「送工坊精修」", "warning");
     return;

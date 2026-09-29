@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // DreamPanel.tsx — V404-7: 记忆 Dream 巩固审计面板(借鉴 OpenSquilla memory/dream)
 // 人工可审提升流: 扫描候选(证据门控) → 评分列表 → accept 写战略记忆(回执) / reject 进隔离区 / rollback 回滚
 import { useCallback, useEffect, useState } from "react";

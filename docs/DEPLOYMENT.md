@@ -1,4 +1,4 @@
-# MarxSphere 部署指南
+# SocioSeek 部署指南
 
 本指南覆盖从源码到生产运行的完整部署流程（开发环境 / Docker / 生产服务器）。
 
@@ -16,8 +16,8 @@
 
 ```bash
 # 一键部署（推荐）：自动装 Node → 起数据库（有 Docker 用 Docker，无 Docker 自动装本地 PostgreSQL）→ 装依赖 → 迁移 → 种子 → 启动
-git clone https://github.com/LDF924/MarxSphere.git
-cd MarxSphere
+git clone https://github.com/LDF924/SocioSeek.git
+cd SocioSeek
 npm run deploy          # http://localhost:4173
 ```
 
@@ -25,8 +25,8 @@ npm run deploy          # http://localhost:4173
 
 ```bash
 # 1. 克隆 + 配置
-git clone https://github.com/LDF924/MarxSphere.git
-cd MarxSphere
+git clone https://github.com/LDF924/SocioSeek.git
+cd SocioSeek
 cp .env.example .env # 填入 API Key（见下方 3）
 
 # 2. 启动依赖数据库（PG + 可选 Neo4j）
@@ -85,19 +85,19 @@ node scripts/deploy.mjs   # 检测到无 Docker → 自动装本地 PG（initdb 
 ### 4.1 systemd（Linux）
 
 ```ini
-# /etc/systemd/system/marxsphere.service
+# /etc/systemd/system/socioseek.service
 [Unit]
-Description=MarxSphere API
+Description=SocioSeek API
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/MarxSphere
-EnvironmentFile=/opt/MarxSphere/.env
+WorkingDirectory=/opt/SocioSeek
+EnvironmentFile=/opt/SocioSeek/.env
 ExecStart=/usr/bin/node dist/src/index.js
 Restart=on-failure
 RestartSec=5
-User=marxsphere
+User=socioseek
 
 [Install]
 WantedBy=multi-user.target
@@ -105,7 +105,7 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now marxsphere
+sudo systemctl enable --now socioseek
 ```
 
 ### 4.2 反向代理（Nginx）
@@ -129,7 +129,7 @@ server {
 ## 5. 桌面端
 
 ```bash
-npm run build:desktop # 生成 NSIS 安装包 release/MarxSphere Setup <ver>.exe
+npm run build:desktop # 生成 NSIS 安装包 release/SocioSeek Setup <ver>.exe
 ```
 
 ## 6. 发布流程（GitHub Actions 自动化）

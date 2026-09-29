@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // memory-eval-gold.ts — 记忆量化评测集（V377, ⑦）
 // 20 条真实场景记忆：写入 OpenViking → 用检索词测 recall@k → 算命中率
 // 每项: 写入内容(含唯一语义短语) + 检索词(应能召回) + 判定短语(召回结果应包含)
@@ -24,7 +24,7 @@ export const MEMORY_EVAL_GOLD: MemoryEvalItem[] = [
   { id: "M09", category: "session", content: "集体资产股权量化规则：按股分红保留集体积累", query: "集体资产 股权量化", phrase: "股权" },
   { id: "M10", category: "session", content: "RAG评测使用top_k=15和相似度0.4的配置参数", query: "RAG评测 配置参数", phrase: "RAG" },
   // ── 实体侧（组件/路径/解读）──
-  { id: "M11", category: "entity", content: "sag-mcp-server是MarxSphere的MCP接入组件，端口4173", query: "sag-mcp-server MCP接入", phrase: "MCP" },
+  { id: "M11", category: "entity", content: "sag-mcp-server是SocioSeek的MCP接入组件，端口4173", query: "sag-mcp-server MCP接入", phrase: "MCP" },
   { id: "M12", category: "entity", content: "ov_import目录存放500篇论文原始文件", query: "ov_import 论文目录", phrase: "ov_import" },
   { id: "M13", category: "entity", content: "用户个人解读：'异化'在本文中指资本对人的控制", query: "异化 个人解读", phrase: "异化" },
   { id: "M14", category: "entity", content: "openviking_data是OpenViking的数据存储目录", query: "openviking_data 数据目录", phrase: "openviking" },

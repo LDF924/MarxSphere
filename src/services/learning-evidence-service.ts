@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learning-evidence-service.ts — 学习者证据账本 + BKT 概念掌握(V386, 2026-08-29, 借鉴 TraitTutor)
 // 对照 TraitTutor 的三大设计:
 //   1. 强证据单闸门(is_strong_evidence): 只有服务端判分+可靠归属+答案非空的事件才更新 BKT

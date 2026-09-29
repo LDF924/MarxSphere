@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-task-service.ts — 自主任务规划器（2026-08-07 P2 → V391 P0-1 Agentic Loop）
 // 用户给目标 → LLM 拆解子任务 → 逐项执行 → 进度回报 → 中途干预
 // V391(P0-1/2/3): Agentic Loop — plan → act → observe → reflect → replan 多轮循环
@@ -1237,7 +1237,7 @@ async function planWithLlm(goal: string, previousIssues: string[], contextHint?:
   let memoryHint = "";  // 差距J④(DSH identity): Agent 身份注入 — 名称/角色/会话身份（系统提示一致性）
   try {
     const identity = process.env.AGENT_IDENTITY
-      || "SAG 学术研究助理（MarxSphere）— 马理论+社会科学研究助手";
+      || "SAG 学术研究助理（SocioSeek）— 马理论+社会科学研究助手";
     memoryHint += `\n【Agent 身份】${identity.slice(0, 120)}`;
   } catch { /* 身份注入失败忽略 */ }
   // 差距G①(Codex current_time): 当前时间注入 — 研究需时效感知（政策/数据引用年份校准）

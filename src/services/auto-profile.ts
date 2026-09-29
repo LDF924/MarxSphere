@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // auto-profile.ts — 自动画像更新器（2026-08-29, 移植自 Inno Agent auto-profile.ts, MIT License）
 // Copyright (c) 2026 Inno Agent Contributors — 算法与结构保持一致
 // 学习事件 → 画像自动更新:

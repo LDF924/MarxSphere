@@ -637,7 +637,7 @@ function sendChartToWorkflow(m: VizMsg) {
   if (!window.parent || window.parent === window) { toast("请在平台外壳内使用", "warning"); return; }
   try {
     window.parent.postMessage(
-      { source: "marxsphere-soc", type: "forward-to-module", route: "workflow", kind: "viz", title, markdown: md },
+      { source: "socioseek-soc", type: "forward-to-module", route: "workflow", kind: "viz", title, markdown: md },
       "*",
     );
     toast("已送入研途写作舱素材库", "success");

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // BatchUploadPanel.tsx — 批量文件上传·暂存·提交(双模式)
 // 流程(借鉴 OpenSquilla attachment-drag-upload-spec 状态机):
 //   拖入/选择 → staged(暂存, 不解析) → 逐文件或批量解析(ready/failed, 失败可单独重试)

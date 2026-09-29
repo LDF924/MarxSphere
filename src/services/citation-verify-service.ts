@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // citation-verify-service.ts — V399: 引文三维核验 (Rimagination/citation-lab 移植)
 // 三维核验 (验证优先, 不轻信引用):
 //   ① 元数据真伪: Crossref/OpenAlex 多源查证标题/年份/作者

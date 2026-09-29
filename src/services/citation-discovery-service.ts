@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // citation-discovery-service.ts — 引用库文献→查找新文献（2026-08-29, Agentero 对照: 支持获取库中文献的出版商, 一键查找引用库文献的新文献）
 // 能力:
 //   1. 以库中文献(标题/DOI)为种子, 经 OpenAlex 查引用它的新文献(citing works, 时间更新)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/orchestrator-run-store.ts — V415: 编排运行记录的落库
 //
 // 单独一个模块是为了**打断运行时不被守卫拦住**: 编排层的 onStatus 回调先过 isLiveRun

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // UnifiedWorkspace.tsx — 统一分析工作区(2026-09-09 融合重建, 替代 iframe 拼接)
 // 三种能力(统计 17 法 / 计量因果 19 法 / Python 代码)在一个数据域上工作:
 //   uploadFile 上传/粘贴 → dataState(parsed+csv+fileId+fileName) 全局一份

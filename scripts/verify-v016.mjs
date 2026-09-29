@@ -71,7 +71,7 @@ const CHECKS = [
   { v: "V438", file: "asar", markers: ["llmProvider", "api.deepseek.com/v1"] },
   { v: "V438", file: "web:index-*.js", markers: ["providerDetect"] },
   // V439 雷达启动页
-  { v: "V439", file: "asar", markers: ["正在启动 MarxSphere"] },
+  { v: "V439", file: "asar", markers: ["正在启动 SocioSeek"] },
 ];
 
 let pass = 0, fail = 0;

@@ -1,5 +1,5 @@
 #!/usr/bin/env npx tsx
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/doc-sync.ts — 文档数字自动审计与更新(V393, 2026-08-30)
 // 功能:
 //   1. 自动统计代码实际数字: 测试数/迁移数/教育路由/顶层路由/Agent工具/视图工具/前端视图/科研场景/服务文件

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // doc-text-extract.ts — 论文稿件文本提取(pdf / docx)
 // 由来(2026-09-11): /api/files/extract-text 对 .pdf 走的是"把字节按 utf-8 读一遍"的兜底分支,
 //   PDF 是二进制 → 提取出一堆乱码交给 LLM 审稿, 用户只会看到审稿意见驴唇不对马嘴。

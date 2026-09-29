@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // retrieval-pool.ts — 内存候选池(G3, 完整移植 Zleap PooledCandidateSource)
 // 参照: zleap/sag/modules/search/pool.py
 // 设计对齐(不简化):

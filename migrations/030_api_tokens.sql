@@ -1,4 +1,4 @@
--- 030_api_tokens.sql — 对外 API 访问令牌（MarxSphere 对外接入基建）
+-- 030_api_tokens.sql — 对外 API 访问令牌（SocioSeek 对外接入基建）
 -- 场景: 部署到服务器 + 多用户时, Claude Code / Codex / 外部客户端通过 Bearer Token 调用 SAG API
 -- 安全: 库中只存 token 的 sha256 hash, 明文只在创建时返回一次（对标 Sciverse sv_xxx 模式）
 create table if not exists api_tokens (

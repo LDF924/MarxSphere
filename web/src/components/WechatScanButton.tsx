@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // WechatScanButton.tsx — SocialSci P0-8: 微信扫码登录(mock/真实双模式)
 // 流程: 点"微信登录"→ 后端建 ticket(无 appid 时 mock 模式) → 轮询 status(2s, 3min TTL)
 //   mock: 弹"模拟扫码"按钮(演示模式 UI 标注) → scanned → 免注册新号 → 返回 token 完成登录

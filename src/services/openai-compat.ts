@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // openai-compat.ts — OpenAI 兼容端点(外部客户端把本地知识库当"模型"调用)
 // 引入背景: Zleap-AI/SAG 评审(2026-09-01) — 上游演进能力回溯吸收 P0
 //   POST /api/openai/chat/completions (+ /api/openai/v1/chat/completions 别名)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // reader-ai-service.ts — PDF 选中文本 AI 卡片（2026-08-28, Agentero 对照）
 // 能力: 解释 / 总结 / 翻译 / 追问 — 选中文本 → LLM → 卡片浮窗返回
 // 实现: 复用 callLlm（模型中立）, 按 action 分发提示词

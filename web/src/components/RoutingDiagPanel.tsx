@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // RoutingDiagPanel.tsx — V404-11: 路由诊断面(差距文档⑤)
 // 每轮可见: 档位分布/模型成功率/低估 flagged/平均耗时/最近决策明细 — observe-only 灰度
 import { useCallback, useEffect, useState } from "react";

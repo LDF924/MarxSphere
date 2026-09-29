@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // NotesPanel.tsx — 双链笔记 + 翻译 + 参考文献（2026-08-27, Agentero 功能前端）
 // [[wikilinks]] 笔记编辑 · 出链入链 · 知识图谱 · 划词翻译 · 参考文献解析
 import { useEffect, useState } from "react";

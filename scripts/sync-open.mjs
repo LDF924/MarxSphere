@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/sync-open.mjs — main→open-source 一键同步(V393, 2026-08-30)
 // 流程:
 //   1. 复制 main 的全部代码/文档到 open-source(排除 .env/.git/node_modules/dist 等)

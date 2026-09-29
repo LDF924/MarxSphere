@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // teaching-entry-gate.ts — 教学入口门（2026-08-29, 移植自 Inno Agent teaching-entry-gate.ts, MIT License）
 // Copyright (c) 2026 Inno Agent Contributors — 算法与结构保持一致
 // 决定"本轮是否插入前置知识诊断", 并输出下一条回复协议:

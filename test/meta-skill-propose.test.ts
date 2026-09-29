@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/meta-skill-propose.test.ts — V404-10: auto_propose→MetaSkill DAG 衔接(纯函数/状态机)
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { rmSync, readFileSync } from "node:fs";

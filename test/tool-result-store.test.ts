@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/tool-result-store.test.ts — 工具大结果压缩存储 + 按需取回(V404-2, 参考 OpenSquilla tool_result_store)
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { existsSync, rmSync, readdirSync } from "node:fs";

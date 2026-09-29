@@ -1,10 +1,10 @@
 # 集成指南：Codex CLI
 
-把 MarxSphere 的推理/检索能力接入 OpenAI Codex CLI。
+把 SocioSeek 的推理/检索能力接入 OpenAI Codex CLI。
 
 ## 1. 前置条件
 
-- SAG 服务在跑：`MARXSPHERE_PREVIEW=1 npx tsx src/index.ts`（4173）
+- SAG 服务在跑：`SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts`（4173）
 - 本机开发免 Token；外部部署需先建 Token（见 [quickstart](quickstart.md)）
 
 ## 2. 配置 MCP Server

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // l3-session-recall.ts — L3 跨会话检索门控（2026-08-29, 借鉴 Inno Agent L3 会话检索）
 // 在 ILIKE 基础上加:
 //   1. 相关度评分(命中数×权重, 关键词在 query/answer/prefix 的权重不同)

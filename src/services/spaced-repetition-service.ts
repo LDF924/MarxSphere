@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // spaced-repetition-service.ts — 间隔重复复习队列(V391, 2026-08-30, 借鉴 TraitTutor learning/scheduler.py)
 // 对照 TraitTutor:
 //   1. 按知识类型间隔序列: MEMORY[0,1,3,7,14,30,60] / PROCEDURE[0,1,3,7,14] / CONCEPT[3,7,14,30] / DESIGN[7,14,30,60]

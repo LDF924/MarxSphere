@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // service-token-store.ts — V418: 外部服务密钥的存取与到期判断
 //
 // 由来(2026-09-28 用户要求): "做个前端, 弄个有效期和提醒这些"。

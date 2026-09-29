@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learning-plan-service.ts — 版本化学习计划链(V386, 2026-08-29, 借鉴 TraitTutor LearningComponentPlan)
 // 对照 TraitTutor 的设计:
 //   1. 计划版本化 + supersede 链: 重规划不覆盖旧计划, 旧计划置 superseded 保留审计

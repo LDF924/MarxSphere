@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ChatPanel.tsx — V398: AI 对话页（豆包式交互）
 // 左侧会话管理侧边栏（新建/重命名/删除/置顶/折叠）+ 消息流（富渲染/引用/工具调用）+ 底部 Composer（模型/联网/附件/图片粘贴）
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
@@ -108,9 +108,9 @@ function MessageRoleBadge({ role }: { role: "user" | "assistant" }) {
       {role === "user" ? "你" : (
         <>
           <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-primary/20 text-[9px] font-bold text-primary">
-            M
+            群
           </span>
-          MarxSphere AI
+          SocioSeek AI
         </>
       )}
     </span>
@@ -699,7 +699,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                     <MessageSquare className="h-7 w-7" />
                   </div>
-                  <h1 className="text-xl font-semibold">你好，我是 MarxSphere AI 助手</h1>
+                  <h1 className="text-xl font-semibold">你好，我是群学求真 AI 助手</h1>
                   <p className="mt-1.5 text-sm text-muted-foreground">全人文社科研究助手 — 输入问题开始对话</p>
                 </div>
                 <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1072,7 +1072,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
               </div>
             </div>
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground/60">
-              MarxSphere AI 对话 · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解 / Agent 工具调度
+              群学求真 AI · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解 / Agent 工具调度
             </p>
           </div>
         </div>

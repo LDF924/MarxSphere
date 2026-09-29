@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // reason-billing.ts — 推理任务计费(按 retrieve_steps 里的真实模型定价)
 //
 // 由来: 这段逻辑原本嵌在 `server.ts` 的 registerRoutes 里(约 720 行深处), 无法单测;

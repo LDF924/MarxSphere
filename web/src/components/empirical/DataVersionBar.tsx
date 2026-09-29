@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // DataVersionBar.tsx — 数据版本选择（V380+）: 变量白名单唯一真源
 // V399-2 P2 补齐: 数据哈希(内容级判重/溯源) + 登记时自动画像(列类型/缺失率)展示
 import { useEffect, useState } from "react";

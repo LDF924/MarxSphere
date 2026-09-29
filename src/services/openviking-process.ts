@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // openviking-process.ts — V417: OpenViking 进程拉起(前端"一键激活"用)
 //
 // 由来(2026-09-15): 原先靠 schtasks 每 5 分钟探活拉起 —— 太频繁, 而且探活脚本跑在

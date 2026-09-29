@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/b5-ensemble-service.ts — V404-9+V404-18: B5 难档多模型互证融合(试点)
 // 借鉴 OpenSquilla B5: 难档任务由多个模型并行成稿 + 1 个 aggregator 融合;
 //   核心原则: 成稿模型(proposer)不持有工具边界, 只有 aggregator 能调检索(防放大副作用)。
 // V404-18: aggregator 检索校准 — 融合前拉检索证据喂给聚合提示(校准分歧点, 防幻觉),
 //   检索仅 aggregator 阶段发生; proposer 仍纯文本零工具。
-// MarxSphere 版(保守): B5_ENABLED=1 才启用; 默认走原单模型路由;
+// SocioSeek 版(保守): B5_ENABLED=1 才启用; 默认走原单模型路由;
 //   只对显式标记的难任务(opt-in / model=ensemble)生效, 不自动改全局路由。
 // 成本账见 docs/OPENSQUILLA-B5-COST.md(先算账再上量)。
 import { callLlmWithRotation } from "../ai/llm-common.js";

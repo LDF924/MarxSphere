@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-mailbox-service.ts — V400 B2: Mailbox 双通道 (openai/codex input_queue.rs 对齐)
 // 借鉴 codex InputQueue.mailbox:
 //   - enqueue_mailbox_communication: 多代理邮件入队 + activity 通知

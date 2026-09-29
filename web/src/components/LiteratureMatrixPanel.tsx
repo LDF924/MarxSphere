@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // LiteratureMatrixPanel.tsx — 文献提取矩阵(参考 Elicit 数据提取成表; 融入文献库)
 // 用法: 从文献列表勾选论文 → 定义提取列(内置常用列 + 自定义) → LLM 逐篇提取 → 可排序表 + 导出 CSV
 import { useMemo, useState } from "react";

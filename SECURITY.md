@@ -9,7 +9,7 @@
 
 ## 报告安全漏洞
 
-MarxSphere 重视安全。发现安全漏洞请通过以下方式报告（**不要**在公开 issue 中披露）：
+SocioSeek 重视安全。发现安全漏洞请通过以下方式报告（**不要**在公开 issue 中披露）：
 
 1. **GitHub 私有漏洞报告**（推荐）：仓库页面 → Security → Report a vulnerability
 2. **邮箱**：fudeng69@gmail.com（回复时效：3 个工作日内）

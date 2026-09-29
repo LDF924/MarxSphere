@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-reminder-service.ts — V400: 预算/时间提醒注入 (openai/codex 对齐)
 // 借鉴 codex-rs:
 //   - rollout_budget.rs:8  — Rollout 预算剩余 token 提醒(作为对话消息注入, 窗口去重)

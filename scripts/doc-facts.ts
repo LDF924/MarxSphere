@@ -1,5 +1,5 @@
 #!/usr/bin/env npx tsx
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/doc-facts.ts — 文档要引用的**运行时真数** (工具/技能/编排能力)
 //
 // 由来(2026-09-29): `doc-sync.ts` 原先用 `npx tsx -e "..."` 内联取数, 而那个子进程

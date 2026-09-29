@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // eval-fingerprint.ts — 评测数据指纹共享服务（V399-2 P2: stale 判定）
 // 设计: docs/DATA-HASH-VERSIONING-DESIGN.md 3.3/改动点E
 // 目标: 数据指纹是"基于哪批文献数据"的摘要, 数据变更 → 指纹变 → 旧评测结果可判 stale

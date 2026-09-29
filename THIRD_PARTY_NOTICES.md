@@ -1,6 +1,6 @@
 # 第三方声明(Third-Party Notices)
 
-本文件列出 MarxSphere 开发中借鉴/移植的开源项目及其许可义务。MarxSphere 遵循 **AGPL v3 + MarxSphere-Exception 商业授权**,对以下作品的借用已按各开源协议履行署名与声明义务。
+本文件列出 SocioSeek 开发中借鉴/移植的开源项目及其许可义务。SocioSeek 遵循 **AGPL v3 + SocioSeek-Exception 商业授权**,对以下作品的借用已按各开源协议履行署名与声明义务。
 
 ---
 
@@ -8,7 +8,7 @@
 
 - **仓库**: https://github.com/Zleap-AI/SAG
 - **许可**: MIT License
-- **使用方式**: **基础架构改造(跨语言全栈重写)** — 本地 MarxSphere 的检索内核基于 SAG 的"事件-实体索引 + 查询时动态超边"架构改造为 TypeScript 实现:事件中心混合检索(search-service)、三层推理检索链(inference-service)、MCP 服务器形态、chunk→event→entities 数据模型(events/event_entities 表)。
+- **使用方式**: **基础架构改造(跨语言全栈重写)** — 本地 SocioSeek 的检索内核基于 SAG 的"事件-实体索引 + 查询时动态超边"架构改造为 TypeScript 实现:事件中心混合检索(search-service)、三层推理检索链(inference-service)、MCP 服务器形态、chunk→event→entities 数据模型(events/event_entities 表)。
 - **引入文件**(文件头均标注 "Based on Zleap-AI/SAG (MIT License)"):
   - `src/services/search-service.ts`(事件中心混合检索)
   - `src/services/inference-service.ts`(Cognee 粗检索 → Graphiti 精炼 → SAG 融合三层链路)
@@ -185,7 +185,7 @@ SOFTWARE.
 
 ## 8. 论文格式检查(2026-09-03 移植, MIT)
 
-本地 MarxSphere 的 .docx 论文格式检查器移植自以下 MIT 项目(完整 LICENSE 保留于 vendor/format-check/):
+本地 SocioSeek 的 .docx 论文格式检查器移植自以下 MIT 项目(完整 LICENSE 保留于 vendor/format-check/):
 
 ### 8.1 thesis-format-checker(emptyinkpot, MIT)
 - **仓库**: https://github.com/emptyinkpot/thesis-format-checker
@@ -212,5 +212,5 @@ SOFTWARE.
 
 统一入口: `vendor/format-check/format-check-cli.py`(inspect / extract-text / extract-template 三子命令, 由 TS 后端 format-docx-service.ts 子进程调用)
 
-> 本文件由 MarxSphere 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
+> 本文件由 SocioSeek 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
 

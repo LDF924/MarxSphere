@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // chapter-skill-service.ts — SocialSci 补漏R2: aiSkill 结构化写作卡 + 工作台整包快照
 // HAR 二次审计(高频非噪音): 每章 aiSkill 9字段(type/wordCount/writingGoal/keyPoints/notes/connection/
 //   sectionTitle/frameworkSource/chapterDraft/childSections); task.snapshot=23键整包工作台状态

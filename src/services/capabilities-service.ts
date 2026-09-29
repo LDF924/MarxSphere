@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // capabilities-service.ts — 运行时能力探测(对齐 Zleap capabilities 机制)
 // 参照: zleap/sag/core/adapters/capabilities.py + 本地 backup-service isNeo4jUp 先例
 // 探测: PG 健康 / Graphiti(11001) / Cognee(11003) / rerank 配置 / embedding 模型

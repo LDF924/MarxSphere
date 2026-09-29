@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/meta-skill-runtime.ts — V404-4: MetaSkill 声明式 DAG 运行时(试点)
 // 借鉴 OpenSquilla docs/authoring/meta-skills.md(声明式 composition.steps, 运行时强制编排而非模型自律):
 //   步骤 6 型: agent(复用 SAG 能力) / llm_chat(单次 LLM 生成) / llm_classify(闭集分类路由)
@@ -36,7 +36,7 @@ const DEFAULT_SOURCE_ID = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
 const ENDPOINT_TIMEOUT_MS = Number(process.env.ORCH_ENDPOINT_TIMEOUT_MS) || 5 * 60_000;
 
 /**
- * V415: 调 MarxSphere 自身的 HTTP 端点(工作台能力的统一执行路径)。
+ * V415: 调 SocioSeek 自身的 HTTP 端点(工作台能力的统一执行路径)。
  *
  * 为什么走 HTTP 而不是直接 import service: 注册表里的工作台能力(实证/统计/审稿/绘图…)
  * 各有自己的路由与服务, 它们内部再做鉴权/租户/配额/产物落库。直接调 service 会绕开这一层,

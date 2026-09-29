@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // notes-service.ts — 双链笔记 + 知识图谱（2026-08-27, Agentero 对照）
 // Obsidian 风格 [[wikilinks]]: 笔记互链 → 知识图谱浏览
 import { pool } from "../db/pool.js";

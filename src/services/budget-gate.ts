@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // budget-gate.ts — 额度闸门的路径判定（不计费的操作一律放行）
 //
 // 由来(2026-09-13): 闸门原来是"整段前缀匹配" —— `/api/review/` 一刀切把纯读接口也拦了。

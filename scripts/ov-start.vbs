@@ -1,6 +1,6 @@
 ' ov-start.vbs -- start OpenViking silently (no window).
 ' Usage: cscript //nologo ov-start.vbs <SAG_ROOT> <OPENVIKING_DIR>
-' Example: cscript //nologo ov-start.vbs C:\MarxSphere C:\Users\me\openviking
+' Example: cscript //nologo ov-start.vbs C:\SocioSeek C:\Users\me\openviking
 ' Paths are passed in by sag-bootstrap.sh, so no personal directory is hardcoded.
 '
 ' NOTE: keep this file ASCII-only. VBScript reads the file in the ANSI codepage,

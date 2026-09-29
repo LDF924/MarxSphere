@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // acp-service.ts — BYOA（Bring Your Own Agent）via ACP（2026-08-27, Agentero 对照）
 // ACP = Agent Client Protocol（MCP 风格 JSON-RPC）: 连接本机外部 Agent（Claude Code / Codex / 自定义 CLI）
 // 不锁定具体 Agent/模型: 通过配置连接任意支持 ACP 的 CLI

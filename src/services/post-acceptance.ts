@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
  * post-acceptance.ts — 录用之后的**选项表**（版权许可 / 开放获取）。
  *

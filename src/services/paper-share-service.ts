@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // paper-share-service.ts — 论文分享链接接收（2026-08-29, 借鉴 frowang /s/:token 分享模式）
 // 功能:
 //   1. 生成分享链接: 论文 + 随机 token + 过期时间/次数限制 → 链接可发给他人

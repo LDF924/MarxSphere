@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // viz-job-service.ts — D4(参考产品 VizView job 体系对齐): 中长绘图任务持久化执行
 // 设计: runTurn(既有逐轮逻辑) 零改动包 RecordingSse 适配器 →
 //   - 每个事件同步落 viz_job_events(seq 递增), SSE 连接断开任务照跑(后台完成)

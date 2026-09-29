@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/runtime-guards.test.ts — V404-23: 运行时防护(H1 进度哨兵 / H2 复读检测 / H4 代码页解码)
 // 借鉴 OpenSquilla engine/{progress_watchdog,repetition_guard} + subprocess_encoding 自写实现
 import { describe, it, expect } from "vitest";

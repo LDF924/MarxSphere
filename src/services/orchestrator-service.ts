@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/orchestrator-service.ts — V415: 画布编排的执行层
 //
 // 由来(2026-09-12 用户指出「课题流程编排」不完善): 旧实现把五阶段写死在

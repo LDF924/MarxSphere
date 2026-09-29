@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // request-context.ts — 每个请求的调用者身份(AsyncLocalStorage)
 //
 // 为什么需要: 服务层的 LLM 调用(llm-common / llm-client)要按用户记账与计费,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // git-snapshot-service.ts — 会话 git 无痕快照(移植 ai4s-research/open-science git_snapshot.rs, MIT)
 // 机制: 用专用 index(git/sag-snapshot-index) + 专用 ref(refs/openscience/snapshots/<branch>)
 // 提交工作区 → 绝不碰用户分支/HEAD/真实暂存区。大文件(>10MB)排除。

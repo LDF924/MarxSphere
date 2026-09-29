@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import type {
   ChunkRecord,
   DocumentRecord,
@@ -1072,7 +1072,7 @@ async function readSseStream<T>(response: Response, onEvent: (event: T) => void)
   }
 }
 
-// ─── 对外 API 令牌（MarxSphere 对外接入）───
+// ─── 对外 API 令牌（SocioSeek 对外接入）───
 export interface ApiTokenRecord {
   id: string;
   name: string;

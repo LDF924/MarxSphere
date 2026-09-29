@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // seed-edu-courses.ts — 示例课程一键入库（复赛冲刺期）
 // 将 2 门示范课程（政治经济学 / 数学）切片写入 source_chunks 知识库
 // 用法: npx tsx scripts/seed-edu-courses.ts

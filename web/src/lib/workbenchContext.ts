@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // workbenchContext.ts — V416: 全站工作台上下文表（科研助手 + 导航共读）
 //
 // 由来（2026-09-14 用户反馈"科研助手并不能很好反映每一个功能页"）：实测 45 个视图里，
@@ -42,7 +42,7 @@ export interface WorkbenchContext {
 /** 全站视图上下文（键 = WorkspaceView 值 / hash 路由值） */
 export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   // ── 对话推理 ──
-  home: { label: "首页", hint: "MarxSphere 品牌首页：功能入口、研究数据与检索栈导览" },
+  home: { label: "首页", hint: "SocioSeek 品牌首页：功能入口、研究数据与检索栈导览" },
   assistant: { label: "AI 对话", hint: "通用对话助手；也可从这里开新项目、发文献检索请求" },
   chat: { label: "AI 对话", hint: "豆包式对话：会话管理 + 富渲染/引用/工具调用 + 模型/联网/附件" },
   reason: { label: "推理工作台", hint: "输入问题 → 查看 52 步推理链与每步 token 消耗" },

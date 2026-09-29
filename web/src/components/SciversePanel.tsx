@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // SciversePanel.tsx — 外部学术检索面板（全人文社科版 Sciverse）
 // 工具选择 + 结果卡片 + read_content/relations + 无 key mock 降级
 import { useState, useEffect, type FC, type ReactNode } from "react";

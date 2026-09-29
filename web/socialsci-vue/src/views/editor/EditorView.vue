@@ -241,7 +241,7 @@ function onWordImport(e: Event) {
 // ── 2026-09-10 统一分析台「✎ 写入论文」: 父级 postMessage → markdown 转 HTML → 新文档 ──
 async function onAppInsertDoc(e: MessageEvent) {
   const d = e.data;
-  if (!d || d.source !== "marxsphere-app") return;
+  if (!d || d.source !== "socioseek-app") return;
   // 统一分析台数据集 → 转给 AI 面板「图表」tab 复用(同源 window 事件传递)
   if (d.type === "empirical-dataset" && d.csv && Array.isArray(d.columnOrder)) {
     window.dispatchEvent(new CustomEvent(EVT.empiricalDataset, {

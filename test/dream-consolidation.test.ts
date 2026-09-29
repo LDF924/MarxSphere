@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/dream-consolidation.test.ts — 记忆 Dream 巩固(V404-7, 借鉴 OpenSquilla memory/dream)
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { rmSync, readFileSync } from "node:fs";

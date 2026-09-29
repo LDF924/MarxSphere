@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EduCharts.tsx — 教育结果可视化图表（纯 CSS/SVG，无外部依赖）
 // 从 EducationPanel 提取并扩展：
 //   DonutChart 环形图（掌握度分布等占比展示）

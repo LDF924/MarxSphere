@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EduFeedbackFAB.tsx — 教育功能反馈浮标（V397）
 // 学生端/教师端工作台右下角悬浮：👍 有帮助 / 👎 没帮助 + 可选备注
 // 提交 → /api/education/feedback（脱敏落库）；统计 → /api/education/feedback/stats

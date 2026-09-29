@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // research-literature-retrieval.ts — V417: 写作舱文献检索接真源
 //
 // 由来（2026-09-14 实测"研途写作舱"）：
@@ -271,7 +271,7 @@ export interface RetrieveResult {
 async function searchOpenAlex(query: string, topK: number): Promise<LiteratureHit[]> {
   try {
     // mailto 是 OpenAlex 的礼貌池(polite pool)约定, 带上能拿到更稳的配额; 不填也能用。
-    const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${Math.min(20, Math.max(1, topK))}&mailto=sag@marxsphere.local`;
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=${Math.min(20, Math.max(1, topK))}&mailto=sag@socioseek.local`;
     const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) return [];
     const body = (await res.json()) as { results?: Array<Record<string, unknown>> };

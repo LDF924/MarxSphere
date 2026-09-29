@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/runtime-guard-events.ts — V404-29: 运行时防护事件计数(前端"防护状态页"数据源)
 // 集中记录各防护的命中/拦截事件(内存态 + 最近 N 条明细), 供 API/面板展示:
 //   H1 空转告警 / H2 复读检出 / H7 注入拦截 / M2 规则摘要 / 子进程整树终止

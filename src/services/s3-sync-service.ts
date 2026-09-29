@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // s3-sync-service.ts — S3 云同步（2026-08-27, Agentero 对照: 云同步）
 // 能力: 文献库内容同步到 S3 兼容存储（AWS S3 / MinIO / 阿里 OSS / 腾讯 COS）
 // 免依赖: 手写 AWS Signature V4（fetch + crypto）

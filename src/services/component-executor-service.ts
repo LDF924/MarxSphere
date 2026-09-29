@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // component-executor-service.ts — 组件执行器(V394, 2026-08-30, 对照 TraitTutor executors)
 // 蓝图: Lesson / assessment / retrieval executors 生成组件内容, 产物经三态机确认后挂载
 //   1. lesson 执行器: concept_explanation/worked_example/visual_map → 课文/例题/图解(知识库支撑)

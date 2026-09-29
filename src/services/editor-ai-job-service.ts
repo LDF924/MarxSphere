@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // editor-ai-job-service.ts — R6(参考产品 Editor AI job 契约): 统一 job 容器 + SSE 流
 // 端点: POST ai/jobs{action,text,context,language,document_id}→{job_id}
 //       GET ai/jobs/:id/stream(SSE: delta{content}/done{content}/error{message,is_retriable})

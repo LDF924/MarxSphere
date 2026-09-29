@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // paper-source-service.ts — 论文搜索导入（2026-08-27, Agentero 对照: 搜索论文名导入）
 // 能力: 按论文名/关键词搜索导入（arXiv + Semantic Scholar 免费公开 API）
 // 2026-08-29 扩展: Cool Papers(papers.cool) / 魔搭(ModelScope) 文献导入

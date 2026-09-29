@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/skill-auto-propose.test.ts — V404-8: 技能自我进化 auto_propose + 覆盖判定(V404-8)
 import { describe, it, expect } from "vitest";
 import { isCoveredBySkills } from "../src/services/skill-auto-propose.js";

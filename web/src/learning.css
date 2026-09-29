@@ -1,4 +1,4 @@
-/* learning.css — 学习设计体系(V393, 移植 TraitTutor globals.css learning-* 类, 适配 MarxSphere 变量)
+/* learning.css — 学习设计体系(V393, 移植 TraitTutor globals.css learning-* 类, 适配 SocioSeek 变量)
  * 覆盖: 画布/卡片/按钮/徽标/状态点/步骤条/产物中心 — 替代 EducationPanel 的 9-11px 内联样式
  * 变量: 复用 SAG :root(--background/--card/--primary/--border...)
  */

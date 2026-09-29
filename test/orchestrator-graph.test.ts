@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/orchestrator-graph.test.ts — V415 画布图 → 执行步骤的转换(编排器的接线正确性)
 //
 // 为什么单独测这个: 这里出的两个 bug 都**不报错、不崩溃**, 只是"改了没反应":

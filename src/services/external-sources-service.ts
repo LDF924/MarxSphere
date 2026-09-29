@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// external-sources-service.ts — MarxSphere 外部数据源服务
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// external-sources-service.ts — SocioSeek 外部数据源服务
 // 统一暴露：数据源注册表 + OpenAlex 等开放 API 检索
 import { sourcesRegistry, type DataSource } from "./sources-registry.js";
 
@@ -20,7 +20,7 @@ async function searchOpenAlex(input: {
     const timeout = setTimeout(() => controller.abort(), 15_000);
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json", "User-Agent": "MarxSphereResearch/1.0" }
+      headers: { Accept: "application/json", "User-Agent": "SocioSeekResearch/1.0" }
     });
     clearTimeout(timeout);
     if (!response.ok) return { source: "openalex", items: [], error: `OpenAlex HTTP ${response.status}` };
@@ -53,7 +53,7 @@ async function searchCore(input: {
     const timeout = setTimeout(() => controller.abort(), 15_000);
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json", "User-Agent": "MarxSphereResearch/1.0" }
+      headers: { Accept: "application/json", "User-Agent": "SocioSeekResearch/1.0" }
     });
     clearTimeout(timeout);
     if (!response.ok) return { source: "core", items: [], error: `CORE HTTP ${response.status}` };
@@ -85,7 +85,7 @@ async function searchWorldBank(input: {
     const timeout = setTimeout(() => controller.abort(), 15_000);
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: "application/json", "User-Agent": "MarxSphereResearch/1.0" }
+      headers: { Accept: "application/json", "User-Agent": "SocioSeekResearch/1.0" }
     });
     clearTimeout(timeout);
     if (!response.ok) return { source: "worldbank", items: [], error: `WorldBank HTTP ${response.status}` };
@@ -126,7 +126,7 @@ const GITHUB_BASE = "https://api.github.com";
 function githubHeaders(): Record<string, string> {
   return {
     Accept: "application/vnd.github+json",
-    "User-Agent": "MarxSphereResearch/1.0", // GitHub 强制要求 User-Agent
+    "User-Agent": "SocioSeekResearch/1.0", // GitHub 强制要求 User-Agent
     ...(GITHUB_TOKEN ? { Authorization: `Bearer ${GITHUB_TOKEN}` } : {})
   };
 }

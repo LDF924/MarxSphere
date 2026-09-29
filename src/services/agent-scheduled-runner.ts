@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-scheduled-runner.ts — V417: 定时任务被触发后的执行体
 //
 // 由来: `agent-scheduler` 触发定时任务时只创建 planning 状态的 agent 任务, 注释写明

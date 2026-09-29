@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-compass-service.ts — Compass 记忆治理(V390, 2026-08-30, 借鉴 TraitTutor Reflection/Compass)
 // 对照 TraitTutor:
 //   1. 偏好三态: explicit(永久) / inferred(90天TTL) / rejected(反偏好→约束)

@@ -51,12 +51,12 @@ try {
   const diffCount = (out.match(/⚠️/g) || []).length;
   if (diffCount > 0) {
     log(`⚠️ 发现 ${diffCount} 处差异 — 需人工检查!`);
-    notify("MarxSphere 同步检查", `发现 ${diffCount} 处仓库差异，请运行 sync-repos.mjs 或检查`);
+    notify("SocioSeek 同步检查", `发现 ${diffCount} 处仓库差异，请运行 sync-repos.mjs 或检查`);
   } else {
     log("✅ 两仓库一致, 无需处理");
   }
 } catch (e) {
   log(`❌ 检查失败: ${String(e.message || e).slice(0, 200)}`);
-  notify("MarxSphere 同步检查", "检查执行失败，请查看日志");
+  notify("SocioSeek 同步检查", "检查执行失败，请查看日志");
 }
 log("=== 检查结束 ===\n");

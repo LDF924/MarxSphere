@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // StudentLearningPanel.tsx — 学生端「我的学习」（复赛冲刺期）
 // 新增能力散布：苏格拉底辅导 / 阶梯启发 / 错题-知识点联动 / 学习进度追踪 / 自动闭环周报 / 多模态作业拍照
 // 全部走 /api/education/* 新路由（agent / loop / cognitive / kg / multimodal）

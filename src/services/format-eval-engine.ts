@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // format-eval-engine.ts — 论文格式评测: 纯代码规则引擎(2026-09-03)
 // 零 LLM 依赖的确定性检测: 标题层级/摘要/关键词/章节结构/引文标注/
 // 参考文献/图表编号/文本规范。每条规则产出统一 FormatIssue(行定位)。

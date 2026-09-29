@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // url-guard.ts — SSRF 防护: 校验 URL 仅允许访问公网地址
 // 拦截: 私网(10/172.16-31/192.168/100.64 CGNAT)/回环(127.*/::1)/链路本地(169.254/fe80::)
 //       云元数据端点(169.254.169.254)/0.0.0.0/未指定地址(::)

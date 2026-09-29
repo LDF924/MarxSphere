@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // points-gate.ts — 把「积分」真正接到业务功能上(2026-09-11)
 //
 // 背景: points-service 提供了 冻结/核销/归还 的完整机制, 但全仓**没有任何业务模块调用**

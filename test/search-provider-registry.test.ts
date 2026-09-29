@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/search-provider-registry.test.ts — V404-24(H5): 检索 provider 目录
 // 借鉴 OpenSquilla search/registry(能力集+fallback 链), 自写 TS
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/search-provider-registry.ts — V404-24(H5): 检索 provider 目录
 // 借鉴 OpenSquilla search/{registry,types,retry_policy}(capability 集 + fallback 链), 自写 TS:
 //   - provider spec 单一真源: provider_id/capabilities(web/freshness/content/domain_filter)/requires_key/env_key

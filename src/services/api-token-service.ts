@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// api-token-service.ts — 对外 API 令牌管理（MarxSphere 对外接入基建）
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// api-token-service.ts — 对外 API 令牌管理（SocioSeek 对外接入基建）
 // 对标 Sciverse sv_xxx 模式: 创建时返回明文一次, 库中只存 sha256 hash
 // 用途: Claude Code / Codex / 外部客户端通过 Bearer Token 调用 SAG API
 // V381+: 权限模型从 3 个扩到 26+ 个 — 每个工作台 tab 一个权限, 设置页可精确勾选

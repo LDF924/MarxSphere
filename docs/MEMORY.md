@@ -1,6 +1,6 @@
 # 记忆系统（Memory System）
 
-MarxSphere 跨会话持久化记忆（2026-08-27）：分层记忆 + OpenViking 对话记忆层 + 自主整理。
+SocioSeek 跨会话持久化记忆（2026-08-27）：分层记忆 + OpenViking 对话记忆层 + 自主整理。
 
 ## 分层架构
 

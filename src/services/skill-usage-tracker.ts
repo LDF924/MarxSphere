@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // skill-usage-tracker.ts — V417: 技能使用痕迹（"越用越熟"闭环的感应器）
 //
 // 由来（2026-09-14 用户问"有没有一套天天在更新、越用越熟的 skill"）：

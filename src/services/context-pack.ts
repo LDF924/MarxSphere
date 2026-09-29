@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // context-pack.ts — 学习者上下文包（2026-08-29, 移植自 Inno Agent context-pack.ts, MIT License）
 // Copyright (c) 2026 Inno Agent Contributors — 算法与结构保持一致
 // 每轮注入系统提示词的学习者上下文:

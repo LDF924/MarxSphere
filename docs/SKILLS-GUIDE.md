@@ -1,4 +1,4 @@
-# MarxSphere Skill 目录与导入指南
+# SocioSeek Skill 目录与导入指南
 
 > 仓库自带 **10 个自研 Skill**（`skills/` 目录，已随源码分发、已进桌面端打包）。
 > 外部 Skill（社区/第三方）不随包分发，本文档提供目录、链接与导入指南。
@@ -50,7 +50,7 @@ ls skills/                # 10 个自研 skill
 ```bash
 # 示例：导入官方 PDF skill
 git clone https://github.com/anthropics/skills.git /tmp/skills
-cp -r /tmp/skills/pdf /path/to/MarxSphere/skills/pdf
+cp -r /tmp/skills/pdf /path/to/SocioSeek/skills/pdf
 # 重启后「技能」面板可见
 ```
 
@@ -64,6 +64,6 @@ cp -r skills/* ~/.claude/skills/
 
 ## 四、Skill 与 MCP 工具的关系
 
-- **Skill** = 提示词工作流（引导 Agent 调用系统能力），本仓库 10 个自研 skill 均围绕 MarxSphere 自身能力编排
-- **MCP 工具** = 可编程接口（`/mcp` 标准 I/O），外部 Agent（Claude Code/Codex）可经 MCP 直接调用 MarxSphere 的推理/检索/教育能力
+- **Skill** = 提示词工作流（引导 Agent 调用系统能力），本仓库 10 个自研 skill 均围绕 SocioSeek 自身能力编排
+- **MCP 工具** = 可编程接口（`/mcp` 标准 I/O），外部 Agent（Claude Code/Codex）可经 MCP 直接调用 SocioSeek 的推理/检索/教育能力
 - 接入方式见 [docs/quickstart.md](quickstart.md)（MCP 接入）与 [docs/api-reference.md](api-reference.md)

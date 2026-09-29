@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-orch-tools.ts — 把「课题流程编排」(orchestrator)尚未工具化的那一圈接进对话。
 //
 // 与 agent-view-tools.ts 同源(那个文件做的是 33 个视图的能力工具化), 本文件只做编排这块:

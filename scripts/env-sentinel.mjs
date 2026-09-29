@@ -337,7 +337,7 @@ function devPortCheck() {
  */
 async function ciStatusCheck() {
   if (process.env.SENTINEL_SKIP_CI === "1") return;
-  const repo = process.env.SENTINEL_GH_REPO || "LDF924/MarxSphere";
+  const repo = process.env.SENTINEL_GH_REPO || "LDF924/SocioSeek";
   try {
     const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=100`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "sag-env-sentinel" },

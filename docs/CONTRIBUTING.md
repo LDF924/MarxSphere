@@ -1,6 +1,6 @@
 # 贡献与质量门禁（Contribution & Quality Gates）
 
-MarxSphere 的质量门禁（2026-08-27）：本地测试 → 真实模型 baseline → CI → PR/release。
+SocioSeek 的质量门禁（2026-08-27）：本地测试 → 真实模型 baseline → CI → PR/release。
 
 ## 质量门禁流程
 
@@ -56,7 +56,7 @@ node scripts/release.mjs v1.1.0 "发布说明"
 
 ## 代码规范
 
-- SPDX 头：`// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception`
+- SPDX 头：`// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception`
 - 中文注释（关键逻辑说明"为什么"）
 - 新服务放 `src/services/`，脚本放 `scripts/`，测试放 `test/`
 - 迁移文件 `migrations/NNN_*.sql` 幂等写法（if not exists）
@@ -65,4 +65,4 @@ node scripts/release.mjs v1.1.0 "发布说明"
 
 - **SAG-open-source** = 开发主线（GitHub 推送）
 - **SAG-main** = 工作副本（同步刷新，`scripts/sync-repos.mjs --check` 检测差异）
-- 每日自动一致性检查（计划任务 MarxSphere-SyncCheck）
+- 每日自动一致性检查（计划任务 SocioSeek-SyncCheck）

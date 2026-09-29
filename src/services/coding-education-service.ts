@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // coding-education-service.ts — 职业教育/编程教育 Agent（V389，复赛）
 // 手册 4.3.4「职业教育/编程教育」方向：
 //   ① 任务拆解：项目/作业任务 → 可执行步骤 + 子任务 + 验收标准

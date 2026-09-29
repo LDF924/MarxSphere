@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // PrismaPanel.tsx — PRISMA 系统综述工作台(参考 Elicit sysreview 机制)
 // 阶段流: ①输入主题→检索文献库 ②LLM 筛选(可人工改判定+理由) ③PRISMA 流程摘要+纳入集
 import { useState } from "react";

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // browser-path.ts — 无头浏览器可执行文件的定位
 //
 // 由来(2026-09-11 上云审计): 两处写死 Windows 上的 Edge 路径

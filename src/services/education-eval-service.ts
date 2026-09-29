@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-eval-service.ts — 教育场景评测（V397，服务化）
 // 12 项指标：①-⑥ 技术（BKT/诊断/路径/批改/思政/闭环）+ ⑦-⑫ 教学效果（掌握度/辅导对照/备课效率/批改效率/规划覆盖/满意度）
 // 与 scripts/eval-education.ts 共享同一套计算逻辑（脚本改为调用本服务）

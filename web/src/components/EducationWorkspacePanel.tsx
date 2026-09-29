@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EducationWorkspacePanel.tsx — 顶部「AI+教育」Tab 工作台（复赛冲刺期）
 // 三个子 Tab：学生端「我的学习」/ 教师端「教师工作台」/ 学习者画像（2026-08-29, Inno Agent 学习引擎）
 // 原科研工作台（33 视图）不做任何改动、不分角色、人人可用；教育能力全部内聚在此。

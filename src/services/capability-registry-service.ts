@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // capability-registry-service.ts — Capability 注册表 + 确定性候选生成(V397, 2026-08-30, 借鉴 LingxiLearn)
 // 三词汇表分层的第一层落地(渐进版, 不推翻现有架构):
 //   意图层: 教育意图(intent) — 由 education-intent-service 分类

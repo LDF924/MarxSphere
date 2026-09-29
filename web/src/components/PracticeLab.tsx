@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // PracticeLab.tsx — 练习实验室(2026-08-29, Inno Agent Practice Lab 对照)
 // 工作区级 Python 执行终端(持久运行时, 变量跨调用保持):
 //   - 代码输入 + 执行输出(monospace 终端样式)

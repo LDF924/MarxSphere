@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // extraction-schema.ts — 抽取输出程序化校验(zod)
 // 引入背景: Zleap-AI/SAG 评审 P1 — 提示词契约化补上校验环
 // 宽容校验策略: 合法输出必须通过; 失败由调用方回退本地抽取(不加重试)。

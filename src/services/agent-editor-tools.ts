@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-editor-tools.ts — V419: 学术文本工作台(/api/editor/v1/*)能力工具化
 //
 // 由来(2026-09-29): 编辑器那一整套后端(文档 CRUD / 选区改写 / 全文检查 / 题名摘要 / 引文检查 /

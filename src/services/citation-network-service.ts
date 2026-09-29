@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // citation-network-service.ts — 把「库里的文献」接成引用网络(2026-09-24)
 //
 // 由来: `citation-graph-service.ts` 的头部写着"本服务为算法参考实现, 数据源接入由

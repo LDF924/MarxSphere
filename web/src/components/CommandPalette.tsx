@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // CommandPalette.tsx — 命令面板(Ctrl+Shift+K, 移植 open-science CommandPalette 概念, MIT)
 // 快速跳转任意视图 + 主题切换 + 新建会话; 轻量自实现(输入过滤/键盘导航/鼠标兼容)
 import { useEffect, useMemo, useRef, useState } from "react";

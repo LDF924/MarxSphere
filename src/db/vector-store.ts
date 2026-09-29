@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // vector-store.ts — 向量存储抽象层(渐进式新增, PG 真源不动)
 // 参照: zleap/sag/core/storage/{pgvector_store,lancedb_store}.py
 // 设计:

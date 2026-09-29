@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // search-profiles.ts — 检索策略 profile 化(G6, 对齐 Zleap SearchProfile)
 // 参照: zleap/sag/modules/search/profiles.py
 // 设计对齐(不简化):

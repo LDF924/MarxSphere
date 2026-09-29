@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // 图表模板库(移植自 JupyterPanel, 2026-08-27: 一键生成专业图表代码单元格)
 export const CHART_TEMPLATES: Array<{ id: string; label: string; code: string }> = [
   {

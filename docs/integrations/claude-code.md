@@ -1,10 +1,10 @@
 # 集成指南：Claude Code
 
-把 MarxSphere 的 52 步推理/多源检索/文档入库能力接入 Claude Code。
+把 SocioSeek 的 52 步推理/多源检索/文档入库能力接入 Claude Code。
 
 ## 1. 前置条件
 
-- SAG 服务在跑：`MARXSPHERE_PREVIEW=1 npx tsx src/index.ts`（4173）
+- SAG 服务在跑：`SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts`（4173）
 - 本机开发免 Token；外部部署需先建 Token（见 [quickstart](quickstart.md) 第二步）
 
 ## 2. 注册 MCP Server
@@ -73,7 +73,7 @@ claude mcp add sag npx tsx scripts/sag-mcp-server.ts --cwd SAG_ROOT
 ### 与现有 skill 的关系
 
 项目已有 `marx-sag` 等 7 个 skill（描述性引导）。MCP server 提供**工具级**接入，两者互补：
-- Skill：告诉 Claude MarxSphere 有什么能力、怎么理解推理链路
+- Skill：告诉 Claude SocioSeek 有什么能力、怎么理解推理链路
 - MCP：让 Claude 直接调用工具，拿回结构化结果
 
 ### 注意事项

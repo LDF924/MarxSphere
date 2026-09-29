@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // TeacherWorkspacePanel.tsx — 教师端「教师工作台」（复赛冲刺期）
 // 新增能力散布：备课 / 命题 / 批改 / 班级学情 / 板书识别 / 思政内容审核 / 先修图路径 / BKT 诊断（教学视角）
 // 全部走 /api/education/* 新路由（teach / multimodal / audit / kg / cognitive）

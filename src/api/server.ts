@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import fs from "node:fs";
 import { dataRoot } from "../services/storage-paths.js";
 import { dataPath } from "../services/storage-paths.js";
@@ -364,7 +364,7 @@ export function buildHttpServer() {
     logger: {
       level: config.LOG_LEVEL,
       base: {
-        service: "marxsphere"
+        service: "socioseek"
       }
     }
   });
@@ -1130,7 +1130,7 @@ export function buildHttpServer() {
     const dependencies = await probeDependencies();
     const degraded = db !== "up" || Object.values(dependencies).some((v) => v === "down");
     return {
-      ok: db === "up", service: "marxsphere", version, db, queueDepth, runningTasks, stuckTasks, agentQueue,
+      ok: db === "up", service: "socioseek", version, db, queueDepth, runningTasks, stuckTasks, agentQueue,
       dependencies, degraded,
     };
   });
@@ -1138,7 +1138,7 @@ export function buildHttpServer() {
   // 运行模式（GBrain 模式徽标）：preview=预览（省内存）/ full=完整（推理+MCP池）
   // V399: 真实健康探测 — mode 显示实际服务状态（Neo4j 双端口 + Python 进程），不再只看 env 标记
   app.get("/api/mode", async () => {
-    const mode: "preview" | "full" = process.env.MARXSPHERE_PREVIEW === "1" ? "preview" : "full";
+    const mode: "preview" | "full" = process.env.SOCIOSEEK_PREVIEW === "1" ? "preview" : "full";
     const mcpPoolSize = process.env.MCP_POOL_SIZE ? Number(process.env.MCP_POOL_SIZE) : 10;
 
     // Neo4j 端口探测（Graphiti 11001 / Cognee 11003）— TCP 连接即算 up
@@ -5971,7 +5971,7 @@ export function buildHttpServer() {
     const { imService } = await import("../services/im-service.js");
     const { wecomSendText, wecomWebhookSend } = await import("../services/wecom-service.js");
     const cfg = await imService.getImConfig().catch(() => null);
-    const content = body.content || "MarxSphere 企业微信测试 ✅";
+    const content = body.content || "SocioSeek 企业微信测试 ✅";
     if (body.mode === "webhook") {
       if (!cfg?.wecomWebhook) return reply.code(400).send({ ok: false, error: "未配置群机器人 webhook" });
       const ok = await wecomWebhookSend(cfg.wecomWebhook, content);
@@ -7491,7 +7491,7 @@ except Exception as e:
 
   // ═══ V415: 编排器 — 能力注册表 + 模板 + 运行(画布 DAG 真执行) ═══
   // 由来(2026-09-12 用户: 课题流程编排前后端/组件/产出/功能都不完善, 尤其没有真正自由组合编排,
-  //   且只有一个工作流, 没反映 MarxSphere 的全部科研能力):
+  //   且只有一个工作流, 没反映 SocioSeek 的全部科研能力):
   //   旧画布节点写死 5+4 个, 边不参与执行, 暂停只停前端轮询。
   //   这里提供能力清单(100+ 项)、模板(10 条)、以及"按 edges 拓扑执行"的运行入口。
   app.get("/api/orchestrator/capabilities", async (request) => {
@@ -9717,7 +9717,7 @@ except Exception as e:
     }
   });
 
-  // ───── MarxSphere 本地文献库 API ─────
+  // ───── SocioSeek 本地文献库 API ─────
   const literatureQuerySchema = z.object({
     topic: z.string().optional(),
     author: z.string().optional(),
@@ -13284,8 +13284,8 @@ function isAbortError(error: unknown): boolean {
 
 export async function startHttpServer(): Promise<void> {
   // 预连接 Graphiti + Cognee MCP (不阻塞 API 启动)
-  // MARXSPHERE_PREVIEW=1 时跳过 MCP 池（省内存预览界面，推理/检索不可用）
-  if (process.env.MARXSPHERE_PREVIEW !== "1") {
+  // SOCIOSEEK_PREVIEW=1 时跳过 MCP 池（省内存预览界面，推理/检索不可用）
+  if (process.env.SOCIOSEEK_PREVIEW !== "1") {
     initMcpClients().catch(() => {});
   }
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // base-urls.ts — 进程自身 API 地址的统一解析
 //
 // 由来(2026-09-11 上云审计): 全仓 8 处写死 `127.0.0.1:4173` / `localhost:4173`, 且分属三个

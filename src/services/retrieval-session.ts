@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // retrieval-session.ts — 检索会话分页(G10, 完整移植 Zleap SearchSessionStore)
 // 参照: zleap/sag/_search_store.py
 // 设计对齐(不简化):

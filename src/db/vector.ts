@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // Based on Zleap-AI/SAG (MIT License) — https://github.com/Zleap-AI/SAG
 export function toVectorLiteral(vector: number[]): string {
   if (!Array.isArray(vector) || vector.length === 0) {

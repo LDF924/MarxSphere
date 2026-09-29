@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/orchestrator-templates.ts — V415: 内置编排模板
 //
-// 由来(2026-09-12 用户指出「工作流只有一个, 没有完整反映 MarxSphere 的所有科研能力」):
+// 由来(2026-09-12 用户指出「工作流只有一个, 没有完整反映 SocioSeek 的所有科研能力」):
 //   旧画布把五阶段写死成 makeNodes() 的唯一形态, 用户改不了也存不下, 更看不到其它研究范式。
 //   这里把平台上已有的科研能力组织成多条**可编辑的起点** —— 模板不是死的, 选中后就是普通
 //   画布, 用户随意增删节点/连线/改参数, 存成自己的图。

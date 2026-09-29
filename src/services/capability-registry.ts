@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/capability-registry.ts — V415: 编排能力注册表(单一真源)
 //
 // 由来: 此前「课题流程编排」画布把节点写死成 5 个 phrase + 4 个模块(QuickModeView 的
-//   makeNodes/MODULE_DEFS), 而 MarxSphere 实际有 75 个 agent 工具(48 静态 + 22 view_* + 插件)、
+//   makeNodes/MODULE_DEFS), 而 SocioSeek 实际有 75 个 agent 工具(48 静态 + 22 view_* + 插件)、
 //   270+ service、740 条路由。画布上能看到的 < 能用到的 1%。本注册表把可编排的能力收成一张表:
 //     ① agent 工具(buildAgentTools, 动态导出, 含 view_* 与插件工具)
 //     ② 工作台能力(实证/统计/审稿/绘图/编辑器/格式评测/引文核验/经典文本/C刊/语料库…)
@@ -22,7 +22,7 @@ export type CapabilityCategory =
 export type CapabilityKind =
   /** 复用 agent 工具注册表(有 params schema + risk) */
   | "agent_tool"
-  /** 调 MarxSphere HTTP 端点(工作台能力) */
+  /** 调 SocioSeek HTTP 端点(工作台能力) */
   | "endpoint"
   /** 单次 LLM 生成 */
   | "llm_chat"

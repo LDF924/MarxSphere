@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // auto-learning-loop.ts — 端到端自动闭环（复赛冲刺期实现）
 // 从「人工喂数据」升级为「系统自动采集 → 自动诊断 → 自动迭代方案」：
 //   ① 自动采集：教育服务入口事件钩子（作答/错题/计划自动落库）

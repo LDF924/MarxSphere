@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// ApiTokensPanel.tsx — 对外 API 访问令牌管理 + 配额治理仪表盘（MarxSphere 对外接入）
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// ApiTokensPanel.tsx — 对外 API 访问令牌管理 + 配额治理仪表盘（SocioSeek 对外接入）
 // 对标 Sciverse 模式: 生成 sag_xxx 令牌 → 交给 Claude Code / Codex / 外部客户端
 // 创建时明文只显示一次; 库中只存 hash; 支持权限选择、撤销、配额配置与用量仪表盘
 import { useState, useEffect, type FC } from "react";
@@ -297,8 +297,8 @@ export function ApiTokensPanel() {
 
       <p className="mb-3 text-xs text-muted-foreground">
         {t(
-          "生成 sag_xxx 令牌后，可配置到 Claude Code（.mcp.json）/ Codex（config.toml）调用 MarxSphere 推理与检索能力。令牌明文仅创建时显示一次，服务端只存哈希。配额按令牌独立治理（每日搜索/入库/月成本），本机操作豁免。",
-          "Generate sag_xxx tokens for Claude Code (.mcp.json) / Codex (config.toml) to call MarxSphere. Plaintext shown once, server stores hash only. Quotas (daily search/ingest/monthly cost) are per-token; local requests are exempt."
+          "生成 sag_xxx 令牌后，可配置到 Claude Code（.mcp.json）/ Codex（config.toml）调用 SocioSeek 推理与检索能力。令牌明文仅创建时显示一次，服务端只存哈希。配额按令牌独立治理（每日搜索/入库/月成本），本机操作豁免。",
+          "Generate sag_xxx tokens for Claude Code (.mcp.json) / Codex (config.toml) to call SocioSeek. Plaintext shown once, server stores hash only. Quotas (daily search/ingest/monthly cost) are per-token; local requests are exempt."
         )}
       </p>
 

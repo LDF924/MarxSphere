@@ -1,6 +1,6 @@
 # Computer Use（桌面控制）
 
-MarxSphere Computer Use（2026-08-27，ScienceX 对照）：Agent 控制桌面——截屏、鼠标、键盘、窗口列表。
+SocioSeek Computer Use（2026-08-27，ScienceX 对照）：Agent 控制桌面——截屏、鼠标、键盘、窗口列表。
 
 ## 能力
 

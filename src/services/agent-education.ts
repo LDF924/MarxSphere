@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-education.ts — 教育专属 Agent 编排层（复赛冲刺期实现）
 // 在通用编排之上提供教育场景特有的引导式闭环：
 //   ① 苏格拉底式提问（socratic）：连续追问引导，追问轮次上限 3，超限给提示不揭底

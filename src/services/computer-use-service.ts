@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // computer-use-service.ts — 桌面控制（2026-08-27, ScienceX 对照: Computer Use）
 // 能力: 截屏 / 鼠标移动点击 / 键盘输入 / 窗口列表
 // 实现: Windows 下 PowerShell(无依赖); 非 Windows 返回不可用提示

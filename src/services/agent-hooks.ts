@@ -1,5 +1,5 @@
 import { dataPath } from "./storage-paths.js";
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-hooks.ts — 借鉴 DSH hooks 包: 任务/工具生命周期钩子
 // 事件: task_start/task_end/tool_before/tool_after/step_fail/reflect
 // 钩子类型: 内置(日志/指标) + 用户注册(通过 API 动态添加, 如通知/告警/统计)

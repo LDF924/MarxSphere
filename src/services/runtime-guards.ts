@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/runtime-guards.ts — V404-23: 运行时防护(借鉴 OpenSquilla 引擎防护, 自写 TS)
 // 组合三防护:
 //   H1 progressWatchdog: "连续工具/检索活动无产出(写库/最终结果)" → warn → 触发终止(observe-first)

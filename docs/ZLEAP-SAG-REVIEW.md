@@ -6,14 +6,14 @@
 > [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
 
 > 评审对象:GitHub 仓库 [Zleap-AI/SAG](https://github.com/Zleap-AI/SAG)(main 分支,commit `e257a89`,v1.8.4,2026-08-30 推送)+ PyPI 引擎包 `zleap-sag 0.12.0`
-> 对比基准:本地 MarxSphere(SAG-main,TypeScript/Fastify + PostgreSQL/Neo4j)
+> 对比基准:本地 SocioSeek(SAG-main,TypeScript/Fastify + PostgreSQL/Neo4j)
 > 报告日期:2026-09-01 ｜ 方法:源码深读(下载 tarball + wheel 解包,共 4.4 万行引擎源码 + 应用层 1.2 万行)+ 本地架构实地核查
 
 ---
 
 ## 摘要(结论先行)
 
-**Zleap-AI/SAG 是"事件-实体索引 + 查询时动态超边"检索架构的开源参考实现(2444 星, MIT 许可),本地 MarxSphere 的事件中心 RAG 架构正是基于它改造而来**——本地为 TypeScript 全栈重写(保留 chunk→event→entities 数据模型与事件中心检索内核),再叠加三库图谱(Graphiti/Cognee)、52 步推理、学习闭环等自研能力。本地在**检索深度与业务功能广度上远超 Zleap 原版**;Zleap 上游仍在持续演进(v1.8.4, 2026-08-30),在**工程完备性、产品化封装、对外接口(OpenAI 兼容/MCP/CLI/桌面端/OCTX)**上领先。
+**Zleap-AI/SAG 是"事件-实体索引 + 查询时动态超边"检索架构的开源参考实现(2444 星, MIT 许可),本地 SocioSeek 的事件中心 RAG 架构正是基于它改造而来**——本地为 TypeScript 全栈重写(保留 chunk→event→entities 数据模型与事件中心检索内核),再叠加三库图谱(Graphiti/Cognee)、52 步推理、学习闭环等自研能力。本地在**检索深度与业务功能广度上远超 Zleap 原版**;Zleap 上游仍在持续演进(v1.8.4, 2026-08-30),在**工程完备性、产品化封装、对外接口(OpenAI 兼容/MCP/CLI/桌面端/OCTX)**上领先。
 
 **结论:值得回溯吸收上游演进,不值得重写。** 推荐"对照上游演进 + 点状吸收"方案(详见第 6 节),优先级最高的是 Zleap 新增而本地缺失的 **OpenAI 兼容端点**(Agent 生态接入的关键短板)与**事件抽取提示词契约化**。核心检索算法(动态超边)本地继承自 SAG 且已演进,无需移植。
 
@@ -21,9 +21,9 @@
 
 ## 1. 双方关系定性(重要更正)
 
-> 本报告初稿曾将本地 MarxSphere 与 Zleap SAG 的关系判定为"概念巧合同源、独立实现"。经核查本地仓库自身文档,**该判断错误**,特此更正:
+> 本报告初稿曾将本地 SocioSeek 与 Zleap SAG 的关系判定为"概念巧合同源、独立实现"。经核查本地仓库自身文档,**该判断错误**,特此更正:
 
-**本地 MarxSphere 的事件中心 RAG 架构源自 Zleap-AI/SAG(改造继承关系),并非独立实现。**
+**本地 SocioSeek 的事件中心 RAG 架构源自 Zleap-AI/SAG(改造继承关系),并非独立实现。**
 
 本地仓库内证据:
 
@@ -183,13 +183,13 @@ event ↔ entities → 一条潜在超边(latent hyperedge)
 
 ---
 
-## 5. 与本地 MarxSphere 对比
+## 5. 与本地 SocioSeek 对比
 
 ### 5.1 数据模型同构性(核心发现)
 
-本地 MarxSphere 的 PG 表(`migrations/001_init.sql`)与 Zleap 关系模型几乎逐字段对应:
+本地 SocioSeek 的 PG 表(`migrations/001_init.sql`)与 Zleap 关系模型几乎逐字段对应:
 
-| 概念 | Zleap SAG | 本地 MarxSphere | 差异 |
+| 概念 | Zleap SAG | 本地 SocioSeek | 差异 |
 | --- | --- | --- | --- |
 | 逻辑库 | `data_source` | `sources` | 同名概念 |
 | 文档 | `article` / `kb_document` | `documents` | — |
@@ -206,7 +206,7 @@ event ↔ entities → 一条潜在超边(latent hyperedge)
 
 ### 5.2 检索算法对比
 
-| 环节 | Zleap SAG | 本地 MarxSphere | 对比 |
+| 环节 | Zleap SAG | 本地 SocioSeek | 对比 |
 | --- | --- | --- | --- |
 | 查询实体抽取 | LLM NER(strict=False 降级)+ 实体名向量/BM25 兜底 | LLM 抽取 + 别名消解(step0-1)+ BM25 实体 | 本地多别名消解,概念更全 |
 | 直连召回 | 事件 title+content 双向量 | 事件标题向量 + 内容向量 | 同构;本地另有 query_events 标题向量专用路径 |
@@ -221,7 +221,7 @@ event ↔ entities → 一条潜在超边(latent hyperedge)
 
 ### 5.3 差距与重叠全景表
 
-| 能力域 | Zleap 有 | 本地 MarxSphere 有 | 重叠 | 值得借鉴(Zleap→本地) |
+| 能力域 | Zleap 有 | 本地 SocioSeek 有 | 重叠 | 值得借鉴(Zleap→本地) |
 | --- | --- | --- | --- | --- |
 | 事件-实体索引 | ✅(核心) | ✅(核心,超集) | **全重叠** | — |
 | 查询时动态超边 | ✅(论文核心) | ✅(relationalFanout CTE) | **全重叠** | — |
@@ -272,7 +272,7 @@ event ↔ entities → 一条潜在超边(latent hyperedge)
 └───────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 本地 MarxSphere SAG 架构(现状)
+### 6.2 本地 SocioSeek SAG 架构(现状)
 
 ```text
 ┌────────────────────────── 消费方 ──────────────────────────┐

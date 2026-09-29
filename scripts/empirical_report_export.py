@@ -46,7 +46,7 @@ def run_summary(run):
 # ─────────── LaTeX 报告 ───────────
 def build_latex():
     L = []
-    L.append("% MarxSphere 课题实证分析报告 (自动生成, V413)")
+    L.append("% SocioSeek 课题实证分析报告 (自动生成, V413)")
     L.append("\\documentclass[11pt]{article}")
     L.append("\\usepackage[UTF8]{ctex}")
     L.append("\\usepackage{booktabs}")
@@ -57,7 +57,7 @@ def build_latex():
     L.append("\\begin{document}")
     L.append("\\begin{center}{\\LARGE\\bfseries 问卷实证分析全套报告}\\end{center}")
     L.append("\\vspace{0.5em}")
-    L.append("\\begin{center}MarxSphere 实证工作台 \\cdot 自动生成\\end{center}")
+    L.append("\\begin{center}SocioSeek 实证工作台 \\cdot 自动生成\\end{center}")
     L.append("\\noindent\\rule{\\linewidth}{0.4pt}")
     L.append("")
 
@@ -148,7 +148,7 @@ def build_docx(path):
     # 标题
     h = doc.add_heading("问卷实证分析全套报告", 0)
     h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p = doc.add_paragraph("MarxSphere 实证工作台 · 自动生成")
+    p = doc.add_paragraph("SocioSeek 实证工作台 · 自动生成")
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in (ov.get("runs") or []):
         pass

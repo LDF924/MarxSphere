@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // JupyterPanel.tsx — 轻量 notebook 工作台（2026-08-27, ScienceX 通用计算环境）
 // 单元格编辑(code/markdown) → venv 执行 → 输出/图表/持久变量；Restart & Run All；文件上传供 pandas 读
 // 设计: 复用实证沙箱（无完整 Jupyter 依赖），variables 跨单元持久模拟内核

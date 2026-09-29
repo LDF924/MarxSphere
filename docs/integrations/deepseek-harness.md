@@ -1,10 +1,10 @@
 # 集成指南：DeepSeek Harness（DSH）
 
-把 MarxSphere 的推理/检索/工具编排能力接入 **DeepSeek Harness**（DeepSeek 开源 Agent 框架），并说明本仓库对 DSH 设计模式的吸收（credentials / hooks / preset / feedback 包体系）。
+把 SocioSeek 的推理/检索/工具编排能力接入 **DeepSeek Harness**（DeepSeek 开源 Agent 框架），并说明本仓库对 DSH 设计模式的吸收（credentials / hooks / preset / feedback 包体系）。
 
 ## 1. 前置条件
 
-- SAG 服务在跑：`MARXSPHERE_PREVIEW=1 npx tsx src/index.ts`（4173）
+- SAG 服务在跑：`SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts`（4173）
 - 本机开发免 Token；外部部署需先建 Token（见 [quickstart](quickstart.md)）
 - DeepSeek Harness 已安装（`pip install deepseek-harness` 或源码部署）
 
@@ -37,9 +37,9 @@ SAG MCP Server 暴露的核心能力（与 52 步推理/四源检索对应）：
 
 ## 4. DSH 设计模式吸收（本仓库）
 
-MarxSphere 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)）：
+SocioSeek 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)）：
 
-| DSH 模式 | MarxSphere 对应实现 | 作用 |
+| DSH 模式 | SocioSeek 对应实现 | 作用 |
 |---|---|---|
 | credentials 包 | `src/services/agent-credentials.ts` | 凭证隔离：API Key 仅存本地 `.env`，日志脱敏（`maskCredentials`） |
 | hooks 包 | `src/services/agent-hooks.ts` | 工具生命周期钩子（调用前/后/失败事件） |

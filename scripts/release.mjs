@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/release.mjs — 一键发布脚本：构建 → 桌面端打包 → 上传 GitHub Release
 // 用法: node scripts/release.mjs [版本标签] [发布说明] [--no-publish]
 // 示例: node scripts/release.mjs v0.3.0 "新功能说明"
@@ -20,7 +20,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || (() => {
     return m ? m[2] : "";
   } catch { return ""; }
 })();
-const REPO = process.env.GITHUB_REPO || "LDF924/MarxSphere";
+const REPO = process.env.GITHUB_REPO || "LDF924/SocioSeek";
 
 // --no-publish：只打包（本地构建 + NSIS），跳过 GitHub Release 创建与资产上传。
 // 用于重打已发布版本（如修正 license 重新出包），避免重复创建 Release 触发 422。
@@ -82,7 +82,7 @@ const cacheDir = path.join(root, ".cache", "electron-builder");
 if (!existsSync(cacheDir)) execSync(`mkdir -p "${cacheDir}"`, { shell: "powershell.exe" });
 // 版本号 = 标签去前导 v；electron-builder 默认读 package.json version，需显式传入保证一致
 const version = tag.replace(/^v/, "").split("-")[0];
-const installer = path.join(root, "release", `MarxSphere Setup ${version}.exe`);
+const installer = path.join(root, "release", `SocioSeek Setup ${version}.exe`);
 if (existsSync(installer)) execSync(`del "${installer}"`, { shell: "cmd.exe" });
 run("electron-builder", ["--win", "nsis", "--config", "electron-builder.yml", "--publish", "never", "--config.extraMetadata.version", version], {
   env: {
@@ -118,9 +118,9 @@ if (!notes) {
     }
   } catch { /* 生成失败用默认 */ }
 }
-notes = notes || "MarxSphere 自动发布";
+notes = notes || "SocioSeek 自动发布";
 const releaseMeta = {
-  name: `MarxSphere ${tag} — 自动发布`,
+  name: `SocioSeek ${tag} — 自动发布`,
   body: notes,
   draft: false,
   prerelease: false,
@@ -145,7 +145,7 @@ const existing = JSON.parse(existingRaw);
 let release;
 if (existing.id) {
   // 已存在：不覆盖已有 body（保留手动写的发布说明），只更新 name/draft/prerelease
-  const patchMeta = existing.body && existing.body.trim() !== "MarxSphere 自动发布"
+  const patchMeta = existing.body && existing.body.trim() !== "SocioSeek 自动发布"
     ? { name: releaseMeta.name, draft: false, prerelease: false }
     : releaseMeta;
   release = JSON.parse(execSync(
@@ -201,8 +201,8 @@ console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.mes
 // 6) 同步安装包到主仓库（SAG-main release/）
 const mainReleaseDir = path.join(process.env.SAG_MAIN_ROOT || path.resolve(root, ".."), "release");
 if (existsSync(mainReleaseDir)) {
-  execSync(`copy /Y "${installer}" "${mainReleaseDir}\\MarxSphere Setup ${version}.exe"`, { shell: "cmd.exe" });
-  console.log(`✅ 已同步到主仓库 release/ (MarxSphere Setup ${version}.exe)`);
+  execSync(`copy /Y "${installer}" "${mainReleaseDir}\\SocioSeek Setup ${version}.exe"`, { shell: "cmd.exe" });
+  console.log(`✅ 已同步到主仓库 release/ (SocioSeek Setup ${version}.exe)`);
 }
 
 console.log("\n🎉 发布完成!");

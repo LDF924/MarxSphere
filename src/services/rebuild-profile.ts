@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // rebuild-profile.ts — 画像重建（2026-08-29, 移植自 Inno Agent rebuild-profile.ts, MIT License）
-// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 MarxSphere learner_events 表
+// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 SocioSeek learner_events 表
 // 升级 L1 规则后, 从事件日志重放重建画像(使既有事件开始贡献上下文)
 import { pool } from "../db/pool.js";
 import { applyLearningEventToProfile, type LearnerProfile } from "./auto-profile.js";

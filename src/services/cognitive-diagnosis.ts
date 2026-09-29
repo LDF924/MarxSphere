@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // cognitive-diagnosis.ts — BKT 贝叶斯知识追踪（复赛冲刺期实现）
 // 基于 knowledge_mastery 的 attempts/correct_count 推断 p(掌握) 隐状态：
 //   ① BKT 更新：p(掌握) = P(前轮掌握)·(1-遗忘) + P(前轮未掌握)·(学会)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-asset-store.ts — 教育复用资产存储（按角色空间隔离）
 // 学生端与教师端各自独立的资产空间（role=student / role=teacher）：
 //   学生端操作只影响学生空间，教师端操作只影响教师空间，互不同步互不干扰。

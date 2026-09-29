@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // provenance-service.ts — 文件级溯源(移植 ai4s-research/open-science provenance 机制, MIT)
 // 每次 agent 写文件 → append 一条记录到 data/provenance/provenance.jsonl(append-only, 单行 JSON)
 // 版本号按文件路径递增 → 可回看文件演化。详见 docs/PROVENANCE-DESIGN.md。

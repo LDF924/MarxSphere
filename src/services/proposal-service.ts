@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
  * proposal-service.ts — 开题报告 / 基金申报 / 伦理审查 / 预注册。
  *

@@ -1,6 +1,6 @@
-# electron-builder.yml — MarxSphere 桌面端打包配置（2026-08-27: 跨平台 win/mac/linux）
-appId: com.marxsphere.desktop
-productName: MarxSphere
+# electron-builder.yml — SocioSeek 桌面端打包配置（2026-08-27: 跨平台 win/mac/linux）
+appId: com.socioseek.desktop
+productName: SocioSeek
 directories:
   output: release
   buildResources: build
@@ -97,7 +97,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: MarxSphere
+  shortcutName: SocioSeek
   installerLanguages:
     - zh_CN
   include: build/installer.nsh

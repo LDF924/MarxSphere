@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // rss-service.ts — RSS 订阅 + arXiv 今日推荐（2026-08-27, Agentero 对照: 文献导入源）
 // 能力: RSS 源抓取解析(标题/链接/日期/摘要) → 入库草稿; arXiv 按主题推荐今日论文
 // 免依赖: 全用 fetch, RSS 用正则解析(xml 简单结构)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // singleton-scheduler.ts — 跨副本"只跑一次"的定时任务门（leader 租约）
 //
 // 由来(2026-09-11 上云审计): 期刊同步(6h) / 主动研究(24h) / Dream 巩固(24h) /

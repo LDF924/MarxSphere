@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/doc-session.test.ts — V404-13: WriterLease/ChangeSet/锚点(纯函数+应用逻辑)
 // 纯函数 applyOpsToText 可离线测; DB 链路(acquire/apply/conflict/锚点重映射)标注需库
 import { describe, it, expect } from "vitest";

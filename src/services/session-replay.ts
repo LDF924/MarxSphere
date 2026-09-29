@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // session-replay.ts — 会话回放导出（2026-08-29, 借鉴 Inno Agent case-exporter.ts, MIT License）
-// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 MarxSphere mcp_sessions 表
+// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 SocioSeek mcp_sessions 表
 // 导出任意真实会话为可回放 JSON:
 //   - 消息流(user/assistant/tool 角色, 按时间序)
 //   - 工具调用记录(名称/参数/结果)

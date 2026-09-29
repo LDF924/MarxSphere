@@ -14,7 +14,7 @@
 
 对 GitHub 仓库 [Zleap-AI/SAG](https://github.com/Zleap-AI/SAG)(v1.8.4, 2444 星, MIT)做源码级评审,并落地其 5 项建议。评审核心结论:
 
-- **本地 MarxSphere 的事件中心 RAG 架构源自 Zleap SAG 改造**(TypeScript 全栈重写),非独立实现
+- **本地 SocioSeek 的事件中心 RAG 架构源自 Zleap SAG 改造**(TypeScript 全栈重写),非独立实现
 - 本地在检索深度(52 步推理/三库混合/学习闭环)与业务广度上远超上游;上游在**工程完备性、产品化封装、对外接口**上领先
 - 结论:**回溯吸收上游演进,不值得重写**
 
@@ -91,4 +91,4 @@
 
 ---
 
-*本文档由 Claude Code 整理(2026-09-02),供 MarxSphere 项目存档。*
+*本文档由 Claude Code 整理(2026-09-02),供 SocioSeek 项目存档。*

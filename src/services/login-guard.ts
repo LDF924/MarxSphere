@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // login-guard.ts — 登录/注册/找回密码的限流
 //
 // 由来(2026-09-11 上云审计): 全站唯一**无鉴权**的写入入口就是这几个, 而它们此前

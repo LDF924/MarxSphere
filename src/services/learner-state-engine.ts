@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learner-state-engine.ts — 掌握度状态机（2026-08-29, 对照移植 Inno Agent state-engine.ts）
 // 核心算法(与源码一致):
 //   - 证据权重: exposure=0 recognition=0.25 guided_recall=0.45 free_recall=0.75

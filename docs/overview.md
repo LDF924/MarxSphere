@@ -1,8 +1,8 @@
-# MarxSphere 开放平台 · Overview
+# SocioSeek 开放平台 · Overview
 
-MarxSphere 是面向科研场景的 AI Agent 平台：多源知识检索（PG 向量 / Cognee / Graphiti 三库混合）+ 52 步深度推理链路 + 自我改进评测闭环 + **AI+教育能力**（个性化学习 / 作业辅导 / 学情诊断 / 教师备课 / 学习陪伴）。
+SocioSeek 是面向科研场景的 AI Agent 平台：多源知识检索（PG 向量 / Cognee / Graphiti 三库混合）+ 52 步深度推理链路 + 自我改进评测闭环 + **AI+教育能力**（个性化学习 / 作业辅导 / 学情诊断 / 教师备课 / 学习陪伴）。
 
-本文档面向**想把 MarxSphere 推理/检索/教育能力接入到自己 Agent（Claude Code / Codex / DeepSeek Harness 等）的开发者**。
+本文档面向**想把 SocioSeek 推理/检索/教育能力接入到自己 Agent（Claude Code / Codex / DeepSeek Harness 等）的开发者**。
 
 ## 一、平台能力
 
@@ -27,9 +27,9 @@ MarxSphere 是面向科研场景的 AI Agent 平台：多源知识检索（PG �
 
 ## 三、认证
 
-MarxSphere 对外接口使用 **Bearer Token** 认证（格式 `sag_xxx`）：
+SocioSeek 对外接口使用 **Bearer Token** 认证（格式 `sag_xxx`）：
 
-- 获取：MarxSphere 前端 → 设置 → **对外 API 令牌** → 新建
+- 获取：SocioSeek 前端 → 设置 → **对外 API 令牌** → 新建
 - 权限粒度：`reason`（推理/搜索）/ `search`（检索）/ `ingest`（文档入库）/ `education`（教育能力）
 - 规则：**localhost 请求豁免**（本机开发免认证）；外部 IP 强制 Token（无 Token → 401，权限不足 → 403）
 - 安全：服务端只存 Token 的 sha256 哈希；Token 可单独撤销，撤销后立即失效
@@ -38,7 +38,7 @@ MarxSphere 对外接口使用 **Bearer Token** 认证（格式 `sag_xxx`）：
 
 | 组件 | 说明 |
 |---|---|
-| SAG 服务 | `MARXSPHERE_PREVIEW=1 npx tsx src/index.ts`（端口 4173） |
+| SAG 服务 | `SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts`（端口 4173） |
 | PostgreSQL | Docker 容器 `sag_lite_postgres`（pgvector，5540 端口） |
 | 知识库 | 论文已入库（`sag_documents` 工具可查）；教育知识库切片 `source_chunks` |
 | 前端 | `npm run dev`（Web 5173 / API 4173，顶部导航含「AI+教育」Tab） |

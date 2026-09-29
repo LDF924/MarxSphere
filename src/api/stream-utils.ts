@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // api/stream-utils.ts — SocialSci P0-1: SSE 统一发送工具(从 /api/search/stream 先例抽取为单点)
 // 语义: 事件名模块前缀规范(pipe.* / review.* / viz.* / rag.*), 错误统一 {code,userMessage,canRetry,hint}
 // 用法: const sse = attachSse(reply); sse.send("pipe.started", {}); ... sse.end();

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // LearnerPanel.tsx — 学习者画像面板（2026-08-29, Inno Agent 学习引擎前端）
 // 覆盖: 学习目标管理 / 掌握度状态机可视化(六态+遗忘曲线) / 误解诊断 /
 //       前置知识诊断(教学入口门+回复协议) / 到期复习 / wiki 巡检 / 上下文包预览

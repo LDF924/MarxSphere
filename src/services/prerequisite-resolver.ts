@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // prerequisite-resolver.ts — 前置知识解析器（2026-08-29, 移植自 Inno Agent prerequisite-resolver.ts, MIT License）
 // Copyright (c) 2026 Inno Agent Contributors — 算法与结构保持一致
 // 教学前诊断: 目标概念的前置知识是否满足 → 推荐动作(use/diagnose/teach/repair/proceed)

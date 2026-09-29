@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // extraction-utils.ts — 事件抽取行为常量与语言检测纯函数
 // isMostlyChinese / isLikelyLanguageDrift 从 llm-client.ts 逐字迁出(仅加 export)
 import { BENCHMARK_ENTITY_TYPES } from "./extract-document.js";

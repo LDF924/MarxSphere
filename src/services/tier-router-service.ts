@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // tier-router-service.ts — V405 OpenSquilla 移植 P1+P5-ML: 三档成本路由 + 决策审计 + 本地分类器融合
 // 设计(对齐 OpenSquilla SquillaRouter 思想):
 //   lite    — 单点事实/概念短题 → 直接生成(跳过 MCP 全链路), 省钱

@@ -1,11 +1,11 @@
 # IM 接入（远程对话）
 
-MarxSphere 的 **IM 接入** = 在聊天软件里放一个 MarxSphere 机器人，让你**不用打开网页**，直接在 飞书 / 钉钉 / Telegram / 企业微信 里发消息就能查状态、批任务、收告警。配置入口在 Web 端 **系统管理 → IM 接入** 面板（保存即时生效）。
+SocioSeek 的 **IM 接入** = 在聊天软件里放一个 SocioSeek 机器人，让你**不用打开网页**，直接在 飞书 / 钉钉 / Telegram / 企业微信 里发消息就能查状态、批任务、收告警。配置入口在 Web 端 **系统管理 → IM 接入** 面板（保存即时生效）。
 
 ## 一句话理解
 
 ```
-你在聊天软件里发消息 ──► MarxSphere 机器人 ──► 系统查库/执行 ──► 结果回复到聊天
+你在聊天软件里发消息 ──► SocioSeek 机器人 ──► 系统查库/执行 ──► 结果回复到聊天
 系统主动推送(告警/审批/任务完成) ──► 你的聊天窗口
 ```
 
@@ -16,7 +16,7 @@ flowchart LR
     subgraph 你的聊天软件
         A[钉钉 / 飞书 / Telegram / 企业微信 机器人会话]
     end
-    subgraph MarxSphere
+    subgraph SocioSeek
         B[回调入口<br/>/api/im/feishu|dingtalk|telegram|wecom]
         C[命令解析<br/>handleImCommand]
         D[(PostgreSQL<br/>文献库/任务/评测/告警)]

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // language-learning-service.ts — 阅读与语言学习 Agent（V389，复赛）
 // 手册 4.3.4「阅读与语言学习」方向：
 //   ① 阅读理解辅导：外文/经典文献精读 → 段落释义 + 结构拆解 + 主旨提炼 + 重点词汇

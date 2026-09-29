@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ServiceTokensPanel.tsx — V418: 外部服务密钥（有效期 + 到期提醒）
 //
 // 由来(2026-09-28 用户要求): MinerU 的 OCR token 在 2026-09-16 悄悄过期, 11 天后才被发现。

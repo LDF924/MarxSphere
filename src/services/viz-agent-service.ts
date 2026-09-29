@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // viz-agent-service.ts — SocialSci P0-4: 对话式科研绘图 Agent(独立轻量循环)
 // 模型角色: viz(用户可单独切换, 见 /api/llm/models) — 规划/出图/自审三段共用
 // 循环: turn = plan(LLM 结构化) → analyze_data(真实计算) → chart(出图代码)

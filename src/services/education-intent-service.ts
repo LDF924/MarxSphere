@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-intent-service.ts — 学习意图双层路由 + 注入扫描(V388, 2026-08-30, 借鉴 TraitTutor learning/intent.py)
 // 对照 TraitTutor:
 //   1. 第一层(确定性): 5 类注入正则扫描(中英双语), block 则直接返回, 不调用模型

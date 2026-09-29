@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // blob-selftest.ts — 对象存储兼容性自检（上目标厂商前跑一次）
 //
 // 由来(2026-09-11): S3 驱动在 MinIO 上全绿, 但各家"S3 兼容"实现细节有差异

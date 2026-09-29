@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // cost-ledger-service.ts — V405 OpenSquilla 移植 P0: 成本可审计账本
 // 平台成本口径(估算): llm_usage_ledger 轮级明细 + llm_model_prices 按模型 in/out 单价
 //   cost_source 三态: provider_billed(厂商实扣,预留) | estimate(默认) | byok(用户自付 key)

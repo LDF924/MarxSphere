@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """empirical_figures.py — 论文级结果图生成器（V413+）
-把 MarxSphere 实证结果(empirical/run + reliability 的 result JSON)渲染成论文级 PNG/PDF。
+把 SocioSeek 实证结果(empirical/run + reliability 的 result JSON)渲染成论文级 PNG/PDF。
 支持图表:
   - alpha_bar      信效度 α 对比柱状(反转前 vs 反转后)
   - boxplot        变量箱线图(如四维得分)

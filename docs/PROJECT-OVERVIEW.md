@@ -1,4 +1,4 @@
-# MarxSphere 项目概述（产品视角）
+# SocioSeek 项目概述（产品视角）
 
 ## 1. 项目概述
 
@@ -28,7 +28,7 @@
 | 马克思主义理论研究者（研究生/学者） | 文献研读、理论溯源、论文选题与写作 |
 | 政经/农经方向科研人员 | 实证分析（问卷/回归）、政策研究 |
 | 课程教学人员 | AI+教育辅导、学习规划 |
-| AI Agent 开发者 | 接入 MarxSphere 推理/检索能力（MCP/API） |
+| AI Agent 开发者 | 接入 SocioSeek 推理/检索能力（MCP/API） |
 
 ### 场景痛点
 
@@ -111,7 +111,7 @@ npm run build && npm start # 生产: http://localhost:4173
 >
 > **文献库/政策库/资料库数据源**：三个库页面扫描本地文件夹（`LITERATURE_DIR`/`POLICY_DIR`/`VAULT_ROOT` 环境变量，见 `.env.example` 底部）——指向任意本地目录即可，无需安装 Obsidian；未配置时页面为空，Ask/推理不受影响。
 
-桌面端：`npm run build:desktop` → 安装 `release/MarxSphere Setup <ver>.exe`，首次启动引导配置
+桌面端：`npm run build:desktop` → 安装 `release/SocioSeek Setup <ver>.exe`，首次启动引导配置
 
 ### 账号权限
 
@@ -224,7 +224,7 @@ curl -X POST http://localhost:4173/api/agent/tasks \
 
 ### 系统架构图
 
-![MarxSphere 系统架构](assets/marxsphere-architecture.svg)
+![SocioSeek 系统架构](assets/socioseek-architecture.svg)
 
 （更多架构细节：`ARCHITECTURE.md` / `docs/AGENT-CAPABILITIES.md` / `docs/AGENT-ARCHITECTURE-NEXT.md`）
 

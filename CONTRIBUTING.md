@@ -1,6 +1,6 @@
 # 贡献指南（Contributing）
 
-感谢你愿意为 MarxSphere 贡献！本指南帮助你理解项目结构与协作流程。
+感谢你愿意为 SocioSeek 贡献！本指南帮助你理解项目结构与协作流程。
 
 > ⚖️ **提交即同意**：通过提交 Pull Request 或 Commit，即表示您同意
 > [CONTRIBUTOR-LICENSE-AGREEMENT.md](CONTRIBUTOR-LICENSE-AGREEMENT.md)

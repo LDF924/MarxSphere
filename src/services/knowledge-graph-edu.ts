@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // knowledge-graph-edu.ts — 教育知识点先修图 + 拓扑路径规划（复赛冲刺期实现）
 // 基于 kp_points / kp_edges（迁移 080）：
 //   ① 先修缺失检测：学习某知识点前，检测其先修是否未掌握（联动 knowledge_mastery）

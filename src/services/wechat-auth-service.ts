@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // wechat-auth-service.ts — SocialSci P0-8: 微信扫码登录(ticket 轮询) + 绑定
 // 形态对齐(参考产品交互语义, 原创实现): config→createQrTicket→轮询status→绑定/免注册登录
 //   dev/mock 模式: 无 appid/secret 时返回假 ticket, 前端"模拟扫码"按钮走通全流程(UI 标注)

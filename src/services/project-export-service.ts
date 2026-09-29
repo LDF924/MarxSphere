@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // project-export-service.ts — 项目整包导出(V425 A3)
 //
 // 由来: 写作舱已有**单件**导出(合稿页的 Word/PPT/Markdown/HTML), 但没有**整包** ——

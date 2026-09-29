@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/b5-ensemble.test.ts — V404-9 + V405-B5: B5 难档多模型互证融合(借鉴 OpenSquilla B5, 默认关闭)
 // 服务层纯函数测试: B5_ENABLED 读取 / squad 预设阵容 / shouldUseB5 智能直连判定
 import { describe, it, expect } from "vitest";

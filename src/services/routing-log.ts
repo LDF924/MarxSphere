@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/routing-log.ts — V404-3: 路由决策日志 + 用户抱怨对齐(借鉴 OpenSquilla 路由数据飞轮)
 // 轻量闭环, 不做 ML:
 //   1. 每次模型轮换决策 append 一条 data/routing-decisions.jsonl

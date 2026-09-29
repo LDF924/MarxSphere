@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // citation-graph-service.ts — V399: 引用网络图构造 (Rimagination/paper-atlas 参考实现)
 // 提炼 paper-atlas 后端算法 (backend/services/similarity.py):
 //   - 文献耦合 (bibliographic coupling): 两文共享参考文献的余弦重叠

@@ -4,7 +4,7 @@
  *
  * 旧实现的问题(2026-09-12 用户反馈): 节点写死 5 个 phrase + 4 个模块; 用户拖的连线只画不执行
  * (执行靠数组顺序 + 写死的 id→jobKind 字典); "暂停"只停前端 800ms 轮询而后端照跑;
- * 模板只有一个形态, 看不到 MarxSphere 的其余能力。
+ * 模板只有一个形态, 看不到 SocioSeek 的其余能力。
  *
  * 现在:
  *   节点来源 = /api/orchestrator/capabilities(100 项: 75 个 agent 工具 + 22 个工作台能力 + 特殊节点)
@@ -1111,7 +1111,7 @@ async function removeGraph(id: string) {
 function viewArtifact(where: string) {
   // 产物落在别的 tab: 通过 postMessage 请 React 壳切视图(iframe 内不能直接改父级路由)
   if (window.parent && window.parent !== window) {
-    window.parent.postMessage({ source: "marxsphere-soc", type: "navigate", view: where }, "*");
+    window.parent.postMessage({ source: "socioseek-soc", type: "navigate", view: where }, "*");
   }
   toast(`产物在「${where}」工作台`, "success");
 }

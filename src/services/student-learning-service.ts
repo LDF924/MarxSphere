@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // student-learning-service.ts — 学生端学习服务扩展（V389，复赛）
 // 规格三缺口补齐：
 //   ① 认知维度标签：将知识点拆解为多个认知维度标签（布鲁姆分类：记忆/理解/应用/分析/评价/创造）

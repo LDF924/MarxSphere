@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // MarkdownReader.tsx — MD/纯文本预览 + 划词 AI 卡片(共享组件)
 // 替代各面板手写 MarkdownPreview: 渲染逻辑保持一致, 新增原生 Selection API 划词监听
 // 选中文本 → 弹 ReaderAiCard(解释/总结/翻译/追问, 复用 /api/reader/ai)

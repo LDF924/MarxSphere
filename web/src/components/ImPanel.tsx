@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ImPanel.tsx — IM 接入面板(飞书/钉钉/Telegram 机器人远程对话)
 // 功能: 三渠道 webhook 配置(DB 即时生效) / 测试发送 / 命令说明 / 回调地址展示
 import { useCallback, useEffect, useState, type FC } from "react";
@@ -34,7 +34,7 @@ export const ImPanel: FC = () => {
     wecomWebhook: "", wecomTouser: "",
   });
   const [status, setStatus] = useState<ImStatus | null>(null);
-  const [testText, setTestText] = useState("MarxSphere IM 测试消息 ✅");
+  const [testText, setTestText] = useState("SocioSeek IM 测试消息 ✅");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 

@@ -428,7 +428,7 @@ const importing = ref(false);
 /** 导出为 JSON 文件(带版本号与来源, 便于同事间传递与将来迁移) */
 function exportStandard(s: StandardRecord) {
   const payload = {
-    kind: "marxsphere.review.standard",
+    kind: "socioseek.review.standard",
     version: TEMPLATE_VERSION,
     exportedAt: new Date().toISOString().slice(0, 10),
     standard: {
@@ -460,7 +460,7 @@ function exportStandard(s: StandardRecord) {
 function exportAllStandards() {
   if (!standards.value.length) { toast("标准库为空", "warning"); return; }
   const payload = {
-    kind: "marxsphere.review.standard-set",
+    kind: "socioseek.review.standard-set",
     version: TEMPLATE_VERSION,
     exportedAt: new Date().toISOString().slice(0, 10),
     standards: standards.value.map((s) => ({

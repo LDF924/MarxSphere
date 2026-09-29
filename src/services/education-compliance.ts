@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-compliance.ts — 教育数据合规（复赛冲刺期实现）
 // 对应方案 §4.2「教育数据合规设计」：
 //   ① 数据分级：学习行为(低敏) / 教学交互(中敏) / 语音(高敏，仅本地+即删)

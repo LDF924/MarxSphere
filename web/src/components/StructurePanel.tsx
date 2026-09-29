@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // StructurePanel.tsx — 论文结构解析面板（2026-08-29, Agentero 对照: 解析论文中的图/表/公式/算法并结合上下文理解）
 // 可视化: 输入论文文本 → 自动定位图/表/公式/算法 → 四类 tab 分览 + 每块一键 AI 理解
 import { useState } from "react";

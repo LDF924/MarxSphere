@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // reason-steps.ts — 52 步推理链路的**唯一权威定义**(后端前端共用)
 //
 // 由来(2026-09-13): 前端 ReasonPanel 里有一份 52 步静态数组, 拿它的**下标**去对

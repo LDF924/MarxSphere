@@ -681,7 +681,7 @@ function sendToEditor(markdown: string, title: string) {
  * V417: 把审稿意见送进「研途写作舱」当素材（评审 → 写作的闭环）。
  *
  * 信道与 sendToEditor 不同: 目标是**另一个 iframe**（外壳里的 paper-outline），
- * 本视图改不动它。由 React 外壳中转 —— 发 marxsphere-soc/forward-to-module，
+ * 本视图改不动它。由 React 外壳中转 —— 发 socioseek-soc/forward-to-module，
  * 外壳收到后导航到写作舱并把 markdown 投给它的 MaterialsView。
  */
 function sendToWorkflow(markdown: string, title: string) {
@@ -692,7 +692,7 @@ function sendToWorkflow(markdown: string, title: string) {
   }
   try {
     window.parent.postMessage(
-      { source: "marxsphere-soc", type: "forward-to-module", route: "workflow", kind: "review", title, markdown },
+      { source: "socioseek-soc", type: "forward-to-module", route: "workflow", kind: "review", title, markdown },
       "*",
     );
     toast(`已送入研途写作舱素材库「${title}」`, "success");

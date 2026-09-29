@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // reference-service.ts — 参考文献解析导入（2026-08-27, Agentero 对照）
 // 能力: 从论文文本提取参考文献列表 → 识别 arXiv/DOI/标题 → 一键导入
 // 免依赖: 正则解析（arXiv ID / DOI / 常见引用格式）

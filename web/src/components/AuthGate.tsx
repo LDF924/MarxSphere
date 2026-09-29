@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // AuthGate.tsx — 商业化登录门（V389+）
 // 可选启用: 后端 AUTH_ENABLED=true 时前端要求登录（JWT 存 localStorage）
 // 关闭时直接放行（兼容本地单机使用）
@@ -144,7 +144,7 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "auth-required") return;
+      if (d?.source !== "socioseek-soc" || d.type !== "auth-required") return;
       setLoginOpen(true);
     };
     window.addEventListener("message", onMsg);
@@ -261,8 +261,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setLoginOpen(false)}>
             <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="mb-4 text-center">
-                <div className="text-xl font-bold">MarxSphere</div>
-                <div className="mt-1 text-xs text-muted-foreground">MarxSphere · 科研智能中枢</div>
+                <div className="text-xl font-bold">群学求真</div>
+                <div className="mt-1 text-xs text-muted-foreground">群学求真 · 科研智能中枢</div>
               </div>
               <div className="mb-4 flex rounded-lg bg-muted/60 p-1">
                 {(["login", "register"] as const).map((m) => (
@@ -321,8 +321,8 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur">
         <div className="mb-6 text-center">
-          <div className="text-2xl font-bold text-white">MarxSphere</div>
-          <div className="mt-1 text-xs text-slate-400">MarxSphere · 科研智能中枢</div>
+          <div className="text-2xl font-bold text-white">群学求真</div>
+          <div className="mt-1 text-xs text-slate-400">群学求真 · 科研智能中枢</div>
         </div>
         <div className="mb-4 flex rounded-lg bg-white/5 p-1">
           {(["login", "register"] as const).map((m) => (

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // research-pipeline-service.ts — SocialSci P0-1: 科研项目容器 + 节点快照 + 版本发布
 // 形态对齐(参考产品交互语义, 原创实现, 不涉源码): 可视化DAG科研工作台的项目层
 //   - research_projects: 项目容器, canvas 存 DAG 画布态(nodes/edges), 乐观锁防并发覆盖

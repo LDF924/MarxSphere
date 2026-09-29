@@ -1,5 +1,5 @@
 #!/bin/bash
-# sag-process-watchdog.sh — MarxSphere 保活（只保 OpenViking）
+# sag-process-watchdog.sh — SocioSeek 保活（只保 OpenViking）
 # 2026-08-14 用户要求: 双模式用户自由选择, 只保活 OpenViking(1933), SAG/Neo4j/PG 手动拉起
 # schtasks 每 5 分钟调用
 #

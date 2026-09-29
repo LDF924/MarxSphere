@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // blob-store.ts — 字节产物的存储抽象（本地盘 / 共享卷 / S3 兼容对象存储）
 //
 // 由来(2026-09-11 上云审计): storage-paths.ts 解决的是"路径统一", 前提是**共享卷**

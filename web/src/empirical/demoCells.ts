@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // demoCells.ts — 演示 notebook(抽取自 JupyterPanel, 统一分析台代码页签「载入演示」用)
 export const DEMO_CELLS: Array<{ type: "code" | "md"; content: string }> = [
   { type: "md", content: "# 资本下乡调研数据探索\n\n模拟 **50 个村庄**样本：是否引入工商资本、村集体收入、耕地流转率。\n\n点击「**载入演示**」自动运行全部单元格。" },

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // mineru-go-adapter.ts — V399: mineru-go (Rimagination) 双模式转换适配层
 // 复用 Rimagination/mineru-go 的 mineru_api_convert.py 源码（vendor/mineru-go/）:
 //   - Agent 轻量 API (≤10MB, ≤20页): 快速通道, 适合非扫描件

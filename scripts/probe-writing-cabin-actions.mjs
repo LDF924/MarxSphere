@@ -415,7 +415,7 @@ try {
     if (!isIframe) {
       rec("finalize", "send-to-editor(发到编辑器)", "skip", "顶层打开时无父窗口可投递(该动作走 postMessage 给外壳, 非 HTTP)");
     } else {
-      await evalTop(cdp, `(() => { window.__fwd = []; window.addEventListener('message', e => { if (e.data && e.data.source === 'marxsphere-soc') window.__fwd.push(e.data.type); }); return 1; })()`);
+      await evalTop(cdp, `(() => { window.__fwd = []; window.addEventListener('message', e => { if (e.data && e.data.source === 'socioseek-soc') window.__fwd.push(e.data.type); }); return 1; })()`);
       const r2 = await probeAction(cdp, '[data-control="workflow:send-to-editor"]', { wait: 3000 });
       const fwd = await evalTop(cdp, `JSON.stringify(window.__fwd || [])`);
       rec("finalize", "send-to-editor(发到编辑器)", String(fwd).includes("forward-to-module") ? "ok" : "dead",

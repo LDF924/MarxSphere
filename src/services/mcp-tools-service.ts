@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // mcp-tools-service.ts — MCP 工具大全（静态清单 + 中文说明 + 参数示例）
 // 包含：SAG 自带 4 个 + Cognee 13 + Graphiti 12 + 2 ingest + Sciverse 6 + gov.cn 2
 // 预览模式也能显示（不依赖运行时连接）
@@ -23,7 +23,7 @@ export const MCP_TOOL_CATALOG: McpServerInfo[] = [
   {
     id: "sag",
     name: "SAG 检索工作台",
-    description: "MarxSphere 自带检索服务：多路检索 + 文档入库 + 事件查询。",
+    description: "SocioSeek 自带检索服务：多路检索 + 文档入库 + 事件查询。",
     tools: [
       { name: "sag_search", desc: "对绑定项目执行多路检索，返回检索 trace", group: "检索",
         schema: { query: { type: "string", description: "检索关键词/问题", required: true }, searchMode: { type: "fast|standard", description: "检索模式(fast/standard)", required: false }, topK: { type: "number", description: "参数", required: false } },

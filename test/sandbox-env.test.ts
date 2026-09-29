@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/sandbox-env.test.ts — V404-28(M6): 沙箱 env 白名单+密钥剥离
 import { describe, it, expect, afterEach } from "vitest";
 import { sandboxEnv } from "../src/services/code-sandbox-service.js";

@@ -1,6 +1,6 @@
 # Agentero 对照：文献管理能力
 
-MarxSphere 文献管理（2026-08-27）：对齐 Agentero（Agent 友好的文献管理）能力清单。
+SocioSeek 文献管理（2026-08-27）：对齐 Agentero（Agent 友好的文献管理）能力清单。
 
 ## 能力对照
 

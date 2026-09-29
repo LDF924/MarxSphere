@@ -1,12 +1,12 @@
 # 快速开始（MCP 接入）
 
-5 分钟把 MarxSphere 推理/检索/教育能力接入 Claude Code / Codex / DeepSeek Harness。
+5 分钟把 SocioSeek 推理/检索/教育能力接入 Claude Code / Codex / DeepSeek Harness。
 
 ## 第一步：确保 SAG 服务在跑
 
 ```bash
 cd SAG_ROOT
-MARXSPHERE_PREVIEW=1 npx tsx src/index.ts
+SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts
 ```
 
 验证：浏览器打开 `http://localhost:4173` 能看到界面。
@@ -16,7 +16,7 @@ MARXSPHERE_PREVIEW=1 npx tsx src/index.ts
 本机开发（localhost）**免 Token**，直接跳到第三步。
 
 外部部署（服务器/多用户）时需要：
-1. 打开 MarxSphere 前端 → **设置** → **对外 API 令牌**
+1. 打开 SocioSeek 前端 → **设置** → **对外 API 令牌**
 2. 点"新建令牌"，填写名称（如 `claude-code-prod`），勾选权限（推理/搜索/入库/**教育**）
 3. 复制生成的 `sag_xxx` 明文（**只显示一次**，请立即保存）
 

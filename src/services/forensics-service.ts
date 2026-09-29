@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // forensics-service.ts — 论文取证服务(调 vendor/integrity-auditor 7 脚本, ai4s MIT)
 // 用途: 引文核验的 2/3 轨 — 图像查重(phash/ORB) + 数值取证(尾数/量级/XLSX 聚合)
 import { execFile } from "node:child_process";

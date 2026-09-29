@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-elicitation-service.ts — V400: 澄清追问暂停协调 (openai/codex elicitation.rs 对齐)
 // 借鉴 codex-rs/core/src/elicitation.rs:
 //   - 计数注册: 多个并发 elicitation 期间 session 保持暂停, 直到全部结束 (outstanding=0)

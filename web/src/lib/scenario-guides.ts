@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scenario-guides.ts — 78 个科研场景的研究开展步骤指南
 //   ⚠ 原注释写「35 个（V256）」, 而实际条数早已是 66 —— 注释停在上一次扩容前。
 //   2026-09-29 补到 78(新增「写作舱与工作台」16 组)时把数字改成**不写死**的说明。
 // 每个场景：目标 + 5-8 步研究流程（每步标注使用工具 + 操作指引）
-// 引导用户如何利用 MarxSphere 真实工具完成该场景研究
+// 引导用户如何利用 SocioSeek 真实工具完成该场景研究
 import type { ScenarioGuide } from "../components/ScenariosWorkbench";
 
 export const SCENARIO_GUIDES: ScenarioGuide[] = [

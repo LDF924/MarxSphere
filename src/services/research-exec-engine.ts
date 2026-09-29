@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // research-exec-engine.ts — SocialSci P0-2: DAG 节点执行引擎(依赖就绪 → 排队 → 执行 → 产物落节点)
 // 语义(对齐画布"上一节点输出=下一节点输入"): research_tasks.depends_on 前置全部 done →
 //   任务 queued→running; 执行完成 → 写对应节点快照 + 下游任务重新就绪评估

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // GuardStatusPanel.tsx — V404-29: 运行时防护状态页
 // 展示各防护(进度哨兵/复读检测/注入闸/规则摘要/整树终止/代码页解码)的开关/命中计数/最近事件 + 子进程树
 import { useCallback, useEffect, useState } from "react";

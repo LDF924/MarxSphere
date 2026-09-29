@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/views/quick/useDraggablePanel.ts — V415: 让浮层能自由拖动并记住位置
 //
 // 由来(2026-09-13 用户反馈): 节点大卡片、科研助手都是钉死在某个角的浮层, 挡着内容也挪不开。

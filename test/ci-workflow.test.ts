@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/ci-workflow.test.ts — CI 工作流文件本身的自检
 //
 // 为什么需要这个(2026-09-28, 真实事故):

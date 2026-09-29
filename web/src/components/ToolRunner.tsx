@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ToolRunner.tsx — 通用工具执行组件(内嵌到各归属面板)
 // 用法: <ToolRunner tool="pdf_convert" title="文档转换" fields={[...]} hint="..." />
 import { useState, type FC } from "react";

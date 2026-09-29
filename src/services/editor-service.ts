@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // editor-service.ts — SocialSci P0-5: 学术文本编辑器后端(文档 CRUD + 选区改写 + 全文检查 + 图表代码)
 // 形态对齐(参考产品交互语义, 原创实现): 选中文本→改写5模式+humanize / 全文一致性检查 / AI图表代码
 // 诚实性边界: 全文检查"不验证文献真实性"(与 citation-verify 定位区分, 服务注释注明)

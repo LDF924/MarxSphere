@@ -65,13 +65,13 @@ async function collectActs(waitMs = 6000) {
       window.__socActs = [];
       window.addEventListener('message', (e) => {
         const d = e.data || {};
-        if (d.source === 'marxsphere-soc' && d.type === 'actions') window.__socActs = d.actions || [];
+        if (d.source === 'socioseek-soc' && d.type === 'actions') window.__socActs = d.actions || [];
       });
       window.__socActsInstalled = true;
     }
     window.__socActs = [];
     const f = document.querySelector('iframe');
-    if (f && f.contentWindow) f.contentWindow.postMessage({ source: 'marxsphere-workbench', type: 'query-actions' }, '*');
+    if (f && f.contentWindow) f.contentWindow.postMessage({ source: 'socioseek-workbench', type: 'query-actions' }, '*');
     return 1;
   })()`);
   const t0 = Date.now();

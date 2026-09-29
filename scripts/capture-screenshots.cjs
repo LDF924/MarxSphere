@@ -1,4 +1,4 @@
-// capture-screenshots.cjs — 用 Electron 截取 MarxSphere 主要界面
+// capture-screenshots.cjs — 用 Electron 截取 SocioSeek 主要界面
 // 用法: electron capture-screenshots.cjs <输出目录>
 const { app, BrowserWindow } = require("electron");
 const fs = require("fs");

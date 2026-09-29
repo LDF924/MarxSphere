@@ -20,7 +20,7 @@ def _safe_expr(expr: str, vars: list[str]) -> bool:
 def build_stata(steps: dict, vars: list[str]) -> str:
     """从 steps 生成 Stata .do 代码(与 python 管道同名步骤一一对应)"""
     out = []
-    out.append("* 数据管道 Stata 复现脚本 (由 MarxSphere 实证工作台生成)")
+    out.append("* 数据管道 Stata 复现脚本 (由 SocioSeek 实证工作台生成)")
     out.append("* 对应: 缺失统计 → 缩尾 → 变量构造 → 样本筛选 → 描述统计")
     out.append("* 前置: ssc install winsor2 estout estpost  (esttab 需 estout)")
     out.append("clear all")

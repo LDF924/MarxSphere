@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // approval-cache-service.ts — V400 C6: 审批缓存 (openai/codex approvals.rs:155 对齐)
 // 借鉴 codex ApprovalCacheKey: 命令/操作指纹 → 已批准/已拒绝 记忆
 //   - 同任务同操作: 批准后免重复审批(沙箱升级重试不重复审批)

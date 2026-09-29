@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import { useCallback, useEffect, Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Archive,
@@ -602,7 +602,7 @@ function AppShell() {
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
   const [showArchivedDocuments, setShowArchivedDocuments] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [status, setStatus] = useState(() => t("正在加载 MarxSphere...", "Loading MarxSphere..."));
+  const [status, setStatus] = useState(() => t("正在加载 群学求真...", "Loading SocioSeek..."));
   const [error, setError] = useState("");
   const [uploadJobs, setUploadJobs] = useState<UploadJobRecord[]>([]);
   const [isUploadQueueExpanded, setIsUploadQueueExpanded] = useState(false);
@@ -673,7 +673,7 @@ function AppShell() {
   useEffect(() => {
     const onNavigate = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; view?: string; from?: { view?: string; label?: string } } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "navigate") return;
+      if (d?.source !== "socioseek-soc" || d.type !== "navigate") return;
       const view = String(d.view ?? "");
       if (!validViews.includes(view as WorkspaceView)) return;
       // 目标就是写作舱时, 把"从哪来"记下来 —— 写作舱内会有个「← 返回 XX」用得上。
@@ -696,7 +696,7 @@ function AppShell() {
   useEffect(() => {
     const onRoute = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; view?: string; path?: string } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "route") return;
+      if (d?.source !== "socioseek-soc" || d.type !== "route") return;
       if (d.view !== "workflow" || !d.path) return;
       setWorkflowSubPath(String(d.path));
     };
@@ -720,7 +720,7 @@ function AppShell() {
   useEffect(() => {
     const onBlocked = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; id?: string; reason?: string } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "action-blocked") return;
+      if (d?.source !== "socioseek-soc" || d.type !== "action-blocked") return;
       const what = String(d.id ?? "").split(":").pop() || "该动作";
       setError(d.reason === "disabled"
         ? `「${what}」当前不可用 —— 请先在页面上满足它的前置条件（例如填好必填项、或先完成上一步）`
@@ -732,11 +732,11 @@ function AppShell() {
 
   // V417: 子应用(iframe 里的 soc 视图, 如评审页)请求把内容送给别的模块 —— soc 不能直接投递给另一个 iframe,
   //   由外壳中转。`route` 决定送写作舱(素材)还是送编辑器(文档)。
-  //   注意 source 是 marxsphere-soc(子应用上行), 与外壳下行用的 marxsphere-app 不同。
+  //   注意 source 是 socioseek-soc(子应用上行), 与外壳下行用的 socioseek-app 不同。
   useEffect(() => {
     const onForward = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; route?: string; kind?: string; title?: string; markdown?: string } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "forward-to-module") return;
+      if (d?.source !== "socioseek-soc" || d.type !== "forward-to-module") return;
       if (!d.markdown?.trim()) return;
       if (d.route === "editor") {
         // 复用既有的 empirical-insert-doc 通道: 下面的 effect 会等 editor iframe 的
@@ -786,8 +786,8 @@ function AppShell() {
       if (subAppReady(iframe, "editor")) {
         try {
           // 数据集补发: iframe 晚于 broadcast 挂载时的时序兜底
-          if (ds) iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-dataset", ...ds }, "*");
-          if (doc) iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-insert-doc", title: doc.title, markdown: doc.markdown }, "*");
+          if (ds) iframe!.contentWindow!.postMessage({ source: "socioseek-app", type: "empirical-dataset", ...ds }, "*");
+          if (doc) iframe!.contentWindow!.postMessage({ source: "socioseek-app", type: "empirical-insert-doc", title: doc.title, markdown: doc.markdown }, "*");
           pendingEditorDocRef.current = null;
           clearInterval(timer);
           return;
@@ -820,7 +820,7 @@ function AppShell() {
       const iframe = document.querySelector('iframe[title="研途写作舱"], iframe[src*="/workflow"]') as HTMLIFrameElement | null;
       if (subAppReady(iframe, "workflow")) {
         try {
-          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "workflow-route", path }, "*");
+          iframe!.contentWindow!.postMessage({ source: "socioseek-app", type: "workflow-route", path }, "*");
           clearInterval(timer);
           return;
         } catch { /* 跨域忽略 */ }
@@ -842,7 +842,7 @@ function AppShell() {
       const iframe = document.querySelector('iframe[title="学术文本工作台"], iframe[src*="/editor"]') as HTMLIFrameElement | null;
       try {
         iframe?.contentWindow?.postMessage(
-          { source: "marxsphere-app", type: "empirical-dataset", ...latestDatasetRef.current }, "*");
+          { source: "socioseek-app", type: "empirical-dataset", ...latestDatasetRef.current }, "*");
       } catch { /* 跨域忽略 */ }
     };
     window.addEventListener("empirical:dataset-changed", onDataset);
@@ -883,7 +883,7 @@ function AppShell() {
       const iframe = document.querySelector('iframe[title="成果可视化工坊"], iframe[src*="/viz"]') as HTMLIFrameElement | null;
       if (subAppReady(iframe, "viz")) {
         try {
-          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "empirical-viz-seed", ...seed }, "*");
+          iframe!.contentWindow!.postMessage({ source: "socioseek-app", type: "empirical-viz-seed", ...seed }, "*");
           pendingVizSeedRef.current = null;
           clearInterval(timer);
           return;
@@ -925,7 +925,7 @@ function AppShell() {
       const iframe = document.querySelector('iframe[title="研途写作舱"], iframe[src*="/workflow"]') as HTMLIFrameElement | null;
       if (subAppReady(iframe, "workflow")) {
         try {
-          iframe!.contentWindow!.postMessage({ source: "marxsphere-app", type: "workflow-material", ...payload }, "*");
+          iframe!.contentWindow!.postMessage({ source: "socioseek-app", type: "workflow-material", ...payload }, "*");
           pendingWorkflowMaterialRef.current = null;
           clearInterval(timer);
           return;
@@ -1565,7 +1565,7 @@ function AppShell() {
         resetProcess(t("MCP 搜索语句", "MCP search query"), getMcpSearchQuery(event.arguments, language));
         addProcessStep({
           id: "mcp-sag-search-running",
-          title: t("MarxSphere 检索执行中", "MarxSphere retrieval is running"),
+          title: t("群学求真 检索执行中", "SocioSeek retrieval is running"),
           detail: t(
             "MCP 工具已发起 sag_search，正在实时接收 SAG 内部检索阶段。",
             "The MCP tool has started sag_search and is receiving SAG internal retrieval stages in real time."
@@ -1593,7 +1593,7 @@ function AppShell() {
         if (event.toolCall.status === "FAILED") {
           setProcessSteps([{
             id: makeStepId("sag-search-failed"),
-            title: t("MarxSphere 检索失败", "MarxSphere retrieval failed"),
+            title: t("群学求真 检索失败", "SocioSeek retrieval failed"),
             detail: event.toolCall.error ?? t("工具返回失败", "Tool returned a failure"),
             status: "failed"
           }]);
@@ -1604,7 +1604,7 @@ function AppShell() {
         if (trace) {
           setProcessSteps([
             buildMcpSearchQueryStep(event.toolCall, language),
-            ...buildTraceProcessSteps(trace, t("MarxSphere 检索链路", "MarxSphere retrieval trace"), language),
+            ...buildTraceProcessSteps(trace, t("群学求真 检索链路", "SocioSeek retrieval trace"), language),
             ...buildMcpSearchResultSteps(parsed, language)
           ]);
         } else {
@@ -1612,7 +1612,7 @@ function AppShell() {
             buildMcpSearchQueryStep(event.toolCall, language),
             {
               id: makeStepId("sag-search-no-trace"),
-              title: t("MarxSphere 检索链路", "MarxSphere retrieval trace"),
+              title: t("群学求真 检索链路", "SocioSeek retrieval trace"),
               detail: t("工具返回了检索结果，但没有返回 trace 字段。", "The tool returned retrieval results but did not include a trace field."),
               status: "failed",
               payload: parsed
@@ -2008,7 +2008,7 @@ function AppShell() {
           >
             <SymbolLogo size={28} />
             <span className="hidden flex-col items-start leading-tight lg:flex">
-              <span className="text-sm font-semibold">MarxSphere</span>
+              <span className="text-sm font-semibold">{t("群学求真", "SocioSeek")}</span>
               <span className="text-[10px] text-muted-foreground">{t("全人文社科 AI 科研中枢", "Humanities & social sciences AI research hub")}</span>
             </span>
           </button>
@@ -5886,7 +5886,7 @@ function buildMcpSearchResultSteps(result: unknown, language: SupportedLanguage)
   }
   return [{
     id: makeStepId("mcp-search-result"),
-    title: language === "en" ? "MarxSphere returned chunks" : "MarxSphere 返回切片",
+    title: language === "en" ? "SocioSeek returned chunks" : "群学求真 返回切片",
     detail: language === "en" ? `${result.sections.length} chunk result(s) returned` : `返回 ${result.sections.length} 个切片结果`,
     status: "done",
     payload: {

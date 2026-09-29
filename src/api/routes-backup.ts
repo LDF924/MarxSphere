@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // routes-backup.ts — 知识库备份/恢复路由(admin 权限, 异步任务 + 轮询)
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";

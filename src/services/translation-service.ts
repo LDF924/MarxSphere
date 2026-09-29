@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // translation-service.ts — 论文翻译（2026-08-27, Agentero 对照）
 // 能力: 全局论文翻译 / 划词并排对照（结合上下文统一术语）
 // 实现: 调 LLM（复用 callLlm, 模型中立）, 分块翻译长文

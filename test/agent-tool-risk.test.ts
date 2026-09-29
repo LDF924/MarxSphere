@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/agent-tool-risk.test.ts — 危险 agent 工具**不得**标成 risk:"safe"
 //
 // 为什么需要(2026-09-28, 一路查下来才发现的):

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
  * checkup-service.ts — 中期检查 / 结项验收：上传检查表 → 逐项对着填 → 缺失项明确留空。
  *

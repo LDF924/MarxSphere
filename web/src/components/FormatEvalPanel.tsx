@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // FormatEvalPanel.tsx — 论文格式智能评测面板(2026-09-03)
 // 输入: 模板选择(内置 6 个/自定义 localStorage) + 文本粘贴或 .md/.txt 上传
 // 输出: 规则引擎违规清单(红/琥珀/蓝) + LLM 审校分区 + 模板人工核对提示

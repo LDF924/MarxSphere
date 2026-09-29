@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // wecom-service.ts — 企业微信接入(自建应用双向 + 群机器人 webhook)
 // 协议参照: 企业微信官方文档(developer.work.weixin.qq.com 90968 加密/90930 签名)
 //   + OpenSquilla channels/wecom.py 与 _wecom_crypto.py(思路对齐, TS 自实现, 零依赖)

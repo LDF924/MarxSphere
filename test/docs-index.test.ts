@@ -13,6 +13,7 @@
  *      那等于没归类, 但界面上完全看不出来。这条会把它报出来。
  */
 import { describe, it, expect } from "vitest";
+import { execSync } from "node:child_process";
 import fs, { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,5 +154,45 @@ describe("doc-sync 不许改坏标题结构", () => {
       }
     }
     expect(bad, "这些标题的第二节号是一个会漂的规模数 —— doc-sync 把它从句内数字吃进了小节号").toEqual([]);
+  });
+});
+
+/**
+ * 品牌资产**不能只存在于磁盘上**。
+ *
+ * 由来(2026-09-29 换标): `.gitignore` 里有一条全局 `*.png`（V404-35 加的，用于挡冒烟截图）。
+ *   新 logo / favicon **全部被它吞掉了** —— 而 `git add -A` 对已忽略文件是**静默跳过**，
+ *   连 `git status` 都不列出来。于是那次提交里**根本没有 logo**，
+ *   但 commit 成功、1269 个单测全绿、类型检查全绿、docs:check 全绿 —— **没有任何东西发现**。
+ *   已经在跟踪的老 png 不受影响，所以症状是"改的生效了、新建的没生效"，极具迷惑性。
+ *
+ * 判据: 代码/文档里引用到的品牌资产，必须在 **git 索引里**（而不是只在工作区）。
+ *   用 `git ls-files` 而不是 `fs.existsSync` —— 后者对"磁盘有、仓里没有"正是瞎的。
+ */
+describe("品牌资产必须入库，不能只躺在磁盘上", () => {
+  const REFERENCED = [
+    "web/public/brand-mark.png",          // SymbolLogo.tsx 引用
+    "web/public/brand-favicon-16.png",    // web/index.html 引用
+    "web/public/brand-favicon-32.png",
+    "web/public/brand-touch-180.png",
+    "docs/assets/logo-512.png",           // 三份 README 抬头引用
+    "build/icon.ico",                     // electron-builder.yml win.icon
+  ];
+
+  it("这些文件都真的在 git 里(不是被 *.png 之类规则静默忽略)", () => {
+    const tracked = new Set(
+      execSync("git ls-files", { cwd: ROOT, encoding: "utf8" }).split("\n").map((s) => s.trim()),
+    );
+    const missing = REFERENCED.filter((f) => !tracked.has(f));
+    expect(
+      missing,
+      "这些品牌资产**不在 git 索引里** —— 多半是被 .gitignore 的 *.png 吞了。\n" +
+        "加放行规则即可: " + missing.map((f) => `!${f}`).join("\n"),
+    ).toEqual([]);
+  });
+
+  it("引用它们的文件也都在(防判据自己指向不存在的东西)", () => {
+    const src = readFileSync(path.join(ROOT, "web/src/components/SymbolLogo.tsx"), "utf8");
+    expect(src).toContain("/brand-mark.png");
   });
 });

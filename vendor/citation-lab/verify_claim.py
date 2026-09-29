@@ -147,7 +147,7 @@ def _detect_domain(text: str) -> str:
 # ─── 元数据查证 (Crossref + OpenAlex) ───
 def _query_crossref(doi: str) -> dict | None:
     try:
-        r = requests.get(f"{CROSSREF_API}/{doi}", timeout=15, headers={"User-Agent": f"MarxSphere/1.0 mailto:{EMAIL}"})
+        r = requests.get(f"{CROSSREF_API}/{doi}", timeout=15, headers={"User-Agent": f"SocioSeek/1.0 mailto:{EMAIL}"})
         if r.status_code != 200:
             return None
         m = r.json().get("message", {})

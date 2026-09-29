@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import pino from "pino";
 import { config } from "../config/env.js";
 import { sanitizeLine, sanitizeObject } from "../services/log-sanitizer.js";
@@ -6,7 +6,7 @@ import { sanitizeLine, sanitizeObject } from "../services/log-sanitizer.js";
 const loggerOptions = {
   level: config.LOG_LEVEL,
   base: {
-    service: "marxsphere"
+    service: "socioseek"
   },
 };
 

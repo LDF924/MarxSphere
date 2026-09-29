@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // batch-file-service.ts — 批量文件解析(多 PDF/Word/Excel/PPT → 逐份提取文本)
 // 解析逻辑与 agent attachment_read 同 python 方案(pymupdf/python-docx/openpyxl/python-pptx)
 import { execFile } from "node:child_process";

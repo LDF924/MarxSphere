@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // StatsParamForm.tsx — 统计 17 法动态参数表单(React 版, 移植自 Vue ParamField)
 // schema 定义在 methodParams.ts(fields: checkbox/radio/select/number/group/text/info + fromVars)
 import type { ParamFieldDef, VarDef } from "./methodParams";

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/routing-log.test.ts — 路由决策日志 + 用户抱怨对齐(V404-3, 借鉴 OpenSquilla 路由数据飞轮)
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { rmSync, existsSync, readFileSync } from "node:fs";

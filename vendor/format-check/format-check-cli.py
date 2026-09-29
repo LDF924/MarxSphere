@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""format-check-cli.py — 论文格式检查统一 CLI(MarxSphere 后端子进程调用)
+"""format-check-cli.py — 论文格式检查统一 CLI(SocioSeek 后端子进程调用)
 
 整合 MIT 开源项目(合规署名见 THIRD_PARTY_NOTICES.md):
 - thesis-format-checker(emptyinkpot, MIT): docx 样式检查器 + yaml 规则

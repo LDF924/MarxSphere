@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // im-service.ts — IM 接入（飞书/钉钉/Telegram/企业微信 机器人远程对话）
 // 能力: 接收消息 → 命令解析(状态/项目/评测/审批/告警) → 回复; 审批通过 webhook 推送
 // 飞书/钉钉/Telegram: 平台 webhook 协议(官方文档格式)
@@ -200,7 +200,7 @@ export async function handleImCommand(msg: ImMessage): Promise<ImReply> {
   if (lower.includes("帮助") || lower.includes("help") || lower.includes("?")) {
     return {
       text: [
-        "MarxSphere IM 助手可用命令：",
+        "SocioSeek IM 助手可用命令：",
         "· 状态 — 服务/评测/记忆状态",
         "· 项目 — 项目列表",
         "· 评测 — 最近评测结果",

@@ -30,7 +30,7 @@ AGENT_API_BASE = "https://mineru.net/api/v1/agent"
 API_DOCS_URL = "https://mineru.net/apiManage/docs"
 API_TOKEN_APPLY_URL = "https://mineru.net/apiManage/docs?openApplyModal=true"
 TOKEN_ENV_NAME = "MINERU_API_TOKEN"
-# MarxSphere 适配: 兼容 SAG .env 中的 MINERU_TOKEN
+# SocioSeek 适配: 兼容 SAG .env 中的 MINERU_TOKEN
 TOKEN_ENV_NAMES = ("MINERU_API_TOKEN", "MINERU_API_KEY", "MINERU_TOKEN")
 AGENT_MAX_FILE_BYTES = 10 * 1024 * 1024
 AGENT_MAX_PAGES = 20

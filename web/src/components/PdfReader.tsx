@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // PdfReader.tsx — embedPDF PDF 阅读器（官方插件体系, v6）
 // 基于 @embedpdf/core@2.14.4 官方插件组合:
 //   Viewport(滚动容器, 消费 scrollRequests) + Scroller(虚拟化) + RenderLayer(渲染)

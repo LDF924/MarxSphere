@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // paper-structure-service.ts — 论文图/表/公式/算法解析（2026-08-29, Agentero 对照: 解析论文中的图表公式算法并结合上下文理解）
 // 能力:
 //   1. 从论文文本/Markdown 中定位 图(Figure/Fig.)/表(Table)/公式(公式编号)/算法(Algorithm) 块

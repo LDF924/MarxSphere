@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/dream-consolidation-service.ts — V404-7: 记忆 Dream 巩固(借鉴 OpenSquilla memory/dream)
 // 回合捕获 → 证据门控 → 确定性评分 → LLM 生成补丁 → 人工可审提升(隔离区/收据/回滚)
 // 源: task_experience(成功经验) + agent_tasks(用户反馈) + agent_exec_logs

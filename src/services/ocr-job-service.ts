@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ocr-job-service.ts — V418: 文档 OCR 任务(上传扫描版 PDF → 后台识别 → 文本落成素材)
 //
 // 由来(2026-09-28 用户要求): 写作舱的素材上传对扫描版 PDF 是死路 ——

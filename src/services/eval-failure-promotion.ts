@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // eval-failure-promotion.ts — V417: bad case → gold 候选提名（可触发入口）
 //
 // 由来(2026-09-15 盘点):

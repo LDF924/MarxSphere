@@ -1,4 +1,4 @@
-# OpenSquilla → MarxSphere 差距分析(Apache-2.0, 可移植参考)
+# OpenSquilla → SocioSeek 差距分析(Apache-2.0, 可移植参考)
 
 > ⚠️ **本文是历史记录, 不代表平台现状。**
 > 写于 2026-09-04, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
@@ -12,7 +12,7 @@
 ## 一、六大机制差距(按价值排序)
 
 ### 1. 模型路由是"可训练闭环"而非"开环轮换"【高】
-| | OpenSquilla | MarxSphere |
+| | OpenSquilla | SocioSeek |
 |---|---|---|
 | 选模型 | **本地 LightGBM(390 维特征)+ ONNX MLP 双头融合**把每轮分 R0-R3 四档 → 每档绑最便宜够用模型;降级到启发式→默认档 | llm-common rotation 规则/随机轮换(开环) |
 | 特征 | 8 通道 390 维:手工 51 + TF-IDF + 上下文 + 轨迹 + BGE 嵌入 + 助手信号 | 无 |
@@ -27,20 +27,20 @@
 - 模式:truncate(结构化 JSON 投影)/ summarize(语义)
 
 ### 3. KV-cache 感知档位保持【高】
-缓存基座前置、易变内容靠尾 + 路由 anti-downgrade(KV 窗口 600s 不降档)——把缓存命中损失纳入轮换决策。MarxSphere 若用 API 级 prompt caching,值得照搬。
+缓存基座前置、易变内容靠尾 + 路由 anti-downgrade(KV 窗口 600s 不降档)——把缓存命中损失纳入轮换决策。SocioSeek 若用 API 级 prompt caching,值得照搬。
 
 ### 4. MetaSkill = 声明式 DAG 工作流【高】(技能/场景层最大差距)
 - 元技能 = SKILL.md + `composition.steps` 声明 DAG;6 步型:agent/llm_chat/llm_classify/user_input/tool_call/skill_exec;`depends_on` 并行、`route:` 条件路由、`on_failure:` 备胎
 - **执行顺序/门控/暂停/重试由运行时强制**(asyncio 拓扑调度),非模型自律
 - 46 步论文写作 DAG 示例:收集→澄清表单→检索→逐节 agent 写作→拼接→LaTeX 消毒→篇幅门→引用门→质量门
 - **技能自我进化**:auto_propose 从会话日志发现高频共现 → proposal → 人工 accept
-- vs MarxSphere 65 场景 = 提示词流程(编排在模型头脑)
+- vs SocioSeek 65 场景 = 提示词流程(编排在模型头脑)
 
 ### 5. 记忆 Dream 巩固【中高】
 回合捕获 → 证据门控 → 确定性评分(频率/信号/来源/跨天)→ LLM 生成补丁 → **人工可审 MEMORY.md 提升**(quarantine/收据/水合)+ 压缩记录 repair 联动。
 
 ### 6. B5 融合(难档多模型互证)【中】
-难档(c3)= 4-5 模型各成稿 + 1 aggregator 融合;阵容按 slot 评分(质量/亲和/多样性/成本/角色);**proposer 永不持工具边界**(只有 aggregator 能调工具,防放大副作用)。MarxSphere 的 rotation 若只是主备切换,此为升级方向(需验证成本账)。
+难档(c3)= 4-5 模型各成稿 + 1 aggregator 融合;阵容按 slot 评分(质量/亲和/多样性/成本/角色);**proposer 永不持工具边界**(只有 aggregator 能调工具,防放大副作用)。SocioSeek 的 rotation 若只是主备切换,此为升级方向(需验证成本账)。
 
 ## 二、可借鉴最小切口(按 ROI)
 1. **工具结果压缩+按需取回**(直接移植,高收益:日志/网页/搜索长输出)
@@ -59,4 +59,4 @@
 - 压缩: session/compaction.py · engine/steps/prompt_cache.py
 
 ## 四、结论
-OpenSquilla 与 MarxSphere 同做"多模型+记忆+技能"Agent,但它在**路由智能化(本地模型+数据飞轮)与工具结果压缩**上领先,MetaSkill 则给场景编排提供运行时强制范式。Apache-2.0 可直接移植参考。建议按"最小切口"逐项推进,先做工具结果压缩(高收益低风险)。
+OpenSquilla 与 SocioSeek 同做"多模型+记忆+技能"Agent,但它在**路由智能化(本地模型+数据飞轮)与工具结果压缩**上领先,MetaSkill 则给场景编排提供运行时强制范式。Apache-2.0 可直接移植参考。建议按"最小切口"逐项推进,先做工具结果压缩(高收益低风险)。

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// electron/main.ts — MarxSphere 桌面端主进程（V397）
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// electron/main.ts — SocioSeek 桌面端主进程（V397）
 // 职责: 单实例锁 / 端口预检 / 引导页(onboarding) / spawn 后端 / 健康轮询 / 崩溃重启 / 错误页
 import { app, BrowserWindow, ipcMain, dialog, screen } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -185,7 +185,7 @@ async function bootstrap() {
   await app.whenReady();
   const port = await probePort();
   if (port === null) {
-    showErrorPage("端口 " + DEFAULT_PORT + " 被占用", "检测到 4173 端口已被其他程序占用。可能是旧版 MarxSphere 实例仍在运行，请先关闭后再启动本应用。");
+    showErrorPage("端口 " + DEFAULT_PORT + " 被占用", "检测到 4173 端口已被其他程序占用。可能是旧版 SocioSeek 实例仍在运行，请先关闭后再启动本应用。");
     return;
   }
   currentPort = port;
@@ -194,7 +194,7 @@ async function bootstrap() {
   await waitForOnboardingReady();
   // 依赖就绪检查（提前执行，不等 DB——否则 DB 未就绪时解压永不触发）
   if (!(await ensureBackendDeps())) {
-    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 SocioSeek。");
     return;
   }
   // DB 就绪检查: 未就绪则等待引导页完成数据库启动后再拉起后端（避免后端闪退循环）
@@ -252,7 +252,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 680,
-    title: "MarxSphere",
+    title: "SocioSeek",
     backgroundColor: "#0b1120",
     autoHideMenuBar: true,
     // V411: 先隐藏窗口，渲染就绪后再显示（防启动白屏/离屏窗口残留）
@@ -292,7 +292,7 @@ async function startBackend(port: number) {
   const dataRoot = sagRoot();
   // 依赖就绪检查: node_modules 缺失时从 tgz 解压（首次启动）
   if (!(await ensureBackendDeps())) {
-    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 MarxSphere。");
+    showErrorPage("后端依赖缺失", "未找到后端运行依赖（node_modules）。请重新安装 SocioSeek。");
     return;
   }
   const env: Record<string, string> = {
@@ -304,7 +304,7 @@ async function startBackend(port: number) {
     MCP_HTTP_PORT: String(MCP_DEFAULT_PORT + (port - DEFAULT_PORT)),
     SAG_ROOT: root,
     // 未配置 .env（首次启动）时用 preview 模式：不拉 Python MCP 池, 配置保存重启后才进完整模式
-    MARXSPHERE_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1",
+    SOCIOSEEK_PREVIEW: fs.existsSync(path.join(dataRoot, ".env")) ? "0" : "1",
     // 运行时数据目录（userData 可写）: 通过 SAG_ROOT 指向安装资源 + cwd 指向 userData
     // 注: 后端 dotenv 从 cwd 加载 .env — 引导页写入 userData/sag-root/.env, spawn cwd 设到 dataRoot
   };
@@ -319,7 +319,7 @@ async function startBackend(port: number) {
   backendProc.on("exit", (code) => {
     console.error("[backend] exited code=" + code);
     if (!backendStopping && mainWindow) {
-      showErrorPage("后端服务已退出", `MarxSphere 后端进程异常退出（code=${code}），应用将自动重启后端。`);
+      showErrorPage("后端服务已退出", `SocioSeek 后端进程异常退出（code=${code}），应用将自动重启后端。`);
       // 3 秒后自动重启
       setTimeout(() => { if (mainWindow && !backendStopping) startBackend(currentPort); }, 3000);
     }

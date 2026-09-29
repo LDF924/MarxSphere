@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // policy-service.ts — 中国政府网政策检索
 // 通过已注册的 gov-cn-policy MCP（China-Central-Policy-MCP）检索
 // 用 spawn + stdin 标准握手（initialize → tools/call）
@@ -95,7 +95,7 @@ async function callMcpTool(toolName: string, args: Record<string, unknown>): Pro
       jsonrpc: "2.0",
       id: randomUUID(),
       method: "initialize",
-      params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "marxsphere", version: "1.0" } }
+      params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "socioseek", version: "1.0" } }
     }) + "\n");
 
     setTimeout(() => {

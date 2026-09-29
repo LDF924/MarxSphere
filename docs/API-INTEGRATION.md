@@ -1,8 +1,8 @@
-# MarxSphere 对外接入（API Token + MCP Server）
+# SocioSeek 对外接入（API Token + MCP Server）
 
 > **完整文档已迁移到 [docs/overview.md](docs/overview.md)**（Sciverse 风格三层：Overview → API Reference → 集成指南 + Cookbook）
 
-MarxSphere 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Codex 等 AI Agent。
+SocioSeek 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Codex 等 AI Agent。
 对标 [Sciverse-Agent-Tools](https://github.com/opendatalab/Sciverse-Agent-Tools) 模式：薄包装 REST API → MCP 工具。
 
 ## 快速入口
@@ -29,4 +29,4 @@ MarxSphere 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Code
 
 ## 一句话流程
 
-MarxSphere 设置页生成 `sag_xxx` Token → 填入 Claude Code `.mcp.json` / Codex `config.toml` → Agent 直接调用 SAG 52 步推理 / 多源检索 / 文档入库。
+SocioSeek 设置页生成 `sag_xxx` Token → 填入 Claude Code `.mcp.json` / Codex `config.toml` → Agent 直接调用 SAG 52 步推理 / 多源检索 / 文档入库。

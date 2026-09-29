@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // redis-rate-limit.ts — 限流的 Redis 后端
 //
 // 由来(2026-09-11): 限流计数原先只有 Postgres 一种共享实现。pg 作计数器有两个实际问题 ——

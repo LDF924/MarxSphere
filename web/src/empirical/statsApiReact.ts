@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // statsApiReact.ts — 实证统计 17 法 API 客户端(React 版, 2026-09-09 统一分析台融合用)
 // 契约同 web/socialsci-vue/src/views/statistics/statsApi.ts: 上传 → fileId → statistics-jobs → 轮询
 // 注: request 为 lib/api.ts 内部函数, 此处直连 fetch(带与 api.ts 相同的 Authorization 头)

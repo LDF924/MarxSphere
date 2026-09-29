@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // econometricSchema.ts — 计量因果 19 法参数 schema(2026-09-09 统一分析台融合)
 // 从 EmpiricalResearchPanel 各方法专属 JSX 表单提取参数键, 供统一工作区渲染深度配置
 export interface EcoField {

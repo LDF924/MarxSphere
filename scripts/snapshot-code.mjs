@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/snapshot-code.mjs — 代码快照备份(整仓 robocopy 到 E:\SAG-archive)
 //
 // 由来: 此前每次备份靠手打 robocopy, 排除项凭记忆 —— 实测 20260912 与 20260913

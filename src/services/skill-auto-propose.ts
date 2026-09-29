@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/skill-auto-propose.ts — V404-8: 技能自我进化闭环(auto_propose)
 // 借鉴 OpenSquilla meta/author_seed.py + auto_propose: 从会话/执行日志发现高频目标
 // → 检查已有 approved 技能是否覆盖 → 未覆盖 → 自动蒸馏提案 → EDV 验证 → 人工可见列表

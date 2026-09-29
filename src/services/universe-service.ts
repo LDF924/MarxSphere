@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // universe-service.ts — Explore 图谱数据服务(阶段4b, 对齐 Zleap universe 快照契约)
 // 数据源: PG 事件/实体为主 + Graphiti 超边叠加(Neo4j 11001 在线时)
 // 契约: manifest / timeline(bundle+ordinal+cursor) / expand(patch) / node_detail / rebuild

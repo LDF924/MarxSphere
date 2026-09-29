@@ -1,10 +1,10 @@
 # AGENTS.md — AI Agent 项目指南
 
-本文件为 AI 编码代理（Claude Code / Codex / Cursor 等）提供 MarxSphere 仓库的快速导航与协作规范。
+本文件为 AI 编码代理（Claude Code / Codex / Cursor 等）提供 SocioSeek 仓库的快速导航与协作规范。
 
 ## 项目概览
 
-MarxSphere — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），122 教育路由 + 32 学习引擎顶层（教育服务 `src/services/education-*.ts` 等 19 文件），对话可经 `education_service` 工具一句话调用。
+SocioSeek — AI 驱动的哲学社会科学科研中枢（当前以马克思主义理论为展示语料）。核心是**事件中心的多源混合 RAG**：SAG 事件检索 + Graphiti 超边 + Cognee 切片 + PG 向量四源融合，配套 52 步推理链路与 AI Agent 编排。**另有 AI+教育能力**：顶部「AI+教育」Tab（学生端/教师端双角色），122 教育路由 + 32 学习引擎顶层（教育服务 `src/services/education-*.ts` 等 19 文件），对话可经 `education_service` 工具一句话调用。
 
 ## 仓库结构
 
@@ -80,7 +80,7 @@ npm run dev                 # 开发: 仅 API 4173(无 5173 dev server)
 
 ## 外部 Agent 接入（MCP）
 
-MarxSphere 可作为 MCP Server 被 Claude Code/Codex 调用：
+SocioSeek 可作为 MCP Server 被 Claude Code/Codex 调用：
 
 ```json
 {

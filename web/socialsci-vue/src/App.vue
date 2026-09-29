@@ -20,7 +20,7 @@ let mo: MutationObserver | undefined;
 // 必丢(与 ReviewView 的那条结论同源)。外壳是常驻的, 收下后再引导到素材页。
 const onExternalMaterial = (e: MessageEvent) => {
   const d = e.data as { source?: string; type?: string; kind?: string; title?: string; markdown?: string } | null;
-  if (d?.source !== "marxsphere-app" || d.type !== "workflow-material" || !d.markdown?.trim()) return;
+  if (d?.source !== "socioseek-app" || d.type !== "workflow-material" || !d.markdown?.trim()) return;
   try {
     localStorage.setItem(HANDOFF_KEY, JSON.stringify({
       kind: d.kind ?? "note", title: d.title ?? "外部素材", markdown: d.markdown, at: Date.now(),
@@ -70,7 +70,7 @@ function invokeFromShell(id: string) {
   // 全不可点: 区分"隐藏"与"禁用", 给出可操作的说法
   const disabled = els.some((e) => (e as HTMLButtonElement).disabled);
   window.parent?.postMessage(
-    { source: "marxsphere-soc", type: "action-blocked", id, reason: disabled ? "disabled" : "hidden" },
+    { source: "socioseek-soc", type: "action-blocked", id, reason: disabled ? "disabled" : "hidden" },
     "*"
   );
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // oa-fallback-service.ts — V399: 英文文献 OA 回退获取 (Rimagination/instsci 提炼)
 // 复用 instsci 的 unpaywall + arxiv 源 (纯 requests, 零重依赖):
 //   - check_oa(doi): Unpaywall 查 DOI 的开放获取版本 (pdf/html URL)

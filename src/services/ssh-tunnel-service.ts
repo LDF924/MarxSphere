@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ssh-tunnel-service.ts — SSH 远程访问（2026-08-27, Agentero 对照: 远程访问/数据留在用户服务器）
 // 能力: 通过 SSH 隧道浏览远程知识库（远程 SAG 实例的文献/文档）
 // 方式: ssh -L 端口转发 → 本机代理请求远程 SAG API

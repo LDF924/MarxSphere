@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // build-extraction-messages.ts — 文档事件抽取的 messages 组装
 // 从 llm-client.ts 原 buildBenchmarkExtractionMessages 逐字迁移(行为不变)
 import { extractDocumentContract, renderExtractionSystemPrompt } from "./extract-document.js";

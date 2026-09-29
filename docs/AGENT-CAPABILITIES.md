@@ -1,4 +1,4 @@
-# MarxSphere Agent 能力总览
+# SocioSeek Agent 能力总览
 
 > AI Agent 子系统的完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现。
 >

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EduResultView.tsx — 教育结果结构化渲染器（复赛 UI 升级）
 // 把 API 返回的 JSON 渲染为漂亮的卡片/列表/标签/键值面板，而非原始 JSON 文本。
 // 规则：

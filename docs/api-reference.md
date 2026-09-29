@@ -1,6 +1,6 @@
 # API 参考
 
-MarxSphere 对外 REST API。所有接口默认 `http://localhost:4173`（外部部署时替换为你的服务器地址）。
+SocioSeek 对外 REST API。所有接口默认 `http://localhost:4173`（外部部署时替换为你的服务器地址）。
 
 ## 认证
 

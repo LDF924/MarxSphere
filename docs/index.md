@@ -1,4 +1,4 @@
-# MarxSphere — 文档中心
+# SocioSeek — 文档中心
 
 > AI 驱动的全人文社科科研中枢：四源检索（SAG + Graphiti + Cognee + PG）、52 步推理链路、AI Agent 编排、科研场景工作台、桌面端。
 
@@ -27,7 +27,7 @@
 
 ## 📊 评测与基准
 
-- [Benchmarks](https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 1269 项
+- [Benchmarks](https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 1269 项
 - [合规披露](OPEN-SOURCE-DISCLOSURE.md) — 数据治理 / 商业 API / 风险提示
 
 ## 🖥 桌面端
@@ -36,4 +36,4 @@
 
 ---
 
-© 2026 MarxSphere — [GitHub 仓库](https://github.com/LDF924/MarxSphere) · [AGPL v3 + 商业授权](https://github.com/LDF924/MarxSphere/blob/main/LICENSE)
+© 2026 SocioSeek — [GitHub 仓库](https://github.com/LDF924/SocioSeek) · [AGPL v3 + 商业授权](https://github.com/LDF924/SocioSeek/blob/main/LICENSE)

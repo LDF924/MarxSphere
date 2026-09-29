@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EducationAssetsPanel.tsx — 教育复用资产浏览（V389：模板/案例/示例课程）
 // 展示 education-templates/（场景模板）、data/education-cases.json（教学案例库）、
 // 示例课程入库状态（seed-edu-courses.ts），供教育从业者复用。

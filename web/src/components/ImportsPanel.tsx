@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ImportsPanel.tsx — 文献管理（2026-08-27 v2, Agentero 对照前端）
 // 玻璃拟态宇宙风设计: 渐变头部 + 状态徽章 + 分区卡片 + 结果面板 + 操作反馈
 // Zotero 导入 / 论文搜索 / RSS·arXiv / S3 同步 / SSH 远程

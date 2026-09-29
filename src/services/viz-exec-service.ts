@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // viz-exec-service.ts — SocialSci P0-4: 科研绘图 Python 执行引擎(viz_runner.py)
 // 参照 empirical-service.spawnPythonTask 范式(venv + 任务目录 + input/result.json)
 // 产物: viz-files/{userId}/{hash}.png + .svg(svg 可再编辑), 经 blob-store 落盘/读取

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learner-goals-service.ts — L1 学习者画像增强（2026-08-29, 借鉴 Inno Agent L1 learner profile）
 // 在 knowledge_mastery(掌握度)基础上补: 学习目标管理 + 误解诊断 + 画像自动更新事件
 //   - 学习目标: 增删改查 + 状态(active/archived) + 优先级 + 成功标准

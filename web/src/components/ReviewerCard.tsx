@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ReviewerCard.tsx — 审查结果卡片(移植自 ai4s-research/open-science, MIT)
 // 消费 ```review fenced JSON(经 splitReviewFence 解析), 可折叠/逐条 dismiss。
 // 类型内联(web 不 import 后端 src/, 与 FormatEvalPanel 同约定)。

@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // index.ts — 入口：读取 mode.json 设定运行模式（界面切换持久化）
 // 模式：preview（省内存，无推理/MCP 池）| full（完整，拉 MCP 池）
-// 优先级：环境变量 MARXSPHERE_PREVIEW > mode.json > 默认 preview
+// 优先级：环境变量 SOCIOSEEK_PREVIEW > mode.json > 默认 preview
 import fs from "node:fs";
 import path from "node:path";
 
@@ -24,13 +24,13 @@ runStartupChecks();
 // 从 mode.json 读取持久化模式（界面切换按钮写入）
 try {
   const modeFile = path.join(process.cwd(), "mode.json");
-  if (fs.existsSync(modeFile) && process.env.MARXSPHERE_PREVIEW === undefined) {
+  if (fs.existsSync(modeFile) && process.env.SOCIOSEEK_PREVIEW === undefined) {
     const saved = JSON.parse(fs.readFileSync(modeFile, "utf-8")) as { mode?: string };
     if (saved.mode === "full") {
-      process.env.MARXSPHERE_PREVIEW = "0"; // 完整模式：不设 preview
+      process.env.SOCIOSEEK_PREVIEW = "0"; // 完整模式：不设 preview
       logger.info("mode.json 指定 full 模式（完整推理+MCP 池）");
     } else if (saved.mode === "preview") {
-      process.env.MARXSPHERE_PREVIEW = "1";
+      process.env.SOCIOSEEK_PREVIEW = "1";
       logger.info("mode.json 指定 preview 模式（省内存）");
     }
   }

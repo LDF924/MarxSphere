@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/doc-session-service.ts — V404-13: WriterLease/ChangeSet/锚点批注(最小版)
 // 借鉴 OpenSquilla artifact_session(models.py: Document writer_fencing_token / ChangeSet / Anchor):
 //   1. WriterLease: 文档级编辑锁(holder + fencing token) — 旧写者令牌 < 当前令牌 → 拒绝(防旧写覆盖新写)

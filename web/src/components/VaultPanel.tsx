@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // VaultPanel.tsx — 资料库面板：左树右文浏览 Obsidian 课题库（md/PDF/图片/Office）
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { FolderOpen, FileText, FileImage, File, Download, Loader2, ChevronRight, ChevronDown, BookMarked, RefreshCw, X, BookOpenCheck } from "lucide-react";

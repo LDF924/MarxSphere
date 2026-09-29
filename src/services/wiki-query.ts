@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // wiki-query.ts — L2 wiki 查询（2026-08-29, 借鉴 Inno Agent wiki-query.ts, MIT License）
-// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 MarxSphere notes 表
+// Copyright (c) 2026 Inno Agent Contributors — 行为对齐, 存储适配 SocioSeek notes 表
 // 查询 wiki: 返回索引(笔记列表) + 匹配笔记内容(标题/内容关键词检索)
 import { pool } from "../db/pool.js";
 

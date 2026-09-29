@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import 'dotenv/config';
 import { RichMcpClient } from '../src/ai/rich-mcp-client.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';

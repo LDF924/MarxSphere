@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // markdown.tsx — 轻量 Markdown 渲染（App 对话与知识页 Claude 结论共用）
 // 支持：标题 / 加粗 / 行内代码 / 代码块 / 无序有序列表 / 表格 / 引用 [n] / 独占一行的图片(![](url))
 //   图片: / 开头走带鉴权的 AuthedImg(后端图片端点要 token, 裸 <img> 取不到), 外链原样

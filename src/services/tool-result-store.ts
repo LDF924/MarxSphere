@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/tool-result-store.ts — 工具大结果压缩存储 + 按需取回
 // 借鉴 OpenSquilla engine/tool_result_store.py + result_budget.py(Apache-2.0) 自写实现:
 //   大工具输出(>阈值)gzip 存 data/tool-results/tr-<sha256前32>.json.gz, 返回给模型的

@@ -1,5 +1,5 @@
 #!/bin/bash
-# sag-bootstrap.sh — MarxSphere 全栈一键启动（V373, ⑤持续运行）
+# sag-bootstrap.sh — SocioSeek 全栈一键启动（V373, ⑤持续运行）
 # 启动顺序: PostgreSQL(Docker) → Neo4j×2 → OpenViking → SAG
 # 用法: bash scripts/sag-bootstrap.sh [--stop] [--status]
 # 保活: schtasks SAG-ProcessWatchdog 每 5 分钟检查，死了自动拉起
@@ -90,7 +90,7 @@ start_sag() {
 }
 
 status_all() {
-  echo "=== MarxSphere 服务状态 ==="
+  echo "=== SocioSeek 服务状态 ==="
   for port in 4173 1933 11001 11003 5540; do
     if netstat -ano 2>/dev/null | grep -q ":$port .*LISTENING"; then
       echo "  [OK] :$port"

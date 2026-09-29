@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="docs/assets/marx-logo-512.png" alt="MarxSphere" width="200" />
+  <img src="docs/assets/logo-512.png" alt="SocioSeek" width="200" />
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.md">中文</a> · <a href="https://ldf924.github.io/MarxSphere/">📚 Docs</a>
+  <strong>English</strong> · <a href="README.md">中文</a> · <a href="https://ldf924.github.io/SocioSeek/">📚 Docs</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
-# MarxSphere
+# SocioSeek
 
 **An AI-driven research hub for humanities & social sciences** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.
 
@@ -29,7 +29,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 
 ### 🏗 System Architecture
 
-![MarxSphere System Architecture](docs/assets/marxsphere-architecture.svg)
+![SocioSeek System Architecture](docs/assets/socioseek-architecture.svg)
 
 ### 🖼 UI at a Glance
 
@@ -296,7 +296,7 @@ Political-economy C-journal methodology: four-step topic selection / topic matri
 
 ### 🛠 Custom Skills (10, fully open-sourced)
 
-MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full pipeline "acquisition → conversion → cleaning → ingestion → retrieval → reasoning → research dispatch":
+SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full pipeline "acquisition → conversion → cleaning → ingestion → retrieval → reasoning → research dispatch":
 
 | Skill | Function | Pipeline position |
 |---|---|---|
@@ -390,7 +390,7 @@ npm start                 # http://localhost:4173
 ### 4. Desktop
 
 ```bash
-npm run build:desktop     # NSIS installer: release/MarxSphere Setup <ver>.exe
+npm run build:desktop     # NSIS installer: release/SocioSeek Setup <ver>.exe
 npm run dev:desktop       # dev-mode Electron
 ```
 
@@ -532,7 +532,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 📘 Technical architecture (models/Agent/tools/RAG/context/workflows/data flow/architecture diagrams) | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) §3 |
 | 📘 Compliance disclosure (data/risks/commercial APIs/closed-source models) | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |
 | 🔧 API docs (HTTP API / MCP) | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
-| 🖥 Desktop installer | `npm run build:desktop` → `release/MarxSphere Setup <ver>.exe` |
+| 🖥 Desktop installer | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval & audit reports | repo-root `*_report.md` (7: significance / kappa / failure / tp / cross_judge / prompt_regression / skill-audit) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/quickstart.mjs — 一键体验脚本（V409: 小白友好）
 // clone 后跑 `npm run quickstart` 即可：检查环境 → 提示配置 → 启动服务
 // 流程: 检查 node/pg → 检查 .env（缺 key 给提示但可跳过）→ 迁移 → 启动 4173
@@ -15,7 +15,7 @@ const ok = (m) => console.log(`${GREEN}✅ ${m}${RESET}`);
 const warn = (m) => console.log(`${YELLOW}⚠️  ${m}${RESET}`);
 const fail = (m) => console.log(`${RED}❌ ${m}${RESET}`);
 
-console.log(`${GREEN}════ MarxSphere 一键启动 ════${RESET}`);
+console.log(`${GREEN}════ SocioSeek 一键启动 ════${RESET}`);
 
 // 1. Node 版本
 const nodeMajor = Number(process.version.replace("v", "").split(".")[0]);

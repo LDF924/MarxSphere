@@ -1,6 +1,6 @@
 # 第三方模型接入（Model Neutrality）
 
-MarxSphere 模型中立（2026-08-27）：不绑定单一订阅，支持任意 OpenAI 兼容 API、DeepSeek 原生、Anthropic 原生端点及自定义提供商。
+SocioSeek 模型中立（2026-08-27）：不绑定单一订阅，支持任意 OpenAI 兼容 API、DeepSeek 原生、Anthropic 原生端点及自定义提供商。
 
 ## 支持的提供商
 

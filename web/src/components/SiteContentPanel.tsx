@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // SiteContentPanel.tsx — SocialSci P2: 站点内容页(公告/帮助/法律条款/学术资源导航)
 // 形态对齐(参考产品内容页语义, 原创实现): 纯前端静态数据驱动, 不改 server 主流程
 //   J1 新闻/公告 | J2 帮助中心 | J3 条款/隐私/免责 | J4 学术资源导航
@@ -114,7 +114,7 @@ const HELP_ITEMS: Array<{ q: string; a: string; view?: NavTarget; link?: string 
     a: "默认全部存于你自有的本地/自托管环境: PostgreSQL(pgvector 向量库)+ Neo4j 双图谱(Graphiti / Cognee)+ LanceDB。只有当你使用云端模型时, 单次请求所需的文本片段会发给对应模型服务商, 不用于训练。",
   },
   {
-    q: "怎么把 MarxSphere 接进 Claude Code 或 Codex?",
+    q: "怎么把 SocioSeek 接进 Claude Code 或 Codex?",
     a: "「设置」页生成 sag_xxx 令牌 → 填入 Claude Code 的 .mcp.json 或 Codex 的 config.toml → 外部 Agent 即可直接调用推理、多源检索与文档入库。令牌按权限分级, 可随时吊销。",
     view: "settings",
   },
@@ -135,7 +135,7 @@ const LEGAL_SECTIONS = [
   },
   {
     icon: Landmark, title: "版权与开源",
-    body: "MarxSphere 以 AGPL-3.0 开源(含例外条款), 源码见仓库 LICENSE。平台内置知识图谱语料来自公开学术资源, 引用均保留来源溯源。第三方组件的许可与出处见 THIRD_PARTY_NOTICES。",
+    body: "SocioSeek 以 AGPL-3.0 开源(含例外条款), 源码见仓库 LICENSE。平台内置知识图谱语料来自公开学术资源, 引用均保留来源溯源。第三方组件的许可与出处见 THIRD_PARTY_NOTICES。",
   },
   {
     icon: Megaphone, title: "免责说明",

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-review-tools.ts — V420: 「论文质量评审」能力工具化(对话页一句话调度审稿子系统)
 //
 // 覆盖: 建审稿任务 / 历史与报告 / 取消重审删除 / 审稿统计 / 期刊库 / 投稿须知解析 /

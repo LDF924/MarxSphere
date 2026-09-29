@@ -1,7 +1,7 @@
-# 文件级 provenance 移植设计(open-science 机制 → MarxSphere)
+# 文件级 provenance 移植设计(open-science 机制 → SocioSeek)
 
 > 参考: ai4s-research/open-science `crates/osd-core/src/provenance.rs` + `apps/desktop/src/lib/provenance.ts`(MIT)
-> 目标: 让 MarxSphere 每次 agent 写文件留痕到文件级, 可溯源/可复现。
+> 目标: 让 SocioSeek 每次 agent 写文件留痕到文件级, 可溯源/可复现。
 
 ## 设计
 

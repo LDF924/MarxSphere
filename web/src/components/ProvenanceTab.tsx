@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ProvenanceTab.tsx — 文件级溯源 tab(移植 open-science provenance 的前端展示)
 // 展示 agent 写文件留痕: 最近写入列表 + 点开看版本历史/哈希
 import { useEffect, useState } from "react";

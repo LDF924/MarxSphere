@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // eval-education.ts — 教育场景评测（复赛冲刺期，对应方案 §5.2）
 // 六项指标：
 //   ① BKT 预测准确率：预测下次答对概率 vs 实际作答的 AUC

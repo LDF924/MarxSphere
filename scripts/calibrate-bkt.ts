@@ -1,5 +1,5 @@
 #!/usr/bin/env npx tsx
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/calibrate-bkt.ts — BKT 参数离线校准(V386, 借鉴 TraitTutor calibration.py)
 // 流程:
 //   1. 从 learner_event_ledger 取全部强证据, 按 (student, subject, kc) 组成时序序列

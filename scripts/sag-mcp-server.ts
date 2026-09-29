@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// sag-mcp-server.ts — MarxSphere 对外 MCP Server（Claude Code / Codex 接入）
-// 对标 Sciverse-Agent-Tools 模式: 薄包装 MarxSphere REST API → MCP 工具
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// sag-mcp-server.ts — SocioSeek 对外 MCP Server（Claude Code / Codex 接入）
+// 对标 Sciverse-Agent-Tools 模式: 薄包装 SocioSeek REST API → MCP 工具
 // 暴露工具:
 //   sag_reason     — 52步推理问答（多源检索+推理+反思）
 //   sag_search     — 多源语义检索（PG向量+关键词）
@@ -9,7 +9,7 @@
 //
 // 配置:
 //   SAG_API_URL    默认 http://localhost:4173
-//   SAG_API_TOKEN  外部部署时必填（MarxSphere 设置页生成 sag_xxx）
+//   SAG_API_TOKEN  外部部署时必填（SocioSeek 设置页生成 sag_xxx）
 // 运行: npx tsx scripts/sag-mcp-server.ts
 // 注册 Claude Code: .mcp.json mcpServers.sag { command: "npx", args: ["tsx", "scripts/sag-mcp-server.ts"] }
 // 注册 Codex:      ~/.codex/config.toml [mcp_servers.sag]
@@ -54,7 +54,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: "sag_reason",
-      description: `MarxSphere 52步深度推理问答：多源检索（PG向量/cognee/graphiti）+ 推理 + 自检反思。适用于多跳推理、概念辨析、需要引用论文原文依据的复杂学术问题。返回带检索证据的答案（含来源标记）。`,
+      description: `SocioSeek 52步深度推理问答：多源检索（PG向量/cognee/graphiti）+ 推理 + 自检反思。适用于多跳推理、概念辨析、需要引用论文原文依据的复杂学术问题。返回带检索证据的答案（含来源标记）。`,
       inputSchema: {
         type: "object",
         properties: {
@@ -68,7 +68,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "sag_search",
-      description: `MarxSphere 多源语义检索：返回与问题相关的论文切片（含来源论文标题/章节），适合快速检索证据、事实查证。比 sag_reason 轻量（不推理）。`,
+      description: `SocioSeek 多源语义检索：返回与问题相关的论文切片（含来源论文标题/章节），适合快速检索证据、事实查证。比 sag_reason 轻量（不推理）。`,
       inputSchema: {
         type: "object",
         properties: {
@@ -80,7 +80,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "sag_ingest",
-      description: `MarxSphere 文档入库：上传文本内容，自动切片 + 向量化 + 实体抽取，入 PG 向量库。入库后即可被 sag_reason / sag_search 检索到。`,
+      description: `SocioSeek 文档入库：上传文本内容，自动切片 + 向量化 + 实体抽取，入 PG 向量库。入库后即可被 sag_reason / sag_search 检索到。`,
       inputSchema: {
         type: "object",
         properties: {
@@ -92,7 +92,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "sag_documents",
-      description: `列出 MarxSphere 已入库文档（标题 + 状态 + 切片数），用于确认知识库覆盖范围。`,
+      description: `列出 SocioSeek 已入库文档（标题 + 状态 + 切片数），用于确认知识库覆盖范围。`,
       inputSchema: {
         type: "object",
         properties: {
@@ -202,4 +202,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("[sag-mcp] MarxSphere MCP server 就绪");
+console.error("[sag-mcp] SocioSeek MCP server 就绪");

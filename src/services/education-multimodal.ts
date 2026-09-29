@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-multimodal.ts — 教育多模态打通（复赛冲刺期实现）
 // 在通用能力（image_analyze OCR / audio_transcribe whisper）之上提供教育高频功能：
 //   ① 作业图片识别：拍照 → OCR 提取题目 → 直传 solve 辅导（无需手动贴文本）

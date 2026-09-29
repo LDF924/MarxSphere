@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// HomePanel.tsx — MarxSphere 品牌首页（Landing）
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
+// HomePanel.tsx — SocioSeek 品牌首页（Landing）
 // 深空宇宙背景 + 马克思理论叙事 + 功能入口 + 研究数据 + 检索栈 scrollytelling 动画
 import { useEffect, useState, type FC } from "react";
 import { Library, Sparkles, ExternalLink, BookOpenCheck, Boxes, FolderOpen, ChevronRight, Search, MessageSquareText, Network, Scale, Database, FileUp, LayoutGrid, PenLine, BarChart3, FileText, Workflow, ShieldCheck, Table2 } from "lucide-react";
@@ -316,7 +316,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             </div>
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground md:text-6xl">
-            MarxSphere
+            群学求真
             {/* 马克思名言：每字金色光晕，单行拉直 + 双引号 */}
             <span className="block whitespace-nowrap text-xs font-normal tracking-wide text-accent-foreground/90 md:text-sm" style={{ marginTop: "1.2rem", lineHeight: 2 }}>
               <span className="golden-char">「</span>

@@ -1,8 +1,8 @@
-# MarxSphere 项目说明
+# SocioSeek 项目说明
 
 ---
 
-**项目名称**：MarxSphere
+**项目名称**：SocioSeek
 
 **行业赛题**：AI + 教育（个性化学习与教学辅助）
 

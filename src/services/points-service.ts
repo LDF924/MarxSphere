@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // points-service.ts — SocialSci P0-8: 积分商业化(签到/兑换/冻结-实扣对账/管理员运营)
 // 语义: 与 billing(balance_cents=真钱/token) 解耦, 积分只计 feature 级消费
 //   - 消费: freezeCharge(冻结→frozen) → settleCharge(核销实扣) / rollbackFreeze(归还)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ForensicsPanel.tsx — 论文取证面板(integrity-auditor forensics_tools 前端, ai4s MIT)
 // 图像查重(上传 ≥2 图)+ 数值取证(上传 xlsx/数值表, decimal/magnitude/aggregate 三模式)
 import { useRef, useState } from "react";

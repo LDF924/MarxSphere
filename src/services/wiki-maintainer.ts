@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // wiki-maintainer.ts — L2 wiki 知识库维护器（2026-08-29, 借鉴 Inno Agent L2 wiki-maintainer）
 // 定期巡检 notes 知识库:
 //   1. 破损链接检测: [[目标]] 指向不存在的笔记 → 列出待创建

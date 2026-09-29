@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // structural-chunker.ts — 结构化分块（2026-08-29, 移植自 Inno Agent structural-chunker.ts, MIT License）
 // Copyright (c) 2026 Inno Agent Contributors — 算法与结构保持一致
 // 两级分块(不丢内容):

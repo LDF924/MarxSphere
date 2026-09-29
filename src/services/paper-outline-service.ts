@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // paper-outline-service.ts — 论文写作工作台(大纲编辑器+分章生成+docx 导出)
 // 参考 Respal「大纲编辑器/人机双写」体验(参考产品, 仅借鉴交互思路, 不涉源码)
 // 架构: 大纲 JSON 前端持有(localStorage 持久化) + 分章生成走 LLM + docx 导出走 python-docx

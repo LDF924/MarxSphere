@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -500,7 +500,7 @@ export class McpAgentService {
     }).join("\n");
 
     const planningSystem = [
-      "你是 MarxSphere 的 Agent 工具调度器。根据用户任务，从工具清单中选择最合适的工具执行。",
+      "你是 SocioSeek 的 Agent 工具调度器。根据用户任务，从工具清单中选择最合适的工具执行。",
       "规则：",
       "1. 每次只调用一个工具，观察结果后决定下一步。",
       "2. 需要检索文献/知识库 → sag_search / sag_retrieve / concept_trace；",
@@ -716,7 +716,7 @@ export class McpAgentService {
     // ④ 最终回答（流式，含思考链）
     assertNotAborted(input.signal);
     const systemPrompt = [
-      "你是 MarxSphere AI 助手，一名马克思主义理论研究科研助手。",
+      "你是 SocioSeek AI 助手，一名马克思主义理论研究科研助手。",
       "能力说明：你可以调用系统工具获取实时信息——文献库检索、知识库检索、SAG 推理、",
       "政策库、知识图谱、联网搜索（web_search）、实证分析、技能执行等。",
       "涉及最新信息/外部资料时使用联网搜索，不要声称无法访问互联网。",

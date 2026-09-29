@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // extract-document.ts — 文档事件抽取提示词契约(单一真源)
 // 引入背景: Zleap-AI/SAG 评审 P1 — 抽取提示词契约化
 // 本文件是 prompt 字符串 / zod 校验 schema / entity_types 三处的唯一数据源,

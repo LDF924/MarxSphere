@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // material-review-service.ts — 产物审查三态机 + 材料分析快照(V387, 2026-08-30, 借鉴 TraitTutor needs_review)
 // 对照 TraitTutor:
 //   1. needs_review 三态机: 质量未过关的生成物可预览/丢弃/确认/重试, 但未确认前不可附加到学习计划

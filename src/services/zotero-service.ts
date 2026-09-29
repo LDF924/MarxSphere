@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // zotero-service.ts — Zotero 集成（2026-08-27, Agentero 对照: Zotero 生态衔接）
 // 能力: 导入 Zotero 书库(标题/标签/笔记/附件路径) → SAG documents; 导出 BibTeX
 // 方式: Zotero 本地 HTTP API (http://localhost:23119/api, 需 Zotero 桌面运行) 或 本地 sqlite(只读)

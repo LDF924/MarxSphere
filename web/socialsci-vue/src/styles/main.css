@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* MarxSphere 深色主题变量(替换 SocialSci 浅色体系; 对齐 React 壳宇宙深邃主题) */
+/* SocioSeek 深色主题变量(替换 SocialSci 浅色体系; 对齐 React 壳宇宙深邃主题) */
 :root {
   --ink: #e8eef7;
   --muted: #8b9bb1;

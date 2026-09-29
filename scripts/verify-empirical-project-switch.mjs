@@ -197,7 +197,7 @@ async function main() {
         const pathMod = await import("node:path");
         /**
          * ⚠ 2026-09-27 再修一次: 原来那三档候选全是**相对 cwd** 的 ——
-         *   在 CI 里 cwd 是 `/home/runner/work/MarxSphere/MarxSphere`,
+         *   在 CI 里 cwd 是 `/home/runner/work/SocioSeek/SocioSeek`,
          *   `../../..` 上溯出去是 `/home/runner`, 那里当然没有 `.env`
          *   (CI 的配置是**环境变量** `DATABASE_URL`, 不落文件)。
          *   于是 CI 上每次都打印"清理临时课题失败(需手动删)", 每跑一次在 **CI 的库**里

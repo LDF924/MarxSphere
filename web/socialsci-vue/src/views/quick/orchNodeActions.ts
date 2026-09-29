@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/views/quick/orchNodeActions.ts — V415: 画布 → 节点卡片 的操作回调契约
 //
 // 为什么单独一个文件: `<script setup>` 里不能写 ES 导出, 而画布组件与节点组件都要引用

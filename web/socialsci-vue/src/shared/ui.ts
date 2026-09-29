@@ -103,7 +103,7 @@ export const ConfirmHost = {
   setup() {
     return () => {
       if (!confirmState.visible) return null;
-      // 深色主题: 原来是白底弹窗, 在 MarxSphere 深色界面里像一块打了补丁的纸(实测刺眼)。
+      // 深色主题: 原来是白底弹窗, 在 SocioSeek 深色界面里像一块打了补丁的纸(实测刺眼)。
       //   整站都是 #0a1120/#11192C 一族, 这里对齐; 确认键用同族蓝, 危险动作用低饱和红。
       const D = {
         overlay: "position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(8,13,24,.62);backdrop-filter:blur(2px)",

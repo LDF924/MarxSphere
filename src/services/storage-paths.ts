@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // storage-paths.ts — 运行期数据目录的统一入口
 //
 // 由来(2026-09-11 多实例审计): 全仓有 40+ 处直接拼 `SAG_ROOT/data/xxx`。单机没问题,

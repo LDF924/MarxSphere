@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/orchestrator-event-log.ts — V416: 编排运行事件流(计划历史浮层的数据源)
 //
 // 与 orchestrator-run-store 的分工(两者都写库, 但语义完全不同, 不要混):

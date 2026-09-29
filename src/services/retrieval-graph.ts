@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // retrieval-graph.ts — 请求级检索图追踪(G2, 完整移植 Zleap GraphCollector/Tracker/PathAnalyzer)
 // 参照: zleap/sag/modules/search/{tracker,graph,path_analyzer}.py
 // 设计对齐(不简化):

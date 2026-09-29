@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // corpus-plagiarism-service.ts — 对**平台文献库**查重(2026-09-24)
 //
 // 由来: 原有的 `paper-quality-service.plagiarismRiskCheck` 是 **text-vs-text** —— 调用方必须

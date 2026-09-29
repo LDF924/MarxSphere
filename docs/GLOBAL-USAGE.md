@@ -1,6 +1,6 @@
 # 全局使用（Global Usage）
 
-MarxSphere 可在任意目录启动（2026-08-27）：服务端通过 `SAG_ROOT` 定位资源，不依赖 cwd。
+SocioSeek 可在任意目录启动（2026-08-27）：服务端通过 `SAG_ROOT` 定位资源，不依赖 cwd。
 
 ## 任意目录启动
 

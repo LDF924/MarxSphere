@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ResearchHistoryPanel.tsx — SocialSci HistoryView 源码级对照(参考产品 Vue HistoryView 解码):
 //   6 模块历史分区(section-header+count+task-grid 卡) / 卡=状态点+phase 徽标+title+相对时间 /
 //   点击恢复对应工作台条目(deep-resume) / 清除全部历史(confirm + ACTIVE_JOB 保护 + failed 明细 toast)

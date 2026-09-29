@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // backup-service.ts — 知识库轻量备份/恢复(.sagbak)
 // 引入背景: Zleap-AI/SAG 评审 P1 — 参照 OCTX 设计契约(semver/清单/完整性校验/向量声明),
 // 用本地表结构实现: PG(pg_dump) + Neo4j(JSONL) + manifest.json

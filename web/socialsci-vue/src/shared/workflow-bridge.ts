@@ -38,7 +38,7 @@ export function gotoWorkbenchModule(view: string, opts: { label: string; path?: 
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(
         {
-          source: "marxsphere-soc",
+          source: "socioseek-soc",
           type: "navigate",
           view,
           path: opts.path,
@@ -63,7 +63,7 @@ export function gotoWorkbenchModule(view: string, opts: { label: string; path?: 
 export function reportSocRoute(view: string, path: string): void {
   try {
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ source: "marxsphere-soc", type: "route", view, path }, "*");
+      window.parent.postMessage({ source: "socioseek-soc", type: "route", view, path }, "*");
     }
   } catch { /* 跨源拿不到 parent */ }
 }
@@ -86,7 +86,7 @@ export function sendMarkdownToEditor(markdown: string, title: string): boolean {
   try {
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(
-        { source: "marxsphere-soc", type: "forward-to-module", route: "editor", title, markdown: md },
+        { source: "socioseek-soc", type: "forward-to-module", route: "editor", title, markdown: md },
         "*",
       );
       return true;
@@ -129,7 +129,7 @@ export function installWorkflowRouteBridge(router: { push: (p: string) => unknow
   };
   const onMsg = (e: MessageEvent) => {
     const d = e.data as { source?: string; type?: string; path?: string } | null;
-    if (d?.source !== "marxsphere-app" || d.type !== "workflow-route" || !d.path) return;
+    if (d?.source !== "socioseek-app" || d.type !== "workflow-route" || !d.path) return;
     go(String(d.path));
   };
   window.addEventListener("message", onMsg);

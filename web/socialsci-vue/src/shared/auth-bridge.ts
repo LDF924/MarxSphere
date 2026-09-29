@@ -14,7 +14,7 @@
  */
 import { AUTH_EXPIRED_EVENT } from "./api";
 
-const RELOGIN_MSG = { source: "marxsphere-soc", type: "auth-required" } as const;
+const RELOGIN_MSG = { source: "socioseek-soc", type: "auth-required" } as const;
 let lastSent = 0;
 
 export function installAuthBridge(): void {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learning-agent-orchestrator.ts — 学习多 Agent 协作(V397, 2026-08-30, 借鉴 LingxiLearn "多个专业 Agent 基于 Skill 动态组合")
 // 三 Agent 分工: 讲解Agent(content.lesson) → 出题Agent(assess.generate) → 反馈Agent(assess.grade)
 // 共享上下文: 知识点 + BKT 画像 + 已生成产物(前一 Agent 输出作为后一 Agent 输入)

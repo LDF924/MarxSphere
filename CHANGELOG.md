@@ -89,7 +89,7 @@
 ### 🛡️ 仓库同步防错机制
 
 - sync-repos.mjs: --check 差异检测 / package.json 版本保护 / 同步后自动校验 / --to-open 禁止（主线保护）
-- 每日自动一致性检查（计划任务 MarxSphere-SyncCheck 09:30）
+- 每日自动一致性检查（计划任务 SocioSeek-SyncCheck 09:30）
 - 修复 8/27 同步方向错误覆盖的 V4xx 桌面端修复（AuthGate V424 退出登录 / authHeaders 鉴权等）
 
 ### ✨ 新能力（ScienceX 对照）
@@ -244,13 +244,13 @@
 
 - 新增种子语料 `examples/seed-corpus/`：50 篇评测金标同源文献（1化6 产物）+ 一键入库脚本，clone 后无需私有文献即可体验四源检索
 - 文档数字统一：Agent 工具 44（26 Agent + 18 视图）、场景 66、技能约 190+
-- 架构图同步（`docs/assets/marxsphere-architecture.svg`）
+- 架构图同步（`docs/assets/socioseek-architecture.svg`）
 
 ## [0.1.0] - 2026-08-17
 
 ### 开源发布
 
-MarxSphere 马研星环首个开源版本（MIT 许可）。
+SocioSeek 马研星环首个开源版本（MIT 许可）。
 
 #### 核心能力
 

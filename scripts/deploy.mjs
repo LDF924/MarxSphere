@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // scripts/deploy.mjs — 一键部署脚本（Windows / Linux / macOS）
 // 目标: 小白从 clone 到可用的全自动流程，无需手动装 Node/PG/Docker
 // 流程: ① 检查 Node（缺则装）→ ② 检查 Docker（缺则提示安装）→ ③ docker compose up（数据库）
@@ -189,7 +189,7 @@ function startServer() {
 }
 
 // ── 主流程 ──
-console.log(`${GREEN}════ MarxSphere 一键部署 ════${RESET}`);
+console.log(`${GREEN}════ SocioSeek 一键部署 ════${RESET}`);
 ensureNode();
 ensureDocker();
 startDatabase();

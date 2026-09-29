@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // agent-viz-tools.ts — V420: 「成果可视化工坊」(科研绘图)能力工具化。
 //
 // 由来(2026-09-29): 可视化是继写作舱之后**第二个在对话侧零覆盖**的模块 ——

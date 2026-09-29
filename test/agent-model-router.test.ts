@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/agent-model-router.test.ts — V404-6: KV-cache 感知档位保持(sticky tier/anti-downgrade)
 // 借鉴 OpenSquilla KV-cache 感知路由: 上下文窗口内见过高档 → 后续不降档(保 prompt cache)
 // 真实注册表: reason=deepseek-flash(cheap 档), plan=deepseek-v4-pro(strong 档)

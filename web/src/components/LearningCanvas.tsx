@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // LearningCanvas.tsx — 全屏学习画布(V392, 源码移植 TraitTutor LearningCanvas)
 // 三栏布局: 路径侧栏(状态点/Lock/Check) | 组件内容("为何此步"证据同屏) | 助手面板
 // 侧边栏折叠: 挂载时无条件折叠(专注), 卸载时用户手动展开的偏好胜出

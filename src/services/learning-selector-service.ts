@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // learning-selector-service.ts — 确定性组件选择器(V392, 2026-08-30, 源码移植 TraitTutor LearningComponentSelector.select)
 // 移植自 traittutor/learning_components.py L1073-1452(源码对照):
 //   1. _stage 四步判定: 空→needs_support→(未校准/<3观测/后验缺失)→min(posteriors)>=0.75

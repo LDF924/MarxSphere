@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // statistics-job-service.ts — SocialSci Vue M3: 统计分析 17 法任务执行器(参考产品契约完整还原)
 // 契约: POST /api/statistics-jobs {tool,fileId,variables,options...} → {job:{id,status:"queued"}}
 //       GET  /api/statistics-jobs/:id → {job:{id,status,result:{tables,charts,warnings,metadata},result_version_id,error}}

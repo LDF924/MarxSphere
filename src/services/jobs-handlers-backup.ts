@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // jobs-handlers-backup.ts — 备份/恢复异步任务(import 即注册, 与 jobs-handlers.ts 同模式)
 import { registerHandler, type MinionJob } from "./jobs-service.js";
 import { createBackup, restoreBackup } from "./backup-service.js";

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // FloatingAssistantFAB.tsx — SocialSci P0-7: 悬浮助手(深水区体验件)
 // 形态对齐(参考产品交互语义, 原创实现): 全局悬浮在场 UI(非对话框唤起式)
 //   ①页面观察+导航引导: 记录访问历史 → 按"科研推进"规则推荐下一步
@@ -163,11 +163,11 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
     };
   }, [workspaceView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 收 iframe 上报的动作(soc 的 actions-bridge.ts 发 {source:"marxsphere-soc", type:"actions"})
+  // 收 iframe 上报的动作(soc 的 actions-bridge.ts 发 {source:"socioseek-soc", type:"actions"})
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       const d = e.data as { source?: string; type?: string; actions?: Array<{ id: string; text: string }> } | null;
-      if (d?.source !== "marxsphere-soc" || d.type !== "actions" || !Array.isArray(d.actions)) return;
+      if (d?.source !== "socioseek-soc" || d.type !== "actions" || !Array.isArray(d.actions)) return;
       const src = e.source as Window | null;
       if (!src) return;
       iframeActions.set(src, d.actions);
@@ -194,7 +194,7 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
     setControls([]);
     // 顺带主动问一遍 iframe(它们可能早已加载完、上报过但当时本组件还没挂监听)
     for (const f of Array.from(document.querySelectorAll("iframe"))) {
-      try { (f as HTMLIFrameElement).contentWindow?.postMessage({ source: "marxsphere-workbench", type: "query-actions" }, "*"); } catch { /* 跨源忽略 */ }
+      try { (f as HTMLIFrameElement).contentWindow?.postMessage({ source: "socioseek-workbench", type: "query-actions" }, "*"); } catch { /* 跨源忽略 */ }
     }
     const timers = [500, 1500, 3000].map((ms) => window.setTimeout(scanControls, ms));
     return () => timers.forEach((t) => window.clearTimeout(t));
@@ -485,7 +485,7 @@ export function FloatingAssistantFAB({ workspaceView, onNavigate }: { workspaceV
                       for (const [win, acts] of iframeActions) {
                         if (!acts.some((a) => a.id === c.id)) continue;
                         try {
-                          win.postMessage({ source: "marxsphere-workbench", type: "invoke-action", id: c.id }, "*");
+                          win.postMessage({ source: "socioseek-workbench", type: "invoke-action", id: c.id }, "*");
                           relayed = true;
                         } catch { /* 跨源忽略 */ }
                         break;

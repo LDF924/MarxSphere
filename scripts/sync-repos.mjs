@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 /**
- * scripts/sync-repos.mjs — MarxSphere 双仓库文件级同步（非 git 合并）
+ * scripts/sync-repos.mjs — SocioSeek 双仓库文件级同步（非 git 合并）
  *
  * 同步两个平行仓库（方向感知，每目录固定单向，杜绝双向覆盖）：
  *   OPENSOURCE = 开发主线（推 GitHub 的线，V438+ 持续开发提交）

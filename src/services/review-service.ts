@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // review-service.ts — SocialSci P0-3: 审稿任务流 + 期刊库/标准库解析
 // 形态对齐(参考产品交互语义, 原创实现): 传稿→分段审稿→SSE review.delta 维度JSON边流边渲染→聚合报告
 //   - 分段: 2000-4000字/段 token感知, 逐段 LLM 审 → 写 progress checkpoint(断线续传)

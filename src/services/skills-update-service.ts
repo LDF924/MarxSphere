@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // skills-update-service.ts — 技能自动更新检测
 // 基线比对：本地改动 / 新技能 / GitHub 上游更新
 // 基线存 data/skills-baseline.json（原子写 tmp+rename）
@@ -362,7 +362,7 @@ export async function checkUpstream(skillName?: string): Promise<SkillUpdateResu
       const token = process.env.GITHUB_TOKEN?.trim() ?? "";
       const headers = {
         Accept: "application/vnd.github+json",
-        "User-Agent": "MarxSphereResearch/1.0",
+        "User-Agent": "SocioSeekResearch/1.0",
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
       // releases/latest 优先，空则 tags

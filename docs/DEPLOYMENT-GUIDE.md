@@ -1,12 +1,12 @@
-# MarxSphere 一键部署指南
+# SocioSeek 一键部署指南
 
 > 目标：**从 clone 到可用的全自动流程**，无需手动安装 Node / PostgreSQL / Docker，也无需手动配置。
 
 ## 一、快速开始（一条命令）
 
 ```bash
-git clone https://github.com/LDF924/MarxSphere.git
-cd MarxSphere
+git clone https://github.com/LDF924/SocioSeek.git
+cd SocioSeek
 npm run deploy
 ```
 
@@ -54,7 +54,7 @@ npm start               # http://localhost:4173
 
 ## 三、桌面端安装包
 
-- **Windows 安装包**（含全部依赖，无需 Node/Docker）：从 [GitHub Releases](https://github.com/LDF924/MarxSphere/releases) 下载 `MarxSphere.Setup.*.exe`，双击安装即可
+- **Windows 安装包**（含全部依赖，无需 Node/Docker）：从 [GitHub Releases](https://github.com/LDF924/SocioSeek/releases) 下载 `SocioSeek.Setup.*.exe`，双击安装即可
 - 安装包**自带**：后端 dist + node_modules（82MB zip，首次启动自动解压）+ 数据库 docker-compose + 教育资产（模板/案例库）
 - 首次启动自动：解压依赖 → 引导数据库（`docker compose up -d`）→ 迁移 → 启动
 
@@ -86,8 +86,8 @@ winget install OpenJS.NodeJS.LTS
 winget install Docker.DockerDesktop
 
 # ④ clone + 一键部署
-git clone https://github.com/LDF924/MarxSphere.git
-cd MarxSphere
+git clone https://github.com/LDF924/SocioSeek.git
+cd SocioSeek
 npm run deploy
 ```
 
@@ -103,7 +103,7 @@ npm run deploy
 
 ### 4.4 桌面端验证（安装包）
 
-1. 下载 `MarxSphere.Setup.*.exe` 到虚拟机
+1. 下载 `SocioSeek.Setup.*.exe` 到虚拟机
 2. 双击安装（验证 NSIS 安装 + node_modules 解压 + 首次引导）
 3. 启动后功能冒烟（同上清单）
 

@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // openviking-memory.ts — SAG × OpenViking 长期记忆桥（V368）
-// OpenViking 作为 MarxSphere Agent 的外部长期记忆层（对话侧）
+// OpenViking 作为 SocioSeek Agent 的外部长期记忆层（对话侧）
 // 作用: 用户偏好 / 会话经验 / 历史交互记忆，不替代知识库检索（文献仍走三库）
 // 三个钩子（基于 OpenViking v0.4 真实 REST API）:
 //   1. recallMemory(query)      请求前: POST /api/v1/search/recall 召回记忆 → 注入上下文

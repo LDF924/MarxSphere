@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // format-eval-templates.ts — 论文格式智能评测: 结构化模板体系(2026-09-03)
 // 取代 paper-quality FORMAT_RULES 的字符串数组: 每条规则可程序化取值,
 // 支持检测/评分/自定义模板(前端内联 JSON)。规则引擎按模板参数化运行。

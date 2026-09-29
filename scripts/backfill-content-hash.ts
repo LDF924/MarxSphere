@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // V398 backfill：为存量 documents 补算 content_hash（087 迁移后执行）
 // 用法：npx tsx scripts/backfill-content-hash.ts [batchSize=100]
 // 幂等：只处理 content_hash IS NULL 的行；重复执行自动跳过已填充行

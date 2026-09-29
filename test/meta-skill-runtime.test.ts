@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // test/meta-skill-runtime.test.ts — MetaSkill 声明式 DAG 运行时(V404-4, 借鉴 OpenSquilla meta-skills)
 import { describe, it, expect } from "vitest";
 import {

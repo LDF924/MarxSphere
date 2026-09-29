@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-feedback-service.ts — 教育反馈闭环（2026-08-21）
 // 学生/教师对教育功能（辅导/规划/诊断/批改/备课）的使用反馈：
 //   提交反馈（赞/踩+备注+场景）→ 落库 edu_feedback（脱敏，不落日志）

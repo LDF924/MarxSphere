@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // src/services/meta-skill-defs.ts — V404-4: MetaSkill 试点场景定义(声明式 DAG)
 // 试点: 文献综述生成(S51 综述能力改写为声明式步骤 DAG)
 //   输入主题 → 澄清范围(user_input) → 检索素材(agent) → 按模板生成综述(llm_chat)

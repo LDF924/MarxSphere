@@ -1,6 +1,6 @@
 # Benchmarks（基准测试）
 
-MarxSphere 的评测体系与基准结果。完整指标定义见 [docs/SCORING_STANDARD.md](docs/SCORING_STANDARD.md)。
+SocioSeek 的评测体系与基准结果。完整指标定义见 [docs/SCORING_STANDARD.md](docs/SCORING_STANDARD.md)。
 
 ## 主评测（53 题 · 31 评分项）
 

@@ -1,4 +1,4 @@
-# MarxSphere 开源合规披露
+# SocioSeek 开源合规披露
 
 > 本文档按开源合规要求，对本项目的运行方式、风险边界、模型依赖、商业 API 使用等进行完整披露。
 
@@ -194,7 +194,7 @@
 - **删除机制**：
  - 项目/文档/会话：UI 删除 → 软删除（归档）→ 永久删除（级联清理切片/事件/实体/向量）
  - 记忆数据：记忆管理面板可归档/删除；会话上下文随会话删除清理
- - 用户数据：卸载应用保留 `%APPDATA%\MarxSphere`，手动删除即完全清除
+ - 用户数据：卸载应用保留 `%APPDATA%\SocioSeek`，手动删除即完全清除
 
 ### 11.4 教育数据来源、脱敏与隐私保护
 
@@ -253,7 +253,7 @@
 - `docs/assets/sag-empirical-research.png` — 实证研究工作台
 - `docs/assets/sag-agent-console.png` — Agent 控制台
 - `docs/assets/sag-eval.png` — 评测工作台
-- `docs/assets/marxsphere-architecture.svg` — 系统架构图（7 层完整架构）
+- `docs/assets/socioseek-architecture.svg` — 系统架构图（7 层完整架构）
 
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // content-audit-service.ts — 思政内容四维核验（复赛冲刺期实现）
 // 马理论/思政教育输出交付前核验：
 //   ① 意识形态核验：与马理论基本原理、党的创新理论表述一致

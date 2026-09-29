@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // p2o-deps-fix.mjs — PDF2Obsidian 依赖修复(一键重建)
 // 背景: vendor/pdf2obsidian 是独立 pnpm workspace, 未安装 node_modules。
 //   其 dist 产物直接 import 依赖:

@@ -1,4 +1,4 @@
-# MarxSphere RAGAS v3 评测标准 (2026-08-06)
+# SocioSeek RAGAS v3 评测标准 (2026-08-06)
 
 ## 架构总览
 

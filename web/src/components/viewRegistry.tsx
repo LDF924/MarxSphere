@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // viewRegistry.tsx — 前端面板注册表（架构A3：面板插件化）
 // 插件模式：现有 40 视图仍走 App.tsx 硬编码（不动、零回归）；
 // 新能力面板通过 registerView() 注册 → App.tsx 渲染时先查注册表，

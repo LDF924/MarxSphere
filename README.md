@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="docs/assets/marx-logo-512.png" alt="MarxSphere" width="200" />
+  <img src="docs/assets/logo-512.png" alt="SocioSeek" width="200" />
 </p>
 
 <p align="center">
-  <a href="README-EN.md">English</a> · <strong>中文</strong> · <a href="https://ldf924.github.io/MarxSphere/">📚 文档站</a>
+  <a href="README-EN.md">English</a> · <strong>中文</strong> · <a href="https://ldf924.github.io/SocioSeek/">📚 文档站</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
-# MarxSphere
+# SocioSeek
 
 **AI 驱动的全人文社科学术科研平台** — 一个 AI Agent 承载科研与教学全能力：科研端（文献检索、知识图谱、52 步推理、78 场景工作台、实证与统计分析、论文写作全流程：研途写作舱 / 课题流程编排 / 论文质量评审 / 成果可视化工坊 / 学术文本工作台）+ 教育端（个性化学习规划、作业辅导、学情诊断、教师备课）。
 
@@ -25,7 +25,7 @@
 
 ---
 
-## 🤔 为什么是 MarxSphere？
+## 🤔 为什么是 SocioSeek？
 
 ### 问题：通用 AI 助手做不好文科与哲社科研
 
@@ -39,7 +39,7 @@
 | **学术规范** | 不掌握 GB/T 7714 引文格式、C刊审稿标准、公文写作规范 |
 | **实证方法** | 无法做 DID/事件研究/元分析等规范计量，结论"看着像"但不可复现 |
 
-### MarxSphere 的答案：为全人文社科构建的通用科研中枢
+### SocioSeek 的答案：为全人文社科构建的通用科研中枢
 
 1. **文献可溯源**：自建文献库经三库图谱管理（Graphiti 超边/社区 + Cognee 切片 + PG 向量），52 步推理每一步绑定 `chunk → event → entities` 证据链，回答可点击回看原文切片——**不编造，不靠记忆**
 2. **证据优先**：引文三维核验（元数据真伪/语境相关性/断言支持度）、知识页 Compiled Truth 只写有证据支撑的结论——**反幻觉是架构纪律，不是提示词**
@@ -48,7 +48,7 @@
 5. **全链路可审计**：31 项评测指标、真实 token 消耗、步骤级执行日志、成本回填——**每一分钱花在哪、每一步怎么走的都透明**
 6. **覆盖论文全生命周期**：选题打磨 → 文献调研 → 政策检索 → 实证分析与统计 → 论文写作（写作舱/编辑器）→ 流程编排 → 质量评审,配套 **209 个科研技能**与全套工程纵深(成本可审计 / 多档路由 / 沙箱安全)——**为研究者提供一步到位的可验证工具链**
 
-> **一句话**：MarxSphere 不是"又一个 AI 助手"，而是把人文社科研究的**证据链、方法论、学术规范**做成可运行、可审计、可复用的系统。
+> **一句话**：SocioSeek 不是"又一个 AI 助手"，而是把人文社科研究的**证据链、方法论、学术规范**做成可运行、可审计、可复用的系统。
 
 ## 功能总览
 
@@ -85,7 +85,7 @@
 
 ### 🏗 系统架构
 
-![MarxSphere 系统架构](docs/assets/marxsphere-architecture.svg)
+![SocioSeek 系统架构](docs/assets/socioseek-architecture.svg)
 
 ### 🖼 界面速览
 
@@ -416,7 +416,7 @@ Stage 4   融合生成（20步）: Compiled Truth → 多查询变体 → HyDE�
 
 ### 🛠 自研 Skill 体系（10 个，随开源仓库分发）
 
-MarxSphere 的 10 个自研 Skill 覆盖"文献获取 → 转换 → 清洗 → 入库 → 检索 → 推理 → 科研调度"全流水线（随开源仓库的 `skills/` 目录分发）：
+SocioSeek 的 10 个自研 Skill 覆盖"文献获取 → 转换 → 清洗 → 入库 → 检索 → 推理 → 科研调度"全流水线（随开源仓库的 `skills/` 目录分发）：
 
 | Skill | 功能 | 在流水线中的位置 |
 |---|---|---|
@@ -490,8 +490,8 @@ MarxSphere 的 10 个自研 Skill 覆盖"文献获取 → 转换 → 清洗 → 
 ### 2. 安装与初始化
 
 ```bash
-git clone https://github.com/LDF924/MarxSphere.git
-cd MarxSphere
+git clone https://github.com/LDF924/SocioSeek.git
+cd SocioSeek
 npm run deploy          # 🚀 一键部署：自动装 Node → 起数据库（有 Docker 用 Docker，无 Docker 自动装本地 PostgreSQL）→ 装依赖 → 迁移 → 种子数据 → 启动 http://localhost:4173
 ```
 
@@ -511,7 +511,7 @@ npm start                 # http://localhost:4173
 ### 4. 桌面端
 
 ```bash
-npm run build:desktop     # 生成 NSIS 安装包 release/MarxSphere Setup <ver>.exe
+npm run build:desktop     # 生成 NSIS 安装包 release/SocioSeek Setup <ver>.exe
 npm run dev:desktop       # 开发态启动 Electron
 ```
 
@@ -635,7 +635,7 @@ npm run typecheck       # 前后端类型检查
 | 📘 技术架构（模型/Agent/工具/RAG/上下文/工作流/数据流/架构图） | [docs/PROJECT-OVERVIEW.md](docs/PROJECT-OVERVIEW.md) 第 3 节 |
 | 📘 合规披露（数据/风险/商业API/专有模型） | [docs/OPEN-SOURCE-DISCLOSURE.md](docs/OPEN-SOURCE-DISCLOSURE.md) |
 | 🔧 接口文档（HTTP API / MCP） | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
-| 🖥 桌面端安装包 | `npm run build:desktop` → `release/MarxSphere Setup <ver>.exe` |
+| 🖥 桌面端安装包 | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
 | 📊 运行截图 | [docs/assets/](docs/assets/)（49 个视图截图 + 架构图/痛点图/论文架构图） |
 | 📈 评测与审计报告 | 根目录 `*_report.md`（7 份：显著性 / kappa / 失败归因 / tp / 交叉评审 / 提示回归 / 技能审计）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |

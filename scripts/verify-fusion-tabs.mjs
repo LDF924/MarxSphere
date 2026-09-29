@@ -100,7 +100,7 @@ async function main() {
      *   `web/src/i18n.tsx` 的 `detectBrowserLanguage()`:
      *     `languages.some(l => l.startsWith("zh")) ? "zh" : "en"`
      *   **CI runner 的 chromium 没有中文 locale** → 整个界面渲染成英文
-     *   ("MarxSphere / Humanities & social sciences AI research hub / Reasoning / Knowledge Archive / Tools")
+     *   ("SocioSeek / Humanities & social sciences AI research hub / Reasoning / Knowledge Archive / Tools")
      *   → 本探针要找的「研途写作舱」「课题流程编排」… 一个都不存在 → 5 个 tab 全部 `匹配=0`。
      *   本机浏览器带 `zh-CN`, 所以一直全过 —— **同一份代码, 两种语言, 天壤之别的结论。**
      *

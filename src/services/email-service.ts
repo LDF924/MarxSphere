@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // email-service.ts — V390: 免费 SMTP 邮件发送（QQ/163 邮箱授权码）
 // 未配置 SMTP 时静默降级（仅打日志, 不阻断流程 — 本地单机无邮件场景兼容）
 // 配置环境变量:
@@ -117,7 +117,7 @@ async function smtpSend(cfg: EmailConfig, to: string, subject: string, html: str
 
 export function buildResetEmailHtml(resetUrl: string, username: string, expiresMin = 15): string {
   return `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px">
-  <h2 style="color:#1e293b">MarxSphere 密码重置</h2>
+  <h2 style="color:#1e293b">SocioSeek 密码重置</h2>
   <p style="color:#475569;line-height:1.6">您好 <b>${escapeHtml(username)}</b>：</p>
   <p style="color:#475569;line-height:1.6">我们收到您重置密码的请求。请在 <b>${expiresMin} 分钟</b> 内点击以下链接（一次性有效）：</p>
   <p><a href="${escapeHtml(resetUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none">重置密码</a></p>
@@ -135,7 +135,7 @@ export async function sendResetEmail(to: string, resetUrl: string, username: str
   if (!cfg) return { ok: false, error: "SMTP 未配置（需设置 SMTP_HOST/SMTP_USER/SMTP_PASS）" };
   try {
     const html = buildResetEmailHtml(resetUrl, username);
-    const ok = await smtpSend(cfg, to, "MarxSphere 密码重置", html);
+    const ok = await smtpSend(cfg, to, "SocioSeek 密码重置", html);
     return ok ? { ok: true } : { ok: false, error: "SMTP 发送失败" };
   } catch (e: any) {
     return { ok: false, error: "SMTP 异常: " + String(e?.message || e).substring(0, 100) };

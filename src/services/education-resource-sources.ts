@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // education-resource-sources.ts — 教育外部资源源接入（V389）
 // 教育复用资产除自建外，可接入外部来源：学校资源库 / 公开平台 / 任意 HTTP JSON 接口。
 // 架构：来源注册表（类型 + 适配器）→ 拉取 → 归一化 → 导入资产库（模板/案例/课程切片）

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // format-docx-service.ts — .docx 格式检查编排服务(2026-09-03)
 // 调 Python 子进程(vendor/format-check/format-check-cli.py, MIT 移植见 THIRD_PARTY_NOTICES):
 //   1. inspect docx → Word 级样式 findings(页边距/字号/行距等 ~17 条规则)

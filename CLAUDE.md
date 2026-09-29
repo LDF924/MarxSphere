@@ -1,6 +1,6 @@
 # CLAUDE.md — Claude Code 项目指南
 
-本文件供 Claude Code（以及兼容的 AI 编码代理）在 MarxSphere 仓库内工作时自动加载。使用前请先阅读 [AGENTS.md](AGENTS.md) 获取完整结构。
+本文件供 Claude Code（以及兼容的 AI 编码代理）在 SocioSeek 仓库内工作时自动加载。使用前请先阅读 [AGENTS.md](AGENTS.md) 获取完整结构。
 
 ## 核心命令
 

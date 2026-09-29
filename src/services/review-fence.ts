@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // review-fence.ts — fenced-JSON 审查协议(移植自 ai4s-research/open-science, MIT)
 // 机制: agent/服务在消息末尾输出恰好一个 ```review fenced JSON block,
 // 前端 splitReviewFence 解析后从正文剥除、渲染为可折叠 ReviewerCard。

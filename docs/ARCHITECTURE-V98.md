@@ -1,4 +1,4 @@
-# MarxSphere 架构归档 — GBrain 机制 + 检索增强
+# SocioSeek 架构归档 — GBrain 机制 + 检索增强
 
 > ⚠️ **历史归档**（2026-08-02）：V98 版本改动记录，供回滚参考。
 > 当前架构见 [ARCHITECTURE.md](ARCHITECTURE.md)。

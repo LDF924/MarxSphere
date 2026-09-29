@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ReaderAiCard.tsx — 划词 AI 阅读卡片(共享组件)
 // 从 PdfReader 提取: 拖动定位 + 解释/总结/翻译/追问 + 结果/错误展示
 // 供 PdfReader(embedPDF 划词)与 MarkdownReader(原生 Selection 划词)复用

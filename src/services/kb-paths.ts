@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // kb-paths.ts — 知识库(Obsidian 资料库/文献库/政策库)根目录的统一入口
 //
 // 由来(2026-09-11 上云审计): 三套知识库服务各自硬编码 `os.homedir()/1.Obsidian Vault`,

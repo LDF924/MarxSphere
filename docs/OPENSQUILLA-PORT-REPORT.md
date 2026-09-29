@@ -7,7 +7,7 @@
 
 > 2026-09-05 · 按 docs/OPENSQUILLA-GAP-ANALYSIS.md 最小切口(ROI)序逐项完成
 > 参考源码: TokenRhythm/opensquilla ★6911(Apache-2.0, C:\Users\HUAWEI\opensquilla-main)
-> 全部实现为自写 TS 代码, 未复制 Python 源; 提交已同步 SAG-open-source 并 push GitHub(LDF924/MarxSphere)
+> 全部实现为自写 TS 代码, 未复制 Python 源; 提交已同步 SAG-open-source 并 push GitHub(LDF924/SocioSeek)
 
 ## 总览
 

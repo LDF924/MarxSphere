@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // CitationVerifyPanel.tsx — V399: 引文三维核验面板 (citation-lab 方法论移植)
 // 输入: 断言句 + 参考文献 (DOI/标题) + 引用上下文
 // 输出: 三维核验结果卡 (元数据真伪/语境相关性/断言支持度) + 整体状态

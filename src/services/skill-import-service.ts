@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // skill-import-service.ts — Skill 导入（2026-08-29, Agentero 对照: 支持 Skill 导入, 让 Agent 参与检索/阅读/整理工作流）
 // 能力:
 //   1. 从本地目录导入 skill 包(SKILL.md 或含 SKILL.md 的子目录) → 复制到 ~/.claude/skills/

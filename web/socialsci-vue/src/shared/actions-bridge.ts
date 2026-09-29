@@ -10,8 +10,8 @@
  *   **iframe 自己上报**。同 auth-bridge 的理由: CustomEvent 不跨 iframe, 只能 postMessage。
  *
  * 协议(与 auth-bridge 同一套 source 命名):
- *   soc   → 父窗口  { source: "marxsphere-soc",        type: "actions",       view, actions }
- *   父窗口 → soc     { source: "marxsphere-workbench",  type: "invoke-action", id }
+ *   soc   → 父窗口  { source: "socioseek-soc",        type: "actions",       view, actions }
+ *   父窗口 → soc     { source: "socioseek-workbench",  type: "invoke-action", id }
  *
  * 只在 iframe 内生效(window.parent === window 时说明 soc 被独立打开, 无人可通知)。
  */
@@ -27,7 +27,7 @@ export interface WorkbenchAction {
 const REPORT = "actions" as const;
 const INVOKE = "invoke-action" as const;
 const QUERY = "query-actions" as const;
-const PARENT_SOURCE = "marxsphere-workbench";
+const PARENT_SOURCE = "socioseek-workbench";
 
 /** 同一个 soc 页面里可能有多个 view 挂载(如工作台 tab 切换) —— 按 view 分别记 */
 const handlers = new Map<string, (id: string) => void>();
@@ -46,7 +46,7 @@ export function reportActions(view: string, actions: WorkbenchAction[]): void {
   lastView = view;
   lastReport = actions;
   try {
-    window.parent.postMessage({ source: "marxsphere-soc", type: REPORT, view, actions }, "*");
+    window.parent.postMessage({ source: "socioseek-soc", type: REPORT, view, actions }, "*");
   } catch { /* 跨源被拒: 外壳拿不到动作, 页面本身照常可用 */ }
 }
 

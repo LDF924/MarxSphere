@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // ConfirmDialog.tsx — 统一确认弹层(替代 window.confirm, UI审计T17)
 // 用法: const [ask, setAsk] = useState<ConfirmSpec | null>(null);
 //   <ConfirmDialog spec={ask} onDone={(ok) => { if (ok) doIt(); setAsk(null); }} />

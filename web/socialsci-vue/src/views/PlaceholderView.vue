@@ -10,7 +10,7 @@ const route = useRoute();
         <div style="width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: #4D84CB; color: #F1F5F9; font-weight: 800; font-size: 13px">研</div>
         <div>
           <div style="font-size: 15px; font-weight: 700; color: #E8EEF7">{{ (route.meta.title as string) || "科研工作台" }}</div>
-          <div style="font-size: 10px; color: #8B9BB1; margin-top: 3px">MarxSphere 科研中心 · 完整功能视图</div>
+          <div style="font-size: 10px; color: #8B9BB1; margin-top: 3px">SocioSeek 科研中心 · 完整功能视图</div>
         </div>
       </div>
       <div style="font-size: 11px; color: #8B9BB1">route: {{ route.path }}</div>

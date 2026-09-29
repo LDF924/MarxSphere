@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // format-eval-service.ts — 论文格式评测: 聚合服务 + LLM 审校层(2026-09-03)
 // 双层检测: 规则引擎(纯函数, 确定性) + LLM 审校(软性项, 失败可降级)。
 // 评分: score = 100 − 5×error − 2×warning − 0.5×info, 保留 1 位小数。

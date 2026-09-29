@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // RetrievalSourceSwitches.tsx — 检索源开关（三库任意组合：PG / Graphiti / Cognee）
 // localStorage 持久化，Ask 与推理各自独立配置
 import { useEffect, useState } from "react";

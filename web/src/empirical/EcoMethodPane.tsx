@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // EcoMethodPane.tsx — 计量因果 19 法执行面板(2026-09-09 统一分析台融合)
 // 数据: 上层共享 parsed(行数据) — POST /api/empirical/run → 轮询 taskId → 结果(cols/rows 表 + svg 图)
 import { useEffect, useMemo, useRef, useState } from "react";

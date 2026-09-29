@@ -1,8 +1,8 @@
 ' sag-start.vbs -- start SAG silently (no window).
 ' V348: honour mode.json instead of hardcoding preview.
-'   Before: MARXSPHERE_PREVIEW=1 was hardcoded, so even with mode.json=full the
+'   Before: SOCIOSEEK_PREVIEW=1 was hardcoded, so even with mode.json=full the
 '   preview mode was forced (inference/retrieval unavailable).
-'   Now: read the "mode" field of mode.json -- preview sets MARXSPHERE_PREVIEW=1,
+'   Now: read the "mode" field of mode.json -- preview sets SOCIOSEEK_PREVIEW=1,
 '   full (or anything else) leaves it unset, i.e. full mode.
 ' ws.Run arg 0 = hidden window.
 '
@@ -38,11 +38,11 @@ tsx = root & "\node_modules\tsx\dist\cli.mjs"
 envFile = root & "\.env"
 entry = root & "\src\index.ts"
 If fso.FileExists(tsx) Then
-  cmd = "cmd /c " & IIf(mode = "preview", "set MARXSPHERE_PREVIEW=1&& ", "") & "node " & q & tsx & q & " --env-file=" & q & envFile & q & " " & q & entry & q
+  cmd = "cmd /c " & IIf(mode = "preview", "set SOCIOSEEK_PREVIEW=1&& ", "") & "node " & q & tsx & q & " --env-file=" & q & envFile & q & " " & q & entry & q
 Else
   ' Dependencies not installed -> fall back to npx (cwd is the repo root, so the
   ' relative path works).
-  cmd = "cmd /c " & IIf(mode = "preview", "set MARXSPHERE_PREVIEW=1&& ", "") & "npx tsx --env-file=./.env src\index.ts"
+  cmd = "cmd /c " & IIf(mode = "preview", "set SOCIOSEEK_PREVIEW=1&& ", "") & "npx tsx --env-file=./.env src\index.ts"
 End If
 ws.Run cmd, 0, False
 

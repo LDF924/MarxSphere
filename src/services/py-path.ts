@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // py-path.ts — 解析要用的 Python 解释器
 //
 // 由来: 多个服务各自写死 `<cwd>/.venv-fmtcheck/Scripts/python.exe` —— 那是 Windows 的

@@ -3,13 +3,13 @@
 // 运行: npx playwright test
 import { test, expect } from "@playwright/test";
 
-test.describe("MarxSphere 冒烟测试", () => {
+test.describe("SocioSeek 冒烟测试", () => {
   test("首页可访问且渲染品牌内容", async ({ page }) => {
     await page.goto("/");
     // 页面标题（React 渲染后）
-    await expect(page).toHaveTitle(/MarxSphere/);
+    await expect(page).toHaveTitle(/SocioSeek/);
     // 关键品牌元素
-    await expect(page.getByText("MarxSphere", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("SocioSeek", { exact: false }).first()).toBeVisible();
   });
 
   test("AI 对话页（默认视图）渲染", async ({ page }) => {

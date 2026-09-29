@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
+// SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
 // PipelineOverview.tsx — 课题流水线总览(V413): 问卷→数据→分析 全链时间线
 // 把分散在各页的产出(识别/仿真/信效度/插补…)串成一条可展开的流水线, 直观看到完整过程与结果
 import { useEffect, useState } from "react";
