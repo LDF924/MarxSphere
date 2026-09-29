@@ -415,19 +415,58 @@ function suiteFailed(code, out) {
  *   迟早会写出一张白名单，而白名单上的失败会被重试掩盖成绿的。
  *   重试上限 2 次（总共跑 3 遍），且**重试结果如实打印**（`(第2次通过)`），不藏。
  */
+/**
+ * 单套的**超时线**(毫秒)。
+ *
+ * 由来(2026-09-29): 门禁整套串跑时**静默挂死过两次** —— 停在 `probe-editor-export` /
+ *   `probe-batch04`, 不报错、不结束, 只能靠人发现"它怎么还没完"。
+ *   根因**实测复刻过**(不是猜的): `runOne` 只监听 `child.on("close")`, 而 close 要等
+ *   **stdio 全部关闭**才触发; 探针自己 `process.exit()` 了, 但它起的浏览器若还攥着继承来的
+ *   管道, close 就**永远不来** —— 于是父进程会一直等下去。复现: 子进程 `exit` 先到,
+ *   `close` 8 秒后仍未到。
+ *
+ *   为什么不能靠"再等等": 这一等就是无限期。CI 侧 job 默认上限 6 小时,
+ *   一个挂死的分片会白烧一整轮。
+ *
+ * 超时线的取法: 取**实测耗时表**(见下面分片用的 `suiteCost`, 最长 140s)的 3 倍,
+ *   并有 180s 下限 —— 只当"卡死探测器", 不当性能考核。3 倍的余量是给 CI 那种更忙的机器留的;
+ *   真被机器拖慢了也不会误杀, 因为**失败本来就会自动重试**(见 runOne 的调用方)。
+ */
+function suiteTimeoutMs(suite) {
+  const KNOWN = { "writing-cabin-v425b": 116, "batch12": 140, "research-evidence": 91, "materials-actions": 90 };
+  const cost = KNOWN[suite.key] ?? 60;
+  return Math.max(180, cost * 3) * 1000;
+}
+
 function runOne(suite) {
   return new Promise((resolve) => {
     const started = Date.now();
     const child = spawn(process.execPath, [path.join(here, suite.file)], { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (out += d));
-    child.on("close", (code) => {
+    /**
+     * 只允许结算一次 —— 超时与 close 可能双双到达。
+     * ⚠ 没有这个闸, 超时后真 close 又来一次, `results[i]` 会被写两次、汇总行重复
+     *   (本仓在别处吃过"同一条被结算两次"的亏)。
+     */
+    let settled = false;
+    let timedOut = false;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       const secs = ((Date.now() - started) / 1000).toFixed(1);
+      if (timedOut) {
+        // 挂死时**已经产出的输出就是全部线索** —— 别丢。探针通常卡在某个 sleep/轮询之后,
+        //   最后一行往往正好指向它。
+        console.log(`  ⏱ ${suite.key} 超时 ${Math.round(suiteTimeoutMs(suite) / 1000)}s 未结束 —— 已强杀(卡死, 不是断言失败)`);
+        const last = out.trim().split("\n").filter((l) => l.trim()).slice(-3);
+        if (last.length) console.log(last.map((l) => "     卡死前最后输出: " + l.trim()).join("\n"));
+        else console.log("     卡死前**一行输出都没有** —— 大概率连浏览器都没起来(看 startCdp 的 20s 超时那条路径)");
+      }
       // 只回显最后一行结论 —— 各脚本自己已经打印了逐项 ✅/❌
       const tail = out.trim().split("\n").filter((l) => l.trim()).slice(-1)[0] ?? "(无输出)";
-      const bad = suiteFailed(code, out);
-      if (bad && out.trim()) {
+      const bad = timedOut || suiteFailed(code, out);
+      if (bad && out.trim() && !timedOut) {
         // 失败时把有意义的行挖出来, 免得只看到一行总结无从下手。
         // ⚠ 2026-09-23 补 `FAIL` 与 `DEAD` 与 `诊断`: 各脚本的失败标记**本来就不统一** ——
         //   assistant-coverage 用 `FAIL  `, 几个 probe 用 ` DEAD `, 其余用 `❌` / `ERR`;
@@ -442,8 +481,23 @@ function runOne(suite) {
         const detail = out.split("\n").filter((l) => /❌|FAIL|ERR|DEAD|JSERR|超时|诊断/.test(l)).slice(0, 30);
         if (detail.length) console.log(detail.map((l) => "     " + l.trim()).join("\n"));
       }
-      resolve({ key: suite.key, code, bad, secs, out });
-    });
+      resolve({ key: suite.key, code: timedOut ? "TIMEOUT" : code, bad, secs, out });
+    };
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (out += d));
+    child.on("close", (code) => finish(code));
+    /**
+     * ⚠ 超时之后**必须先 kill 再结算** —— 反过来会留一个孤儿探针(及其浏览器)在后台跑,
+     *   而门禁已经往下走了: 那个孤儿会去抢下一个套件的 CDP 端口/资源, 制造"偶发失败"。
+     *   `kill()` 只杀直接子进程; 它自己 spawn 的浏览器由各探针的 close() 收尾,
+     *   收不干净也不影响门禁继续 —— 这里的目标是"别让门禁停住", 不是"保证零残留"。
+     */
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill("SIGKILL"); } catch { /* 已经退出了 */ }
+      // 不在这里结算: 等 close 回来(通常 SIGKILL 后立刻到)。真等不到也由下面的兜底结算。
+      setTimeout(() => finish("TIMEOUT"), 3000);
+    }, suiteTimeoutMs(suite));
   });
 }
 
@@ -483,9 +537,16 @@ const results = new Array(chosenShard.length);
       const i = next++;
       if (i >= chosenShard.length) return;
       let r = await runOne(chosenShard[i]);
-      // 重试：并行下超时类偶发失败是真实存在的。结果如实标出来。
+      /**
+       * 重试：并行下超时类偶发失败是真实存在的。结果如实标出来。
+       *
+       * ⚠ 但**卡死(超时)不重试**（2026-09-29）。重试的理由是"机器忙时读早了"这种**偶发**，
+       *   而卡死是**确定性**的 —— 让浏览器攥着管道不放的那种情况, 再来两次还是卡,
+       *   每次都要等满整条超时线(3 倍实测耗时)。等于把一次卡死放大成三倍白等,
+       *   而且第三次才报出来。超时直接判, 报出"卡死前最后输出"给人看。
+       */
       let attempt = 1;
-      while (r.bad && attempt < 3) {
+      while (r.bad && r.code !== "TIMEOUT" && attempt < 3) {
         attempt++;
         console.log(`↻ ${chosenShard[i].key} 第 ${attempt} 次重试（上一次失败，可能是并发抢资源）`);
         r = await runOne(chosenShard[i]);
