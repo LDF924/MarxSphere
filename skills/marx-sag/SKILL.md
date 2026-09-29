@@ -1035,14 +1035,14 @@ stage4_hypothesis / stage4_evaluate 的步骤记录**静默丢失**，前端推�
 | 6 | MAAS Embedding Key | 数据库 `ai_provider_settings.embedding_api_key`（text-embedding-v4, 1024d） | `docker exec sag_lite_postgres psql -U sag_lite sag_lite -tAc "select embedding_api_key <> '' and embedding_api_key is not null from ai_provider_settings limit 1"` | `t` |
 | 7 | 数据库配置优先 | **配置真源是 ai_provider_settings 表（改 .env 不生效）**；`aiSettingsService.getRuntimeSettings()` 优先读表，`getSettingsOrFallback` 兜底 .env | `docker exec sag_lite_postgres psql -U sag_lite sag_lite -tAc "select embedding_api_key, llm_api_key, llm_model, llm_timeout_ms from ai_provider_settings"` | embedding_api_key 非空 + llm_timeout_ms=300000 |
 | 8 | LLM 超时 300s | `ai_provider_settings.llm_timeout_ms=300000`（V260；`.env LLM_TIMEOUT_MS=60000` 默认值仅兜底，PG 表优先；MCP 工具超时 MCP_TOOL_TIMEOUT_MS=300000） | `docker exec sag_lite_postgres psql -U sag_lite sag_lite -tAc "select llm_timeout_ms from ai_provider_settings limit 1"` | `300000` |
-| 9 | MCP 池 | full 模式 10 实例（MCP_POOL_SIZE 默认 10, 范围 1-10; preview 模式 0 实例）；MARXSPHERE_PREVIEW=1（或 mode.json preview）时跳过 MCP 池（省内存, 推理/检索不可用）；池就绪日志 `[sag] graphiti pool: 10/10` / `cognee pool: 10/10` | `curl -s http://localhost:4173/api/mode` + `curl -s http://localhost:4173/health`；启动日志 `\| grep "pool:"` | mode 含 `mcpPoolSize:10`；日志 `10/10`；preview 模式无池日志 |
+| 9 | MCP 池 | full 模式 10 实例（MCP_POOL_SIZE 默认 10, 范围 1-10; preview 模式 0 实例）；SOCIOSEEK_PREVIEW=1（或 mode.json preview）时跳过 MCP 池（省内存, 推理/检索不可用）；池就绪日志 `[sag] graphiti pool: 10/10` / `cognee pool: 10/10` | `curl -s http://localhost:4173/api/mode` + `curl -s http://localhost:4173/health`；启动日志 `\| grep "pool:"` | mode 含 `mcpPoolSize:10`；日志 `10/10`；preview 模式无池日志 |
 | 10 | gold_dataset.json | 评测金标（50 题: id/question/gold_answer/gold_entities/question_type），用于 eval-22-metrics（须通过 paper_id/existing_paragraphs/md_path 三大校验） | `ls -la "%USERPROFILE%/SAG-main/gold_dataset.json"` + `python -c "import json;d=json.load(open(r'%USERPROFILE%/SAG-main/gold_dataset.json',encoding='utf-8'));print(len(d) if isinstance(d,list) else len(d.get('questions',[])))"` | 文件存在 + 输出 `50` |
 
 **前置依赖 10 项全绿 → 启动 SAG → 健康检查**：
 
 ```bash
 cd %USERPROFILE%\SAG-main && npx tsx src/index.ts &
-curl http://localhost:4173/health        # {"ok":true,"service":"marxsphere"}
+curl http://localhost:4173/health        # {"ok":true,"service":"socioseek"}
 # 端到端: curl -X POST http://localhost:4173/api/reason/query ... → HTTP 201 + hypothesis 非空
 ```
 

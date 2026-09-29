@@ -1,6 +1,6 @@
 # Contributor License Agreement (CLA)
 
-MarxSphere 贡献者许可协议
+SocioSeek 贡献者许可协议
 
 **By submitting a pull request or commit to this repository, you agree to the terms in this document.**
 
@@ -10,10 +10,10 @@ MarxSphere 贡献者许可协议
 
 ## 1. 贡献许可（Contribution License）
 
-您授予 MarxSphere 项目维护者（邓富 / LDF924）及其继承者、受让人一项**永久、全球性、不可撤销、免版税**的许可，以：
+您授予 SocioSeek 项目维护者（邓富 / LDF924）及其继承者、受让人一项**永久、全球性、不可撤销、免版税**的许可，以：
 
 - 使用、复制、修改、分发您的贡献；
-- 将您的贡献纳入 MarxSphere 及其衍生作品；
+- 将您的贡献纳入 SocioSeek 及其衍生作品；
 - 将您的贡献用于**商业目的**，包括但不限于项目的云服务与商业运营（Part B 商业授权场景）。
 
 ## 2. 权利声明（Representations）

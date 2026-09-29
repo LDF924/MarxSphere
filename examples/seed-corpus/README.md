@@ -1,7 +1,7 @@
 # 种子语料（Seed Corpus）
 
 > 与**评测金标数据集同源**的 50 篇文献（`evaluation/gold_dataset.json` 53 题的出题论文），
-> clone 后无需私有文献即可完整体验 MarxSphere 的四源检索（SAG + Graphiti + Cognee + PG）。
+> clone 后无需私有文献即可完整体验 SocioSeek 的四源检索（SAG + Graphiti + Cognee + PG）。
 
 ## 内容
 

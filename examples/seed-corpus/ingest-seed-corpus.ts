@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     .map((e) => join(CORPUS_DIR, e.name));
 
   console.log(`═`.repeat(60));
-  console.log(`MarxSphere 种子语料入库 — 扫描 ${roots.length} 个分类目录`);
+  console.log(`SocioSeek 种子语料入库 — 扫描 ${roots.length} 个分类目录`);
   console.log(`═`.repeat(60));
 
   let totalSources = 0;

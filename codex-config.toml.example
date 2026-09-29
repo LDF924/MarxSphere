@@ -1,6 +1,6 @@
-# Codex CLI MCP 接入 MarxSphere 示例（~/.codex/config.toml）
-# 需要 SAG 服务在跑（MARXSPHERE_PREVIEW=1 npx tsx src/index.ts）
-# 外部部署时填 SAG_API_TOKEN（MarxSphere 设置页 → 对外 API 令牌）
+# Codex CLI MCP 接入 SocioSeek 示例（~/.codex/config.toml）
+# 需要 SAG 服务在跑（SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts）
+# 外部部署时填 SAG_API_TOKEN（SocioSeek 设置页 → 对外 API 令牌）
 
 [mcp_servers.sag]
 command = "npx"

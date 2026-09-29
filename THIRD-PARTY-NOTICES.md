@@ -1,6 +1,6 @@
 # Third-Party Notices（第三方代码使用声明）
 
-MarxSphere（AGPL v3 + 商业授权双许可）使用了以下第三方开源项目的源码/设计。本文件按开源合规要求披露全部来源与许可证。
+SocioSeek（AGPL v3 + 商业授权双许可）使用了以下第三方开源项目的源码/设计。本文件按开源合规要求披露全部来源与许可证。
 
 ## 一、架构级来源
 
@@ -8,7 +8,7 @@ MarxSphere（AGPL v3 + 商业授权双许可）使用了以下第三方开源项
 
 - **项目**：SAG — A new SOTA for RAG（事件中心检索架构）
 - **仓库**：https://github.com/Zleap-AI/SAG
-- **用途**：MarxSphere 的核心检索架构（chunk → event → entities 事件中心结构、multi-search 多路检索流水线、MCP 工具集 sag_search/sag_ingest_document/sag_get_event 等）
+- **用途**：SocioSeek 的核心检索架构（chunk → event → entities 事件中心结构、multi-search 多路检索流水线、MCP 工具集 sag_search/sag_ingest_document/sag_get_event 等）
 - **涉及文件**：`src/services/search-service.ts`、`src/db/repositories.ts`、`src/db/vector.ts`、`src/services/inference-service.ts`、`src/mcp/server.ts`
 - **许可证**：**MIT License**（Copyright (c) Zleap-AI）— 见附录
 
