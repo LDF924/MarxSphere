@@ -1,4 +1,7 @@
 {
+  // 后端（src/ 与 scripts/）的编译口径。前端另有 web/tsconfig.json，
+  // 前端子应用另有 web/socialsci-vue/tsconfig.json —— 改这一份不影响它们。
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
     "downlevelIteration": true,
