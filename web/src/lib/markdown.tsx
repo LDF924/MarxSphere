@@ -22,11 +22,14 @@ export interface MarkdownCitation {
 export function MarkdownMessage({
   content,
   citations = [],
-  onOpenCitation
+  onOpenCitation,
+  onOpenDocLink
 }: {
   content: string;
   citations?: MarkdownCitation[];
   onOpenCitation?: (citation: MarkdownCitation) => void;
+  /** 处理文档之间的相对链接(`xxx.md`)—— 由调用方决定怎么跳(静态托管下那些链必然 404) */
+  onOpenDocLink?: (href: string) => void;
 }) {
   const blocks = splitMarkdownCodeBlocks(content);
   return (
@@ -38,7 +41,7 @@ export function MarkdownMessage({
           </pre>
         ) : (
           <div key={index} className="space-y-1">
-            {renderMarkdownLines(block.content, citations, onOpenCitation)}
+            {renderMarkdownLines(block.content, citations, onOpenCitation, onOpenDocLink)}
           </div>
         )
       )}
@@ -67,7 +70,8 @@ function splitMarkdownCodeBlocks(content: string): Array<{ type: "text" | "code"
 export function renderMarkdownLines(
   content: string,
   citations: MarkdownCitation[] = [],
-  onOpenCitation?: (citation: MarkdownCitation) => void
+  onOpenCitation?: (citation: MarkdownCitation) => void,
+  onOpenDocLink?: (href: string) => void
 ) {
   const lines = content.split("\n");
   const nodes: ReactNode[] = [];
@@ -95,6 +99,7 @@ export function renderMarkdownLines(
           alignments={alignments}
           citations={citations}
           onOpenCitation={onOpenCitation}
+          onOpenDocLink={onOpenDocLink}
         />
       );
       index = rowIndex - 1;
@@ -103,7 +108,7 @@ export function renderMarkdownLines(
     const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       const className = heading[1].length === 1 ? "text-base font-semibold" : "text-sm font-semibold";
-      nodes.push(<div key={index} className={className}>{renderInlineMarkdown(heading[2], citations, onOpenCitation)}</div>);
+      nodes.push(<div key={index} className={className}>{renderInlineMarkdown(heading[2], citations, onOpenCitation, onOpenDocLink)}</div>);
       continue;
     }
     const unordered = trimmed.match(/^[-*]\s+(.+)$/);
@@ -111,7 +116,7 @@ export function renderMarkdownLines(
       nodes.push(
         <div key={index} className="flex gap-2">
           <span className="text-muted-foreground">•</span>
-          <span>{renderInlineMarkdown(unordered[1], citations, onOpenCitation)}</span>
+          <span>{renderInlineMarkdown(unordered[1], citations, onOpenCitation, onOpenDocLink)}</span>
         </div>
       );
       continue;
@@ -121,7 +126,7 @@ export function renderMarkdownLines(
       nodes.push(
         <div key={index} className="flex gap-2">
           <span className="text-muted-foreground">{trimmed.split(".")[0]}.</span>
-          <span>{renderInlineMarkdown(ordered[1], citations, onOpenCitation)}</span>
+          <span>{renderInlineMarkdown(ordered[1], citations, onOpenCitation, onOpenDocLink)}</span>
         </div>
       );
       continue;
@@ -148,7 +153,7 @@ export function renderMarkdownLines(
       );
       continue;
     }
-    nodes.push(<p key={index} className="whitespace-pre-wrap leading-6">{renderInlineMarkdown(line, citations, onOpenCitation)}</p>);
+    nodes.push(<p key={index} className="whitespace-pre-wrap leading-6">{renderInlineMarkdown(line, citations, onOpenCitation, onOpenDocLink)}</p>);
   }
   return nodes;
 }
@@ -159,6 +164,7 @@ function MarkdownTable(props: {
   alignments: Array<"left" | "center" | "right">;
   citations?: MarkdownCitation[];
   onOpenCitation?: (citation: MarkdownCitation) => void;
+  onOpenDocLink?: (href: string) => void;
 }) {
   return (
     <div className="my-2 max-w-full overflow-x-auto rounded-md border border-border bg-background/50">
@@ -170,7 +176,7 @@ function MarkdownTable(props: {
                 key={`${index}-${cell}`}
                 className={cn("border-b border-border px-2 py-1.5 font-semibold", tableAlignClass(props.alignments[index]))}
               >
-                {renderInlineMarkdown(cell, props.citations, props.onOpenCitation)}
+                {renderInlineMarkdown(cell, props.citations, props.onOpenCitation, props.onOpenDocLink)}
               </th>
             ))}
           </tr>
@@ -183,7 +189,7 @@ function MarkdownTable(props: {
                   key={cellIndex}
                   className={cn("break-words px-2 py-1.5 align-top", tableAlignClass(props.alignments[cellIndex]))}
                 >
-                  {renderInlineMarkdown(row[cellIndex] ?? "", props.citations, props.onOpenCitation)}
+                  {renderInlineMarkdown(row[cellIndex] ?? "", props.citations, props.onOpenCitation, props.onOpenDocLink)}
                 </td>
               ))}
             </tr>
@@ -230,11 +236,21 @@ function tableAlignClass(alignment?: "left" | "center" | "right") {
 function renderInlineMarkdown(
   text: string,
   citations: MarkdownCitation[] = [],
-  onOpenCitation?: (citation: MarkdownCitation) => void
+  onOpenCitation?: (citation: MarkdownCitation) => void,
+  onOpenDocLink?: (href: string) => void
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
   const citationByIndex = new Map(citations.map((citation) => [citation.index, citation]));
-  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\[(\d{1,2})\])/g;
+  /**
+   * ⚠ 2026-09-29 补链接分支。
+   *
+   * 由来(用户:「系统管理里的文档中心需要全量更新」): 文档正文里到处是
+   * `[项目概述](PROJECT-OVERVIEW.md)` —— 而这条正则**从来没有链接**,
+   * 于是文档中心里满屏都是这种**原始 markdown 字面量**, 且点不动。
+   * 对"文档中心"来说"能在文档间跳"恰恰是最该有的能力(左侧导航只列得下标题)。
+   * 位置在最前: 链接里可能含 `**`/反引号, 先匹配才不会把它们拆坏。
+   */
+  const regex = /(\[[^\]]+\]\([^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|\[(\d{1,2})\])/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
@@ -242,7 +258,42 @@ function renderInlineMarkdown(
       nodes.push(text.slice(lastIndex, match.index));
     }
     const token = match[0];
-    if (token.startsWith("`")) {
+    if (token.startsWith("[")) {
+      const m = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
+      if (!m) { nodes.push(token); lastIndex = regex.lastIndex; continue; }
+      const [, label, href] = m;
+      /**
+       * 文档之间的相对链接(`xxx.md` / `integrations/yyy.md`)在静态托管下**必然 404**
+       * (那些 .md 不进 web/dist), 所以把它们交给上层处理成"切到该文档";
+       * 其余(外链/锚点)按普通 <a> 渲染。
+       */
+      if (onOpenDocLink && /\.md(#.*)?$/i.test(href) && !/^[a-z]+:/i.test(href)) {
+        nodes.push(
+          <button
+            key={`${match.index}-doclink`}
+            type="button"
+            data-control="markdown:doc-link"
+            data-doc-href={href}
+            onClick={() => onOpenDocLink(href)}
+            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          >
+            {label}
+          </button>
+        );
+      } else {
+        nodes.push(
+          <a
+            key={`${match.index}-link`}
+            href={href}
+            target={/^[a-z]+:/i.test(href) ? "_blank" : undefined}
+            rel="noreferrer"
+            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          >
+            {label}
+          </a>
+        );
+      }
+    } else if (token.startsWith("`")) {
       nodes.push(
         <code key={`${match.index}-code`} className="rounded bg-muted px-1 py-0.5 text-xs text-foreground">
           {token.slice(1, -1)}

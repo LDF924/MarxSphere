@@ -1429,6 +1429,12 @@ export interface DocEntry {
   id: string;
   title: string;
   group: string;
+  /**
+   * 相对 docs/ 的文件路径(如 `integrations/claude-code.md`)。
+   * ⚠ 2026-09-29 补: 文档正文里的相对链接是**按文件名**写的(`[项目概述](PROJECT-OVERVIEW.md)`),
+   *   前端要靠 path 把它反查成 id 才能"切到该文档"——没有它就只能显示成点不动的字面量。
+   */
+  path: string;
 }
 
 export const apiDocs = {

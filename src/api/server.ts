@@ -1936,41 +1936,162 @@ export function buildHttpServer() {
   });
 
   // ─── 文档 API（前端 DocsPanel 渲染 docs/*.md，对标 Sciverse /docs）───
+  //
+  // 由来(2026-09-29 用户:「系统管理里的文档中心需要全量更新」): 此前这份索引是**手写死的
+  //   25 条**, 而 `docs/` 里实际有 **60 个 md** —— 缺的 35 个正好是近期那批能力文档
+  //   (实证台/文献管理/写作证据链/学习引擎/记忆/多Agent/模型/IM/Computer Use 等)。
+  //   手写清单只会随"某次有人记得改"而更新, 于是必然腐烂, 而且**没有任何东西会发现**。
+  //
+  // 现在改为**扫描 docs/ 自动生成**: 标题取文件里的 H1, 分组由一张显式表决定。
+  //   新增一个 .md 会自动出现在文档中心 —— 不需要改这里。
+  //   `test/docs-index.test.ts` 盯着两件事: 每个文件都被收录、每条都能读到(没有死链)。
   const DOCS_ROOT = path.join(rootDir, "docs");
-  const DOC_INDEX: Array<{ id: string; path: string; title: string; group: string }> = [
-    // 指南
-    { id: "overview", path: "overview.md", title: "平台总览", group: "指南" },
-    { id: "project-overview", path: "PROJECT-OVERVIEW.md", title: "项目概述（用户/痛点/创新）", group: "指南" },
-    { id: "quickstart", path: "quickstart.md", title: "快速开始", group: "指南" },
-    { id: "cookbook", path: "cookbook.md", title: "Cookbook 示例", group: "指南" },
-    { id: "faq", path: "FAQ.md", title: "常见问题", group: "指南" },
-    { id: "deployment", path: "DEPLOYMENT.md", title: "部署指南", group: "指南" },
-    { id: "desktop", path: "DESKTOP.md", title: "桌面端", group: "指南" },
-    { id: "project-brief", path: "project-brief.md", title: "项目简报", group: "指南" },
-    // 参考
-    { id: "api-reference", path: "api-reference.md", title: "API 参考", group: "参考" },
-    { id: "agent-api", path: "agent-api.md", title: "Agent API", group: "参考" },
-    { id: "agent-env", path: "agent-env.md", title: "Agent 环境变量", group: "参考" },
-    { id: "api-integration", path: "API-INTEGRATION.md", title: "API 集成", group: "参考" },
-    // 架构
-    { id: "architecture", path: "ARCHITECTURE.md", title: "系统架构", group: "架构" },
-    { id: "pipeline-callgraph", path: "SAG_PIPELINE_CALLGRAPH.md", title: "推理链路调用图", group: "架构" },
-    // Agent
-    { id: "agent-capabilities", path: "AGENT-CAPABILITIES.md", title: "Agent 能力总览", group: "Agent" },
-    { id: "agent-architecture-next", path: "AGENT-ARCHITECTURE-NEXT.md", title: "Agent 架构演进", group: "Agent" },
-    // 评测
-    { id: "scoring-standard", path: "SCORING_STANDARD.md", title: "评测标准", group: "评测" },
-    { id: "edu-evaluation", path: "EDU-EVALUATION.md", title: "教育评测与实测", group: "评测" },
-    // 集成
-    { id: "claude-code", path: "integrations/claude-code.md", title: "Claude Code 集成", group: "集成" },
-    { id: "codex-cli", path: "integrations/codex-cli.md", title: "Codex CLI 集成", group: "集成" },
-    { id: "deepseek-harness", path: "integrations/deepseek-harness.md", title: "DeepSeek Harness 集成", group: "集成" },
-    { id: "data-sources-guide", path: "DATA-SOURCES-GUIDE.md", title: "外部数据源目录", group: "集成" },
-    { id: "skills-guide", path: "SKILLS-GUIDE.md", title: "Skill 目录与导入", group: "集成" },
-    // 合规
-    { id: "open-source-disclosure", path: "OPEN-SOURCE-DISCLOSURE.md", title: "开源披露", group: "合规" },
-    { id: "features-detail", path: "FEATURES-DETAILED.md", title: "功能明细", group: "合规" },
+
+  /** 显示顺序即此数组顺序 */
+  const DOC_GROUP_ORDER = [
+    "快速上手", "平台概览", "能力手册", "架构与设计", "接口与集成",
+    "Agent", "评测", "运维与部署", "合规", "工程记录", "其他",
   ];
+
+  /**
+   * 文件 → 分组。**显式**, 不用正则猜 —— 猜错的分组没人看得见。
+   * 没列到的落到「其他」(守卫测试会报出来, 不会静默)。
+   */
+  const DOC_GROUP_OF: Record<string, string> = {
+    // 快速上手
+    "index.md": "快速上手", "quickstart.md": "快速上手", "cookbook.md": "快速上手",
+    "FAQ.md": "快速上手", "GLOBAL-USAGE.md": "快速上手",
+    // 平台概览
+    "overview.md": "平台概览", "PROJECT-OVERVIEW.md": "平台概览",
+    "project-brief.md": "平台概览", "FEATURES-DETAILED.md": "平台概览",
+    // 能力手册(面向使用者)
+    "EMPIRICAL-WORKBENCH.md": "能力手册", "LITERATURE-MANAGEMENT.md": "能力手册",
+    "WRITING-EVIDENCE-CHAIN.md": "能力手册", "LEARNING-ENGINE.md": "能力手册",
+    "MEMORY.md": "能力手册", "MULTI-AGENT.md": "能力手册", "MODELS.md": "能力手册",
+    "IM-INTEGRATION.md": "能力手册", "COMPUTER-USE.md": "能力手册",
+    // 架构与设计
+    "ARCHITECTURE.md": "架构与设计", "ARCHITECTURE-20260806.md": "架构与设计",
+    "ARCHITECTURE-V98.md": "架构与设计", "SAG_PIPELINE_CALLGRAPH.md": "架构与设计",
+    "DATA-HASH-VERSIONING-DESIGN.md": "架构与设计", "PROVENANCE-DESIGN.md": "架构与设计",
+    "COMMERCIAL-ARCHITECTURE.md": "架构与设计",
+    // 接口与集成
+    "api-reference.md": "接口与集成", "API-INTEGRATION.md": "接口与集成",
+    "agent-api.md": "接口与集成", "agent-env.md": "接口与集成",
+    "DATA-SOURCES-GUIDE.md": "接口与集成", "SKILLS-GUIDE.md": "接口与集成",
+    "integrations/claude-code.md": "接口与集成", "integrations/codex-cli.md": "接口与集成",
+    "integrations/deepseek-harness.md": "接口与集成",
+    // Agent
+    "AGENT-CAPABILITIES.md": "Agent", "AGENT-ARCHITECTURE-NEXT.md": "Agent",
+    // 评测
+    "SCORING_STANDARD.md": "评测", "EDU-EVALUATION.md": "评测",
+    // 运维与部署
+    "DEPLOYMENT.md": "运维与部署", "DEPLOYMENT-GUIDE.md": "运维与部署",
+    "BACKUP-RESTORE.md": "运维与部署", "CONTRIBUTING.md": "运维与部署",
+    "DESKTOP.md": "运维与部署",
+    // 合规
+    "OPEN-SOURCE-DISCLOSURE.md": "合规",
+    // 工程记录(差距分析/三方评审/自审/移植报告 —— 面向维护者, 但对操作台有用)
+    "CODEX-GAP-ROADMAP.md": "工程记录", "ELICIT-GAP-ANALYSIS.md": "工程记录",
+    "LINGXILEARN-REVIEW.md": "工程记录", "TRAITTUTOR-REVIEW.md": "工程记录",
+    "OPEN-SCIENCE-GAP-ANALYSIS.md": "工程记录", "OPEN-SCIENCE-FULL-GAP-MATRIX.md": "工程记录",
+    "OPENSQUILLA-GAP-ANALYSIS.md": "工程记录", "OPENSQUILLA-PORT-REPORT.md": "工程记录",
+    "OPENSQUILLA-B5-COST.md": "工程记录", "RESPAL-GAP-ANALYSIS.md": "工程记录",
+    "ZLEAP-SAG-REVIEW.md": "工程记录", "ZLEAP-SAG-GAP-INTEGRATION.md": "工程记录",
+    "ZLEAP-SAG-IMPLEMENTATION-SUMMARY.md": "工程记录",
+    "SELF-AUDIT-ROUND2.md": "工程记录", "SELF-AUDIT-ROUND3.md": "工程记录",
+    "SELF-AUDIT-ROUND4.md": "工程记录",
+  };
+
+  /**
+   * 少数 H1 不适合直接当标题的, 在这里改。
+   * 其余一律用文件里的 H1 —— 标题写在文档里, 不在代码里再抄一份。
+   */
+  const DOC_TITLE_OVERRIDE: Record<string, string> = {
+    "index.md": "文档中心首页",
+    "FEATURES-DETAILED.md": "功能明细(52 步/78 场景/158 工具)",
+    "ARCHITECTURE-20260806.md": "架构总览(2026-08 快照)",
+    "ARCHITECTURE-V98.md": "架构归档(GBrain/检索增强)",
+    "SAG_PIPELINE_CALLGRAPH.md": "推理链路调用图(52 步)",
+    "LEARNING-ENGINE.md": "学习引擎",
+    "CODEX-GAP-ROADMAP.md": "对齐 Codex 差距路线图",
+    "OPEN-SCIENCE-GAP-ANALYSIS.md": "对齐 open-science 差距分析",
+    "OPEN-SCIENCE-FULL-GAP-MATRIX.md": "对齐 open-science 全能力矩阵",
+    "OPENSQUILLA-GAP-ANALYSIS.md": "对齐 OpenSquilla 差距分析",
+    "OPENSQUILLA-B5-COST.md": "B5 融合成本账",
+    "ZLEAP-SAG-GAP-INTEGRATION.md": "对齐 Zleap-SAG 差距与融入路线",
+    "ZLEAP-SAG-IMPLEMENTATION-SUMMARY.md": "对齐 Zleap-SAG 落地总结",
+    "ELICIT-GAP-ANALYSIS.md": "对齐 Elicit 差距分析",
+    "RESPAL-GAP-ANALYSIS.md": "对齐 Respal 差距分析",
+    "LINGXILEARN-REVIEW.md": "LingxiLearn 调研",
+    "TRAITTUTOR-REVIEW.md": "TraitTutor 调研",
+    "SELF-AUDIT-ROUND2.md": "全量自审 Round2",
+    "SELF-AUDIT-ROUND3.md": "全量自审 Round3",
+    "SELF-AUDIT-ROUND4.md": "全量自审 Round4(交互级)",
+    "DATA-HASH-VERSIONING-DESIGN.md": "文献入库哈希版本化(设计)",
+    "PROVENANCE-DESIGN.md": "文件级 provenance(设计)",
+    "GLOBAL-USAGE.md": "在任意目录启动",
+    "CONTRIBUTING.md": "贡献与质量门禁",
+    "BACKUP-RESTORE.md": "知识库备份与恢复",
+  };
+
+  const DOC_ID_OVERRIDE: Record<string, string> = {
+    "index.md": "overview",   // 默认页沿用老 id
+    "PROJECT-OVERVIEW.md": "project-overview",
+    "project-brief.md": "project-brief",
+    "FEATURES-DETAILED.md": "features-detail",
+    "OPEN-SOURCE-DISCLOSURE.md": "open-source-disclosure",
+    "integrations/claude-code.md": "claude-code",
+    "integrations/codex-cli.md": "codex-cli",
+    "integrations/deepseek-harness.md": "deepseek-harness",
+  };
+
+  /** 组内排序: 列在这里的排前面(按声明顺序), 其余按文件名。 */
+  const DOC_PINNED = [
+    "index.md", "quickstart.md", "cookbook.md", "FAQ.md", "GLOBAL-USAGE.md",
+    "overview.md", "PROJECT-OVERVIEW.md", "project-brief.md", "FEATURES-DETAILED.md",
+  ];
+
+  /** 扫描 docs/ 下的 md(跳过点目录与 assets), 生成索引 */
+  function buildDocIndex(): Array<{ id: string; path: string; title: string; group: string }> {
+    const files: string[] = [];
+    const walk = (dir: string, prefix: string) => {
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (e.name.startsWith(".") || e.name === "assets") continue;
+        const rel = prefix ? `${prefix}/${e.name}` : e.name;
+        if (e.isDirectory()) walk(path.join(dir, e.name), rel);
+        else if (e.name.toLowerCase().endsWith(".md")) files.push(rel);
+      }
+    };
+    walk(DOCS_ROOT, "");
+
+    const out: Array<{ id: string; path: string; title: string; group: string }> = [];
+    for (const rel of files) {
+      let title = "";
+      try {
+        // 标题取文件里的第一个 H1 —— 不为它在这里再维护一份副本
+        const txt = fs.readFileSync(path.join(DOCS_ROOT, rel), "utf-8");
+        title = (txt.split("\n").find((l) => l.startsWith("# ")) ?? "").slice(2).trim();
+      } catch { /* 读不到就用文件名兜底 */ }
+      const base = rel.slice(rel.lastIndexOf("/") + 1, -3);   // 去目录与 .md
+      out.push({
+        id: DOC_ID_OVERRIDE[rel] ?? base,
+        path: rel,
+        title: DOC_TITLE_OVERRIDE[rel] ?? title ?? base,
+        group: DOC_GROUP_OF[rel] ?? "其他",
+      });
+    }
+    const rank = (r: string) => { const i = DOC_PINNED.indexOf(r); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+    out.sort((a, b) =>
+      DOC_GROUP_ORDER.indexOf(a.group) - DOC_GROUP_ORDER.indexOf(b.group)
+      || rank(a.path) - rank(b.path)
+      || a.path.localeCompare(b.path));
+    return out;
+  }
+
+  /** 启动时扫一次。docs/ 是随代码发布的, 运行期不会变 —— 不必每次请求都扫。 */
+  const DOC_INDEX = buildDocIndex();
 
   app.get("/api/docs", async (request) => {
     const query = request.query as { id?: string };
@@ -1980,7 +2101,8 @@ export function buildHttpServer() {
     let content = "";
     try { content = fs.readFileSync(filePath, "utf-8"); } catch { content = "# 文档未找到\n\n该文档不存在或已被移动。"; }
     return {
-      index: DOC_INDEX.map((d) => ({ id: d.id, title: d.title, group: d.group })),
+      // path 一起发: 文档正文里的相对链接是按文件名写的, 前端靠它反查成 id 才能"切到该文档"
+      index: DOC_INDEX.map((d) => ({ id: d.id, title: d.title, group: d.group, path: d.path })),
       current: { id: entry.id, title: entry.title, content },
     };
   });

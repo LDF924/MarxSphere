@@ -27,6 +27,25 @@ export function DocsPanel() {
     return () => { cancelled = true; };
   }, [currentId]);
 
+  /**
+   * 文档正文里的相对链接(`[项目概述](PROJECT-OVERVIEW.md)`)在静态托管下必然 404 ——
+   * 那些 .md 不进 web/dist。这里把它解析成"切到该文档":
+   * 后端索引里带 `path`, 所以按文件名(含 `integrations/` 这类子目录)反查 id。
+   *
+   * ⚠ 2026-09-29: 此前 markdown.tsx **完全没有链接分支**, 于是文档里到处是
+   * `[标题](xxx.md)` 这种原始字面量, 且点不动 —— 文档中心最该能做的事(在文档间跳)反而是坏的。
+   */
+  const openDocLink = (href: string) => {
+    const target = href.split("#")[0].replace(/^\.\//, "").toLowerCase();
+    if (!target) return;
+    const hit = index.find((d) => {
+      const p = String((d as { path?: string }).path ?? "").toLowerCase();
+      return p === target || p.endsWith("/" + target);
+    });
+    if (hit) setCurrentId(hit.id);
+    // 反查不到就静默 —— 文档里写了个已删的链接不是致命错误, 而弹错更烦人
+  };
+
   const groups = Array.from(new Set(index.map((d) => d.group)));
 
   return (
@@ -36,6 +55,7 @@ export function DocsPanel() {
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
           <BookOpen className="h-4 w-4 text-violet-500" />
           文档
+          {index.length > 0 && <span className="ml-auto text-[10px] font-normal text-muted-foreground">{index.length}</span>}
         </div>
         {groups.map((group) => (
           <div key={group} className="mb-3">
@@ -71,7 +91,7 @@ export function DocsPanel() {
           <article className="mx-auto w-full max-w-[1100px]">
             <h1 className="mb-4 text-xl font-semibold">{currentTitle}</h1>
             <div className="markdown-body">
-              <MarkdownMessage content={content} />
+              <MarkdownMessage content={content} onOpenDocLink={openDocLink} />
             </div>
           </article>
         )}
