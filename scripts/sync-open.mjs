@@ -100,7 +100,15 @@ if (!existsSync(OPEN)) {
 //   124 行 —— 9-14 加的「UI 视图门禁(真浏览器)」**从没在 CI 上跑过**, 一直是 open 仓
 //   那份 99 行的旧版在跑(它那一步还是空转的 `npx playwright test`)。
 //   同目录下的 release.yml 也一样。**改了 CI 配置却看不到效果的, 先查这里。**
-const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config", "script-archive", ".github"];
+const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migrations", "scripts", "docs", "electron", "plugins", "vendor", "config", "script-archive", ".github",
+  // ⚠ 2026-09-29 补: 这两处原先**不在同步范围**, 于是 open 仓里长期是旧的。
+  //   web/index.html 的 title 一直停在旧名(换标后才发现), build/installer.nsh 同理。
+  //   共同点是"不在任何已列目录下", 属整目录/散文件漏掉 —— 与 V415 漏 CLAUDE.md、
+  //   V418 漏一批文档是同一个病: **漏的原因是文件没进列表, 不是规则写错**。
+  "build",
+];
+// web/ 根目录下的散文件不属任何子目录, 单独列出并接进同步循环(见下方 for)。
+const WEB_ROOT_FILES = ["web/index.html"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
 /**
@@ -160,6 +168,10 @@ for (const d of DIRS) {
 for (const f of ROOT_FILES) {
   if (existsSync(path.join(MAIN, f))) files.push(f);
 }
+// web/ 根目录的散文件 —— 只声明不消费等于没加, 所以这里必须真的接进来
+for (const f of WEB_ROOT_FILES) {
+  if (existsSync(path.join(MAIN, f))) files.push(f);
+}
 
 // ─── 对比差异 ───
 // 行尾不敏感比较(CRLF/LF): git 仓库用 autocrlf=true 时同一内容在
@@ -196,7 +208,8 @@ if (changed.length + added.length > 15) console.log(`  … 等 ${changed.length 
 // 范围。无脑自动删会把它们从公开仓库一起抹掉。
 // 所以先按 DIRS/ROOT_FILES 圈定范围, 再报出来让人来判断; 删除动作由人工执行。
 function inSyncScope(rel) {
-  return ROOT_FILES.includes(rel) || DIRS.some((d) => rel === d || rel.startsWith(`${d}/`));
+  return ROOT_FILES.includes(rel) || WEB_ROOT_FILES.includes(rel)
+    || DIRS.some((d) => rel === d || rel.startsWith(`${d}/`));
 }
 let openTracked = [];
 try {
