@@ -464,7 +464,14 @@ function OpsBlocks({ onMsg, onReload }: { onMsg: (m: string) => void; onReload: 
 
   return (
     <div className="mt-3 grid gap-3 rounded-xl border p-4 lg:grid-cols-2">
-      <span className="text-xs font-semibold text-muted-foreground">科研中心运营扩展</span>
+      {/*
+        ⚠ 标题必须**横跨整行**(`lg:col-span-2`)。
+        2026-09-29 用户:「科研中心运营扩展, 其布局好像乱了」—— 实测: 这个 span 是 grid 的
+        **直接子项**, 于是它自己占掉了第一个格子, 又被默认的 align-items:stretch 拉到整行高
+        (659×137), 标题下留一大片空白, 而「积分充扣」被挤到右列。
+        加上 col-span-2 后它成为真正的分区标题, 四张卡正好排成 2×2。
+      */}
+      <span className="text-xs font-semibold text-muted-foreground lg:col-span-2">科研中心运营扩展</span>
 
       {/* 积分充扣 */}
       <div className="rounded-lg border border-white/10 bg-muted/10 p-3">
