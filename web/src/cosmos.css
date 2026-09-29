@@ -1,15 +1,8 @@
 /* cosmos.css — MarxSphere 玻璃拟态宇宙风视觉层
- * 流动宇宙渐变 + 星尘粒子 + 玻璃卡片 + 光效
+ * 流动宇宙渐变 + 玻璃卡片 + 光效
  * 2026-08-07 finesse 升级：图谱深色变量 / 导航分组色点 / 金色呼吸选中态
+ * 2026-09-29 按要求去掉全部星点/星尘装饰（详见下方那段说明）
  */
-
-/* ─── 动态宇宙 Canvas（finesse 2026-08-07：星场漂移 + 星云 + 视差，位于渐变之上、水印之下）─── */
-.universe-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: -2; /* cosmos-bg(-3) 之上、graph-watermark(-1) 之下 */
-  pointer-events: none;
-}
 
 /* 图谱深色兼容变量（ReactFlow/d3 节点用，浅色兜底值保留）─── */
 :root {
@@ -124,41 +117,17 @@
     linear-gradient(160deg, transparent 82%, hsl(262 65% 9% / 0.55) 82.5%, transparent 84.5%);
 }
 
-/* 大颗亮星（Index 风格：纯白 2px + 光晕，box-shadow 多重星技巧——必渲染） */
-.cosmos-bg .cosmos-bright-stars {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    /* 亮星（2px 纯白 + 光晕） */
-    radial-gradient(2px 2px at 8% 12%, rgba(255, 255, 255, 0.95), transparent),
-    radial-gradient(1.5px 1.5px at 18% 32%, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(2.5px 2.5px at 27% 8%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 36% 22%, rgba(220, 225, 255, 0.85), transparent),
-    radial-gradient(2px 2px at 45% 14%, rgba(255, 255, 255, 0.95), transparent),
-    radial-gradient(1px 1px at 52% 28%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(2.5px 2.5px at 61% 9%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 70% 19%, rgba(210, 220, 255, 0.8), transparent),
-    radial-gradient(2px 2px at 79% 26%, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1px 1px at 88% 13%, rgba(255, 255, 255, 0.75), transparent),
-    radial-gradient(2px 2px at 94% 31%, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 13% 48%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(2px 2px at 33% 55%, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 56% 62%, rgba(255, 255, 255, 0.65), transparent),
-    radial-gradient(2.5px 2.5px at 77% 50%, rgba(255, 255, 255, 0.85), transparent),
-    radial-gradient(1.5px 1.5px at 92% 58%, rgba(255, 255, 255, 0.75), transparent),
-    radial-gradient(2px 2px at 23% 68%, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(1px 1px at 48% 74%, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(2px 2px at 68% 66%, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1.5px 1.5px at 85% 72%, rgba(255, 255, 255, 0.7), transparent);
-  opacity: 0.9;
-  animation: cosmos-stars-twinkle 6s ease-in-out infinite;
-}
-
-@keyframes cosmos-stars-twinkle {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 0.55; }
-}
+/*
+ * ⚠ 2026-09-29 删掉了三块**会动的星点装饰**(用户:「首页怎么那么多白点在浮动,
+ *   如果是模拟什么星辰的话去掉了不需要」):
+ *     · .cosmos-bright-stars  —— 20 颗硬编码白点 + cosmos-stars-twinkle 闪烁
+ *     · .cosmos-stars         —— 10 颗金/蓝「星尘」+ cosmos-twinkle 闪烁
+ *     · @keyframes cosmos-stars-twinkle / cosmos-twinkle(随上面两块一起没了引用)
+ *   以及 Canvas 星场 <UniverseBackground />(260 颗纯白点持续漂移 + 鼠标视差, 见 App.tsx)。
+ *   保留的是**不动的**构成: .cosmos-bg 深空渐变、两座山峰剪影、静态图谱水印、金色星环。
+ *   连 CSS 一起删而不是只摘 DOM —— 否则留下一堆再不会被渲染的样式, 而本仓已经在
+ *   cosmos.css 里躺着一个没人引用的 @keyframes cosmos-drift(同一种腐烂, 一并清了)。
+ */
 
 /* 角落低透明度静态图谱水印（SVG，无动画） */
 .cosmos-bg .cosmos-graph-watermark {
@@ -188,39 +157,9 @@
   animation: cosmos-ring-pulse 8s ease-in-out infinite;
 }
 
-@keyframes cosmos-drift {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(5%, 8%) scale(1.15); }
-  100% { transform: translate(-4%, -6%) scale(1.05); }
-}
-
 @keyframes cosmos-ring-pulse {
   0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
   50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
-}
-
-/* 星尘粒子 */
-.cosmos-stars {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(1.5px 1.5px at 8% 22%, hsl(43 96% 80% / 0.8), transparent),
-    radial-gradient(1px 1px at 22% 8%, hsl(210 100% 80% / 0.9), transparent),
-    radial-gradient(1.5px 1.5px at 34% 78%, hsl(43 96% 70% / 0.7), transparent),
-    radial-gradient(1px 1px at 42% 35%, hsl(210 100% 90% / 0.6), transparent),
-    radial-gradient(2px 2px at 58% 12%, hsl(43 96% 75% / 0.6), transparent),
-    radial-gradient(1px 1px at 67% 45%, hsl(210 100% 85% / 0.7), transparent),
-    radial-gradient(1.5px 1.5px at 75% 68%, hsl(43 96% 80% / 0.6), transparent),
-    radial-gradient(1px 1px at 85% 25%, hsl(210 100% 90% / 0.5), transparent),
-    radial-gradient(2px 2px at 92% 55%, hsl(43 96% 70% / 0.5), transparent),
-    radial-gradient(1px 1px at 15% 60%, hsl(210 100% 80% / 0.6), transparent);
-  animation: cosmos-twinkle 5s ease-in-out infinite alternate;
-}
-
-@keyframes cosmos-twinkle {
-  0% { opacity: 0.5; }
-  100% { opacity: 1; }
 }
 
 /* ─── 玻璃拟态 ─── */

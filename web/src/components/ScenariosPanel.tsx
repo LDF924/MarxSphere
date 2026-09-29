@@ -12,10 +12,24 @@ import { cn } from "../lib/utils";
 import { ScenariosWorkbench, type ScenarioStep } from "./ScenariosWorkbench";
 import { SCENARIO_GUIDES } from "../lib/scenario-guides";
 
+/**
+ * 场景可以跳去哪个工作台。
+ *
+ * ⚠ 2026-09-29 从 12 个扩到 21 个: 此前只有 12 个视图, 于是 9 月新增的五个工作台
+ *   **没法被任何场景指向** —— 场景里根本写不出"去写作舱做这件事"。
+ *   每加一个新 tab 就该同步这里(以及 `App.tsx` 的 validViews 与 ScenariosWorkbench 的 TOOL_NAMES)。
+ */
+export type ScenarioView =
+  | "reason" | "literature" | "ask" | "truth" | "sciverse" | "skills" | "graph"
+  | "policy" | "vault" | "jobs" | "documents" | "cjournal"
+  | "paper-outline" | "dag-workbench" | "review-lab" | "plot-agent" | "editor"
+  | "education" | "corpus" | "statistics" | "imports"
+  | "format-eval" | "citation-verify";
+
 interface Scenario {
   id: string;
   group: string;
-  key: "reason" | "literature" | "ask" | "truth" | "sciverse" | "skills" | "graph" | "policy" | "vault" | "jobs" | "documents" | "cjournal";
+  key: ScenarioView;
   title: string;
   desc: string;
   hint: string;
@@ -26,7 +40,7 @@ interface Scenario {
 }
 
 interface ScenariosPanelProps {
-  onChangeView: (view: "reason" | "literature" | "ask" | "truth" | "sciverse" | "skills" | "graph" | "policy" | "vault" | "jobs" | "documents" | "cjournal") => void;
+  onChangeView: (view: ScenarioView) => void;
 }
 
 export const SCENARIOS: Scenario[] = [
@@ -782,10 +796,151 @@ export const SCENARIOS: Scenario[] = [
     icon: <Target className="h-4.5 w-4.5" />,
     tag: "选题",
     capabilities: ["四步法选题", "理论接口映射", "选题矩阵", "悖论选题", "编辑三标准校验"]
+  },
+
+  // ═══ 十六、写作舱与工作台（2026-09-29 补）═══
+  //
+  // 由来(用户:「科研中心里的场景需要更新」): 上面 66 条最后实质改动是 2026-08-15,
+  //   而**9 月之后新增的十二项能力一条都没进场景** —— 写作舱六个 tab、编排画布、
+  //   评审台、可视化工坊、编辑器、教育、语料库、统计台、文献管理。
+  //   用户在场景页找不到它们, 只能靠记得住导航路径。
+  //
+  // 每条都按"用户真会这么问"写, 并且**跳转是真的**(key 指向对应工作台视图)。
+  {
+    id: "S67",
+    group: "写作舱与工作台",
+    key: "paper-outline",
+    title: "研途写作舱全流程",
+    desc: "把一篇论文从选题界定做到统稿定稿：六步阶段 + 章节写作 + 素材/证据/假设台账",
+    hint: "选题界定 → 框架设计 → 研究实施 → 文献与资料 → 章节写作 → 统稿定稿",
+    icon: <PenLine className="h-4.5 w-4.5" />,
+    tag: "写作舱",
+    capabilities: ["六步阶段推进", "章节树与正文写作", "素材库/证据账本/假设台账", "版本历史与回档", "素材按章过滤"]
+  },
+  {
+    id: "S68",
+    group: "写作舱与工作台",
+    key: "paper-outline",
+    title: "投稿要件与数据可得性",
+    desc: "生成摘要/结论/讨论等要件，补齐作者贡献、利益冲突、致谢、基金、数据可得性五项声明",
+    hint: "要件生成 · 声明齐备性检查 · 导出时一并带上",
+    icon: <FileText className="h-4.5 w-4.5" />,
+    tag: "要件",
+    capabilities: ["摘要/关键词/结论/讨论生成", "五项声明落库", "缺失项检查", "导出 Word 带声明"]
+  },
+  {
+    id: "S69",
+    group: "写作舱与工作台",
+    key: "paper-outline",
+    title: "开题 · 基金 · 伦理 · 预注册",
+    desc: "开题报告、基金申报书、伦理审查、预注册四类申报稿，各按固定节次结构化产出",
+    hint: "四类申报 × 七节结构 · 与写作舱同源",
+    icon: <GraduationCap className="h-4.5 w-4.5" />,
+    tag: "申报",
+    capabilities: ["开题报告七节", "基金立项依据/方案/预算", "伦理声明", "预注册文稿"]
+  },
+  {
+    id: "S70",
+    group: "写作舱与工作台",
+    key: "dag-workbench",
+    title: "课题流程编排",
+    desc: "用自然语言描述研究流程，生成可执行 DAG，节点可单步跑、整条跑、暂停续跑",
+    hint: "对话式编排 · 能力表 191 项 · 事件流可回放",
+    icon: <GitBranch className="h-4.5 w-4.5" />,
+    tag: "编排",
+    capabilities: ["nl-to-dag 生成", "单步/整条执行", "运行控制与恢复", "事件流与计划历史", "画布图存取"]
+  },
+  {
+    id: "S71",
+    group: "写作舱与工作台",
+    key: "review-lab",
+    title: "论文质量评审",
+    desc: "按期刊标准分段审稿，逐维度评分卡 + 大修/小修问题清单 + 原文批注",
+    hint: "分钟级后台跑 · 期刊库 80 本 · 审稿历史可重审",
+    icon: <ShieldCheck className="h-4.5 w-4.5" />,
+    tag: "评审",
+    capabilities: ["分段审阅", "多维评分卡", "原文批注", "审稿历史与重审链", "报告导出"]
+  },
+  {
+    id: "S72",
+    group: "写作舱与工作台",
+    key: "review-lab",
+    title: "期刊投稿须知解析",
+    desc: "抓取/粘贴目标期刊的投稿须知，解析成结构化规则集，直接用作审稿与格式检查依据",
+    hint: "批量解析入库 · 按刊复审",
+    icon: <Library className="h-4.5 w-4.5" />,
+    tag: "投稿",
+    capabilities: ["投稿须知解析", "规则集入期刊库", "按刊审稿", "格式要求提取"]
+  },
+  {
+    id: "S73",
+    group: "写作舱与工作台",
+    key: "plot-agent",
+    title: "成果可视化工坊",
+    desc: "对话式出图：上传数据或直接描述需求，系统规划→出图→自审修订→落盘 PNG+SVG",
+    hint: "期刊版式预设 · 矢量可编辑 · 产物可转素材",
+    icon: <BarChart3 className="h-4.5 w-4.5" />,
+    tag: "出图",
+    capabilities: ["自然语言出图", "数据文件绑定", "期刊版式预设", "产物导出/转素材"]
+  },
+  {
+    id: "S74",
+    group: "写作舱与工作台",
+    key: "editor",
+    title: "学术文本工作台",
+    desc: "在线学术编辑器：富文本写作 + 14 个 AI 动作（改写/检查/题名/引文）+ 图表 + 版本",
+    hint: "选区改写 · 题名候选可点选 · 导入导出 Word",
+    icon: <PenLine className="h-4.5 w-4.5" />,
+    tag: "编辑",
+    capabilities: ["文档读写与版本回档", "选区改写六模式", "题名/摘要/关键词生成", "引文一致性检查", "导入导出 Word"]
+  },
+  {
+    id: "S75",
+    group: "写作舱与工作台",
+    key: "education",
+    title: "教学与教育能力",
+    desc: "面向教学的讲解、练习与批改：六类教育能力，把研究材料转成可直接上课的内容",
+    hint: "文献证据讲解 · 教学场景",
+    icon: <GraduationCap className="h-4.5 w-4.5" />,
+    tag: "教学",
+    capabilities: ["循证讲解", "教学材料生成", "练习与批改", "教育档案"]
+  },
+  {
+    id: "S76",
+    group: "写作舱与工作台",
+    key: "corpus",
+    title: "写作语料库",
+    desc: "从已入库文献抽取文本/概念/逻辑/句式四类语料，写作时按需引用，形成自己的表达库",
+    hint: "四子库 · LLM 提取 · 可被 Agent 引用",
+    icon: <FolderOpen className="h-4.5 w-4.5" />,
+    tag: "语料",
+    capabilities: ["四类语料抽取", "按主题检索", "写作时注入", "产出沉淀回库"]
+  },
+  {
+    id: "S77",
+    group: "写作舱与工作台",
+    key: "statistics",
+    title: "数据分析台",
+    desc: "上传 CSV/Excel 跑真正的统计：描述统计、回归、面板、逻辑回归，结果可回流到正文章节",
+    hint: "17 类方法 · SSE 流式结果 · 结果可转素材",
+    icon: <BarChart3 className="h-4.5 w-4.5" />,
+    tag: "统计",
+    capabilities: ["数据上传与变量识别", "描述统计/回归/面板", "流式结果", "结果回流章节"]
+  },
+  {
+    id: "S78",
+    group: "写作舱与工作台",
+    key: "imports",
+    title: "文献管理与入库",
+    desc: "把 PDF 批量收进来、解析、去重、入库，并维护文献元数据与引用关系",
+    hint: "批量上传 · 三库入库 · 去重与元数据",
+    icon: <Database className="h-4.5 w-4.5" />,
+    tag: "入库",
+    capabilities: ["批量上传与去重", "PDF 解析", "三库入库", "元数据与引用维护"]
   }
 ];
 
-export const GROUPS = ["选题构思", "文献调研", "证据检索", "数据分析", "论文写作", "图表制作", "评审发表", "系统自动化", "经典文本研究", "学术研究", "论文写作研究", "论文写作输出", "论文质量检查", "理论思辨拓展", "政经C刊科研"];
+export const GROUPS = ["选题构思", "文献调研", "证据检索", "数据分析", "论文写作", "图表制作", "评审发表", "系统自动化", "经典文本研究", "学术研究", "论文写作研究", "论文写作输出", "论文质量检查", "理论思辨拓展", "政经C刊科研", "写作舱与工作台"];
 
 const GROUP_ICONS: Record<string, React.ReactNode> = {
   "选题构思": <Lightbulb className="h-4 w-4" />,
@@ -802,7 +957,8 @@ const GROUP_ICONS: Record<string, React.ReactNode> = {
   "论文写作输出": <FileText className="h-4 w-4" />,
   "论文质量检查": <ShieldCheck className="h-4 w-4" />,
   "理论思辨拓展": <Scale className="h-4 w-4" />,
-  "政经C刊科研": <Target className="h-4 w-4" />
+  "政经C刊科研": <Target className="h-4 w-4" />,
+  "写作舱与工作台": <FlaskConical className="h-4 w-4" />
 };
 
 export const ScenariosPanel: FC<ScenariosPanelProps> = ({ onChangeView }) => {

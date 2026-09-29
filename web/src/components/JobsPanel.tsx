@@ -9,7 +9,8 @@ import { cn } from "../lib/utils";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 
-const JOB_TYPES: Array<{ key: string; cn: string; en: string }> = [
+/** 导出给首页「自动化任务」计数用 —— 让那个数字来自真源而不是手抄(2026-09-29) */
+export const JOB_TYPES: Array<{ key: string; cn: string; en: string }> = [
   { key: "lint", cn: "数据体检", en: "lint" },
   { key: "backlinks", cn: "反向链接", en: "backlinks" },
   { key: "sync", cn: "数据同步", en: "sync" },

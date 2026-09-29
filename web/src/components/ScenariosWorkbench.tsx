@@ -13,13 +13,14 @@ import { QualityCheckToolsPanel } from "./QualityCheckToolsPanel";
 import { TheoryToolsPanel } from "./TheoryToolsPanel";
 import { DocumentReader } from "./DocumentReader";
 import { DragHandle } from "./ui/DragHandle";
+import type { ScenarioView } from "./ScenariosPanel";
 
 /** 场景研究步骤：工具指引 + 可选跳转 */
 export interface ScenarioStep {
   title: string;
   desc: string;
-  /** 用哪个工具（可跳转的目标视图） */
-  tool: "reason" | "literature" | "ask" | "truth" | "sciverse" | "skills" | "graph" | "policy" | "vault" | "jobs" | "documents" | "cjournal";
+  /** 用哪个工具（可跳转的目标视图）—— 与 ScenariosPanel 的 ScenarioView 同一份闭集 */
+  tool: ScenarioView;
   toolLabel: string;
   /** 操作指引（怎么做） */
   how: string;
@@ -45,7 +46,19 @@ const TOOL_NAMES: Record<ScenarioStep["tool"], string> = {
   vault: "资料库",
   jobs: "Jobs 自动化",
   documents: "文档管理",
-  cjournal: "政经C刊科研"
+  cjournal: "政经C刊科研",
+  // 2026-09-29 补: 此前闭集里没有这九个, 于是场景向导**指不到任何工作台**。
+  "paper-outline": "研途写作舱",
+  "dag-workbench": "课题流程编排",
+  "review-lab": "论文质量评审",
+  "plot-agent": "成果可视化工坊",
+  editor: "学术文本工作台",
+  education: "教育能力",
+  corpus: "写作语料库",
+  statistics: "数据分析台",
+  imports: "文献管理",
+  "format-eval": "格式智能评测",
+  "citation-verify": "引文核验"
 };
 
 interface Props {

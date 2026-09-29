@@ -5,6 +5,7 @@ import { useEffect, useState, type FC } from "react";
 import { Library, Sparkles, ExternalLink, BookOpenCheck, Boxes, FolderOpen, ChevronRight, Search, MessageSquareText, Network, Scale, Database, FileUp, LayoutGrid } from "lucide-react";
 import { SymbolLogo } from "./SymbolLogo";
 import { SCENARIOS, GROUPS } from "./ScenariosPanel";
+import { JOB_TYPES } from "./JobsPanel";
 
 // 检索栈动画步骤（按真实 Ask 18 步）
 const RETRIEVAL_STEPS = [
@@ -56,24 +57,58 @@ interface HomePanelProps {
 }
 
 export function HomePanel({ onChangeView }: HomePanelProps) {
-  // 技能总数（实时取自注册表 /api/skills，替代硬编码 103）
-  const [skillCount, setSkillCount] = useState(192);
+  /**
+   * 平台真数（现算）。
+   *
+   * 由来(2026-09-29 用户:「首页的各项数据, 比如研究能力也需要更新」): 这一页的数字
+   *   此前**全是源码里的字面量** —— 它们只随"某次有人记得改"而更新, 于是漂成了另一个
+   *   平台的快照: 技能兜底写 192(真 209)、文献一处 501 一处 500、图谱实体 188,259
+   *   而文档口径是 118,592。
+   *
+   * 现在: 能力类(工具/技能)由后端**现数注册表**, 数据底盘由后端**现查**;
+   *   两个 Neo4j 引擎**可能是关着的** —— 关着就显示「未连接」, 不拿旧数字冒充实时值。
+   *   `platformStats === null` 表示还没取到(或接口失败), 界面显示占位而不是一个像真数的假数。
+   */
+  type Stats = {
+    engines: { graphiti: { connected: boolean; nodes: number | null; relations: number | null }; cognee: { connected: boolean; nodes: number | null; relations: number | null } };
+    pg: { documents: number | null; chunks: number | null; entities: number | null; events: number | null; projects: number | null };
+    live: { tools: number | null; skills: number | null; reasonSteps: number | null };
+  };
+  const [platformStats, setPlatformStats] = useState<Stats | null>(null);
   useEffect(() => {
-    fetch("/api/skills")
+    fetch("/api/platform/stats")
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data?.skills) && data.skills.length > 0) setSkillCount(data.skills.length);
-      })
-      .catch(() => {});
+      .then((d) => { if (d?.pg && d?.engines) setPlatformStats(d as Stats); })
+      .catch(() => { /* 取不到就显示占位, 不显示假数 */ });
   }, []);
+  const n = (v: number | null | undefined) => (typeof v === "number" ? v.toLocaleString("en-US") : "—");
+  const engineNodes = (e: { connected: boolean; nodes: number | null }) => (e.connected ? n(e.nodes) : "未连接");
+  /**
+   * 研究全景统计。
+   *
+   * 三条来源, 各按各的真源:
+   *   · 大研究阶段 / 科研场景 —— 场景页的 SCENARIOS/GROUPS(同一份前端常量, 编译期同步);
+   *   · 科研技能 / 可用工具 —— 后端 `/api/platform/stats` **现数注册表**;
+   *   · 推理步骤 / 自动化任务 —— 后端权威表(reason-steps.ts 的 52 / JobsPanel 的 17)。
+   * 取不到就是「—」, 不再是 192 这种"看着像真数"的兜底。
+   */
+  const capabilityStats = [
+    { num: String(GROUPS.length), label: "大研究阶段" },
+    { num: String(SCENARIOS.length), label: "科研场景" },
+    { num: n(platformStats?.live.skills), label: "科研技能" },
+    { num: n(platformStats?.live.reasonSteps), label: "推理步骤" },
+    { num: String(JOB_TYPES.length), label: "自动化任务" },
+    { num: n(platformStats?.live.tools), label: "可用工具" }
+  ];
+
   // 功能入口（业务语言，技术名词移入详情）
   const features = [
     {
       key: "reason" as const,
       icon: <Sparkles className="h-4.5 w-4.5" />,
-      title: "推理 · 52 步链路",
+      title: `推理 · ${n(platformStats?.live.reasonSteps)} 步链路`,
       stage: "证据检索",
-      desc: "多路混合检索 · 多链路事实溯源 · 52 步可展开推理链",
+      desc: `多路混合检索 · 多链路事实溯源 · ${n(platformStats?.live.reasonSteps)} 步可展开推理链`,
       hint: "输入研究问题，AI 多源检索后综合论证，每步可展开查看"
     },
     {
@@ -81,7 +116,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
       icon: <Library className="h-4.5 w-4.5" />,
       title: "文献库",
       stage: "文献调研",
-      desc: "现入库 500 篇研究文献 · 每篇产出 original.md + 摘要.md + 术语表.md + 问答.md + index.md + 信息.md",
+      desc: `现入库 ${n(platformStats?.pg.documents)} 篇研究文献 · 每篇产出 original.md + 摘要.md + 术语表.md + 问答.md + index.md + 信息.md`,
       hint: "浏览资本下乡与资本治理核心文献"
     },
     {
@@ -113,7 +148,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
       icon: <FolderOpen className="h-4.5 w-4.5" />,
       title: "技能库",
       stage: "全阶段",
-      desc: `${skillCount} 个科研技能 · 覆盖选题/分析/写作/评审全流程`,
+      desc: `${capabilityStats[2].num} 个科研技能 · 覆盖选题/分析/写作/评审全流程`,
       hint: "一键调用标准化研究流程"
     },
     {
@@ -166,24 +201,21 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
     }
   ];
 
-  /** 研究全景统计（与场景页 SCENARIOS/GROUPS 实时同步） */
-  const capabilityStats = [
-    { num: String(GROUPS.length), label: "大研究阶段" },
-    { num: String(SCENARIOS.length), label: "科研场景" },
-    { num: String(skillCount), label: "科研技能" },
-    { num: "52", label: "推理步骤" },
-    { num: "17", label: "自动化任务" },
-    { num: "10,237", label: "篇文献" }
-  ];
-
+  /**
+   * 数据底盘 —— 全部现查。
+   *
+   * ⚠ 这里**刻意不再显示"三引擎实体总数"**。旧值 188,259 / 516,309 是跨引擎相加来的,
+   *   而三者单位不同(节点数 / 关系数 / PG 的连接行) —— 516,309 恰好是把 PG 的
+   *   event_entities 连接行加进了两个引擎的关系数里。逐引擎报, 谁是谁一目了然。
+   */
   const stats = [
-    { num: "10,237", label: "篇 PDF 文献" },
-    { num: "501", label: "篇已入库文献" },
-    { num: "188,259", label: "图谱实体 (Graphiti+Cognee+PG)" },
-    { num: "516,309", label: "图谱关系 (Graphiti+Cognee+PG)" },
-    { num: "47,049", label: "文献切片 (Graphiti+PG)" },
-    { num: "1,085", label: "知识社区" },
-    { num: "11,702", label: "超边关系" }
+    { num: n(platformStats?.pg.documents), label: "篇已入库文献 (PG)" },
+    { num: n(platformStats?.pg.entities), label: "图谱实体 (PG)" },
+    { num: n(platformStats?.pg.events), label: "图谱事件 (PG)" },
+    { num: n(platformStats?.pg.chunks), label: "文献切片 (PG)" },
+    { num: engineNodes(platformStats?.engines.graphiti ?? { connected: false, nodes: null }), label: "Graphiti 节点" },
+    { num: engineNodes(platformStats?.engines.cognee ?? { connected: false, nodes: null }), label: "Cognee 节点" },
+    { num: n(platformStats?.pg.projects), label: "研究课题" }
   ];
 
   return (

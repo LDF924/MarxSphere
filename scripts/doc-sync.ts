@@ -50,8 +50,18 @@ const STATS = {
   migrations: countIn(walk(path.join(ROOT, "migrations"), [".sql"]), /^/m) || readdirSync(path.join(ROOT, "migrations")).filter((f) => f.endsWith(".sql")).length,
   eduRoutes: countIn([path.join(ROOT, "src/api/server.ts")], /app\.(get|post|put|delete|patch)\("\/api\/education/g),
   topRoutes: countIn([path.join(ROOT, "src/api/server.ts")], /app\.(get|post|put|delete|patch)\("\/api\/(learning-plans|materials|generations|memory|components|llm\/circuit)/g),
-  agentTools: countIn([path.join(ROOT, "src/services/agent-tool-router.ts")], /name: "/g),
-  viewTools: countIn([path.join(ROOT, "src/services/agent-view-tools.ts")], /name: "/g),
+  /**
+   * 工具数 —— **按运行时注册表数, 不按源码正则数**。
+   *
+   * ⚠ 2026-09-29 改。此前是 `countIn([agent-tool-router.ts], /name: "/g)`, 只数那一个文件。
+   *   但工具早已分散到 `agent-view-tools` / `agent-review-tools` / `agent-viz-tools` /
+   *   `agent-editor-tools` / `agent-orch-tools` 等模块 —— 正则**数不到它们**, 于是脚本报
+   *   "工具 83"(50 Agent + 33 视图), 而运行时 `buildAgentTools({})` 实际返回 **158**。
+   *   文档里的数字跟着这个错口径走, 越同步越离谱。
+   *   `agentTools` / `viewTools` 仍保留(文档里有分别引用它们的句子), 但按**各模块实际注册**算。
+   */
+  agentTools: 0,   // 见下方 runtimeStats()
+  viewTools: 0,
   // 教育服务文件(教育专属 Agent 的服务层)
   eduServices: readdirSync(path.join(ROOT, "src/services")).filter((f) => f.startsWith("education-") && f.endsWith(".ts")).length,
   views: countIn([path.join(ROOT, "web/src/App.tsx")], /workspaceView === "[a-z-]+"/g, true),
@@ -65,9 +75,31 @@ const totals = {
   services: STATS.services,
 };
 
+/**
+ * 工具数的**真源**: 运行时注册表(与 `/api/platform/stats` 同一个来源)。
+ *
+ * 用子进程跑一次 tsx, 而不是在脚本里静态解析 —— 工具分散在 7 个模块里, 且将来还会加。
+ * 取不到就退回静态计数(宁可数字旧一点, 也不要让文档门禁本身挂掉)。
+ */
+function runtimeToolCounts(): { agent: number; view: number } | null {
+  try {
+    const out = sh(
+      `npx tsx -e "import('./src/services/agent-tool-router.js').then(async m => { const t = await m.buildAgentTools({}); const v = t.filter(x => x.name.startsWith('view_')).length; console.log('AGENT=' + (t.length - v) + ' VIEW=' + v); })" 2>nul`
+    );
+    const a = out.match(/AGENT=(\d+)/)?.[1];
+    const v = out.match(/VIEW=(\d+)/)?.[1];
+    if (a && v) return { agent: Number(a), view: Number(v) };
+  } catch { /* 下面退回静态计数 */ }
+  return null;
+}
+const RT = runtimeToolCounts();
+STATS.agentTools = RT?.agent ?? countIn([path.join(ROOT, "src/services/agent-tool-router.ts")], /name: "/g);
+STATS.viewTools = RT?.view ?? countIn([path.join(ROOT, "src/services/agent-view-tools.ts")], /name: "/g);
+totals.tools = STATS.agentTools + STATS.viewTools;
+
 console.log("[doc-sync] 实际数字:");
 console.log(`  测试 ${STATS.tests} · 迁移 ${STATS.migrations} · 教育路由 ${STATS.eduRoutes} + 顶层 ${STATS.topRoutes}`);
-console.log(`  工具 ${STATS.agentTools} Agent + ${STATS.viewTools} 视图 = ${totals.tools} · 视图 ${STATS.views} · 场景 ${STATS.scenarios} · 服务 ${STATS.services}`);
+console.log(`  工具 ${STATS.agentTools} Agent + ${STATS.viewTools} 视图 = ${totals.tools}${RT ? "" : "（运行时取数失败, 退回静态计数）"} · 视图 ${STATS.views} · 场景 ${STATS.scenarios} · 服务 ${STATS.services}`);
 
 // ─── 2. 定义替换规则(文件 → [old, new][]) ───
 interface Rule { re: RegExp; to: string; label: string; }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH MarxSphere-Exception
-// scenario-guides.ts — 35 个科研场景的研究开展步骤指南（V256）
+// scenario-guides.ts — 78 个科研场景的研究开展步骤指南
+//   ⚠ 原注释写「35 个（V256）」, 而实际条数早已是 66 —— 注释停在上一次扩容前。
+//   2026-09-29 补到 78(新增「写作舱与工作台」16 组)时把数字改成**不写死**的说明。
 // 每个场景：目标 + 5-8 步研究流程（每步标注使用工具 + 操作指引）
 // 引导用户如何利用 MarxSphere 真实工具完成该场景研究
 import type { ScenarioGuide } from "../components/ScenariosWorkbench";
@@ -938,6 +940,166 @@ export const SCENARIO_GUIDES: ScenarioGuide[] = [
     { title: "编辑三标准校验", desc: "用编辑标准检验选题", tool: "cjournal", toolLabel: "政经C刊科研 · 校验", how: "在「编辑校验」输入候选题目，用编辑三标准（时代紧迫性/理论解释力/现实指导价值）校验，未通过的调整后复检。" },
     { title: "匹配期刊定位", desc: "按期刊口味匹配投稿目标", tool: "cjournal", toolLabel: "政经C刊科研 · 期刊", how: "在「理论接口·期刊·种子」查看期刊定位匹配（党校学报偏统战/东南学术偏学理/经济纵横偏热点），选匹配的目标期刊。" },
     { title: "沉淀选题档案", desc: "存入知识页", tool: "truth", toolLabel: "知识页", how: "在知识页记录选题档案：选题/四步推导/矩阵/悖论/编辑校验结果/目标期刊，作为论文写作的基础。" }
-  ]
-}
+  ],
+  },
+  // ═══ 写作舱与工作台（2026-09-29 补）═══
+  // 由来(用户「科研中心里的场景需要更新」): 上面 66 条最后实质改动是 2026-08-15,
+  //   9 月新增的十二项能力(写作舱六个 tab / 编排 / 评审 / 工坊 / 编辑器 / 教育 /
+  //   语料库 / 统计台 / 文献管理)一条都没进场景向导。
+  //   ⚠ 新增场景时两处都要加: 这里 + ScenariosPanel 的 SCENARIOS(同 id)。
+  //     只加一边的后果是卡片进不了工作台(hasGuide 为假)或向导查不到。
+  {
+    id: "S67",
+    title: "研途写作舱全流程",
+    group: "写作舱与工作台",
+    goal: "把一篇论文从选题界定做到统稿定稿, 全程有素材/证据/假设台账托底",
+    steps: [
+      { title: "建课题", desc: "在写作舱建一个研究项目", tool: "paper-outline", toolLabel: "研途写作舱", how: "打开「研途写作舱」→ 选题界定, 新建课题并填研究问题与研究方法 —— 定性还是定量决定后面看不看得到「研究实施」这一步。" },
+      { title: "过选题与框架", desc: "界定选题、设计框架", tool: "paper-outline", toolLabel: "研途写作舱 · 选题界定", how: "在第 1、2 步把选题理由和研究框架写实 —— 这两步的产物会被后面章节生成当成上下文。" },
+      { title: "攒素材与证据", desc: "把文献与数据收进素材库", tool: "paper-outline", toolLabel: "研途写作舱 · 文献与资料", how: "在「文献与资料」上传 PDF(扫描件走「识别文字」)并登记素材; 关键论断写成「证据」挂到具体章节上。" },
+      { title: "写章节", desc: "逐章写作, 按章过滤素材", tool: "paper-outline", toolLabel: "研途写作舱 · 章节写作", how: "在「章节写作」建章节树, 正文区直接写; 生成时系统只带本章挂的素材与证据。" },
+      { title: "回档与比对", desc: "用版本历史安全地改", tool: "paper-outline", toolLabel: "研途写作舱 · 版本历史", how: "每步都会发布版本 —— 改坏了从「版本历史」回档, 不用怕覆盖。" },
+      { title: "统稿定稿", desc: "合稿、查要件、导出", tool: "paper-outline", toolLabel: "研途写作舱 · 统稿定稿", how: "在最后一步合稿, 跑一次要件与格式检查, 再导出 Word 或整包 ZIP。" }
+    ]
+  },
+  {
+    id: "S68",
+    title: "投稿要件与数据可得性",
+    group: "写作舱与工作台",
+    goal: "把投稿要的摘要/结论/讨论与五项声明一次性齐备",
+    steps: [
+      { title: "生成讨论与结论", desc: "从已有分析结果产出", tool: "paper-outline", toolLabel: "研途写作舱 · 统稿定稿", how: "在统稿定稿页生成「讨论」与「结论」—— 它们会吃进章节里已核验的分析数字, 不要手写数字。" },
+      { title: "生成要件", desc: "摘要/关键词/引言", tool: "paper-outline", toolLabel: "研途写作舱 · 要件", how: "用「要件生成」产出摘要、关键词、引言、英文摘要; 生成完刷新一次页面确认还在 —— 要落库才算数。" },
+      { title: "填五项声明", desc: "贡献/利益冲突/致谢/基金/数据可得性", tool: "paper-outline", toolLabel: "研途写作舱 · 声明", how: "在「投稿与要件」区逐项填写。这些只能人填, 系统不替你编 —— 数据可得性尤其要写清数据在哪、怎么申请。" },
+      { title: "缺失项检查", desc: "确认没有漏项", tool: "paper-outline", toolLabel: "研途写作舱 · 完整性检查", how: "跑一次完整性检查, 缺哪项回上一步补。导出时声明会一并带上。" }
+    ]
+  },
+  {
+    id: "S69",
+    title: "开题 · 基金 · 伦理 · 预注册",
+    group: "写作舱与工作台",
+    goal: "四类申报稿各按固定节次结构化产出, 而不是从头憋一篇",
+    steps: [
+      { title: "选申报类型", desc: "开题/基金/伦理/预注册", tool: "paper-outline", toolLabel: "研途写作舱 · 申报与审查", how: "在「申报与审查」选类型 —— 四类各有一套固定节次(开题: 研究问题/文献基础/研究设计/进度/预期成果 等)。" },
+      { title: "逐节生成", desc: "七节逐节产出", tool: "paper-outline", toolLabel: "研途写作舱 · 申报稿", how: "逐节生成, 每节都基于你课题里已有的选题/框架/文献, 不是凭空写。" },
+      { title: "对着评审要点自查", desc: "用评审视角过一遍", tool: "review-lab", toolLabel: "论文质量评审", how: "把成稿丢进「论文质量评审」按严格档跑一次, 看评审会从哪儿挑刺。" },
+      { title: "导出申报材料", desc: "导出成稿", tool: "paper-outline", toolLabel: "研途写作舱 · 导出", how: "导出 Word 交出去; 伦理与预注册那份同时作为研究档案留档。" }
+    ]
+  },
+  {
+    id: "S70",
+    title: "课题流程编排",
+    group: "写作舱与工作台",
+    goal: "用一句话把研究流程变成可执行、可中断、可回放的 DAG",
+    steps: [
+      { title: "描述流程", desc: "自然语言 → DAG", tool: "dag-workbench", toolLabel: "课题流程编排", how: "打开「课题流程编排」直接写「先检索资本下乡文献, 再做描述统计, 然后出一张分组柱状图」。系统生成候选 DAG, 你确认后才落成图。" },
+      { title: "核对节点", desc: "看每个节点接的是哪个能力", tool: "dag-workbench", toolLabel: "课题流程编排 · 能力表", how: "展开能力表核对节点绑定 —— 能力表 191 项, 每个节点都该指向一个真实存在的能力。" },
+      { title: "先单步试", desc: "只跑一步看对不对", tool: "dag-workbench", toolLabel: "课题流程编排 · 单步", how: "别一上来跑整条。先单步跑第一个节点, 确认输出是你想要的再继续 —— 整条跑会真的调 LLM 与外部接口。" },
+      { title: "整条跑", desc: "跑完整条并看事件流", tool: "dag-workbench", toolLabel: "课题流程编排 · 运行", how: "整条跑, 右边事件流会逐步显示每个节点的开始与结束; 中途可以暂停, 之后续跑。" },
+      { title: "回放与复用", desc: "看计划历史, 存成模板", tool: "dag-workbench", toolLabel: "课题流程编排 · 计划历史", how: "跑过的都在「计划历史」里, 点开能看当时的节点详情与产物; 好用的图存下来下篇论文直接用。" }
+    ]
+  },
+  {
+    id: "S71",
+    title: "论文质量评审",
+    group: "写作舱与工作台",
+    goal: "在投稿前拿到一份按目标期刊标准写的评审意见",
+    steps: [
+      { title: "定标准", desc: "选期刊或选评审标准", tool: "review-lab", toolLabel: "论文质量评审 · 设置", how: "新建审稿时选一本期刊(按它的投稿规则审)或一套评审标准, 也可以叠加; 严格度选顶刊外审会更狠。" },
+      { title: "交稿", desc: "粘贴或上传", tool: "review-lab", toolLabel: "论文质量评审 · 上传", how: "粘贴全文, 或上传 PDF/Word 稿件。扫描件没有文字层, 系统会提示先去做 OCR。" },
+      { title: "等结果", desc: "分段审阅 → 汇总", tool: "review-lab", toolLabel: "论文质量评审 · 进行中", how: "分钟级。看进度条按段推进; 完成后是逐维度评分卡加大修/小修/建议三档问题清单。" },
+      { title: "逐条改", desc: "对着原文批注修", tool: "editor", toolLabel: "学术文本工作台", how: "把稿件拿到「学术文本工作台」, 用选区改写处理具体段落; 引文问题用「引文一致性检查」。" },
+      { title: "重审确认", desc: "改完再跑一次", tool: "review-lab", toolLabel: "论文质量评审 · 重审", how: "改完点重审, 系统会记录这是第几次审 —— 两轮分数对比能看出改动到底有没有用。" },
+      { title: "导出报告", desc: "拿一份可交的报告", tool: "review-lab", toolLabel: "论文质量评审 · 导出", how: "导出 HTML/Word 版本, 用于自查留档或给合作者看。" }
+    ]
+  },
+  {
+    id: "S72",
+    title: "期刊投稿须知解析",
+    group: "写作舱与工作台",
+    goal: "把目标期刊的投稿要求变成可执行的规则, 而不是靠记忆",
+    steps: [
+      { title: "收集须知", desc: "拿到投稿须知原文", tool: "review-lab", toolLabel: "论文质量评审 · 期刊库", how: "在「期刊库」找目标期刊; 没有就从官网复制投稿须知全文。" },
+      { title: "解析成规则", desc: "结构化抽取", tool: "review-lab", toolLabel: "论文质量评审 · 解析", how: "粘贴须知跑解析, 系统抽成结构化规则集(字数/格式/结构/引用体例/匿名要求等)并入库。" },
+      { title: "按刊审稿", desc: "用这本刊的规则审自己的稿", tool: "review-lab", toolLabel: "论文质量评审 · 新建审稿", how: "新建审稿时选这本期刊, 系统会把它的规则并进审稿维度 —— 审的就是这本刊会不会挑这个刺。" },
+      { title: "格式体例检查", desc: "对照格式要求", tool: "format-eval", toolLabel: "格式智能评测", how: "用格式评测跑一次模板检查, 缺项会直接列出来。" },
+      { title: "批量维护", desc: "多本刊一起解析", tool: "review-lab", toolLabel: "论文质量评审 · 批量", how: "常投的几本刊可以批量解析入库, 之后建审稿直接选刊即可。" }
+    ]
+  },
+  {
+    id: "S73",
+    title: "成果可视化工坊",
+    group: "写作舱与工作台",
+    goal: "从数据到一张能放进论文的出版级图表",
+    steps: [
+      { title: "备数据", desc: "上传或直接贴数据", tool: "plot-agent", toolLabel: "成果可视化工坊 · 数据", how: "打开「成果可视化工坊」, 用输入框的回形针上传 CSV/Excel; 数据不复杂时也可以直接把表贴进对话。" },
+      { title: "说需求", desc: "用一句话描述要画什么", tool: "plot-agent", toolLabel: "成果可视化工坊 · 对话", how: "直接写「按地区分组画村集体收入柱状图, 比较引入工商资本前后」, 并说明目标期刊版式。" },
+      { title: "出图与自审", desc: "规划 → 出图 → 自审修订", tool: "plot-agent", toolLabel: "成果可视化工坊 · 出图", how: "后台跑 1-3 分钟: 规划 → 出代码出图 → 自审 → 修订。左边画布会逐步出现结果。" },
+      { title: "核对数值", desc: "确认图里的数是真的", tool: "plot-agent", toolLabel: "成果可视化工坊 · 数据集", how: "展开任务的数据集视图, 核对图里的数值确实来自你上传的表 —— 没绑数据时出的是示意图, 数值不是真实的。" },
+      { title: "取产物", desc: "下载或转成素材", tool: "plot-agent", toolLabel: "成果可视化工坊 · 产物", how: "导出 PNG 或矢量 SVG(可再编辑); 或一键转成写作舱素材, 直接挂到章节上。" }
+    ]
+  },
+  {
+    id: "S74",
+    title: "学术文本工作台",
+    group: "写作舱与工作台",
+    goal: "在浏览器里写稿, 用 AI 改具体段落而不是整篇重写",
+    steps: [
+      { title: "建或导入文档", desc: "新建或导入 Word", tool: "editor", toolLabel: "学术文本工作台", how: "新建文档, 或用「导入 Word」把已有的 .docx 导进来接着写 —— 旧版 .doc 要先另存为 .docx。" },
+      { title: "写与改", desc: "富文本编辑 + 自动保存", tool: "editor", toolLabel: "学术文本工作台 · 正文", how: "正常写。保存是自动的, 左上角会显示已保存或未保存。" },
+      { title: "选区改写", desc: "选中一段再动手", tool: "editor", toolLabel: "学术文本工作台 · 辅助工具", how: "选中一段 → 右侧「辅助工具 → 选区修改」, 选学术润色/减少模板化/压缩冗余/扩展论证/校对。" },
+      { title: "题名与摘要", desc: "生成候选, 逐个挑", tool: "editor", toolLabel: "学术文本工作台 · 题名摘要", how: "在「题名摘要」生成标题候选 —— 结果是一列可点的候选, 点哪个就把哪个插进正文, 不用整段复制。" },
+      { title: "引文核查", desc: "查一致性而不是查真伪", tool: "editor", toolLabel: "学术文本工作台 · 引用格式", how: "跑「引用一致性检查」看正文标注与文末列表对不对得上。注意它不判断文献是否真实存在。" },
+      { title: "版本与导出", desc: "回档 + 导出", tool: "editor", toolLabel: "学术文本工作台 · 版本", how: "改坏了从「版本历史」按版本回档; 定稿后导出 Word。" }
+    ]
+  },
+  {
+    id: "S75",
+    title: "教学与教育能力",
+    group: "写作舱与工作台",
+    goal: "把研究材料转成能直接上课的内容",
+    steps: [
+      { title: "备课取材", desc: "从文献证据出发", tool: "education", toolLabel: "教育能力", how: "打开教育能力, 从已入库文献里选主题 —— 讲解要落在有出处的证据上, 不是泛泛而谈。" },
+      { title: "生成讲解", desc: "循证讲解", tool: "education", toolLabel: "教育能力 · 讲解", how: "生成时选难度层级, 适配本科或研究生不同深度。" },
+      { title: "出题与批改", desc: "练习与批改", tool: "education", toolLabel: "教育能力 · 练习", how: "基于同一批材料出练习, 学生答完再批改 —— 讲、练、评同一套材料, 不会互相打架。" },
+      { title: "沉淀档案", desc: "教学材料留档", tool: "truth", toolLabel: "知识页", how: "把这一轮的教学材料与反馈记到知识页, 下次开课直接复用。" }
+    ]
+  },
+  {
+    id: "S76",
+    title: "写作语料库",
+    group: "写作舱与工作台",
+    goal: "从文献里提炼出可复用的表达, 形成自己的写作语料",
+    steps: [
+      { title: "选源", desc: "从已入库文献里选", tool: "corpus", toolLabel: "写作语料库", how: "从已入库文献里选一批高质量论文作为语料来源。" },
+      { title: "抽取", desc: "四类语料入库", tool: "corpus", toolLabel: "写作语料库 · 抽取", how: "跑抽取: 文本语料/概念表述/逻辑句式/可复用句式四类分别入库。" },
+      { title: "写作时引用", desc: "在写章节时取用", tool: "paper-outline", toolLabel: "研途写作舱 · 章节写作", how: "写章节时按主题检索语料库, 把合适的表达引进来 —— 比硬憋或抄原文安全。" },
+      { title: "沉淀回库", desc: "把自己的好句子也存进去", tool: "corpus", toolLabel: "写作语料库 · 沉淀", how: "自己写顺了的段落可以回写进语料库, 越用越厚。" }
+    ]
+  },
+  {
+    id: "S77",
+    title: "数据分析台",
+    group: "写作舱与工作台",
+    goal: "在平台上真跑一遍统计, 并把结果回流到正文",
+    steps: [
+      { title: "传数据", desc: "上传 CSV/Excel", tool: "statistics", toolLabel: "数据分析台", how: "上传数据文件或从实证台带过来。系统会识别变量并给出类型猜测, 类型错了要手工改。" },
+      { title: "选方法", desc: "描述统计/回归/面板/逻辑回归", tool: "statistics", toolLabel: "数据分析台 · 方法", how: "选方法并指定变量。跑之前先想清楚识别策略 —— 平台只负责算, 不负责替你论证因果。" },
+      { title: "看结果", desc: "流式输出, 边跑边出", tool: "statistics", toolLabel: "数据分析台 · 结果", how: "结果流式返回: 系数表、显著性、模型诊断。注意看样本量与缺失值处理, 别只看星号。" },
+      { title: "回流到正文", desc: "结果转素材", tool: "paper-outline", toolLabel: "研途写作舱 · 文献与资料", how: "把这次运行的结论转成写作舱素材并挂到对应章节 —— 正文里引用的数字就与这次运行绑定, 可回溯。" }
+    ]
+  },
+  {
+    id: "S78",
+    title: "文献管理与入库",
+    group: "写作舱与工作台",
+    goal: "把散落的 PDF 收成一座能检索、可引用的库",
+    steps: [
+      { title: "收", desc: "批量上传", tool: "imports", toolLabel: "文献管理", how: "批量上传 PDF。重名或重复的会被识别出来。" },
+      { title: "解", desc: "解析与去重", tool: "imports", toolLabel: "文献管理 · 解析", how: "跑解析抽取元数据(标题/作者/年份/摘要); 解析失败的通常是扫描件, 要单独走 OCR。" },
+      { title: "入", desc: "写入知识库", tool: "imports", toolLabel: "文献管理 · 入库", how: "入库后文献才可被检索、被引用、被语言模型读到 —— 只上传不入库等于没做。" },
+      { title: "用", desc: "在检索与写作里用起来", tool: "literature", toolLabel: "文献库", how: "到「文献库」按主题浏览, 用 Ask 检索提问; 写作时把关键文献挂成章节素材。" },
+      { title: "维护", desc: "引用关系与元数据", tool: "citation-verify", toolLabel: "引文核验", how: "定期跑引文核验, 把对不上的引用修掉 —— 引用错误是审稿最容易被抓的硬伤。" }
+    ]
+  }
 ];

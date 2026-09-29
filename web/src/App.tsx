@@ -147,7 +147,6 @@ import { ProjectGraphFlow } from "./components/ProjectGraphFlow";
 import { ForceGraphPanel } from "./components/ForceGraphPanel";
 import { ExploreUniversePanel } from "./components/ExploreUniversePanel";
 import { KnowledgeUniverse } from "./components/KnowledgeUniverse";
-import { UniverseBackground } from "./components/UniverseBackground";
 import { QuickLinkPanel } from "./components/QuickLinkPanel";
 import { TraversalPanel } from "./components/TraversalPanel";
 import { JobsPanel } from "./components/JobsPanel";
@@ -1943,16 +1942,22 @@ function AppShell() {
       <AlertToast onOpenAlerts={() => navigateView("alerts")} />
       {/* 运行模式徽标（左下角用户菜单上方：收起式小徽标，点击展开切换；不挡内容） */}
       {/* V399: 运行模式/健康状态 — 已移入顶栏（项目按钮左侧） */}
-      {/* 宇宙背景层：紫调深空渐变 + 山峰地平线 + 亮星 + 星尘 + 星环（纯CSS必渲染）
-          动态星场(Canvas 星云漂移+鼠标视差)叠在渐变之上、水印之下 —— 组件一直存在但没接过,
-          cosmos.css 里 .universe-canvas 的 z-index:-2 就是照它写的 */}
+      {/*
+        宇宙背景层：紫调深空渐变 + 山峰地平线（纯 CSS 常驻）。
+
+        ⚠ 2026-09-29 用户:「首页怎么那么多白点在浮动, 如果是模拟什么星辰的话去掉了不需要」——
+        移除三样**会动的星点装饰**:
+          · <UniverseBackground />(Canvas 星场, 260 颗纯白点, 持续漂移 + 鼠标视差)
+          · .cosmos-bright-stars(CSS 20 颗白点 + 闪烁)
+          · .cosmos-stars(CSS 10 颗金/蓝点 + 闪烁)
+        保留的都是**不动的**构成: 深空渐变、两座山峰剪影、静态图谱水印、金色星环。
+        连 CSS 一起删掉了 —— 只摘 DOM 会留下一堆再也不会被渲染的样式, 而本仓已经在
+        cosmos.css 里躺着一个没人引用的 @keyframes cosmos-drift(同一种腐烂)。
+      */}
       <div className="cosmos-bg">
-        <UniverseBackground />
         <div className="cosmos-alpine" />
         <div className="cosmos-ridge" />
-        <div className="cosmos-bright-stars" />
         <div className="cosmos-ring" />
-        <div className="cosmos-stars" />
         <div className="cosmos-graph-watermark" />
       </div>
       {workspaceView === "home" ? (

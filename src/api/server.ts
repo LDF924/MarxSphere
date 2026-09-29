@@ -3024,6 +3024,72 @@ export function buildHttpServer() {
     return ingestMonitorService.search(q.engine === "cognee" ? "cognee" : "graphiti", q.q || "", q.doc || undefined);
   });
 
+  /**
+   * 平台能力与数据底盘的**实时真数**(首页统计条用)。
+   *
+   * 由来(2026-09-29 用户:「首页的各项数据, 比如研究能力也需要更新」): 首页那两组数字
+   *   此前全是源码里手抄的字面量 —— 它们只会随**某次有人记得改**而更新, 于是漂成了
+   *   另一个平台的快照: 技能兜底写 192(真 209)、文献一处 501 一处 500、
+   *   图谱实体 188,259 而文档口径是 118,592。
+   *
+   * 这里把每个数字都**现算**, 并带上它是否可信:
+   *   · Neo4j 两个引擎**可能是关着的** —— 连不上就报 connected:false(前端显示「未连接」),
+   *     而不是拿一个陈旧数字冒充实时值。这正是不久前 MinerU 密钥过期 11 天没人知道的同一类教训。
+   *   · PG 的四项永远可算(它就是本服务的库)。
+   *
+   * ⚠ 不聚合「三引擎实体总数」这种**跨引擎相加**的值: 单位不同(节点 vs 关系 vs join 行),
+   *   之前的 516,309 就是把 PG 的 event_entities 连接行加进了各引擎的关系数里。
+   *   逐引擎报, 谁是谁一目了然。
+   */
+  app.get("/api/platform/stats", async (request) => {
+    const { pool } = await import("../db/pool.js");
+    const one = async (sql: string): Promise<number | null> => {
+      try { return Number((await pool.query(sql)).rows[0]?.c ?? 0); } catch { return null; }
+    };
+
+    /** 一个 Neo4j 引擎的节点/关系数; 连不上返回 connected:false 而不是抛 */
+    const engine = async (name: "graphiti" | "cognee") => {
+      try {
+        const { neo4jQuery } = await import("../db/neo4j-query.js");
+        const port = name === "graphiti" ? 11001 : 11003;
+        const num = (v: unknown) => (typeof v === "object" && v !== null ? Number((v as { low: number }).low ?? 0) : Number(v ?? 0));
+        const [n] = await neo4jQuery<{ n: unknown }>(port, `match (n) return count(n) as n`, {}, 8000);
+        const [r] = await neo4jQuery<{ n: unknown }>(port, `match ()-[x]->() return count(x) as n`, {}, 8000);
+        return { engine: name, connected: true, nodes: num(n?.n), relations: num(r?.n) };
+      } catch {
+        // 连不上就明说 —— 不猜、不缓存旧值、不用 0 冒充"没有数据"
+        return { engine: name, connected: false, nodes: null, relations: null };
+      }
+    };
+
+    const [graphiti, cognee, skillsLen, toolsLen] = await Promise.all([
+      engine("graphiti"),
+      engine("cognee"),
+      (async () => { try { const m = await import("../services/skills-service.js"); return m.listSkills().length; } catch { return null; } })(),
+      (async () => { try { const m = await import("../services/agent-tool-router.js"); return (await m.buildAgentTools({})).length; } catch { return null; } })(),
+    ]);
+    // 推理步数取后端权威表(reason-steps.ts)的长度 —— 它同时是 retrieve_steps.step_no 的取值域
+    let reasonSteps: number | null = null;
+    try { const m = await import("../services/reason-steps.js"); reasonSteps = m.REASON_STEPS.length; } catch { /* 取不到就 null */ }
+
+    const [documents, chunks, entities, events, projects] = await Promise.all([
+      one(`select count(*)::int c from documents`),
+      one(`select count(*)::int c from source_chunks`),
+      one(`select count(*)::int c from entities`),
+      one(`select count(*)::int c from events`),
+      one(`select count(*)::int c from research_projects`),
+    ]);
+
+    return {
+      engines: { graphiti, cognee },
+      /** 本服务的库(PG) —— 这几项一定算得出来 */
+      pg: { documents, chunks, entities, events, projects },
+      /** 实时从注册表/清单数的, 不是字面量 */
+      live: { tools: toolsLen, skills: skillsLen, reasonSteps },
+      checkedAt: new Date().toISOString(),
+    };
+  });
+
   // V400: Neo4j 库直连浏览（安全只读：类型统计/按标签列表/实体搜索/关系图）
   app.get("/api/neo4j/stats", async (request) => {
     const { neo4jBrowserService } = await import("../services/neo4j-browser-service.js");
