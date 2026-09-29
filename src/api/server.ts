@@ -1970,8 +1970,7 @@ export function buildHttpServer() {
     "MEMORY.md": "能力手册", "MULTI-AGENT.md": "能力手册", "MODELS.md": "能力手册",
     "IM-INTEGRATION.md": "能力手册", "COMPUTER-USE.md": "能力手册",
     // 架构与设计
-    "ARCHITECTURE.md": "架构与设计", "ARCHITECTURE-20260806.md": "架构与设计",
-    "ARCHITECTURE-V98.md": "架构与设计", "SAG_PIPELINE_CALLGRAPH.md": "架构与设计",
+    "ARCHITECTURE.md": "架构与设计",
     "DATA-HASH-VERSIONING-DESIGN.md": "架构与设计", "PROVENANCE-DESIGN.md": "架构与设计",
     "COMMERCIAL-ARCHITECTURE.md": "架构与设计",
     // 接口与集成
@@ -1990,16 +1989,6 @@ export function buildHttpServer() {
     "DESKTOP.md": "运维与部署",
     // 合规
     "OPEN-SOURCE-DISCLOSURE.md": "合规",
-    // 工程记录(差距分析/三方评审/自审/移植报告 —— 面向维护者, 但对操作台有用)
-    "CODEX-GAP-ROADMAP.md": "工程记录", "ELICIT-GAP-ANALYSIS.md": "工程记录",
-    "LINGXILEARN-REVIEW.md": "工程记录", "TRAITTUTOR-REVIEW.md": "工程记录",
-    "OPEN-SCIENCE-GAP-ANALYSIS.md": "工程记录", "OPEN-SCIENCE-FULL-GAP-MATRIX.md": "工程记录",
-    "OPENSQUILLA-GAP-ANALYSIS.md": "工程记录", "OPENSQUILLA-PORT-REPORT.md": "工程记录",
-    "OPENSQUILLA-B5-COST.md": "工程记录", "RESPAL-GAP-ANALYSIS.md": "工程记录",
-    "ZLEAP-SAG-REVIEW.md": "工程记录", "ZLEAP-SAG-GAP-INTEGRATION.md": "工程记录",
-    "ZLEAP-SAG-IMPLEMENTATION-SUMMARY.md": "工程记录",
-    "SELF-AUDIT-ROUND2.md": "工程记录", "SELF-AUDIT-ROUND3.md": "工程记录",
-    "SELF-AUDIT-ROUND4.md": "工程记录",
   };
 
   /**
@@ -2009,24 +1998,7 @@ export function buildHttpServer() {
   const DOC_TITLE_OVERRIDE: Record<string, string> = {
     "index.md": "文档中心首页",
     "FEATURES-DETAILED.md": "功能明细(52 步/78 场景/158 工具)",
-    "ARCHITECTURE-20260806.md": "架构总览(2026-08 快照)",
-    "ARCHITECTURE-V98.md": "架构归档(GBrain/检索增强)",
-    "SAG_PIPELINE_CALLGRAPH.md": "推理链路调用图(52 步)",
     "LEARNING-ENGINE.md": "学习引擎",
-    "CODEX-GAP-ROADMAP.md": "对齐 Codex 差距路线图",
-    "OPEN-SCIENCE-GAP-ANALYSIS.md": "对齐 open-science 差距分析",
-    "OPEN-SCIENCE-FULL-GAP-MATRIX.md": "对齐 open-science 全能力矩阵",
-    "OPENSQUILLA-GAP-ANALYSIS.md": "对齐 OpenSquilla 差距分析",
-    "OPENSQUILLA-B5-COST.md": "B5 融合成本账",
-    "ZLEAP-SAG-GAP-INTEGRATION.md": "对齐 Zleap-SAG 差距与融入路线",
-    "ZLEAP-SAG-IMPLEMENTATION-SUMMARY.md": "对齐 Zleap-SAG 落地总结",
-    "ELICIT-GAP-ANALYSIS.md": "对齐 Elicit 差距分析",
-    "RESPAL-GAP-ANALYSIS.md": "对齐 Respal 差距分析",
-    "LINGXILEARN-REVIEW.md": "LingxiLearn 调研",
-    "TRAITTUTOR-REVIEW.md": "TraitTutor 调研",
-    "SELF-AUDIT-ROUND2.md": "全量自审 Round2",
-    "SELF-AUDIT-ROUND3.md": "全量自审 Round3",
-    "SELF-AUDIT-ROUND4.md": "全量自审 Round4(交互级)",
     "DATA-HASH-VERSIONING-DESIGN.md": "文献入库哈希版本化(设计)",
     "PROVENANCE-DESIGN.md": "文件级 provenance(设计)",
     "GLOBAL-USAGE.md": "在任意目录启动",

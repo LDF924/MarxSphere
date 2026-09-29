@@ -373,7 +373,7 @@ HyDE / 实体提升 / 关键词加权 / 事件扩展 / 时序分析 / 概念搜�
 
 ### 9.4 学习引擎（自适应学习闭环）
 
-> 完整文档: [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) · 调研: [docs/TRAITTUTOR-REVIEW.md](docs/TRAITTUTOR-REVIEW.md)
+> 完整文档: [学习引擎](LEARNING-ENGINE.md)
 
 | 能力 | 路由/文件 | 说明 |
 |---|---|---|

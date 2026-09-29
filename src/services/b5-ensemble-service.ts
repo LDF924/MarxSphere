@@ -6,7 +6,7 @@
 //   检索仅 aggregator 阶段发生; proposer 仍纯文本零工具。
 // SocioSeek 版(保守): B5_ENABLED=1 才启用; 默认走原单模型路由;
 //   只对显式标记的难任务(opt-in / model=ensemble)生效, 不自动改全局路由。
-// 成本账见 docs/OPENSQUILLA-B5-COST.md(先算账再上量)。
+// 成本账: scripts/b5-vs-single-eval.sh 跑盲标评测(先算账再上量)。
 import { callLlmWithRotation } from "../ai/llm-common.js";
 
 export const B5_ENABLED = process.env.B5_ENABLED === "1";

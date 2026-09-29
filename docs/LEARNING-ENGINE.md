@@ -1,7 +1,7 @@
 # 学习引擎能力文档
 
 > 版本: V393(2026-08-30) · 借鉴: TraitTutor(https://github.com/traittutor/traittutor) 源码移植
-> 配套: docs/TRAITTUTOR-REVIEW.md(调研报告)/ CHANGELOG.md
+> 配套: CHANGELOG.md（调研报告已归档，不在仓库内）
 
 ## 架构总览
 
