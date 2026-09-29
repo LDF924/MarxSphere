@@ -253,7 +253,7 @@
 - `docs/assets/sag-empirical-research.png` — 实证研究工作台
 - `docs/assets/sag-agent-console.png` — Agent 控制台
 - `docs/assets/sag-eval.png` — 评测工作台
-- `docs/assets/socioseek-architecture.svg` — 系统架构图（7 层完整架构）
+- `docs/assets/socioseek-architecture.svg` — 系统架构图（8 层完整架构）
 
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义
