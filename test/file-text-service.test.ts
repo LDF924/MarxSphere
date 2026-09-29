@@ -16,9 +16,30 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { config as loadEnv } from "dotenv";
 import { pool } from "../src/db/pool.js";
 import { putObject, deleteObject } from "../src/services/blob-store.js";
 import { ensureFileText, attachOcrText, rawFileId } from "../src/services/file-text-service.js";
+
+/**
+ * ⚠ 这个测试**要真库**, 所以必须能跳过, 不能把"没有库"当成失败。
+ *
+ * 2026-09-29 踩到: worktree 里没有 `.env`(它只在主仓), 于是 `config.DATABASE_URL`
+ *   落回默认值 `localhost:5432`, 而本机 docker 映射的是 **5540** —— 整跑时这个文件
+ *   以 `ECONNREFUSED ::1:5432` 挂掉, 而其余 141 个文件全绿。**看起来像"我的改动搞挂了测试"**,
+ *   其实只是这台机器上没有那个库。
+ * 判据: 连得上才跑。连不上整组 skip —— 与 `v399-integration.test.ts` 对 Python 依赖的
+ *   `it.skipIf(...)` 是同一个处理。
+ */
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
+for (const cand of [process.env.SAG_ENV_FILE, path.join(ROOT, ".env"), path.join(ROOT, "..", "..", "..", ".env")]) {
+  if (cand && existsSync(cand)) { loadEnv({ path: cand }); break; }
+}
+let dbReady = false;
+try { await pool.query("select 1"); dbReady = true; } catch { dbReady = false; }
+if (!dbReady) console.warn("[file-text-service] 连不上数据库 —— 本组跳过（跑评测前请先起 docker compose up -d）");
 
 let userId = "";
 const created: Array<{ id: string; rel: string }> = [];
@@ -37,10 +58,9 @@ async function seed(filename: string, body: Buffer | string, mime = "application
 }
 
 beforeAll(async () => {
+  if (!dbReady) return;
   userId = randomUUID();
-  // user_files.user_id 有外键则这里会失败 —— 那就说明必须用真用户; 先探一下
-  const r = await pool.query(`select count(*)::int c from user_files limit 1`);
-  if (!r.rows.length) throw new Error("库连不上");
+  await pool.query(`select count(*)::int c from user_files limit 1`);
 }, 30_000);
 
 afterAll(async () => {
@@ -51,7 +71,7 @@ afterAll(async () => {
   await pool.end().catch(() => null);
 });
 
-describe("① 正文按 id 取得回来", () => {
+describe.skipIf(!dbReady)("① 正文按 id 取得回来", () => {
   it("纯文本文件: 内容原样拿到", async () => {
     const text = "本文研究资本下乡对村集体收入的影响。\n\n二、文献综述\n已有研究……";
     const fid = await seed("草稿.txt", text);
@@ -77,7 +97,7 @@ describe("① 正文按 id 取得回来", () => {
   });
 });
 
-describe("② 抽完存库 —— 第二次读不再重抽", () => {
+describe.skipIf(!dbReady)("② 抽完存库 —— 第二次读不再重抽", () => {
   it("抽过的文件改掉磁盘字节, 仍能读到**库里那份**(证明读的是缓存而不是重抽)", async () => {
     const fid = await seed("缓存.txt", "第一次的内容");
     const first = await ensureFileText(userId, fid);
@@ -134,7 +154,7 @@ describe("② 抽完存库 —— 第二次读不再重抽", () => {
   });
 });
 
-describe("⑤ 识别结果写回同一个 fileId(评审页那条提示的回程)", () => {
+describe.skipIf(!dbReady)("⑤ 识别结果写回同一个 fileId(评审页那条提示的回程)", () => {
   it("attachOcrText 之后, 按原 fileId 读得到识别稿且来源标成 ocr", async () => {
     const fid = await seed("回程.pdf", Buffer.from([0x25, 0x50, 0x44, 0x46]));
     await ensureFileText(userId, fid);                       // 抽失败(假 PDF 头)
@@ -146,7 +166,7 @@ describe("⑤ 识别结果写回同一个 fileId(评审页那条提示的回程)
   });
 });
 
-describe("③ 扫描件给出路, 不是给失败", () => {
+describe.skipIf(!dbReady)("③ 扫描件给出路, 不是给失败", () => {
   it("坏 PDF: 报可读的失败原因, needsOcr 为假(坏文件不该被推荐去做 OCR)", async () => {
     const fid = await seed("坏.pdf", Buffer.from("这不是一个 PDF"));
     const r = await ensureFileText(userId, fid);
@@ -172,7 +192,7 @@ describe("③ 扫描件给出路, 不是给失败", () => {
   });
 });
 
-describe("④ 归属: 别人的文件读不到", () => {
+describe.skipIf(!dbReady)("④ 归属: 别人的文件读不到", () => {
   it("换一个 userId 去读同一个 fileId → 找不到", async () => {
     const fid = await seed("私密.txt", "只有我能看");
     const other = randomUUID();

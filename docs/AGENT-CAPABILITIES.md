@@ -1,6 +1,13 @@
-# MarxSphere Agent 能力总览（2026-08-21 更新）
+# MarxSphere Agent 能力总览
 
-> AI Agent 子系统完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现；覆盖通用科研 Agent（26 基础工具 + 18 视图工具）+ 教育专属 Agent（13 个教育服务文件、84 个教育路由）。
+> AI Agent 子系统的完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现。
+>
+> **规模（由 `npm run docs:check` 持续校准）**：**158 个 agent 工具**（102 通用 + 56 视图）
+> ｜**191 项编排能力**（可从编排画布调度的全集）｜教育专属 Agent（13 个教育服务文件、122 教育路由 + 学习引擎顶层 39）。
+>
+> ⚠ 本文只写**能力面**。工具名与中文标签的**真源**是运行时的 `/api/agent/tools`
+> （前端不再持有清单 —— 曾经手抄过一份，烂掉了 37/74）。要列当前全量工具：
+> `curl -s localhost:4173/api/agent/tools -H "Authorization: Bearer <token>"`
 
 ## 一、核心架构
 
@@ -12,15 +19,34 @@
 | 计划确认 | 执行前展示计划，确认后才执行 | `POST /tasks/:id/confirm-plan` |
 | checkpoint | 每轮落快照（loop/plan/failures），重启续跑 | 迁移 069 |
 | token 预算 | 任务级 400K token 上限，超预算终止 | `AGENT_TASK_TOKEN_BUDGET` |
+| 工具权限分级 | reader / analyst / manager 三档；**未登记的工具缺省要 manager** | `TOOL_MIN_ROLE`（`agent-tool-router.ts`） |
+| 写工具隔离 | `WRITE_TOOLS` 白名单；只读会话拿不到写工具 | `agent-tool-router.ts` |
+| 任务租约 | 跨进程防双跑 | 迁移 071+ |
 
-## 二、工具（26 基础 + 18 视图 + 教育工具集）
+## 二、工具族（按模块分，共 158）
 
-| 类别 | 工具 |
+工具**分散在 7 个模块**，不是单个文件 —— 数工具时别只数 `agent-tool-router.ts`（那样会少算一半）：
+
+| 模块 | 覆盖 |
 |---|---|
-| 认知 | sag_reason / sag_retrieve / sag_search / sag_get_event / concept_trace / policy_search / review_output / summarize / pdf_parse |
-| 教育 | education_service（learning-plan/tutoring/diagnosis/lesson-plan/companion/socratic/homework-solve/wrong/variant/questions/grade/bkt-track/check-prereq/plan-path 等 15 动作，对话一句话触发） |
-| 行动 | run_code(3级沙箱) / run_command / web_fetch / web_search / file_read / file_write / apply_patch / empirical_analysis / sag_ingest |
-| 协作 | agent_subagent(外部Agent) / attachment_read / code_search / todo_update |
+| `agent-tool-router.ts` | 基础域：检索 / 推理 / 行动 / 协作 / 教育 / 文件 |
+| `agent-view-tools.ts` | 知识域视图 + **上传文件正文（fileId → 文本）** |
+| `agent-review-tools.ts` | 论文质量评审（建/重审/取消 + 期刊库 + 标准库 + 导出） |
+| `agent-viz-tools.ts` | 成果可视化工坊（建任务/数据集/产物/转素材/模型） |
+| `agent-editor-tools.ts` | 学术文本工作台（文档 CRUD + 版本 + 14 个 AI 动作 + 图表 + 导出 Word） |
+| `agent-orch-tools.ts` | 课题流程编排（能力表/运行/事件流/图 CRUD/单步/控制/恢复） |
+| 插件 | `data/plugins/*.ts` 热加载（`agent_plugins` 表） |
+
+代表性能力（**不是全量**，全量见 `/api/agent/tools`）：
+
+| 类别 | 例子 |
+|---|---|
+| 认知 | `sag_reason` / `sag_retrieve` / `sag_search` / `concept_trace` / `policy_search` / `pdf_parse` |
+| 教育 | `education_service`（learning-plan / tutoring / diagnosis / lesson-plan / socratic / grade / bkt-track 等 15 动作） |
+| 行动 | `run_code`（3 级沙箱）/ `run_command` / `web_fetch` / `web_search` / `file_read` / `apply_patch` / `empirical_analysis` / `sag_ingest` |
+| 协作 | `agent_subagent` / `attachment_read` / `code_search` / `todo_update` |
+| **写作舱** | `view_research_*`（项目/素材/证据/假设/大纲/投稿台账）+ `research_proposal_generate` / `research_component_generate` |
+| **文件** | `view_review_files` / `view_file_text`（**按 fileId 取正文**）/ `ocr_file` / `view_ocr_job` |
 
 工程特性：并行执行（registry）、LRU 缓存（50条/5min）、超时熔断（90s）、参数 schema 校验、分派追踪、fallback 链、降级链。
 
@@ -70,13 +96,19 @@ AGENT_LLM_CONCURRENCY=8 AGENT_PROACTIVE_RESEARCH=1
 AGENT_IDENTITY=... AGENT_TOOL_WHITELIST=... AGENT_NET_WHITELIST=...
 ```
 
-## 八、迁移（068-076）
+## 八、迁移
+
+Agent 子系统的迁移从 068 起，**至今已到 165**（全库迁移总数见 `npm run docs:check` 的输出）。
+早期那批（与本文件同期的）：
 
 ```
 068 语料库四表 069 checkpoint 070 凭证 071 会话前缀
 072 消息线程 073 任务依赖DAG 074 反馈 075 设置持久化
 076 执行日志元数据
 ```
+
+⚠ 上面只是**当时**这一批；后续的（OAuth 隔离、插件签名、运行事件流、密钥台账、文件正文…）
+没有在这里续写 —— 迁移真源是 `migrations/` 目录本身，不在本文里维护一份副本。
 
 ## 九、与开源对标
 
@@ -114,7 +146,7 @@ AGENT_IDENTITY=... AGENT_TOOL_WHITELIST=... AGENT_NET_WHITELIST=...
 
 ## 教育专属 Agent 编排
 
-在通用编排（87 工具）之上新增**教育场景专属闭环**：
+在通用编排（**158 工具**）之上新增**教育场景专属闭环**：
 
 | 能力 | 服务/路由 | 说明 |
 |---|---|---|

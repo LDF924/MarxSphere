@@ -1,5 +1,10 @@
 # open-science(ai4s-research)→ MarxSphere 差距分析与移植路线
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-04, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 2026-09-04 · 分析对象: `ai4s-research/open-science` v(1579★, MIT, ResearchClawBench #1)
 > 参考物: `C:\Users\HUAWEI\open-science-ref` + `C:\Users\HUAWEI\ai4s-skills-main`
 
@@ -40,7 +45,7 @@ Open Science Desktop — local-first、模型无关的 AI 科研工作台(Tauri 
 
 ## 三、ai4s-skills 技能链(独立包,可整体移植)
 
-`ai4s-research/ai4s-skills`(MIT,本地已解压于 `C:\Users\HUAWEI\ai4s-skills-main`,钉死 commit)7 技能,全部是**纯流程型**(SKILL.md 方法论 + references playbooks + LaTeX 模板,无 Python 运行时、无 LLM SDK,agent 用自己的工具执行)。**无代码调度器** —— 编排靠契约:slug 公式(小写→连字符→40 字符+sha1-8) + 路径约定 `output/<skill>/<slug>/<ts>/latest/` + `results.json` 的 `simulated` 披露一致性;宿主(Claude Code)按提示词原生加载。
+`ai4s-research/ai4s-skills`(MIT,本地已解压于 `C:\Users\HUAWEI\ai4s-skills-main`,钉死 commit)209 个技能,全部是**纯流程型**(SKILL.md 方法论 + references playbooks + LaTeX 模板,无 Python 运行时、无 LLM SDK,agent 用自己的工具执行)。**无代码调度器** —— 编排靠契约:slug 公式(小写→连字符→40 字符+sha1-8) + 路径约定 `output/<skill>/<slug>/<ts>/latest/` + `results.json` 的 `simulated` 披露一致性;宿主(Claude Code)按提示词原生加载。
 
 | 技能 | 输入 → 产物 | 对 MarxSphere 的增量 | 建议 |
 |---|---|---|---|

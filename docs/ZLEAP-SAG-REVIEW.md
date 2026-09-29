@@ -1,5 +1,10 @@
 # Zleap-AI/SAG 对比评审报告
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-08-30, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 评审对象:GitHub 仓库 [Zleap-AI/SAG](https://github.com/Zleap-AI/SAG)(main 分支,commit `e257a89`,v1.8.4,2026-08-30 推送)+ PyPI 引擎包 `zleap-sag 0.12.0`
 > 对比基准:本地 MarxSphere(SAG-main,TypeScript/Fastify + PostgreSQL/Neo4j)
 > 报告日期:2026-09-01 ｜ 方法:源码深读(下载 tarball + wheel 解包,共 4.4 万行引擎源码 + 应用层 1.2 万行)+ 本地架构实地核查

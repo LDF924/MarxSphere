@@ -1,5 +1,10 @@
 # MarxSphere 全量自审 Round3(上一轮 9 提交代码级走查 + 真浏览器实测)
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-07, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 2026-09-07 · 方法: 无头 Edge+CDP 真实浏览器驱动(scripts/browser-smoke.mjs 固化) 替代上轮 API 级降级 —
 > 上轮自查最大欠账: "浏览器实测"未兑现(preview 工具限制), 本轮补上真实渲染/真实点击闭环验证。
 

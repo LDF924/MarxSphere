@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/MarxSphere/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1254%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/MarxSphere/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/MarxSphere/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -25,7 +25,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 156-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 158-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
 
 ### 🏗 System Architecture
 
@@ -52,7 +52,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **156-tool dispatch**: 100 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 43-view coverage)
+- **158-tool dispatch**: 102 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 22 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 43-view coverage)
 - **Command syntax**: `/` opens the skill command palette (208 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
@@ -76,7 +76,7 @@ Built on an event-centric retrieval structure (`chunk → event → entities`): 
 | Task DAG | LLM decomposes subtasks → depends_on orchestration → concurrent queue (semaphore) → SSE progress |
 | Failure handling | tool timeout circuit breaker (90s) → exponential backoff → failure feedback loop → error classification (recoverable/unrecoverable) |
 
-**② Tool Matrix (100 Agent tools; plus 22 view tools = 156)**
+**② Tool Matrix (102 Agent tools; plus 22 view tools = 158)**
 
 | Category | Tools | Engineering |
 |---|---|---|
@@ -328,7 +328,7 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 | C Reasoning quality (3) | cot_quality / reasoning_depth / multi_hop_accuracy | 0.25 |
 | D Performance (7) | 3-segment latency / end-to-end / token efficiency / Neo4j+PG query counts | observed |
 
-**53-question scores** (`evaluation/eval_32metrics.json` + `perq.json` per-question detail):
+**53-question scores** (repo-root `eval_32metrics.json` + `eval_32metrics_perq.json` per-question detail; history in `eval-archive/`):
 
 | Metric | Score |
 |---|---|
@@ -353,7 +353,7 @@ MarxSphere's 10 custom Skills ship with the repo (`skills/`), covering the full 
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 736 green (CI continuous)
+**Unit tests**: 1269 green (CI continuous)
 
 ---
 
@@ -429,11 +429,13 @@ VAULT_ROOT=D:\MyPapers
 ```
 
 > **Notes**:
+> - `VAULT_ROOT` points at **your own** Obsidian vault. The platform does not sync with Obsidian — it just reads that directory as the literature/archive root (browsable in the `vault` view, PDFs via deep reading).
+> - Under it, the **recommended layout** is topic subfolders (e.g. `capital-rural/`, `rural-revitalization/`), PDFs named `title_author.pdf`; `pdf2obsidian` can convert them to Markdown but is optional. Full variable list at the bottom of `.env.example`.
 > - **Unconfigured** defaults to `~/1.Obsidian Vault` (developer machine path) — pages show empty if missing, but **Ask search / 52-step reasoning still work** (using the bundled seed corpus)
 
 ### 📚 Seed Corpus (search immediately after clone)
 
-The repo ships **50 papers aligned with the eval gold set** (`examples/seed-corpus/`, 1-to-6 outputs: full text + summary + glossary + QA) — no private literature needed to experience four-source retrieval:
+The **open-source repo** ships **50 papers aligned with the eval gold set** (`examples/seed-corpus/`, 1-to-6 outputs: full text + summary + glossary + QA) — no private literature needed to experience four-source retrieval:
 
 ```bash
 npm run quickstart        # after the service starts
@@ -443,9 +445,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 ```
 
 > Public academic journal papers (with provenance), for demo only; request removal via Issue if you hold copyright.
-> - **Recommended layout**: topic subfolders under the literature dir (e.g. `capital-rural/`, `rural-revitalization/`), PDFs named `title_author.pdf`
-> - **Obsidian is optional**: pair with the `pdf2obsidian` skill to convert PDFs to Markdown for browsing; PDFs work directly without it
-> - Full variable list at the bottom of `.env.example`
+> ⚠ `examples/`, `skills/`, `evaluation/` and `reports/` exist **only in the open-source repo**, not in the internal development repo — so those three commands fail there by design.
 
 ---
 
@@ -468,7 +468,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔀 **Model-neutral** | DeepSeek / OpenAI / Anthropic Claude / Ollama / custom endpoints auto-detected |
 | 🔐 **Hash versioning** | doc content dedup · eval data fingerprint · stale detection · version history · data profiling |
 | 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
-| 📈 **Evaluation** | 53-question dual-track 0.884 / 736 unit tests / 21-operator ablation / CI+E2E |
+| 📈 **Evaluation** | 53-question dual-track 0.884 / 31 scored metrics / 1269 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -485,31 +485,30 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 ## Directory Structure
 
 ```text
-src/                 backend source (AI/API/services/db)
-web/                 frontend source (43 views · Mega Menu navigation)
+src/                 backend source (AI/API/services/db, 300 service files)
+web/                 frontend source (React shell with 49 views + socialsci-vue sub-app)
 electron/            desktop main process / bootstrap pages
 scripts/             Python runners / eval scripts / tool scripts / launcher scripts
-evaluation/          eval assets (results / gold sets / archives)
-reports/             eval reports (7)
+eval-archive/        archived eval results (this repo) · evaluation/ gold sets & eval assets (open-source repo only)
 knowledge-graph/     knowledge-graph data (entities/mappings/normalization dictionaries)
-docs/                documentation (architecture/spec/disclosure/usage)
-migrations/          PostgreSQL schema (80+ migrations)
+docs/                documentation (architecture/spec/disclosure/usage, 60 files)
+migrations/          PostgreSQL schema (165 migrations)
 plugins/             Agent plugin directory
-test/                unit tests (736)
+test/                unit tests (1267)
 vendor/              third-party components (pdf2obsidian)
-data/                runtime data (gold candidates, etc.)
+data/                runtime data (gold candidates, uploads, job & visualization artifacts)
 ```
 
 ## Testing
 
 ```bash
-npm test                # 736 unit tests
+npm test                # 1269 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (736 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1269 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -536,9 +535,9 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🖥 Desktop installer | `npm run build:desktop` → `release/MarxSphere Setup <ver>.exe` |
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
-| 📈 Sample eval reports | `reports/` (7 reports) · `evaluation/` (results + gold + archives) |
-| ✅ Unit tests | `npm test` (736, CI green) |
+| 📈 Eval & audit reports | repo-root `*_report.md` (7: significance / kappa / failure / tp / cross_judge / prompt_regression / skill-audit) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
+| ✅ Unit tests | `npm test` (1269, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
-| 📚 Seed corpus | `examples/seed-corpus/` (50 papers aligned with the eval gold set + one-command ingestion script `ingest-seed-corpus.ts`) |
-| 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers) · eval: `evaluation/gold_dataset.json` (53 gold Qs) · graph: `knowledge-graph/` |
+| 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
+| 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |
 | 🕸 Knowledge-graph data | `knowledge-graph/` (entity mappings / normalization dictionaries) |

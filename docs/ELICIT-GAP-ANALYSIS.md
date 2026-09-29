@@ -1,5 +1,10 @@
 # Elicit → MarxSphere 能力差距分析
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-04, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 2026-09-04 · 分析对象: Elicit(专有 SaaS, elicit.com; Ought 孵化, CEO A. Stuhlmüller)
 > 信息来源: 官网 + API docs + 独立评测(公开报道)
 > 注: Elicit 专有无源码, 本文为**机制/产品层对照**(哪些能力值得 MarxSphere 参考思路)。

@@ -1,4 +1,4 @@
-# 学习引擎能力文档(LEARNING-ENGINE.md)
+# 学习引擎能力文档
 
 > 版本: V393(2026-08-30) · 借鉴: TraitTutor(https://github.com/traittutor/traittutor) 源码移植
 > 配套: docs/TRAITTUTOR-REVIEW.md(调研报告)/ CHANGELOG.md

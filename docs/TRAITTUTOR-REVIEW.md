@@ -1,5 +1,10 @@
 # TraitTutor 深度调研报告
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-08-29, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 调研日期:2026-08-29
 > 仓库:https://github.com/traittutor/traittutor(浅克隆 @ 7d73e93,brand-fix)
 > 定位:**目标优先(goal-first)的 AI 学习教练** —— 把目标/问题/真实材料变成"证据感知的自适应学习路径"

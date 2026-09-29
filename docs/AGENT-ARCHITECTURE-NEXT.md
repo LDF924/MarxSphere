@@ -7,7 +7,7 @@
 | 方向 | 状态 | 证据 |
 |---|---|---|
 | A 插件系统 | ✅ **已实现**（A1/A2/A3 全部落地） | `agent-plugin-service.ts` + 迁移 058 + `agent-provider-abstraction.ts` + `viewRegistry.tsx`（前端面板注册表） |
-| B 外部服务 OAuth | ✅ **已实现** | `agent-oauth.ts`（GitHub 适配器已落地）+ 迁移 077/078 + 路由 `/api/agent/oauth/:provider/*` |
+| B 外部服务 OAuth | ✅ **已实现**（GitHub + 飞书 + Notion） | `agent-oauth.ts`（`PROVIDERS` 含 feishu/notion）+ 迁移 077/078 + 路由 `/api/agent/oauth/:provider/*` |
 | C 多模态深度 | ✅ **大部分实现** | `image_analyze`（OCR/chart/describe）+ `audio_transcribe`（whisper）+ `agent-pdf-tool.ts`（MinerU 6 阶段管线） |
 | D 多 Agent 协作 | ✅ **已实现**（D1 动态角色 / D2 协商循环） | `agent-orchestrator.ts` 动态角色定义 + negotiateWorkerRevisions |
 | E 推理时优化 | ✅ **已实现**（E1 动态并发 / E2 SSE 流式 / E3 缓存） | `llm-common.ts` adaptiveCap + server.ts 7 处 SSE + lastUsage cacheHit |
@@ -26,7 +26,7 @@
 **现状**：Agent 可代表用户调用外部服务——`agent-oauth.ts` 通用 OAuth2 客户端（authorization_code 流），**首个适配器 GitHub 已落地**（读公开仓库/issue），接口可扩展飞书/Notion。
 
 - B1 OAuth 授权框架：✅（`/api/agent/oauth/:provider/start|callback` + token 加密存储 + refresh_token 续期）
-- B2 服务适配器：✅ GitHub 已落地；接口 `AuthProvider / ApiClient` 可扩展
+- B2 服务适配器：✅ **GitHub / 飞书 / Notion 三家都已落地**（`agent-oauth.ts` 的 `PROVIDERS`）；企业微信另有 `wecom-service.ts`（自建应用双向 + 群机器人）。接口 `AuthProvider / ApiClient` 仍可继续扩展。
 - B3 授权工具：✅（oauth 状态/授权引导）
 
 ## 方向 C：多模态深度 ✅（大部分）
@@ -58,13 +58,14 @@
 - F2 会话分叉：✅（`forkTaskFromCheckpoint`——从任意 checkpoint 分叉新会话，DSH replay/fork 模式）
 - F3 会话归档：✅（TTL 已有，扩展归档到文件）
 
-## 推荐路线（剩余项）
+## 剩余项
 
-```
-长期: B2 更多服务适配器（飞书/Notion 等）
-```
+六个方向（A-F）**全部已落地** —— 见上表逐项证据。没有"规划中"的未完成项。
 
-**判断标准**：每阶段完成 → 跑全量评测（154 测试）+ 真实场景验证 → 决定是否继续。
+后续演进不在本文维护（本文是 2026-08-21 的方向盘点）。要看今天 Agent 子系统的完整能力面，
+以 [Agent 能力总览](AGENT-CAPABILITIES.md) 与运行时 `/api/agent/tools` 为准。
+
+**判断标准**：每阶段完成 → 跑全量评测 + 真实场景验证 → 决定是否继续。
 
 ## 风险
 

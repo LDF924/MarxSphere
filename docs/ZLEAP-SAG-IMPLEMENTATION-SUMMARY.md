@@ -1,5 +1,10 @@
 # Zleap-AI/SAG 评审与落地总结
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-01, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 项目周期:2026-09-01 至 2026-09-02 ｜ 12 个 commit ｜ 32 文件 +2948/−271
 > 关联文档:[ZLEAP-SAG-REVIEW.md](ZLEAP-SAG-REVIEW.md)(评审报告)· [BACKUP-RESTORE.md](BACKUP-RESTORE.md)(备份使用说明)
 

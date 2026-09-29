@@ -1,5 +1,10 @@
 # Zleap SAG 差距全景与融入路线(参数级重制)
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-02, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 2026-09-02 v2 ｜ 基于 Zleap 引擎源码(zleap.sag 4.4 万行)参数级深读 + 本地 MarxSphere 逐参数核实
 > 本版修正 v1 的错误判断(如本地 rerank 已是用例索引式,与 Zleap 同构)
 

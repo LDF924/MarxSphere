@@ -1,5 +1,10 @@
 # OpenSquilla 差距移植报告
 
+> ⚠️ **本文是历史记录, 不代表平台现状。**
+> 写于 2026-09-05, 记录的是**当时**的调研/审计/移植情况; 文中的能力面、数量、缺口结论都可能已经变化。
+> 要看今天的实际情况, 请以 [项目概述](PROJECT-OVERVIEW.md)、[系统架构](ARCHITECTURE.md)、
+> [功能明细](FEATURES-DETAILED.md) 为准 —— 那几份由 `npm run docs:check` 持续校准。
+
 > 2026-09-05 · 按 docs/OPENSQUILLA-GAP-ANALYSIS.md 最小切口(ROI)序逐项完成
 > 参考源码: TokenRhythm/opensquilla ★6911(Apache-2.0, C:\Users\HUAWEI\opensquilla-main)
 > 全部实现为自写 TS 代码, 未复制 Python 源; 提交已同步 SAG-open-source 并 push GitHub(LDF924/MarxSphere)

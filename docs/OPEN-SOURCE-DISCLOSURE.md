@@ -16,7 +16,7 @@
 | MCP 服务 | `npm run mcp` | 标准 I/O MCP Server（10 个工具：检索/入库/执行/grep/大纲/文档/chunk 等） |
 | OpenAI 兼容 | `POST /api/openai/chat/completions` | 外部 OpenAI 客户端把本地知识库当"模型"调用（含 citations） |
 | 备份 | `npx tsx scripts/backup-now.ts` | 知识库轻量备份 .sagbak（PG + Graphiti/Cognee 图谱 + 清单校验） |
-| 测试 | `npm test` | 1254 项单元测试 |
+| 测试 | `npm test` | 1269 项单元测试 |
 | 数据库 | `npm run db:setup` | 迁移 + 种子数据 |
 
 ### 依赖说明
@@ -129,7 +129,7 @@
 
 - **框架选择**：自研轻量编排（非 LangChain 类框架），基于任务队列 + 工具注册表 + 状态机
 - **任务规划**：LLM 拆解子任务 → 任务 DAG 依赖 → 队列并发执行（详见 `docs/AGENT-CAPABILITIES.md`）
-- **工具调用**：156 工具（100 Agent + 56 视图）经注册表统一管理（输入 schema 校验 → 白名单审批 → 超时熔断 → 重试退避）
+- **工具调用**：158 工具（102 Agent + 56 视图）经注册表统一管理（输入 schema 校验 → 白名单审批 → 超时熔断 → 重试退避）
 - **状态管理**：任务状态持久化到 PostgreSQL（重启恢复），轨迹 span 树完整记录
 
 ## 7. 工具与平台接入
@@ -258,7 +258,7 @@
 ### 评测指标
 - `docs/SCORING_STANDARD.md` — 32 项评测指标定义
 - `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
-- 1254 项单元测试（`npm test`）
+- 1269 项单元测试（`npm test`）
 - 53 题双轨评测（规则评分 + LLM judge）overall 0.884（`scripts/eval-32-metrics.ts`）
 
 ---

@@ -13,9 +13,10 @@
  *      那等于没归类, 但界面上完全看不出来。这条会把它报出来。
  */
 import { describe, it, expect } from "vitest";
-import fs from "node:fs";
+import fs, { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = path.join(ROOT, "docs");
@@ -58,7 +59,6 @@ describe("文档中心索引: 必须覆盖 docs/ 全量", () => {
   it("docs/ 下有文档可扫(防判据失效)", () => {
     expect(files.length, "扫不到任何 md —— 判据自己坏了").toBeGreaterThan(30);
   });
-
   it("**每一个 md 都归了组**(没归的会掉进「其他」——那等于没归类)", () => {
     const grouped = new Set(mapKeys("DOC_GROUP_OF"));
     const orphan = files.filter((f) => !grouped.has(f));
@@ -98,5 +98,60 @@ describe("文档中心索引: 必须覆盖 docs/ 全量", () => {
     // 判据: 源码里应当有扫描函数, 且 DOC_INDEX 由它产出
     expect(server, "没找到 buildDocIndex —— 索引可能又变回手写清单了").toContain("function buildDocIndex");
     expect(server, "DOC_INDEX 不是由 buildDocIndex() 产出的").toMatch(/const DOC_INDEX = buildDocIndex\(\)/);
+  });
+});
+
+/**
+ * doc-sync 的替换规则**不能吃掉文档结构**。
+ *
+ * 由来(2026-09-29, 我自己造的): 通用规则里写了 `(\d+) 工具矩阵`,
+ *   而 `FEATURES-DETAILED.md` 有一行 `### 4.2 工具矩阵（156 工具 = …）` ——
+ *   规则把**小节号里的 2** 当成工具数, 改成了 `### 4.158 工具矩阵`。
+ *   改完 docs:check 报绿(数字确实一致了), 而**章节编号被改坏**没人发现。
+ *
+ * 判据: 标题里的编号必须还是「数字.数字」的形状。
+ * 这类误伤的共同形态是"规则以为自己在改数字, 其实在改结构", 所以盯标题最有效。
+ */
+describe("doc-sync 不许改坏标题结构", () => {
+  const docs = ['README.md', 'README-CN.md', 'docs/ARCHITECTURE.md', 'docs/FEATURES-DETAILED.md',
+                'docs/PROJECT-OVERVIEW.md', 'docs/OPEN-SOURCE-DISCLOSURE.md', 'docs/AGENT-CAPABILITIES.md'];
+
+  it("markdown 标题的小节号仍是 `N.M` 形状(没有被数字规则吞掉)", () => {
+    const bad: string[] = [];
+    for (const d of docs) {
+      if (!existsSync(path.join(ROOT, d))) continue;
+      for (const line of readFileSync(path.join(ROOT, d), "utf8").split("\n")) {
+        const m = /^#{2,4}\s+(\d+)\.(\d+)\s/.exec(line);
+        if (!m) continue;
+        // 小节号: 两段都该是短数字。出现 4158 / 258 这种说明规则把两段粘一起了
+        if (m[1].length > 2 || m[2].length > 2) bad.push(`${d}: ${line.trim().slice(0, 60)}`);
+      }
+    }
+    expect(bad, "这些标题的小节号被数字规则改坏了 —— docs:check 会报绿, 因为数字本身'一致'了").toEqual([]);
+  });
+
+  /**
+   * ⚠ 上面的长度判据**不够** —— 它只在结果变成 3 位数时报警。
+   *
+   * 实测(fixture 回填): `### 4.2 工具矩阵（156 …）` 被规则改成 `### 4.158 工具矩阵` 时，
+   *   长度判据其实**能**抓到（158 是三位）。所以这条不是为那个实例加的，而是补它的盲区:
+   *   同一台机器若把第二节号焊成 **两位**数（`4.58` / `4.78`），长度判据就放绿了，
+   *   而错法完全一样 —— 节号与规模数被焊死在一处。
+   *
+   * 判据: 标题里的节号**不该**等于任何一个会漂的规模数（工具 158 / 场景 78 / 视图 49 …）。
+   *   人写小节号不会取这些值。(万一某天真有小节号等于规模数，这条会误报 —— 那时改标题即可。)
+   */
+  it("markdown 标题的小节号没有被规模数焊接（4.2 不该变成 4.158 / 4.78）", () => {
+    const SCALE_NUMS = new Set(["158", "78", "49", "191", "209", "102", "56", "122", "39", "165", "300"]);
+    const bad: string[] = [];
+    for (const d of docs) {
+      if (!existsSync(path.join(ROOT, d))) continue;
+      for (const line of readFileSync(path.join(ROOT, d), "utf8").split("\n")) {
+        const m = /^#{2,4}\s+(\d+)\.(\d+)\s/.exec(line);
+        if (!m) continue;
+        if (m[2].length > 1 && SCALE_NUMS.has(m[2])) bad.push(`${d}: ${line.trim().slice(0, 60)}`);
+      }
+    }
+    expect(bad, "这些标题的第二节号是一个会漂的规模数 —— doc-sync 把它从句内数字吃进了小节号").toEqual([]);
   });
 });
