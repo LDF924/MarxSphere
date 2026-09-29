@@ -1,6 +1,4 @@
 {
-  // 仅构建用：在 tsconfig.json 之上**剔除 test/**，避免单测被编进 dist。
-  "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.json",
   "include": ["src/**/*.ts", "scripts/**/*.ts"],
   "exclude": ["dist", "node_modules", "test"]

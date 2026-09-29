@@ -8,24 +8,91 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1269%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1271%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
 
 # SocioSeek
 
-**An AI-driven research hub for humanities & social sciences** — a complete research workbench spanning literature retrieval, knowledge graphs, AI Agents, and a desktop app.
+**群学求真** — an AI research platform for the humanities & social sciences
 
-Built on an event-centric retrieval structure (`chunk → event → entities`): literature knowledge is organized around events as semantic units, and multi-hop recall surfaces cross-document concept evolution and viewpoint connections.
+> **One AI Agent carries the entire research workflow**: literature ingest → knowledge graph → traceable reasoning → topic argumentation → empirical & statistical analysis → paper writing → quality review.
+> 17 research workbenches span every step from **choosing a topic** to **submitting a manuscript** — and every conclusion links back to its source chunk.
+>
+> Teaching is an extension on the same substrate (BKT mastery / adaptive paths / lesson prep); teaching and research share one knowledge base.
 
-**RAG architecture**: SAG event-centric hybrid retrieval-augmented generation — a four-source fusion of **SAG (event retrieval) + Graphiti (hyperedges/communities) + Cognee (HYBRID chunks) + PG (vector/lexical)**, combined with a 52-step reasoning chain for traceable, auditable research Q&A.
+**Research first**, for three reasons:
+
+1. **Traceable evidence** — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
+2. **Methodology, not chat** — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
+3. **Auditable end to end** — 31 eval metrics, real token spend, step-level execution logs, cost write-back
+
+**Retrieval substrate**: SAG event-centric hybrid retrieval-augmented generation — a four-source fusion of **SAG (event retrieval) + Graphiti (hyperedges/communities) + Cognee (HYBRID chunks) + PG (vector/lexical)**, combined with a 52-step reasoning chain for traceable, auditable research Q&A.
+
+---
+
+## 🤔 Why SocioSeek?
+
+### The problem: research needs more than a chatbot
+
+| Research step | What generic tools get wrong |
+|---|---|
+| **Source tracing** | Answers from memory, no原文 citations — you cannot verify fidelity to the primary text |
+| **Second-hand material** | Cannot separate "what the text says" from "what someone says the text says" |
+| **Citation reliability** | Misattributed quotes, wrong dates, even fabricated references |
+| **Academic norms** | No GB/T 7714 citation format, no C-journal review standards |
+| **Empirical methods** | Cannot run DID / event study / meta-analysis — conclusions "look right" but are not reproducible |
+| **Writing output** | Generates paragraphs, but never **a submittable manuscript** — no section structure, no required-item checklist, no format validation |
+| **Submission & revision** | Reviewer comments, point-by-point responses, revised drafts, resubmission — all done by hand outside the tool |
+
+### SocioSeek's answer: the whole research pipeline in one platform
+
+| # | Step | How SocioSeek does it |
+|---|---|---|
+| 1 | **Literature ingest** | Local directory scan + full-library PDF deep reading; Zotero / RSS / arXiv / S3 / SSH; scanned PDFs auto-OCR'd |
+| 2 | **Knowledge organization** | Three-engine graph (Graphiti hyperedges/communities + Cognee chunks + PG vectors), keyed on `chunk → event → entities` |
+| 3 | **Retrieval** | Four-source heterogeneous RRF fusion; Ask 18-step pipeline with numbered citations back to source chunks |
+| 4 | **Reasoning** | 52-step explainable chain, each step carrying its sources and real token cost; three-axis citation verification |
+| 5 | **Topic & argument** | 78 research scenarios (16 stages) + eight C-journal methodology frameworks |
+| 6 | **Execution** | 19 econometric methods + 17 statistical analyses, all **really executed** (Python sandbox), results flow back into the manuscript |
+| 7 | **Writing** | Writing Studio's six-stage workflow; academic text workbench with in-line selection rewrite |
+| 8 | **Format & requirements** | Format evaluation (6 templates + pure-code rule engine); submission requirements and five declarations with missing-item checks |
+| 9 | **Quality review** | Segmented review against a target journal → per-dimension scorecard + major/minor lists + inline annotations; 80-journal library |
+| 10 | **Orchestration & revision** | Flow orchestrator (NL → executable DAG); submission/revision area for point-by-point responses |
+
+**In one line**: SocioSeek turns the **evidence chain, methodology, and academic norms** of humanities & social-science research into a runnable, auditable, reusable system — **you can produce a manuscript, and you dare submit it.**
+
+> Teaching (the AI+Education workbench) is an extension on the same substrate.
 
 ---
 
 ## Feature Overview
 
 > 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 66 scenario catalog / 158-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+
+### ✨ Research Workbenches (all 17 tabs under Research)
+
+| Workbench | What it does |
+|---|---|
+| 📚 **Library** | Index a local literature directory (PDF/MD); **full-library PDF deep reading** (Pdfium, local rendering · page/zoom 50–300% · select-to-translate) |
+| 📥 **Imports** | Zotero import + browser extension · paper search · RSS/arXiv · S3 sync · SSH tunnel proxy |
+| 🔎 **Sciverse** | Four external-search tools: semantic RAG / structured filtering / citation snowballing / OA full text (OpenAlex + Unpaywall) |
+| 🎯 **Scenarios** | **78 research scenarios × 16 stages**, each with description + capability badges + step-by-step guide + full-screen workbench |
+| 🎓 **Education** | Dual-role AI+Education workbench (student / teacher), 122 education routes + 39 learning-engine routes |
+| 📊 **Empirical** | Questionnaire generation/parsing → reliability & validity → LLM imputation → variable lock-in → analysis pipeline → regression (M1–M6) → evidence ledger → quality gate; **19 econometric methods** |
+| 📈 **Statistics** | Upload CSV/Excel and **really run** statistics (dedicated venv), **17 method families**; SSE streaming results flow back into manuscript sections |
+| 🔬 **Structure** | Locate figures / tables / formulas / algorithms in a paper → extract content and context → LLM summary of that exhibit's role in the argument |
+| ✅ **Citation Verify** | **Three-axis verification**: metadata authenticity / contextual relevance / assertion support |
+| 📐 **Format Eval** | 6 built-in templates; a **pure-code rule engine** (zero LLM) checks heading levels / abstract / keywords / sections / citation style / numbering / encoding |
+| 📄 **PDF2Obsidian** | Three-pane workbench: upload → PDF preview → six outputs (original / summary / glossary / QA / index / info) |
+| 🏛 **C-Journal** | Eight C-journal topic methodologies: four-step topic selection / topic matrix / paradox topics / concept naming / interdisciplinary / template detection / editorial three-standard check / foreign-review translation / journal matching |
+| 🖋 **Corpus** | Four sub-libraries (text exemplars / core concepts / argument logic / sentence patterns); paste-and-accumulate + LLM extraction + tag search |
+| ✍️ **Writing Studio** | **Six-stage research workflow**: topic framing → framework design → implementation → literature & materials → section writing → final assembly; four ledgers + version rollback |
+| 🧭 **Flow Orchestrator** | One sentence → **executable DAG**; nodes run singly / whole-graph / pause-resume; append-only event stream, replayable |
+| 📝 **Review Studio** | Segmented review against a target journal → per-dimension scorecard + major/minor lists + **inline annotations**; 80-journal library |
+| 🎨 **Viz Studio** | Conversational figure generation: upload data / describe → plan → render → self-critique → save; PNG + editable SVG |
+| 📄 **Editor Studio** | Online writing + version chain; 7 selection-rewrite modes; title/abstract/keyword generation; citation check; Word export |
 
 ### 🏗 System Architecture
 
@@ -353,7 +420,7 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 1269 green (CI continuous)
+**Unit tests**: 1271 green (CI continuous)
 
 ---
 
@@ -449,26 +516,27 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 
 ---
 
-## Core Capabilities
+## Engineering Depth & Platform Capabilities
+
+> The research workbenches are listed above under
+> [Research Workbenches](#-research-workbenches-all-17-tabs-under-research);
+> this section covers only the **substrate they run on**.
 
 | Capability | Description |
 |---|---|
-| 🧠 **52-step reasoning** | classify → 17-way coarse retrieval → Graphiti refine → hyperedge 3-way → fusion generation → self-healing |
-| 🔍 **Ask 18-step search** | multi-arm recall → weighted RRF → LLM rerank → numbered citation tracing |
-| 🗄 **Four-source retrieval** | SAG events + Graphiti hyperedges/communities + Cognee chunks + PG vector/lexical, RRF fusion |
-| 🤖 **AI Agent** | 29 tools (incl. Notebook chart templates / desktop control) / 5-layer security / 5-layer memory / task DAG / approval gates / execution lease |
-| 💰 **Auditable cost ledger** | per-turn real usage (by model / 3-state cost source) + platform cost audit panel |
-| 🔀 **3-tier cost routing** | rule-first + local ML classifier (lite/deep) conservative fusion, upgrade-only, never downgrade |
-| 🔁 **B5 multi-model ensemble** | hard tasks → parallel drafters + aggregator fusion, progressive results / per-draft timeout / preset & custom squads |
-| 📚 **Research scenarios** | 66 scenarios × 8 stages, full-screen workbench + dedicated algorithms |
-| 📊 **Empirical workbench** | questionnaire → reliability → imputation → regression (M1–M6) → evidence ledger |
-| 📓 **Notebook workbench** | lightweight Jupyter: code/Markdown cells · 9 chart templates (3-line table/heatmap/box) · file upload · Restart & Run All |
-| 📡 **IM integration** | Feishu / DingTalk / Telegram / WeCom bot remote chat (status/projects/eval/approval/alerts commands; WeCom corp-app bidirectional, see [IM integration](docs/IM-INTEGRATION.md)) |
-| 🖥 **Computer Use** | desktop control: screenshot / mouse / keyboard / window list (Agent can see & act on screen) |
+| 🤖 **AI Agent** | 158 tools under autonomous dispatch / 5-layer security / 5-layer memory / task DAG / approval gate / execution lease |
+| 💰 **Auditable cost ledger** | Per-turn real usage (by model / three cost sources) + platform cost-audit panel |
+| 🔀 **Three-tier cost router** | Rules + local ML classifier (lite/deep) fused conservatively — **upgrades only, never downgrades** |
+| 🔁 **B5 multi-model ensemble** | Parallel drafting + aggregator fusion for hard questions; progressive streaming / timeout truncation |
+| 📓 **Notebook** | Lightweight Jupyter: code / Markdown cells · 9 chart templates · Restart & Run All |
+| 📡 **IM integration** | Feishu / DingTalk / Telegram / WeCom bot remote control (see [IM integration](docs/IM-INTEGRATION.md)) |
+| 🖥 **Computer Use** | Desktop control: screenshot / mouse / keyboard / window list |
 | 🔀 **Model-neutral** | DeepSeek / OpenAI / Anthropic Claude / Ollama / custom endpoints auto-detected |
-| 🔐 **Hash versioning** | doc content dedup · eval data fingerprint · stale detection · version history · data profiling |
-| 🖥 **Desktop app** | Electron + NSIS installer, first-launch guided bootstrap |
-| 📈 **Evaluation** | 53-question dual-track 0.884 / 31 scored metrics / 1269 unit tests / 21-operator ablation / CI |
+| 🔐 **Hash versioning** | Content dedup · eval data fingerprint · stale detection · version history · data profiling |
+| 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
+| 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
+| 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1271 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -502,13 +570,13 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
-npm test                # 1269 unit tests
+npm test                # 1271 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1269 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1271 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -536,7 +604,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval & audit reports | repo-root `*_report.md` (7: significance / kappa / failure / tp / cross_judge / prompt_regression / skill-audit) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
-| ✅ Unit tests | `npm test` (1269, CI green) |
+| ✅ Unit tests | `npm test` (1271, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |
