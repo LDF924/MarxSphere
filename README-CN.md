@@ -526,7 +526,8 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 ```
 
 > 语料为公开学术期刊论文（含出处），仅用于功能演示；若持有其中某篇版权需移除，请在 Issue 说明。
-> ⚠ `examples/`、`skills/`、`evaluation/`、`reports/` 只在**开源仓库**里，不在内部开发仓——所以在开发仓里跑上面三条命令会找不到文件，属正常。
+> ⚠ `examples/`、`skills/`、`evaluation/` 只在**开源仓库**里，不在内部开发仓——所以在开发仓里跑上面三条命令会找不到文件，属正常。
+> （`reports/` 不在此列：它两仓都有，是前端「评测 → 学习引擎」面板读的 4 份报告样例。）
 
 ---
 
@@ -571,6 +572,7 @@ web/                 前端源码（React 外壳 49 视图 + socialsci-vue 子�
 electron/            桌面端主进程 / 引导页
 scripts/             Python runner / 评测脚本 / 工具脚本 / 启动脚本
 eval-archive/        评测结果历史归档（本仓）· evaluation/ 金标集与评测资产（仅在开源仓库）
+reports/             4 份评测报告样例（前端「学习引擎」面板读取；见 reports/README.md）
 knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明，60 份）
 migrations/          PostgreSQL schema（165 个迁移）
@@ -618,7 +620,7 @@ npm run typecheck       # 前后端类型检查
 | 🖥 桌面端安装包 | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
 | 📊 运行截图 | [docs/assets/](docs/assets/)（49 个视图截图 + 架构图/痛点图/论文架构图） |
-| 📈 评测与审计报告 | 根目录 `*_report.md`（7 份：显著性 / kappa / 失败归因 / tp / 交叉评审 / 提示回归 / 技能审计）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
+| 📈 评测报告样例 | `reports/`（4 份：显著性 / 失败归因 / 轨迹前缀 / 评判者校准，前端学习引擎面板读取）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
 | ✅ 单元测试 | `npm test`（1271 项, CI 全绿） |
 | 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|

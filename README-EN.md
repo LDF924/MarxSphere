@@ -512,7 +512,8 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 ```
 
 > Public academic journal papers (with provenance), for demo only; request removal via Issue if you hold copyright.
-> ⚠ `examples/`, `skills/`, `evaluation/` and `reports/` exist **only in the open-source repo**, not in the internal development repo — so those three commands fail there by design.
+> ⚠ `examples/`, `skills/` and `evaluation/` exist **only in the open-source repo**, not in the internal development repo — so those three commands fail there by design.
+> (`reports/` is not in that set: it ships in both repos — 4 report samples the Eval → Learning Engine panel reads.)
 
 ---
 
@@ -558,6 +559,7 @@ web/                 frontend source (React shell with 49 views + socialsci-vue 
 electron/            desktop main process / bootstrap pages
 scripts/             Python runners / eval scripts / tool scripts / launcher scripts
 eval-archive/        archived eval results (this repo) · evaluation/ gold sets & eval assets (open-source repo only)
+reports/             4 eval report samples (read by the Eval → Learning Engine panel)
 knowledge-graph/     knowledge-graph data (entities/mappings/normalization dictionaries)
 docs/                documentation (architecture/spec/disclosure/usage, 60 files)
 migrations/          PostgreSQL schema (165 migrations)
@@ -603,7 +605,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🖥 Desktop installer | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
-| 📈 Eval & audit reports | repo-root `*_report.md` (7: significance / kappa / failure / tp / cross_judge / prompt_regression / skill-audit) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
+| 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
 | ✅ Unit tests | `npm test` (1271, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |

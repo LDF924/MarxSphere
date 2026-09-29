@@ -110,7 +110,11 @@ const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migr
 // web/ 根目录下的散文件不属任何子目录, 单独列出并接进同步循环(见下方 for)。
 const WEB_ROOT_FILES = ["web/index.html"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
-const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "reports", "knowledge-graph", "skills", "__pycache__"]);
+const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "knowledge-graph", "skills", "__pycache__"]);
+// ⚠ 2026-09-30 把 "reports" 从排除表里去掉 —— 它此前被排除, 导致 reports/ 里的
+//   4 份评测报告**样例**永远同步不到开源仓; 而 README 又写着"reports/ 在开源仓库里",
+//   两边都不对。那 4 份是前端「学习引擎」面板的读取对象(EVAL_REPORT_NAMES 白名单),
+//   删了前端四张卡会**静默空白**, 所以必须随仓分发。
 /**
  * ⚠ 2026-09-25 补: **五份方法论文档 + 一个逆向脚本不进开源仓**。
  *
