@@ -108,7 +108,7 @@ function MessageRoleBadge({ role }: { role: "user" | "assistant" }) {
       {role === "user" ? "你" : (
         <>
           <span className="flex h-4 w-4 items-center justify-center rounded-sm bg-primary/20 text-[9px] font-bold text-primary">
-            群
+            S
           </span>
           SocioSeek AI
         </>
@@ -699,7 +699,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                     <MessageSquare className="h-7 w-7" />
                   </div>
-                  <h1 className="text-xl font-semibold">你好，我是群学求真 AI 助手</h1>
+                  <h1 className="text-xl font-semibold">你好，我是 SocioSeek AI 助手</h1>
                   <p className="mt-1.5 text-sm text-muted-foreground">全人文社科研究助手 — 输入问题开始对话</p>
                 </div>
                 <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1072,7 +1072,7 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
               </div>
             </div>
             <p className="mt-1.5 text-center text-[11px] text-muted-foreground/60">
-              群学求真 AI · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解 / Agent 工具调度
+              SocioSeek AI · 支持 Markdown / 代码高亮 / LaTeX 公式 / 图片理解 / Agent 工具调度
             </p>
           </div>
         </div>

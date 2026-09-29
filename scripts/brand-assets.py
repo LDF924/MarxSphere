@@ -4,14 +4,15 @@ brand-assets.py — 从一张母版 logo 生成全套品牌资产。
 
 由来(2026-09-29): 「群学求真 SocioSeek」换标时, 这一套流程是**在对话里手写 python - <<PY**
   一段段试出来的 —— 抠图失败一次、裁切切进文字一次、16px 糊掉两次。那些试错的价值不在
-  结论(最后就用白底 + scale .95), 而在**每一步该量什么**, 所以固化成脚本:
+  结论(深底 #101621 + scale .88), 而在**每一步该量什么**, 所以固化成脚本:
 
     · 抠图用「与背景色的距离」做软边, 不用泛洪 —— 泛洪会把鲸鱼内部的暗部一起吃掉
       (实测: 白底上鲸鱼肚子被啃掉一块, 边缘全是噪点)
     · 裁切**必须靠墨迹剖面找断档**, 不能按图高比例硬切 —— 按 60% 切过一次,
       切进了中文字的顶部
     · alpha 要做**收紧**(阈值 60 以下归零), 否则白底上留一圈灰晕
-    · 底与缩放系数要**压测选**, 不靠感觉 —— 深底 16px 全糊, 白底 scale .95 才立得住
+    · 底与缩放系数要**压测选**, 不靠感觉 —— scale 0.72/0.80/0.88/0.95 四档比过才定 0.88;
+      底色**取母版自己的**深藏青, 我一度改成白底, 品牌图立刻与母版不像了
 
 用法:
     python scripts/brand-assets.py <母版png> [--out build/brand] [--yes]
@@ -90,8 +91,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("src", help="母版 logo PNG")
     ap.add_argument("--out", default="build/brand", help="输出目录")
-    ap.add_argument("--scale", type=float, default=0.95, help="标记在图标底内的占比")
-    ap.add_argument("--bg", default="255,255,255", help="图标底色 R,G,B")
+    ap.add_argument("--scale", type=float, default=0.88,
+                    help="标记在图标底内的占比。0.72/0.80/0.88/0.95 四档压测过: "
+                         "0.72 四周太空, 0.95 顶到边, **0.88 填满且留有边距** —— 别凭感觉调。")
+    ap.add_argument("--bg", default="16,22,33",
+                    help="图标底色 R,G,B。默认取母版自己的深藏青 #101621 —— "
+                         "**别改成白底**: 2026-09-29 我改成白底, 结果品牌图与母版完全不像"
+                         "(鲸身深蓝在白底上显得惨白), 用户一眼看出不对。")
     ap.add_argument("--radius", type=float, default=0.20, help="圆角比例")
     args = ap.parse_args()
 
@@ -122,17 +128,23 @@ def main():
         return 3
 
     rgba = Image.fromarray(np.dstack([arr8, (alpha*255).astype(np.uint8)]), "RGBA")
-    mark = tight_above_text(rgba)
-    bb = mark.split()[-1].getbbox()
-    if not bb:
-        say("  ✗ 裁完是空的", "err"); return 4
-    mark = mark.crop(bb)
-    say(f"  ✓ 标记 {mark.width}×{mark.height} (长宽比 {mark.width/mark.height:.2f})")
-
-    # alpha 收紧: 消除白底上的灰晕
-    a = np.array(mark); al = a[:, :, 3].astype(np.float32)
+    # ── alpha 收紧 **必须在裁切之前** ──
+    # ⚠ 2026-09-29 实测踩到: 第一版先 getbbox() 裁切、再收紧 alpha。而收紧会把标记周围
+    #   那一圈柔光(alpha 60 以下)直接归零 —— 内容因此**缩小**了, 但画布还是按收紧前的
+    #   bbox 定的, 于是四周留下大片空白。表现: mark 是 1440×789, 鲸鱼实际只占 749×482
+    #   (52%×61%), 图标里 logo 显得特别小。**裁切要放在收紧之后**, 顺序反了就是白边。
+    raw = tight_above_text(rgba)
+    a = np.array(raw); al = a[:, :, 3].astype(np.float32)
     a[:, :, 3] = np.clip((al - 60) * (255 / 195), 0, 255).astype(np.uint8)
     mark = Image.fromarray(a, "RGBA")
+
+    bb = mark.split()[-1].getbbox()
+    if not bb:
+        say("  ✗ 收紧 alpha 后没有内容了 —— 阈值可能太高", "err"); return 4
+    before = raw.size
+    mark = mark.crop(bb)
+    say(f"  ✓ 标记 {mark.width}×{mark.height} (长宽比 {mark.width/mark.height:.2f})"
+        f"{'  ← 收紧后重裁, 收掉 ' + str(before[0] - mark.width) + 'x' + str(before[1] - mark.height) + ' 空白' if before != mark.size else ''}")
     mark.save(f"{args.out}/mark-transparent.png")
 
     bgrgb = tuple(int(x) for x in args.bg.split(",")) + (255,)

@@ -316,7 +316,7 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             </div>
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground md:text-6xl">
-            群学求真
+            SocioSeek
             {/* 马克思名言：每字金色光晕，单行拉直 + 双引号 */}
             <span className="block whitespace-nowrap text-xs font-normal tracking-wide text-accent-foreground/90 md:text-sm" style={{ marginTop: "1.2rem", lineHeight: 2 }}>
               <span className="golden-char">「</span>
