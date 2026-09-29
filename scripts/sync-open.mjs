@@ -106,6 +106,11 @@ const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migr
   //   共同点是"不在任何已列目录下", 属整目录/散文件漏掉 —— 与 V415 漏 CLAUDE.md、
   //   V418 漏一批文档是同一个病: **漏的原因是文件没进列表, 不是规则写错**。
   "build",
+  // ⚠ 2026-09-30 补 reports/ —— 它此前**既不在 DIRS 也不在 EXCLUDE_DIR 的例外里**,
+  //   于是那 4 份评测报告样例永远同步不到开源仓。症状: 开源仓 reports/ 里只有历史遗留的
+  //   旧文件、缺 reports/README.md, 而 README 又写着"reports/ 在开源仓库里"。
+  //   与 V415 漏 CLAUDE.md、V418 漏一批文档同病: **漏的原因是文件没进列表**。
+  "reports",
 ];
 // web/ 根目录下的散文件不属任何子目录, 单独列出并接进同步循环(见下方 for)。
 const WEB_ROOT_FILES = ["web/index.html"];
