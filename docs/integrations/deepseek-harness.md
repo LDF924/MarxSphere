@@ -5,7 +5,7 @@
 ## 1. 前置条件
 
 - SAG 服务在跑：`SOCIOSEEK_PREVIEW=1 npx tsx src/index.ts`（4173）
-- 本机开发免 Token；外部部署需先建 Token（见 [quickstart](quickstart.md)）
+- 本机开发免 Token；外部部署需先建 Token（见 [quickstart](../quickstart.md)）
 - DeepSeek Harness 已安装（`pip install deepseek-harness` 或源码部署）
 
 ## 2. 注册 MCP Server
@@ -37,7 +37,7 @@ SAG MCP Server 暴露的核心能力（与 52 步推理/四源检索对应）：
 
 ## 4. DSH 设计模式吸收（本仓库）
 
-SocioSeek 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD_PARTY_NOTICES](../THIRD_PARTY_NOTICES.md)）：
+SocioSeek 的 Agent 编排层吸收 DSH 的包模式（**仅设计模式参考，代码独立实现**，详见 [THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md)）：
 
 | DSH 模式 | SocioSeek 对应实现 | 作用 |
 |---|---|---|

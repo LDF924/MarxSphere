@@ -226,7 +226,7 @@ curl -X POST http://localhost:4173/api/agent/tasks \
 
 ![SocioSeek 系统架构](assets/socioseek-architecture.svg)
 
-（更多架构细节：`ARCHITECTURE.md` / `docs/AGENT-CAPABILITIES.md` / `docs/AGENT-ARCHITECTURE-NEXT.md`）
+（更多架构细节：[技术架构](ARCHITECTURE.md) / [Agent 能力](AGENT-CAPABILITIES.md) / [Agent 架构演进](AGENT-ARCHITECTURE-NEXT.md)）
 
 ---
 

@@ -1970,7 +1970,7 @@ export function buildHttpServer() {
     "MEMORY.md": "能力手册", "MULTI-AGENT.md": "能力手册", "MODELS.md": "能力手册",
     "IM-INTEGRATION.md": "能力手册", "COMPUTER-USE.md": "能力手册",
     // 架构与设计
-    "ARCHITECTURE.md": "架构与设计",
+    "ARCHITECTURE.md": "架构与设计",  // docs/ARCHITECTURE.md（根目录同名旧版已删）
     "DATA-HASH-VERSIONING-DESIGN.md": "架构与设计", "PROVENANCE-DESIGN.md": "架构与设计",
     "COMMERCIAL-ARCHITECTURE.md": "架构与设计",
     // 接口与集成
@@ -9315,8 +9315,8 @@ except Exception as e:
     skills: skillsService.listSkills()
   }));
 
-  // V327: 技能审计摘要（P1-2 前端展示）— 读 skill-audit-report.md 解析统计
-  // V332: 技能审计（P1-2 实时同步）— 实时扫描技能目录（60秒缓存）, 不读快照文件
+  // 技能审计（P1-2）— **实时扫描技能目录**（60 秒缓存）。
+  // V327 时读的是 skill-audit-report.md 快照；V332 起不读文件了（快照已删）。
   app.get("/api/skills/audit", async () => {
     try {
       const r = await skillsService.auditSkillsLive();

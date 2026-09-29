@@ -1,6 +1,6 @@
 # SocioSeek 对外接入（API Token + MCP Server）
 
-> **完整文档已迁移到 [docs/overview.md](docs/overview.md)**（Sciverse 风格三层：Overview → API Reference → 集成指南 + Cookbook）
+> **完整文档已迁移到 [docs/overview.md](overview.md)**（Sciverse 风格三层：Overview → API Reference → 集成指南 + Cookbook）
 
 SocioSeek 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Codex 等 AI Agent。
 对标 [Sciverse-Agent-Tools](https://github.com/opendatalab/Sciverse-Agent-Tools) 模式：薄包装 REST API → MCP 工具。
@@ -9,12 +9,12 @@ SocioSeek 推理/检索能力可通过 **MCP Server** 接入 Claude Code / Codex
 
 | 文档 | 内容 |
 |---|---|
-| [docs/overview.md](docs/overview.md) | 平台总览、接入方式、认证 |
-| [docs/quickstart.md](docs/quickstart.md) | 5 分钟快速开始（MCP 接入） |
-| [docs/api-reference.md](docs/api-reference.md) | REST API 完整参考（参数/响应/curl） |
-| [docs/integrations/claude-code.md](docs/integrations/claude-code.md) | Claude Code 接入指南 |
-| [docs/integrations/codex-cli.md](docs/integrations/codex-cli.md) | Codex CLI 接入指南 |
-| [docs/cookbook.md](docs/cookbook.md) | 真实任务示例（推理/检索/入库/盘点） |
+| [docs/overview.md](overview.md) | 平台总览、接入方式、认证 |
+| [docs/quickstart.md](quickstart.md) | 5 分钟快速开始（MCP 接入） |
+| [docs/api-reference.md](api-reference.md) | REST API 完整参考（参数/响应/curl） |
+| [docs/integrations/claude-code.md](integrations/claude-code.md) | Claude Code 接入指南 |
+| [docs/integrations/codex-cli.md](integrations/codex-cli.md) | Codex CLI 接入指南 |
+| [docs/cookbook.md](cookbook.md) | 真实任务示例（推理/检索/入库/盘点） |
 
 ## 核心组件
 
