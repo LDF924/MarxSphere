@@ -124,3 +124,45 @@ describe("新增工作台必须能被场景指到(本文件真正要防的那件
     expect(unused.length, `这些新工作台没有任何场景指向它们: ${unused.join(", ")}`).toBeLessThan(NEW_WORKBENCHES.length);
   });
 });
+
+/**
+ * 首页功能卡也要跟着走。
+ *
+ * 由来(2026-09-29 用户指着首页截图问「首页的这些是不是也要新增」): 上面那组场景补完之后,
+ *   首页那 12 张功能卡**还是老面孔** —— 写作舱/编排/评审/工坊/编辑器一张都没有。
+ *   而且它的 `onChangeView` 自己手抄了一份 12 个视图名的联合类型(与场景页那份各写各的)。
+ *   与场景页是同一个病: 新 tab 进了导航, 但"能进到它的入口"没同步。
+ */
+describe("首页功能卡: 新工作台必须有入口", () => {
+  const home = read("web/src/components/HomePanel.tsx");
+
+  /** 首页 features 数组里用到的 key */
+  const homeKeys = new Set([...home.matchAll(/^\s{6}key: "([a-z-]+)" as const,/gm)].map((m) => m[1]));
+
+  it("六个新工作台在首页各有一张卡", () => {
+    const missing = ["paper-outline", "dag-workbench", "review-lab", "plot-agent", "editor", "statistics"]
+      .filter((k) => !homeKeys.has(k));
+    expect(
+      missing,
+      "首页卡片是用户进这些工作台的主要入口之一 —— 缺了它们, 桌面端首页就点不进去。",
+    ).toEqual([]);
+  });
+
+  it("首页的类型不另抄一份(复用场景页的 ScenarioView)", () => {
+    // 手抄的联合类型会漂 —— 判据: 源码里不该出现第二个把十几个视图名串联起来的字面量
+    const handCopied = /view: "reason" \| "literature"/.test(home);
+    expect(
+      handCopied,
+      "首页又自己抄了一份视图联合类型 —— 应该 `import type { ScenarioView }` 后按它扩展。",
+    ).toBe(false);
+    expect(home, "首页没有从场景页引入 ScenarioView").toContain("type ScenarioView");
+  });
+
+  it("首页每张卡都指向外壳认得的视图", () => {
+    const valid = new Set(
+      (read("web/src/App.tsx").match(/const validViews: WorkspaceView\[\] = \[([\s\S]*?)\];/)?.[1].match(/"([^"]+)"/g) || []).map((s) => s.replace(/"/g, "")),
+    );
+    const dead = [...homeKeys].filter((k) => !valid.has(k));
+    expect(dead, `这些卡片指向的视图 App.tsx 不认, 点了就是死链: ${dead.join(", ")}`).toEqual([]);
+  });
+});

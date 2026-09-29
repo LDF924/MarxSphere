@@ -2,9 +2,9 @@
 // HomePanel.tsx — MarxSphere 品牌首页（Landing）
 // 深空宇宙背景 + 马克思理论叙事 + 功能入口 + 研究数据 + 检索栈 scrollytelling 动画
 import { useEffect, useState, type FC } from "react";
-import { Library, Sparkles, ExternalLink, BookOpenCheck, Boxes, FolderOpen, ChevronRight, Search, MessageSquareText, Network, Scale, Database, FileUp, LayoutGrid } from "lucide-react";
+import { Library, Sparkles, ExternalLink, BookOpenCheck, Boxes, FolderOpen, ChevronRight, Search, MessageSquareText, Network, Scale, Database, FileUp, LayoutGrid, PenLine, BarChart3, FileText, Workflow, ShieldCheck, Table2 } from "lucide-react";
 import { SymbolLogo } from "./SymbolLogo";
-import { SCENARIOS, GROUPS } from "./ScenariosPanel";
+import { SCENARIOS, GROUPS, type ScenarioView } from "./ScenariosPanel";
 import { JOB_TYPES } from "./JobsPanel";
 
 // 检索栈动画步骤（按真实 Ask 18 步）
@@ -52,8 +52,19 @@ const REASON_STEP_TOKENS: Record<string, { in: number; out: number }> = {
   "置信评估": { in: 900, out: 120 },
 };
 
+/**
+ * 首页能去的地方。
+ *
+ * = 场景能跳的那些(与场景页同一份 `ScenarioView`, 不另抄一份)
+ * + 两个**首页特有**的落点:
+ *   · `assistant` —— Hero 的「开始研究提问」按钮去 AI 对话;
+ *   · `scenarios` —— 「科研场景」那张卡去的是场景列表本身(场景页里不需要, 它就在那)。
+ * 这两个是"从首页出发"才有的方向, 不该塞进场景的闭集里。
+ */
+type HomeView = ScenarioView | "assistant" | "scenarios";
+
 interface HomePanelProps {
-  onChangeView: (view: "assistant" | "literature" | "reason" | "ask" | "truth" | "sciverse" | "skills" | "vault" | "graph" | "policy" | "scenarios" | "jobs" | "documents", params?: { demo?: string }) => void;
+  onChangeView: (view: HomeView, params?: { demo?: string }) => void;
 }
 
 export function HomePanel({ onChangeView }: HomePanelProps) {
@@ -198,6 +209,82 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
       stage: "系统自动化",
       desc: "批量上传入库 · 重命名/归档/级联删除",
       hint: "管理论文与原始资料文档"
+    },
+
+    /*
+     * ═══ 下面八张是 2026-09-29 补的 ═══
+     *
+     * 由来(用户指着首页截图问「首页的这些是不是也要新增」): 上面那 12 张卡是
+     * **平台早期**的功能面 —— 文献/检索/图谱/资料。而 9 月新增的五个工作台
+     * (写作舱/编排/评审/工坊/编辑器)在这页**一张都没有**, 桌面端首页也点不进去。
+     * 与场景页那次是同一个病: 新 tab 加进了导航, 但"能进到它们的入口"没同步。
+     *
+     * 排序按**真实科研动线**排, 不按加进来的先后:
+     *   整理文献 → 数据分析 → 绘制图表 → 写作 → 编排流程 → 评审 → 修改 → 入库。
+     */
+    {
+      key: "paper-outline" as const,
+      icon: <PenLine className="h-4.5 w-4.5" />,
+      title: "研途写作舱",
+      stage: "论文写作",
+      desc: "选题界定 → 框架设计 → 文献与资料 → 章节写作 → 统稿定稿, 六步走完一篇论文",
+      hint: "素材库 / 证据账本 / 假设台账 / 章节依据"
+    },
+    {
+      key: "plot-agent" as const,
+      icon: <BarChart3 className="h-4.5 w-4.5" />,
+      title: "成果可视化工坊",
+      stage: "图表制作",
+      desc: "对话式出图: 上传数据或描述需求, 系统规划→出图→自审修订→落盘 PNG/SVG",
+      hint: "期刊版式预设 · 矢量可编辑 · 产物可转素材"
+    },
+    {
+      key: "editor" as const,
+      icon: <FileText className="h-4.5 w-4.5" />,
+      title: "学术文本工作台",
+      stage: "论文写作",
+      desc: "在线写稿: 选区改写 + 题名候选 + 引文检查 + 图表 + 版本回档",
+      hint: "14 个 AI 动作 · 导入导出 Word"
+    },
+    {
+      key: "statistics" as const,
+      icon: <Table2 className="h-4.5 w-4.5" />,
+      title: "数据分析台",
+      stage: "数据分析",
+      desc: "上传 CSV/Excel 真跑统计: 描述统计、回归、面板、逻辑回归",
+      hint: "17 类方法 · 结果可回流到正文章节"
+    },
+    {
+      key: "dag-workbench" as const,
+      icon: <Workflow className="h-4.5 w-4.5" />,
+      title: "课题流程编排",
+      stage: "全阶段",
+      desc: "一句话生成可执行 DAG, 节点可单步跑、整条跑、暂停续跑",
+      hint: "能力表 191 项 · 事件流可回放 · 图可存成模板"
+    },
+    {
+      key: "review-lab" as const,
+      icon: <ShieldCheck className="h-4.5 w-4.5" />,
+      title: "论文质量评审",
+      stage: "评审发表",
+      desc: "按目标期刊分段审稿: 逐维度评分卡 + 大修/小修清单 + 原文批注",
+      hint: "期刊库 80 本 · 审稿历史与重审对比"
+    },
+    {
+      key: "corpus" as const,
+      icon: <FolderOpen className="h-4.5 w-4.5" />,
+      title: "写作语料库",
+      stage: "论文写作",
+      desc: "从已入库文献提炼文本/概念/逻辑/句式四类语料, 写作时按需取用",
+      hint: "四子库 · 越用越厚的表达库"
+    },
+    {
+      key: "imports" as const,
+      icon: <Database className="h-4.5 w-4.5" />,
+      title: "文献管理与入库",
+      stage: "系统自动化",
+      desc: "批量收 PDF → 解析去重 → 三库入库 → 维护引用关系",
+      hint: "只上传不入库等于没做"
     }
   ];
 
