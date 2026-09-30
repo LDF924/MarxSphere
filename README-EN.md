@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1293%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1296%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -22,13 +22,14 @@
 >
 > Teaching is an extension on the same substrate (BKT mastery / adaptive paths / lesson prep); teaching and research share one knowledge base.
 
-**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Five reasons:
+**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Six reasons:
 
 1. **Traceable evidence** (Library · Reason Lab · Truth · Graph) — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
 2. **Methodology, not chat** (Empirical · Statistics · Citation Verify · Format Eval · Review Studio) — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
 3. **Auditable end to end** (Eval · Tasks · Trace · Billing) — 31 eval metrics, real token spend, step-level execution logs, cost write-back
 4. **Benches hand data to each other — no copy-paste between them** — a survey goes through reliability tests and imputation into regression, then lands in the evidence ledger; statistical results **flow back into manuscript sections** in one click; figures from Viz Studio become **Writing Studio material** in one click; empirical findings go through Citation Verify before entering the text. One dataset moves across benches — nothing re-keyed, nothing exported and re-imported
 5. **Chinese social science first, not an English tool translated** — methodology follows domestic C-journal practice (four-step topic selection / topic matrix / paradox framing / editorial three-criteria check / outward-review translation): an 80-journal Marxist-theory library, GB/T 7714 citation format, 6 Chinese thesis and promotion-paper templates, a three-engine Chinese literature graph. **Built for how Chinese social scientists actually work — not a generic English assistant with a Chinese skin**
+6. **From finished draft to submission is a closed loop, not "generate and stop"** (Writing Studio · Editor Studio · Review Studio · Flow Orchestrator) — Writing Studio binds the six-stage research ledger (materials / evidence / hypotheses / findings) to chapter sources; the finished draft goes to Review Studio for **sectional review** against a target journal, with per-dimension scorecards and in-text annotations, and **re-review is diffable**; export goes straight to **Word with a submission disclosure**. Flow Orchestrator turns the whole chain into a runnable DAG — nodes run singly, whole-chain, or pause-and-resume, state rebuilds from a snapshot after restart, and the event stream replays every step
 
 > All 18 benches are listed in [**Research Workbenches**](#-research-workbenches-all-18-tabs-under-research) below — Library / Imports / Sciverse / Scenarios / Education / Empirical / Statistics / Structure / Citation Verify / Format Eval / PDF2Obsidian / C-Journal / Corpus / Writing Studio / Flow Orchestrator / Review Studio / Viz Studio / Editor Studio.
 
@@ -73,7 +74,7 @@
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 78 scenario catalog / 158-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 78 scenario catalog / 158-tool matrix (102 Agent + 56 view) / 17 empirical features / desktop details / eval metrics)
 
 ### ✨ Research Workbenches (all 18 tabs under Research)
 
@@ -430,7 +431,7 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 1293 green (CI continuous)
+**Unit tests**: 1296 green (CI continuous)
 
 ---
 
@@ -547,7 +548,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
 | 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
 | 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
-| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1293 unit tests / 21-operator ablation / CI |
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1296 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -582,13 +583,13 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
-npm test                # 1293 unit tests
+npm test                # 1296 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1293 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1296 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -616,7 +617,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
-| ✅ Unit tests | `npm test` (1293, CI green) |
+| ✅ Unit tests | `npm test` (1296, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |
