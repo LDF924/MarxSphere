@@ -227,7 +227,26 @@ try {
   const out = execSync(`git ls-files`, { cwd: OPEN, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   openTracked = out.split("\n").map((s) => s.trim()).filter(Boolean);
 } catch { /* open 仓无 git / 读不到 → 跳过检测 */ }
-const ghosts = openTracked.filter((rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)));
+/**
+ * ⚠ **开源仓有意比开发仓多留的东西** —— 探测到了也不该报成"残留待清理"。
+ *
+ * 2026-09-30 加。这三份评测报告 2026-08 之前就在开源仓里了, 早于"这类报告不入开发仓"
+ * 那个决定。它们的内容是评测统计(异源交叉评判的逐题分歧率 / 提示词变更后的快速回归 /
+ * 技能 description 四要素完整性), **不含工程记录、外部产品对照、自审交接** ——
+ * 公开着没有风险, 而撤掉反而会让引用过的人困惑。所以**保留**, 两仓在这一点上有意不一致。
+ *
+ * 加这份白名单是因为: 每次同步都把这 3 个报成"多半是孤儿代码, 确认无用后手工清理",
+ * 而照着提示做恰恰是**错的** —— 会把有意保留的内容从公开仓删掉。
+ * `reports/README.md` 里也写明了缘由。
+ */
+const OPEN_ONLY_INTENT = new Set([
+  "reports/cross_judge_report.md",
+  "reports/prompt_regression_report.md",
+  "reports/skill-audit-report.md",
+]);
+const ghosts = openTracked.filter(
+  (rel) => inSyncScope(rel) && !existsSync(path.join(MAIN, rel)) && !OPEN_ONLY_INTENT.has(rel),
+);
 run.ghosts = ghosts.length;
 
 /**

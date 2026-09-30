@@ -29,8 +29,19 @@
 - `src/api/server.ts` 的 `EVAL_REPORT_NAMES`（防目录穿越白名单）
 - `web/src/components/LearningToolsSection.tsx` 的 `REPORTS` 映射表
 
-## 另外三份不入库
+## 另外三份**开发仓**不入库
 
 `scripts/` 还会输出 `cross_judge_report.md` / `prompt_regression_report.md` /
 `skill-audit-report.md` —— 那三份**没有任何读取方**（前端不读、白名单里也没有），
-跑脚本时落在根目录即可，不必提交。
+跑脚本时落在根目录即可，不必提交。它们各自的内容是：
+
+| 文件 | 是什么 | 生成脚本 |
+|---|---|---|
+| `cross_judge_report.md` | 异源交叉评判（主 judge vs qwen）的逐题分歧率 | `npx tsx scripts/cross-judge.ts` |
+| `prompt_regression_report.md` | 提示词变更后的快速回归通过情况 | `npx tsx scripts/prompt-regression.ts` |
+| `skill-audit-report.md` | 技能 description 四要素完整性审计 | `npx tsx scripts/audit-skill-descriptions.ts` |
+
+⚠ **开源仓库里这三份是历史遗留**（2026-08 之前就在那儿了，早于"开发仓不入库"这个决定），
+2026-09-30 决定**保留**：它们是评测统计，不含工程记录 / 外部产品对照 / 自审交接，
+公开着没有风险，而撤掉反而会让引用过的人困惑。于是两仓在这一点上**有意不一致** ——
+`sync-open.mjs` 每次会把这 3 个报成"残留"，那是预期的，**不要照它提示去删**。
