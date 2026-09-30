@@ -168,6 +168,16 @@ if (!notes) {
 }
 notes = notes || "SocioSeek 自动发布";
 const releaseMeta = {
+  // ⚠ 新 Release 用 SocioSeek, 但**2026-09-30 之前的 32 个历史 Release 有意保持 MarxSphere**。
+  //
+  //   用户 2026-09-30 的决定: 那些 Release 的**安装包附件就叫**
+  //   `MarxSphere Setup 1.4.0.exe` —— 把标题改成 SocioSeek 之后, 标题与附件名对不上,
+  //   点进去会以为下错了东西。它们记录的是"当时的事实"(当时产品确实叫 MarxSphere)。
+  //   **别"顺手"把历史 Release 改名。** 32 个里 29 个是这句自动生成的, 另 3 个
+  //   (v0.1.0 / v0.2.0 / v1.2.0) 有自定义副标题。
+  //
+  //   顺带: 上面那段"已存在则只 PATCH name/draft/prerelease"的降级逻辑**会让老 Release
+  //   继续保持 MarxSphere** —— 重打旧 tag 时不会被这句改掉, 这是对的, 别当 bug 修。
   name: `SocioSeek ${tag} — 自动发布`,
   body: notes,
   draft: false,
