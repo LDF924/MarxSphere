@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 """
-brand-lockup.py — 从「已合成的组合标」重排四周留白。
+brand-lockup.py — 给组合标去掉四周的多余留白。**只裁切, 一个像素都不重画。**
 
-由来(2026-09-30): 用户第二次说 logo 的问题 ——「仓库的 logo 的图, 没截好, 四周空白太多」。
-  上一轮我只改了 `brand-assets.py`(管应用图标), 没动 README 抬头的组合标, 于是它的毛病原样留着:
+═══ 这条脚本存在的理由, 是一串我自己犯的错 ═══
 
-    · 画布 512×347, 而内容(鲸鱼+字标)只占 **211×281**, 即横向 41% / 纵向 81%
-    · 左右各留 151px 空白(占宽 29%), 顶上 60px、底下 7px
-    · 结果在 README 里按 width=200 渲染时, 内容只有 82px 宽 —— 这就是"缩得那么小"
+用户给的母版 `群学求真LOGO.png` 是**鲸鱼 + 「群学求真」(粗体, 在上) + 「SocioSeek」(在下)**。
+仓库 README 抬头那张却一度是这样的:
 
-  ⚠ 别再"重新合成一份": 字标是上一轮按「英文为主、中文小字在下」重排过的**有意形态**,
-    鲸鱼也是从母版定位裁下来的。重新用字体去描一遍, 字体一换(stranger 的形状)
-    整张图就跟母版不像了 —— 那份教训在 `brand-assets.py` 的 --bg 注释里记着。
-    这里只做**裁切与重排**, 像素一个不重画。
+  · 一轮: 我按「英文为主、中文小字在下」**重新合成**了一份 —— 字体一换就跟母版不像,
+    用户直接说"和原来的这个差距这么大"。**字标是有意形态, 不要用字体去重描。**
+  · 又一轮: 画布 512×347 而内容只占 211×281(横向 41%), 左右各空 151px —— 用户说
+    "缩得那么小, 四周全是空白"。
+  · 又一轮: 我修裁切时画布**沿用了写死的 3:4 比例**, 而内容比例是 0.907 —— 画布比内容窄,
+    内容被等比缩小后两头被切掉, **鲸鱼的尾巴直接没了**。
 
-用法:
-    python scripts/brand-lockup.py <输入png> <输出png> [--fill 0.88] [--canvas 384x512]
+最后定下来的做法只有两步, 都在这里:
+  1. 量出内容框(用**原图自己的**底色作判据 —— 写死常量会因为差 3 而把整张图判成内容);
+  2. 裁到内容, 四周只加一点点呼吸位, 画布**取内容自己的比例**、**不透明**、不缩不放。
+
+⚠ 画布必须不透明: 透明底在 GitHub 浅色主题下会露白纸, 而这套 logo 的文字是白的 —— 一露白就看不见。
+
+用法(默认参数即为定稿):
+    python scripts/brand-lockup.py <母版png> <输出png>
+
+验证方式(必须做): 把输出与母版各自量出内容框, 两者的内容区应当**逐像素完全相同**
+(`np.array_equal` 为 True)。2026-09-30 实测为真。
 """
 import sys, os, argparse
 import numpy as np
@@ -64,7 +73,13 @@ def main():
     a = np.array(im)
     # 用合成到纯底上的结果判内容 —— 原图可能是透明的
     flat = Image.alpha_composite(Image.new("RGBA", im.size, BG + (255,)), im).convert("RGB")
-    bb = content_bbox(np.array(flat), BG)
+    # ⚠ **底色要取原图自己的, 不能写死 BG**。
+    #   2026-09-30 实测: 母版的深藏青是 (16,22,36), 而脚本常量 BG=(16,22,33) —— 差 3。
+    #   拿 BG 当判据去量母版, 整张图都会被判成"内容"(距离和 = 3 但铺满全图),
+    #   内容框变成整幅画布, 裁切就完全失真。
+    #   而且画布**必须是不透明的**: 透明底在 GitHub 浅色主题下会露白, 白字直接看不见。
+    src_bg = tuple(int(v) for v in np.array(flat)[3, 3])
+    bb = content_bbox(np.array(flat), src_bg)
     if not bb:
         print("✗ 整张图都是背景色 —— 阈值或输入有问题"); return 2
     x0, y0, x1, y1 = bb
@@ -89,31 +104,42 @@ def main():
     #   所以: 能填满就填满(fill=1.0), 只在长宽比**不匹配**时才用 fill 留边。
     #   另外**绝不放大** —— 放大只让像素变糊, 不会真的变清晰。
     target_long = args.long or max(cw, ch)
-    W, H = canvas_for(target_long)
-    scale = min(W / cw, H / ch, 1.0)
-    fill_eff = args.fill if abs(cw / ch - rw / rh) > 0.05 else 1.0
-    scale = min(scale, 1.0) * fill_eff if fill_eff < 1.0 else scale
-    nw, nh = max(1, round(cw * scale)), max(1, round(ch * scale))
+
     if args.long == 0:
-        # 画布跟着内容走: 只加一点点呼吸位 —— 这就是"去掉四周空白"
-        pad = round(max(nw, nh) * args.pad)
-        W, H = canvas_for(max(nw, nh) + 2 * pad)
+        # ⚠ **画布比例必须取内容自己的比例**, 不能套 --ratio 的默认值。
+        #   2026-09-30 实测踩到: 母版内容是 362×399(比例 0.907, 接近方), 而默认 ratio 是 3:4(0.75)
+        #   —— 按 3:4 算出的画布比内容**更窄**, `scale = min(W/cw, H/ch)` 取到宽度那一项,
+        #   内容被等比缩小后又**横向居中裁掉两头, 鲸鱼的尾巴直接被切没了**。
+        #   `--ratio` 只在**显式指定画布尺寸**时才该起作用; 跟随内容时它没有任何意义。
+        pad = round(max(cw, ch) * args.pad)
+        rw, rh = cw, ch                        # 跟随内容时, 比例就是内容的比例
+        W, H = canvas_for(max(cw, ch) + 2 * pad)
+        nw, nh = cw, ch                        # 不缩不放, 原样贴上
+        scale = 1.0
     else:
+        W, H = canvas_for(target_long)
+        scale = min(W / cw, H / ch, 1.0)
+        fill_eff = args.fill if abs(cw / ch - rw / rh) > 0.05 else 1.0
+        scale = scale * fill_eff if fill_eff < 1.0 else scale
+        nw, nh = max(1, round(cw * scale)), max(1, round(ch * scale))
         if nw > W or nh > H:
             print(f"  ! 指定画布 {W}×{H} 装不下内容 {nw}×{nh} —— 已改按内容定尺寸")
             pad = round(max(nw, nh) * args.pad)
+            rw, rh = nw, nh
             W, H = canvas_for(max(nw, nh) + 2 * pad)
 
     crop = im.crop((x0, y0, x1 + 1, y1 + 1))
     if (nw, nh) != (cw, ch):
         crop = crop.resize((nw, nh), Image.LANCZOS)
 
-    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    # ⚠ **不透明画布, 底色取原图自己的** —— 透明底在 GitHub 浅色主题下会露白纸,
+    #   而这套 logo 的文字是白的, 一露白就整个看不见。母版本身也是不透明深底。
+    canvas = Image.new("RGBA", (W, H), tuple(src_bg) + (255,))
     canvas.paste(crop, ((W - nw) // 2, (H - nh) // 2), crop)
 
     # 输出前的自检: 重排之后内容该占多少 —— 量出来的, 不是算出来的
-    out = Image.alpha_composite(Image.new("RGBA", (W, H), BG + (255,)), canvas).convert("RGB")
-    ob = content_bbox(np.array(out), BG)
+    out = canvas.convert("RGB")     # 已是不透明, 不必再合成
+    ob = content_bbox(np.array(out), src_bg)
     ow, oh = ob[2] - ob[0] + 1, ob[3] - ob[1] + 1
     print(f"输出 {W}×{H}  内容 {ow}×{oh}  →  占宽 {100*ow/W:.0f}% / 占高 {100*oh/H:.0f}%")
     print(f"  新留白: 左{ob[0]} 右{W-1-ob[2]} 上{ob[1]} 下{H-1-ob[3]}")
