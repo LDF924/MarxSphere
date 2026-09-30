@@ -22,11 +22,13 @@
 >
 > Teaching is an extension on the same substrate (BKT mastery / adaptive paths / lesson prep); teaching and research share one knowledge base.
 
-**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Three reasons:
+**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Five reasons:
 
 1. **Traceable evidence** (Library · Reason Lab · Truth · Graph) — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
 2. **Methodology, not chat** (Empirical · Statistics · Citation Verify · Format Eval · Review Studio) — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
 3. **Auditable end to end** (Eval · Tasks · Trace · Billing) — 31 eval metrics, real token spend, step-level execution logs, cost write-back
+4. **Benches hand data to each other — no copy-paste between them** — a survey goes through reliability tests and imputation into regression, then lands in the evidence ledger; statistical results **flow back into manuscript sections** in one click; figures from Viz Studio become **Writing Studio material** in one click; empirical findings go through Citation Verify before entering the text. One dataset moves across benches — nothing re-keyed, nothing exported and re-imported
+5. **Chinese social science first, not an English tool translated** — methodology follows domestic C-journal practice (four-step topic selection / topic matrix / paradox framing / editorial three-criteria check / outward-review translation): an 80-journal Marxist-theory library, GB/T 7714 citation format, 6 Chinese thesis and promotion-paper templates, a three-engine Chinese literature graph. **Built for how Chinese social scientists actually work — not a generic English assistant with a Chinese skin**
 
 > All 18 benches are listed in [**Research Workbenches**](#-research-workbenches-all-18-tabs-under-research) below — Library / Imports / Sciverse / Scenarios / Education / Empirical / Statistics / Structure / Citation Verify / Format Eval / PDF2Obsidian / C-Journal / Corpus / Writing Studio / Flow Orchestrator / Review Studio / Viz Studio / Editor Studio.
 
@@ -102,14 +104,18 @@
 
 ### 🖼 UI at a Glance
 
+**Research workbenches first** — the first three rows are all benches under Research:
+
 | | | |
 |---|---|---|
-| **AI Chat** (default home) | **52-Step Reasoning** | **Ask Search** |
-| ![AI Chat](docs/assets/sag-assistant.png) | ![Reasoning](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
-| **Knowledge Graph** | **Literature Library** | **Research Scenario Workbench** |
-| ![Graph](docs/assets/sag-graph.png) | ![Library](docs/assets/sag-literature.png) | ![Scenarios](docs/assets/sag-scenarios.png) |
-| **Agent Console** | **Empirical Workbench** | **Evaluation** |
-| ![Agent](docs/assets/sag-agent-console.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Eval](docs/assets/sag-eval.png) |
+| **Library** (full-PDF deep read) | **Empirical Workbench** (19 econometric methods) | **Statistics** (17 analyses) |
+| ![Library](docs/assets/sag-literature.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Statistics](docs/assets/sag-statistics.png) |
+| **Review Studio** (sectional review + annotations) | **Writing Studio** (six stages) | **Editor Studio** (drafting + rollback) |
+| ![Review Studio](docs/assets/sag-review-lab.png) | ![Writing Studio](docs/assets/sag-paper-outline.png) | ![Editor Studio](docs/assets/sag-editor.png) |
+| **Flow Orchestrator** (one sentence → runnable DAG) | **Citation Verify** (three dimensions) | **Scenarios** (78 × 16 stages) |
+| ![Flow Orchestrator](docs/assets/sag-dag-workbench.png) | ![Citation Verify](docs/assets/sag-citation-verify.png) | ![Scenarios](docs/assets/sag-scenarios.png) |
+| **52-Step Reasoning** (evidence-bound) | **Ask Search** (18-step pipeline) | **Knowledge Graph** (three engines) |
+| ![Reasoning](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) | ![Graph](docs/assets/sag-graph.png) |
 
 > All 48 nav-tab screenshots live in [docs/assets/](docs/assets/) (`sag-*.png`).
 >
