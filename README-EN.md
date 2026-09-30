@@ -8,7 +8,11 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+<<<<<<< HEAD
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1293%20passed-green" alt="Tests" /></a>
+=======
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1287%20passed-green" alt="Tests" /></a>
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -22,11 +26,13 @@
 >
 > Teaching is an extension on the same substrate (BKT mastery / adaptive paths / lesson prep); teaching and research share one knowledge base.
 
-**Research first**, for three reasons:
+**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Three reasons:
 
-1. **Traceable evidence** — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
-2. **Methodology, not chat** — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
-3. **Auditable end to end** — 31 eval metrics, real token spend, step-level execution logs, cost write-back
+1. **Traceable evidence** (Library · Reason Lab · Truth · Graph) — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
+2. **Methodology, not chat** (Empirical · Statistics · Citation Verify · Format Eval · Review Studio) — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
+3. **Auditable end to end** (Eval · Tasks · Trace · Billing) — 31 eval metrics, real token spend, step-level execution logs, cost write-back
+
+> All 18 benches are listed in [**Research Workbenches**](#-research-workbenches-all-18-tabs-under-research) below — Library / Imports / Sciverse / Scenarios / Education / Empirical / Statistics / Structure / Citation Verify / Format Eval / PDF2Obsidian / C-Journal / Corpus / Writing Studio / Flow Orchestrator / Review Studio / Viz Studio / Editor Studio.
 
 **Retrieval substrate**: SAG event-centric hybrid retrieval-augmented generation — a four-source fusion of **SAG (event retrieval) + Graphiti (hyperedges/communities) + Cognee (HYBRID chunks) + PG (vector/lexical)**, combined with a 52-step reasoning chain for traceable, auditable research Q&A.
 
@@ -422,7 +428,11 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
+<<<<<<< HEAD
 **Unit tests**: 1293 green (CI continuous)
+=======
+**Unit tests**: 1287 green (CI continuous)
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ---
 
@@ -522,7 +532,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 ## Engineering Depth & Platform Capabilities
 
 > The research workbenches are listed above under
-> [Research Workbenches](#-research-workbenches-all-17-tabs-under-research);
+> [Research Workbenches](#-research-workbenches-all-18-tabs-under-research);
 > this section covers only the **substrate they run on**.
 
 | Capability | Description |
@@ -539,7 +549,11 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
 | 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
 | 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
+<<<<<<< HEAD
 | 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1293 unit tests / 21-operator ablation / CI |
+=======
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1287 unit tests / 21-operator ablation / CI |
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ## Tech Stack
 
@@ -574,13 +588,21 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
+<<<<<<< HEAD
 npm test                # 1293 unit tests
+=======
+npm test                # 1287 unit tests
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
+<<<<<<< HEAD
 Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1293 unit tests green; CI continuous; 53-question eval 0.884).
+=======
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1287 unit tests green; CI continuous; 53-question eval 0.884).
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ## License
 
@@ -608,7 +630,11 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
+<<<<<<< HEAD
 | ✅ Unit tests | `npm test` (1293, CI green) |
+=======
+| ✅ Unit tests | `npm test` (1287, CI green) |
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |

@@ -6,7 +6,11 @@
 
 ```bash
 npm run typecheck   # 前后端类型检查（改代码后必跑）
+<<<<<<< HEAD
 npm test            # 1293 项单元测试
+=======
+npm test            # 1287 项单元测试
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 npx tsx src/index.ts  # 单跑后端(仅 4173; 无 5173/dev server)
 ```
 

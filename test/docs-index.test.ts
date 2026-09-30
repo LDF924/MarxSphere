@@ -192,6 +192,65 @@ describe("doc-sync 不许改坏标题结构", () => {
 });
 
 /**
+ * README 里的**文内锚点必须跳得到**。
+ *
+ * 由来(2026-09-30): 科研工作台从 17 改成 18 之后, 标题(表头)由 doc-sync 的数字规则
+ *   自动更新了, 而**锚点链接是手写的**: `#-科研工作台一览科研中心-17-个-tab逐个列出`。
+ *   于是点了没反应 —— 而这种断法既不报错、也看不出是坏的(链接样式正常)。
+ *   实测三份 README 里各有一处。
+ *
+ * 判据: 把文件里的 `](#xxx)` 抠出来, 按 GitHub 的 slug 规则把标题转成锚点, 两边对。
+ *   只查**文内锚点**(以 `#` 开头); 跨文件的 `path#anchor` 与纯 URL 不在射程内。
+ */
+describe("README 的文内锚点必须能跳到真实标题", () => {
+  const NEWLINE = String.fromCharCode(10);
+
+  /**
+   * GitHub 的标题 → 锚点。**顺序很重要, 我第一版写反了**:
+   *
+   *   GitHub 是「先 trim, 再删非字母数字字符, 最后空格变连字符」。
+   *   于是 `### ✨ Features` 里的 emoji 被删后**留下一个前导空格**, 再变成**前导连字符**
+   *   —— 真锚点是 `#-features`, 不是 `#features`。这是 GitHub 一个众所周知的怪癖。
+   *
+   *   我第一版把 `.trim()` 放在了删字符**之后**, 前导空格被吃掉了, 算出来是 `features`
+   *   —— 于是三份 README 全报假红(它们用的 `#-xxx` 其实是对的)。
+   *   **判据自己错了, 却报得像被测对象错了。**
+   */
+  function slug(heading: string): string {
+    return heading
+      .toLowerCase()
+      .trim()                                          // ← 必须在这儿
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")               // 丢掉 emoji 与各类标点(含全角括号、逗号)
+      .replace(/\s/g, "-");                            // 每个空格变一个连字符(与 GitHub 一致)
+  }
+
+  for (const f of ["README.md", "README-CN.md", "README-EN.md"]) {
+    it(`${f}: 每个 #锚点都有对应标题`, () => {
+      const full = path.join(ROOT, f);
+      if (!existsSync(full)) return;
+      const txt = readFileSync(full, "utf8");
+
+      const headings = new Set<string>();
+      for (const line of txt.split(NEWLINE)) {
+        const m = /^#{1,6}\s+(.+?)\s*$/.exec(line);
+        if (m) headings.add(slug(m[1]));
+      }
+
+      const links = [...txt.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]);
+      // 判据自证: 一篇 README 总该有几个文内锚点
+      expect(links.length, `${f} 里一个文内锚点都没抠到 —— 判据自己坏了`).toBeGreaterThan(0);
+
+      const broken = links.filter((a) => !headings.has(a));
+      expect(
+        broken,
+        "这些锚点跳不到任何标题(点了没反应, 而链接样式一切正常):" + NEWLINE +
+          broken.map((a) => `  #${a}`).join(NEWLINE),
+      ).toEqual([]);
+    });
+  }
+});
+
+/**
  * 品牌资产**不能只存在于磁盘上**。
  *
  * 由来(2026-09-29 换标): `.gitignore` 里有一条全局 `*.png`（V404-35 加的，用于挡冒烟截图）。

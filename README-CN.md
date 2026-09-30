@@ -8,7 +8,11 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
+<<<<<<< HEAD
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1293%20passed-green" alt="Tests" /></a>
+=======
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1287%20passed-green" alt="Tests" /></a>
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -21,7 +25,13 @@
 > 18 个科研工作台覆盖从**选题**到**投稿**的每一步；每一步的结论都绑得到原文切片。
 > 教学是同一底座上的延伸，教学与科研共用知识体系，数据互通。
 
-**科研为主轴**：证据可溯源（52 步逐步绑证据链）· 方法论成体系（实证 19 方法 / 统计 17 类 / 格式 6 模板 / 期刊 80 本）· 全链路可审计（31 项指标 + 真实 token + 成本回填）。
+**科研为主轴，而这条主轴的载体就是 18 个科研工作台** —— 从选题到投稿，每一步都有一个专门的台子，理由有三：
+
+1. **证据可溯源**（文献库 · 推理工作台 · 知识页 · 图谱）—— 52 步推理每一步绑 `chunk → event → entities` 证据链，回答可点击回看原文切片
+2. **方法论成体系**（实证研究 · 数据分析台 · 引文核验 · 格式智能评测 · 论文质量评审）—— 实证 19 方法 / 统计 17 类 / 格式 6 模板 / 期刊 80 本，不是"能聊天"，是"能出稿"
+3. **全链路可审计**（评测 · 任务 · Trace · 账户计费）—— 31 项指标 + 真实 token + 步骤级日志 + 成本回填，每一分钱与每一步都留痕
+
+> 18 个工作台见下方 [**科研工作台一览**](#-科研工作台一览科研中心-18-个-tab逐个列出)——文献库 / 文献管理 / 外部检索 / 场景 / 教育 / 实证研究 / 数据分析台 / 结构解析 / 引文核验 / 格式智能评测 / PDF2Obsidian / 政经C刊科研 / 写作语料库 / 研途写作舱 / 课题流程编排 / 论文质量评审 / 成果可视化工坊 / 学术文本工作台。
 
 **检索底座**：SAG 事件中心混合检索增强生成 —— **SAG（事件检索）+ Graphiti（超边/社区）+ Cognee（HYBRID 切片）+ PG（向量/词法）四源融合**，配合 52 步推理链路实现可溯源、可审计的科研问答。
 
@@ -436,7 +446,11 @@ SocioSeek 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆�
 **Agent 轨迹评测**：计划遵循度 / 工具准确率 / 推理质量（judge 打分）+ 学习曲线
 **学习引擎**：显著性 / 归因 / 轨迹前缀 / 校准（kappa=1.0）/ 模型替换基建
 **消融体系**：21 个可消融算子（检索栈 12 + 推理链路 9），`scripts/ablation-eval.ts` 可逐项验证组件贡献
+<<<<<<< HEAD
 **单元测试**：1293 项全绿(CI 持续)
+=======
+**单元测试**：1287 项全绿(CI 持续)
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ---
 
@@ -535,7 +549,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 
 ## 工程纵深与平台能力
 
-> 科研工作台逐个见上文「[科研工作台一览](#-科研工作台一览科研中心-17-个-tab逐个列出)」；
+> 科研工作台逐个见上文「[科研工作台一览](#-科研工作台一览科研中心-18-个-tab逐个列出)」；
 > 这里只列**支撑它们运行的底座**。
 
 | 能力 | 说明 |
@@ -552,7 +566,11 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🔑 **外部服务密钥** | 有效期登记 + 手动校验 + 每日巡检告警；上传扫描件自动 OCR 识别回填 |
 | 📂 **文件原语** | 上传文件按 fileId 取纯文本（审稿直投、对话读文件同一套底座） |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导（安装包 159MB） |
+<<<<<<< HEAD
 | 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1293 单测 / 消融 21 算子 / CI |
+=======
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1287 单测 / 消融 21 算子 / CI |
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ## 技术栈
 
@@ -579,7 +597,11 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明，60 份）
 migrations/          PostgreSQL schema（165 个迁移）
 plugins/             Agent 插件目录
+<<<<<<< HEAD
 test/                单元测试（1293 项）
+=======
+test/                单元测试（1287 项）
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选 / 上传文件 / 作业与可视化产物）
 ```
@@ -589,13 +611,21 @@ data/                运行时数据（金标候选 / 上传文件 / 作业与�
 ## 测试
 
 ```bash
+<<<<<<< HEAD
 npm test                # 1293 项单元测试
+=======
+npm test                # 1287 项单元测试
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
+<<<<<<< HEAD
 本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1293 项单元测试全绿，53 题评测 0.884）。
+=======
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1287 项单元测试全绿，53 题评测 0.884）。
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 
 ## License
 
@@ -623,7 +653,11 @@ npm run typecheck       # 前后端类型检查
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
 | 📊 运行截图 | [docs/assets/](docs/assets/)（49 个视图截图 + 架构图/痛点图/论文架构图） |
 | 📈 评测报告样例 | `reports/`（4 份：显著性 / 失败归因 / 轨迹前缀 / 评判者校准，前端学习引擎面板读取）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
+<<<<<<< HEAD
 | ✅ 单元测试 | `npm test`（1293 项, CI 全绿） |
+=======
+| ✅ 单元测试 | `npm test`（1287 项, CI 全绿） |
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 | 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 检索：开源仓库 `examples/seed-corpus/`（50 篇种子语料）· 评测：`evaluation/gold_dataset.json`（53 题金标，仅在开源仓库，本地用根目录 `eval_32metrics.json`）· 图谱：`knowledge-graph/` |

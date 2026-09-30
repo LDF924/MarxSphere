@@ -23,7 +23,11 @@ Fixes #（填写 issue 编号）
 ## 验证（Testing）
 
 - [ ] `npm run typecheck` 通过
+<<<<<<< HEAD
 - [ ] `npm test`（1293 项）通过
+=======
+- [ ] `npm test`（1287 项）通过
+>>>>>>> 5031b2ce (docs(README): 「科研为主轴」三条里点名科研工作台 + About 重写 + 锚点守卫)
 - [ ] 手动验证了相关功能
 
 验证步骤说明：
