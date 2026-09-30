@@ -3,7 +3,7 @@
 > AI Agent 子系统的完整能力归档。对标 OpenAI Codex + DeepSeek Harness 开源实现。
 >
 > **规模（由 `npm run docs:check` 持续校准）**：**158 个 agent 工具**（102 通用 + 56 视图）
-> ｜**191 项编排能力**（可从编排画布调度的全集）｜教育专属 Agent（13 个教育服务文件、122 教育路由 + 学习引擎顶层 39）。
+> ｜**191 项编排能力**（可从编排画布调度的全集）｜教育专属 Agent（9 个教育服务文件、122 教育路由 + 学习引擎顶层 39）。
 >
 > ⚠ 本文只写**能力面**。工具名与中文标签的**真源**是运行时的 `/api/agent/tools`
 > （前端不再持有清单 —— 曾经手抄过一份，烂掉了 37/74）。要列当前全量工具：
@@ -116,7 +116,7 @@ Agent 子系统的迁移从 068 起，**至今已到 165**（全库迁移总数�
 |---|---|
 | OpenAI Codex | 工具 registry/parallel、3级沙箱、guardian 策略、compact 预算、approval modes、AGENTS.md、网络审批、分派追踪、turn 元数据、prewarm |
 | DeepSeek Harness | goal-round checkpoint、subagent 调外部Agent、hooks、preset、apply_patch、todo、spill、subprocess、session-query、feedback、credentials |
-| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、66 科研场景 |
+| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、78 科研场景 |
 
 ## 十、验证状态（2026-08-16）
 

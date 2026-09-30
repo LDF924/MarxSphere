@@ -106,20 +106,22 @@ const DIRS = ["src", "web/src", "web/public", "web/socialsci-vue", "test", "migr
   //   共同点是"不在任何已列目录下", 属整目录/散文件漏掉 —— 与 V415 漏 CLAUDE.md、
   //   V418 漏一批文档是同一个病: **漏的原因是文件没进列表, 不是规则写错**。
   "build",
-  // ⚠ 2026-09-30 补 reports/ —— 它此前**既不在 DIRS 也不在 EXCLUDE_DIR 的例外里**,
-  //   于是那 4 份评测报告样例永远同步不到开源仓。症状: 开源仓 reports/ 里只有历史遗留的
-  //   旧文件、缺 reports/README.md, 而 README 又写着"reports/ 在开源仓库里"。
-  //   与 V415 漏 CLAUDE.md、V418 漏一批文档同病: **漏的原因是文件没进列表**。
-  "reports",
-];
+  // ⚠ 2026-09-30 补 reports/ —— 它此前**既不在 DIRS 又在 EXCLUDE_DIR 里被排除**,
+  //   于是那 4 份评测报告样例永远同步不到开源仓。
+  //   那 4 份是前端「学习引擎」面板的读取对象(`EVAL_REPORT_NAMES` 白名单), 删了前端
+  //   四张卡会**静默空白**(API 返回空数组、不报错), 所以必须随仓分发。
+  "reports"];
 // web/ 根目录下的散文件不属任何子目录, 单独列出并接进同步循环(见下方 for)。
+// ⚠ 只声明不消费等于没加 —— WEB_ROOT_FILES 必须在下面**真的接进收集循环**与 inSyncScope。
 const WEB_ROOT_FILES = ["web/index.html"];
 const ROOT_FILES = ["README.md", "README-CN.md", "README-EN.md", "CHANGELOG.md", "BENCHMARK.md", "AGENTS.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "CLAUDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "package.json", "package-lock.json", "docker-compose.yml", "tailwind.config.js", "vite.config.ts", "postcss.config.js", "tsconfig.json", "tsconfig.build.json", "electron-builder.yml", "vitest.config.ts", "vite.preview.config.ts"];
 const EXCLUDE_DIR = new Set(["node_modules", "dist", ".git", ".cache", ".vite", "release", "resources", "backups", "data", ".claude", "memory", "eval-archive", "knowledge-graph", "skills", "__pycache__"]);
-// ⚠ 2026-09-30 把 "reports" 从排除表里去掉 —— 它此前被排除, 导致 reports/ 里的
-//   4 份评测报告**样例**永远同步不到开源仓; 而 README 又写着"reports/ 在开源仓库里",
-//   两边都不对。那 4 份是前端「学习引擎」面板的读取对象(EVAL_REPORT_NAMES 白名单),
-//   删了前端四张卡会**静默空白**, 所以必须随仓分发。
+// ⚠ 2026-09-30 把 "reports" 从上面这张排除表里**去掉**了。
+//   它此前被排除, 后果是那 4 份评测报告样例永远同步不过去; 而三份 README 又写着
+//   "reports/ 在开源仓库里" —— 两边都不对。
+//   历史教训: 光从 EXCLUDE_DIR 移除**不够**, 还得同时进 DIRS —— 同步只遍历 DIRS,
+//   一次漏两处, 只改一处等于没改(实测过)。
+//   reports/README.md 里写着这几份谁在读、删了会怎样、改名要同改哪两处。
 /**
  * ⚠ 2026-09-25 补: **五份方法论文档 + 一个逆向脚本不进开源仓**。
  *

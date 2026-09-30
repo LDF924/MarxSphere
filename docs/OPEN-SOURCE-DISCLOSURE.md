@@ -16,7 +16,7 @@
 | MCP 服务 | `npm run mcp` | 标准 I/O MCP Server（10 个工具：检索/入库/执行/grep/大纲/文档/chunk 等） |
 | OpenAI 兼容 | `POST /api/openai/chat/completions` | 外部 OpenAI 客户端把本地知识库当"模型"调用（含 citations） |
 | 备份 | `npx tsx scripts/backup-now.ts` | 知识库轻量备份 .sagbak（PG + Graphiti/Cognee 图谱 + 清单校验） |
-| 测试 | `npm test` | 1271 项单元测试 |
+| 测试 | `npm test` | 1293 项单元测试 |
 | 数据库 | `npm run db:setup` | 迁移 + 种子数据 |
 
 ### 依赖说明
@@ -75,7 +75,7 @@
 
 ### 置信度
 - 检索结果带**分数排序**（RRF 加权分 / Cosine 相似度）
-- 评测系统输出 32 项指标（检索质量 A / 答案质量 B / 推理质量 C / 效率 D）
+- 评测系统输出 31 项指标（检索质量 A / 答案质量 B / 推理质量 C / 效率 D）
 - Agent 轨迹评测含计划遵循度 / 工具准确率 / 推理质量 judge 打分
 
 ### 人工确认机制
@@ -243,22 +243,30 @@
 ## 10. 运行验证
 
 ### 截图
-- `docs/assets/sag-home.png` — 首页（马克思语录 + 数据总览 + 推理动画）
-- `docs/assets/sag-chat.png` — 对话界面
-- `docs/assets/sag-reason.png` — 52 步推理链路
-- `docs/assets/sag-ask.png` — Ask 18 步检索流水线
+
+导航里 **47 个 tab** 逐个都有真实截图，在 [assets/](assets/)（`sag-*.png` 共 48 张）。常用几张：
+
+- `docs/assets/sag-assistant.png` — AI 对话（默认落地页）
+- `docs/assets/sag-reason.png` — 推理工作台（52 步推理链路）
+- `docs/assets/sag-ask.png` — Ask 检索（18 步流水线）
 - `docs/assets/sag-literature.png` — 文献库
 - `docs/assets/sag-graph.png` — 知识图谱探索
-- `docs/assets/sag-scenarios.png` — 科研场景工作台
+- `docs/assets/sag-scenarios.png` — 科研场景工作台（78 场景 / 16 研究阶段）
 - `docs/assets/sag-empirical-research.png` — 实证研究工作台
 - `docs/assets/sag-agent-console.png` — Agent 控制台
 - `docs/assets/sag-eval.png` — 评测工作台
 - `docs/assets/socioseek-architecture.svg` — 系统架构图（8 层完整架构）
 
+> ⚠ 这批图由 `node scripts/capture-screenshots.mjs` 生成，**不能手工换图**：
+>   脚本会登录后逐个切 hash、核对主内容区标题确实是该视图，并比对全批图的哈希。
+>   2026-08-27 那批之所以有 11 张是**逐字节相同**的对话空态（文件名却各不相同），
+>   就是因为当时先 `loadURL` 再改 hash —— 改 hash 不触发已完成的加载，图就没换。
+>   判据在脚本里，别只靠文件名。
+
 ### 评测指标
-- `docs/SCORING_STANDARD.md` — 32 项评测指标定义
+- `docs/SCORING_STANDARD.md` — 31 项评测指标定义
 - `reports/` — 评测报告样例（cross_judge/significance/tp/kappa/failure/prompt_regression/skill-audit）
-- 1271 项单元测试（`npm test`）
+- 1293 项单元测试（`npm test`）
 - 53 题双轨评测（规则评分 + LLM judge）overall 0.884（`scripts/eval-32-metrics.ts`）
 
 ---

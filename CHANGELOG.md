@@ -238,7 +238,7 @@
 ### 桌面端发布（marx-icon）
 
 - 桌面端 v0.2.2（Marx 图标）打包发布，安装包上传 GitHub Release
-- 马克思图标纳入仓库（`docs/assets/marx-logo-512.png` / `marx-logo.png`）
+- 马克思图标纳入仓库（`docs/assets/marx-logo-512.png` / `marx-logo.png` —— **已随 2026-09-30 换标移除**，现为 `docs/assets/logo.png`；此处保留当时的文件名不改，属历史记录）
 
 ### 示例数据与文档
 

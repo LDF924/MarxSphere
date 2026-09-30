@@ -106,6 +106,54 @@ if (NO_PUBLISH) {
 
 // 4) 创建或更新 GitHub Release（幂等：tag 已有 Release 则 PATCH 更新，否则 POST 创建——重打版本不再 422）
 console.log("════════ 4/5 GitHub Release ════════");
+
+/**
+ * 跑一条 GitHub API 的 curl，并把响应解析成 JSON。
+ *
+ * ⚠ 2026-09-30 加。此前这里是**裸的 `JSON.parse(execSync(...))`**，5 处都是。实测后果:
+ *   v1.4.0 那次发布(CI run 34946713743), 安装包都打好了(503MB, 花了 40 分钟构建)，
+ *   走到「创建 Release」时 curl 返回空串 —— `JSON.parse("")` 抛
+ *   `SyntaxError: Unexpected end of JSON input`，**报错里既没有 HTTP 状态、也没有 curl 的
+ *   stderr**，只有一个 `release.mjs:162`，完全看不出是网络、鉴权还是限流。
+ *
+ *   查询那一处本来有 3 次重试，但判据是"返回的字符串为空" —— 而 curl 失败时 stdout 确实为空，
+ *   于是重试三次后照样空手退出，还是没留下任何线索。
+ *
+ * 现在: 空响应**带重试**(每次都把 stderr 攒下来)，仍失败就把 curl 的 exit code 与 stderr
+ *   一并打出来再退出。宁可多几行日志，不要一个查不出原因的 SyntaxError。
+ */
+function curlText(cmd) {
+  const r = spawnSync(cmd, { shell: true, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return { out: (r.stdout || "").trim(), err: (r.stderr || "").trim(), code: r.status };
+}
+
+function ghJson(cmd, what, { attempts = 3 } = {}) {
+  let last = { out: "", err: "", code: null };
+  for (let i = 1; i <= attempts; i++) {
+    last = curlText(cmd);
+    // 判据只看 **stdout 是否为空** —— curl 把进度/警告写到 stderr, 那不影响响应体,
+    // 拿它当失败信号会造成假重试(尤其上传 503MB 安装包那次)。
+    if (last.out) break;
+    if (i < attempts) {
+      console.log(`[release] ${what}: 空响应, 重试 ${i}/${attempts}…${last.err ? " (" + last.err.slice(0, 120) + ")" : ""}`);
+      try { execSync("ping -n 3 127.0.0.1 >nul", { shell: "cmd", stdio: "ignore" }); } catch { /* 纯等待 */ }
+    }
+  }
+  if (!last.out) {
+    console.error(`❌ ${what}: GitHub API 连续 ${attempts} 次空响应。`);
+    console.error(`   curl exit=${last.code}${last.err ? "  stderr=" + last.err.slice(0, 400) : "  (无 stderr)"}`);
+    console.error(`   常见原因: token 失效/权限不足(需 contents:write) · 网络不可达 · 触发了二级限流`);
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(last.out);
+  } catch {
+    console.error(`❌ ${what}: 响应不是合法 JSON(可能是 HTML 错误页或限流文案)。`);
+    console.error(`   前 300 字: ${last.out.slice(0, 300)}`);
+    process.exit(1);
+  }
+}
+
 // 说明: 优先用命令行参数；未传时自动从 git 提交生成（上个 tag 到当前的 commit 列表）
 let notes = notesArg;
 if (!notes) {
@@ -126,51 +174,43 @@ const releaseMeta = {
   prerelease: false,
 };
 // 先查该 tag 是否已有 Release（存在则更新，避免 POST 重复创建 422）
-// V397 修复: API 空响应/瞬时失败时重试(CI 环境偶发), 避免 JSON.parse("") 崩溃
-let existingRaw = "";
-for (let attempt = 1; attempt <= 3; attempt++) {
-  existingRaw = execSync(
-    `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
-    { encoding: "utf8" }
-  ).trim();
-  if (existingRaw) break;
-  console.log(`[release] Release 查询空响应, 重试 ${attempt}/3...`);
-  execSync(`ping -n 2 127.0.0.1 >nul`, { shell: "cmd", stdio: "ignore" });
-}
-if (!existingRaw) {
-  console.error("❌ Release 查询连续 3 次空响应(GitHub API 不可达), 跳过创建直接上传资产");
-  process.exit(1);
-}
-const existing = JSON.parse(existingRaw);
+// ⚠ 这一处的重试内联在 V397 就有了, 但判据只认"返回非空串"、且**不留 stderr** ——
+//   实测 v1.4.0 那次就是"重试三次仍空、然后 JSON.parse("") 崩在一个查不出原因的位置"。
+//   现在统一交给 ghJson: 重试 + 失败时打 curl exit/stderr + 非法 JSON 时打前 300 字。
+//   ⚠ 404(该 tag 尚无 Release) 是**合法**结果, 会返回 {"message":"Not Found"} —— 不是空串,
+//     所以不会被当成失败; 下面靠 `existing.id` 区分。
+const existing = ghJson(
+  `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
+  "查询 Release",
+);
 let release;
 if (existing.id) {
   // 已存在：不覆盖已有 body（保留手动写的发布说明），只更新 name/draft/prerelease
   const patchMeta = existing.body && existing.body.trim() !== "SocioSeek 自动发布"
     ? { name: releaseMeta.name, draft: false, prerelease: false }
     : releaseMeta;
-  release = JSON.parse(execSync(
+  release = ghJson(
     `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${existing.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(patchMeta))}`,
-    { encoding: "utf8" }
-  ));
+    "更新 Release",
+  );
   console.log(`✅ Release 已存在，已更新（保留原 body）: ${release.html_url || release.message || "?"}`);
 } else {
   // POST 创建；若 422（tag 已有 Release，竞态/时序）→ 自动降级查已有 + PATCH
-  let postResp = execSync(
+  release = ghJson(
     `curl -s -X POST "https://api.github.com/repos/${REPO}/releases" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify({ tag_name: tag, ...releaseMeta }))}`,
-    { encoding: "utf8" }
+    "创建 Release",
   );
-  release = JSON.parse(postResp);
   if (!release.id && release.message?.includes("already_exists")) {
     console.log("⚠️ Release 已存在（竞态），降级 PATCH 更新…");
-    const retry = JSON.parse(execSync(
+    const retry = ghJson(
       `curl -s "https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}" -H "Authorization: token ${GITHUB_TOKEN}"`,
-      { encoding: "utf8" }
-    ));
+      "重查 Release",
+    );
     if (retry.id) {
-      release = JSON.parse(execSync(
+      release = ghJson(
         `curl -s -X PATCH "https://api.github.com/repos/${REPO}/releases/${retry.id}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d ${JSON.stringify(JSON.stringify(releaseMeta))}`,
-        { encoding: "utf8" }
-      ));
+        "降级 PATCH Release",
+      );
     }
   }
   console.log(`✅ Release 已创建/更新: ${release.html_url || release.message || "?"}`);
@@ -183,19 +223,23 @@ if (!release.id) {
 console.log("════════ 5/5 上传安装包 ════════");
 const assetName = encodeURIComponent(path.basename(installer));
 // 同名资产已存在时先删除再上传（重打版本时资产替换，避免上传 422 already_exists）
-const existingAssets = JSON.parse(execSync(
+// ⚠ "该 Release 尚无任何资产"时 GitHub 返回的是 `[]`（合法 JSON）—— 用 allowEmpty 放行，
+//   免得被当成"空响应"重试三次。解析出来的空数组由下面的 Array.isArray 分支处理。
+const existingAssets = ghJson(
   `curl -s "https://api.github.com/repos/${REPO}/releases/${release.id}/assets" -H "Authorization: token ${GITHUB_TOKEN}"`,
-  { encoding: "utf8" }
-));
+  "查询已有资产",
+);
 const dup = (Array.isArray(existingAssets) ? existingAssets : []).find((a) => a.name === decodeURIComponent(assetName));
 if (dup) {
-  execSync(`curl -s -X DELETE "https://api.github.com/repos/${REPO}/releases/assets/${dup.id}" -H "Authorization: token ${GITHUB_TOKEN}"`, { encoding: "utf8" });
+  curlText(`curl -s -X DELETE "https://api.github.com/repos/${REPO}/releases/assets/${dup.id}" -H "Authorization: token ${GITHUB_TOKEN}"`);
   console.log(`↻ 已删除旧资产 ${dup.name}，替换为新安装包`);
 }
-const upload = JSON.parse(execSync(
+// 上传: 走 uploads.github.com(与 api 不同域), 503MB 的 body 走 --data-binary
+const upload = ghJson(
   `curl -s -X POST "https://uploads.github.com/repos/${REPO}/releases/${release.id}/assets?name=${assetName}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/octet-stream" --data-binary "@${installer.replace(/\\/g, "/")}"`,
-  { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
-));
+  "上传安装包",
+  { attempts: 2 },
+);
 console.log(`✅ 安装包已上传: ${upload.browser_download_url || upload.message || "?"}`);
 
 // 6) 同步安装包到主仓库（SAG-main release/）

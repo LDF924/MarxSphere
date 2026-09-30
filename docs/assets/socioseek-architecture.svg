@@ -7,7 +7,7 @@
 </defs>
 <rect width="1200" height="1348" fill="url(#bg)"/>
 <text x="600" y="45" text-anchor="middle" font-size="28" font-weight="bold" fill="#fbbf24">SocioSeek · 群学求真 — 系统架构</text>
-<text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 四源图谱 · 158 工具 · 191 编排能力 · 209 技能 · 科研场景 78（16 阶段）· 科研工作台 17 · 视图 49 · 单测 1271</text>
+<text x="600" y="72" text-anchor="middle" font-size="13" fill="#94a3b8">52 步推理 · 四源图谱 · 158 工具 · 191 编排能力 · 209 技能 · 科研场景 78（16 阶段）· 科研工作台 18 · 视图 49 · 单测 1271</text>
 
 <text x="30" y="126" font-size="16" font-weight="bold" fill="#fbbf24">① 交互层</text>
 <rect x="30" y="136" width="1140" height="86" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
@@ -29,7 +29,7 @@
 <text x="50" y="486" font-size="11" fill="#94a3b8">· 钩子（Stop/PreToolUse/PostToolUse/PermissionRequest/SessionStart）· 世界状态 diff · Steer 转向 · Mailbox 双通道</text>
 <text x="50" y="508" font-size="11" fill="#94a3b8">· 执行租约（DB 级 holder+fencing+TTL，跨进程防双跑）· checkpoint 续跑 · 队列持久化 · 5 层安全 · 5 层记忆</text>
 
-<text x="30" y="566" font-size="16" font-weight="bold" fill="#22c55e">④ 科研工作台（科研中心 17 个 tab）</text>
+<text x="30" y="566" font-size="16" font-weight="bold" fill="#22c55e">④ 科研工作台（科研中心 18 个 tab）</text>
 <rect x="30" y="576" width="1140" height="188" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
 <text x="50" y="600" font-size="11" fill="#94a3b8">· 文献与检索：文献库（全库 PDF 深度阅读）· 文献管理（Zotero/RSS/arXiv/S3/SSH）· 外部检索（Sciverse 四工具）· 引文核验（三维）</text>
 <text x="50" y="622" font-size="11" fill="#94a3b8">· 阅读与规范：PDF2Obsidian（六产物）· 结构解析（图/表/公式/算法）· 格式智能评测（6 模板 + 纯代码规则引擎）</text>

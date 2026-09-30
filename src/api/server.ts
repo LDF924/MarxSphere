@@ -2008,6 +2008,11 @@ export function buildHttpServer() {
 
   const DOC_ID_OVERRIDE: Record<string, string> = {
     "index.md": "overview",   // 默认页沿用老 id
+    // ⚠ 2026-09-30 补: `overview.md` 的 basename 恰好也是 `overview`, 与上面 index.md 的 id
+    //   **撞车** —— 索引里于是有两条 id:"overview", 而 DocsPanel 按 id 取值时
+    //   永远先命中排前面的 index.md, 结果 **`overview.md` 在界面上永久不可达**(41 条只有 40 个唯一 id)。
+    //   改完由 `test/docs-index.test.ts` 的「索引 id 不重复」兜住。
+    "overview.md": "platform-overview",
     "PROJECT-OVERVIEW.md": "project-overview",
     "project-brief.md": "project-brief",
     "FEATURES-DETAILED.md": "features-detail",

@@ -116,7 +116,47 @@ const STATS = {
       return (seg.slice(0, seg.indexOf("\n  ];")).match(/^\s{6}key: "/gm) || []).length;
     } catch { return 0; }
   })(),
+  /**
+   * 科研中心的 tab 数 —— 与 `App.tsx` 的 `categories` 里 `key: "literature"` 那一组同一个真源。
+   *
+   * ⚠ 2026-09-30 加。用户:「文档中心里仍然有很多内容没更新以及表述不完全」。
+   *   查出来最大的一处断裂就是它: 三份 README 的「科研工作台一览」**表里列了 18 行、
+   *   逐项与 App.tsx 对得上**, 而标题与正文写的是 **17** —— 表是对的、数写错了,
+   *   于是"看着像有人维护过", 实际上没有任何东西会发现这个差 1。
+   *   架构文档里还有第三种说法「九大科研工作台」。
+   *
+   * 数法: 取 `key: "literature"` 之后到下一个分类 `key:` 之前的那一段, 数 `value: "..."`。
+   *   **不能数整个 categories** —— 那是 47 个菜单项(核心 4 + 科研 18 + 知识 7 + 政策 2 + 技能 2 + 系统 14),
+   *   与「科研工作台」不是一回事; 也不能数 `validViews`(49) —— 那还含 settings/jupyter。
+   */
+  researchTabs: (() => {
+    try {
+      const txt = readFileSync(path.join(ROOT, "web/src/App.tsx"), "utf8");
+      const seg = txt.slice(txt.indexOf("const categories: NavCategory[] = ["));
+      const body = seg.slice(0, seg.indexOf("\n  ];"));
+      const at = body.indexOf('key: "literature"');
+      if (at < 0) return 0;
+      const next = body.indexOf('key: "', at + 10);        // 下一个分类的起点
+      const chunk = body.slice(at, next < 0 ? body.length : next);
+      return (chunk.match(/\{ value: "/g) || []).length;
+    } catch { return 0; }
+  })(),
   services: readdirSync(path.join(ROOT, "src/services")).filter((f) => f.endsWith(".ts") && !/\.v\d+/.test(f)).length,
+  /**
+   * 评测指标数 —— 从 `eval-32-metrics.ts` 的 `METRIC_SPEC` 里数, **不按脚本名推**。
+   *
+   * ⚠ 2026-09-30 加。脚本叫 `eval-32-metrics` 而 `METRIC_SPEC` 实测只有 **31** 项
+   *   (A=12, B=9, C=3, D=7) —— 于是全仓同时存在「32 项指标」和「31 评分项」两种说法,
+   *   连 `OPEN-SOURCE-DISCLOSURE.md` 自己内部都是 32 与 31 并存。
+   *   名字是历史, 数是事实; 数事实。
+   */
+  metrics: (() => {
+    try {
+      const txt = readFileSync(path.join(ROOT, "scripts/eval-32-metrics.ts"), "utf8");
+      const seg = txt.slice(txt.indexOf("const METRIC_SPEC"));
+      return (seg.slice(0, seg.indexOf("\n  };")).match(/cat:'[A-D]\d+'/g) || []).length;
+    } catch { return 0; }
+  })(),
 };
 
 const totals = {
@@ -332,8 +372,97 @@ const GENERIC_RULES: Rule[] = [
   { re: /(\d+)\s*场景\s*[×x]\s*(\d+)\s*大阶段/g, to: `${STATS.scenarios} 场景 × ${STATS.groups} 大阶段`, label: "场景×阶段" },
   { re: /(\d+) 场景 · (\d+) 大(研究)?阶段/g, to: `${STATS.scenarios} 场景 · ${STATS.groups} 大研究阶段`, label: "场景·阶段" },
   { re: /场景数[：:]\s*(\d+)/g, to: `场景数：${STATS.scenarios}`, label: "场景数" },
+  // ⚠ 2026-09-30 补: 此前只有上面三条**带标点/空格**的写法, 于是「66 科研场景」
+  //   (无空格、无分隔符)在 5 处文档里活了下来, 而 docs:check 一直报绿。
+  //   这是"同一件事在文档里有很多种写法, 规则只覆盖了其中一两种"的老病。
+  { re: /(?<![\d.])(\d+) 科研场景/g, to: `${STATS.scenarios} 科研场景`, label: "场景数(科研场景)" },
+  { re: /(?<![\d.])(\d+) 个科研场景/g, to: `${STATS.scenarios} 个科研场景`, label: "场景数(个科研场景)" },
+  { re: /(?<![\d.])all (\d+) research scenarios/gi, to: `all ${STATS.scenarios} research scenarios`, label: "场景数(en·all)" },
   // 服务文件
   { re: /(\d+) 服务文件（/g, to: `${STATS.services} 服务文件（`, label: "服务文件数" },
+
+  /**
+   * ─── 科研工作台数 ───
+   *
+   * ⚠ 2026-09-30 加。此前**一条规则都没有**, 于是同一件事在仓里有三种写法且全是旧的:
+   *   README×3「17 个科研工作台 / 科研中心 17 个 tab」(表里其实列了 18 行)、
+   *   ARCHITECTURE「九大科研工作台」、架构 SVG「科研工作台 17」。
+   *   这是"数字不在射程内"的典型 —— docs:check 报绿, 因为它根本没这方面的规则。
+   *
+   * ⚠ 后缀要足够长。「N 个 tab」不能裸收: 系统管理也有 14 个 tab、全菜单 47 个,
+   *   裸收会把那两处一起改成 18。所以只收**明确说"科研"的**那几种写法。
+   */
+  { re: /(?<![\d.])(\d+) 个科研工作台/g, to: `${STATS.researchTabs} 个科研工作台`, label: "科研工作台数" },
+  { re: /(?<![\d.])(\d+) research workbenches/gi, to: `${STATS.researchTabs} research workbenches`, label: "科研工作台数(en)" },
+  { re: /科研中心 ?(\d+) 个 tab/g, to: `科研中心 ${STATS.researchTabs} 个 tab`, label: "科研中心 tab 数" },
+  { re: /all (\d+) tabs under Research/gi, to: `all ${STATS.researchTabs} tabs under Research`, label: "科研中心 tab 数(en)" },
+  { re: /科研工作台 ?(\d+)(?=[ /|·）)])/g, to: `科研工作台 ${STATS.researchTabs}`, label: "科研工作台数(表格)" },
+  { re: /(九|七|八|十)大(科研)?工作台/g, to: `${STATS.researchTabs} 大科研工作台`, label: "科研工作台数(汉字)" },
+  { re: /(?<![\d.])(\d+) 个视图截图/g, to: `${STATS.views} 个视图截图`, label: "视图截图数" },
+  { re: /(\d+) 视图截图/g, to: `${STATS.views} 视图截图`, label: "视图截图数(简)" },
+
+  /**
+   * ─── 英文文档里的规模写法 ───
+   *
+   * ⚠ 2026-09-29 加。README-EN.md 是**独立成句**写的, 不套中文句式, 于是上面所有规则
+   *   一条都命不中它 —— 实测它停在「66 scenario catalog」「208 skills」「22 view tools」
+   *   「43 view screenshots」, 而真实是 78 / 209 / 56 / 49。
+   *   中文规则管不住英文句子, 必须各写一份。
+   */
+  { re: /(?<![\d.])(\d+) scenario catalog/gi, to: `${STATS.scenarios} scenario catalog`, label: "场景数(en·catalog)" },
+  // ⚠ 2026-09-30: 原来只收 `N scenarios ·`(带分隔符), 于是「(66 scenarios + 209 skills)」
+  //   这种括号并列的活了下来。裸收 `N scenarios` 实测全文只有 2 处、都是场景数, 安全。
+  { re: /(?<![\d.])(\d+) scenarios/gi, to: `${STATS.scenarios} scenarios`, label: "场景数(en)" },
+  { re: /(?<![\d.])(\d+) skills/gi, to: `${STATS.skills ?? "$1"} skills`, label: "技能数(en)" },
+  { re: /(?<![\d.])(\d+) view tools/gi, to: `${STATS.viewTools} view tools`, label: "视图工具数(en)" },
+  { re: /(?<![\d.])(\d+) view screenshots/gi, to: `${STATS.views} view screenshots`, label: "视图截图数(en)" },
+  { re: /full (\d+)-view coverage/gi, to: `full ${STATS.views}-view coverage`, label: "视图覆盖(en)" },
+  { re: /(?<![\d.])(\d+)-view coverage/gi, to: `${STATS.views}-view coverage`, label: "视图覆盖(简)" },
+  { re: /(?<![\d.])plus (\d+) view tools = (\d+)/gi, to: `plus ${STATS.viewTools} view tools = ${totals.tools}`, label: "工具等式(en)" },
+  { re: /(?<![\d.])(\d+) Agent tools/gi, to: `${STATS.agentTools} Agent tools`, label: "Agent 工具数(en)" },
+
+  /**
+   * ─── 学习引擎 / 教育服务 ───
+   *
+   * ⚠ 2026-09-29 加。实测 README-CN 与 AGENTS.md 都停在「32 学习引擎顶层」, 真值 39;
+   *   而「N 教育服务」两处都写 19, 真值 9(`education-*.ts` 文件数)。
+   *   这两个数此前只在个别文件里被单独改过, 没有通用规则, 所以换一份文档就复原。
+   */
+  { re: /(?<![\d.])(\d+) 学习引擎顶层/g, to: `${STATS.topRoutes} 学习引擎顶层`, label: "学习引擎顶层" },
+  { re: /(?<![\d.])(\d+) 个教育服务文件/g, to: `${STATS.eduServices} 个教育服务文件`, label: "教育服务数" },
+  { re: /(?<![\d.])(\d+) 教育服务文件/g, to: `${STATS.eduServices} 教育服务文件`, label: "教育服务数(简)" },
+  // ⚠ 2026-09-30 补: 「N 通用工具」此前只在**带后缀**的句式上(`+ N 视图工具`、`（N Agent + …）`)
+  //   被改过, 而「44 通用工具 + 84 教育路由」这种**竖着并列**的写法没人管 —— project-brief.md 里
+  //   那个旧值就是这么活下来的。**注意** `N 通用工具` 单独收是安全的(通用工具 = Agent 工具),
+  //   但 `N 工具` 裸收会误伤「4 工具」「8 工具」这类模块内局部计数, 所以只收带"通用"的。
+  //
+  // ⚠ `(?!（)` 这个否定前瞻**不能省** —— 实测踩到: `N 通用工具（N Agent + N 视图）` 里的
+  //   "通用工具"其实指**总数**(158), 而裸句「N 通用工具 + N 教育路由」里的指 **Agent 工具**(102)。
+  //   同一个词在两种句式里含义不同。少了前瞻, 裸规则会把前一条规则刚写对的 158 又改回 102,
+  //   两条规则**来回打架 → doc-sync 永不收敛**(实测: 连跑两次每次报同样 4 处)。
+  { re: /(?<![\d.])(\d+) 通用工具(?!（)/g, to: `${STATS.agentTools} 通用工具`, label: "通用工具数(裸)" },
+  { re: /(?<![\d.])(\d+) 个通用工具(?!（)/g, to: `${STATS.agentTools} 个通用工具`, label: "通用工具数(个)" },
+  // 评测指标数 —— 脚本名叫 eval-32-metrics 但 METRIC_SPEC 实测是 31 项, 文档两处口径并存
+  // ⚠ **不能裸收 `N 项指标`**: README 里还有「**教育评测 12 项指标**」——那是教育评测自己
+  //   的一套(技术 6 项 + 其他), 与主评测的 31 项不是一回事。裸收会把 12 改成 31。
+  //   所以只收主评测特有的那几种写法。
+  { re: /(?<![\d.])(\d+) 指标评测/g, to: `${STATS.metrics} 指标评测`, label: "评测指标数" },
+  { re: /评测系统输出 (\d+) 项指标/g, to: `评测系统输出 ${STATS.metrics} 项指标`, label: "评测指标数(输出)" },
+  { re: /(\d+) 项评测指标定义/g, to: `${STATS.metrics} 项评测指标定义`, label: "评测指标数(定义)" },
+  { re: /53 题 (\d+) 指标/g, to: `53 题 ${STATS.metrics} 指标`, label: "评测指标数(53题)" },
+
+  /**
+   * ─── 教育路由 / 测试全绿 / 工具统一调度 ───
+   *
+   * ⚠ 2026-09-30 加。这三条此前**只在个别文件里有对应规则**(PROJECT-OVERVIEW 有, project-brief
+   *   没有), 于是同一个旧值在一份文档里被修好、在另一份里活着。
+   *   实测 project-brief.md 停在「112 教育路由 / 84 教育路由 / 154 测试全绿 / 87 工具统一调度」,
+   *   而 docs:check 对**这个文件**一条规则都没有 —— 它压根不在射程内。
+   *   三条都足够具体, 不会误伤(`N 教育路由` 全文 19 处都是同一个量)。
+   */
+  { re: /(?<![\d.])(\d+) 教育路由/g, to: `${STATS.eduRoutes} 教育路由`, label: "教育路由(裸)" },
+  { re: /(?<![\d.])(\d+) 测试全绿/g, to: `${STATS.tests} 测试全绿`, label: "测试数(全绿)" },
+  { re: /(?<![\d.])(\d+) 工具统一调度/g, to: `${totals.tools} 工具统一调度`, label: "工具统一调度(裸)" },
 ];
 
 // ─── 5. 执行替换 ───

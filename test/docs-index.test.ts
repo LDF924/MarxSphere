@@ -100,6 +100,40 @@ describe("文档中心索引: 必须覆盖 docs/ 全量", () => {
     expect(server, "没找到 buildDocIndex —— 索引可能又变回手写清单了").toContain("function buildDocIndex");
     expect(server, "DOC_INDEX 不是由 buildDocIndex() 产出的").toMatch(/const DOC_INDEX = buildDocIndex\(\)/);
   });
+
+  /**
+   * 索引里的 id **必须唯一** —— 界面按 id 取值, 重复的那个**永久不可达**。
+   *
+   * 由来(2026-09-30): `index.md` 被 `DOC_ID_OVERRIDE` 映射成 `overview`(沿用老 id),
+   *   而 `overview.md` 的 basename 恰好也是 `overview` —— 两条撞车, 41 篇文档只有 40 个唯一 id。
+   *   `DocsPanel` 按 id 找文档时永远先命中排前面的那条, 于是 **`overview.md` 在文档中心里
+   *   根本点不开**, 而索引列表上它好端端地列着。
+   *
+   * 判据: 抠出 id 的来源(basename 或 DOC_ID_OVERRIDE 的覆盖值), 查重。
+   *   这条**必须独立于运行时的 buildDocIndex** —— 直接读源码里的那张覆盖表 + docs/ 的真实文件名,
+   *   否则"漏的是哪一篇"要等服务起来才知道。
+   */
+  it("**索引 id 不重复**(重复的那个在界面上永久不可达)", () => {
+    const override = new Map<string, string>();
+    const i = server.indexOf("const DOC_ID_OVERRIDE");
+    expect(i, "源码里找不到 DOC_ID_OVERRIDE").toBeGreaterThan(-1);
+    const body = server.slice(i, server.indexOf("};", i));
+    for (const m of body.matchAll(/"([^"]+)":\s*"([^"]+)"/g)) override.set(m[1], m[2]);
+
+    const seen = new Map<string, string>();     // id → 第一个用它的文件
+    const dup: string[] = [];
+    for (const f of files) {
+      const base = f.slice(f.lastIndexOf("/") + 1, -3);
+      const id = override.get(f) ?? base;
+      if (seen.has(id)) dup.push(`id "${id}" 同时属于 ${seen.get(id)} 与 ${f}`);
+      else seen.set(id, f);
+    }
+    expect(
+      dup,
+      "这些文档 id 撞车 —— 后出现的那个在文档中心里点不开:\n" +
+        "给其中一篇在 DOC_ID_OVERRIDE 里指定 id 即可。",
+    ).toEqual([]);
+  });
 });
 
 /**
@@ -175,7 +209,7 @@ describe("品牌资产必须入库，不能只躺在磁盘上", () => {
     "web/public/brand-favicon-16.png",    // web/index.html 引用
     "web/public/brand-favicon-32.png",
     "web/public/brand-touch-180.png",
-    "docs/assets/logo-512.png",           // 三份 README 抬头引用
+    "docs/assets/logo.png",           // 三份 README 抬头引用
     "build/icon.ico",                     // electron-builder.yml win.icon
   ];
 

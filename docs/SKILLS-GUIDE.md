@@ -8,7 +8,7 @@
 | Skill | 用途 | 依赖 |
 |---|---|---|
 | **marx-agent** | 马理论 AI Agent 总入口：统一调度 SAG 推理 + Ask 检索 + 科研场景 + 三库图谱 | 系统本身 |
-| **marx-sag** | SAG 推理工作台：52 步推理链路 + 真实 token 采集 + 32 指标评测 | 系统本身 |
+| **marx-sag** | SAG 推理工作台：52 步推理链路 + 真实 token 采集 + 31 指标评测 | 系统本身 |
 | **marx-graphiti** | Graphiti 知识图谱检索：超边/社区/实体推理问答 | Neo4j 11001 + LLM |
 | **marx-graphiti-ingest** | Graphiti 批量入库：500 篇文档 6 阶段流程（断点续传/原子 checkpoint） | Neo4j + LLM |
 | **marx-cognee** | Cognee 知识图谱检索：实体/切片混合检索（BM25 + 向量 RRF） | Neo4j 11003 + LanceDB |

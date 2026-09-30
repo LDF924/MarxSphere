@@ -43,7 +43,8 @@
     "build:soc": "node scripts/build-soc.mjs",
     "build:soc:to-main": "node scripts/build-soc.mjs --to-main",
     "restart:4173": "node scripts/restart-4173.mjs",
-    "restart:4173:fast": "node scripts/restart-4173.mjs --no-build"
+    "restart:4173:fast": "node scripts/restart-4173.mjs --no-build",
+    "docs:shots": "node scripts/capture-screenshots.mjs"
   },
   "dependencies": {
     "@embedpdf/core": "2.14.4",
