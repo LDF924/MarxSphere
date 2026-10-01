@@ -1527,3 +1527,242 @@ export const apiUniverse = {
   },
 };
 
+
+/**
+ * 支付订单(2026-10-01)。
+ *
+ * 由来: 此前前端"充值"直接 POST /api/billing/recharge —— 那个接口**不给钱也加余额**,
+ *   是开发期占位。现在改走真链路: 下单 → 出二维码 → 轮询查单。
+ *   `/api/billing/recharge` 已收紧为本机/管理员, 前端不再调用它。
+ *
+ * 查单要带 `sync=1`: 让后端**主动向微信查一次**并补入账。
+ *   回调可能永远不来(网络抖动/服务重启), 只靠回调会出现"付了钱但余额没动"。
+ */
+export interface PaymentOrder {
+  id: string;
+  outTradeNo: string;
+  userId: string;
+  amountCents: number;
+  currency: string;
+  subject: string;
+  kind: string;
+  targetRef: string | null;
+  status: "created" | "pending" | "paid" | "closed" | "failed" | "refunding" | "refunded";
+  provider: string;
+  transactionId: string | null;
+  codeUrl: string | null;
+  paidAt: string | null;
+  expireAt: string;
+  createdAt: string;
+}
+
+export interface PayConfig {
+  mchId: string;
+  enabled: boolean;
+  hasPlatformCert: boolean;
+  notifyUrl: string;
+  isMock: boolean;
+}
+
+export const payApi = {
+  async config(signal?: AbortSignal): Promise<PayConfig> {
+    return request<PayConfig>("/api/pay/config", { signal });
+  },
+
+  /** 下单。idemKey 用来防重复点击 —— 同一 key 重复提交只会有一单 */
+  async createOrder(body: {
+    amountCents: number;
+    subject?: string;
+    kind?: "recharge" | "subscription" | "points";
+    targetRef?: string;
+    idemKey?: string;
+  }, signal?: AbortSignal): Promise<{ ok: boolean; order: PaymentOrder; mock: boolean; reused: boolean }> {
+    return request("/api/pay/orders", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+
+  async listOrders(limit = 50, signal?: AbortSignal): Promise<{ orders: PaymentOrder[] }> {
+    return request(`/api/pay/orders?limit=${limit}`, { signal });
+  },
+
+  /** 查单。sync=true 时后端会主动向渠道查一次并补入账 */
+  async getOrder(outTradeNo: string, sync = false, signal?: AbortSignal): Promise<{ ok: boolean; order: PaymentOrder }> {
+    return request(`/api/pay/orders/${encodeURIComponent(outTradeNo)}${sync ? "?sync=1" : ""}`, { signal });
+  },
+
+  async refund(body: {
+    outTradeNo: string; amountCents?: number; reason?: string; idemKey?: string;
+  }, signal?: AbortSignal): Promise<{ ok: boolean; refundedCents: number; duplicate?: boolean }> {
+    return request("/api/pay/refunds", { method: "POST", body: JSON.stringify(body), signal });
+  },
+};
+
+/** Word 成品构建: LaTeX→OMML 公式 / 封面+目录(自旧项目移植) */
+export const docxBuildApi = {
+  async health(signal?: AbortSignal): Promise<{ ok: boolean; python: string; missing: string[]; hint?: string }> {
+    return request("/api/docx-build/health", { signal });
+  },
+  async latexToDocx(body: {
+    content: string; title?: string; fontName?: string; fontSize?: number;
+  }, signal?: AbortSignal): Promise<{ ok: boolean; base64: string; meta?: Record<string, unknown> }> {
+    return request("/api/docx-build/latex-to-docx", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+  async coverToc(body: {
+    docxBase64: string; title?: string;
+    position?: "high" | "center" | "low"; engine?: "auto" | "python" | "com";
+  }, signal?: AbortSignal): Promise<{ ok: boolean; base64: string; meta?: Record<string, unknown> }> {
+    return request("/api/docx-build/cover-toc", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+};
+
+/**
+ * 2026-10-01 新增能力的客户端(自旧项目 AItoolman 移植的那 9 项)。
+ * 逐条对应 src/api/server.ts 里的路由。
+ */
+export const aigcApi = {
+  async detect(text: string, lang: "auto" | "zh" | "en" = "auto", signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/aigc/detect", {
+      method: "POST", body: JSON.stringify({ text, lang }), signal,
+    });
+  },
+  /** 降重前后对比 —— 这条才是"降 AIGC 到底有没有用"的判据 */
+  async diff(before: string, after: string, lang: "auto" | "zh" | "en" = "auto", signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/aigc/diff", {
+      method: "POST", body: JSON.stringify({ before, after, lang }), signal,
+    });
+  },
+};
+
+export const literatureImportApi = {
+  async formats(signal?: AbortSignal) {
+    return request<{ formats: Array<{ id: string; label: string; extensions: string[] }> }>(
+      "/api/literature-import/formats", { signal });
+  },
+  /** 先预览再入库 —— 用户能看清"识别成什么格式、前几条长什么样" */
+  async preview(content: string, fileName?: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/literature-import/preview", {
+      method: "POST", body: JSON.stringify({ content, fileName }), signal,
+    });
+  },
+  async run(content: string, fileName?: string, format?: string, signal?: AbortSignal) {
+    return request<{ imported: number; skipped: number; failed: number }>(
+      "/api/literature-import/run", {
+        method: "POST", body: JSON.stringify({ content, fileName, format }), signal,
+      });
+  },
+};
+
+export const opinionApi = {
+  async sources(signal?: AbortSignal) {
+    return request<{ sources: Array<Record<string, unknown>> }>("/api/opinion/sources", { signal });
+  },
+  async search(body: { query: string; days?: number; limit?: number }, signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/opinion/search", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+  async sentiment(texts: string[], signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/opinion/sentiment", {
+      method: "POST", body: JSON.stringify({ texts }), signal,
+    });
+  },
+};
+
+export const keywordNetworkApi = {
+  /** 从平台文献库现算图谱 */
+  async fromLibrary(body: {
+    limit?: number; topic?: string; keyword?: string;
+    lang?: "zh" | "en" | "both"; measure?: "jaccard" | "pmi" | "count";
+  }, signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/keyword-network/from-library", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+  async build(texts: string[], lang: "zh" | "en" | "both" = "zh", signal?: AbortSignal) {
+    return request<Record<string, unknown>>("/api/keyword-network/build", {
+      method: "POST", body: JSON.stringify({ texts, lang }), signal,
+    });
+  },
+};
+
+export const wordcloudApi = {
+  async health(signal?: AbortSignal) {
+    return request<{ ok: boolean; font?: string; error?: string }>("/api/wordcloud/health", { signal });
+  },
+  async render(body: { text?: string; width?: number; height?: number; maxWords?: number }, signal?: AbortSignal) {
+    return request<{ ok: boolean; base64?: string; words?: Array<{ word: string; weight: number }> }>(
+      "/api/wordcloud/render", { method: "POST", body: JSON.stringify(body), signal });
+  },
+};
+
+export const pptApi = {
+  /** 建任务 —— 服务端会**顺手生成大纲**, 返回 outlinePages 表示出了几页 */
+  async createJob(body: { topic: string; title?: string; kind?: "topic" | "paper" | "outline"; wishPages?: number }, signal?: AbortSignal) {
+    return request<{ ok: boolean; job: { id: string }; outlinePages?: number }>("/api/ppt/jobs", {
+      method: "POST", body: JSON.stringify(body), signal,
+    });
+  },
+  /** 单独重生成大纲(改了主题或想换页数时用) */
+  async regenOutline(id: string, body: { wantPages?: number; sourceText?: string } = {}, signal?: AbortSignal) {
+    return request<{ ok: boolean; pages: number }>(
+      `/api/ppt/jobs/${encodeURIComponent(id)}/outline`, {
+        method: "POST", body: JSON.stringify(body), signal,
+      });
+  },
+  async listJobs(signal?: AbortSignal) {
+    return request<{ jobs: Array<Record<string, unknown>> }>("/api/ppt/jobs", { signal });
+  },
+  async getJob(id: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(`/api/ppt/jobs/${encodeURIComponent(id)}`, { signal });
+  },
+  async pages(id: string, signal?: AbortSignal) {
+    return request<{ pages: Array<Record<string, unknown>> }>(`/api/ppt/jobs/${encodeURIComponent(id)}/pages`, { signal });
+  },
+  async editOutline(id: string, body: Record<string, unknown>, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(`/api/ppt/jobs/${encodeURIComponent(id)}/outline`, {
+      method: "PUT", body: JSON.stringify(body), signal,
+    });
+  },
+  async generateScripts(id: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(`/api/ppt/jobs/${encodeURIComponent(id)}/scripts`, {
+      method: "POST", body: "{}", signal,
+    });
+  },
+  async illustrate(id: string, seq?: number, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(`/api/ppt/jobs/${encodeURIComponent(id)}/illustrate`, {
+      method: "POST", body: JSON.stringify({ seq }), signal,
+    });
+  },
+  async regenPage(id: string, seq: number, instruction?: string, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(
+      `/api/ppt/jobs/${encodeURIComponent(id)}/pages/${seq}/regen`, {
+        method: "POST", body: JSON.stringify({ instruction }), signal,
+      });
+  },
+  async annotate(id: string, seq: number, note: string, rect: { x: number; y: number; w: number; h: number }, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(
+      `/api/ppt/jobs/${encodeURIComponent(id)}/pages/${seq}/annotate`, {
+        method: "POST", body: JSON.stringify({ note, rect }), signal,
+      });
+  },
+  async pageVersions(id: string, seq: number, signal?: AbortSignal) {
+    return request<{ versions: Array<Record<string, unknown>> }>(
+      `/api/ppt/jobs/${encodeURIComponent(id)}/pages/${seq}/versions`, { signal });
+  },
+  async rollback(id: string, seq: number, version: number, signal?: AbortSignal) {
+    return request<Record<string, unknown>>(
+      `/api/ppt/jobs/${encodeURIComponent(id)}/pages/${seq}/rollback`, {
+        method: "POST", body: JSON.stringify({ version }), signal,
+      });
+  },
+  async exportPptx(id: string, mode: "editable" | "image" = "editable", signal?: AbortSignal) {
+    return request<{ ok: boolean; base64?: string }>(`/api/ppt/jobs/${encodeURIComponent(id)}/export`, {
+      method: "POST", body: JSON.stringify({ mode }), signal,
+    });
+  },
+};

@@ -7,7 +7,10 @@ import {
   AlertTriangle, BookOpenCheck, CheckCircle2, FileText, Info,
   Loader2, Plus, RotateCcw, Settings2, Trash2, Upload, Wand2,
   School, Hammer, ClipboardCheck, Download, ShieldCheck,
-} from "lucide-react";
+  Package, ScanSearch } from "lucide-react";
+// 2026-10-01: 成品构建 tab 的两个子视图
+import { WordBuildPanel } from "./WordBuildPanel";
+import { AigcDetectPanel } from "./AigcDetectPanel";
 
 // ─── 类型(与后端 format-eval-*.ts 契约一致, 此处内联避免动 types.ts) ───
 interface FormatTemplate {
@@ -103,7 +106,10 @@ const STORAGE_KEY = "format-eval:custom-templates:v1";
 /** 评测结果持久化: 刷新/切换视图后仍保留(清除结果时同步移除) */
 const RESULT_KEY = "format-eval:last-result:v1";
 
-type PanelTab = "check" | "format" | "school";
+// 2026-10-01: 加 "build" —— Word 成品构建(LaTeX 公式转 OMML + 封面目录)。
+//   与其余三项同族: 都是"生成/改一个 Word 文件"。挂在格式评测里而不单开 tab,
+//   是因为用户拿到的就是一个 .docx, 这里是它从内容到成品的最后一站。
+type PanelTab = "check" | "format" | "school" | "build";
 
 interface FormatOutcome {
   scoreBefore?: number;
@@ -113,9 +119,17 @@ interface FormatOutcome {
   summary?: string;
 }
 
-export function FormatEvalPanel() {
+export function FormatEvalPanel({ onNavigate, onSendToFinalize, onSendToWorkflow }: {
+  onNavigate?: (v: string) => void;
+  /** AIGC 检测的结论投给**统稿定稿的合并轮**(主出口)—— 见 AigcDetectPanel 的说明 */
+  onSendToFinalize?: (report: { aiScore: number; verdict: string; tier: "light" | "medium" | "heavy"; features: string[] }) => void;
+  /** 把文本投给写作舱(透传给 AIGC 子页)—— 见 App.tsx 的 sendMaterialToWorkflow */
+  onSendToWorkflow?: (text: string, title: string) => void;
+} = {}) {
   // ── 三视图切换: 检查 / 自动格式化 / 学校模板 ──
   const [tab, setTab] = useState<PanelTab>("check");
+  // "成品构建"内部的两个子视图: Word 成品(公式+封面目录) / AIGC 检测
+  const [buildTab, setBuildTab] = useState<"word" | "aigc">("word");
   // ── 自动格式化态 ──
   const [fmtDocxBase64, setFmtDocxBase64] = useState("");
   const [fmtDocxName, setFmtDocxName] = useState("");
@@ -490,6 +504,7 @@ export function FormatEvalPanel() {
             { key: "check", label: "格式检查", icon: ClipboardCheck },
             { key: "format", label: "自动格式化", icon: Hammer },
             { key: "school", label: "学校模板提取", icon: School },
+            { key: "build", label: "成品构建", icon: Package },
           ] as const).map((t) => {
             const Icon = t.icon;
             return (
@@ -917,6 +932,33 @@ export function FormatEvalPanel() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Tab4: 成品构建(2026-10-01) —— Word 成品 + AIGC 检测 ── */}
+        {tab === "build" && (
+          <div className="space-y-3">
+            <div className="flex rounded-lg border border-border/60 bg-card/40 p-1 text-xs">
+              <button type="button" data-control="format-eval:build-word"
+                onClick={() => setBuildTab("word")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  buildTab === "word" ? "bg-emerald-500/15 text-emerald-300" : "text-muted-foreground hover:bg-accent/40"
+                }`}>
+                <FileText className="h-3.5 w-3.5" /> Word 成品构建
+              </button>
+              <button type="button" data-control="format-eval:build-aigc"
+                onClick={() => setBuildTab("aigc")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  buildTab === "aigc" ? "bg-emerald-500/15 text-emerald-300" : "text-muted-foreground hover:bg-accent/40"
+                }`}>
+                <ScanSearch className="h-3.5 w-3.5" /> AIGC 检测
+              </button>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-card/60 p-4 shadow-sm backdrop-blur-sm">
+              {buildTab === "aigc"
+                ? <AigcDetectPanel onSendToFinalize={onSendToFinalize} onSendToWorkflow={onSendToWorkflow} />
+                : <WordBuildPanel onNavigate={onNavigate} />}
+            </div>
           </div>
         )}
 

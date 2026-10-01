@@ -306,6 +306,64 @@ export function getSkillDetail(name: string): {
   return { name, skillMd, skillMdPath, zhDoc, files };
 }
 
+/**
+ * 技能**捆绑的可执行资产** —— 技能目录下 `scripts/` 里的文件（绝对路径）。
+ *
+ * 由来(2026-10-01): 在此之前, 平台对技能的使用**只到"把 SKILL.md 读成文本"为止**
+ *   (`view_skill_run` 就是这么实现的), 技能自带的脚本一个都没被用过。
+ *   而这批脚本恰恰是技能作者沉淀下来的**确定性资产** —— 例如
+ *   `nature-paper2ppt/scripts/audit_pptx_quality.py` 会去查"文字是否溢出画布"
+ *   "元素是否差几 pt 没对齐", 正是它自己在 `output-and-quality.md` 里定的交付标准。
+ *
+ *   实测: 平台生成的 pptx 丢给它一跑, `high=20` —— 几乎每页都溢出。
+ *   **标准写在文档里、产物没人验**, 这就是"技能只当上下文"的具体代价。
+ *
+ * 只列 `scripts/` 一层, 不递归: 技能目录里还有 static/references/agents 等
+ * 纯文档目录, 混在一起会让调用方分不清哪些能执行。
+ */
+export function skillScripts(name: string): string[] {
+  try {
+    const d = getSkillDetail(name);
+    if (!d) return [];
+    const scriptDir = path.join(path.dirname(d.skillMdPath), "scripts");
+    if (!fs.existsSync(scriptDir)) return [];
+    return fs.readdirSync(scriptDir)
+      .filter((f) => !f.startsWith(".") && !f.startsWith("__"))
+      .map((f) => path.join(scriptDir, f));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 技能里可作为**产物质检**用途的脚本。
+ *
+ * ⚠ 排除 `generic-healthcheck`: 那是每个技能都带的**环境自检**(检查依赖是否装好),
+ *   不是"检查这次产出好不好"。2026-10-01 实测若不排除, `scholar-slides` 会挑中它,
+ *   于是模型拿到的"自检脚本"是查环境的 —— 而真正该跑的是 `qa_report.mjs` /
+ *   `validate_deck.mjs` 那几个。
+ *
+ * 排序按"像不像在查产物质量"排: 名字里带 pptx/deck/slide 且带 qa/audit/validate/verify
+ * 的最靠前, 只带通用词的靠后。返回**全部**候选(不是只给第一个) —— 让调用方自己挑,
+ * 也便于诊断时看清技能到底提供了什么。
+ */
+export function skillVerifierScripts(name: string): string[] {
+  const rank = (p: string): number => {
+    const b = path.basename(p).toLowerCase();
+    if (b.includes("generic-healthcheck")) return 99;          // 环境自检, 与产物质量无关
+    const isProduct = /(pptx|deck|slide|presentation)/.test(b);
+    const isCheck = /(audit|qa|check|verify|validate)/.test(b);
+    return isProduct && isCheck ? 0 : isCheck ? 1 : 2;
+  };
+  return skillScripts(name)
+    .map((p) => ({ p, r: rank(p) }))
+    // 只留**校验类**(r<2): r=2 是构建/处理脚本(如 build_deck.mjs、crop_figure.py) ——
+    //   它们是"生产"不是"检查", 混进这个函数名会误导调用方
+    .filter((x) => x.r < 2 && /\.(py|mjs|js|cjs|ts|sh)$/.test(x.p))
+    .sort((a, b) => a.r - b.r)
+    .map((x) => x.p);
+}
+
 export async function runSkillHealthcheck(name: string): Promise<{  name: string;
   exists: boolean;
   status: string;

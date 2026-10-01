@@ -76,6 +76,110 @@ export interface WorkflowHandoff {
   at: number;
 }
 
+/**
+ * 外部模块投递的素材 —— **带落点**，由 soc 外壳收下后存这里，目标视图自己来取。
+ *
+ * ═══ 为什么要有这个（2026-10-01）═══
+ *   在此之前，外壳投来的素材只有一条路：`App.vue:onExternalMaterial` 写 `HANDOFF_KEY`
+ *   然后 `router.push("/workflow/materials")` —— **落点写死在素材页**。
+ *   而 AIGC 检测那条链的下一站根本不是素材库：用户测出"AI 特征高"，要做的是**降 AIGC 合稿**，
+ *   也就是统稿定稿页的合并轮。投到素材页等于让他到了错的房间，还得自己再找一次。
+ *
+ * ═══ 为什么不复用 HANDOFF_KEY ═══
+ *   那个 key 的内容语义是"一段 Markdown 素材，写进素材库"，
+ *   而且它一路带着 claimed / commit / reset 那套（为"没有项目时不能丢数据"设计的）。
+ *   外部投递是**另一件事**：它可能不带正文，只带一句建议。共用会让两边的读写互相踩。
+ *   所以另开一个 key，只服务"外部模块 → 写作舱某一页"这一条。
+ *
+ * ═══ 为什么带 route ═══
+ *   外壳只能把消息投到 **soc 外壳层**（视图层监听器可能还没注册，见 onExternalMaterial 的教训）。
+ *   外壳收下后必须知道"该把人带到哪一页" —— 这个决定只有发起方知道，所以由它随消息带上。
+ */
+export interface ExternalMaterial {
+  /** 期望落点（vue-router 路径，如 /workflow/finalize、/workflow/materials） */
+  route: string;
+  /** 给目标页显示"来自 XX"用 */
+  from?: string;
+  /** 要带的正文（可能为空 —— 例如只带一条建议） */
+  markdown?: string;
+  /** 发起方附带的任何数据（如 aigc 的分数与建议档位） */
+  payload?: Record<string, unknown>;
+  at: number;
+}
+
+const EXTERNAL_MATERIAL_KEY = "skf_wf_external_material";
+/** 与 React 外壳侧 `web/src/lib/workflow-bridge.ts` 的同名常量**必须是同一个字符串** */
+export const __EXTERNAL_MATERIAL_KEY = EXTERNAL_MATERIAL_KEY;
+
+/**
+ * 投递到达时广播的事件名 —— **目标视图已经在那一页时靠它收到**。
+ *
+ * ⚠ 只靠 `router.push` 是不够的（2026-10-01 实测过的同类坑，见 handoff.ts 那条）：
+ *   用户**已经站在统稿定稿页**时，外壳再 push 同一个路径是 no-op，路由 watcher 不触发，
+ *   于是投递躺在 localStorage 里没人取 —— 表现就是"点了按钮，什么都没发生"。
+ *   所以写入后广播一个 window 事件，页面内的常驻监听者当场取用；落盘仍然保留，
+ *   那是给"目标页还没挂载"的路径兜底的。
+ */
+export const EXTERNAL_MATERIAL_EVENT = "skf:external-material";
+
+/** 有效期：10 分钟。超时就当它已经不合时宜了（用户中途去干了别的） */
+const EXTERNAL_TTL_MS = 10 * 60 * 1000;
+
+let materialClaimed = false;
+
+/** soc 外壳收到外部投递后调用 */
+export function writeExternalMaterial(m: Omit<ExternalMaterial, "at">): void {
+  try {
+    localStorage.setItem(EXTERNAL_MATERIAL_KEY, JSON.stringify({ ...m, at: Date.now() } satisfies ExternalMaterial));
+  } catch { /* localStorage 不可用时只能丢 */ }
+  materialClaimed = false;
+  try { window.dispatchEvent(new CustomEvent(EXTERNAL_MATERIAL_EVENT, { detail: { route: m.route } })); } catch { /* 忽略 */ }
+}
+
+/**
+ * 目标视图挂载时来取 —— **只读，不删**。
+ *
+ * 同 `claimHandoff` 的理由：拿到和用掉是两件事。"还没有项目 / 页面还没就绪"这类分支
+ * 不能顺手把交接删了，否则用户建好项目再回来，东西已经没了。
+ * 真用掉了才调 `commitExternalMaterial`。
+ */
+export function claimExternalMaterial(): ExternalMaterial | null {
+  if (materialClaimed) return null;
+  try {
+    const raw = localStorage.getItem(EXTERNAL_MATERIAL_KEY);
+    if (!raw) return null;
+    const m = JSON.parse(raw) as ExternalMaterial;
+    if (!m?.at || Date.now() - m.at > EXTERNAL_TTL_MS) {
+      localStorage.removeItem(EXTERNAL_MATERIAL_KEY);
+      return null;
+    }
+    materialClaimed = true;
+    return m;
+  } catch { return null; }
+}
+
+/** 只读一眼，不置消费标志也不删 —— 给"有待处理的投递"这类提示用 */
+export function peekExternalMaterial(): ExternalMaterial | null {
+  try {
+    const raw = localStorage.getItem(EXTERNAL_MATERIAL_KEY);
+    if (!raw) return null;
+    const m = JSON.parse(raw) as ExternalMaterial;
+    if (!m?.at || Date.now() - m.at > EXTERNAL_TTL_MS) return null;
+    return m;
+  } catch { return null; }
+}
+
+/** 交接内容**真的用掉了**才调 —— 这是唯一会删它的地方 */
+export function commitExternalMaterial(): void {
+  try { localStorage.removeItem(EXTERNAL_MATERIAL_KEY); } catch { /* 忽略 */ }
+  materialClaimed = true;
+}
+
+/** 允许重新取一次（用在"当前用不了"的分支上） */
+export function resetExternalMaterialClaim(): void {
+  materialClaimed = false;
+}
+
 /** 写作舱 → 编辑器：把某章正文或合稿结果送去学术文本工作台 */
 export function sendMarkdownToEditor(markdown: string, title: string): boolean {
   const md = String(markdown ?? "");

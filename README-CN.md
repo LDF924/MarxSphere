@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1296%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1795%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -79,20 +79,20 @@
 
 | 工作台 | 做什么 |
 |---|---|
-| 📚 **文献库** | 扫描本地文献目录（PDF/MD）建索引；**全库 PDF 深度阅读**（Pdfium 本地渲染 · 页码/缩放 50–300% · 划词翻译） |
-| 📥 **文献管理** | Zotero 导入 + 浏览器插件 · 论文搜索 · RSS/arXiv 订阅 · S3 云同步 · SSH 隧道代理远程 API |
-| 🔎 **外部检索** | Sciverse 式四工具：语义检索 RAG / 结构化过滤 / 引文滚雪球 / OA 读全文（OpenAlex + Unpaywall） |
+| 📚 **文献库** | 扫描本地文献目录（PDF/MD）建索引；**全库 PDF 深度阅读**（Pdfium 本地渲染 · 页码/缩放 50–300% · 划词翻译）；**图谱分析**模式直接从库里现算关键词共现聚类图谱与词云 |
+| 📥 **文献管理** | Zotero 导入 + 浏览器插件 · 论文搜索 · RSS/arXiv 订阅 · S3 云同步 · SSH 隧道代理远程 API；**题录文件导入**（WOS / 知网 / RIS / BibTeX / PubMed / Springer / arXiv / OpenAlex / Semantic Scholar / EndNote / CSV，按内容自动识别格式） |
+| 🔎 **外部检索** | Sciverse 式四工具：语义检索 RAG / 结构化过滤 / 引文滚雪球 / OA 读全文（OpenAlex + Unpaywall）；**舆情检索**（25 个源：新闻 / 政策 / 学术评论 / 公开榜单 + 情感与立场分析） |
 | 🎯 **场景** | **78 个科研场景 × 16 大研究阶段**，每个含业务描述 + 能力徽章 + 分步引导 + 全屏工作台 |
 | 🎓 **教育** | AI+教育双端工作台：学生端「我的学习」+ 教师端「教师工作台」，122 教育路由 + 39 学习引擎顶层 |
 | 📊 **实证研究** | 问卷生成/识别 → 信效度 → LLM 插补 → 变量敲定 → 分析管道 → 回归（M1-M6）→ 证据账本 → 质量闸门；**19 种计量方法** |
 | 📈 **数据分析台** | 上传 CSV/Excel **真跑统计**（独立 venv），**17 类方法**；SSE 流式结果，可一键回流到正文章节 |
 | 🔬 **结构解析** | 定位论文中的图 / 表 / 公式 / 算法块 → 提取内容与前后文 → LLM 生成「该图表在论证中起什么作用」 |
 | ✅ **引文核验** | **三维核验**：元数据真伪 / 语境相关性 / 断言支持度；输出逐维结论与整体状态 |
-| 📐 **格式智能评测** | 6 套模板（本/硕/博毕业论文、职称论文、期刊 GB/T 7714、技术报告）；**纯代码规则引擎**检测标题层级/摘要/关键词/章节/引文标注/图表编号/乱码 |
+| 📐 **格式智能评测** | 6 套模板（本/硕/博毕业论文、职称论文、期刊 GB/T 7714、技术报告）；**纯代码规则引擎**检测标题层级/摘要/关键词/章节/引文标注/图表编号/乱码；**成品构建**（LaTeX 公式转 Word 原生 OMML + 封面页与目录；AIGC 率检测与降重前后对比） |
 | 📄 **PDF2Obsidian** | 三栏工作台：上传 → PDF 预览 → 六产物（original / 摘要 / 术语表 / 问答 / index / 信息） |
 | 🏛 **政经C刊科研** | 四步法选题 / 选题矩阵 / 悖论选题 / 概念命名 / 跨学科 / 模板检测 / 编辑三标准校验 / 外审翻译 / 期刊匹配 |
 | 🖋 **写作语料库** | 四大子库（文本范例 / 核心概念 / 论证逻辑 / 词汇句式）；粘贴积累 + LLM 提取 + 打标签检索 |
-| ✍️ **研途写作舱** | **六步阶段化科研**：选题界定 → 框架设计 → 研究实施 → 文献与资料 → 章节写作 → 统稿定稿；台账四件 + 版本回档 |
+| ✍️ **研途写作舱** | **六步阶段化科研**：选题界定 → 框架设计 → 研究实施 → 文献与资料 → 章节写作 → 统稿定稿；台账四件 + 版本回档；**PPT 演示**：由正文生成演示文稿（大纲 → 每页脚本与讲稿 → 配图 → 导出 .pptx） |
 | 🧭 **课题流程编排** | 一句话生成**可执行 DAG**；节点单步跑 / 整条跑 / 暂停续跑；事件流追加不覆盖、可回放 |
 | 📝 **论文质量评审** | 按目标期刊**分段审稿** → 逐维度评分卡 + 大修/小修清单 + **原文批注**；期刊库 80 本 |
 | 🎨 **成果可视化工坊** | 对话式出图：上传数据 / 描述需求 → 规划 → 出图 → 自审修订；PNG + 可编辑 SVG |
@@ -449,7 +449,7 @@ SocioSeek 的 10 个自研 Skill 已随仓库开源（`skills/` 目录），覆�
 **Agent 轨迹评测**：计划遵循度 / 工具准确率 / 推理质量（judge 打分）+ 学习曲线
 **学习引擎**：显著性 / 归因 / 轨迹前缀 / 校准（kappa=1.0）/ 模型替换基建
 **消融体系**：21 个可消融算子（检索栈 12 + 推理链路 9），`scripts/ablation-eval.ts` 可逐项验证组件贡献
-**单元测试**：1296 项全绿(CI 持续)
+**单元测试**：1795 项全绿(CI 持续)
 
 ---
 
@@ -565,7 +565,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # 一键入库 50 篇
 | 🔑 **外部服务密钥** | 有效期登记 + 手动校验 + 每日巡检告警；上传扫描件自动 OCR 识别回填 |
 | 📂 **文件原语** | 上传文件按 fileId 取纯文本（审稿直投、对话读文件同一套底座） |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导（安装包 159MB） |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1296 单测 / 消融 21 算子 / CI |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1795 单测 / 消融 21 算子 / CI |
 
 ## 技术栈
 
@@ -592,7 +592,7 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明，60 份）
 migrations/          PostgreSQL schema（165 个迁移）
 plugins/             Agent 插件目录
-test/                单元测试（1296 项）
+test/                单元测试（1795 项）
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选 / 上传文件 / 作业与可视化产物）
 ```
@@ -602,13 +602,13 @@ data/                运行时数据（金标候选 / 上传文件 / 作业与�
 ## 测试
 
 ```bash
-npm test                # 1296 项单元测试
+npm test                # 1795 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1296 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1795 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 
@@ -634,9 +634,9 @@ npm run typecheck       # 前后端类型检查
 | 🔧 接口文档（HTTP API / MCP） | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
 | 🖥 桌面端安装包 | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
-| 📊 运行截图 | [docs/assets/](docs/assets/)（49 个视图截图 + 架构图/痛点图/论文架构图） |
+| 📊 运行截图 | [docs/assets/](docs/assets/)（53 个视图截图 + 架构图/痛点图/论文架构图） |
 | 📈 评测报告样例 | `reports/`（4 份：显著性 / 失败归因 / 轨迹前缀 / 评判者校准，前端学习引擎面板读取）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
-| ✅ 单元测试 | `npm test`（1296 项, CI 全绿） |
+| ✅ 单元测试 | `npm test`（1795 项, CI 全绿） |
 | 🎓 学习引擎能力（BKT 掌握度/计划链/材料分析/Compass/间隔复习） | [docs/LEARNING-ENGINE.md](docs/LEARNING-ENGINE.md) |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 检索：开源仓库 `examples/seed-corpus/`（50 篇种子语料）· 评测：`evaluation/gold_dataset.json`（53 题金标，仅在开源仓库，本地用根目录 `eval_32metrics.json`）· 图谱：`knowledge-graph/` |

@@ -33,3 +33,38 @@ export function takeEmpiricalTarget(): string {
 
 /** 两个 key 字符串必须一致的自检(开发期一眼可见, 避免两边漂移后静默失效) */
 export const __EMP_TARGET_KEY = EMP_TARGET_KEY;
+
+/**
+ * 外部模块 → 写作舱**指定某一页**的投递 —— 2026-10-01 补。
+ *
+ * 由来：在这之前外壳往写作舱投素材只有一条路，落点**写死在素材页**
+ *   （`sendMaterialToWorkflow` → postMessage → soc 的 onExternalMaterial →
+ *   router.push("/workflow/materials")）。而 AIGC 检测要投的是统稿定稿页的合并轮，
+ *   不是素材库；投过去等于把用户放到错的房间。
+ *
+ * 走 localStorage 而不是 postMessage 的理由和上面一样：目标视图可能还没挂载。
+ * 另外这里**故意不走 postMessage 那条快路** —— 快路要求 soc 从 2026-10-01 起
+ * 新版才认 `route` 字段，旧版收下后会按老规矩把人送去素材页。
+ * 只写 localStorage 则两边都安全：新版取到；旧版取不到 → 什么都不发生（不是错的跳转）。
+ * 代价是目标页首次挂载时才能取到，表现为"慢半拍"而不是"投错地方"。
+ *
+ * ⚠ key 必须与 soc 侧 `shared/workflow-bridge.ts` 的 EXTERNAL_MATERIAL_KEY 一字不差。
+ */
+const EXTERNAL_MATERIAL_KEY = "skf_wf_external_material";
+
+export interface ExternalMaterialWrite {
+  /** 期望落点（vue-router 路径，如 /workflow/finalize） */
+  route: string;
+  /** 给目标页显示"来自 XX"用 */
+  from?: string;
+  markdown?: string;
+  payload?: Record<string, unknown>;
+}
+
+export function writeExternalMaterial(m: ExternalMaterialWrite): void {
+  try {
+    localStorage.setItem(EXTERNAL_MATERIAL_KEY, JSON.stringify({ ...m, at: Date.now() }));
+  } catch { /* 隐私模式/配额满：投递丢失不该让主流程崩 */ }
+}
+
+export const __EXTERNAL_MATERIAL_KEY = EXTERNAL_MATERIAL_KEY;

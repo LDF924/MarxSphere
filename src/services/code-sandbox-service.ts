@@ -23,10 +23,24 @@ export interface ExecuteCodeResult {
 // ═══ 借鉴2: 沙箱分级（Codex PermissionProfile 模式）═══
 export type SandboxProfile = "read-only" | "workspace-write" | "full-access";
 
-/** 沙箱分级说明（前端展示/审计用） */
+/**
+ * 沙箱分级说明（前端展示/审计用）。
+ *
+ * ⚠ 这两条纪律是实测踩出来的:
+ *
+ * ① **措辞必须与实现一致**。`workspace-write` 原写作"仅允许 agent_workspace 内读写",
+ *    **那句话是假的** —— 实测工作区里跑的代码能写到任意绝对路径(连平台 `src/` 都写得进去)。
+ *    平台没有 OS 级隔离, 沙箱只设了 cwd + env, 文件系统访问靠**规则层**的路径拦截
+ *    (见 codeEscapesWorkspace)。把"约定"说成"隔离", 会让读代码的人 —— 包括我在内 ——
+ *    据它做出错误的授权判断, 而那正是这个缺口藏了这么久的原因。
+ *
+ * ② **这是给用户看的文案, 不是注释**。第一版塞了 `**加粗**` 和"详见注释" ——
+ *    星号会原样显示在设置界面上, 而"详见注释"指向的是用户根本看不到的源码。
+ *    写给用户的话就按用户能读的方式写。
+ */
 export const SANDBOX_PROFILE_LABELS: Record<SandboxProfile, string> = {
-  "read-only": "只读（默认）— 禁止一切文件写/网络/进程操作",
-  "workspace-write": "工作区可写 — 仅允许 agent_workspace 内读写",
+  "read-only": "只读 — 禁止一切文件写/网络/进程操作",
+  "workspace-write": "工作区可写 — 以 agent_workspace 为工作目录; 绝对路径与越级路径会被拦截（文件系统访问靠规则层限制，不是操作系统级隔离）",
   "full-access": "完全访问 — 危险操作需 sidecar 门控（默认禁止危险命令）",
 };
 
@@ -156,6 +170,51 @@ function sandboxDir(): string {
  * - 网络出口白名单代理（allowlist-proxy 8899）
  * - 超时熔断 + 输出截断
  */
+/**
+ * 代码里是否出现了**绝对路径**或**向上越级**的路径字面量。
+ *
+ * ═══ 为什么需要它(2026-10-01 实测发现的未记录缺口) ═══
+ *
+ * `workspace-write` 的档位描述写的是"仅允许 agent_workspace 内读写", 而实测:
+ *   · 沙箱只是把 **cwd** 设成 agent_workspace, **对文件系统访问没有任何限制**;
+ *   · 平台也没有 OS 级隔离(没有 bwrap / restricted token 之类的设施);
+ *   · 于是工作区里跑的代码可以**写到任意绝对路径** —— 实测成功写进了平台自己的
+ *     `src/` 源码目录。
+ *
+ * 这不只是"隔离没做到位": 它让我加的 `execute` 步骤类型有了远超其名义的权限 ——
+ * 用户在审批界面上看到的是"生成一份 .pptx"并据此点头, 而实际授予的是**整个
+ * 文件系统的写权限**。**同意必须是知情的**, 否则那道审批门就只是个形式。
+ *
+ * ═══ 判据取"保守"而非"完备" ═══
+ *
+ * 只拦**字面量**里看得出来的越界: 盘符绝对路径(`D:/…`)、UNC(`\\\\host\\share`)、
+ * 以及从当前位置向上跳的 `../`。这挡不住 `pathlib.Path.home() / "x"` 这类**构造**出来的
+ * 路径 —— 靠正则做出完备的沙箱本就做不到, 假装能反倒更危险。
+ * 所以目标是把门槛抬高、并把事实说清楚, 不是宣称已经隔离。
+ *
+ * 误报面: 只认**带盘符/UNC/越级**的写法。`out.pptx`、`./out.pptx`、`assets/fig.png`
+ * 都不命中 —— 而这正是生成产物时该用的形态(见 tool-router 的 SANDBOX_OUTPUT_PATH_RULE)。
+ *
+ * ═══ 一个要提前知道的取舍(给做"论文配图"的人) ═══
+ *
+ * 这道拦截同时**挡住了模型直接调用技能自带的脚本**(它们在 `~/.claude/skills/…` 这样的
+ * 绝对路径上)。当前不受影响 —— 质检由平台的 artifact-verify-service 在沙箱**外**跑。
+ * 但将来若要"裁剪论文原图放进幻灯片", **不要**靠放宽这条规则去让模型读任意路径;
+ * 正确做法是把需要的素材**推进 agent_workspace**, 模型只用相对路径取。
+ * 否则等于为了一个功能把整个文件系统的读权限又还回去。
+ */
+export function codeEscapesWorkspace(code: string): { escapes: boolean; reason?: string } {
+  const src = String(code || "");
+  const winAbs = src.match(/["']([A-Za-z]:[\\/][^"']{2,})["']/);
+  if (winAbs) return { escapes: true, reason: `绝对路径 ${winAbs[1].slice(0, 80)}` };
+  const unc = src.match(/["'](\\\\[^"']{2,})["']/);
+  if (unc) return { escapes: true, reason: `UNC 路径 ${unc[1].slice(0, 80)}` };
+  // 越级: "../x" 或 "..\\x"。单独的 ".." 不算 —— 那可能是文本内容。
+  const up = src.match(/["'](\.\.[\\/][^"']{0,60})["']/);
+  if (up) return { escapes: true, reason: `向上越级路径 ${up[1]}` };
+  return { escapes: false };
+}
+
 export async function executeCode(input: {
   language: "python" | "javascript";
   code: string;
@@ -169,7 +228,12 @@ export async function executeCode(input: {
   // 黑名单检查
   for (const re of BLACKLIST) {
     if (re.test(input.code)) {
-      return { ok: false, stdout: "", stderr: "", error: "代码包含被禁止的危险操作（沙箱安全策略拦截）", durationMs: Date.now() - t0 };
+      // ⚠ 前缀 `_sandbox-blocked` 是**给上游认的标记**, 不是装饰。
+      //   工具契约只返回字符串, 执行层无从知道"这段文字是结果还是拒绝";
+      //   本仓已有同款约定(见 run_command 的同类标记)。少了它, 一次被安全策略
+      //   拦下的执行会被记成"步骤成功"(result 非空即 verified), 而磁盘上什么都没发生 ——
+      //   2026-10-01 实测: execute 步骤报 done、任务报 completed、没有任何 .pptx。
+      return { ok: false, stdout: "", stderr: "", error: "_sandbox-blocked 代码包含被禁止的危险操作（沙箱安全策略拦截）", durationMs: Date.now() - t0 };
     }
   }
   // V342(P2-9): 命令语义解析（识别 find -exec/curl -o 覆盖系统文件等绕过手法）
@@ -180,12 +244,50 @@ export async function executeCode(input: {
       return { ok: false, stdout: "", stderr: "", error: "命令语义解析拦截: " + semantic.reason, durationMs: Date.now() - t0 };
     }
   } catch { /* 语义解析器不可用 → 黑名单已兜底 */ }
+  /**
+   * 路径越界拦截 —— **workspace-write 的围栏在这里, 而不是在内核里**。
+   *
+   * 实测(2026-10-01): 没有这道检查时, 工作区里的代码能写到任意绝对路径
+   * (连平台 `src/` 源码目录都写得进去)。见 `codeEscapesWorkspace` 的说明。
+   * 放在黑名单之后、门控之前: 它拦的是"逃出工作区", 与"是不是危险操作"是两件事,
+   * 不该混进门控让 LLM 去判 —— 那是**确定性的规则**, 就该用规则判。
+   */
+  if (profile !== "full-access") {
+    const esc = codeEscapesWorkspace(input.code);
+    if (esc.escapes) {
+      return {
+        ok: false, stdout: "", stderr: "",
+        error: `_sandbox-blocked 代码引用了工作区之外的路径（${esc.reason}）——`
+          + `请改用**相对路径**(如 out.pptx)写在工作目录里。`
+          + `注意: 这是规则层拦截, 不是 OS 级隔离; 需要访问外部路径请显式升级 profile。`,
+        durationMs: Date.now() - t0,
+      };
+    }
+  }
   // P0-2: 纯计算预检 — 不含文件/进程/网络/环境操作的代码跳过 LLM 门控（规则层放行）
   // 含敏感能力的代码仍走 sidecar 审查（防 LLM 不可用时保守 review 卡死普通计算）
   // 借鉴2: workspace-write 级别下文件操作是"预授权"的（目录已被沙箱锁定在 agent_workspace）,
   //   跳过 LLM 门控 — 对齐 Codex workspace-write 语义; read-only/full-access 仍走门控
   const isPureCompute = !SENSITIVE_SIGNALS.some((re) => re.test(input.code));
-  const preAuthorizedFileOps = profile === "workspace-write" && /(?:fs\.|open\(|readFileSync|writeFileSync|readdir|mkdir)\(/.test(input.code) && !/(?:fetch|axios|http|requests\.|child_process|subprocess)/.test(input.code);
+  /**
+   * workspace-write 下, **只是写工作区**的代码直接放行(目录已被沙箱锁死在 agent_workspace)。
+   *
+   * ⚠ 2026-10-01 修: 原判据要求代码里出现 `open(` / `fs.` / `writeFileSync(` 之类字面量,
+   *   属于**按某种写法猜意图**。而 python-pptx 写文件是 `prs.save("x.pptx")` ——
+   *   一个 `open(` 都没有, 于是"预授权"永远不成立, 每次都掉进下面那道
+   *   **由 LLM 判定**的 sidecar 门控。结果同一段代码**这次过、下次被拦**
+   *   (实测: 一次 `Sidecar 门控升级人工审查: 代码含网络/进程操作`, 重跑同样的生成却通过)。
+   *   那不是内容差异, 是掷骰子 —— 对用户表现为"生成 PPT 时好时坏"。
+   *
+   *   现在改成看**写文件的调用形态**: 覆盖常见的落盘 API(不同库各有各的名字),
+   *   而不是只认某一种。危险面没有变大 —— 排除项(网络/子进程)仍然挡着,
+   *   黑名单也仍然在最前面拦, 这里放宽的只是"判定它算不算在写工作区"。
+   */
+  const WRITES_WORKSPACE = /(?:\.save|\.write|\.writestr|\.to_excel|\.to_csv|\.to_json|\.to_pickle|\.export|\.dump|\.write_bytes|\.write_text|open\(|fs\.|writeFileSync|appendFileSync|readdir|mkdir|shutil\.copy)/i;
+  const NETWORK_OR_PROC = /(?:fetch|axios|xmlhttprequest|requests\.|urllib|socket|https?:\/\/|ftplib|telnetlib|child_process|subprocess|os\.system|os\.popen|\bexec\(|\beval\(|spawn\()/i;
+  const preAuthorizedFileOps = profile === "workspace-write"
+    && WRITES_WORKSPACE.test(input.code)
+    && !NETWORK_OR_PROC.test(input.code);
   if (!isPureCompute && !preAuthorizedFileOps) {
     // V308(P0-13): Sidecar 工具门控
     try {

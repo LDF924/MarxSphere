@@ -85,6 +85,13 @@ export const AgentConsole: FC = () => {
   const [tab, setTab] = useState<"rules" | "memory" | "logs" | "eval" | "audit" | "tools" | "episodic" | "skills" | "agent" | "lab" | "provenance" | "guards" | "routing">("rules");
   // V395: 运行时设置(沙箱/预设/自主级别) — 提升到顶部, 底部设置条可见
   const [settings, setSettings] = useState<Record<string, string>>({});
+  /** 沙箱档位说明 —— 取自后端 `/api/agent/sandbox-profiles`, 不在前端另存一份 */
+  const [sandboxProfiles, setSandboxProfiles] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    void fetch("/api/agent/sandbox-profiles").then((r) => r.json())
+      .then((d) => setSandboxProfiles(d.profiles ?? []))
+      .catch(() => {});
+  }, []);
   // V400: 运行时状态(预算/Elicitation/熔断) — 主组件级, 所有 tab 可见
   const [runtime, setRuntime] = useState<Record<string, any>>({});
   const loadRuntimeStatus = async () => {
@@ -260,15 +267,18 @@ export const AgentConsole: FC = () => {
                 {["suggest", "auto-edit", "full-auto"].map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="沙箱隔离级别: 只读(默认)/工作区可写/完全访问(危险操作门控)">
+            <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="沙箱隔离级别 —— 说明取自后端, 不在前端另存一份">
               沙箱级别
               <select value={settings.sandbox_profile || "read-only"}
                 onChange={(e) => { const v = e.target.value; setSettings((s) => ({ ...s, sandbox_profile: v })); void fetch("/api/agent/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sandbox_profile: v }) }); }}
                 className="rounded border border-cyan-500/20 bg-slate-900 px-1 py-0.5 text-[10px] text-cyan-300 outline-none">
-                <option value="read-only">read-only(只读)</option>
-                <option value="workspace-write">workspace-write(可写)</option>
-                <option value="full-access">full-access(完全)</option>
+                {(sandboxProfiles.length ? sandboxProfiles : [{ value: "read-only", label: "只读" }])
+                  .map((p) => <option key={p.value} value={p.value}>{p.value}</option>)}
               </select>
+              {/* 档位含义直接摆在旁边 —— 此前前端各存一份描述, 与后端实现漂移过 */}
+              <span className="text-cyan-400/70" title={sandboxProfiles.find((p) => p.value === (settings.sandbox_profile || "read-only"))?.label ?? ""}>
+                {sandboxProfiles.find((p) => p.value === (settings.sandbox_profile || "read-only"))?.label?.slice(0, 14) ?? ""}
+              </span>
             </label>
             <button type="button" aria-label="刷新设置" onClick={() => void loadSettings()}
               className="ml-auto rounded bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400 hover:bg-cyan-500/20">刷新</button>

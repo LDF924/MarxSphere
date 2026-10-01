@@ -312,6 +312,10 @@ export const ADAPTIVE_OPERATORS: OperatorMeta[] = [
       ctx.tokens['hypothesis'] = hyp.tokens;
       ctx.flags['hypothesis_content'] = hyp.content;
       ctx.flags['hypothesis_confidence'] = hyp.confidence;
+      // ⚠ 降级标志必须一起存: 超时降级返回的 content 是'生成超时，请重试',
+      //   形状与真结果一样, 只存 content 的话这个信息就没了 ——
+      //   下游(agent 步骤执行器)会把失败当成功, 任务最后报 completed(见 generateHypothesis 的说明)。
+      ctx.flags['hypothesis_degraded'] = !!hyp.degraded;
     },
   },
   {
@@ -327,6 +331,7 @@ export const ADAPTIVE_OPERATORS: OperatorMeta[] = [
         );
         ctx.flags['hypothesis_content'] = regenerated.content;
         ctx.flags['hypothesis_confidence'] = Math.min(1, Math.max(0, regenerated.confidence + 0.1));
+        ctx.flags['hypothesis_degraded'] = !!regenerated.degraded;
         ctx.tokens['cite_check'] = regenerated.tokens;
       }
     },

@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, watch } from "vue";
 import { RouterView, useRoute, useRouter } from "vue-router";
 import { ToastHost, ConfirmHost } from "./shared/ui";
 import { collectDomActions, onActionInvoked, reportActions } from "./shared/actions-bridge";
-import { HANDOFF_KEY, installWorkflowRouteBridge, reportSocRoute, resetHandoffClaim } from "./shared/workflow-bridge";
+import { HANDOFF_KEY, installWorkflowRouteBridge, reportSocRoute, resetHandoffClaim, writeExternalMaterial } from "./shared/workflow-bridge";
 
 // ── 当前页可执行动作 → 上报 React 外壳的科研助手(V416) ──
 // 全站一处接线: 只要按钮带 data-control 就会被自动收集上报, 各视图不用各自写桥接代码。
@@ -19,8 +19,30 @@ let mo: MutationObserver | undefined;
 // #/workflow/input → 监听器尚未注册 → 消息静默丢弃。"先 postMessage 再等接收方挂载"
 // 必丢(与 ReviewView 的那条结论同源)。外壳是常驻的, 收下后再引导到素材页。
 const onExternalMaterial = (e: MessageEvent) => {
-  const d = e.data as { source?: string; type?: string; kind?: string; title?: string; markdown?: string } | null;
-  if (d?.source !== "socioseek-app" || d.type !== "workflow-material" || !d.markdown?.trim()) return;
+  const d = e.data as {
+    source?: string; type?: string; kind?: string; title?: string; markdown?: string;
+    route?: string; from?: string; payload?: Record<string, unknown>;
+  } | null;
+  if (d?.source !== "socioseek-app" || d.type !== "workflow-material") return;
+  /**
+   * 带 `route` 的投递 → 去**指定那一页**（2026-10-01 补）。
+   *
+   * 在这之前落点是写死的素材页，而 AIGC 检测的下一站是**统稿定稿的合并轮**
+   * （测出 AI 特征高 → 该做降 AIGC 合稿），投到素材库等于把人放到错的房间。
+   * 这类投递可能**不带正文**（只带一条"建议用中度降重"），所以不能沿用下面那条
+   * `!d.markdown?.trim()` 的早退 —— 否则建议本身就被丢了。
+   */
+  if (d.route) {
+    writeExternalMaterial({
+      route: String(d.route),
+      from: d.from ?? "外部模块",
+      markdown: d.markdown ?? "",
+      payload: d.payload ?? {},
+    });
+    if (!route.path.startsWith(d.route)) void router.push(String(d.route));
+    return;
+  }
+  if (!d.markdown?.trim()) return;
   try {
     localStorage.setItem(HANDOFF_KEY, JSON.stringify({
       kind: d.kind ?? "note", title: d.title ?? "外部素材", markdown: d.markdown, at: Date.now(),

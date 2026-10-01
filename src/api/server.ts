@@ -383,6 +383,16 @@ export function buildHttpServer() {
   // ⚠ /api/tokens 管理端点不在白名单 — 外部连接一律 401 (即使带 token 也拒绝, 避免令牌被盗后直接管理)
   const AUTH_WHITELIST = new Set([
     "/health", "/api/mode", "/api/docs",
+    /**
+     * 微信支付回调(2026-10-01)。**必须免鉴权** —— 调用方是微信服务器(公网),
+     *   它不会带我们的 JWT/sag_ 令牌。放进白名单不等于"不设防":
+     *   这条路由的防伪靠在 handler 里**验签 + 解密 + 金额核对 + 幂等**四道,
+     *   见 wechat-pay-service.verifyNotifySignature 与 payment-order-service.settleOrder。
+     *
+     * 若哪天误把它从白名单拿掉, 症状是"微信一直回调失败, 用户付了钱但不到账",
+     *   而且本地测试(本机 socket 豁免)完全看不出来 —— 只有在公网部署时才暴露。
+     */
+    "/api/pay/notify/wechat",
   ]);
   // 高危管理路由: 仅限本机 socket — 外部即使持有效 token 也拒绝
   //   /api/tokens 令牌管理 | /api/ai-execute Claude Code 执行桥(RCE 面)
@@ -992,6 +1002,48 @@ export function buildHttpServer() {
   // ─── 经典文本研究 API（马理论 5 大能力）───
   // V390: 默认源按用户配置 — JWT 用户未传 sourceId 时用"用户自己的 source"(私有库/首个source), 未认证(本机/API令牌)回退公共库
   const DEFAULT_SOURCE = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
+  /**
+   * `execute` 步骤可以分派到的工具 —— **只有会产生实际产物的那几个**。
+   *
+   * 为什么必须是白名单而不是"排除检索类": 工具清单有 48 个, 逐个排除随时会漏;
+   * 而"什么算动作"就那么几个, 列出来反而稳定。更重要的是**这个清单同时是安全边界** ——
+   * execute 是全仓唯一允许产生文件系统副作用的步骤类型, 能碰到的工具越明确越好审。
+   */
+  const ACTION_TOOL_NAMES = new Set(["run_code", "file_write", "run_command", "apply_patch"]);
+
+  /**
+   * 产出物**质检** —— 在工具成功返回之后跑技能自带的质检脚本, 把结论拼进 detail。
+   *
+   * 抽出来是因为三处分派点(runAgentTaskInner + 对话链两处)都要走同一条质检,
+   * 少接一处, 从那条路进来的任务就绕过了验证 —— 而"漏接一处"正是本仓反复踩的形态
+   * (工具登记四处清单 / 权限列表多处同步 都栽过)。
+   *
+   * @returns 一段可拼进 detail 的文案; 质检没跑成时**如实说没跑**, 不假装通过
+   */
+  /**
+   * 任务创建时间 —— 质检的产物基准。
+   * 对话链那两个分派点不经过 runAgentTaskInner, 拿不到提前算好的值, 所以单独抽一个。
+   */
+  function taskCreatedAtOf(t: unknown): number {
+    const c = (t as { createdAt?: string | Date } | null)?.createdAt;
+    return c ? new Date(c).getTime() - 5000 : 0;
+  }
+
+  async function verifyArtifactNote(output: string, since: number, stepTitle = ""): Promise<string> {
+    try {
+      const { verifyProducedArtifact } = await import("../services/artifact-verify-service.js");
+      /**
+       * 技能名从**步骤标题 + 输出**里找。
+       * 对话链那两个分派点没有 execContext, 但步骤标题通常写着"调用 xxx 技能",
+       * 实测够用; 找不到就返回 null, 质检服务会如实报"未识别到技能, 跳过质检"。
+       */
+      const skillName = ((stepTitle + " " + output).match(/技能[`「\s]*([a-z0-9][a-z0-9-]{2,40})/i) || [])[1];
+      const v = await verifyProducedArtifact({ skillName, output, since });
+      return v.ran ? `\n【产物质检${v.ok ? "通过" : "未通过"}】${v.summary}（脚本 ${v.script}）` : `\n【产物质检未执行】${v.note ?? ""}`;
+    } catch (e) {
+      return `\n【产物质检未执行】${String((e as Error)?.message || e).slice(0, 160)}`;
+    }
+  }
   // 修复1: Agent 步骤执行器 self-fetch base — 统一走 base-urls(AGENT_API_BASE 等显式配置优先,
   // 否则按 HTTP_HOST/HTTP_PORT 推导, 免得"监听在哪"与"自我请求打哪"分叉)
   const SELF_BASE = selfBaseUrl();
@@ -1730,8 +1782,683 @@ export function buildHttpServer() {
     }
     return { ok: true, base64: result.base64 };
   });
-  // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───
-  // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
+  // ─── Word 成品构建(2026-10-01: 自旧项目 AItoolman 移植) ───
+  //
+  // 补的是两块此前**完全空白**的能力:
+  //   ① LaTeX → Word 公式(真 OMML, 不是图片/纯文本)
+  //   ② Word 封面页 + 目录(TOC 域)
+  // 实现: src/services/docx-build-service.ts → scripts/{latex_to_docx,add_cover_and_toc}.py
+  //
+  // 依赖自检: GET /api/docx-build/health —— "缺 latex2mathml"这件事必须有个地方能回答,
+  //   否则用户点了导出才看到 ModuleNotFoundError(同 service-token 那次的教训)。
+  app.get("/api/docx-build/health", async () => {
+    const { checkDocxBuildDeps } = await import("../services/docx-build-service.js");
+    const r = await checkDocxBuildDeps();
+    return {
+      ok: r.ok,
+      python: r.python,
+      missing: r.missing,
+      hint: r.ok ? undefined : "缺依赖时执行: pip install python-docx latex2mathml lxml",
+    };
+  });
+  // LaTeX 文本 → docx
+  const latexToDocxSchema = z.object({
+    content: z.string().min(1).max(2_000_000),
+    title: z.string().max(200).optional(),
+    fontName: z.string().max(60).optional(),
+    fontSize: z.number().min(6).max(36).optional(),
+  });
+  app.post("/api/docx-build/latex-to-docx", async (request, reply) => {
+    const body = latexToDocxSchema.parse(request.body);
+    const { latexToDocx } = await import("../services/docx-build-service.js");
+    const result = await latexToDocx(body);
+    if (!result.ok || !result.base64) {
+      return reply.code(502).send({
+        error: { code: "LATEX_DOCX_FAILED", message: result.error ?? "LaTeX 转 Word 失败" },
+      });
+    }
+    return { ok: true, base64: result.base64, meta: result.meta };
+  });
+  // 给已有 docx 加封面 + 目录
+  const coverTocSchema = z.object({
+    docxBase64: z.string().min(1).max(80_000_000),
+    title: z.string().max(200).optional(),
+    position: z.enum(["high", "center", "low"]).optional(),
+    engine: z.enum(["auto", "python", "com"]).optional(),
+  });
+  app.post("/api/docx-build/cover-toc", async (request, reply) => {
+    const body = coverTocSchema.parse(request.body);
+    const { addCoverAndToc } = await import("../services/docx-build-service.js");
+    const result = await addCoverAndToc(body);
+    if (!result.ok || !result.base64) {
+      return reply.code(502).send({
+        error: { code: "COVER_TOC_FAILED", message: result.error ?? "封面目录生成失败" },
+      });
+    }
+    return { ok: true, base64: result.base64, meta: result.meta };
+  });
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2026-10-01: 自旧项目 AItoolman 补的能力(共 9 项)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── 文献题录文件导入(WOS/RIS/BibTeX/CNKI/PubMed/Springer/arXiv/OpenAlex/S2/CSV/EndNote) ───
+  app.get("/api/literature-import/formats", async () => {
+    const { listFormats } = await import("../services/literature-import-service.js");
+    return { formats: listFormats() };
+  });
+  /** 只解析不入库: 先让用户看清"识别成什么格式、前几条长什么样"再决定 */
+  const litPreviewSchema = z.object({
+    content: z.string().min(1).max(20_000_000),
+    fileName: z.string().max(260).optional(),
+    maxSample: z.number().int().min(1).max(50).optional(),
+  });
+  app.post("/api/literature-import/preview", async (request) => {
+    const body = litPreviewSchema.parse(request.body);
+    const { previewLiteratureFile } = await import("../services/literature-import-service.js");
+    return previewLiteratureFile({
+      bytes: Buffer.from(body.content, "utf8"),
+      fileName: body.fileName,
+      maxSample: body.maxSample,
+    });
+  });
+  const litImportSchema = z.object({
+    content: z.string().min(1).max(20_000_000),
+    fileName: z.string().max(260).optional(),
+    format: z.string().max(40).optional(),
+    sourceId: z.string().uuid().optional(),
+  });
+  app.post("/api/literature-import/run", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = litImportSchema.parse(request.body);
+    const svc = await import("../services/literature-import-service.js");
+    const r = await svc.importLiteratureFile({
+      bytes: Buffer.from(body.content, "utf8"),
+      fileName: body.fileName ?? "",
+      format: body.format as never,
+      sourceId: body.sourceId,
+    } as never);
+    return r;
+  });
+  app.get("/api/literature-import/batches", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { listImportBatches } = await import("../services/literature-import-service.js");
+    return { batches: await listImportBatches({ userId: user.id, limit: parseInt(q.limit || "30", 10) }) };
+  });
+
+  // ─── AIGC 率检测(与已有的"降 AIGC"配对, 形成 测→降→复测 闭环) ───
+  const aigcSchema = z.object({
+    text: z.string().min(1).max(2_000_000),
+    lang: z.enum(["auto", "zh", "en"]).optional(),
+  });
+  app.post("/api/aigc/detect", async (request) => {
+    const body = aigcSchema.parse(request.body);
+    const { analyzeAigc } = await import("../services/aigc-detect-service.js");
+    return analyzeAigc(body.text, { lang: body.lang ?? "auto" });
+  });
+  /** 改前/改后对比 —— 降重到底有没有用, 这里是判据 */
+  app.post("/api/aigc/diff", async (request) => {
+    const body = z.object({
+      before: z.string().min(1).max(2_000_000),
+      after: z.string().min(1).max(2_000_000),
+      lang: z.enum(["auto", "zh", "en"]).optional(),
+    }).parse(request.body);
+    const { diffAigc } = await import("../services/aigc-detect-service.js");
+    return diffAigc(body.before, body.after, { lang: body.lang ?? "auto" });
+  });
+  app.get("/api/aigc/calibration", async (request) => {
+    const q = request.query as { lang?: string };
+    const { getCalibration } = await import("../services/aigc-detect-service.js");
+    return { calibration: getCalibration(q.lang === "en" ? "en" : "zh") };
+  });
+
+  // ─── AIGC 外接权威检测平台(2026-10-01) ───
+  //
+  // 与上面自研检测的分工: 自研那套回答"在我们的刻度上有多像 AI"(离线、免费、随时可跑);
+  // 这一组回答"**期刊/学校指定的那一家**会怎么判"。两者结论可以不一致, 界面上并排显示 ——
+  // 不一致本身就是有用的信息, 不该被抹平。
+  //
+  // ⚠ 全部 requireUser: 这里会用到用户的第三方密钥与额度, 必须落在他自己头上。
+  /** 服务商清单 + 当前可用性(前端只从这渲染, 不在前端另抄一份) */
+  app.get("/api/aigc/external/providers", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { diagnose } = await import("../services/aigc-external-service.js");
+    return diagnose(user.id);
+  });
+  app.get("/api/aigc/external/credentials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { listCredentials } = await import("../services/aigc-external-service.js");
+    return { credentials: await listCredentials(user.id) };
+  });
+  /**
+   * ⚠ 用 `verifyToken(...).role` 判管理员, **不能用 `user.isAdmin`** ——
+   *   `requireUser` 返回的是 `authService.getUserById` 的 User 对象, 它上面**没有 isAdmin
+   *   这个字段**(admin 是 JWT payload 的 `role`, 见 auth-service.ts:25)。
+   *   `user.isAdmin` 恒为 undefined ⇒ `!user.isAdmin` 恒真 ⇒ 这两个接口变成管理员也调不了,
+   *   而且是 403 静默拒绝, 排查时容易怀疑到密钥本身。
+   */
+  const isAdminToken = (request: { headers: Record<string, unknown> }): boolean => {
+    const token = String((request.headers.authorization || "") as string).replace("Bearer ", "").trim();
+    return authService.verifyToken(token)?.role === "admin";
+  };
+  app.post("/api/aigc/external/credentials", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      provider: z.string().min(1).max(60),
+      apiKey: z.string().min(1).max(500),
+      email: z.string().max(200).optional(),
+      note: z.string().max(500).optional(),
+      /** 平台级配置是全站共用一把密钥, 只对管理员开放 —— 普通用户配了会影响所有人 */
+      scope: z.enum(["personal", "platform"]).optional(),
+    }).parse(request.body);
+    const scope = body.scope ?? "personal";
+    if (scope === "platform" && !isAdminToken(request)) {
+      reply.code(403);
+      return { error: "平台级密钥会影响全部用户, 仅管理员可配置", code: "FORBIDDEN" };
+    }
+    const { saveCredential } = await import("../services/aigc-external-service.js");
+    const r = await saveCredential({
+      userId: scope === "platform" ? null : user.id,
+      provider: body.provider, apiKey: body.apiKey, email: body.email, note: body.note,
+    });
+    if (!r.ok) { reply.code(400); return { error: r.error, code: "BAD_REQUEST" }; }
+    return { ok: true };
+  });
+  app.delete("/api/aigc/external/credentials/:provider", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { provider: string };
+    const q = request.query as { scope?: string };
+    const scope = q.scope === "platform" ? "platform" : "personal";
+    if (scope === "platform" && !isAdminToken(request)) {
+      reply.code(403);
+      return { error: "平台级密钥仅管理员可删", code: "FORBIDDEN" };
+    }
+    const { deleteCredential } = await import("../services/aigc-external-service.js");
+    return { ok: await deleteCredential(user.id, p.provider, scope) };
+  });
+  /** 向某一家平台送检 */
+  app.post("/api/aigc/external/scan", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      provider: z.string().min(1).max(60),
+      text: z.string().min(1).max(2_000_000),
+      lang: z.enum(["zh", "en"]).optional(),
+    }).parse(request.body);
+    const { scanText } = await import("../services/aigc-external-service.js");
+    const r = await scanText(user.id, body.provider, body.text, body.lang ?? "zh");
+    if (!r.ok) { reply.code(400); return { error: r.error, code: "SCAN_FAILED", scanId: r.scanId }; }
+    return r;
+  });
+  app.get("/api/aigc/external/scans", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { listScans } = await import("../services/aigc-external-service.js");
+    return { scans: await listScans(user.id, parseInt(q.limit || "30", 10) || 30) };
+  });
+  /** 送检包 —— 给不提供 API 的平台(知网/维普/朱雀…)用 */
+  app.post("/api/aigc/external/package", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      provider: z.string().min(1).max(60),
+      title: z.string().max(300).optional(),
+      text: z.string().min(1).max(2_000_000),
+    }).parse(request.body);
+    const { buildSubmissionPackage } = await import("../services/aigc-external-service.js");
+    const r = buildSubmissionPackage({ provider: body.provider, title: body.title ?? "", text: body.text });
+    if (!r.ok) { reply.code(400); return { error: r.error, code: "BAD_REQUEST" }; }
+    return r;
+  });
+  /** 人工送检回填 */
+  app.post("/api/aigc/external/manual", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      provider: z.string().min(1).max(60),
+      title: z.string().max(300).optional(),
+      score: z.number().min(0).max(100).nullable().optional(),
+      verdict: z.string().max(40).nullable().optional(),
+      referenceNo: z.string().max(200).optional(),
+      rawExcerpt: z.string().max(4000).optional(),
+      evidenceRel: z.string().max(600).optional(),
+      text: z.string().max(2_000_000).optional(),
+    }).parse(request.body);
+    const { submitManual } = await import("../services/aigc-external-service.js");
+    const r = await submitManual({
+      userId: user.id, provider: body.provider, title: body.title,
+      score: body.score ?? null, verdict: body.verdict ?? null,
+      referenceNo: body.referenceNo, rawExcerpt: body.rawExcerpt,
+      evidenceRel: body.evidenceRel, text: body.text,
+    });
+    if (!r.ok) { reply.code(400); return { error: r.error, code: "BAD_REQUEST" }; }
+    return r;
+  });
+  app.get("/api/aigc/external/manual", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { listManual } = await import("../services/aigc-external-service.js");
+    return { submissions: await listManual(user.id, parseInt(q.limit || "50", 10) || 50) };
+  });
+  app.delete("/api/aigc/external/manual/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const { deleteManual } = await import("../services/aigc-external-service.js");
+    return { ok: await deleteManual(user.id, p.id) };
+  });
+
+  // ─── PPT 第二条路径: 走外部技能(2026-10-01) ───
+  //
+  // 与上面自建管线的分工见 ppt-skill-service.ts 头部。一句话: 自建管线快、可单页重生;
+  // 技能路径慢、贵, 但版式与叙事是技能作者迭代过的。
+  // ⚠ 技能执行体是 **Agent**, 不是服务端函数 —— 这里只负责选技能/备料/建任务。
+  app.get("/api/ppt/skills", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { listPptSkills, SKILL_PATH_NOTE } = await import("../services/ppt-skill-service.js");
+    return { skills: listPptSkills(), note: SKILL_PATH_NOTE };
+  });
+  app.post("/api/ppt/skill-run", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      skillId: z.string().min(1).max(80),
+      title: z.string().min(1).max(300),
+      topic: z.string().max(500).optional(),
+      sourceText: z.string().max(500_000).optional(),
+      wishPages: z.number().int().min(1).max(80).optional(),
+      extra: z.string().max(2000).optional(),
+      projectId: z.string().max(80).optional(),
+    }).parse(request.body);
+    const { buildSkillPrompt } = await import("../services/ppt-skill-service.js");
+    const built = buildSkillPrompt({
+      skillId: body.skillId, title: body.title, topic: body.topic,
+      sourceText: body.sourceText, wishPages: body.wishPages, extra: body.extra,
+    });
+    if (!built.ok) { reply.code(400); return { error: built.error, code: "BAD_REQUEST" }; }
+    /**
+     * ⚠ 建任务但**不自动跑**。
+     *
+     * 与定时任务同一条纪律(见 agent-scheduled-runner 头部): 自动执行会消耗额度,
+     * 而这一步动辄 5–10 分钟、按模型调用计费。用户点了按钮就该看到"任务已建好,
+     * 点这里开始跑", 而不是钱在自己没看见的时候花掉。
+     * 前端拿到 taskId 后给一个明确的启动入口(agent 任务面板已有启动按钮)。
+     */
+    const agentTaskService = await import("../services/agent-task-service.js");
+    /**
+     * ⚠ `projectId` **必须给一个默认值**, 不能留 undefined。
+     *
+     * 2026-10-01 实测踩到: 留空时任务的 project_id 是 NULL, 而步骤执行器把
+     *   `task.projectId || undefined` 当 `sourceId` 发给 /api/reason/query ——
+     *   那个字段是 `z.string().uuid()` **必填**, 于是 httpx 回
+     *   `{error:{code:"BAD_REQUEST",message:"请求参数无效"}}` → 计划里的
+     *   retrieve / reason 两步**双双失败**(且失败被记成"步骤完成")。
+     *   更糟的是任务本身照样走到 completed, 用户看到的是一个"成功"的空任务。
+     *
+     * 用 DEFAULT_SOURCE(与 education-service / agent-tool-router 同一个常量):
+     *   它是本仓"没有指定项目时"的既有约定, 指向平台自带的示例语料源。
+     */
+    const DEFAULT_SOURCE = "c609acbf-1d6e-4bd5-9ae1-92fa6c64021a";
+    /**
+     * ⚠ 建任务之前，把**属于该用户的**素材推进 agent_workspace。
+     *
+     * 由来(2026-10-02): 上一轮给沙箱补了工作区围栏后，模型不能再引用绝对路径 ——
+     *   而论文汇报真正要用的素材（上传的图、跑出来的回归图、论文 PDF 里的图表）
+     *   都在各自模块的绝对路径上。当时留的取舍是"**把素材推进工作区，而不是
+     *   放宽围栏**"，这里是那句话的接线。
+     *
+     * ⚠ 2026-10-02 修正一处**事实**: 第一版在这里内联读 `empirical/figures/`，
+     *   我当时按"这会让任何用户拿到别人的图表"来描述它 —— 核实后**不是这样**：
+     *   实证图表的存储**本来就没有归属概念**（图存在扁平的 `empirical/figures/` 下、
+     *   没有 user_id；`GET /api/empirical/figures/:file` 也只要求登录、不校验归属）。
+     *   所以第一版继承的是**既有现实**，不是我新引入的问题。
+     *   但既然新代码要写归属，就按**明确带 user_id 过滤**来写（见 asset-source-service），
+     *   别把一个已有的缺口再复制一份。
+     *
+     * 为什么在**建任务时**推、而不是等 execute 步骤：工作区是全局共享目录，
+     *   而沙箱**只生成一次代码、没有第二轮**去看目录里有什么。素材必须开跑前就位，
+     *   清单才能被生成提示读到（见 agent-tool-router 的 workspaceAssets）。
+     */
+    try {
+      const { stageUserAssets, describeAssetSources } = await import("../services/asset-source-service.js");
+      const r = await stageUserAssets(user.id);
+      console.log(`[ppt] 素材: ${describeAssetSources(r)}`);
+    } catch (e) {
+      // 素材推进失败**不阻断**建任务 —— 没有配图也能出一份纯文字的稿子，
+      //   而"因为取图失败就不让用户开始"是本末倒置。
+      console.warn(`[ppt] 推进素材失败(不阻断): ${String((e as Error)?.message).slice(0, 160)}`);
+    }
+    const task = await agentTaskService.createAgentTask({
+      projectId: body.projectId || DEFAULT_SOURCE,
+      goal: built.prompt!,
+      userId: user.id,
+      contextHint: `PPT 技能生成：${body.skillId}`,
+    });
+    return { ok: true, taskId: task.id, skillId: body.skillId, promptChars: built.prompt!.length };
+  });
+
+  // ─── 邮箱验证码(OTP) ───
+  const otpSendSchema = z.object({
+    email: z.string().max(200),
+    purpose: z.enum(["register", "reset", "bind", "login"]),
+  });
+  app.post("/api/auth/otp/send", async (request, reply) => {
+    const body = otpSendSchema.parse(request.body);
+    const { sendOtp } = await import("../services/email-otp-service.js");
+    const ip = String(request.socket?.remoteAddress ?? "");
+    const r = await sendOtp({ email: body.email, purpose: body.purpose, ip });
+    if (!r.ok) {
+      return reply.code(r.code === "rate_limited" ? 429 : 400).send({ error: r.error, code: r.code });
+    }
+    // 生产路径**不回传验证码**, 只回有效期
+    return { ok: true, expiresInSeconds: r.expiresInSeconds };
+  });
+  app.post("/api/auth/otp/verify", async (request, reply) => {
+    const body = z.object({
+      email: z.string().max(200),
+      code: z.string().max(12),
+      purpose: z.enum(["register", "reset", "bind", "login"]),
+    }).parse(request.body);
+    const { verifyOtp } = await import("../services/email-otp-service.js");
+    const r = await verifyOtp(body);
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: r.code });
+    return { ok: true };
+  });
+
+  // ─── 关键词共现聚类图谱 ───
+  //
+  // 两种输入: 前端直接传文本(`texts`), 或从平台文献库现算(`from-library`)。
+  // 服务侧的 `loadLibraryDocs()` 是**同步**的(读的是literatureService内存索引),
+  //   所以 from-library 这条要自己把 docs 喂给 build*, 而不是传 userId 进去。
+  const kwNetSchema = z.object({
+    texts: z.array(z.string().max(500_000)).min(1).max(2000),
+    lang: z.enum(["zh", "en", "both"]).optional(),
+    windowSize: z.number().int().min(2).max(20).optional(),
+    measure: z.enum(["jaccard", "pmi", "count"]).optional(),
+    minCount: z.number().int().min(1).max(100).optional(),
+    maxNodes: z.number().int().min(5).max(300).optional(),
+  });
+  app.post("/api/keyword-network/build", async (request) => {
+    const body = kwNetSchema.parse(request.body);
+    const svc = await import("../services/keyword-network-service.js");
+    const docs = body.texts.map((t, i) => ({ id: `inline-${i}`, title: "", text: t }));
+    const opts = {
+      windowSize: body.windowSize, measure: body.measure,
+      minCount: body.minCount, maxNodes: body.maxNodes,
+    };
+    if (body.lang === "both") return svc.buildBilingualNetworks(docs, opts);
+    return svc.buildKeywordNetwork(docs, body.lang ?? "zh", opts);
+  });
+  /** 直接从平台文献库现算(前端不用把语料传上来) */
+  app.post("/api/keyword-network/from-library", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      limit: z.number().int().min(1).max(500).optional(),
+      topic: z.string().max(200).optional(),
+      keyword: z.string().max(200).optional(),
+      lang: z.enum(["zh", "en", "both"]).optional(),
+      windowSize: z.number().int().min(2).max(20).optional(),
+      measure: z.enum(["jaccard", "pmi", "count"]).optional(),
+      maxNodes: z.number().int().min(5).max(300).optional(),
+    }).parse(request.body ?? {});
+    const svc = await import("../services/keyword-network-service.js");
+    const docs = svc.loadLibraryDocs({
+      topic: body.topic, keyword: body.keyword, limit: body.limit ?? 80,
+    });
+    if (!docs.length) {
+      return reply.code(400).send({
+        error: { code: "NO_DOCS", message: "文献库里没有可用于生成图谱的文本(先入库一些带正文的文献)" },
+      });
+    }
+    const opts = { windowSize: body.windowSize, measure: body.measure, maxNodes: body.maxNodes };
+    if (body.lang === "both") return svc.buildBilingualNetworks(docs, opts);
+    return svc.buildKeywordNetwork(docs, body.lang ?? "zh", opts);
+  });
+
+  // ─── 词云 ───
+  app.get("/api/wordcloud/health", async () => {
+    const { wordcloudAvailable } = await import("../services/wordcloud-service.js");
+    return await wordcloudAvailable();
+  });
+  app.post("/api/wordcloud/render", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    /**
+     * ⚠ 两个字段名必须与服务侧的 `WordCloudInput` 一致。
+     *
+     * 这里踩过两次(2026-10-01 真机冒烟):
+     *   ① 词频表原先写成 `freqs`, 而服务读的是 `frequencies` ——
+     *      schema 把它剥掉后服务看到的是"什么都没给", 报「需要 text / texts / frequencies 之一」,
+     *      调用方完全看不出是**字段名**的问题。
+     *   ② `minCount` 原先没暴露 —— 短文本在默认门槛(2)下抽不出词, 用户只会看到
+     *      「文本里没有提取到关键词」, 而那段话里明明有词。(服务侧现在会自动降档重试并回 note。)
+     * 对齐口径: 入参直接照抄服务侧接口名, 不要另起简称。
+     */
+    const body = z.object({
+      text: z.string().max(2_000_000).optional(),
+      texts: z.array(z.string().max(2_000_000)).max(200).optional(),
+      frequencies: z.array(z.object({ word: z.string().max(80), count: z.number() })).max(5000).optional(),
+      lang: z.enum(["auto", "zh", "en"]).optional(),
+      width: z.number().int().min(200).max(4000).optional(),
+      height: z.number().int().min(200).max(4000).optional(),
+      maxWords: z.number().int().min(10).max(1000).optional(),
+      topK: z.number().int().min(10).max(1000).optional(),
+      minCount: z.number().int().min(1).max(100).optional(),
+    }).parse(request.body);
+    const svc = await import("../services/wordcloud-service.js");
+    const r = await svc.getWordCloud(user.id, {
+      ...body,
+      lang: body.lang === "auto" ? undefined : body.lang,
+    } as never);
+    if (!r.ok) return reply.code(502).send({ error: { code: "WORDCLOUD_FAILED", message: r.error } });
+    return r;
+  });
+
+  // ─── 舆情检索 ───
+  app.get("/api/opinion/sources", async () => {
+    /**
+     * ⚠ 用服务侧**已有的** `describeSources()`, 不要自己拼字段。
+     *
+     * 踩过的坑(2026-10-01 实拍): 第一版猜常量名 `OPINION_SOURCES`(真名是
+     *   `PUBLIC_OPINION_SOURCES`), `?? []` 把 undefined 吞成空数组 ——
+     *   接口**返回 200 和 `{sources: []}`**, 界面上只显示"0 个源",
+     *   既不报错也看不出哪里不对。**猜导出名 + `?? []` 是最容易静默失败的一种写法**。
+     */
+    const { describeSources } = await import("../services/opinion-sources.js");
+    return { sources: describeSources() };
+  });
+  const opinionSchema = z.object({
+    query: z.string().min(1).max(300),
+    days: z.number().int().min(1).max(365).optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+    categories: z.array(z.string().max(40)).max(10).optional(),
+    useCache: z.boolean().optional(),
+    analyzeSentiment: z.boolean().optional(),
+  });
+  app.post("/api/opinion/search", async (request) => {
+    const body = opinionSchema.parse(request.body);
+    const { searchOpinion } = await import("../services/opinion-search-service.js");
+    return await searchOpinion(body as never);
+  });
+  app.post("/api/opinion/sentiment", async (request) => {
+    const body = z.object({
+      texts: z.array(z.string().max(100_000)).min(1).max(500),
+    }).parse(request.body);
+    const svc = await import("../services/sentiment-service.js");
+    const results = svc.analyzeSentimentBatch(body.texts);
+    return { results, distribution: svc.distributionOf(results) };
+  });
+
+  // ─── PPT 生成工作台(旧项目 M9 的对位重建) ───
+  //
+  // 生成是**长任务**: 建任务 → 出大纲 → 改大纲 → 出脚本 → 配图 → 导出。
+  // 每一步都靠 jobId 串起来, 中途可停可恢复(见 ppt-workbench-service.recoverJob)。
+  app.post("/api/ppt/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      kind: z.enum(["topic", "paper", "outline"]).optional(),
+      topic: z.string().min(1).max(500),
+      title: z.string().max(200).optional(),
+      sourceRef: z.string().max(200).optional(),
+      style: z.string().max(300).optional(),
+      wishPages: z.number().int().min(3).max(60).optional(),
+      maxBullets: z.number().int().min(1).max(12).optional(),
+    }).parse(request.body);
+    const svc = await import("../services/ppt-workbench-service.js");
+    const r = await svc.createJob({
+      userId: user.id,
+      topic: body.topic,
+      title: body.title,
+      sourceKind: body.kind,
+      sourceRef: body.sourceRef,
+      style: body.style,
+      maxBullets: body.maxBullets,
+    });
+    if (!r.ok) return reply.code(400).send({ error: { code: "PPT_JOB_FAILED", message: r.error } });
+    /**
+     * 建任务**顺手把大纲也生成了**。
+     *
+     * 由来(2026-10-01 真机冒烟): `createJob` 只插了一行 job 记录, **一页都没有** ——
+     *   而 `generateJobOutline` 服务里一直有、路由却**没接**。前端于是停在"0 页"上,
+     *   后面"生成脚本/配图/导出"全都没得可做, 用户看到的是"点了新建, 什么都没发生"。
+     *   现在建完直接出大纲(失败不阻断建任务: 用户还能改名/重试)。
+     */
+    let outlinePages = 0;
+    try {
+      const o = await svc.generateJobOutline({
+        userId: user.id, jobId: r.job!.id, wantPages: body.wishPages,
+      });
+      if (o.ok) outlinePages = o.outline?.pages?.length ?? 0;
+    } catch { /* 大纲失败不阻断 —— 前端有"重新生成大纲"可用 */ }
+    return { ...r, wishPages: body.wishPages, outlinePages };
+  });
+  /** 单独重生成大纲(改了主题/页数后重来) */
+  app.post("/api/ppt/jobs/:id/outline", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const body = z.object({
+      wantPages: z.number().int().min(3).max(60).optional(),
+      sourceText: z.string().max(500_000).optional(),
+    }).parse(request.body ?? {});
+    const { generateJobOutline } = await import("../services/ppt-workbench-service.js");
+    const r = await generateJobOutline({ userId: user.id, jobId: p.id, ...body });
+    if (!r.ok) return reply.code(502).send({ error: { code: "PPT_OUTLINE_FAILED", message: r.error } });
+    return { ok: true, pages: r.outline?.pages?.length ?? 0 };
+  });
+  app.get("/api/ppt/jobs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { listJobs } = await import("../services/ppt-workbench-service.js");
+    return { jobs: await listJobs(user.id) };
+  });
+  app.get("/api/ppt/jobs/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const svc = await import("../services/ppt-workbench-service.js");
+    const job = await svc.getJob(user.id, p.id);
+    if (!job) return reply.code(404).send({ error: "任务不存在" });
+    return { job, progress: await svc.jobProgress(user.id, p.id) };
+  });
+  app.get("/api/ppt/jobs/:id/pages", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const { listPages } = await import("../services/ppt-workbench-service.js");
+    return { pages: await listPages(user.id, p.id) };
+  });
+  app.put("/api/ppt/jobs/:id/outline", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const body = z.object({
+      action: z.enum(["add", "remove", "update", "move", "resize"]),
+      pageIndex: z.number().int().optional(),
+      toIndex: z.number().int().optional(),
+      patch: z.record(z.unknown()).optional(),
+      wantPages: z.number().int().min(3).max(60).optional(),
+    }).parse(request.body);
+    const svc = await import("../services/ppt-workbench-service.js");
+    const r = await svc.editOutline({ userId: user.id, jobId: p.id, ...body } as never);
+    if (!(r as { ok?: boolean }).ok) {
+      return reply.code(400).send({ error: (r as { error?: string }).error ?? "大纲编辑失败" });
+    }
+    return r;
+  });
+  app.post("/api/ppt/jobs/:id/scripts", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const { generateScripts } = await import("../services/ppt-workbench-service.js");
+    // 一次生成**所有还没脚本的页**(服务侧自己跳过已完成的, 支持中断续跑)
+    return await generateScripts({ userId: user.id, jobId: p.id });
+  });
+  /** 单页重生 —— 只动这一页, 其它页不受影响 */
+  app.post("/api/ppt/jobs/:id/pages/:seq/regen", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string; seq: string };
+    const body = z.object({
+      instruction: z.string().max(2000).optional(),
+      force: z.boolean().optional(),
+    }).parse(request.body ?? {});
+    const { regenPage } = await import("../services/ppt-workbench-service.js");
+    return await regenPage({ userId: user.id, jobId: p.id, seq: parseInt(p.seq, 10), ...body });
+  });
+  /** 批注重绘: 框选一块 → 只改那一块 */
+  app.post("/api/ppt/jobs/:id/pages/:seq/annotate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string; seq: string };
+    const body = z.object({
+      note: z.string().max(2000),
+      rect: z.object({
+        x: z.number(), y: z.number(), w: z.number(), h: z.number(),
+      }),
+    }).parse(request.body);
+    const { annotateAndRegen } = await import("../services/ppt-workbench-service.js");
+    return await annotateAndRegen({
+      userId: user.id, jobId: p.id, seq: parseInt(p.seq, 10), note: body.note, rect: body.rect,
+    } as never);
+  });
+  app.post("/api/ppt/jobs/:id/illustrate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const body = z.object({ seq: z.number().int().min(0).optional() }).parse(request.body ?? {});
+    const svc = await import("../services/ppt-workbench-service.js");
+    // 传 seq = 只配这一页; 不传 = 配所有还没图的正文页
+    if (body.seq !== undefined) {
+      return await svc.illustratePage({ userId: user.id, jobId: p.id, seq: body.seq });
+    }
+    return await svc.illustrateAll({ userId: user.id, jobId: p.id });
+  });
+  app.get("/api/ppt/jobs/:id/pages/:seq/versions", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string; seq: string };
+    const { pageVersions } = await import("../services/ppt-workbench-service.js");
+    return { versions: await pageVersions(user.id, p.id, parseInt(p.seq, 10)) };
+  });
+  app.post("/api/ppt/jobs/:id/pages/:seq/rollback", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string; seq: string };
+    const body = z.object({ version: z.number().int().min(0) }).parse(request.body);
+    const { rollbackPage } = await import("../services/ppt-workbench-service.js");
+    return await rollbackPage(user.id, p.id, parseInt(p.seq, 10), body.version);
+  });
+  /** 导出: mode=editable(可改) / image(每页位图, 不可改) */
+  app.post("/api/ppt/jobs/:id/export", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const body = z.object({
+      mode: z.enum(["editable", "image"]).optional(),
+      includeNotes: z.boolean().optional(),
+    }).parse(request.body ?? {});
+    const svc = await import("../services/ppt-workbench-service.js");
+    const r = await svc.exportPptx({ userId: user.id, jobId: p.id, ...body } as never);
+    if (!(r as { ok?: boolean }).ok) {
+      return reply.code(502).send({ error: { code: "PPT_EXPORT_FAILED", message: (r as { error?: string }).error } });
+    }
+    return r;
+  });
+  app.delete("/api/ppt/jobs/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { id: string };
+    const { deleteJob } = await import("../services/ppt-workbench-service.js");
+    return await deleteJob(user.id, p.id);
+  });
+  app.get("/api/ppt/health", async () => {
+    const { diagnose } = await import("../services/ppt-workbench-service.js");
+    return await diagnose();
+  });
+
+  // ─── 论文取证 API(2026-09-04: integrity-auditor forensics_tools, ai4s MIT) ───  // 图片查重: POST { images: [{name, base64}] } → 两两比较 dHash/aHash
   const forensicsImageSchema = z.object({
     images: z.array(z.object({ name: z.string().max(256), base64: z.string() })).min(2, "至少 2 张图片").max(12),
   });
@@ -2516,11 +3243,34 @@ export function buildHttpServer() {
     const quota = await billingService.getSubscriptionQuota(user.id);
     return { balanceCents: user.balanceCents, ...quota };
   });
+  /**
+   * ⚠ 这条是**运维手工调账**, 不是充值入口(2026-10-01)。
+   *
+   * 它直接加余额、不需要任何支付 —— 任何登录用户 POST 一下就能给自己充值。
+   * 原先它长这样, 是"还没有支付渠道"时的占位实现; 现在真链路已经有了
+   * (`POST /api/pay/orders` → 扫码 → 渠道回调入账), 这里必须收紧成本机/管理员专属,
+   * 否则前面那套订单与回调形同虚设(有后门谁还走正门)。
+   *
+   * 收窄为 LOCAL_ONLY 的代价: 部署在服务器上的运营想远程调账, 得用 admin 令牌 ——
+   * 这是有意的, 手工加钱本就该留痕且受限。
+   */
   app.post("/api/billing/recharge", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
-    const body = request.body as { amountCents?: number };
+    if (!isLocalRequest(request)) {
+      const jwt = authService.verifyToken(
+        String((request.headers.authorization || "").replace("Bearer ", "")).trim());
+      if (jwt?.role !== "admin") {
+        return reply.code(403).send({
+          error: {
+            code: "MANUAL_RECHARGE_FORBIDDEN",
+            message: "手工调账仅限本机或管理员。充值请走 POST /api/pay/orders(扫码支付)",
+          },
+        });
+      }
+    }
+    const body = request.body as { amountCents?: number; reason?: string };
     const amount = Math.min(Math.max(Number(body.amountCents) || 0, 100), 10_000_000);
-    const r = await billingService.recharge(user.id, amount);
+    const r = await billingService.recharge(user.id, amount, "manual");
     return r;
   });
   app.post("/api/billing/subscribe", async (request, reply) => {
@@ -2547,6 +3297,159 @@ export function buildHttpServer() {
     const user = await requireUser(request, reply); if (!user) return;
     const q = request.query as { days?: string };
     return { usage: await billingService.getUsage(user.id, parseInt(q.days || "7", 10)) };
+  });
+
+  // ═══ 支付订单(2026-10-01: 补"收款"这条路) ═══
+  //
+  // 由来: 此前只有 `POST /api/billing/recharge` —— 它**直接给用户加余额, 不需要任何支付**。
+  //   也就是说任何登录用户 POST 一下就能自己给自己充值。那是开发期的占位实现, 不是收款。
+  //   下面这套才是真链路: 下单 → 扫码 → 渠道回调(验签+解密+核额) → 入账。
+  //
+  // 安全: ① 只认渠道回调, **绝不相信前端说"我付好了"**  ② 回调验签+解密
+  //   ③ 回调金额与订单金额二次核对  ④ 同一渠道流水只能入账一次  ⑤ 订单号不可猜
+  app.get("/api/pay/config", async () => {
+    const { getPayConfigPublic } = await import("../services/wechat-pay-service.js");
+    return await getPayConfigPublic();
+  });
+
+  const payCreateSchema = z.object({
+    amountCents: z.number().int().positive().max(1_000_000, "单笔上限 10000 元"),
+    subject: z.string().max(120).optional(),
+    kind: z.enum(["recharge", "subscription", "points"]).optional(),
+    targetRef: z.string().max(120).optional(),
+    // 幂等键: 前端点两次只产生一单
+    idemKey: z.string().max(80).optional(),
+  });
+  app.post("/api/pay/orders", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = payCreateSchema.parse(request.body);
+    const { createOrder } = await import("../services/payment-order-service.js");
+    const r = await createOrder({ userId: user.id, ...body });
+    if (!r.ok) return reply.code(400).send({ error: { code: "PAY_CREATE_FAILED", message: r.error } });
+    return { ok: true, order: r.order, mock: r.mock, reused: r.reused };
+  });
+
+  app.get("/api/pay/orders", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { listOrders } = await import("../services/payment-order-service.js");
+    return { orders: await listOrders(user.id, parseInt(q.limit || "50", 10)) };
+  });
+
+  /**
+   * 查单 + 主动同步。
+   *
+   * `sync=1` 时会**主动向微信查一次**并补入账 —— 前端轮询就带这个参数。
+   * 为什么必须: 回调可能永远不来(网络/重启/防火墙), 那笔钱收了但余额没加。
+   */
+  app.get("/api/pay/orders/:outTradeNo", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const p = request.params as { outTradeNo: string };
+    const q = request.query as { sync?: string };
+    const svc = await import("../services/payment-order-service.js");
+
+    const order = await svc.getOrder(p.outTradeNo);
+    if (!order) return reply.code(404).send({ error: "订单不存在" });
+    // 越权: 只能看自己的单
+    if (order.userId !== user.id) return reply.code(403).send({ error: "无权查看该订单" });
+
+    if (q.sync === "1" && order.status !== "paid") {
+      await svc.syncOrderWithChannel(p.outTradeNo);
+      const fresh = await svc.getOrder(p.outTradeNo);
+      return { ok: true, order: fresh };
+    }
+    return { ok: true, order };
+  });
+
+  /** 超时关单: 定时调用或运维手动触发。只关 pending/created, 已付的不动 */
+  app.post("/api/pay/orders/close-expired", async () => {
+    const { closeExpiredOrders } = await import("../services/payment-order-service.js");
+    return await closeExpiredOrders();
+  });
+
+  /**
+   * 微信支付回调 —— **唯一的入账入口**。
+   *
+   * 处理顺序(每一步都不能省):
+   *   ① 验签(平台证书) ② 解密 resource(AES-256-GCM) ③ 金额核对 ④ 幂等入账
+   *
+   * 返回 HTTP 200 + `{code:"SUCCESS"}` 告诉微信"收到了别再推"; 处理失败要返回非 200
+   *   让微信重推(而不是吞掉)。
+   * ⚠ 本路由**不能**经过登录鉴权(微信不会带我们的 token), 靠签名保证真实性。
+   */
+  app.post("/api/pay/notify/wechat", async (request, reply) => {
+    const headers = request.headers as Record<string, string | undefined>;
+    const body = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
+
+    const pay = await import("../services/wechat-pay-service.js");
+    const svc = await import("../services/payment-order-service.js");
+
+    const ver = await pay.verifyNotifySignature({
+      timestamp: headers["wechatpay-timestamp"],
+      nonce: headers["wechatpay-nonce"],
+      signature: headers["wechatpay-signature"],
+      serial: headers["wechatpay-serial"],
+      body,
+    });
+    if (!ver.ok) {
+      // 401 会让微信重推; 但我们**不会**因为重推而放行 —— 验签不过就是不认
+      return reply.code(401).send({ code: "FAIL", message: ver.error });
+    }
+
+    const parsed = JSON.parse(body) as {
+      event_type?: string;
+      resource?: { ciphertext: string; nonce: string; associated_data?: string };
+    };
+    if (parsed.event_type !== "TRANSACTION.SUCCESS" || !parsed.resource) {
+      // 其他事件(如退款结果)当前不处理, 但要**回 200**, 否则微信会一直重推
+      return { code: "SUCCESS", message: "已接收" };
+    }
+
+    const dec = await pay.decryptNotifyResource(parsed.resource);
+    if (!dec.ok || !dec.data) {
+      return reply.code(400).send({ code: "FAIL", message: dec.error });
+    }
+    const d = dec.data as {
+      out_trade_no?: string; transaction_id?: string;
+      amount?: { total?: number }; trade_state?: string;
+    };
+    if (d.trade_state !== "SUCCESS" || !d.out_trade_no || !d.transaction_id) {
+      return { code: "SUCCESS", message: "非成功态, 忽略" };
+    }
+
+    const s = await svc.settleOrder({
+      outTradeNo: d.out_trade_no,
+      transactionId: d.transaction_id,
+      paidAmountCents: d.amount?.total,
+      rawCallback: dec.data,
+    });
+
+    if (!s.ok) {
+      // 入账失败要让微信重推(可能是暂时性故障); 但金额不符这种**确定性**错误重推也没用
+      const fatal = (s.error ?? "").includes("金额不符") || (s.error ?? "").includes("订单不存在");
+      if (fatal) return { code: "SUCCESS", message: `已记录但拒绝入账: ${s.error}` };
+      return reply.code(500).send({ code: "FAIL", message: s.error });
+    }
+    return { code: "SUCCESS", message: "成功" };
+  });
+
+  /** 退款(运营/用户申请)。金额不可超实收, 幂等键防重复退 */
+  const payRefundSchema = z.object({
+    outTradeNo: z.string().min(6).max(64),
+    amountCents: z.number().int().positive().optional(),
+    reason: z.string().max(80).optional(),
+    idemKey: z.string().max(80).optional(),
+  });
+  app.post("/api/pay/refunds", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = payRefundSchema.parse(request.body);
+    const svc = await import("../services/payment-order-service.js");
+    const order = await svc.getOrder(body.outTradeNo);
+    if (!order) return reply.code(404).send({ error: "订单不存在" });
+    if (order.userId !== user.id) return reply.code(403).send({ error: "无权操作该订单" });
+    const r = await svc.refundOrder(body);
+    if (!r.ok) return reply.code(400).send({ error: { code: "PAY_REFUND_FAILED", message: r.error } });
+    return { ok: true, refundedCents: r.refundedCents, duplicate: r.duplicate };
   });
 
   // ───── BYOK API（V389+: 用户自带 LLM key） ─────
@@ -7121,21 +8024,91 @@ except Exception as e:
             body: JSON.stringify({ sourceId: (payload.projectId as string) || undefined, query: worker.goal, mode: "adaptive" }),
           });
           const data: any = await res.json();
-          return data?.trace?.hypothesis?.content || data?.error || "（无结果）";
+          // ⚠ data.error 是对象({code,message}) —— 直接当字符串用会在下游炸出 TypeError,
+        //   把真正的错误盖掉。取 message(见 8002 处那条更详细的说明)。
+        const errMsg9 = typeof data?.error === "string" ? data.error : data?.error?.message;
+        return data?.trace?.hypothesis?.content || errMsg9 || "（无结果）";
         },
       });
     });
   }
 
   async function runAgentTaskInner(id: string, task: any, request: any): Promise<void> {
+    /**
+     * 本任务产出的文件都晚于它的创建时间 —— 质检用这个当基准, **不用"本步开始时间"**。
+     *
+     * ⚠ 2026-10-01 实测踩到: 用本步开始时间时, 一个"核验已有 pptx"的步骤会找不到文件 ——
+     *   因为那个 pptx 是**上一步**产出的, mtime 早于本步起点。表现为质检永远报
+     *   "本次执行没有在产出目录里找到新文件"(而文件明明在)。
+     *   任务内的产物归属是**任务级**的, 不是步骤级的: 看的是"这个任务做出了什么",
+     *   而不是"这一步新建了什么"。
+     */
+    const taskCreatedAt = task?.created_at ? new Date(task.created_at).getTime() - 5000 : 0;
     await agentTaskService.runAgentTask(id, async (step) => {
+      /**
+       * 本步开始的时间戳 —— 用于事后认"这次新产出的文件"。
+       * (取整: 文件系统 mtime 与 Date.now() 有细微偏差, 往回让 2 秒更稳)
+       */
+      const stepStartedAt = Date.now() - 2000;
       // 步骤执行器：V393-1 先 LLM 动态选工具（真·工具调用），失败回退类型调度
       try {
         // ── V393-1: LLM 动态工具选择（V393-4/5: 带角色+白名单策略; V393-8: 失败降级链）──
         // V1: sourceId 动态化 — 用任务关联的项目(而非写死的 c609acbf), 检索与用户研究项目对齐
         const { buildAgentTools, chooseToolByLlm, executeToolWithFallback } = await import("../services/agent-tool-router.js");
         const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
-        const chosen = await chooseToolByLlm(task.goal, step.title, tools);
+        /**
+         * ⚠ **工具分派只对 retrieve / reason 生效** —— 2026-10-01 修。
+         *
+         * 原来不管什么类型都先问 LLM "选哪个工具", 选出来且执行成功就直接返回工具输出。
+         * 而 LLM 面对任何步骤几乎都选 `sag_search`, 于是 **write / review 步骤也在检索**:
+         * 实测一个标题为"撰写农村集体经济主要实现形式综述报告"的 write 步骤,
+         * 产出的内容是 `【知识库检索】10 条结果 …` —— 一次都没写过东西。
+         *
+         * 后果不是"写作质量差点", 而是**这条链从来产不出成品**: reflect 每轮都判
+         * "仅有检索片段, 未形成综述报告", 任务跑满 3 轮以 0.1~0.3 分收场。
+         * (这个缺陷比我这几轮修的都更早、更根本 —— 它一直被"谎报成功"盖着, 没人看见。)
+         *
+         * 判据是**步骤类型**, 不是"工具选得好不好": write 要的是生成, review 要的是评判,
+         * 两者都有下面各自专用的 LLM 处理器, 不该被检索工具截胡。
+         */
+        /**
+         * ⚠ 工具分派按步骤类型分两种, **不能混为一谈**(2026-10-01):
+         *
+         *   · retrieve / reason —— 分派**全部**工具, 由 LLM 挑(检索类为主)。
+         *   · execute —— 分派**只含动作类工具**(写文件/跑代码/终端/补丁), 且把前序步骤的
+         *     材料(技能指令就在其中)作为 extraContext 一起给模型。
+         *     ⚠ 这个收窄是关键: 不收窄的话 LLM 面对"生成 .pptx"照样会选 `sag_search`
+         *     (实测它面对任何步骤都选检索), 于是动作步骤又变回一次检索 ——
+         *     与修复前 write 被截胡是同一个病。
+         *   · write / review —— 不参与分派, 走下面各自专用的 LLM 处理器。
+         *     (它们要的是"写字"和"评判", 不是"动手"; 实测写综述的步骤曾被
+         *      `sag_search` 截胡成检索结果。)
+         */
+        const allowToolDispatch = step.type === "retrieve" || step.type === "reason" || step.type === "execute";
+        /**
+         * 工具失败/被拦时的原始返回 —— 兜底分支要把它报出去, 不能只剩一句"你检查环境吧"。
+         * 见下面赋值处的说明。
+         */
+        let toolFailureNote = "";
+        const actionTools = step.type === "execute"
+          ? tools.filter((t) => ACTION_TOOL_NAMES.has(t.name))
+          : tools;
+        // execute 步骤把前序材料(含技能指令)交给选型, 否则模型不知道该拿什么去执行
+        let execContext: string | undefined;
+        if (step.type === "execute") {
+          const live = (await agentTaskService.getAgentTask(task.id)) as
+            { plan?: Array<{ id: string; status?: string; title?: string; result?: string; detail?: string }> } | null;
+          const lp = live?.plan || [];
+          const at = lp.findIndex((s) => s.id === step.id);
+          execContext = lp.slice(0, at < 0 ? lp.length : at)
+            .filter((s) => s.status === "done")
+            .map((s) => `【${s.title ?? ""}】\n${String(s.detail || s.result || "")}`)
+            .join("\n\n")
+            .slice(0, 12_000);
+        }
+        const chosen = allowToolDispatch
+          ? await chooseToolByLlm(task.goal, step.title, actionTools, execContext)
+          : null;
         // 差距S②(Codex tool_dispatch_trace): 分派追踪 — 每次工具选择记录入 exec_logs
         if (chosen) {
           const { logAgentExec } = await import("../services/agent-exec-log.js");
@@ -7151,16 +8124,89 @@ except Exception as e:
           const jwtP = authHdr2 ? authService.verifyToken(authHdr2) : null;
           const agentRole = jwtP?.role === "admin" ? "manager" as const : "analyst" as const;
           // V393-8: 带降级链执行（主工具失败自动切换替代工具）
-          const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: agentRole });
+          // execute 类型强制走人工审批门, 用户批准的是**这一步要做什么**; 传递下去避免工具级重复索要(无门可进)
+          const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, {
+            role: agentRole,
+            // 授权来源: 本步已批, **或**任务行上有 autonomyGrant(replan 会冲掉步骤级标记)
+            stepApproved: step.type === "execute"
+              && ((step as { approved?: boolean }).approved === true || !!(task as { autonomyGrant?: string }).autonomyGrant),
+          });
           if (exec.ok) {
+            /**
+             * ⚠ execute 步骤成功后, **跑一次技能自带的质检脚本**。
+             *
+             * 2026-10-01: 在此之前技能自带的脚本从没被调用过, 而
+             * `nature-paper2ppt/scripts/audit_pptx_quality.py` 查的正是技能自己
+             * 定的交付标准。实测把生成物丢给它: `high=20` —— 几乎每页文字溢出画布。
+             * **标准写在文档里、产物没人验**, 所以"符合技能标准"从未被检验。
+             *
+             * 质检结论作为**信号**回报(reflect 能看到哪里不行), 不在这里自动修 ——
+             * 修需要重新生成, 那是 agent 的活; 本仓在 p2o 领域引擎上踩过
+             * "代码替模型做判断"的坑, 不重蹈。
+             * 脚本不可用时如实记"未验证", 不假装通过。
+             */
+            let verifyNote = "";
+            if (step.type === "execute") {
+              /**
+               * ⚠ execute 步骤成功后, **跑一次技能自带的质检脚本**。
+               *
+               * 2026-10-01: 在此之前技能自带的脚本从没被调用过, 而
+               * `nature-paper2ppt/scripts/audit_pptx_quality.py` 查的正是技能自己
+               * 定的交付标准。实测把生成物丢给它: `high=20` —— 几乎每页文字溢出画布。
+               * **标准写在文档里、产物没人验**, 所以"符合技能标准"从未被检验过。
+               *
+               * 质检结论作为**信号**回报(reflect 能看到哪里不行), 不在这里自动修 ——
+               * 修需要重新生成, 那是 agent 的活; 本仓在 p2o 领域引擎上踩过
+               * "代码替模型做判断"的坑, 不重蹈。
+               */
+              const { verifyProducedArtifact } = await import("../services/artifact-verify-service.js");
+              const skillName = (execContext?.match(/技能[`「\s]*([a-z0-9][a-z0-9-]{2,40})/i) || [])[1];
+              // 基准取**任务创建时间**: 产物归属是任务级的, 不是步骤级的(见上方说明)
+              const v = await verifyProducedArtifact({ skillName, output: exec.result, since: taskCreatedAt });
+              if (v.ran && !v.ok) {
+                /**
+                 * 质检没过 ⇒ **这一步不能报成功**。
+                 * 理由与 execute 兜底分支一致: 交付一个明确不合格的文件却标成功,
+                 * 用户拿到的就是"生成好了"的假信号。让 reflect 看到失败项,
+                 * 它才有机会再来一轮把缺陷改掉。
+                 */
+                const list = v.findings.map((f) => `  · ${f.slide ? `第${f.slide}页 ` : ""}${f.code}: ${f.message}`).join("\n");
+                return {
+                  result: exec.result.substring(0, 120),
+                  detail: `【工具调用】${chosen.tool.label}(${chosen.tool.name})\n【结果】\n${exec.result}\n\n【产物质检未通过】${v.summary}\n脚本: ${v.script}\n${list || "  （缺陷明细见质检报告）"}`,
+                  source: `工具: ${chosen.tool.label}`,
+                  ok: false,
+                };
+              }
+              verifyNote = v.ran
+                ? `\n【产物质检通过】${v.summary}（脚本 ${v.script}）`
+                : `\n【产物质检未执行】${v.note ?? ""}`;
+            }
             return {
               result: exec.result.substring(0, 120),
-              detail: `【工具调用】${chosen.tool.label}(${chosen.tool.name}) [角色:${agentRole}]${exec.usedFallback ? `\n【降级】主工具失败 → ${exec.usedFallback}` : ""}\n【参数】${JSON.stringify(chosen.args).slice(0, 200)}\n【结果】\n${exec.result}`,
+              detail: `【工具调用】${chosen.tool.label}(${chosen.tool.name}) [角色:${agentRole}]${exec.usedFallback ? `\n【降级】主工具失败 → ${exec.usedFallback}` : ""}\n【参数】${JSON.stringify(chosen.args).slice(0, 200)}\n【结果】\n${exec.result}${verifyNote}`,
               source: `工具: ${chosen.tool.label}${exec.usedFallback ? `(降级→${exec.usedFallback})` : ""}`,
             };
           }
-          // 工具执行失败/策略拒绝 → 回退类型调度（不阻断任务）
+          /**
+           * 工具执行失败/策略拒绝 → 回退类型调度（不阻断任务）。
+           *
+           * ⚠ 但**要把失败原因留住**。2026-10-01 实测: 沙箱以"代码含 subprocess"拦下
+           *   整段执行, 工具返回 `_sandbox-blocked 【代码执行】python · 662ms …` ——
+           *   那句才是真诊断。原来它只进 console.log, 然后函数一路走到 execute 的兜底
+           *   分支, 交给用户的是"没有可用工具或工具执行失败"。**真因在用户可见的地方消失了**,
+           *   只剩"你检查一下环境吧"。所以存进一个变量, 兜底时报出去。
+           */
           console.log(`[agent] tool ${chosen.tool.name} blocked/failed: ${exec.result.slice(0, 80)}, fallback to type dispatch`);
+          /**
+           * ⚠ 保留 4000 字, 不是 1500 —— 2026-10-01 实测。
+           *
+           * 工具失败时最有价值的信息常在**末尾**: Python traceback 的最后一两行才是
+           * 异常类型与原因, 前面全是几十层调用栈。截太短会把那两行切掉, 只留下
+           * 一堆 "File ... line N, in ..." —— 用户看到的是"有错但不知道什么错"。
+           * 实测 1500 字截断正好把 `PermissionError` 那行切没了。
+           */
+          toolFailureNote = `【${chosen.tool.label}(${chosen.tool.name})】${exec.result}`.slice(0, 4000);
         }
         if (step.type === "retrieve" || step.type === "reason") {
           const res = await fetch(SELF_BASE + "/api/reason/query", {
@@ -7171,7 +8217,21 @@ except Exception as e:
           });
           const data: any = await res.json();
           const trace = data?.trace || {};
-          const content = trace?.hypothesis?.content || data?.error || "（无结果）";
+          /**
+           * ⚠ `data.error` 是**对象**(`{code, message}`), 不是字符串 —— 规范见本文件顶部的
+           *   错误格式约定。原代码 `trace?.hypothesis?.content || data?.error` 在推理没有
+           *   产出 hypothesis 时会把那个**对象**赋给 content, 紧接着 `.substring()` 抛
+           *   `content.substring is not a function`。
+           *
+           *   这个 TypeError 的两层危害(2026-10-01 实测):
+           *     ① 它**盖住了真正的错误**——调用方看到的是"substring 不是函数"这种内部
+           *        TypeError, 而不是"少传了必填的 sourceId"这类能直接照做的信息;
+           *     ② `runAgentTask` 把抛异常的步骤记成"执行失败"但**任务照样走到 completed**,
+           *        于是用户拿到一个"成功"的空任务(实测: 三步全失败, reflect 还给 0.70 pass)。
+           *   所以这里把错误对象**取 message 转成字符串**, 让它照常走"步骤失败"这条路。
+           */
+          const errMsg = typeof data?.error === "string" ? data.error : data?.error?.message;
+          const content = trace?.hypothesis?.content || errMsg || "（无结果）";
           // 真实详情：检索链路 + 实体 + 评估分
           const detail = [
             `【检索链路】${(trace?.retrieveSources || []).join(" → ") || "adaptive"}`,
@@ -7184,10 +8244,49 @@ except Exception as e:
             result: content.substring(0, 120),
             detail,
             source: `SAG 推理（${trace?.model?.model || "adaptive"}）`,
+            /**
+             * 失败的两种形态, 必须都判到:
+             *   ① 带回 data.error —— 请求都没成功;
+             *   ② `hypothesis.degraded` —— 请求通了但生成超时, 服务侧降级返回了
+             *      一句"生成超时，请重试"。**它的形状与真结果完全一样**, 从内容上
+             *      分辨不出(所以才要服务侧显式打标, 见 generateHypothesis 的说明)。
+             * 漏掉任一种, 这一步就会被上层记成成功 → reflect 看不到失败 → 任务报"完成"。
+             */
+            ok: !errMsg && !(trace?.hypothesis as { degraded?: boolean } | undefined)?.degraded,
           };
         }
         if (step.type === "write") {
-          // 写作步骤：基于检索结果生成（真实 LLM 调用）
+          /**
+           * 写作步骤：基于检索结果生成（真实 LLM 调用）
+           *
+           * ⚠ 2026-10-01 补**前序步骤产出作为依据**。
+           *   原来的 prompt 只有 `主题: <标题> / 目标: <query>`, 一个证据字都没有 ——
+           *   检索步骤辛苦捞回来的材料**根本没进写作的上下文**, 写出来全是模型自己编的。
+           *   (本仓对"反幻觉"是有纪律的: 实证工作台那条明确要求白名单+坐标读系数。
+           *    这里补的是同一条纪律在 agent 链上的缺失。)
+           *   取前序 done 步骤的正文, 截断到 6000 字, 避免超窗。
+           */
+          /**
+           * ⚠ 必须取**实时**计划, 不能用 `task` —— 那是开跑时抓的快照。
+           *
+           * 快照里所有步骤的 status 还是 "pending"、result 还是空, 于是
+           * `.filter((s) => s.status === "done")` 筛出 **0 条** → evidence 为空 →
+           * prompt 走"没有材料"分支 → 模型写下"在缺乏可核验检索材料的前提下, 本报告
+           * 仅构建综述框架"。实测就是这样: 检索步骤明明返回了 2000+ 字真实材料
+           * (自主经营型/村社自主型/T村/S村…), 写作步骤却一个字都没拿到。
+           *
+           * 这个坑很隐蔽 —— 它不报错, 只是让整条链的检索白做, 成品退化成空框架。
+           */
+          const liveTask = (await agentTaskService.getAgentTask(task.id)) as
+            { plan?: Array<{ id: string; status?: string; title?: string; result?: string; detail?: string }> } | null;
+          const livePlan = liveTask?.plan || [];
+          const myIdx = livePlan.findIndex((s) => s.id === step.id);
+          const evidence = livePlan
+            .slice(0, myIdx < 0 ? livePlan.length : myIdx)
+            .filter((s) => s.status === "done")
+            .map((s) => `【${s.title ?? ""}】\n${String(s.detail || s.result || "")}`)
+            .join("\n\n")
+            .slice(0, 6000);
           const dsKey = process.env.DEEPSEEK_API_KEY || "";
           const llmRes = await fetch(
             dsKey ? toChatCompletionsUrl(process.env.DS_BASE_URL || "https://api.deepseek.com/v1/chat/completions") : toChatCompletionsUrl("https://dashscope.aliyuncs.com/compatible-mode/v1"),
@@ -7196,14 +8295,37 @@ except Exception as e:
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${dsKey || process.env.LLM_API_KEY}` },
               body: JSON.stringify({
                 model: resolveModelAlias(getRoleModel("reason")),
-                messages: [{ role: "user", content: `撰写研究段落。主题: ${step.title}\n目标: ${step.query}\n用中文，400-600字，结构化。` }],
-                temperature: 0.3, max_tokens: 1200,
+                messages: [{
+                  role: "user",
+                  content: `撰写研究段落。主题: ${step.title}\n目标: ${step.query}\n`
+                    + (evidence
+                      ? `\n**只依据下面已检索到的材料撰写**，不要引入材料之外的事实、数据或文献；\n材料没有提到的内容宁可略过。\n\n=== 已检索材料 ===\n${evidence}\n=== 材料结束 ===\n`
+                      : "\n（本次没有可依据的检索材料 —— 请只做框架性论述，**不要编造具体数据、案例或文献引用**。）\n")
+                    + "\n用中文，400-600字，结构化。",
+                }],
+                temperature: 0.3,
+                /**
+                 * ⚠ 这里必须是 4000, 不能是 1200 —— 2026-10-01 实测:
+                 *
+                 *   本步骤用的 `deepseek-flash` 是**推理模型**, `reasoning_content`(思考链)
+                 *   与 `content`(正文)**共用** max_tokens。实测同一条请求:
+                 *     max_tokens=1200 → reasoning 1078 + content 210 且 finish_reason=length
+                 *     (正文被硬截断, 而它本该写 400-600 字)
+                 *   也就是说 90% 的预算花在了思考上, 正文只剩零头。
+                 *   评审步骤更糟(它设 800): 思考就把额度占满了, `content` 直接为空,
+                 *   于是每一步都报"（写作失败）", 而表现为"任务跑满三轮、什么都产不出"。
+                 *
+                 *   4000 是按"思考约 1500 + 正文 1200 字≈2400 token"留的余量。
+                 *   提高上限**不会**让每次调用都变贵 —— 它只解除截断, 模型写完就停。
+                 */
+                max_tokens: 4000,
               }),
             }
           );
           const data: any = await llmRes.json();
           const text = data?.choices?.[0]?.message?.content || "（写作失败）";
-          return { result: text.substring(0, 120), detail: `【写作结果】\n${text}`, source: "LLM 写作（deepseek-flash）" };
+          // 没拿到 content 就是失败 —— 别让"（写作失败）"这四个字被当成一篇写好的段落
+          return { result: text.substring(0, 120), detail: `【写作结果】\n${text}`, source: "LLM 写作（deepseek-flash）", ok: !!data?.choices?.[0]?.message?.content };
         }
         if (step.type === "review") {
           // 评审步骤：对前序产出做质量检查（真实 LLM 评审）
@@ -7216,17 +8338,42 @@ except Exception as e:
               body: JSON.stringify({
                 model: resolveModelAlias(getRoleModel("reason")),
                 messages: [{ role: "user", content: `评审研究产出质量。任务: ${step.title}\n目标: ${step.query}\n输出：1) 主要问题 2) 修正建议 3) 总体评分(0-1)。简洁中文。` }],
-                temperature: 0.1, max_tokens: 800,
+                temperature: 0.1,
+                // 同写作步骤: deepseek-flash 的思考链与正文共用 max_tokens,
+                //   800 会被思考吃光导致 content 为空(实测每步都报"（评审失败）")。
+                max_tokens: 3000,
               }),
             }
           );
           const data: any = await llmRes.json();
           const text = data?.choices?.[0]?.message?.content || "（评审失败）";
-          return { result: `评审完成: ${text.substring(0, 100)}`, detail: `【评审意见】\n${text}`, source: "评审 Agent（deepseek-flash）" };
+          return { result: `评审完成: ${text.substring(0, 100)}`, detail: `【评审意见】\n${text}`, source: "评审 Agent（deepseek-flash）", ok: !!data?.choices?.[0]?.message?.content };
         }
-        return { result: `（未知步骤类型: ${step.type}）` };
+        /**
+         * execute 落到这里 = **工具没选出来**(选出来且成功的话上面就返回了)。
+         *
+         * 这种情况必须**明确报失败**, 不能悄悄降级成"写一段文字" ——
+         * 那正是修复前的病: 一个要求产出 .pptx 的步骤, 最后交出一份
+         * "关于怎么生成 pptx 的报告", 任务标成功、磁盘上什么都没有。
+         * 动作步骤没做成, 就是没做成。
+         */
+        if (step.type === "execute") {
+          return {
+            result: toolFailureNote
+              ? `（执行未完成）${toolFailureNote.replace(/^_sandbox-blocked\s*/, "").slice(0, 200)}`
+              : `（执行未完成：没有可用工具或工具执行失败）`,
+            detail: (toolFailureNote
+              ? `动作工具返回了失败：\n${toolFailureNote}\n\n`
+              : "")
+              + "execute 步骤未能产生任何产物。可检查：动作类工具是否可用(需 python/终端环境)、"
+              + "所需技能是否已安装、步骤描述是否明确到能选出工具。",
+            source: "执行步骤",
+            ok: false,
+          };
+        }
+        return { result: `（未知步骤类型: ${step.type}）`, ok: false };
       } catch (e: any) {
-        return { result: `执行失败: ${String(e?.message || e).slice(0, 300)}`, detail: String(e?.message || e).slice(0, 500) };
+        return { result: `执行失败: ${String(e?.message || e).slice(0, 300)}`, detail: String(e?.message || e).slice(0, 500), ok: false };
       }
     }).catch((e: any) => console.error("[agent] run FAIL:", e?.message?.slice(0, 100)));
   }
@@ -7259,6 +8406,45 @@ except Exception as e:
     try {
       // V396-11: 四态确认 — approve/edit/reject/respond
       const task = await agentTaskService.approveAgentStep(params.id, !!body.approve, body.note, body.action, body.editArgs);
+      /**
+       * ⚠ 批准之后**必须重新拉起执行** —— 2026-10-01 修。
+       *
+       * 原来的实现只做了一半: `approveAgentStep` 把状态改回 `running`、给步骤打上
+       * `approved:true`, 但**没有任何东西再启动执行循环**。而执行循环早在
+       * `awaiting_approval` 那一跳就 `break` 退出了:
+       *
+       *     const latest = await getAgentTask(taskId);
+       *     if (!latest || latest.status !== "running") break;   // ← 挂起时从这里退出
+       *
+       * 于是"用户批准了"之后, 任务永远停在 `running` 却没人跑它 —— 死在批准这一步上。
+       * 实测: 批准后 13 分钟零事件, `current_step` 不动, 界面显示"运行中"。
+       * **HITL 审批门等于一条死路**, 而这个门恰恰是所有 write/review 步骤的必经之路。
+       *
+       * 这里复用队列执行器(与 /run 同一条路径): 它按 payload 里的 auth 重建 request,
+       * 不需要把闭包塞进队列。租约(`acquireTaskLease`)会挡住重复拉起 ——
+       * 旧循环若还在跑, 新的这次会因拿不到租约直接返回, 不会双跑。
+       */
+      if (body.approve || body.action === "approve" || body.action === "edit" || body.action === "respond") {
+        try {
+          const { enqueueTask } = await import("../services/agent-task-queue.js");
+          const authedReq = { headers: { authorization: String(request.headers.authorization || "") } } as unknown as Parameters<typeof runAgentTaskInner>[2];
+          await enqueueTask({
+            taskId: params.id,
+            priority: 1,
+            runner: "agent-task",
+            payload: { taskId: params.id, auth: String(request.headers.authorization || "") },
+            // 本实例直接执行; 跨实例/重启后由 runner 注册表按 payload.auth 重建(见 registerAgentQueueRunners)
+            run: async () => {
+              const fresh = await agentTaskService.getAgentTask(params.id);
+              if (!fresh) return;
+              await runAgentTaskInner(params.id, fresh, authedReq);
+            },
+          });
+        } catch (e: any) {
+          // 拉起失败不能让"批准"这个动作本身看起来没成功 —— 但也不能静默: 用户会以为任务在跑
+          console.warn(`[agent] 批准后重新入队失败: ${String(e?.message || e).slice(0, 200)}`);
+        }
+      }
       // V395-2: SSE — 审批后推送最新任务状态（前端立即刷新, 无需轮询）
       const { publishAgentProgress } = await import("../services/agent-progress.js");
       publishAgentProgress({ type: "task", taskId: params.id, data: { status: task.status, plan: task.plan, currentStep: task.currentStep, progress: task.progress, approvalRequest: task.approvalRequest } });
@@ -7279,6 +8465,25 @@ except Exception as e:
     const { runProactiveResearch } = await import("../services/agent-proactive-research.js");
     const r = await runProactiveResearch();
     return { ok: true, result: r };
+  });
+
+  /**
+   * 沙箱档位说明 —— 让前端拉**真值**，不在前端另存一份。
+   *
+   * 2026-10-02: 前端此前自己硬编码了一组描述，而 `workspace-write` 那条写的是
+   *   "仅允许 agent_workspace 内读写" —— 与后端一样是**假话**（实测能写到任意绝对路径，
+   *   见 code-sandbox-service 的说明）。后端标签当时改了，前端那份没跟着动，
+   *   于是同一个档位在设置界面上仍然承诺一个它做不到的隔离。
+   *
+   *   本仓的老毛病就是"清单在多处各存一份"（工具登记四处、权限列表多处），
+   *   这里直接给一个读取口，前端渲染它。
+   */
+  app.get("/api/agent/sandbox-profiles", async () => {
+    const { SANDBOX_PROFILE_LABELS, defaultSandboxProfile } = await import("../services/code-sandbox-service.js");
+    return {
+      profiles: Object.entries(SANDBOX_PROFILE_LABELS).map(([value, label]) => ({ value, label })),
+      current: defaultSandboxProfile(),
+    };
   });
 
   // 借鉴5(Codex Guardian): 策略文件审查 API
@@ -8247,7 +9452,10 @@ except Exception as e:
           body: JSON.stringify({ sourceId: parent.projectId || undefined, query, mode: "adaptive" }),
         });
         const data: any = await res.json();
-        return data?.trace?.hypothesis?.content || data?.error || "（无结果）";
+        // ⚠ data.error 是对象({code,message}) —— 直接当字符串用会在下游炸出 TypeError,
+        //   把真正的错误盖掉。取 message(见 8002 处那条更详细的说明)。
+        const errMsg9 = typeof data?.error === "string" ? data.error : data?.error?.message;
+        return data?.trace?.hypothesis?.content || errMsg9 || "（无结果）";
       },
     }).then(async () => {
       // 编排完成 → 更新父任务为 completed + 汇总结果
@@ -8682,18 +9890,35 @@ except Exception as e:
         const task = await agentTaskService.createAgentTask({ goal: `${lastGoal}（续: ${msg}）`, contextHint });
         if (!task) return reply.code(400).send({ error: "任务创建失败" });
         void agentTaskService.runAgentTask(task.id, async (step) => {
+          // 本步开始时间 —— 供产物质检认"这次新生成的文件"
+          const stepStartedAt = Date.now() - 2000;
           const { buildAgentTools, chooseToolByLlm, executeToolWithFallback } = await import("../services/agent-tool-router.js");
           // V1: 用任务项目 sourceId（对话续作任务无项目时回退默认）
           const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
-          const chosen = await chooseToolByLlm(task.goal, step.title, tools);
+          // 同 runAgentTaskInner: 分派按类型收窄 —— write/review 不参与, execute 只给动作类工具
+          const chosen = (step.type === "retrieve" || step.type === "reason" || step.type === "execute")
+            ? await chooseToolByLlm(task.goal, step.title,
+                step.type === "execute" ? tools.filter((t) => ACTION_TOOL_NAMES.has(t.name)) : tools)
+            : null;
           if (chosen) {
             // V417: 显式传角色。此前不传 → executeAgentTool 兜底 manager, 三级角色闸全失效。
             //   任务要么记着创建者角色, 要么回落到 analyst(不再有"默认最高权限"这条路径)。
             const taskRole: "reader" | "analyst" | "manager" =
               (task as { agent_role?: string }).agent_role === "manager" ? "manager"
               : (task as { agent_role?: string }).agent_role === "reader" ? "reader" : "analyst";
-            const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: taskRole, taskId: task.id });
-            if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
+            const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, {
+              role: taskRole, taskId: task.id,
+              /**
+               * 授权来源有两条, **任一**成立即视为已批:
+               *   · 这一步本身被批准过(plan 里的 approved);
+               *   · 任务行上有 autonomyGrant —— 同一任务里前面的动作类步骤已获批准,
+               *     而 replan 会重建计划、把步骤级的 approved 冲掉(见 173 号迁移)。
+               */
+              stepApproved: step.type === "execute"
+                && ((step as { approved?: boolean }).approved === true || !!(task as { autonomyGrant?: string }).autonomyGrant),
+            });
+            // 对话链同样要过产物质检 —— 少一处接, 从对话建的 PPT 任务就绕过验证
+            if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}${await verifyArtifactNote(exec.result, taskCreatedAtOf(task))}`, source: `工具: ${chosen.tool.label}` };
           }
           const res = await fetch(SELF_BASE + "/api/reason/query", {
             method: "POST", headers: { "Content-Type": "application/json" },
@@ -8701,7 +9926,8 @@ except Exception as e:
             body: JSON.stringify({ sourceId: task.projectId || undefined, query: step.query, mode: "adaptive" }),
           });
           const data: any = await res.json();
-          const content = data?.trace?.hypothesis?.content || data?.error || "（无结果）";
+          const errMsgA = typeof data?.error === "string" ? data.error : data?.error?.message;
+          const content = data?.trace?.hypothesis?.content || errMsgA || "（无结果）";
           return { result: content.substring(0, 120), detail: content, source: "SAG 推理" };
         }).catch((e: any) => console.error("[agent-chat] run FAIL:", e?.message?.slice(0, 100)));
         agentChatMemory.appendAgentChat(sessionId, "assistant", `已创建续作任务: ${lastGoal}（续: ${msg}）`, task.id);
@@ -8716,17 +9942,32 @@ except Exception as e:
             : await agentTaskService.createAgentTask({ goal, contextHint });
           if (!task) return reply.code(400).send({ error: "任务创建失败" });
           void agentTaskService.runAgentTask(task.id, async (step) => {
+            const stepStartedAt = Date.now() - 2000;
             const { buildAgentTools, chooseToolByLlm, executeToolWithFallback } = await import("../services/agent-tool-router.js");
             // V1: 用任务项目 sourceId
             const tools = await buildAgentTools({ sourceId: task.projectId || undefined });
-            const chosen = await chooseToolByLlm(task.goal, step.title, tools);
+            // 同 runAgentTaskInner: 分派按类型收窄
+            const chosen = (step.type === "retrieve" || step.type === "reason" || step.type === "execute")
+              ? await chooseToolByLlm(task.goal, step.title,
+                  step.type === "execute" ? tools.filter((t) => ACTION_TOOL_NAMES.has(t.name)) : tools)
+              : null;
             if (chosen) {
               // V417: 同 8040 处 — 必须显式传角色, 不能靠缺省值
               const taskRole: "reader" | "analyst" | "manager" =
                 (task as { agent_role?: string }).agent_role === "manager" ? "manager"
                 : (task as { agent_role?: string }).agent_role === "reader" ? "reader" : "analyst";
-              const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, { role: taskRole, taskId: task.id });
-              if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}`, source: `工具: ${chosen.tool.label}` };
+              const exec = await executeToolWithFallback(chosen.tool, chosen.args, tools, {
+              role: taskRole, taskId: task.id,
+              /**
+               * 授权来源有两条, **任一**成立即视为已批:
+               *   · 这一步本身被批准过(plan 里的 approved);
+               *   · 任务行上有 autonomyGrant —— 同一任务里前面的动作类步骤已获批准,
+               *     而 replan 会重建计划、把步骤级的 approved 冲掉(见 173 号迁移)。
+               */
+              stepApproved: step.type === "execute"
+                && ((step as { approved?: boolean }).approved === true || !!(task as { autonomyGrant?: string }).autonomyGrant),
+            });
+              if (exec.ok) return { result: exec.result.substring(0, 120), detail: `【工具】${chosen.tool.label}\n${exec.result}${await verifyArtifactNote(exec.result, taskCreatedAtOf(task))}`, source: `工具: ${chosen.tool.label}` };
             }
             const res = await fetch(SELF_BASE + "/api/reason/query", {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -8734,7 +9975,8 @@ except Exception as e:
               body: JSON.stringify({ sourceId: task.projectId || undefined, query: step.query, mode: "adaptive" }),
             });
             const data: any = await res.json();
-            const content = data?.trace?.hypothesis?.content || data?.error || "（无结果）";
+            const errMsgA = typeof data?.error === "string" ? data.error : data?.error?.message;
+          const content = data?.trace?.hypothesis?.content || errMsgA || "（无结果）";
             return { result: content.substring(0, 120), detail: content, source: "SAG 推理" };
           }).catch((e: any) => console.error("[agent-chat] run FAIL:", e?.message?.slice(0, 100)));
           agentChatMemory.appendAgentChat(sessionId, "assistant", `已创建任务「${goal}」并开始执行`, task.id);

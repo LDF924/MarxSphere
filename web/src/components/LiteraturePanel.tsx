@@ -2,16 +2,20 @@
 // LiteraturePanel.tsx — SocioSeek 本地文献库筛选界面
 // 复刻 Sciverse 的 meta-catalog + meta-search 模式：
 // 左=筛选器（主题/作者/年份动态生成），右=文献列表
-import { useState, useEffect, useRef, type FC, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, type FC, type ReactNode } from "react";
 import { Library, Loader2, Search, FileText, RefreshCw, BookOpen, X, ChevronDown, ChevronUp, BookOpenCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { LiteratureMatrixPanel } from "./LiteratureMatrixPanel";
 import { PrismaPanel } from "./PrismaPanel";
 import { BatchUploadPanel } from "./BatchUploadPanel";
+// 2026-10-01: 图谱分析模式(共现图谱/词云) —— 从文献库现算的分析视图
+import { KeywordNetworkPanel } from "./KeywordNetworkPanel";
+import { WordCloudPanel } from "./WordCloudPanel";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { DragHandle } from "../components/ui/DragHandle";
+import { takeHandoff, HANDOFF_KIND, HANDOFF_EVENT } from "../lib/handoff";
 import { PdfReader } from "./PdfReader";
 import { ReaderAiCard } from "./ReaderAiCard";
 import type { LiteratureDetailRecord, PdfRecord } from "../types";
@@ -36,15 +40,21 @@ interface LiteratureCatalog {
   total: number;
 }
 
-export function LiteraturePanel() {
+export function LiteraturePanel({ onNavigate }: { onNavigate?: (v: string) => void } = {}) {
   const [catalog, setCatalog] = useState<LiteratureCatalog | null>(null);
   const [items, setItems] = useState<LiteratureRecord[]>([]);
   const [pdfItems, setPdfItems] = useState<PdfRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // 模式：md=已入库文献, pdf=全库 PDF
-  const [mode, setMode] = useState<"md" | "pdf">("md");
+  // 模式：md=已入库文献, pdf=全库 PDF, analyze=图谱分析(共现图谱/词云)
+  // 2026-10-01: 加 analyze —— 共现图谱与词云都是**从这批文献现算**的分析视图,
+  //   挂在文献库上比单开一个 tab 更符合"我要分析我库里的这批文献"的心智。
+  const [mode, setMode] = useState<"md" | "pdf" | "analyze">("md");
+  /** 本次筛选是哪个面板交接过来的(非空时在筛选区上方显示一条可关闭的提示) ——
+   *  不显示的话, 用户看到列表已被筛过会以为界面坏了 */
+  const [handoffFrom, setHandoffFrom] = useState("");
+  const [analyzeTab, setAnalyzeTab] = useState<"network" | "cloud">("network");
   // 筛选条件
   const [topic, setTopic] = useState("");
   const [author, setAuthor] = useState("");
@@ -127,24 +137,37 @@ export function LiteraturePanel() {
     }
   };
 
-  const loadItems = async (pageNum = page, modeOverride?: "md" | "pdf") => {
+  /**
+   * @param override 用**本次调用要用的**筛选值覆盖 state。
+   *
+   * ⚠ 跨 tab 交接时必须走它: `setKeyword(kw)` 之后立刻 `loadItems()` 是**拿不到**新值的
+   *   —— setState 是异步的, 这次调用闭包里读到的还是旧 keyword。表现是"跳过来了、
+   *   keyword 框里也填上了, 但列表还是全库"。这是 React 里最经典的一类静默失败。
+   */
+  const loadItems = async (
+    pageNum = page,
+    modeOverride?: "md" | "pdf",
+    override?: { keyword?: string; topic?: string },
+  ) => {
     const effectiveMode = modeOverride ?? mode;
+    const kw = override?.keyword ?? keyword;
+    const tp = override?.topic ?? topic;
     setLoading(true);
     try {
       if (effectiveMode === "pdf") {
         const data = await api.searchPdfs({
-          topic: topic || undefined,
-          keyword: keyword || undefined,
+          topic: tp || undefined,
+          keyword: kw || undefined,
           page: pageNum
         });
         setPdfItems(data.items);
         setTotal(data.total);
       } else {
         const data = await api.getLiterature({
-          topic: topic || undefined,
+          topic: tp || undefined,
           author: author || authorInput || undefined,
           year: year || undefined,
-          keyword: keyword || undefined,
+          keyword: kw || undefined,
           page: pageNum
         });
         setItems(data.items);
@@ -157,18 +180,60 @@ export function LiteraturePanel() {
     }
   };
 
-  const switchMode = (next: "md" | "pdf") => {
+  const switchMode = (next: "md" | "pdf" | "analyze") => {
     if (next === mode) return;
     setMode(next);
     setPage(1);
     setDetail(null);
     setReaderPdf(null);
-    void loadItems(1, next);
+    // analyze 是现算的分析视图, 没有列表要拉
+    if (next !== "analyze") void loadItems(1, next);
   };
 
+  /** 交接消费 —— 挂载时 + 事件广播时都要跑(见下) */
+  const consumeHandoff = useCallback(() => {
+    const h = takeHandoff(HANDOFF_KIND.LIBRARY_KEYWORD);
+    if (!h || h.kind !== "filter") return false;
+    const kw = String(h.payload.keyword ?? "");
+    if (!kw) return false;
+    setKeyword(kw);
+    setHandoffFrom(h.from ?? "");
+    // 交接来自"图谱分析"时, 必须**切回列表模式** —— 否则用户还停在那张图上,
+    // 看不到筛选结果(实测就是这样: 词进了筛选框, 界面却还在图谱)
+    setMode("md");
+    void loadItems(1, "md", { keyword: kw });
+    return true;
+  }, []);
+
+  /**
+   * ⚠ 挂载 + **事件广播**双路监听。
+   *
+   * 由来(2026-10-01 实测): 共现图谱与文献列表是**同一个面板的两个子视图** ——
+   *   点图谱节点时 LiteraturePanel 根本没卸载, 只在 `useEffect(...,[])` 里消费的话
+   *   交接永远不被取走。症状: sessionStorage 里躺着 `{kind:"filter",keyword:"资本"}`,
+   *   而界面纹丝不动地停在图谱上。
+   *   所以 putHandoff 广播事件, 这里常驻监听。
+   */
   useEffect(() => {
+    const onHandoff = () => { consumeHandoff(); };
+    window.addEventListener(HANDOFF_EVENT, onHandoff);
+    return () => window.removeEventListener(HANDOFF_EVENT, onHandoff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    /**
+     * 消费跨 tab 交接(2026-10-01)。
+     *
+     * 由来: 共现图谱/舆情的产出本该能钻到具体文献 —— 用户评"这些与原 tab 可以打通的,
+     *   联动都做了吗"。此前一条都没有。
+     *
+     * ⚠ 必须**放在初次加载之前**、且把 keyword 一并带上重拉: 否则会先按空条件拉一遍
+     *   (用户会看到全库), 再被交接覆盖 —— 白闪一次且多余请求。
+     */
     void loadCatalog();
-    void loadItems(1);
+    // 有交接就先按交接的筛选拉, 否则按空条件拉一次
+    if (!consumeHandoff()) void loadItems(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,6 +251,16 @@ export function LiteraturePanel() {
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="flex w-full flex-col space-y-3">
+        {/* 交接提示: 不显示的话, 用户看到列表已被筛过会以为界面坏了 */}
+        {handoffFrom && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
+            <span>来自「{handoffFrom}」的筛选：关键词 <b>{keyword}</b></span>
+            <button type="button" onClick={() => { setHandoffFrom(""); setKeyword(""); void loadItems(1, undefined, { keyword: "" }); }}
+              className="ml-auto rounded border border-emerald-500/40 px-2 py-0.5 hover:bg-emerald-500/20">
+              清除筛选
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Library className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">文献库</h2>
@@ -210,6 +285,14 @@ export function LiteraturePanel() {
               >
                 全库 PDF
               </button>
+              <button
+                type="button"
+                data-control="literature:mode-analyze"
+                onClick={() => switchMode("analyze")}
+                className={cn("rounded-full px-3 py-1 text-xs transition-colors", mode === "analyze" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}
+              >
+                图谱分析
+              </button>
             </div>
             <ButtonSmall onClick={() => { void loadCatalog(); void loadItems(); }}>
               <RefreshCw className="h-3.5 w-3.5" /> 刷新
@@ -218,7 +301,37 @@ export function LiteraturePanel() {
         </div>
 
         {/* 常开工作面板: PRISMA 综述 + 文献提取矩阵(置顶, 不折叠) */}
-        {mode === "md" ? (
+        {mode === "analyze" ? (
+          /**
+           * 图谱分析: 共现图谱 / 词云。
+           *
+           * 两者都是**从库里这批文献现算**的 —— 共现图谱看词与词的结构关系,
+           * 词云看词频。共用同一套关键词抽取(服务端 keyword-network-service),
+           * 所以词云里最大的词一定能在图谱里找到, 不会两处对不上。
+           */
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex rounded-full border border-border p-0.5">
+                <button type="button" data-control="literature:analyze-network"
+                  onClick={() => setAnalyzeTab("network")}
+                  className={cn("rounded-full px-3 py-1 text-xs transition-colors", analyzeTab === "network" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+                  关键词共现图谱
+                </button>
+                <button type="button" data-control="literature:analyze-cloud"
+                  onClick={() => setAnalyzeTab("cloud")}
+                  className={cn("rounded-full px-3 py-1 text-xs transition-colors", analyzeTab === "cloud" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+                  词云
+                </button>
+              </div>
+              <span className="text-[11px] text-muted-foreground">基于当前文献库现算</span>
+            </div>
+            {analyzeTab === "network" ? (
+              <KeywordNetworkPanel fromLibrary onNavigate={onNavigate} />
+            ) : (
+              <WordCloudPanel onViewInGraph={() => setAnalyzeTab("network")} />
+            )}
+          </div>
+        ) : mode === "md" ? (
           <div className="space-y-2">
             <PrismaPanel />
             <LiteratureMatrixPanel papers={items.map((r) => ({ id: String(r.id), title: String(r.title ?? r.paperTitle ?? "") }))} />

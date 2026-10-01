@@ -9,7 +9,7 @@ import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 interface TaskStep {
   id: string;
   title: string;
-  type: "retrieve" | "reason" | "write" | "review";
+  type: "retrieve" | "reason" | "write" | "review" | "execute";
   query?: string;
   status: "pending" | "running" | "done" | "failed";
   result?: string;
@@ -27,7 +27,11 @@ interface TaskRecord {
   result?: string;
   loopCount?: number;
   reflectLog?: Array<{ round: number; verdict: string; score: number; issues: string[]; action: string }>;
-  approvalRequest?: { stepIdx: number; title: string; action: string; reason: string } | null;
+  approvalRequest?: {
+    stepIdx: number; title: string; action: string; reason: string;
+    /** 这次同意会授予什么 —— 后端给的原文, 审批界面直接展示 */
+    grant?: string;
+  } | null;
   costSummary?: { totalCostCents: number; totalTokens: number; execCount: number; byTool: Array<{ tool: string; costCents: number; count: number }> };
   /** V395-6: 成本预估(分)与实际(分) */
   estimatedCostCents?: number;
@@ -45,6 +49,9 @@ interface TaskRecord {
 
 const TYPE_LABELS: Record<string, string> = {
   retrieve: "检索", reason: "推理", write: "写作", review: "评审",
+  // execute: 会产生实际文件/副作用的步骤 —— 与"写作"必须分开显示,
+  //   否则用户看不出这一步与"写一段文字"的区别, 也就不知道它被要求审批的原因。
+  execute: "执行",
 };
 
 const taskApi = {
@@ -1154,6 +1161,20 @@ export const TaskPanel: FC = () => {
                         <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">
                           高危操作: {task.approvalRequest.title}
                         </span>
+                        {/*
+                          ⚠ 授权范围必须摆在**按钮旁边**, 不能只放详情里。
+                          批准按钮在这一行就能点, 而详情默认是折叠的 ——
+                          用户完全可能一键批准却从没看过它授予了什么。
+                          "同意必须是知情的": 按钮在哪, 后果就得在哪。
+                        */}
+                        {task.approvalRequest.grant && (
+                          <span className="max-w-[420px] rounded bg-orange-50 px-1.5 py-0.5 text-[9px] leading-4 text-orange-700/90"
+                            title={task.approvalRequest.grant}>
+                            {task.approvalRequest.grant.length > 46
+                              ? task.approvalRequest.grant.slice(0, 46) + "…（悬停看全文）"
+                              : task.approvalRequest.grant}
+                          </span>
+                        )}
                         {/* V396-11: 四态确认 — 批准/编辑/拒绝/回复 */}
                         <button type="button" aria-label="批准高危步骤" onClick={() => void approveTask(task.id, true)}
                           className="flex items-center gap-1 rounded bg-green-600 px-2 py-0.5 text-[10px] text-white hover:bg-green-700">
@@ -1261,6 +1282,18 @@ export const TaskPanel: FC = () => {
                         <div className="mb-1.5 rounded border border-orange-200/50 bg-orange-50/20 px-2 py-1 text-[10px] text-orange-700">
                           <span className="font-medium">待批准步骤 #{task.approvalRequest.stepIdx + 1}</span>：{task.approvalRequest.title}
                           {task.approvalRequest.reason && <span className="text-muted-foreground"> — {task.approvalRequest.reason}</span>}
+                          {/*
+                            ⚠ 必须把"这次同意给了什么"摆出来。
+                            对 execute 步骤，批准不只是放过这一步 —— 它会在任务上授予
+                            workspace-write，于是**后续动作类步骤不再逐次询问**。
+                            用户以为在批"生成一份文件"，实际同意的是"这个任务里所有文件操作"。
+                            只显示标题，那道审批门就只是个形式。
+                          */}
+                          {task.approvalRequest.grant && (
+                            <div className="mt-1 rounded border border-orange-300/50 bg-orange-100/40 px-1.5 py-1 leading-4">
+                              {task.approvalRequest.grant}
+                            </div>
+                          )}
                         </div>
                       )}
                       {/* V391(P0-1): 循环评估记录 */}

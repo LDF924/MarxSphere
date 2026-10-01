@@ -4,11 +4,11 @@
  * 合稿三轮(merge→review→revise) + 时间轴 + 终稿元数据编辑 + 导出 md/html(Word 走前端 docx 构建)
  * 后端: jobKind merge/phase5_review/phase5_revise → 泵 → project merged_* 列 + review_result 回读
  */
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useWorkflowStore } from "./stores/workflow";
 import { createTask, getTask, mergeNode } from "@/shared/tasks";
-import { markWorkflowReady, sendMarkdownToEditor } from "@/shared/workflow-bridge";
+import { markWorkflowReady, sendMarkdownToEditor, claimExternalMaterial, commitExternalMaterial, resetExternalMaterialClaim, EXTERNAL_MATERIAL_EVENT } from "@/shared/workflow-bridge";
 import { declarationsToMarkdown } from "@/shared/declarations";
 import { toast, confirmDialog } from "@/shared/ui";
 import { q, authedBlob } from "@/shared/api";
@@ -45,7 +45,13 @@ const analysisTextEmpty = computed(() => !analysisText.value.trim());
 const mergedHtml = computed(() => renderMdWithLatex(String(store.mergedFullText ?? "")));
 const refsHtml = computed(() => renderMdWithLatex(String(store.mergedReferences ?? "")));
 
-/** 合稿模式与降 AIGC 档位(2026-09-15 补: 原先只有布尔开关, 档位能力整个缺失) */
+/**
+ * 合并模式与降 AIGC 档位(2026-09-15 补: 原先只有布尔开关, 档位能力整个缺失)。
+ *
+ * ═══ 2026-10-01: 模式也可能被**外部投递**设定 ═══
+ *   AIGC 检测(格式智能评测 › 成品构建)测出"AI 特征高"之后的下一步就是这里 ——
+ *   投递会带上建议档位并把 mergeMode 切到 deAIGC。见下面 consumeExternalMaterial。
+ */
 const mergeMode = ref<"normal" | "deAIGC">("normal");
 const mergeTier = ref<"light" | "medium" | "heavy">("medium");
 const MERGE_MODES = [
@@ -57,6 +63,65 @@ const DEAI_TIERS = [
   { value: "medium" as const, label: "中度降重", hint: "调整句式节奏，拆并列排比，删过渡水句" },
   { value: "heavy" as const, label: "重度降重", hint: "重组表达路径与段落切分，事实数据引文冻结" },
 ];
+/** 当前降重档位的说明 —— 提示文案两处都要用, 抽出来免得抄串 */
+const tierHint = (t: string) => DEAI_TIERS.find((x) => x.value === t)?.hint ?? "";
+
+/**
+ * 外部模块投递过来的 AIGC 检测结论 —— 常驻提示条。
+ *
+ * 为什么不是一条 toast: toast 3.2 秒就没了, 而用户从检测面板跳过来之后
+ * **要先看一眼这一页有什么、再决定合不合稿**, 提示必须在他做决定的那一刻还在。
+ * 用户真正动了手(改档位 / 点了合稿)才撤掉。
+ */
+const aigcNotice = ref<{ score: number; verdict: string; tier: string; verdictLabel: string; features: string[] } | null>(null);
+
+const VERDICT_LABEL: Record<string, string> = {
+  likely_human: "更像人类写作", mixed: "混合特征", likely_ai: "更像 AI 生成", insufficient: "样本不足",
+};
+
+/**
+ * 取一次投递（挂载时 + 路由变化时）。
+ *
+ * ⚠ 为什么不能只在 onMounted 里取: 页面**已经在统稿定稿**时, 从助手/检测面板再投一次,
+ *   本视图不会重新挂载 —— 交接就永远躺在 localStorage 里没人取。
+ *   (与 handoff.ts 里"共现图谱和文献列表是同一个面板的两个子视图"那条同源。)
+ */
+function consumeExternalMaterial() {
+  const m = claimExternalMaterial();
+  if (!m) return;
+  if (m.from !== "aigc-detect") { resetExternalMaterialClaim(); return; }
+  const p = (m.payload ?? {}) as { aiScore?: number; verdict?: string; tier?: string; features?: string[] };
+  const tier = ["light", "medium", "heavy"].includes(String(p.tier)) ? String(p.tier) : "medium";
+  aigcNotice.value = {
+    score: Math.round(Number(p.aiScore ?? 0)),
+    verdict: String(p.verdict ?? "mixed"),
+    verdictLabel: VERDICT_LABEL[String(p.verdict ?? "mixed")] ?? "混合特征",
+    tier,
+    features: Array.isArray(p.features) ? p.features.slice(0, 4).map(String) : [],
+  };
+  // 建议档位要**真的落到控件上** —— 只显示一句"建议中度"而控件还停在别处, 用户得自己再点一次
+  mergeMode.value = "deAIGC";
+  mergeTier.value = tier as "light" | "medium" | "heavy";
+  commitExternalMaterial();
+}
+
+/** 用户采纳了建议(改了档位 / 点了合稿) → 提示条使命完成, 撤掉 */
+function dismissAigcNotice() { aigcNotice.value = null; }
+
+/** 从这一页去检测面板 —— 走外壳转发(本视图在 iframe 里, 拿不到 React 的路由) */
+function gotoAigcDetect() {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        { source: "socioseek-soc", type: "navigate", view: "format-eval", from: { view: "paper-outline", label: "统稿定稿" } },
+        "*",
+      );
+    }
+  } catch { /* 跨源拿不到 parent */ }
+}
+
+/** 待检文本的规模 —— 让按钮上直接写清"要送去检的是什么、有多长" */
+const pendingTextChars = computed(() => analysisText.value.replace(/\s/g, "").length);
 
 /** 合稿五步(参考产品固定文案, 每步带说明) */
 const MERGE_STEPS = [
@@ -810,6 +875,29 @@ function onMetaInput() {
 onUnmounted(() => {
   if (metaSaveTimer) { clearTimeout(metaSaveTimer); metaSaveTimer = null; }
   stopPoll();
+  window.removeEventListener(EXTERNAL_MATERIAL_EVENT, consumeExternalMaterial as unknown as EventListener);
+  window.removeEventListener("focus", consumeExternalMaterial as unknown as EventListener);
+});
+
+/**
+ * 取外部投递的两条路，缺一不可：
+ *   · 挂载时主动取一次 —— 覆盖"投递先到、页面后挂载"（外壳 push 过来就是这条）；
+ *   · 常驻监听事件 —— 覆盖"页面已经在这一页时又收到一条"（同路径 push 是 no-op，不会重新挂载）。
+ * 再听一个 `focus` 是兜底：投递若因任何原因没触发事件，用户切回这个标签页/窗口时还能捡起来。
+ */
+onMounted(() => {
+  window.addEventListener(EXTERNAL_MATERIAL_EVENT, consumeExternalMaterial as unknown as EventListener);
+  window.addEventListener("focus", consumeExternalMaterial as unknown as EventListener);
+  /**
+   * ⚠ 这一行是**必须的**, 不是保险。
+   *
+   * 投递的真实时序(2026-10-01 实测, 三处探针): 外壳 postMessage → soc 外壳收下并写
+   * localStorage → **162ms 之后**本视图才挂载。
+   * 也就是说 `writeExternalMaterial` 广播事件时**本视图还不在场**, 没有任何监听者 ——
+   * 消息只会静静躺在 localStorage 里。少了这一行, 表现就是
+   * "点了按钮、页面确实跳到了统稿定稿、但什么提示也没有"(第一版正是如此)。
+   */
+  consumeExternalMaterial();
 });
 
 // ── 查看差异(修订前/后) ──
@@ -1268,6 +1356,15 @@ onMounted(async () => {
             <span>将全部章节合并为完整论文(自动生成摘要/关键词/参考文献)</span>
           </div>
           <div class="round-actions">
+            <!-- 先测再合(2026-10-01 加法)。
+                 为什么放在这: 合并模式(直接/降AIGC)与强度档选得对不对, 取决于**这篇稿子
+                 现在到底有多像 AI** —— 而那个数只有在检测面板里才知道。原来的路径是
+                 "自己想起来要去测 → 切到格式智能评测 → 粘贴 → 回来", 是断的。
+                 这里给一条反向入口, 检测结果回来后由外部投递(AigcDetectPanel)自动把模式
+                 切到降AIGC并选好档位。 -->
+            <button class="btn-round ghost" data-control="workflow:goto-aigc-detect" @click="gotoAigcDetect()">
+              先测 AIGC
+            </button>
             <!-- 2026-09-15: 原先只有「开始合稿 + 降AIGC合稿」两个按钮, 强度(轻/中/重)整个不存在。
                  现在改成模式 tab + 档位选择, 且档位背后有真实实现(正文逐章降重, 不只是摘要)。 -->
             <div class="merge-mode" role="tablist">
@@ -1279,13 +1376,34 @@ onMounted(async () => {
                 class="mm-tab" :class="{ on: mergeMode === m.value }" role="tab"
                 :aria-pressed="mergeMode === m.value"
                 :data-control="m.control"
-                @click="mergeMode = m.value; if (m.value === 'deAIGC') mergeTier = 'medium'"
+                @click="mergeMode = m.value; if (m.value === 'deAIGC') mergeTier = 'medium'; dismissAigcNotice()"
               >{{ m.label }}</button>
             </div>
-            <button class="btn-round" :disabled="mergeRunning" data-control="workflow:phase5-merge" @click="doMerge()">
+            <button class="btn-round" :disabled="mergeRunning" data-control="workflow:phase5-merge" @click="doMerge(); dismissAigcNotice()">
               {{ mergeRunning ? "合并中…" : store.mergeGenerated ? "重新合稿" : "开始合稿" }}
             </button>
           </div>
+        </div>
+        <!-- AIGC 检测送来的结论(常驻到用户动手为止)。
+             不用 toast: toast 3.2 秒就没了, 而用户跳过来之后**要先看一眼这一页有什么**、
+             再决定合不合稿 —— 提示必须在他做决定的那一刻还在。 -->
+        <div v-if="aigcNotice" class="aigc-notice" data-control="workflow:aigc-notice">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div class="aigc-notice-body">
+            <div>
+              来自「AIGC 检测」：<b>{{ aigcNotice.score }} / 100</b>（{{ aigcNotice.verdictLabel }}）
+              <template v-if="aigcNotice.features.length">
+                · 主要特征：{{ aigcNotice.features.slice(0, 3).join("、") }}
+              </template>
+            </div>
+            <div class="aigc-notice-sub">
+              已为你切到 <b>降 AIGC 合稿</b>、强度选 <b>{{ DEAI_TIERS.find((t) => t.value === aigcNotice?.tier)?.label }}</b>。
+              数值是标定集上的**相对刻度**，不是"这篇是不是 AI 写的"的判定 —— 它只用来决定要不要降、降多重。
+            </div>
+          </div>
+          <button class="aigc-notice-x" title="知道了" @click="dismissAigcNotice()">×</button>
         </div>
         <!-- 强度档: 只在降 AIGC 模式下出现 -->
         <div v-if="mergeMode === 'deAIGC'" class="tier-row">
@@ -1657,6 +1775,23 @@ onMounted(async () => {
   font-size: 13px; line-height: 1.5;
 }
 .gone-banner svg { flex-shrink: 0; }
+/* AIGC 检测送来的结论 —— 常驻到用户动手(改档位 / 点合稿)为止。
+   配色刻意用**红系**(与项目失效横幅同一族)而不用中性色: 它是一条"你的稿子有问题"的
+   提示, 灰底会让它看起来像普通说明文字而被跳过。 */
+.aigc-notice {
+  display: flex; align-items: flex-start; gap: 9px; margin: 10px 0 0 22px;
+  padding: 10px 13px; border-radius: 9px;
+  background: #2A1C1C; border: 1px solid #7f1d1d; color: #E88A8A;
+  font-size: 12.5px; line-height: 1.6;
+}
+.aigc-notice svg { flex-shrink: 0; margin-top: 2px; }
+.aigc-notice-body { flex: 1; min-width: 0; }
+.aigc-notice-sub { margin-top: 3px; font-size: 11.5px; color: #B87A7A; }
+.aigc-notice-x {
+  flex-shrink: 0; background: none; border: none; cursor: pointer;
+  color: #B87A7A; font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.aigc-notice-x:hover { color: #E88A8A; }
 /* 未合稿空态 */
 .finalize-empty {
   text-align: center; padding: 40px 24px; margin-bottom: 16px;

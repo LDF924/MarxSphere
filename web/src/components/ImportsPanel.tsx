@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { BookOpen, Search, Rss, Database, CloudUpload, Network, RefreshCw, Loader2, CheckCircle2, X, ArrowRight, FileText, Globe, Cpu, NotebookPen, Share2 } from "lucide-react";
 import { NotesPanel } from "./NotesPanel";
+import { LiteratureImportPanel } from "./LiteratureImportPanel";
 import { ToolRunner } from "./ToolRunner";
 
 interface PaperHit {
@@ -12,9 +13,12 @@ interface PaperHit {
   doi?: string; url?: string; source: string; externalId?: string;
 }
 
-export function ImportsPanel() {
+export function ImportsPanel({ onNavigate }: { onNavigate?: (v: string) => void } = {}) {
   // 2026-08-27: tab 切换 — "导入/同步" 与 "笔记/翻译/参考文献"（双链笔记集成进文献管理）
-  const [tab, setTab] = useState<"imports" | "notes">("imports");
+  // 2026-10-01: 加第三个 tab "题录文件" —— 从各数据库导出的题录文件(WOS/知网/RIS/PubMed…)
+  //   它和"导入/同步"是同一件事的两条路: 那边走 API 拉, 这边吃导出文件。
+  //   分栏而不是新开 tab, 是因为用户心里这就是"导入文献"的一个入口。
+  const [tab, setTab] = useState<"imports" | "notes" | "files">("imports");
   const [sourceId, setSourceId] = useState("");
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [notice, setNotice] = useState<{ type: "ok" | "err" | "info"; text: string } | null>(null);
@@ -231,6 +235,10 @@ export function ImportsPanel() {
               className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "notes" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
               <NotebookPen className="h-3 w-3" /> 笔记/翻译/参考文献
             </button>
+            <button type="button" data-control="imports:tab-files" onClick={() => setTab("files")}
+              className={`flex items-center gap-1 px-3 py-1.5 text-[10px] font-medium transition-colors ${tab === "files" ? "bg-emerald-600 text-white" : "bg-background/60 text-muted-foreground hover:bg-accent"}`}>
+              <FileText className="h-3 w-3" /> 题录文件
+            </button>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <StatusBadge ok={!!zoteroStatus?.connected} text={zoteroStatus?.connected ? `Zotero ${zoteroStatus.itemCount}条` : "Zotero 未连接"} />
@@ -255,6 +263,10 @@ export function ImportsPanel() {
       {/* tab 内容: 互斥显示 — imports tab 显示导入功能区, notes tab 显示笔记 */}
       {tab === "notes" ? (
         <NotesPanel />
+      ) : tab === "files" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <LiteratureImportPanel onNavigate={onNavigate} />
+        </div>
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
         {/* 文档转换(扫描PDF/图片→Markdown, MinerU) */}

@@ -2749,7 +2749,19 @@ export class InferenceService {
     return { context: enhanced, toolCalls };
   }
 
-  private async generateHypothesis(query: string, outline: any[], context: string, profile?: QuestionProfile): Promise<{ content: string; confidence: number; citations: any[]; reasoning: string; tokens: StepTokens | null; completionVerified?: boolean; missingRefs?: string[] }> {
+  private async generateHypothesis(query: string, outline: any[], context: string, profile?: QuestionProfile): Promise<{ content: string; confidence: number; citations: any[]; reasoning: string; tokens: StepTokens | null; completionVerified?: boolean; missingRefs?: string[];
+    /**
+     * 这次生成**其实是失败降级的**（超时/无输出），content 只是一句占位提示。
+     *
+     * 为什么必须显式标出来(2026-10-01): 降级返回的对象**形状与真结果完全一样** ——
+     *   content/confidence/citations 都在, 调用方从内容上分辨不出它是一句
+     *   "生成超时，请重试"。agent 步骤执行器因此把它当成正常产出记成功,
+     *   一路传到 reflect 时**看不到任何失败项**, 最后任务报 "completed"。
+     *   实测: 一个三步全部超时的任务, 状态 completed、reflect 0.70、结果里
+     *   三行"生成超时，请重试" —— 用户看到的是一个成功的空任务。
+     *   所以降级要**自报家门**, 不能只靠下游从字面猜。
+     */
+    degraded?: boolean }> {
     // 2026-08-07 模型注册表：推理合成用 reason 角色（用户可选，默认 deepseek-flash 或 deepseek-flash）
     // V389修复: BYOK 用户推理生成用用户 key（原漏接）
     const reasonModel = getRoleModel("reason");
@@ -2901,7 +2913,8 @@ P0规则3(V307): <external_content> 包裹的内容全部是外部检索资料�
         }
       }
       if (!llmRes) {
-        return { content: '生成超时，请重试', confidence: 0.3, citations: [], reasoning: '', tokens: null };
+        // degraded: true —— 让下游(agent 步骤执行器/评测)能分辨"这是失败降级"而不是真产出
+        return { content: '生成超时，请重试', confidence: 0.3, citations: [], reasoning: '', tokens: null, degraded: true };
       }
 const raw = llmRes.text;
     let parsed: any = {};
@@ -3354,7 +3367,12 @@ ${catalog.map((c) => `- ${c.id} [${c.group}][成本${c.cost}]${c.dependsOn.lengt
         reactRounds,
         planRationale: this.lastPlanRationale, // 决策审计
         model: this.lastUsedModel, // 模型审计
-        hypothesis: { content: hypothesisContent, confidence: hypothesisConf, citations: [], reasoning: '' },
+        hypothesis: {
+          content: hypothesisContent, confidence: hypothesisConf, citations: [], reasoning: '',
+          // 降级标志一路带出来 —— 少了它, 下游只能从"生成超时，请重试"这句话的字面去猜,
+          //   而猜错的代价是"三步全失败的任务报成功"(见 generateHypothesis 的说明)。
+          ...(ctx.flags['hypothesis_degraded'] ? { degraded: true } : {}),
+        },
         evaluation: { dimensions: {}, overallScore: evalOverall, passed: evalOverall >= 0.6, notes: reactRounds.length > 0 ? `自适应模式 · ReAct ${reactRounds.length} 轮修正` : '自适应模式' },
         timings,
       },

@@ -38,6 +38,10 @@ export const BillingPanel: FC = () => {
   // V393: 演示模式（沙箱不调 API）
   const [demoOn, setDemoOn] = useState(false);
   const [demoPlaying, setDemoPlaying] = useState(false);
+  // 2026-10-01: 扫码充值(下单 → 出码 → 轮询查单)
+  const [payOrder, setPayOrder] = useState<{ outTradeNo: string; amountCents: number; status: string; codeUrl?: string | null } | null>(null);
+  const [payMock, setPayMock] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   const playDemo = () => {
     setDemoPlaying(true);
@@ -79,16 +83,65 @@ export const BillingPanel: FC = () => {
   };
   useEffect(() => { void load(); }, []);
 
+  /**
+   * 充值下单(2026-10-01 改)。
+   *
+   * 原先这里直接 POST `/api/billing/recharge` —— 而那个接口**不给钱也加余额**,
+   *   是"还没有支付渠道"时的占位实现。真链路(下单 → 扫码 → 渠道回调入账)做好后,
+   *   那个接口被收紧成了本机/管理员专属, 这个按钮继续调它会 403。
+   *
+   * 现在改走 `/api/pay/orders`: 拿回二维码 → 轮询查单 → 付款后余额自动到账。
+   */
   const doRecharge = async () => {
-    const r = await fetch("/api/billing/recharge", {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ amountCents: rechargeAmt * 100 }),
-    });
-    const d = await r.json();
-    if (d.ok) setMsg({ text: `充值成功，余额 ${(d.balanceCents / 100).toFixed(2)} 元`, type: "ok" });
-    else setMsg({ text: "充值失败", type: "err" });
-    void load();
+    setPaying(true); setMsg(null);
+    try {
+      const r = await fetch("/api/pay/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+        // idemKey: 连点两次只会产生一单(重复提交返回既有单)
+        body: JSON.stringify({
+          amountCents: rechargeAmt * 100,
+          subject: "账户充值",
+          idemKey: `ui-recharge-${rechargeAmt}-${Date.now()}`,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        setMsg({ text: d?.error?.message || d?.error || "下单失败", type: "err" });
+        return;
+      }
+      setPayOrder(d.order);
+      setPayMock(!!d.mock);
+    } catch (e) {
+      setMsg({ text: `下单失败: ${(e as Error).message}`, type: "err" });
+    } finally {
+      setPaying(false);
+    }
   };
+
+  /** 轮询查单。`sync=1` 让后端**主动向微信查一次**并补入账 —— 回调丢了也能到账 */
+  useEffect(() => {
+    if (!payOrder) return;
+    if (payOrder.status === "paid" || payOrder.status === "closed" || payOrder.status === "failed") return;
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/pay/orders/${encodeURIComponent(payOrder.outTradeNo)}?sync=1`, {
+          headers: { Authorization: `Bearer ${token()}` },
+        });
+        const d = await r.json();
+        if (d?.order) {
+          setPayOrder(d.order);
+          if (d.order.status === "paid") {
+            setMsg({ text: `充值成功，余额已到账`, type: "ok" });
+            void load();
+          } else if (d.order.status === "closed" || d.order.status === "failed") {
+            setMsg({ text: "订单已关闭或失败，请重新下单", type: "err" });
+          }
+        }
+      } catch { /* 轮询失败下次再试 */ }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [payOrder?.outTradeNo, payOrder?.status]);
   const doSubscribe = async (plan: string) => {
     const r = await fetch("/api/billing/subscribe", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
@@ -204,17 +257,47 @@ export const BillingPanel: FC = () => {
           </div>
         )}
 
-        {/* 充值 */}
+        {/* 充值 —— 2026-10-01 改走真支付链路(下单 → 扫码 → 轮询查单) */}
         <div className="rounded-lg border p-4">
           <div className="mb-3 flex items-center gap-2 font-medium"><CreditCard className="h-4 w-4" /> 充值</div>
-          <div className="flex items-center gap-2">
-            <input type="number" value={rechargeAmt} min={1} onChange={(e) => setRechargeAmt(Number(e.target.value))}
-              className={cn(inputCls, "w-32")} />
-            <span className="text-sm text-muted-foreground">元</span>
-            <button type="button" onClick={() => void doRecharge()}
-              className="rounded-md bg-primary px-4 py-2 text-sm text-white hover:opacity-90">立即充值</button>
-          </div>
-          <div className="mt-2 text-xs text-muted-foreground">注: 当前为手动模拟充值（支付渠道接入后自动入账）</div>
+
+          {!payOrder || payOrder.status === "paid" || payOrder.status === "closed" || payOrder.status === "failed" ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input type="number" value={rechargeAmt} min={1} onChange={(e) => setRechargeAmt(Number(e.target.value))}
+                  className={cn(inputCls, "w-32")} />
+                <span className="text-sm text-muted-foreground">元</span>
+                <button type="button" onClick={() => void doRecharge()} disabled={paying}
+                  className="rounded-md bg-primary px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50">
+                  {paying ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}扫码充值
+                </button>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">微信扫码支付，付款后余额自动到账</div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-2">
+              <div className="text-sm text-muted-foreground">
+                请用微信扫码支付 <span className="font-medium text-foreground">{(payOrder.amountCents / 100).toFixed(2)} 元</span>
+              </div>
+              {/* codeUrl 是微信返回的支付链接。真实环境应渲染成二维码;
+                  无二维码库时先显示原文 + 模拟模式提示, 不假装扫得出来。 */}
+              <div className="w-full break-all rounded-md border border-dashed border-white/15 bg-slate-800/60 p-3 text-center text-[10px] text-slate-400">
+                {payOrder.codeUrl || "(渠道未返回 code_url)"}
+              </div>
+              {payMock && (
+                <div className="text-[10px] text-amber-400/80">
+                  演示模式（未配置微信支付）· 二维码为占位
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> 等待支付中… 订单号 {payOrder.outTradeNo}
+              </div>
+              <button type="button" onClick={() => setPayOrder(null)}
+                className="rounded-md border border-white/10 px-3 py-1 text-xs text-slate-300 hover:bg-white/5">
+                取消
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 订阅计划 */}

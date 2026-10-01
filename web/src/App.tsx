@@ -40,6 +40,16 @@ import {
 import { api } from "./lib/api";
 import { AuthGate, useAuth } from "./components/AuthGate";
 import { BillingPanel } from "./components/BillingPanel";
+// 2026-10-01: 写作舱外层包装 —— 多一个"PPT 演示"切换(默认仍是原写作舱)
+import { PaperOutlineFusion } from "./components/PaperOutlineFusion";
+// 2026-10-01: 自旧项目 AItoolman 移植的 6 个能力面板
+import { PPTWorkbenchPanel } from "./components/PPTWorkbenchPanel";
+import { AigcDetectPanel } from "./components/AigcDetectPanel";
+import { LiteratureImportPanel } from "./components/LiteratureImportPanel";
+import { OpinionSearchPanel } from "./components/OpinionSearchPanel";
+import { KeywordNetworkPanel } from "./components/KeywordNetworkPanel";
+import { WordCloudPanel } from "./components/WordCloudPanel";
+import { WordBuildPanel } from "./components/WordBuildPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatPanel, type ChatDraftImage } from "./components/ChatPanel";
 import { cn, formatDate, formatDuration, formatMessageDate, shortId, timeGapMinutes } from "./lib/utils";
@@ -88,7 +98,8 @@ import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream �
 
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
-const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history"];
+const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history",
+  "ppt-workbench", "aigc-detect", "lit-import", "opinion"];
 
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
@@ -181,7 +192,13 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history";
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history"
+  // 2026-10-01: 自旧项目 AItoolman 移植的能力。**本体已融入既有 tab**, 这里保留
+  //   4 个深链视图(不是导航项): 外部(`#ppt-workbench`/`#opinion`/`#aigc-detect`)
+  //   与文献导入(`#lit-import`)。keyword-net / wordcloud / word-build 已被宿主
+  //   完全覆盖(文献库›图谱分析、格式评测›成品构建), 连深链都不需要, 已删。
+  | "ppt-workbench" | "aigc-detect" | "lit-import" | "opinion"
+ ;
 type ResultView = "overview" | "chunks" | "events" | "entities" | "search";
 type ContextPanelMode = "process" | "logs";
 type ProcessStepStatus = "running" | "done" | "failed";
@@ -301,6 +318,101 @@ function AppShell() {
     } catch {
       return false;
     }
+  };
+
+  /**
+   * 把一段文本作为「素材」投给研途写作舱(Vue 子应用)。
+   *
+   * 由来(2026-10-01): AIGC 检测出"这段 AI 特征高"之后, 用户的下一步必然是"帮我改"——
+   *   而写作舱就在隔壁 tab。这层联动此前没有, 用户得自己复制文本、切过去、再粘一次。
+   *
+   * 复用既有协议, 不另造: Vue 侧 `App.vue:onExternalMaterial` 已经在收
+   *   `{source:"socioseek-app", type:"workflow-material", kind, title, markdown}`,
+   *   收下后写 localStorage 并 router.push 到素材页。
+   *
+   * ⚠ 投递要**等 iframe 就绪** —— 这正是本项目踩过多次的坑(见上面 subAppReady 的注释:
+   *   静态挂载点 51ms 就有, 而真正收消息的 Vue 视图要等 bundle 下载 + 挂载, 差几十到几百 ms)。
+   *   直接 postMessage 会随机丢。就绪就发, 没就绪就轮询; 超时落 localStorage 兜底
+   *   (Vue 侧挂载时自己取), 与 returnToWorkflow 同一套。
+   */
+  const sendMaterialToWorkflow = (markdown: string, title: string, kind = "note") => {
+    if (!markdown.trim()) return;
+    // ⚠ `navigateView` 在**目标视图已经是当前视图**时会 early-return(刻意的, 防重复 push 历史)。
+    //   而写作舱正是这种情况的常客(用户就在写作舱里, 从旁路面板往它投东西),
+    //   所以**不能依赖它来触发下面的投递** —— 投递循环独立跑, 与视图切换解耦。
+    navigateView("paper-outline");
+    postToWorkflowIframe(() => ({ source: "socioseek-app", type: "workflow-material", kind, title, markdown }));
+  };
+
+  /**
+   * 把 AIGC 检测的结论投给**统稿定稿**的合并轮 —— 2026-10-01。
+   *
+   * 由来(用户指出方向错了): 原来这个按钮做的是 `sendMaterialToWorkflow` ——
+   *   把待降文本当**素材**投到写作舱的素材库。但检测出"AI 特征高"之后的下一步
+   *   不是"攒素材"，而是**降 AIGC 合稿**: 统稿定稿页的合并轮里有「降AIGC合稿」
+   *   模式 + 轻/中/重三档强度，那才是这件事真正的落点。投到素材库等于把人放到错的房间。
+   *
+   * 与素材投递的区别(所以不复用那条): 这里的**正文不一定带** ——
+   *   用户可能只是想"知道结论、拿个建议档位"；而且落点不是素材页，是统稿定稿页。
+   *   靠消息里的 `route` 字段区分，见 soc 侧 `App.vue:onExternalMaterial`。
+   *
+   * ⚠ 不走 `navigateView("paper-outline")` 之后就完事: 写作舱可能**已经在**这一页，
+   *   此时 navigateView early-return，但投递循环是独立的，照常送达。
+   */
+  const sendAigcReportToFinalize = (report: {
+    aiScore: number; verdict: string; tier: "light" | "medium" | "heavy"; features: string[];
+  }) => {
+    navigateView("paper-outline");
+    const msg = () => ({
+      source: "socioseek-app",
+      type: "workflow-material",
+      route: "/workflow/finalize",
+      from: "aigc-detect",
+      payload: { aiScore: report.aiScore, verdict: report.verdict, tier: report.tier, features: report.features },
+    });
+    postToWorkflowIframe(msg, {
+      // 兜底落盘: key 必须与 soc 侧 EXTERNAL_MATERIAL_KEY 一字不差
+      key: "skf_wf_external_material",
+      value: () => ({ route: "/workflow/finalize", from: "aigc-detect", markdown: "", payload: (msg() as { payload: unknown }).payload, at: Date.now() }),
+    });
+  };
+
+  /**
+   * 把一条投递送进写作舱 iframe —— **等它就绪、超时落盘兜底**。
+   *
+   * 抽出来是因为调用方已经有四个(素材投递、AIGC→统稿定稿 这条，以及后续新增的模块联动),
+   * 而"等就绪 + 超时落 localStorage"这段是**必须逐字一致**的: 落盘用的 key 必须与
+   * Vue 侧读取方约定的一致(`skf_workflow_handoff` → HANDOFF_KEY;
+   * `skf_wf_external_material` → EXTERNAL_MATERIAL_KEY), 抄错一个字符就是静默失效。
+   *
+   * `build()` 只在**确认可投递的那一刻**才调用 —— 消息里带 `Date.now()` 之类的时间戳时,
+   *   提前构造会让"投递时刻"停在按下按钮的那一刻, 而不是真正送达的那一刻。
+   */
+  const postToWorkflowIframe = (
+    build: () => Record<string, unknown>,
+    fallback?: { key: string; value: () => Record<string, unknown> },
+  ) => {
+    let tries = 0;
+    const tick = () => {
+      tries++;
+      const iframe = document.querySelector(
+        'iframe[title="研途写作舱"], iframe[src*="/workflow"]') as HTMLIFrameElement | null;
+      if (subAppReady(iframe, "workflow")) {
+        try {
+          iframe!.contentWindow!.postMessage(build(), "*");
+          return;
+        } catch { /* 跨域则走下面的兜底 */ }
+      }
+      if (tries > 200) {
+        if (fallback) {
+          // 子应用一直没醒: 留在 localStorage, 它挂载时自己取(App.vue 里的桥)
+          try { localStorage.setItem(fallback.key, JSON.stringify(fallback.value())); } catch { /* 忽略 */ }
+        }
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
   };
 
   // ── V398: AI 对话页状态（assistant 视图）──
@@ -2396,7 +2508,7 @@ function AppShell() {
             ) : workspaceView === "corpus" ? (
               <ErrorBoundary><WritingCorpusPanel /></ErrorBoundary>
             ) : workspaceView === "paper-outline" ? (
-              <ErrorBoundary><FusionPanel panelKey="workflow-input" tab={{ ...FUSION_TABS.paperOutline, onBack: () => navigateView("literature") }} /></ErrorBoundary>
+              <ErrorBoundary><PaperOutlineFusion onBack={() => navigateView("literature")} /></ErrorBoundary>
             ) : workspaceView === "dag-workbench" ? (
               <ErrorBoundary><FusionPanel panelKey="quick" tab={{ ...FUSION_TABS.dag, onBack: () => navigateView("literature") }} /></ErrorBoundary>
             ) : workspaceView === "review-lab" ? (
@@ -2414,7 +2526,14 @@ function AppShell() {
               <ErrorBoundary><ResearchHistoryPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
             ) : workspaceView === "billing" ? (
               <BillingPanel />
-            ) : workspaceView === "admin" ? (
+            ) : workspaceView === "ppt-workbench" ? (
+              <ErrorBoundary><PPTWorkbenchPanel /></ErrorBoundary>
+            ) : workspaceView === "aigc-detect" ? (
+              <ErrorBoundary><AigcDetectPanel onSendToFinalize={sendAigcReportToFinalize} onSendToWorkflow={sendMaterialToWorkflow} /></ErrorBoundary>
+            ) : workspaceView === "lit-import" ? (
+              <ErrorBoundary><LiteratureImportPanel /></ErrorBoundary>
+            ) : workspaceView === "opinion" ? (
+              <ErrorBoundary><OpinionSearchPanel /></ErrorBoundary>            ) : workspaceView === "admin" ? (
               <AdminPanel />
             ) : workspaceView === "alerts" ? (
               <AlertsPanel />
@@ -2427,7 +2546,7 @@ function AppShell() {
             ) : workspaceView === "ask" ? (
               <AskPanel pendingDemo={pendingDemoRef.current} />
             ) : workspaceView === "sciverse" ? (
-              <SciversePanel />
+              <SciversePanel onSendToWorkflow={sendMaterialToWorkflow} />
             ) : workspaceView === "sources" ? (
               <SourcesPanel />
             ) : workspaceView === "skills" ? (
@@ -2443,7 +2562,7 @@ function AppShell() {
             ) : workspaceView === "truth" ? (
               <TruthPanel />
             ) : workspaceView === "literature" ? (
-              <LiteraturePanel />
+              <LiteraturePanel onNavigate={(v) => navigateView(v as WorkspaceView)} />
             ) : workspaceView === "scenarios" ? (
               <ScenariosPanel onChangeView={(view) => navigateView(view)} />
             ) : workspaceView === "education" ? (
@@ -2462,11 +2581,11 @@ function AppShell() {
               // 2026-09-03: 格式智能评测 — 硬编码视图(带完整顶部导航, 与 jupyter 一致;
               // registerView 插件面板是简化 header 无导航栏, 故弃用注册表)
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-                <ErrorBoundary><FormatEvalPanel /></ErrorBoundary>
+                <ErrorBoundary><FormatEvalPanel onNavigate={(v) => navigateView(v as WorkspaceView)} onSendToFinalize={sendAigcReportToFinalize} onSendToWorkflow={sendMaterialToWorkflow} /></ErrorBoundary>
               </section>
             ) : workspaceView === "imports" ? (
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
-                <ErrorBoundary><ImportsPanel /></ErrorBoundary>
+                <ErrorBoundary><ImportsPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
               </section>
             ) : workspaceView === "structure" ? (
               <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
@@ -4572,6 +4691,13 @@ function SettingsPanel(props: {
   const [chunkOverlapTokens, setChunkOverlapTokens] = useState(100);
   // V395: Agent 运行时设置(全局沙箱级别/自主级别) — 独立持久化到 /api/agent/settings
   const [agentSandboxProfile, setAgentSandboxProfile] = useState("read-only");
+  /** 档位说明来自后端 —— 前端不自己存一份(存了就会与实现漂移; 实测漂移过) */
+  const [sandboxProfiles, setSandboxProfiles] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    void fetch("/api/agent/sandbox-profiles").then((r) => r.json())
+      .then((d) => setSandboxProfiles(d.profiles ?? []))
+      .catch(() => {});
+  }, []);
   const [agentAutonomy, setAgentAutonomy] = useState("auto-edit");
   useEffect(() => {
     void fetch("/api/agent/settings").then((r) => r.json()).then((d) => {
@@ -4894,14 +5020,21 @@ function SettingsPanel(props: {
               onChange={(e) => { setAgentSandboxProfile(e.target.value); saveAgentRuntime("sandbox_profile", e.target.value); }}
               className="rounded border border-border bg-background px-2 py-1.5 text-sm"
             >
-              <option value="read-only">read-only(只读, 默认)</option>
-              <option value="workspace-write">workspace-write(工作区可写)</option>
-              <option value="full-access">full-access(完全访问, 危险操作门控)</option>
+              {/*
+                ⚠ 选项文字**不再自己加括号** —— 后端标签本身已经是完整句子,
+                  再包一层会变成"read-only（只读（默认）— 禁止…）"这种括号套括号。
+                  后端给什么就显示什么; 只在拿不到时用兜底值。
+              */}
+              {(sandboxProfiles.length
+                ? sandboxProfiles
+                : [{ value: "read-only", label: "只读 — 禁止一切文件写/网络/进程操作" }]
+              ).map((p) => (
+                <option key={p.value} value={p.value}>{p.value} — {p.label}</option>
+              ))}
             </select>
             <span className="text-xs text-muted-foreground">
-              {agentSandboxProfile === "read-only" ? "禁止一切文件写/网络/进程操作"
-                : agentSandboxProfile === "workspace-write" ? "仅允许 agent_workspace 内读写"
-                : "完全访问(危险命令默认禁止, 需 sidecar 门控)"}
+              {/* 档位说明取自后端 —— 前端不再自己存一份(存了就会与实现漂移, 实测漂移过) */}
+              {sandboxProfiles.find((p) => p.value === agentSandboxProfile)?.label ?? "—"}
             </span>
           </label>
           <label className="flex items-center gap-2 text-sm">

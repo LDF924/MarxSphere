@@ -102,12 +102,12 @@ describe("界面截图: 每个导航 tab 都要有, 且不能是断链", () => {
      * ⚠ 必须跳过**构建产物**里的文档副本。
      *
      * `resources/sag/` 是 `build-desktop.mjs` 为桌面端打包暂存的、`release/` 是
-     * electron-builder 的输出 —— 它们里面各有一份整份 docs/ 的快照。不跳过的话,
+     * electron-builder 的输出 —— 它们里面有整份 docs/ 的快照。不跳过的话,
      * 这条判据会去查**上一次打包时那份旧文档**里的引用, 报出根本不存在的断链。
      *
-     * 实测(2026-09-30): worktree 里没有这两个目录 → 全绿; 主仓里有(打过包) → 两条假红
+     * 实测(2026-09-30): worktree 里没有这两个目录 → 全绿; 主仓里有(打过包) → 假红两条
      * (`sag-home.png` / `marxsphere-architecture.svg`, 都只在旧副本里)。
-     * **判据扫错了范围 —— 与"判据看不到被测对象"是同一类病。**
+     * **判据扫错了范围, 与判据看不到被测对象是同一类病。**
      */
     const SKIP_DIRS = new Set(["node_modules", "release", "resources", "dist", "coverage", ".cache"]);
     const walk = (dir: string) => {

@@ -2,7 +2,7 @@
 // SciversePanel.tsx — 外部学术检索面板（全人文社科版 Sciverse）
 // 工具选择 + 结果卡片 + read_content/relations + 无 key mock 降级
 import { useState, useEffect, type FC, type ReactNode } from "react";
-import { Search, BookOpen, Link2, FileText, Loader2, AlertTriangle, CheckCircle2, Database, Sparkles } from "lucide-react";
+import { Search, BookOpen, Link2, FileText, Loader2, AlertTriangle, CheckCircle2, Database, Sparkles , Newspaper} from "lucide-react";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
@@ -10,7 +10,7 @@ import { Card } from "../components/ui/card";
 import { Textarea } from "../components/ui/textarea";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 
-type Tool = "semantic_search" | "search_papers" | "relations" | "read_content";
+type Tool = "semantic_search" | "search_papers" | "relations" | "read_content" | "opinion";
 type SciverseMode = "mock" | "online" | "auto";
 
 const MODE_KEY = "sciverse-mode";
@@ -42,17 +42,25 @@ const TOOL_LABELS: Record<Tool, string> = {
   semantic_search: "语义检索（RAG）",
   search_papers: "结构化检索",
   relations: "引文关系",
-  read_content: "读全文"
+  read_content: "读全文",
+  // 2026-10-01: 加"舆情检索" —— 与其余四项同族: 都是**检索外部信息**。
+  //   区别是检索对象不是论文而是新闻/政策/公开榜单, 用于研究议题的媒体框架与舆论走向。
+  opinion: "舆情检索"
 };
 
 const PLACEHOLDERS: Record<Tool, string> = {
   semantic_search: "资本下乡与农村集体经济壮大机制",
   search_papers: "查询词（可空）＋右侧过滤条件",
   relations: "输入论文 unique_id",
-  read_content: "输入论文 doc_id"
+  read_content: "输入论文 doc_id",
+  opinion: "议题关键词，如「农村集体经济」"
 };
 
-export function SciversePanel() {
+import { OpinionSearchPanel } from "./OpinionSearchPanel";
+
+export function SciversePanel({ onSendToWorkflow }: {
+  onSendToWorkflow?: (text: string, title: string) => void;
+} = {}) {
   const [tool, setTool] = useState<Tool>("semantic_search");
   const [query, setQuery] = useState("");
   const [extra, setExtra] = useState("");
@@ -284,6 +292,32 @@ export function SciversePanel() {
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-4">
+        {/*
+          舆情检索(2026-10-01): 单独一个工具分支, **不走论文检索那套输入/结果渲染**。
+          早返回而不是嵌进下面的条件链, 是因为它的输入(关键词+时间窗)与输出(新闻条目+
+          情感/立场)跟论文结果完全不是一种形状, 混进同一条链只会到处塞 if。
+        */}
+        {tool === "opinion" ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(TOOL_LABELS) as Tool[]).map((t) => (
+                <button key={t} type="button"
+                  className={cn("rounded-md border px-3 py-1.5 text-sm transition-colors",
+                    tool === t ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-accent")}
+                  onClick={() => { setTool(t); setResults(null); }}>
+                  {t === "semantic_search" ? <Search className="mr-1 inline h-3.5 w-3.5" /> :
+                    t === "search_papers" ? <BookOpen className="mr-1 inline h-3.5 w-3.5" /> :
+                    t === "relations" ? <Link2 className="mr-1 inline h-3.5 w-3.5" /> :
+                    t === "opinion" ? <Newspaper className="mr-1 inline h-3.5 w-3.5" /> :
+                      <FileText className="mr-1 inline h-3.5 w-3.5" />}
+                  {TOOL_LABELS[t]}
+                </button>
+              ))}
+            </div>
+            <OpinionSearchPanel onSendToWorkflow={onSendToWorkflow} />
+          </>
+        ) : (
+        <>
         <div className="flex items-center gap-2">
           <Database className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">外部学术检索（Sciverse）</h2>
@@ -386,6 +420,7 @@ export function SciversePanel() {
               {t === "semantic_search" ? <Search className="mr-1 inline h-3.5 w-3.5" /> :
                 t === "search_papers" ? <BookOpen className="mr-1 inline h-3.5 w-3.5" /> :
                 t === "relations" ? <Link2 className="mr-1 inline h-3.5 w-3.5" /> :
+                t === "opinion" ? <Newspaper className="mr-1 inline h-3.5 w-3.5" /> :
                   <FileText className="mr-1 inline h-3.5 w-3.5" />}
               {TOOL_LABELS[t]}
             </button>
@@ -599,6 +634,8 @@ export function SciversePanel() {
             </div>
           </div>
         </Card>
+        </>
+        )}
       </div>
     </section>
   );

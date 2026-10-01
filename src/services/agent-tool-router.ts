@@ -2,7 +2,7 @@
 // agent-tool-router.ts — V393-1: 真·工具调用（LLM 动态工具选择）
 // 规划时不再定死工具类型: 每步执行时 LLM 从工具清单选工具+参数, 运行时调度
 // 工具清单: SAG 现有能力注册表（推理/检索/写作/实证/政策等）
-import { callLlm } from "../ai/llm-common.js";
+import { callLlm, parseLlmJson } from "../ai/llm-common.js";
 import { toChatCompletionsUrl } from "./ai-settings-service.js";
 import { dataPath } from "./storage-paths.js";
 import { selfBaseUrl } from "./base-urls.js";
@@ -551,22 +551,52 @@ export async function buildAgentTools(opts?: {
         }
         const { executeCode, suggestSandboxEscalation } = await import("./code-sandbox-service.js");
         const profile = String(a.profile || "");
+        console.log();
+        /**
+         * ⚠ 沙箱 profile 不能只看模型填没填 `profile` 参数 —— 2026-10-01 实测。
+         *
+         * 默认 `read-only`（对齐 Codex）意味着**任何写文件的代码都会被拦**。而
+         * "用技能生成一份 .pptx" 这件事的全部内容就是"写一个文件", 于是模型写出
+         * 再正确的 python-pptx 脚本都跑不过: `Sidecar 门控升级人工审查: 代码含文件读写操作`。
+         * 实测连续 4 次都是这个错, 而执行器从头到尾**没有传过 profile**。
+         *
+         * 但也不能无条件放宽 —— 那等于把沙箱关掉。这里的判据是**人类批没批过这一步**:
+         *   execute 步骤强制走人工审批门, 用户在界面上看到的就是"生成 .pptx"这件带副作用的事,
+         *   他点了同意 ⇒ 授权"写工作区"是这次批准的自然含义。
+         *   未批准的路径到不了这里。full-access(网络/进程) 仍然不给 —— 那超出任何一次点击的授权范围。
+         */
+        const escalated = (a as { _stepApproved?: boolean })._stepApproved === true && !profile;
+        const effProfile = escalated ? "workspace-write" : profile;
         const r = await executeCode({
           language: lang as "python" | "javascript",
           code: String(a.code || ""),
           timeoutMs,
-          profile: (profile === "workspace-write" || profile === "full-access" ? profile : undefined) as any,
+          profile: (effProfile === "workspace-write" || effProfile === "full-access" ? effProfile : undefined) as any,
         });
         const parts: string[] = [`【代码执行】${lang} · ${r.durationMs}ms`];
         if (r.stdout) parts.push(`输出:\n${r.stdout}`);
         if (r.stderr) parts.push(`stderr:\n${r.stderr}`);
         if (r.error) {
           parts.push(`错误: ${r.error}`);
-          // 借鉴2: 升级链建议 — 低级别被拦 → 提示升级级别
-          const esc = suggestSandboxEscalation(String(a.code || ""), (profile as any) || "read-only");
+          /**
+           * 升级链建议 —— ⚠ 必须按**实际生效的** profile 判, 不是模型填的那个。
+           *
+           * 2026-10-02 实测踩到: 模型从不填 `profile` 参数, 于是这里拿到空串、
+           * 退回 "read-only" 语境去判 —— 而实际执行用的是 `effProfile`(步骤已批准时
+           * 派生出的 workspace-write)。结果一条**已经在工作区可写级别**的代码被拦时,
+           * 提示写着"需工作区可写级别（使用 profile 参数升级）":
+           * 用户照着做也没用, 因为那是它已经有的。**误导比不提示更糟**。
+           */
+          const esc = suggestSandboxEscalation(String(a.code || ""), (effProfile || "read-only") as any);
           if (esc.suggested !== esc.reason) parts.push(`💡 升级建议: ${esc.reason}（使用 profile 参数升级）`);
         }
         if (!r.stdout && !r.error) parts.push("（无输出）");
+        /**
+         * ⚠ 沙箱 `ok:false` 时**必须把标记打到最前面** —— 只把错误文字拼在正文中间,
+         *   执行层分不出"这是失败"还是"这是一段提到失败的输出"。
+         *   检验: 本仓既有 `_deps-missing` 之类前缀约定, 这里沿用同一个。
+         */
+        if (!r.ok) return "_sandbox-blocked " + parts.join("\n");
         return parts.join("\n");
       },
     },
@@ -2688,7 +2718,23 @@ export async function analyzeImageAtPath(relPath: string, mode = "describe"): Pr
 export async function executeAgentTool(
   tool: AgentToolDef,
   args: Record<string, unknown>,
-  opts?: { role?: AgentRole; whitelist?: Set<string> | null; taskId?: string; /** V417: "read-only" 时拦掉写/执行类工具 */ exposure?: "read-only" }  // V396-12: taskId 用于工具生命周期事件
+  opts?: { role?: AgentRole; whitelist?: Set<string> | null; taskId?: string; /** V417: "read-only" 时拦掉写/执行类工具 */ exposure?: "read-only";
+    /**
+     * 外层步骤**已经拿到人工批准**（`step.approved === true`）。
+     *
+     * 2026-10-01 补。原来 `risk:"review"` 的工具在这里无条件返回"需要人工审批" ——
+     * 而**没有任何机制能批准它**: 它只是返回一个 ok:false, 不落审批记录、不进 awaiting_approval。
+     * 于是 run_code / file_write / run_command / apply_patch 这四个(全是 risk:review)
+     * 从 agent 循环里**根本够不到**, 只在日志里留一句 "blocked/failed: 需要人工审批"。
+     * 实测: 计划里明确写着"调用技能生成 .pptx", 工具也选对了(run_code), 就是执行不了。
+     *
+     * 这个门与**步骤级审批门**重复了: 用户看到的、点击批准的是**步骤**
+     * ("调用 nature-paper2ppt 技能生成可编辑 .pptx"), 那一步就是人类同意的单元。
+     * 步骤已批准后工具再拦一道且无门可进, 是 bug 不是安全。
+     * 所以: 步骤已批准 → 本步内派发的工具不再重复索要审批。
+     * 未批准的步骤仍然拦(它根本走不到这里 —— execute 类型强制走审批门)。
+     */
+    stepApproved?: boolean }
 ): Promise<{ ok: boolean; result: string; risk: string; requiresApproval?: boolean; denied?: boolean }> {
   // V417: 原先缺省 "manager" —— 所有没显式传 role 的调用方(Agent 对话链 server.ts 就有两处)
   //   自动拿到最高权限, reader/analyst/manager 三级形同虚设。缺省改为 fail-closed 的 "reader"：
@@ -2706,13 +2752,29 @@ export async function executeAgentTool(
     return { ok: false, result: policy.reason || "策略拒绝", risk: "deny", denied: true };
   }
   if (tool.risk === "review" || policy.requiresApproval) {
-    return { ok: false, result: `工具 ${tool.name} 需要人工审批`, risk: "review", requiresApproval: true };
+    // 步骤级已批准 → 不再重复索要（见 opts.stepApproved 的说明）
+    if (!opts?.stepApproved) {
+      return { ok: false, result: `工具 ${tool.name} 需要人工审批`, risk: "review", requiresApproval: true };
+    }
   }
   // 差距I②(Codex approval modes): 自主级别判定 — suggest 需逐步审批/auto-edit 仅高危/full-auto 全自动
   try {
     const { requiresApprovalByAutonomy, getAutonomyLevel, AUTONOMY_LABELS } = await import("./agent-autonomy.js");
     const minRole = minRoleOf(tool.name);
-    if (requiresApprovalByAutonomy(tool.risk, minRole, role)) {
+    /**
+     * ⚠ 步骤级批准之后**不再重复索要** —— 2026-10-01 实测。
+     *
+     * 这里与上面的 `tool.risk === "review"` 是**两道独立**的审批闸, 而两道
+     * 都只是 `return { ok:false, requiresApproval:true }` —— **没有任何机制去批准它们**。
+     * 结果是同一个动作上叠了三道审批: 步骤级(有真流程: 落 awaiting_approval, 用户点批准)、
+     * 工具级 risk、自主级别。后两道无门可进, 于是 run_code 这类动作工具**从 agent 循环里
+     * 永远够不到**, 日志里只留下 "blocked/failed", 而计划里明明写着要生成 .pptx。
+     *
+     * 判据是**人类有没有批准过这一步**: 步骤级审批把"要做什么"摆给用户看过、他点了同意,
+     * 那一步就是同意的单元。下游工具再各要一次且无处可给, 是死锁不是安全。
+     * 未批准的路径仍然拦得住 —— execute 类型强制走审批门, 走不到这里。
+     */
+    if (!opts?.stepApproved && requiresApprovalByAutonomy(tool.risk, minRole, role)) {
       return { ok: false, result: `工具 ${tool.name} 需要审批（当前自主级别: ${AUTONOMY_LABELS[getAutonomyLevel()]}）`, risk: "review", requiresApproval: true };
     }
   } catch { /* 自主级别不可用 → 走原审批逻辑 */ }
@@ -2761,6 +2823,14 @@ export async function executeAgentTool(
   for (const [k, v] of Object.entries(args)) {
     safeArgs[k] = /key|token|secret|password|auth/i.test(k) ? maskCredentials(String(v)) : v;
   }
+  /**
+   * 把"步骤已获人工批准"转达给工具。
+   *
+   * 为什么要塞进参数而不是只走 opts: `run_code` 的 `run(a)` **只拿得到参数对象**,
+   * 它需要用这个信号决定沙箱 profile(见那里的说明)。参数名以 `_` 开头, 与模型
+   * 可能生成的键区分开, 也不出现在工具的 params 声明里 —— 它不会被当成用户输入。
+   */
+  if (opts?.stepApproved) safeArgs._stepApproved = true;
   // V404-25(H7, 借鉴 OpenSquilla safety/injection_guard): 工具参数指令注入闸 —
   // 只对"执行类工具"(有真实副作用)启用: 参数值里混入伪装工具调用/指令注入的不可信内容时拒绝。
   // 只读工具(检索/写作/评审)参数多为学术文本, 可能含 JSON 案例/分析句式 — 放行防误伤。
@@ -2811,6 +2881,23 @@ export async function executeAgentTool(
     toolCacheSet(tool.name, safeArgs, result);
     // V396-7: 结果中的凭据也打码（防泄漏到日志/上下文）
     const safeResult = maskCredentials(result);
+    /**
+     * ⚠ **工具自报失败的标记** —— 返回里带 `_sandbox-blocked` 之类前缀时, 这一步是失败的。
+     *
+     * 工具契约是"返回字符串", 所以"被安全策略拦下"和"正常产出一段文字"在类型上
+     * 完全一样。执行层若一律按成功处理, 就会把**拒绝**记成**成功**:
+     * 2026-10-01 实测一个 execute 步骤, 沙箱以"代码含 subprocess"拦下整段执行,
+     * 步骤却报 `done`、任务报 `completed` —— 而磁盘上没有任何 .pptx。
+     * (这是"只看有没有输出、不看输出是什么"那个老病的第四处, 前三处已修。)
+     *
+     * 判据用**显式前缀**而不是关键字匹配: 匹配"错误""失败"这类词会误伤正常内容
+     * (一段讨论失败原因的正文里就含"失败"), 而前缀是工具自己打的、不会误报。
+     */
+    const SELF_REPORTED_FAILURE = /^\s*(?:_sandbox-blocked|_cmd-blocked|_deps-missing|_blocked)/;
+    const toolSelfFailed = SELF_REPORTED_FAILURE.test(safeResult);
+    if (toolSelfFailed) {
+      return { ok: false, result: safeResult, risk: tool.risk, requiresApproval: false };
+    }
     // V404-2(OpenSquilla result_budget): 大结果压缩存储 — >6000 字符 gzip 入 data/tool-results,
     // 模型拿小预览 + tr-<sha256> 句柄; 需要时可调 retrieve_tool_result 精确取回(行窗口/关键词)
     const storedOutcome = storeLargeResult(tool.name, safeResult);
@@ -2875,10 +2962,31 @@ export async function chooseToolByLlm(
   const text = `${goal} ${stepTitle}`;
   const COMPLEX_SIGNALS_TC = ["机制", "因果", "比较", "评价", "影响", "多轮", "综合分析", "批判", "深度", "综述", "报告", "研究", "分析"];
   const isComplexTask = text.length >= 40 || COMPLEX_SIGNALS_TC.some((k) => text.includes(k));
-  const candidateTools = tools.filter((t) => {
-    if (t.name !== "meta_invoke") return true;
+  const candidateTools = tools.filter((t) => {    if (t.name !== "meta_invoke") return true;
     return isComplexTask;
   });
+  /**
+   * 动作类工具(参数往往是整段代码/文件内容)的额外交代。
+   *
+   * 2026-10-01 实测踩到: 让模型生成 .pptx, 它写出的 Python 第一行是 `import subprocess`
+   * —— **以为"调用技能"就是要开子进程** —— 而沙箱的危险操作黑名单里有 `/subprocess|os\.system|…/`,
+   * 于是整段代码被拦, 一个字都没执行到。
+   *
+   * 技能的正确用法不是开子进程(技能是**给模型的说明**, 见 view_skill_run 的实现);
+   * 把这一点写进提示, 比事后放宽沙箱安全策略要正确得多 —— 沙箱拦 subprocess 是对的。
+   */
+  const isActionTool = candidateTools.some((t) => ["run_code", "apply_patch"].includes(t.name));
+  const actionHint = isActionTool
+    ? `- **代码类参数只写一个开头占位, 不要在这里写完整程序** ——
+  \`code\` / \`patch\` / \`content\` 这类大参数会被**单独重新生成**(那一步不套 JSON,
+  能写多长写多长)。这里写太长会被输出上限截断, 反而把整个 JSON 弄坏。
+  占位写法: 给前 3-5 行 + 一句注释说明要做什么即可。
+- 判断"做完了"的标准是**文件真的写出来了**, 不是打印一句"已完成"。
+- 上下文里的材料够用了; **不要再去读磁盘上的技能目录**(路径也不一定对)。
+- 那个单独生成阶段**没有第二轮机会**: 代码要一次写成可运行的,
+  用 python-pptx / openpyxl / python-docx 之类直接产出文件并 save 到相对路径。
+  不要用 subprocess / os.system / exec / eval(沙箱会拦截, 是安全策略不是配置问题)。`
+    : "";
   const toolList = candidateTools.map((t) => {
     const params = Object.entries(t.params)
       .map(([k, v]) => `${k}${v.required ? "(必填)" : ""}:${v.type} — ${v.desc}`)
@@ -2894,16 +3002,56 @@ export async function chooseToolByLlm(
         content: `你是工具调度器。根据当前任务目标, 从工具清单中选择**最合适的一个工具**并给出参数。
 当前步骤: ${stepTitle}
 任务目标: ${goal}
-${extraContext ? `已有上下文: ${extraContext.slice(0, 300)}\n` : ""}
+${extraContext ? `已有上下文: ${extraContext.slice(0, 8000)}\n` : ""}
 工具清单:
 ${toolList}
 只返回 JSON: {"tool":"工具名","args":{"参数名":"值"}}
-要求: 参数值必须具体（从任务目标中提取, 不要用占位符）; 若任务不需要任何工具, 返回 {"tool":"none","args":{}}`,
+要求:
+- 参数值必须具体（从任务目标中提取, 不要用占位符）
+- 若任务不需要任何工具, 返回 {"tool":"none","args":{}}
+${actionHint}`,
       }],
-      temperature: 0.1, maxTokens: 300,
+      temperature: 0.1,
+      /**
+       * ⚠ 300 → 8000 的来历(2026-10-01 实测, 两次撞墙):
+       *
+       *   300 时: 动作类工具的参数往往是**整段代码**(`run_code.code`), 模型把它当
+       *     JSON 字符串写, 写到一半被硬截断 → `Unterminated string in JSON at position 827`。
+       *     而当时的 `.catch { return null }` 把原因吞得干干净净, 上层只报"没有可用工具"。
+       *   2000 时: 提示词改成"一次写完整代码"后, 模型真的开始写整套 python-pptx 脚本
+       *     (封面+目录+分节+内容页), 5221 字符时**再次被截断**。
+       *   8000 时: 仍被截断 —— 这次是 18271 字符。
+       *
+       * 三次撞墙说明**不是额度问题, 是设计问题**: 让模型把一整段程序当 JSON 字符串
+       *   吐出来, 长输出必然截断, 而且字符串里的引号/反斜杠还要过一层 JSON 转义 ——
+       *   两层脆弱叠在一起。所以下面改了做法: **选工具只出小 JSON, 大参数单独生成**
+       *   (见 chooseToolByLlm 末尾的 fillLargeArgs)。这里留 1000 只为容纳
+       *   "工具名 + 简短参数" 那点体积。
+       */
+      maxTokens: 1000,
     });
-    const text = (r?.text ?? "").trim().replace(/```json|```/g, "");
-    const parsed = JSON.parse(text);
+    /**
+     * ⚠ 用 parseLlmJson(五级容错, 含 L5 截断回溯), 不用裸 JSON.parse。
+     *   2026-10-01 实测: execute 步骤让模型写一整段 Python 当参数(run_code.code),
+     *   输出一旦被 maxTokens 截断, 裸 parse 抛 `Unterminated string` ——
+     *   而下面的 catch 把它吞成"没选出工具", 真因(截断)在整条链上完全不可见。
+     *   容错解析会尽量把**已经写出的部分**救回来。
+     */
+    const parsed = parseLlmJson(String(r?.text ?? ""));
+    /**
+     * 解析失败时**把真因说出来**。
+     *
+     * 2026-10-01: 这里原来只要解析不出就静默 `return null`, 上层于是报
+     * "没有可用工具或工具执行失败" —— 一句既不是原因也不是线索的话。
+     * 实际原因是输出被 maxTokens 截断(模型在 JSON 字符串里写整段 Python)。
+     * 截断的指纹很好认: 文本非空、以未完的字符串结尾、且 JSON 解析失败。
+     * 认出来就打出来, 下次有人碰到同类问题不用再从零查一遍。
+     */
+    if (!parsed || typeof parsed !== "object") {
+      const t = String(r!.text);
+      console.log(`[agent] chooseToolByLlm 解析失败: 长度 ${t.length}, 结尾 ${JSON.stringify(t.slice(-60))}`);
+      return null;
+    }
     if (!parsed.tool || parsed.tool === "none") return null;
     // V404-16: 从候选清单里找(meta_invoke 简单任务不在候选 → 选不到, 护栏生效)
     const tool = candidateTools.find((t) => t.name === parsed.tool);
@@ -2939,11 +3087,174 @@ ${toolList}
         args[k] = String(v);
       }
     }
+    /**
+     * ── 大参数单独生成 ──
+     *
+     * 选工具那一步只让模型出**小 JSON**(工具名 + 简短参数)。但 `run_code.code` /
+     * `apply_patch.patch` 这类参数是**整段程序**, 让模型把它当 JSON 字符串塞进
+     * 那个小 JSON 里, 长输出必然被 maxTokens 截断(实测撞了三次: 300→827字符、
+     * 2000→5221、8000→18271, 每次都在同一个地方断), 而且字符串里的引号/反斜杠
+     * 还要额外过一层 JSON 转义 —— 两层脆弱叠在一起。
+     *
+     * 所以大参数**换一条路**: 单独发一次请求, 要求模型**直接输出内容本身**
+     * (代码就输出代码, 补丁就输出补丁), 不套 JSON。调用方拿到的仍然是
+     * `{tool, args}` 这个形状, 上游一行都不用改。
+     */
+    for (const [k, v] of Object.entries(args)) {
+      const spec = tool.params[k];
+      if (spec?.type !== "string") continue;
+      const isLargeText = /(^|_)(code|patch|content|script|body)$/i.test(k) || String(v ?? "").length > 400;
+      if (!isLargeText) continue;
+      // 模型在这一步只给了开头占位 → 无条件重新生成完整版
+      const fresh = await generateLargeArg(tool, k, stepTitle, goal, typeof v === "string" ? v : "", extraContext);
+      // 生成失败就保留模型给的原值 —— 不能因为这一步出岔子把已有的东西清掉
+      if (fresh) args[k] = fresh;
+    }
     return { tool, args };
-  } catch {
+  } catch (e) {
+    /**
+     * 这个 catch 曾经把一切原因吞成"没选出工具"。
+     * 现在至少把**错误原文**打出来 —— 排查"工具选不出来"时,
+     * 缺的往往就是这一行(实测: 真正的原因是输出被 maxTokens 截断)。
+     */
+    console.log(`[agent] chooseToolByLlm 失败: ${String((e as Error)?.message || e).slice(0, 300)}`);
     return null;  // LLM 选择失败 → 调用方回退类型调度
   }
 }
+
+/**
+ * 单独生成一个大文本参数(代码/补丁/正文) —— **裸文本输出, 不套 JSON**。
+ *
+ * 为什么要单开一路: 见 chooseToolByLlm 末尾那段说明。核心是**去掉 JSON 转义这一层**,
+ * 并给足输出空间 —— 生成一份带版式的 PPTX 脚本实测要 18k+ 字符, 而它的每一行都在
+ * JSON 字符串里等着被转义出错。
+ *
+ * @param hint 模型在选工具阶段已经写了一半的那个值 —— 当作"开头"喂回去, 让它接着写完
+ */
+async function generateLargeArg(
+  tool: AgentToolDef, key: string, stepTitle: string, goal: string,
+  hint: string, extraContext?: string,
+): Promise<string | null> {
+  try {
+    const { getRoleModel, resolveModelAlias } = await import("./llm-model-registry.js");
+    const { callLlm } = await import("../ai/llm-common.js");
+    /**
+     * 这一步要产出**文件**吗? 只有产出文件才谈得上"质检脚本"和"版式约束"。
+     * 判据看工具/参数的语义, 不看目标文本 —— 后者容易误判。
+     */
+    const producesFile = /(?:file_write|apply_patch)/.test(tool.name)
+      || /(?:save|write|保存|生成).*?\.(?:pptx|docx|xlsx|pdf|csv|json|html)/i.test(goal)
+      || /\.(?:pptx|docx|xlsx|pdf)\b/i.test(goal);
+    // 前序材料里若引用了某个技能, 把它自带的**校验脚本**找出来交给模型自检
+    const skillName = (extraContext?.match(/技能[`「\s]*([a-z0-9][a-z0-9-]{2,40})/i) || [])[1];
+    let verifier = "";
+    if (producesFile && skillName) {
+      try {
+        const { skillVerifierScripts } = await import("./skills-service.js");
+        const list = skillVerifierScripts(skillName);
+        if (list.length) {
+          verifier = `\n- **自检**: 技能自带质检脚本 \`${list[0]}\`。产出文件后, 用它自查一遍 ——`
+            + `理想是代码末尾直接调用它并打印结果; 至少要在注释里写明"交付前应跑这个脚本"。`;
+        }
+      } catch { /* 技能目录不可用不阻塞 */ }
+    }
+    /**
+     * 工作区里**现成的素材** —— 必须主动告诉模型, 否则等于没给。
+     *
+     * 由来(2026-10-02): 给沙箱补了工作区围栏之后, 模型不能再引用绝对路径,
+     *   素材得先"推进" agent_workspace 的 `assets/`(见 agent-workspace-service)。
+     *   但推进去还不够 —— 模型不会去猜目录里有什么, 而沙箱里也没有 `ls` 的机会
+     *   (它只生成一次代码, 没有第二轮)。
+     *   所以把清单直接写进提示: **有什么、叫什么、多大**, 用相对路径引用。
+     */
+    let workspaceAssets = "";
+    if (producesFile) {
+      try {
+        const { describeWorkspaceAssets } = await import("./agent-workspace-service.js");
+        const list = describeWorkspaceAssets();
+        if (list) {
+          workspaceAssets = `\n工作区里已备好的素材（用**相对路径**引用它们，例如 \`add_picture("assets/x.png")\`）:\n${list}\n`;
+        }
+      } catch { /* 素材清单取不到不影响生成 */ }
+    }
+    const r = await callLlm({
+      model: resolveModelAlias(getRoleModel("plan")),
+      messages: [{
+        role: "user",
+        content: `你要为一次工具调用生成参数 \`${key}\`（${tool.params[key]?.desc ?? ""}）。
+
+当前步骤: ${stepTitle}
+任务目标: ${goal}
+${extraContext ? `\n已有材料(照它来做, 不要再自己去读磁盘):\n${extraContext.slice(0, 6000)}\n` : ""}
+${workspaceAssets}
+${hint.trim() ? `\n你之前开了个头（可能没写完），从这里接着写完:\n---\n${hint.slice(0, 2000)}\n---\n` : ""}
+要求:
+- **只输出${key}的内容本身** —— 不要 JSON、不要 markdown 代码围栏、不要任何解释前后缀。
+- 一次写成完整可运行的内容；会产出文件的，末尾要真的把文件写出来并打印其路径。
+- ${SANDBOX_OUTPUT_PATH_RULE}
+- 不要用 subprocess / os.system / exec / eval（沙箱会拦截）。${producesFile ? `\n${ARTIFACT_QUALITY_RULES}${verifier}` : ""}`,
+      }],
+      temperature: 0.2,
+      maxTokens: 16000,
+    });
+    const out = String(r?.text ?? "").trim().replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
+    return out.length > 20 ? out : null;
+  } catch (e) {
+    console.log(`[agent] generateLargeArg(${key}) 失败: ${String((e as Error)?.message || e).slice(0, 200)}`);
+    return null;
+  }
+}
+
+/**
+ * 产出文件类工作的**质量硬约束** —— 直接取自技能自己写的交付标准。
+ *
+ * `nature-paper2ppt/static/core/output-and-quality.md` 里明明白白列了两条:
+ *   · Do not deliver slides with text extending beyond visible boxes, clipped by
+ *     boxes, or likely to overflow after font substitution.
+ *   · Ensure layout alignment is intentional ... rather than drifting by a few points.
+ *
+ * 2026-10-01 实测: 把生成产物丢给技能**自带的** `scripts/audit_pptx_quality.py` 一跑,
+ *   `high=20, low=12` —— 几乎每页都有 `shape_out_of_bounds`(文字溢出画布)、
+ *   一堆 `alignment_near_miss`(元素差 3.6~7.2pt 没对齐)。**两条标准全违反了。**
+ *
+ * 所以缺口不是"技能没给标准", 是标准只写在文档里、**既没进生成提示、也没被验证**。
+ * 这里把可操作的那部分抽出来(文档里的原话对代码生成不够具体):
+ */
+export const ARTIFACT_QUALITY_RULES =
+  "产出文件的硬性要求（不符合会被技能自带的质检脚本判为缺陷）:\n"
+  + "- **画布 13.333×7.5 英寸（16:9）。所有形状必须完全落在画布内**：\n"
+  + "  left≥0、top≥0，且 left+width ≤ 13.333in、top+height ≤ 7.5in。\n"
+  + "  文本框要留内边距 —— 别把 width 撑到刚好贴边，最后一行会溢出去。\n"
+  + "- **对齐必须用完全相同的坐标**：\n"
+  + "  同级元素的 left（或 top）要么**精确相等**，要么**相差 8pt 以上**。\n"
+  + "  ⚠ 相差 2~8pt 是最糟的情况 —— 那既不是对齐也不是有意错开，看起来就是\"没对准\"，\n"
+  + "  质检脚本会逐条报 `alignment_near_miss`。\n"
+  + "  做法: 先定一组基线坐标（如 TITLE_TOP=0.55in、BODY_LEFT=0.9in），\n"
+  + "  **整套幻灯片复用常量**，不要在每一页里手写相近但不相等的数字。\n"
+  + "- **代码里不要出现未转义的引号**：中文字符串若要强调，用「」或『』，\n"
+  + "  **不要用英文双引号 \" ** —— 实测 `\"以\"制度—执行—监督\"为链条\"` 这类写法会让 Python\n"
+  + "  直接 SyntaxError，整段代码一行都跑不到。同理中文里的破折号—、省略号……都可以直接写，\n"
+  + "  但要确认它们包在字符串里。";
+
+/**
+ * 动作类工具的参数生成提示里, 关于**输出路径**的那一条。
+ *
+ * 2026-10-01 实测踩到: 模型写的保存路径是
+ *   `agent_workspace/nature_paper_presentation.pptx`
+ * → `FileNotFoundError: [Errno 2] No such file or directory`。
+ *
+ * 它以为工作区是 cwd 下的一个**子目录**, 而实际正相反: 沙箱在 workspace-write
+ * 下的 cwd **就是** agent_workspace 本身(见 code-sandbox-service 的 sandboxCwd)。
+ * 于是那句话等于让 Python 去找 `agent_workspace/agent_workspace/xxx`。
+ *
+ * 这类错误最磨人: 模型写的代码**逻辑完全正确**(python-pptx 用法、版式、讲稿都对),
+ * 只是路径前缀多了一截, 而报错发生在 save() 的最后一步, 看起来像"生成失败"。
+ * 与其教模型路径规则, 不如**让它只写裸文件名** —— 少一个可能错的变量。
+ */
+export const SANDBOX_OUTPUT_PATH_RULE =
+  "保存文件时**只写裸文件名**(如 `out.pptx`), **不要带任何目录前缀** ——"
+  + "沙箱的工作目录就是输出目录, 你已经在该目录里。"
+  + "路径写成 `xxx/out.pptx` 会因目录不存在而报 FileNotFoundError。";
 
 // ═══ V393-8: 工具失败自愈降级链 ═══
 /** 工具降级链: 主工具失败 → 依次尝试替代工具 */
@@ -2969,7 +3280,7 @@ export async function executeToolWithFallback(
   primary: AgentToolDef,
   args: Record<string, unknown>,
   allTools: AgentToolDef[],
-  opts?: { role?: AgentRole; whitelist?: Set<string> | null; taskId?: string; exposure?: "read-only" }
+  opts?: { role?: AgentRole; whitelist?: Set<string> | null; taskId?: string; exposure?: "read-only"; stepApproved?: boolean }
 ): Promise<{ ok: boolean; result: string; risk: string; usedFallback?: string }> {
   // 1. 主工具
   const primaryRes = await executeAgentTool(primary, args, opts);
