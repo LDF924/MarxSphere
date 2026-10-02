@@ -6471,9 +6471,21 @@ export function buildHttpServer() {
 
   // POST /api/rss/subscribe — 订阅 RSS {url, name, sourceId}
   app.post("/api/rss/subscribe", async (request) => {
-    const body = z.object({ url: z.string().url(), name: z.string().min(1).max(100), sourceId: z.string().uuid() }).parse(request.body);
+    /**
+     * sourceId 由**必填改为可选**(2026-10-03)。
+     *
+     * 由来: 它原本要求一个项目 UUID, 于是"我想订一个 RSS"变成了"先建个项目" ——
+     *   而 `refreshAllRssSubscriptions` 只按 `metadata->>'semanticType' = 'rss-feed'` 取全部订阅,
+     *   **根本不看 sourceId**。那个字段只是记录"当初从哪个项目订的", 对抓取毫无作用。
+     *   速递场景(在速递面板里加源)根本没有项目可绑, 所以放开。
+     */
+    const body = z.object({
+      url: z.string().url(),
+      name: z.string().min(1).max(100),
+      sourceId: z.string().uuid().optional(),
+    }).parse(request.body);
     const { rssService } = await import("../services/rss-service.js");
-    return { ok: await rssService.saveRssSubscription(body.url, body.name, body.sourceId) };
+    return { ok: await rssService.saveRssSubscription(body.url, body.name, body.sourceId ?? "") };
   });
 
   // ───── BYOA / ACP（2026-08-27, Agentero 对照: 连接本机 Agent）─────
@@ -10250,6 +10262,118 @@ except Exception as e:
    *   · 主题: 那 80 本的 topic_tags 并集。
    *   把它做成目录, 前端就能按学科分组渲染成可勾选的列表。
    */
+  /**
+   * 期刊在线搜索(2026-10-03)。
+   *
+   * 由来(用户: "候选只能来自本站吗, 不能外接数据源调取吗"):
+   *   速递的期刊候选此前**全部来自本仓的 80 本马理论刊**(cjournal_journals)。
+   *   后果很直接: 用户想订《经济研究》《社会学研究》《法学研究》—— 大概率不在库里,
+   *   于是界面上**根本看不到这些刊名**, 也就订不了。
+   *
+   * 数据源(实测): OpenAlex `/sources?search=` 按中文刊名能召回 40 条(含《经济管理研究》),
+   *   全库有 **1345 本中国期刊**; Crossref `/journals?query=` 作为补充(中文召回弱于 OpenAlex,
+   *   英文更准)。两个都不需要 key。
+   *
+   * 为什么把两个源的实现都写在这里而不是拆成"源适配器": 这不是速递抓取链的一环
+   *   (那条链有 DigestCandidate 契约要满足), 只是一次**搜索**查询 —— 拆出去反而多一层。
+   */
+  app.get("/api/digest/journal-search", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = String((request.query as { q?: string })?.q ?? "").trim();
+    if (q.length < 2) return { query: q, results: [], error: "" };
+
+    const out: Array<{ name: string; source: string; works: number; issn: string; homepage: string; level: string }> = [];
+    const seen = new Set<string>();
+    const push = (name: string, source: string, extra: { works?: number; issn?: string; homepage?: string } = {}) => {
+      const key = name.toLowerCase().replace(/[\s《》()（）]/g, "");
+      if (!name || seen.has(key)) return;
+      seen.add(key);
+      out.push({ name, source, works: extra.works ?? 0, issn: extra.issn ?? "", homepage: extra.homepage ?? "", level: "" });
+    };
+
+    /**
+     * 两个源**并行**取(2026-10-03)。
+     *   原来是一个 await 接一个, 两个 12s 超时串起来最坏 24s —— 实测用户视角"点了搜索
+     *   要等 5 秒才有结果"。搜索框的响应时间是体感问题, 而这两个源互不依赖, 没有理由排队。
+     * 交叉合并时 OpenAlex 在前(它中文召回最好), Crossref 补英文; 去重按归一化刊名。
+     */
+    const [oa, cr] = await Promise.all([
+      fetch(`https://api.openalex.org/sources?search=${encodeURIComponent(q)}&per-page=15&mailto=sag@socioseek.local`, { signal: AbortSignal.timeout(10_000) })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: any) => (d?.results ?? []) as any[])
+        .catch(() => [] as any[]),
+      // ⚠ Crossref 给 **3 秒** 超时, 不是 10 秒(2026-10-03 实测: 它的 /journals 端点
+      //   连续两次各挂 10.6 秒后失败, 而 OpenAlex 只要 1~1.6 秒)。给它长超时等于
+      //   让整个搜索框等一个经常不可用的源 —— 它是**补充**源, 拿不到就用 OpenAlex 的结果。
+      fetch(`https://api.crossref.org/journals?query=${encodeURIComponent(q)}&rows=10&mailto=sag@socioseek.local`, { signal: AbortSignal.timeout(3_000) })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: any) => (d?.message?.items ?? []) as any[])
+        .catch(() => [] as any[]),
+    ]);
+    for (const s of oa) {
+      push(String(s.display_name || ""), "openalex", {
+        works: Number(s.works_count) || 0,
+        issn: Array.isArray(s.issn_l) ? String(s.issn_l) : "",
+        homepage: String(s.homepage_url || ""),
+      });
+    }
+    for (const it of cr) push(String(it.title || ""), "crossref", { issn: String(it.ISSN?.[0] ?? "") });
+
+    // 标出哪些是**本仓期刊库已有的**(那些来自带 topic_tags 的刊, 能被 topic 检索命中)
+    try {
+      const names = out.map((o) => o.name);
+      if (names.length) {
+        const lr = await pool.query(
+          `select name from cjournal_journals where name = any($1::text[])`, [names]);
+        const local = new Set(lr.rows.map((x: any) => String(x.name)));
+        for (const o of out) if (local.has(o.name)) o.level = "本站库";
+      }
+    } catch { /* 标注失败不影响搜索 */ }
+
+    return { query: q, results: out.slice(0, 20), error: "" };
+  });
+
+  /**
+   * 速递的自定义 RSS / 网页源(2026-10-03)。
+   *
+   * 由来(用户: "自定义 RSS / 网页源"): 后端**早就有**完整管线 ——
+   *   `POST /api/rss/subscribe` 写 sources.metadata、`refreshAllRssSubscriptions` 每 6 小时抓、
+   *   结果落进 digest_items(见 rss-service 的 V417 说明)。缺的只是**界面**:
+   *   用户在速递面板里没有任何地方能填源地址。这两条路由补的就是那个缺口。
+   *
+   * 实测可用的中文源: 求是网 RSS(25 条)、人民网理论、arXiv 分类源、Nature 等。
+   */
+  app.get("/api/digest/feeds", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const r = await pool.query(
+      `select id, name, metadata->>'rssUrl' as url, created_at
+         from sources where metadata->>'semanticType' = 'rss-feed'
+        order by created_at desc limit 100`);
+    return {
+      feeds: r.rows.map((x: any) => ({
+        id: String(x.id), name: String(x.name || ""), url: String(x.url || ""),
+        createdAt: x.created_at ? new Date(x.created_at).toISOString() : "",
+      })),
+    };
+  });
+  app.delete("/api/digest/feeds/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const id = String((request.params as { id: string }).id);
+    // 只删 rss-feed 类型的行 —— 不带这个条件的话, 任意 sources.id 都能从这里删掉
+    const r = await pool.query(
+      `delete from sources where id = $1::uuid and metadata->>'semanticType' = 'rss-feed'`, [id]);
+    return { ok: (r.rowCount ?? 0) > 0 };
+  });
+  /** 试抓一个源 —— 保存前先让用户看到"能抓到几条、标题长什么样", 而不是存完干等 6 小时 */
+  app.get("/api/digest/feed-preview", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const url = String((request.query as { url?: string })?.url ?? "");
+    if (!/^https?:[/][/]/.test(url)) return reply.code(400).send({ error: "需要 http(s) 地址" });
+    const { fetchRss } = await import("../services/rss-service.js");
+    const r = await fetchRss(url);
+    return { ok: r.ok, error: r.error ?? "", count: r.entries.length, sample: r.entries.slice(0, 5).map((e) => e.title) };
+  });
+
   app.get("/api/digest/catalog", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const jr = await pool.query(

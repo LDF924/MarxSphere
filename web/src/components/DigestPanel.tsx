@@ -88,8 +88,28 @@ export function DigestPanel() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [tab, setTab] = useState<string>("__all__");
   const [q, setQ] = useState("");
-  /** 日期筛选: "" = 不限; 否则只看这一天抓到的 */
-  const [onlyDate, setOnlyDate] = useState("");
+  /**
+   * 日期筛选(2026-10-03 改真日历)。
+   *
+   * ⚠ 改前是一个下拉, 选项是**已有的抓取批次日**("不限 / 2026-10-02 / 2026-10-01")。
+   *   那是"从已经抓到的日子里面挑", 用户要的是**能任意选年月日的日历** ——
+   *   两者是两回事: 前者只能选到"有批次的那几天", 后者能问"9 月 15 到 10 月 1 之间有什么"。
+   *   现在两个都留: `from`/`to` 是真日历(任选年月日), `batchDate` 是"按抓取批次"的快捷选择。
+   */
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [batchDate, setBatchDate] = useState("");
+  /** 期刊在线搜索结果(用户输入刊名 → OpenAlex/Crossref 实时搜) */
+  const [journalQuery, setJournalQuery] = useState("");
+  const [journalHits, setJournalHits] = useState<Array<{ name: string; source: string; works: number; level: string }>>([]);
+  const [journalSearching, setJournalSearching] = useState(false);
+  /** 自定义主题输入(不限于期刊库那 70 个标签) */
+  const [customTopic, setCustomTopic] = useState("");
+  /** 自定义 RSS / 网页源 —— 后端管线早就有(每 6 小时抓一次落进 digest_items), 缺的只是这个入口 */
+  const [feeds, setFeeds] = useState<Array<{ id: string; name: string; url: string; createdAt: string }>>([]);
+  const [feedUrl, setFeedUrl] = useState("");
+  const [feedName, setFeedName] = useState("");
+  const [feedMsg, setFeedMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
@@ -120,6 +140,10 @@ export function DigestPanel() {
       setSub(s as Sub);
       setDays((s as Sub).days || 7);
       try { sessionStorage.setItem("sag_digest_cache_v1", JSON.stringify(d)); } catch { /* 配额满则跳过 */ }
+      // 自定义源列表(轻量, 每次都拉 —— 用户刚加的源要立刻看得见)
+      const token2 = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+      void fetch("/api/digest/feeds", { headers: token2 ? { Authorization: `Bearer ${token2}` } : {} })
+        .then((r) => r.json()).then((f) => { if (Array.isArray(f?.feeds)) setFeeds(f.feeds); }).catch(() => {});
       // 目录(可选主题/期刊)只在首次拉 —— 它是静态的期刊库快照
       if (!catalog) {
         void fetch("/api/digest/catalog", {
@@ -164,6 +188,49 @@ export function DigestPanel() {
     } catch (e) { setErr((e as Error).message || "保存失败"); }
   }
 
+  /** 试抓 + 保存自定义源。顺序是**先试抓再保存** —— 存一个抓不到东西的地址, 用户要等 6 小时才知道。 */
+  async function addFeed() {
+    const url = feedUrl.trim();
+    if (!/^https?:[/][/]/.test(url)) { setFeedMsg("请填 http(s) 开头的地址"); return; }
+    setFeedMsg("试抓中…");
+    const tk = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+    try {
+      const pv = await fetch(`/api/digest/feed-preview?url=${encodeURIComponent(url)}`, { headers: tk ? { Authorization: `Bearer ${tk}` } : {} }).then((r) => r.json());
+      if (!pv?.ok) { setFeedMsg(`抓不到这个源：${pv?.error || "未知错误"}`); return; }
+      if (!pv.count) { setFeedMsg("这个地址能打开，但里面没有解析出条目（可能不是 RSS/Atom）"); return; }
+      const r = await fetch("/api/rss/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(tk ? { Authorization: `Bearer ${tk}` } : {}) },
+        body: JSON.stringify({ url, name: feedName.trim() || pv.sample?.[0]?.slice(0, 20) || "自定义源" }),
+      }).then((x) => x.json());
+      if (!r?.ok) { setFeedMsg("保存失败"); return; }
+      setFeedMsg(`已添加（可抓到 ${pv.count} 条，每 6 小时刷新一次）`);
+      setFeedUrl(""); setFeedName("");
+      await load();
+    } catch (e) { setFeedMsg(`失败：${String((e as Error).message).slice(0, 80)}`); }
+  }
+  async function removeFeed(id: string) {
+    const tk = localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || "";
+    try {
+      await fetch(`/api/digest/feeds/${id}`, { method: "DELETE", headers: tk ? { Authorization: `Bearer ${tk}` } : {} });
+      setFeeds(feeds.filter((f) => f.id !== id));
+    } catch { /* 删失败下次刷新会回来, 不谎报成功 */ }
+  }
+
+  /** 在线搜刊 —— 结果只用于**挑选**, 选中后进 pickJournals, 与本地刊名走同一条订阅路径 */
+  async function searchJournals() {
+    const q = journalQuery.trim();
+    if (q.length < 2) return;
+    setJournalSearching(true);
+    try {
+      const r = await fetch(`/api/digest/journal-search?q=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+      }).then((x) => x.json());
+      setJournalHits(Array.isArray(r?.results) ? r.results : []);
+    } catch { setJournalHits([]); }
+    finally { setJournalSearching(false); }
+  }
+
   async function markAllRead() {
     try { await api.digestRead([]); await load(); } catch (e) { setErr((e as Error).message || "标记失败"); }
   }
@@ -195,13 +262,18 @@ export function DigestPanel() {
 
   const filtered = useMemo(() => {
     let rows = active;
-    if (onlyDate) rows = rows.filter((p) => (p.fetchedAt || "").slice(0, 10) === onlyDate);
+    // 按**条目日期**筛(fetchedAt 抓取日)。没有 publishedAt 兜底的缘故:
+    //   期刊目录类条目的 publishedAt 是从标题里的年份推出来的(只有年), 用它筛"某天"会全落空。
+    const day = (p: Paper) => (p.fetchedAt || "").slice(0, 10);
+    if (from) rows = rows.filter((p) => day(p) >= from);
+    if (to) rows = rows.filter((p) => day(p) <= to);
+    if (batchDate) rows = rows.filter((p) => day(p) === batchDate);
     if (q.trim()) {
       const kw = q.trim().toLowerCase();
       rows = rows.filter((p) => `${p.title} ${p.journal} ${p.authors.join(" ")} ${p.abstract}`.toLowerCase().includes(kw));
     }
     return rows;
-  }, [active, onlyDate, q]);
+  }, [active, from, to, batchDate, q]);
 
   /**
    * 按**语言**分组, 组内按日期倒序。
@@ -236,19 +308,6 @@ export function DigestPanel() {
           className={cn(panelInputCls, "w-56")}
           data-control="digest:search"
         />
-        {/* shrink-0 + whitespace-nowrap: 不加会被 flex 压到"日/期"竖排两行(实测截图) */}
-        <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-          <CalendarDays className="h-3.5 w-3.5" />日期
-          <select
-            value={onlyDate} onChange={(e) => setOnlyDate(e.target.value)}
-            className={cn(panelInputCls, "py-1")}
-            data-control="digest:date"
-            title="按抓取日期筛选（可选任意一天）"
-          >
-            <option value="">不限</option>
-            {dateOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </label>
         <PanelButton onClick={() => void doRefresh()} disabled={refreshing} data-control="digest:refresh">
           {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
           {refreshing ? "抓取中…" : "立即刷新"}
@@ -262,11 +321,67 @@ export function DigestPanel() {
         {digest && (
           <span className="text-xs text-muted-foreground">
             共 {digest.total} 篇
-            {onlyDate ? ` · ${onlyDate} 抓到 ${filtered.length} 篇` : filtered.length !== active.length ? ` · 筛选后 ${filtered.length} 篇` : ""}
+            {(from || to || batchDate) ? ` · 筛选后 ${filtered.length} 篇` : ""}
           </span>
         )}
       </div>
 
+      {/* ── 日期(独立一行) ──
+          ⚠ 它**不能**跟上面的搜索框/按钮挤同一行: 两个 <input type=date> 各有一整块
+          原生控件宽度(年/月/日 三段), 挤进 flex-wrap 会被折成上下两行且互相错位(实测截图)。
+          日历这类控件需要自己的横向空间。 */}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <CalendarDays className="h-3.5 w-3.5" />
+        <input
+          type="date" value={from} max={to || undefined}
+          onChange={(e) => { setFrom(e.target.value); setBatchDate(""); }}
+          className={cn(panelInputCls, "w-auto py-1")}
+          data-control="digest:date-from"
+          title="起始日期（含）"
+        />
+        <span>至</span>
+        <input
+          type="date" value={to} min={from || undefined}
+          onChange={(e) => { setTo(e.target.value); setBatchDate(""); }}
+          className={cn(panelInputCls, "w-auto py-1")}
+          data-control="digest:date-to"
+          title="结束日期（含）"
+        />
+        {([["近 7 天", 7], ["近 30 天", 30], ["本月", -1]] as const).map(([label, d]) => (
+          <button
+            key={label} type="button"
+            onClick={() => {
+              setBatchDate("");
+              const today = new Date();
+              const iso = (x: Date) => x.toISOString().slice(0, 10);
+              if (d === -1) { setFrom(iso(new Date(today.getFullYear(), today.getMonth(), 1))); setTo(iso(today)); }
+              else { setFrom(iso(new Date(Date.now() - d * 86_400_000))); setTo(iso(today)); }
+            }}
+            className="rounded border border-border px-1.5 py-0.5 hover:bg-accent"
+            data-control={`digest:range-${d === -1 ? "month" : d}`}
+          >{label}</button>
+        ))}
+        {dateOptions.length ? (
+          <select
+            value={batchDate}
+            onChange={(e) => { setBatchDate(e.target.value); if (e.target.value) { setFrom(""); setTo(""); } }}
+            className={cn(panelInputCls, "w-auto py-1")}
+            data-control="digest:batch"
+            title="按抓取批次看（某一次抓到的全部）"
+          >
+            <option value="">按批次…</option>
+            {dateOptions.map((d) => <option key={d} value={d}>{d} 抓的</option>)}
+          </select>
+        ) : null}
+        {(from || to || batchDate) ? (
+          <button
+            type="button"
+            onClick={() => { setFrom(""); setTo(""); setBatchDate(""); }}
+            className="rounded border border-border px-1.5 py-0.5 hover:bg-accent"
+            data-control="digest:date-clear"
+          >清除</button>
+        ) : null}
+      </div>
       {/* ── 偏好设置: 勾选式(2026-10-03 重做) ── */}
       {showPrefs && (
         <PanelCard title="订阅偏好">
@@ -377,6 +492,128 @@ export function DigestPanel() {
               </div>
             </div>
 
+            {/* 自定义主题(2026-10-03): 上面那批勾选项来自期刊库的 topic_tags, 是**他人预设的标签**,
+                不该是上限。这里允许直接输入任意研究方向 —— 抓取链会拿它去 OpenAlex/Crossref/期刊库三路检索。 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input
+                value={customTopic}
+                onChange={(e) => setCustomTopic(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  const v = customTopic.trim();
+                  if (v && !pickTopics.includes(v)) setPickTopics([...pickTopics, v]);
+                  setCustomTopic("");
+                }}
+                placeholder="自定义主题，回车添加（不限于上面的标签）"
+                className={cn(panelInputCls, "w-64 py-1")}
+                data-control="digest:topic-custom"
+              />
+              <button
+                type="button"
+                onClick={() => { const v = customTopic.trim(); if (v && !pickTopics.includes(v)) setPickTopics([...pickTopics, v]); setCustomTopic(""); }}
+                className="rounded border border-border px-2 py-1 hover:bg-accent"
+                data-control="digest:topic-add"
+              >添加</button>
+              {pickTopics.filter((t) => !topicOptions.some((o) => o.name === t)).map((t) => (
+                <span key={t} className="flex items-center gap-1 rounded-full border border-violet-400/40 bg-violet-500/10 px-2 py-0.5 text-violet-200">
+                  {t}
+                  <button type="button" onClick={() => setPickTopics(pickTopics.filter((x) => x !== t))} title="移除">×</button>
+                </span>
+              ))}
+            </div>
+
+            {/* 期刊在线搜索(2026-10-03): 本库只有 80 本马理论刊, 订《经济研究》这类刊时
+                在界面上**根本看不到刊名**。这里接 OpenAlex(中文召回好, 1345 本中国刊)+Crossref。 */}
+            <div>
+              <div className="mb-1.5 font-medium">按刊名在线搜索 <span className="ml-1 text-muted-foreground">（本站库之外的刊也能订）</span></div>
+              <div className="flex gap-1.5">
+                <input
+                  value={journalQuery}
+                  onChange={(e) => setJournalQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void searchJournals(); }}
+                  placeholder="输入刊名，如「经济研究」「社会学研究」"
+                  className={cn(panelInputCls, "flex-1 py-1")}
+                  data-control="digest:journal-query"
+                />
+                <button
+                  type="button"
+                  onClick={() => void searchJournals()}
+                  disabled={journalSearching}
+                  className="rounded border border-border px-2 py-1 hover:bg-accent disabled:opacity-50"
+                  data-control="digest:journal-search"
+                >{journalSearching ? "搜索中…" : "搜索"}</button>
+              </div>
+              {journalHits.length ? (
+                <div className="mt-1.5 flex max-h-40 flex-wrap gap-1 overflow-y-auto rounded border border-border p-1.5">
+                  {journalHits.map((h) => {
+                    const on = pickJournals.includes(h.name);
+                    return (
+                      <button
+                        key={h.name + h.source} type="button"
+                        onClick={() => togglePick(pickJournals, setPickJournals, h.name)}
+                        data-control="digest:journal-hit"
+                        title={`来源 ${h.source}${h.works ? ` · ${h.works} 篇` : ""}`}
+                        className={cn(
+                          "rounded border px-1.5 py-0.5 transition-colors",
+                          on ? "border-violet-400/60 bg-violet-500/20 text-violet-200" : "border-border text-muted-foreground hover:bg-accent"
+                        )}
+                      >{on ? "✓ " : ""}{h.name}
+                        {h.level ? <span className="ml-1 text-[10px] text-emerald-300">{h.level}</span> : null}
+                        <span className="ml-1 text-[10px] opacity-50">{h.source === "openalex" ? "OA" : "CR"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : journalQuery && !journalSearching ? <div className="mt-1 text-muted-foreground/70">点「搜索」查询在线期刊库</div> : null}
+            </div>
+
+            {/* 已选但不在本站库里的刊 —— 抓取时只能靠主题命中的刊目动态, 要如实说明 */}
+            {pickJournals.some((j) => !(catalog?.fields ?? []).some((g) => g.journals.some((x) => x.name === j))) ? (
+              <PanelNotice type="warn">
+                这些刊不在本站期刊库内，只能靠 OpenAlex/Crossref 的在线检索取到内容，命中率低于库内刊物：
+                {pickJournals.filter((j) => !(catalog?.fields ?? []).some((g) => g.journals.some((x) => x.name === j))).join("、")}
+              </PanelNotice>
+            ) : null}
+
+            {/* 自定义 RSS / 网页源(2026-10-03)。后端管线早就有 —— 写 sources.metadata、
+                每 6 小时抓一次、结果落进 digest_items; 缺的只是让你能填地址的地方。 */}
+            <div>
+              <div className="mb-1.5 font-medium">自定义源 <span className="ml-1 text-muted-foreground">（RSS / Atom）</span></div>
+              <div className="flex flex-wrap gap-1.5">
+                <input
+                  value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)}
+                  placeholder="https://…（RSS/Atom 地址）"
+                  className={cn(panelInputCls, "min-w-[16rem] flex-1 py-1")}
+                  data-control="digest:feed-url"
+                />
+                <input
+                  value={feedName} onChange={(e) => setFeedName(e.target.value)}
+                  placeholder="名称（可空）"
+                  className={cn(panelInputCls, "w-32 py-1")}
+                  data-control="digest:feed-name"
+                />
+                <button type="button" onClick={() => void addFeed()}
+                  className="rounded border border-border px-2 py-1 hover:bg-accent"
+                  data-control="digest:feed-add"
+                >试抓并添加</button>
+              </div>
+              {feedMsg ? <div className="mt-1 text-muted-foreground">{feedMsg}</div> : null}
+              {feeds.length ? (
+                <div className="mt-1.5 space-y-1 rounded border border-border p-1.5">
+                  {feeds.map((f) => (
+                    <div key={f.id} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                      <span className="min-w-0 flex-[2] truncate font-mono text-[10px] text-muted-foreground/60">{f.url}</span>
+                      <button type="button" onClick={() => void removeFeed(f.id)}
+                        className="shrink-0 rounded border border-border px-1.5 py-0.5 hover:bg-accent"
+                        data-control="digest:feed-remove"
+                      >移除</button>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="mt-1 text-muted-foreground/70">未添加自定义源。实测可用：<code className="text-[10px]">http://www.qstheory.cn/rss/qstheory.xml</code>（求是网）</div>}
+            </div>
+
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">展示最近</span>
               <input
@@ -444,7 +681,8 @@ export function DigestPanel() {
             if (!sub || (sub.topics.length === 0 && sub.preferredJournals.length === 0)) {
               return "还没有设置订阅。点上方「偏好设置」勾选研究主题或订阅期刊, 然后点「立即刷新」抓取。";
             }
-            if (onlyDate) return `${onlyDate} 这一天没有抓到内容。换一个日期看看, 或选「不限」。`;
+            if (batchDate) return `${batchDate} 这一次抓取没有内容。换一个批次看看, 或点「清除」。`;
+            if (from || to) return `所选区间（${from || "最早"} ~ ${to || "今天"}）内没有内容。放宽区间试试，或点「清除」。`;
             if (sub.topics.length === 0) {
               return "你只订阅了期刊。期刊动态按刊推送, 若下方提示某些刊暂无数据, 可另外加几个研究主题。";
             }
