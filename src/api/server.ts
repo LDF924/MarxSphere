@@ -464,6 +464,10 @@ export function buildHttpServer() {
     ["/api/eval", "eval"],
     ["/api/alerts", "alerts"],
     ["/api/inbox", "inbox"],
+    // 2026-10-02: 研究速递 — 用户自己的订阅与推送(本机豁免, 外部令牌需 digest 权限)
+    ["/api/digest", "digest"],
+    // 2026-10-02: 用户通知中心 — 与 /api/alerts 分家(那是全局运维告警)
+    ["/api/notifications", "digest"],
     // V395-11: 导航对齐 — PDF2Obsidian / Agent控制台+任务（本机豁免, 外部令牌需对应权限）
     ["/api/p2o", "p2o"],
     ["/api/agent", "agent"],
@@ -3169,17 +3173,21 @@ export function buildHttpServer() {
 
   // ───── 商业化认证 API（V388+: 注册/登录/me） ─────
   app.post("/api/auth/register", async (request, reply) => {
-    const body = request.body as { username?: string; password?: string; email?: string };
+    const body = request.body as { username?: string; password?: string; email?: string; inviteCode?: string };
     if (!(await allowAuthAttempt(request, body.username || ""))) return reply.code(429).send(authRateLimited);
-    const r = await authService.register(body.username || "", body.password || "", body.email);
+    // 2026-10-02: 第四参数是邀请码。填错**不阻断注册**(register 内把警告放在 inviteWarning 里回传)
+    const r = await authService.register(body.username || "", body.password || "", body.email, body.inviteCode);
     if (!r.ok) return reply.code(400).send({ error: r.error });
     // V390修复: 注册即登录 — 直接签发 JWT（原只返回 user, 前端无 token 导致计费/运营接口全部 401）
     const loginRes = await authService.login(body.username || "", body.password || "");
+    // 邀请码的提示要**一起回给前端** —— 用户填了码却因"已被使用"没生效的话,
+    // 只提示"注册成功"会让他以为奖励到账了
+    const inviteExtra = { inviteWarning: r.inviteWarning, inviteBonus: r.inviteBonus };
     if (loginRes.ok && loginRes.token) {
       loginSucceeded(clientIp(request), (body.username || "").toLowerCase());
-      return { token: loginRes.token, user: loginRes.user };
+      return { token: loginRes.token, user: loginRes.user, ...inviteExtra };
     }
-    return { user: r.user };
+    return { user: r.user, ...inviteExtra };
   });
   app.post("/api/auth/login", async (request, reply) => {
     const body = request.body as { username?: string; password?: string };
@@ -10013,16 +10021,40 @@ except Exception as e:
     const q = request.query as { level?: string };
     try {
       const { pool } = await import("../db/pool.js");
-      const levelFilter = q.level ? "where level = $1" : "";
-      const params = q.level ? [q.level] : [];
+      // 2026-10-02: 补「按学科 / 按首字母 / 按拼音」三种检索。
+      // 三个筛选参数**可叠加**(level + field + q), 用参数化数组拼而不是字符串拼 —— 见下面 push。
+      const q2 = request.query as { level?: string; field?: string; q?: string; sort?: string };
+      const conds: string[] = [];
+      const params: any[] = [];
+      if (q2.level) { params.push(q2.level); conds.push(`level = $${params.length}`); }
+      if (q2.field) { params.push(q2.field); conds.push(`field = $${params.length}`); }
+      if (q2.q) {
+        const kw = `%${q2.q.trim()}%`;
+        params.push(kw);
+        const i = params.length;
+        // 三路匹配: 刊名 / 全拼 / 首字母。拼音与首字母两列由 177 迁移 + journal-browse 回填,
+        // 所以「zgshehui」「zgshkx」这样不分大小写的输入都能搜到。
+        conds.push(`(name ilike $${i} or pinyin ilike $${i} or abbr ilike $${i})`);
+      }
+      const where = conds.length ? `where ${conds.join(" and ")}` : "";
+      // 排序: 默认按级别+刊名; sort=pinyin 时按音序(首字母选择器用它)
+      const order = q2.sort === "pinyin" ? "order by pinyin asc" : "order by level desc, name asc";
       const r = await pool.query(
-        `select id, name, level, org, topic_tags, style, official_site, updated_at, last_sync_status
-         from cjournal_journals ${levelFilter} order by level desc, name asc`,
+        `select id, name, level, org, topic_tags, style, official_site, updated_at, last_sync_status,
+                field, language, pinyin, abbr
+         from cjournal_journals ${where} ${order}`,
         params
       );
       return {
-        journals: r.rows.map((j: any) => ({ id: j.id, name: j.name, level: j.level, org: j.org, topicTags: j.topic_tags, style: j.style, officialSite: j.official_site, updatedAt: j.updated_at, lastSyncStatus: j.last_sync_status })),
+        journals: r.rows.map((j: any) => ({
+          id: j.id, name: j.name, level: j.level, org: j.org,
+          topicTags: j.topic_tags, style: j.style, officialSite: j.official_site,
+          updatedAt: j.updated_at, lastSyncStatus: j.last_sync_status,
+          field: j.field, language: j.language, pinyin: j.pinyin, abbr: j.abbr
+        })),
         total: r.rows.length,
+        // 供前端渲染筛选项 —— 不必再让前端硬编码学科清单
+        fields: [...new Set(r.rows.map((j: any) => j.field).filter(Boolean))].sort(),
         legacy: cjournalService.JOURNAL_PROFILES,  // 兼容旧引用
       };
     } catch {
@@ -10030,6 +10062,151 @@ except Exception as e:
       return { journals: cjournalService.JOURNAL_PROFILES.map((j) => ({ name: j.name, style: j.style })), total: 0, legacy: cjournalService.JOURNAL_PROFILES };
     }
   });
+  // ═══ 飞书自建应用 (2026-10-02) ═══
+  // 与 /api/im/* 的 webhook 机器人是**两条通道**: webhook 只往固定群推文本,
+  // 应用可发到指定人(通知中心按人推送的前提)。
+  app.get("/api/im/feishu-app/status", async () => {
+    const { getFeishuAppConfig, isFeishuAppConfigured } = await import("../services/feishu-app-service.js");
+    const c = await getFeishuAppConfig();
+    return {
+      configured: await isFeishuAppConfigured(),
+      appId: c.appId ? `${c.appId.slice(0, 8)}…` : "",   // 面板回显只看前缀, 不回传完整凭据
+      hasSecret: Boolean(c.appSecret),
+      hasVerificationToken: Boolean(c.verificationToken),
+      hasEncryptKey: Boolean(c.encryptKey),
+    };
+  });
+  app.post("/api/im/feishu-app/config", async (request, reply) => {
+    const body = z.object({
+      appId: z.string().max(200).optional(),
+      appSecret: z.string().max(500).optional(),
+      verificationToken: z.string().max(500).optional(),
+      encryptKey: z.string().max(500).optional(),
+    }).parse(request.body);
+    const { pool } = await import("../db/pool.js");
+    // 只覆盖**传了的**字段 —— 面板上留空的输入框表示"不改这一项",
+    // 否则用户每次保存都会把没重新填的 secret 清成空串
+    const sets: string[] = [];
+    const vals: any[] = [];
+    const push = (col: string, v?: string) => { if (v !== undefined) { vals.push(v); sets.push(`${col} = $${vals.length}`); } };
+    push("feishu_app_id", body.appId);
+    push("feishu_app_secret", body.appSecret);
+    push("feishu_verification_token", body.verificationToken);
+    push("feishu_encrypt_key", body.encryptKey);
+    if (sets.length) {
+      await pool.query(`insert into im_config (id) values (1) on conflict (id) do nothing`);
+      await pool.query(`update im_config set ${sets.join(", ")}, updated_at = now() where id = 1`, vals);
+    }
+    return { ok: true };
+  });
+  app.post("/api/im/feishu-app/test", async () => {
+    const { testFeishuConnection } = await import("../services/feishu-app-service.js");
+    // 只换 token 不发消息 —— 发消息会在用户群里留下一条测试垃圾
+    return await testFeishuConnection();
+  });
+
+  // ═══ 用户通知中心 (2026-10-02) ═══
+  // 与 /api/alerts 的分工: alerts 是**全局运维事实**(无 user_id, 本机豁免);
+  // 这里是**给某个登录用户的消息**(按 user.id 隔离, 必须登录)。
+  app.get("/api/notifications", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string; unread?: string; category?: string };
+    const { listNotifications } = await import("../services/notification-service.js");
+    return {
+      notifications: await listNotifications(user.id, {
+        limit: parseInt(q.limit || "50", 10),
+        unreadOnly: q.unread === "1" || q.unread === "true",
+        category: q.category
+      })
+    };
+  });
+  app.get("/api/notifications/unread", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { unreadNotificationCount } = await import("../services/notification-service.js");
+    return { unread: await unreadNotificationCount(user.id) };
+  });
+  app.post("/api/notifications/read", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = (request.body ?? {}) as { ids?: unknown };
+    const ids = Array.isArray(body.ids) ? body.ids.map((x) => String(x)) : [];
+    const { markNotificationsRead } = await import("../services/notification-service.js");
+    return { marked: await markNotificationsRead(user.id, ids) };
+  });
+  app.post("/api/notifications/clear", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { clearReadNotifications } = await import("../services/notification-service.js");
+    return { cleared: await clearReadNotifications(user.id) };
+  });
+
+  // ═══ 研究速递 (2026-10-02) ═══
+  // 条目表 digest_items 是**全局**的(无 user_id), 订阅与已读按用户分离;
+  // 所以查询侧必须显式按「我的订阅」过滤 —— 见 digest-service.getDigest 的 where。
+  app.get("/api/digest", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { days?: string };
+    const { getDigest } = await import("../services/digest/digest-service.js");
+    return getDigest(user.id, q.days ? { days: parseInt(q.days, 10) } : {});
+  });
+  app.get("/api/digest/dates", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { getDigestDates } = await import("../services/digest/digest-service.js");
+    return { dates: await getDigestDates(user.id, parseInt(q.limit || "30", 10)) };
+  });
+  app.get("/api/digest/unread", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { unreadDigestCount } = await import("../services/digest/digest-service.js");
+    return { unread: await unreadDigestCount(user.id) };
+  });
+  // 主题/期刊偏好: GET 读、POST 整体写(同 Respal 的 /api/topics 契约)
+  app.get("/api/digest/topics", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { getSubscription, checkJournalCoverage } = await import("../services/digest/digest-service.js");
+    const sub = await getSubscription(user.id);
+    // 连"哪些刊取不到动态"一起返回 —— 否则用户订了库外的刊, 界面只会一片空白
+    const coverage = await checkJournalCoverage(sub.preferredJournals).catch(() => ({ covered: [], uncovered: [] }));
+    return { ...sub, uncoveredJournals: coverage.uncovered };
+  });
+  app.post("/api/digest/topics", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = (request.body ?? {}) as { topics?: unknown; preferredJournals?: unknown; days?: unknown };
+    const asArr = (v: unknown): string[] | undefined =>
+      Array.isArray(v) ? v.map((x) => String(x)) : undefined;
+    const { setSubscription, checkJournalCoverage } = await import("../services/digest/digest-service.js");
+    const sub = await setSubscription(user.id, {
+      topics: asArr(body.topics),
+      preferredJournals: asArr(body.preferredJournals),
+      days: body.days === undefined ? undefined : Number(body.days)
+    });
+    const coverage = await checkJournalCoverage(sub.preferredJournals).catch(() => ({ covered: [], uncovered: [] }));
+    return { ...sub, uncoveredJournals: coverage.uncovered };
+  });
+  app.post("/api/digest/read", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = (request.body ?? {}) as { ids?: unknown };
+    const ids = Array.isArray(body.ids) ? body.ids.map((x) => String(x)) : [];
+    const { markDigestRead } = await import("../services/digest/digest-service.js");
+    return { marked: await markDigestRead(user.id, ids) };
+  });
+  // 手动触发一轮抓取(面板上的"立即刷新")。抓的是全体订阅的并集, 与定时任务同一条路径。
+  app.post("/api/digest/refresh", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { runDailyDigest } = await import("../services/digest/digest-service.js");
+    return { ok: true, ...(await runDailyDigest()) };
+  });
+  // 抓取批次台账 —— "今天为什么只有 3 条"唯一能查的地方
+  app.get("/api/digest/runs", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { pool } = await import("../db/pool.js");
+    const r = await pool.query(
+      `select started_at, finished_at, trigger, topics, per_source, inserted, dup, ok, error
+         from digest_runs order by started_at desc limit $1`,
+      [Math.min(Math.max(parseInt(q.limit || "10", 10), 1), 50)]
+    );
+    return { runs: r.rows };
+  });
+
   // V395-38: 期刊更新列表（最新热点/选题方向/目录, 自动同步管道写入）
   app.get("/api/cjournal/journal-updates", async (request) => {
     const q = request.query as { journalId?: string; limit?: string };
@@ -12886,6 +13063,26 @@ ${dataBlock}
 
   // ═══ SocialSci P0-8: 积分商业化 + 微信扫码登录(迁移120) ═══
   // ── 积分(用户侧) ──
+  // 2026-10-02: 对话里的 @ 引用来源(工作区素材 / 上传文件 / 文献库)
+  app.get("/api/agent/mentionables", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { q?: string; kind?: string; limit?: string };
+    const { listMentionables } = await import("../services/mention-service.js");
+    return {
+      items: await listMentionables(user.id, {
+        query: q.q,
+        kind: (q.kind as any) || undefined,
+        limit: parseInt(q.limit || "12", 10),
+      }),
+    };
+  });
+
+  // 2026-10-02: 邀请 —— 生成/查看专属邀请码、邀请人数、累计奖励
+  app.get("/api/points/invite", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { inviteService } = await import("../services/invite-service.js");
+    return await inviteService.getInviteSummary(user.id);
+  });
   app.get("/api/points/me", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     return { success: true, data: await pointsService.getPoints(user.id) };

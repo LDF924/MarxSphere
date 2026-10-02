@@ -6,6 +6,7 @@ import { Inbox as InboxIcon, Plus, Trash2, CheckCircle2, Circle } from "lucide-r
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
+import { VoiceInput } from "./VoiceInput";
 
 interface TodoItem {
   id: string;
@@ -71,6 +72,9 @@ export function InboxPanel() {
             placeholder="记录待办事项（如：图谱数据入库方案待选）…"
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
+          {/* 语音输入(2026-10-02): 识别文本**追加**到已有内容后面, 而不是覆盖 ——
+              用户可能先手打了一半再补一句语音 */}
+          <VoiceInput onText={(t) => setNewText((v) => (v ? `${v}${t}` : t))} disabled={false} />
           <Button size="sm" data-control="inbox:add" onClick={addTodo} disabled={!newText.trim()}>
             <Plus className="mr-1 h-3.5 w-3.5" /> 添加
           </Button>

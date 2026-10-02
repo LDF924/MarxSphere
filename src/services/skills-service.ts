@@ -32,6 +32,16 @@ export interface SkillRecord {
   zhCategory?: string;
   /** 中文用途（来自 _中文说明/xxx.zh-CN.md 用途段） */
   zhDescription?: string;
+  // ── 云端分发元数据（2026-10-02）──
+  // 对照 Respal: 它每个技能的 frontmatter 都带 cloudSource/cloudId/cloudUpdated,
+  // 用来做"这个技能是从广场装的、服务端编号 26、上次更新于 …"。本仓此前为 0 个。
+  // 三者**可独立为空**: 本地自建技能就是三个都没有, 不该被当成异常。
+  /** 来源: public(广场公开) / private / ''(本地自建) */
+  cloudSource?: string;
+  /** 服务端编号 */
+  cloudId?: string;
+  /** 服务端上次更新时刻(epoch 秒, 与 Respal 同口径存字符串) */
+  cloudUpdated?: string;
 }
 
 interface Frontmatter {
@@ -41,6 +51,9 @@ interface Frontmatter {
   notTriggers?: string[];
   titleZh?: string;
   categoryZh?: string;
+  cloudSource?: string;
+  cloudId?: string;
+  cloudUpdated?: string;
 }
 
 function parseFrontmatter(raw: string): Frontmatter {
@@ -60,6 +73,14 @@ function parseFrontmatter(raw: string): Frontmatter {
   if (titleZhMatch) result.titleZh = titleZhMatch[1].trim().replace(/^["']|["']$/g, "");
   const categoryZhMatch = block.match(/^category_zh:\s*(.+)$/m);
   if (categoryZhMatch) result.categoryZh = categoryZhMatch[1].trim().replace(/^["']|["']$/g, "");
+
+  // 云端分发元数据（2026-10-02）—— 与 title_zh/category_zh 同一套正则, 保持解析风格一致
+  const cloudSourceMatch = block.match(/^cloudSource:\s*(.+)$/m);
+  if (cloudSourceMatch) result.cloudSource = cloudSourceMatch[1].trim().replace(/^["']|["']$/g, "");
+  const cloudIdMatch = block.match(/^cloudId:\s*(.+)$/m);
+  if (cloudIdMatch) result.cloudId = cloudIdMatch[1].trim().replace(/^["']|["']$/g, "");
+  const cloudUpdatedMatch = block.match(/^cloudUpdated:\s*(.+)$/m);
+  if (cloudUpdatedMatch) result.cloudUpdated = cloudUpdatedMatch[1].trim().replace(/^["']|["']$/g, "");
 
   const descMatch = block.match(/^description:\s*(.+)$/m);
   if (descMatch) {
@@ -210,7 +231,10 @@ export function listSkills(): SkillRecord[] {
         healthcheckPath,
         zhName,
         zhCategory,
-        zhDescription
+        zhDescription,
+        cloudSource: fm.cloudSource,
+        cloudId: fm.cloudId,
+        cloudUpdated: fm.cloudUpdated
       });
     } catch {
       // 跳过解析失败的 skill
@@ -246,6 +270,9 @@ export function listSkills(): SkillRecord[] {
           healthcheckPath,
           zhName: fm.titleZh,
           zhCategory: fm.categoryZh,
+          cloudSource: fm.cloudSource,
+          cloudId: fm.cloudId,
+          cloudUpdated: fm.cloudUpdated,
         });
       } catch {
         // 跳过解析失败的嵌套 skill

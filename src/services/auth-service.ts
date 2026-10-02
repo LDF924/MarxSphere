@@ -37,7 +37,13 @@ export interface SessionPayload {
 }
 
 // ─── 注册（单用户租户） ───
-export async function register(username: string, password: string, email?: string): Promise<{ ok: boolean; error?: string; user?: AuthUser }> {
+export async function register(
+  username: string,
+  password: string,
+  email?: string,
+  /** 2026-10-02: 邀请码(可选)。填错**不阻断注册** —— 详见 invite-service.claimInvite 的说明。 */
+  inviteCode?: string
+): Promise<{ ok: boolean; error?: string; user?: AuthUser; inviteWarning?: string; inviteBonus?: number }> {
   const name = (username || "").trim().toLowerCase();
   if (!/^[a-z0-9_]{3,30}$/.test(name)) return { ok: false, error: "用户名需3-30位字母数字下划线" };
   if (!password || password.length < 6) return { ok: false, error: "密码至少6位" };
@@ -56,8 +62,47 @@ export async function register(username: string, password: string, email?: strin
       [userId, name, hash, tenantId, mail || null]
     );
     await client.query("update tenants set owner_user_id = $1 where id = $2", [userId, tenantId]);
+
+    // 邀请码认领 —— 在**注册事务内**做, 这样"码被用掉"与"用户建出来"是原子的
+    // (否则两个并发注册可能各自认领同一个码)。但**认领失败不回滚注册**:
+    // 用户填错码不该导致注册失败, 返回 warn 让前端提示即可。
+    let invitedBy = "";
+    let inviteBonus = 0;
+    let inviteWarning: string | undefined;
+    if (inviteCode && inviteCode.trim()) {
+      try {
+        const { claimInvite } = await import("./invite-service.js");
+        const c = await claimInvite({ code: inviteCode, newUserId: userId, client });
+        if (c.ok) { invitedBy = c.invitedBy || ""; inviteBonus = c.bonus || 0; }
+        else inviteWarning = `邀请码未生效: ${c.error}`;
+      } catch (e: any) {
+        inviteWarning = `邀请码处理异常: ${String(e?.message || e).slice(0, 80)}`;
+      }
+    }
+
     await client.query("COMMIT");
-    return { ok: true, user: { id: userId, username: name, role: "user", tenantId, plan: "free", balanceCents: 0, llmProvider: "platform" } };
+
+    // 奖励发放放在**事务外** —— 见 invite-service.grantInviteBonus 的说明:
+    // 与注册同事务会让"积分发放失败"回滚掉整个注册。这里失败只记 warn。
+    if (invitedBy) {
+      try {
+        const { grantInviteBonus, getInviteSummary } = await import("./invite-service.js");
+        const ownerBonus = (await getInviteSummary(invitedBy).catch(() => ({ bonus: { owner: 0 } }))).bonus.owner;
+        await grantInviteBonus({
+          ownerId: invitedBy, inviteeId: userId, inviteeName: name,
+          ownerBonus: ownerBonus || 200, inviteeBonus: inviteBonus || 200,
+        });
+      } catch (e: any) {
+        console.warn(`[auth] 邀请奖励发放失败(注册已成功): ${String(e?.message || e).slice(0, 100)}`);
+      }
+    }
+
+    return {
+      ok: true,
+      user: { id: userId, username: name, role: "user", tenantId, plan: "free", balanceCents: 0, llmProvider: "platform" },
+      inviteWarning,
+      inviteBonus: invitedBy ? inviteBonus : 0,
+    };
   } catch (e: any) {
     await client.query("ROLLBACK");
     if (String(e?.message || "").includes("duplicate")) return { ok: false, error: "用户名已存在" };

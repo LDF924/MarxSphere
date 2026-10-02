@@ -73,6 +73,10 @@ const renderedHtml = computed(() => (resultText.value ? renderMdWithLatex(result
 
 // chart tab 状态
 const chartDesc = ref("");
+// 2026-10-02 划选出图: 记录本次图表是由哪段选区生成的。
+// 两个用途 —— ① 插入前提示"这张图对应的是哪段文字"(用户可能已经改了选区);
+// ② 判定"生成"按钮该不该被允许用选区当需求。
+const chartFromSelection = ref("");
 const chartType = ref("echarts_bar");
 const chartCode = ref("");
 const chartPreviewType = ref("");
@@ -449,6 +453,14 @@ async function loadStatsDataset(jobId: string) {
   }
 }
 
+/** 把当前选区填进图表需求 —— "划选文字 → 生成图表"的第一步(第二步是生成, 第三步是插回)。 */
+function useSelectionAsChartDesc() {
+  const sel = selectionText().trim();
+  if (!sel) { toast("请先在正文中选中文字", "warning"); return; }
+  chartDesc.value = sel;
+  chartFromSelection.value = sel;
+}
+
 async function generateChart() {
   // 工坊模式: 已直接选中现成产物, 无需重新出图
   if (chartSource.value === "workshop") {
@@ -457,9 +469,20 @@ async function generateChart() {
     toast("已载入工坊图表, 可直接插入正文", "success");
     return;
   }
+  // 2026-10-02: 需求为空时**回落到当前选区** —— 这就是"划选文字 → 生成图表"的入口。
+  // 原先这里直接拦掉, 于是选了一段"2020-2024 各产业增加值"的文字后点生成,
+  // 得到的是一句"请描述图表需求" —— 而用户刚刚已经把需求选中了。
   if (!chartDesc.value.trim()) {
-    toast("请描述图表需求", "warning");
-    return;
+    const sel = selectionText().trim();
+    if (sel) {
+      chartDesc.value = sel;
+      chartFromSelection.value = sel;
+    } else {
+      toast("请描述图表需求, 或先在正文中选中要据以出图的文字", "warning");
+      return;
+    }
+  } else {
+    chartFromSelection.value = "";
   }
   // 选了数据源但没数据 → 明确拦截(不再让后端 FileNotFoundError)
   if (chartSource.value === "empirical" && !chartDataset.value) {
@@ -730,7 +753,13 @@ onUnmounted(() => {
         <select v-model="chartType" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs">
           <option v-for="c in CHART_TYPES" :key="c.id" :value="c.id">{{ c.label }}</option>
         </select>
-        <textarea v-model="chartDesc" rows="3" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" placeholder="例如: 2020-2024 年五类数字经济细分产业增加值对比柱状图"></textarea>
+        <textarea v-model="chartDesc" rows="3" class="w-full rounded border border-[var(--wf-line-strong)] px-2 py-1.5 text-xs" placeholder="例如: 2020-2024 年五类数字经济细分产业增加值对比柱状图&#10;(也可留空, 直接在正文选中一段文字后点生成)"></textarea>
+        <button
+          v-if="selectionCount > 0"
+          type="button"
+          class="w-full rounded border border-[var(--wf-line-strong)] py-1.5 text-xs"
+          @click="useSelectionAsChartDesc"
+        >用选中的文字 ({{ selectionCount }} 字)</button>
         <button class="w-full rounded bg-red-600 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50" :disabled="store.isBusy" @click="generateChart">
           {{ store.isBusy ? "生成中…" : "生成图表" }}
         </button>
@@ -740,7 +769,9 @@ onUnmounted(() => {
         <ChartRenderer v-else-if="chartCode.startsWith('graph') || chartCode.startsWith('mindmap') || chartCode.trim().startsWith('{')" :code="chartCode" :chart-type="chartPreviewType" />
         <div v-else class="ade-chart-preview__code">{{ chartCode }}</div>
         <a v-if="chartSvgRel" href="#" class="ade-chart-preview__svg" @click.prevent="downloadSvg">下载 SVG(矢量可编辑)</a>
-        <button class="w-full rounded border border-[#4D84CB] py-1.5 text-xs font-semibold text-[#6FA6E8] hover:bg-[#1E2A48]" @click="insertChart">插入到正文</button>
+        <button class="w-full rounded border border-[#4D84CB] py-1.5 text-xs font-semibold text-[#6FA6E8] hover:bg-[#1E2A48]" @click="insertChart">
+          {{ chartFromSelection ? "插回到选中的位置" : "插入到正文" }}
+        </button>
       </div>
     </div>
 

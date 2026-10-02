@@ -727,6 +727,14 @@ export function SkillsPanel() {
                     <span className="font-mono text-sm font-semibold">{detailSkill.name}</span>
                     {detailSkill.zhName ? <span className="rounded bg-primary/15 px-1.5 py-0.5 text-xs text-primary">{detailSkill.zhName}</span> : null}
                     {detailSkill.zhCategory ? <span className="rounded bg-accent px-1.5 py-0.5 text-xs text-muted-foreground">{detailSkill.zhCategory}</span> : null}
+                    {/* 云端分发元数据(2026-10-02) —— 对照 Respal 的 cloudSource/cloudId/cloudUpdated。
+                        本地自建技能三者皆空是**正常态**, 所以没有徽标而不是显示"未知"。 */}
+                    {detailSkill.cloudSource ? (
+                      <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-xs text-sky-300" title={`服务端编号 ${detailSkill.cloudId || "-"}`}>
+                        {detailSkill.cloudSource === "public" ? "广场" : detailSkill.cloudSource}
+                        {detailSkill.cloudId ? ` #${detailSkill.cloudId}` : ""}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-0.5 truncate text-xs text-muted-foreground">{detailSkill.path}</div>
                 </div>
@@ -743,6 +751,17 @@ export function SkillsPanel() {
                       <div>
                         <div className="mb-1 text-xs font-semibold text-primary">中文说明</div>
                         <pre className="whitespace-pre-wrap rounded bg-muted/40 p-3 text-xs leading-5">{detail.zhDoc.slice(0, 3000)}</pre>
+                      </div>
+                    ) : null}
+                    {detailSkill.cloudSource ? (
+                      <div className="rounded border border-sky-400/20 bg-sky-400/[0.04] p-2 text-xs">
+                        <span className="text-sky-300">云端来源</span>
+                        <span className="ml-2 text-muted-foreground">
+                          {detailSkill.cloudSource} · 编号 {detailSkill.cloudId || "-"}
+                          {detailSkill.cloudUpdated
+                            ? ` · 更新于 ${new Date(Number(detailSkill.cloudUpdated) * 1000).toLocaleDateString()}`
+                            : ""}
+                        </span>
                       </div>
                     ) : null}
                     <div>

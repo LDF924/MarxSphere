@@ -658,6 +658,59 @@ export const api = {
   },
 
   // ─── 技能自动更新检测 ───
+  // ── 研究速递 (2026-10-02) ──
+  async digestGet(days?: number) {
+    return request<{ date: string; total: number; topics: Record<string, unknown[]>; journals: Record<string, unknown[]>; uncoveredJournals: string[] }>(
+      `/api/digest${days ? `?days=${days}` : ""}`
+    );
+  },
+  async digestRefresh() {
+    return request<{ ok: boolean; users: number; topics: number; inserted: number; dup: number; summarized: number }>(
+      "/api/digest/refresh", { method: "POST" }
+    );
+  },
+  async digestDates(limit = 30) {
+    return request<{ dates: string[] }>(`/api/digest/dates?limit=${limit}`);
+  },
+  async digestUnread() {
+    return request<{ unread: number }>("/api/digest/unread");
+  },
+  async digestRead(ids: string[] = []) {
+    return request<{ marked: number }>("/api/digest/read", { method: "POST", body: JSON.stringify({ ids }) });
+  },
+  async digestTopicsGet() {
+    return request<{ topics: string[]; preferredJournals: string[]; days: number; uncoveredJournals: string[] }>("/api/digest/topics");
+  },
+  async digestTopicsSet(input: { topics: string[]; preferredJournals: string[]; days?: number }) {
+    return request<{ topics: string[]; preferredJournals: string[]; days: number; uncoveredJournals: string[] }>(
+      "/api/digest/topics", { method: "POST", body: JSON.stringify(input) }
+    );
+  },
+  async digestRuns(limit = 10) {
+    return request<{ runs: unknown[] }>(`/api/digest/runs?limit=${limit}`);
+  },
+
+  // ── 用户通知中心 (2026-10-02) ──
+  async notificationsList(opts: { unread?: boolean; limit?: number; category?: string } = {}) {
+    const p = new URLSearchParams();
+    if (opts.unread) p.set("unread", "1");
+    if (opts.limit) p.set("limit", String(opts.limit));
+    if (opts.category) p.set("category", opts.category);
+    const qs = p.toString();
+    return request<{ notifications: Array<{ id: string; category: string; level: string; title: string; body: string; link: Record<string, unknown>; readAt: string | null; createdAt: string }> }>(
+      `/api/notifications${qs ? `?${qs}` : ""}`
+    );
+  },
+  async notificationsUnread() {
+    return request<{ unread: number }>("/api/notifications/unread");
+  },
+  async notificationsRead(ids: string[] = []) {
+    return request<{ marked: number }>("/api/notifications/read", { method: "POST", body: JSON.stringify({ ids }) });
+  },
+  async notificationsClear() {
+    return request<{ cleared: number }>("/api/notifications/clear", { method: "POST" });
+  },
+
   async scanSkillUpdates() {
     return request<SkillUpdateResult>("/api/skills/update-scan");
   },

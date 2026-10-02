@@ -255,6 +255,33 @@ export async function settleOrder(input: {
     await creditUser(client, order);
 
     await client.query("commit");
+
+    // 邀请"好友首充"奖励（2026-10-02）—— 挂在这里而不是两条调用路径上:
+    // `settleOrder` 被**支付回调**与**主动查单**共用(syncOrderWithChannel:363),
+    // 挂在调用方会让两条路各发一次。挂在本函数的事务提交后 = 每条成功订单恰好一次。
+    // `duplicate`(重复回调)在上面就 return 了, 到不了这里, 所以天然不重发。
+    // 幂等另有一道: grantFirstPayBonus 自己查账本 marker, 双保险。
+    // **不 await** —— 奖励发放失败不该让支付入账的响应变慢或失败(钱已经加对了)。
+    void (async () => {
+      try {
+        const { grantFirstPayBonus } = await import("./invite-service.js");
+        const r = await grantFirstPayBonus({ inviteeId: order.userId, amountCents: order.amountCents });
+        if (r.granted > 0) {
+          const { notify } = await import("./notification-service.js");
+          await notify({
+            userId: r.ownerId!, category: "points", level: "success",
+            title: `好友首充奖励 +${r.granted} 积分`,
+            body: "你邀请的好友完成了首次付费",
+            link: { view: "billing" },
+            dedupeKey: `invite_first_pay:${order.userId}`,
+          });
+        }
+      } catch (e: any) {
+        // 不能静默 —— 这是"该给的钱没给", 必须能在日志里查到
+        console.warn(`[payment] 邀请首充奖励发放失败 order=${order.outTradeNo}: ${String(e?.message || e).slice(0, 100)}`);
+      }
+    })();
+
     return { ok: true, order: rowToOrder(upd.rows[0]), creditedCents: order.amountCents };
   } catch (e: unknown) {
     try { await client.query("rollback"); } catch { /* 已回滚 */ }

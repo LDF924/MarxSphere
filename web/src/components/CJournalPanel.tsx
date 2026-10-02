@@ -135,6 +135,11 @@ export const CJournalPanel: FC = () => {
   const [journals, setJournals] = useState<any[]>([]);
   // V395-38: 期刊动态库（80本真实目录 + 更新管道）
   const [journalLevel, setJournalLevel] = useState("全部");
+  // 2026-10-02: 补「按学科 / 按拼音·首字母」检索 —— 后端 177 迁移已回填 field/pinyin/abbr,
+  // 端点 /api/cjournal/journals 也支持 field/q 参数; 这里做**前端筛选**(数据量只有 80 条,
+  // 不值得为每次输入再打一次网络).
+  const [journalField, setJournalField] = useState("全部");
+  const [journalQuery, setJournalQuery] = useState("");
   const [journalUpdates, setJournalUpdates] = useState<any[]>([]);
   const [activeJournalUpdatesId, setActiveJournalUpdatesId] = useState("");
   const [syncInfo, setSyncInfo] = useState("");
@@ -1866,6 +1871,21 @@ export const CJournalPanel: FC = () => {
                 ))}
                 {syncInfo && <span className="ml-auto text-[9px] text-emerald-400">{syncInfo}</span>}
               </div>
+              {/* 2026-10-02: 学科 + 关键词(pinyin/首字母/刊名) */}
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-border/30 px-3 py-2">
+                {["全部", ...journalFields()].map((fd) => (
+                  <button key={fd} type="button" onClick={() => setJournalField(fd)}
+                    className={cn("rounded-lg border px-2 py-1 text-[9px] transition-all",
+                      journalField === fd ? "border-primary/60 bg-primary/10 text-primary" : "border-border/40 text-muted-foreground hover:border-primary/40")}>
+                    {fd}
+                  </button>
+                ))}
+                <input
+                  value={journalQuery} onChange={(e) => setJournalQuery(e.target.value)}
+                  placeholder="刊名 / 拼音 / 首字母（如 zgshkx）"
+                  data-control="cjournal:journal-search"
+                  className="ml-auto w-52 rounded-lg border border-border/40 bg-background/60 px-2 py-1 text-[10px] placeholder:text-muted-foreground/60" />
+              </div>
               <div className="space-y-1.5 p-3">
                 {filteredJournals().map((j: any) => (
                   <div key={j.id} className="rounded-lg border border-border/40 px-3 py-2 transition-colors hover:bg-primary/5">
@@ -1873,6 +1893,8 @@ export const CJournalPanel: FC = () => {
                       <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[8px] font-bold",
                         j.level === "南核" ? "bg-red-500/15 text-red-300" : j.level === "北核" ? "bg-blue-500/15 text-blue-300" : "bg-emerald-500/15 text-emerald-300")}>{j.level}</span>
                       <span className="shrink-0 text-xs font-medium">{j.name}</span>
+                      {j.field && <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 text-[8px] text-sky-300">{j.field}</span>}
+                      {j.abbr && <span className="shrink-0 text-[9px] text-muted-foreground/60">{j.abbr}</span>}
                       <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">{j.style}</span>
                       {j.lastSyncStatus === "ok" && (
                         <span className="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[8px] text-emerald-300" title="官网实时抓取">●官网</span>
@@ -1906,7 +1928,7 @@ export const CJournalPanel: FC = () => {
                     )}
                   </div>
                 ))}
-                {filteredJournals().length === 0 && <div className="text-[10px] text-muted-foreground">该级别暂无期刊</div>}
+                {filteredJournals().length === 0 && <div className="text-[10px] text-muted-foreground">没有匹配的期刊 —— 换个级别/学科, 或清空关键词</div>}
               </div>
             </div>
           </div>
@@ -2036,8 +2058,24 @@ export const CJournalPanel: FC = () => {
   // V395-38: 期刊动态库（筛选/热点/同步）
   // 注意: 组件 return 之后的 const 声明不执行, 用函数替代 useMemo
   function filteredJournals() {
-    if (journalLevel === "全部") return journals;
-    return journals.filter((j: any) => j.level === journalLevel);
+    let out = journals;
+    if (journalLevel !== "全部") out = out.filter((j: any) => j.level === journalLevel);
+    if (journalField !== "全部") out = out.filter((j: any) => (j.field || "综合") === journalField);
+    const kw = journalQuery.trim().toLowerCase();
+    if (kw) {
+      // 三路匹配: 刊名 / 全拼 / 首字母 —— 与后端端点同一套语义
+      // (「zgshehui」「zgshkx」「中国社会科学」都应该搜到同一本)
+      out = out.filter((j: any) =>
+        String(j.name || "").toLowerCase().includes(kw)
+        || String(j.pinyin || "").includes(kw)
+        || String(j.abbr || "").includes(kw)
+      );
+    }
+    return out;
+  }
+  /** 学科清单 —— 从数据里派生, 不硬编码(后端加新学科时这里自动跟上) */
+  function journalFields(): string[] {
+    return [...new Set(journals.map((j: any) => j.field || "综合").filter(Boolean))].sort();
   }
   async function loadJournalUpdates(journalId: string) {
     try {

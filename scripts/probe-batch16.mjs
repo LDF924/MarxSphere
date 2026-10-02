@@ -70,11 +70,24 @@ try {
    *   第一版路由写错, 整段 ⑤ 在一张空页面上跑, 断言照样绿(又一次假绿)。
    *   判据用对话页独有的元素(会话侧栏的"新建对话"), 不用 hash 字符串。
    */
+  /**
+   * ⚠ 2026-10-02 修: 原判据是 `/AI 对话|新建对话|深度模式/`, **三个词在当前 UI 里都不出现** ——
+   *   · 「深度模式」只是 `<button title="...">` 的 **tooltip**, 按钮本身渲染的是「深度」;
+   *   · 「新建对话」是侧栏 `+` 的 aria/title, 可见文字已改成「对话记录」;
+   *   · 「AI 对话」是 ChatPanel 的**文件头注释**(ChatPanel.tsx:2), 从来不渲染。
+   *   于是这条断言**锚的是源码字符串而不是页面**。它此前能过, 是因为浏览器 profile 里
+   *   残留着别的会话内容碰巧命中了正则 —— 干净会话下必红。
+   *   现在改成判 ChatPanel 真实渲染的四处稳定文字(见 ChatPanel.tsx:538/691/702/1027)。
+   */
   const onChat = await evalTop(cdp, `(() => {
     const txt = document.body.innerText || "";
-    return { isChat: /AI 对话|新建对话|深度模式/.test(txt), hash: location.hash };
+    return {
+      isChat: /对话记录/.test(txt) && /新对话|SocioSeek AI 助手/.test(txt),
+      hash: location.hash,
+      head: txt.replace(/\s+/g, " ").slice(0, 70),
+    };
   })()`);
-  t("**落在 AI 对话页**(不是搜索过程页)", onChat?.isChat === true, `hash=${onChat?.hash}`);
+  t("**落在 AI 对话页**(不是搜索过程页)", onChat?.isChat === true, `hash=${onChat?.hash} 首段="${onChat?.head}"`);
 
   t("**对话页发起了 /api/agent/tools 请求**",
     Array.isArray(reqs) && reqs.some((u) => u.includes("/api/agent/tools")),

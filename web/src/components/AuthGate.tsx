@@ -74,17 +74,43 @@ export const AuthGate: FC<{ children: ReactNode }> = ({ children }) => {
   // V424: 修复"退出登录没反应" — 401 拦截器原来 setAuth({enabled:false}) 会把退出后的
   // 登录页打回主界面（enabled=false → 放行分支）。改为 enabled:true（保持登录门禁），
   // 只有后端明确禁用认证（/api/auth/status enabled=false）才回主界面。
+  //
+  // ⚠ 2026-10-02 修"一次 401 就登出"(实测复现):
+  //   改前只要**任意**一个非 /api/auth/ 的请求返回 401, 就立刻 remove token + 回登录页。
+  //   实测: 登录态下发一个不带 Authorization 的 /api/agent/mentionables, 拿到 401,
+  //   token 被清、页面被踢到登录页。这不是假想 —— 下列情形都会命中:
+  //     · 页面里任何一个**忘了带鉴权头**的裸 fetch(本仓已有先例: 2026-09-19 设置页切角色模型);
+  //     · 多标签页/多窗口并发时 token 刚好被另一处刷新;
+  //     · 服务重启的一瞬间(配置文件里 401 与 502 的边界会抖动);
+  //     · 服务端某条路由的鉴权实现有偏差, 只对某几个端点 401。
+  //   把"偶发的一次失败"升级成"用户被踢下线", 代价远大于它要防的"静默 401 假象"。
+  //
+  //   新行为: 401 **不作为结论**, 只作为**复核触发** —— 去问一次 /api/auth/me
+  //   (这个端点就是专门用来验 token 的)。只有它也说 token 无效, 才真的登出。
+  //   一次复核的代价是一个请求; 误登出的代价是用户重新输密码 + 丢掉当前上下文。
   useEffect(() => {
     const origFetch = window.fetch;
+    /** 复核中标记 —— 避免一屏里十个请求同时 401 时打出十个 /api/auth/me */
+    let revalidating = false;
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       return origFetch(input, init).then((resp) => {
         if (resp.status === 401 && safeStorage.get("sag_token")) {
           const url = String(input);
-          // 认证接口的 401 由自身流程处理(登录失败/未登录), 业务接口 401 才视为 token 失效
-          if (!url.includes("/api/auth/")) {
-            safeStorage.remove("sag_token");
-            // V424: 保持 enabled=true（回登录页），不再降级 enabled=false（回主界面）
-            setAuth({ enabled: true, user: null });
+          // 认证接口的 401 由自身流程处理(登录失败/未登录)
+          const isAuthPath = url.includes("/api/auth/");
+          if (!isAuthPath && !revalidating) {
+            revalidating = true;
+            const token = safeStorage.get("sag_token");
+            void origFetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+              .then((r) => {
+                // 只有复核也确认 token 失效才登出; 网络异常/5xx 一律不动登录态
+                if (r.status === 401) {
+                  safeStorage.remove("sag_token");
+                  setAuth({ enabled: true, user: null });
+                }
+              })
+              .catch(() => { /* 复核打不出去(离线/服务重启中) → 保持登录态, 不误登出 */ })
+              .finally(() => { revalidating = false; });
           }
         }
         return resp;

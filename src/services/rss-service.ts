@@ -85,56 +85,91 @@ export async function saveRssSubscription(url: string, name: string, sourceId: s
 }
 
 /**
- * 刷新全部 RSS 订阅（V417）。
+ * 刷新全部 RSS / arXiv 订阅（V417, 2026-10-02 改落点）。
  *
  * 由来: `saveRssSubscription` 只把 URL 写进 sources.metadata, **全仓没有任何拉取消费者** ——
- *   订阅了永远不会更新, 是个"写完即死"的功能。这里补上消费者。
+ *   订阅了永远不会更新, 是个"写完即死"的功能。V417 补上了消费者。
  *
- * 落点选择: 拉到的条目写进 **alerts**(用户已有的统一入口, 告警中心按 category 归类展示),
- *   而不是新建一张 feed_items 表 —— 少一张表、少一个要维护的读取端, 且用户本来就会看告警中心。
+ * ⚠ 落点改过两次, 记下来免得再绕回去:
+ *   ① 原设计写 alerts(category=rss_update, level=info)。**两个问题**:
+ *      · alerts 是**全局运维表, 没有 user_id** —— 而 sources 表也只有 tenant_id,
+ *        所以"这条 feed 是谁订的"根本无从得知, 写了也不归属于任何人;
+ *      · level=info 会被 `AlertToast.tsx:38` 的 `filter(a => a.level !== "info")` 滤掉,
+ *        所以它连弹都弹不出来。写了等于没写。
+ *   ② 现在写 **digest_items**(研究速递的条目表): 条目是**内容**(有标题有链接),
+ *      与速递的其他源同构; 用户查速递时按自己订阅的主题/期刊过滤,
+ *      归属问题由查询侧解决, 不再需要"这条 feed 属于谁"。
+ *      同时把订阅的主题/期刊也带上, 让它能真的被对应的人看到。
  *
- * 去重: 用 source metadata 里的 seenLinks(最近 200 条)做增量判断, 只提醒**新条目**。
- *   不做全量存档: 订阅的用途是"有新东西告诉我", 不是"把整个 feed 搬进库"。
+ * 去重: 交给 `digest_items` 的两条部分唯一索引(item_doi_key / item_title_key) ——
+ *   本函数不再自己维护 seenLinks。原实现把已见链接存在 sources.metadata 里,
+ *   既会让 metadata 无限膨胀, 又在多副本下互相覆盖。
  *
  * 多副本: 由调用方通过 withRunLease 加跨副本租约(见 singleton-scheduler)。
  */
 export async function refreshAllRssSubscriptions(maxFeeds = 20): Promise<{ feeds: number; newItems: number }> {
-  let newItems = 0;
   const r = await pool.query(
     `select id, name, metadata from sources
       where metadata->>'semanticType' = 'rss-feed'
       order by created_at desc limit $1`,
     [maxFeeds]
   );
+  if (!r.rows.length) return { feeds: 0, newItems: 0 };
+
+  const { persistCandidates } = await import("./digest/digest-service.js");
+  const { plausibleDateFor } = await import("./digest/normalize.js");
+
+  // 订阅的主题/期刊 —— 让 RSS 条目归属到真正订阅了相关方向的人。
+  // 一个 feed 本身不带主题信息(它只是个 URL), 所以借用全体订阅者关心的主题集合。
+  let sharedTopics: string[] = [];
+  try {
+    const { collectAllSubscriptions } = await import("./digest/digest-service.js");
+    sharedTopics = (await collectAllSubscriptions()).topics;
+  } catch { /* 无订阅时留空, 条目不挂主题, 由期刊维度或全量展示兜底 */ }
+
+  let newItems = 0;
   for (const row of r.rows) {
-    const meta = (row.metadata ?? {}) as { rssUrl?: string; seenLinks?: string[] };
+    const meta = (row.metadata ?? {}) as { rssUrl?: string; rssFor?: string; feedKind?: string };
     const url = String(meta.rssUrl || "").trim();
     if (!url) continue;
-    const seen = new Set(Array.isArray(meta.seenLinks) ? meta.seenLinks : []);
-    const feed = await fetchRss(url);
+    // feedKind=arxiv 的订阅走 arXiv API(排序按提交日, RSS 那套对 arXiv 不适用)
+    const feed = meta.feedKind === "arxiv"
+      ? await fetchArxivToday(String(meta.rssFor || "").trim() || "machine learning", 20)
+      : await fetchRss(url);
     if (!feed.ok || !feed.entries.length) continue;
-    const fresh = feed.entries.filter((e) => e.link && !seen.has(e.link)).slice(0, 10);
-    if (!fresh.length) continue;
-    try {
-      const { recordAlert } = await import("./alert-service.js");
-      for (const e of fresh) {
-        await recordAlert({
-          level: "info",
-          category: "rss_update",
-          message: `【${row.name}】${String(e.title || "").slice(0, 120)}`,
-          taskType: "rss",
-          detail: { url: e.link, feed: url, publishedAt: e.date },
-        });
-        newItems++;
-      }
-    } catch { /* 告警写入失败 → 本轮跳过, 下次仍是"新" */ continue; }
-    // 记下已见(保留最近 200, 防 metadata 无限膨胀)
-    const merged = [...feed.entries.map((e) => e.link).filter(Boolean), ...seen].slice(0, 200);
-    await pool.query(`update sources set metadata = metadata || $2::jsonb where id = $1`, [
-      row.id, JSON.stringify({ seenLinks: merged }),
-    ]).catch(() => { /* 去重记录失败只是下轮重复提醒一次 */ });
+
+    const candidates = feed.entries
+      .filter((e) => e.title && e.link)
+      .slice(0, 20)
+      .map((e) => ({
+        source: "rss",
+        externalId: e.link,
+        title: String(e.title).trim(),
+        doi: "",
+        url: String(e.link),
+        journal: String(row.name || ""),
+        authors: [] as string[],
+        abstract: String(e.summary || "").trim(),
+        // pubDate 是各种格式(RFC-2822 / ISO / 裸日期), 统一交给 parsePublished 归一,
+        // 解析不出即 NULL —— **不写 now()** 冒充(新华网 RSS 那条教训)
+        publishedAt: plausibleDateFor(parseRssDate(e.date)),
+        topics: sharedTopics.slice(0, 5),
+        lang: "" as const
+      }));
+    if (!candidates.length) continue;
+
+    const { inserted } = await persistCandidates(candidates as any);
+    newItems += inserted;
   }
   return { feeds: r.rows.length, newItems };
+}
+
+/** RSS 的日期串 → Date。复用速递的四种格式归一, 解析不出返回 null。 */
+function parseRssDate(raw: string | undefined): Date | null {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export const rssService = {

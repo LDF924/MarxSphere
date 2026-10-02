@@ -59,6 +59,39 @@ export interface ChatPanelProps {
   onGoToView: (view: "ask" | "reason" | "empirical-research") => void;
 }
 
+/**
+ * 内置斜杠命令(2026-10-02)。
+ *
+ * ═══ 为什么要有它 ═══
+ * 实测改前 `/` 面板**只列技能**, 选中后拼成 `@skill:name` —— 也就是说 `/` 其实
+ * 不是"命令", 只是技能选择器的触发器。用户想新建会话/清空输入/切模型仍然要回顶栏点,
+ * 而这些恰恰是最高频的操作。
+ *
+ * ═══ 关键约束: 命令**本地执行, 不发给模型** ═══
+ * `/clear` 若当普通消息发出去, 会消耗一次 LLM 调用且模型还得猜"clear"是什么意思。
+ * 所以 handleSend 里先于 onSend 拦截, 命中命令就直接执行并 return。
+ */
+
+/** 命令的返回值: 有 msg 就弹一条提示, 没有就静默完成 */
+type CommandCtx = {
+  setDraft: (v: string) => void;
+  setDraftImages: (v: ChatDraftImage[]) => void;
+  setDraftDocs: (v: ChatDraftImage[]) => void;
+};
+
+const BUILTIN_COMMANDS: Array<{
+  name: string;
+  desc: string;
+  run: (p: ChatPanelProps, a: CommandCtx) => string;
+}> = [
+  { name: "new", desc: "新建对话", run: (p, a) => { p.onCreateSession(); a.setDraft(""); return "已新建对话"; } },
+  { name: "clear", desc: "清空当前输入与附件", run: (_p, a) => { a.setDraft(""); a.setDraftImages([]); a.setDraftDocs([]); return "已清空输入"; } },
+  { name: "model", desc: "切换模型(用法: /model <id>)", run: (p) => p.models.map((m) => m.id).join(" · ") },
+  { name: "web", desc: "开/关联网检索", run: (p) => { p.onWebSearchChange(!p.webSearch); return `联网检索已${p.webSearch ? "关闭" : "开启"}`; } },
+  { name: "deep", desc: "开/关深度模式", run: (p) => { p.onDeepModeChange(!p.deepMode); return `深度模式已${p.deepMode ? "关闭" : "开启"}`; } },
+  { name: "help", desc: "命令与引用语法", run: () => "命令: /new /clear /model /web /deep /help · 引用: @file: 工作区, @upload: 上传文件, @doc: 文献库" },
+];
+
 /** 热词建议（豆包式首屏，点击即问） */
 const SUGGESTIONS = [
   "分析剩余价值率的现实意义",
@@ -410,6 +443,37 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
       setSkillList((d.skills ?? []).map((s: any) => ({ name: s.name, zhName: s.zhName, description: s.description })));
     }).catch(() => {});
   }, []);
+  // 2026-10-02: @ 引用来源 —— 与上面的 / 技能面板并列的另一套提及。
+  // 两者**互斥**: `@` 引用数据(文件/文献), `/` 引用能力(技能), 同时开会让键盘方向键归属不明。
+  const [commandHint, setCommandHint] = useState("");
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionItems, setMentionItems] = useState<Array<{ ref: string; kind: string; label: string; hint: string }>>([]);
+  const mentionReqRef = useRef(0);
+  useEffect(() => {
+    if (!mentionOpen) return;
+    // 防抖 + 竞态保护: 快速输入时后发的请求可能先回来(经典 stale-response 问题),
+    // 用自增序号丢弃过期响应 —— 否则列表会在打字时来回跳
+    const seq = ++mentionReqRef.current;
+    const t = setTimeout(() => {
+      void fetch(`/api/agent/mentionables?q=${encodeURIComponent(mentionQuery)}&limit=12`)
+        .then((r) => r.json())
+        .then((d) => { if (seq === mentionReqRef.current) setMentionItems(d.items ?? []); })
+        .catch(() => { if (seq === mentionReqRef.current) setMentionItems([]); });
+    }, 180);
+    return () => clearTimeout(t);
+  }, [mentionOpen, mentionQuery]);
+  const selectMention = (m: { ref: string }) => {
+    // 把 `@查询词` 整段替换成 `@file:路径 ` —— 光标留在末尾, 用户可以接着打字
+    const atIdx = draft.lastIndexOf("@");
+    setDraft((atIdx >= 0 ? draft.slice(0, atIdx) : draft) + m.ref + " ");
+    setMentionOpen(false);
+    setMentionQuery("");
+    setMentionIndex(0);
+    textareaRef.current?.focus();
+  };
+
   const skillFiltered = useMemo(() => {
     const q = skillQuery.trim().toLowerCase();
     if (!q) return skillList;  // V399: 显示全部技能（194 个，面板可滚动）
@@ -417,6 +481,29 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
       s.name.toLowerCase().includes(q) || (s.zhName ?? "").toLowerCase().includes(q)
     );
   }, [skillList, skillQuery]);
+  /** 命令过滤 —— 与技能共用同一份 / 后的查询词; 命令排在技能前面(它们是更高频的操作) */
+  const cmdFiltered = useMemo(() => {
+    const q = skillQuery.trim().toLowerCase();
+    return q ? BUILTIN_COMMANDS.filter((c) => c.name.includes(q) || c.desc.includes(q)) : BUILTIN_COMMANDS;
+  }, [skillQuery]);
+  /** 面板里命令与技能共用一套方向键下标: [0, cmdN) 是命令, [cmdN, cmdN+skillN) 是技能 */
+  const slashTotal = cmdFiltered.length + skillFiltered.length;
+  const selectCommand = (c: (typeof BUILTIN_COMMANDS)[number]) => {
+    setSkillPanelOpen(false);
+    setSkillQuery("");
+    setSkillIndex(0);
+    // `/model` 需要参数, 填回输入框让用户补 id; 其余命令**直接执行**。
+    // 命令是即时动作(新建会话/清空/切开关), 让它们像技能那样"先选中再回车"
+    // 等于把一次点击拆成两次, 实测手感很怪(第一次回车只是把文本填回来)。
+    if (c.name === "model") {
+      setDraft("/model ");
+      textareaRef.current?.focus();
+      return;
+    }
+    setCommandHint(c.run(props, { setDraft, setDraftImages, setDraftDocs }));
+    setDraft("");
+    textareaRef.current?.focus();
+  };
   // 选中技能 → 拼 @skill:name 语法，面板关闭
   const selectSkill = (s: { name: string }) => {
     const prefix = `@skill:${s.name} `;
@@ -476,6 +563,27 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
   function handleSend() {
     const content = draft.trim();
     if (!content || props.isRunning) return;
+    // 2026-10-02: 内置命令本地执行, 不发给模型(见 BUILTIN_COMMANDS 的说明)
+    if (content.startsWith("/")) {
+      const [head, ...rest] = content.slice(1).split(/\s+/);
+      const cmd = BUILTIN_COMMANDS.find((c) => c.name === head);
+      if (cmd) {
+        if (cmd.name === "model" && rest[0]) {
+          const want = rest[0].trim();
+          if (props.models.some((m) => m.id === want)) {
+            props.onModelChange(want);
+            setCommandHint(`已切换到 ${want}`);
+          } else {
+            setCommandHint(`没有这个模型: ${want}。可用: ${props.models.map((m) => m.id).join(", ")}`);
+          }
+        } else {
+          setCommandHint(cmd.run(props, { setDraft, setDraftImages, setDraftDocs }));
+        }
+        setDraft("");
+        return;
+      }
+      // 不是内置命令 → 落到下面的 onSend, 保持"/ 选技能"的原行为
+    }
     props.onSend(content, draftImages, props.webSearch, props.deepMode, draftDocs);
     setDraft("");
     setDraftImages([]);
@@ -972,6 +1080,13 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                 </div>
               ) : null}
 
+              {/* 命令执行反馈 —— 命令是本地执行的, 没有这条用户不知道 /clear 生效了没有 */}
+              {commandHint ? (
+                <div className="mx-2 mb-1 flex items-start gap-2 rounded border border-emerald-400/25 bg-emerald-400/[0.06] px-2 py-1 text-[11px] text-emerald-300">
+                  <span className="min-w-0 flex-1 break-words">{commandHint}</span>
+                  <button type="button" onClick={() => setCommandHint("")} className="shrink-0 text-emerald-400/70 hover:text-emerald-300">×</button>
+                </div>
+              ) : null}
               <div className="flex items-end gap-2 p-2">
                 <div className="relative flex-1">
                   <Textarea
@@ -980,16 +1095,28 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                     onChange={(e) => {
                       const v = e.target.value;
                       setDraft(v);
-                      // V399: / 触发技能命令面板
-                      if (v === "/" || v.endsWith("/")) {
-                        setSkillPanelOpen(true);
-                        setSkillQuery("");
-                      } else if (skillPanelOpen && !v.includes("/")) {
+                      // 2026-10-02: @ 触发引用面板(与 / 互斥, 见 mentionOpen 的说明)
+                      const atIdx = v.lastIndexOf("@");
+                      const atActive = atIdx >= 0 && !/[\s]/.test(v.slice(atIdx + 1));
+                      if (atActive) {
+                        setMentionOpen(true);
+                        setMentionQuery(v.slice(atIdx + 1));
                         setSkillPanelOpen(false);
-                      } else if (skillPanelOpen) {
-                        // 提取 / 后的查询词过滤
-                        const slashIdx = v.lastIndexOf("/");
-                        setSkillQuery(v.slice(slashIdx + 1));
+                      } else if (mentionOpen) {
+                        setMentionOpen(false);
+                      }
+                      // V399: / 触发技能命令面板(仅在没有在敲 @ 时)
+                      if (!atActive) {
+                        if (v === "/" || v.endsWith("/")) {
+                          setSkillPanelOpen(true);
+                          setSkillQuery("");
+                        } else if (skillPanelOpen && !v.includes("/")) {
+                          setSkillPanelOpen(false);
+                        } else if (skillPanelOpen) {
+                          // 提取 / 后的查询词过滤
+                          const slashIdx = v.lastIndexOf("/");
+                          setSkillQuery(v.slice(slashIdx + 1));
+                        }
                       }
                     }}
                     onPaste={(e) => {
@@ -1000,13 +1127,25 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                       }
                     }}
                     onKeyDown={(e) => {
+                      // @ 面板优先处理(它开着时 / 面板不会开, 见 onChange)
+                      if (mentionOpen) {
+                        if (e.key === "Escape") { e.preventDefault(); setMentionOpen(false); return; }
+                        if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => Math.min(i + 1, mentionItems.length - 1)); return; }
+                        if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => Math.max(i - 1, 0)); return; }
+                        if ((e.key === "Enter" || e.key === "Tab") && mentionItems.length > 0) {
+                          e.preventDefault();
+                          const pick = mentionItems[Math.min(mentionIndex, mentionItems.length - 1)];
+                          if (pick) selectMention(pick);
+                          return;
+                        }
+                      }
                       if (skillPanelOpen && e.key === "Escape") {
                         setSkillPanelOpen(false);
                         return;
                       }
                       if (skillPanelOpen && e.key === "ArrowDown") {
                         e.preventDefault();
-                        setSkillIndex((i) => Math.min(i + 1, skillFiltered.length - 1));
+                        setSkillIndex((i) => Math.min(i + 1, Math.max(slashTotal - 1, 0)));
                         return;
                       }
                       if (skillPanelOpen && e.key === "ArrowUp") {
@@ -1014,9 +1153,17 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         setSkillIndex((i) => Math.max(i - 1, 0));
                         return;
                       }
-                      if (skillPanelOpen && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey && skillFiltered.length > 0) {
+                      if (skillPanelOpen && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey && slashTotal > 0) {
                         e.preventDefault();
-                        selectSkill(skillFiltered[Math.max(skillIndex, 0)]);
+                        // 下标先落在命令区, 超出部分才是技能 —— 不分派会让光标停在命令上时
+                        // 回车却选中某个技能(两区的 index 空间不同, 见 slashTotal 的说明)
+                        const idx = Math.max(skillIndex, 0);
+                        if (idx < cmdFiltered.length) {
+                          selectCommand(cmdFiltered[idx]);
+                        } else {
+                          const sk = skillFiltered[idx - cmdFiltered.length];
+                          if (sk) selectSkill(sk);
+                        }
                         return;
                       }
                       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1024,28 +1171,85 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                         handleSend();
                       }
                     }}
-                    placeholder="输入问题，或输入 / 调用技能，Enter 发送，Shift+Enter 换行…"
+                    placeholder="输入问题，/ 调命令与技能，@ 引用文件与文献，Enter 发送，Shift+Enter 换行…"
                     className="max-h-40 min-h-11 w-full flex-1 resize-none border-0 bg-transparent focus-visible:ring-0"
                   />
+                  {/* 2026-10-02: @ 引用面板 —— 与 / 技能面板并列的另一套提及 */}
+                  {mentionOpen ? (
+                    <div className="absolute bottom-full left-0 z-30 mb-2 w-96 overflow-hidden rounded-lg border border-border bg-background/95 shadow-xl backdrop-blur">
+                      <div className="border-b border-border/60 px-3 py-1.5 text-[10px] text-muted-foreground">
+                        @ 引用 — 工作区素材 / 上传文件 / 文献库
+                      </div>
+                      <div className="max-h-80 overflow-y-auto p-1">
+                        {mentionItems.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">
+                            {mentionQuery ? `没有匹配「${mentionQuery}」的可引用对象` : "暂无可引用内容（工作区为空且没有上传文件）"}
+                          </div>
+                        ) : (
+                          mentionItems.map((m, i) => (
+                            <button
+                              key={m.ref}
+                              type="button"
+                              onClick={() => selectMention(m)}
+                              onMouseEnter={() => setMentionIndex(i)}
+                              className={cn(
+                                "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                                i === mentionIndex ? "bg-accent/60" : "hover:bg-accent/40"
+                              )}
+                            >
+                              <span className="mt-0.5 shrink-0 font-mono text-[10px] text-sky-400">@</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium">{m.label}</span>
+                                <span className="block truncate text-[10px] text-muted-foreground">{m.hint}</span>
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* V399: 技能命令面板（Claude Code 式 / 菜单） */}
                   {skillPanelOpen ? (
                     <div className="absolute bottom-full left-0 z-30 mb-2 w-96 overflow-hidden rounded-lg border border-border bg-background/95 shadow-xl backdrop-blur">
                       <div className="border-b border-border/60 px-3 py-1.5 text-[10px] text-muted-foreground">
-                        / 技能命令 — 选中后输入任务描述，回车即执行
+                        / 命令与技能 — 命令本地执行；技能选中后输入任务描述，回车即执行
                       </div>
                       <div className="max-h-80 overflow-y-auto p-1">
-                        {skillFiltered.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-muted-foreground">无匹配技能</div>
+                        {/* 内置命令排在技能之前 */}
+                        {cmdFiltered.map((c, i) => (
+                          <button
+                            key={"cmd-" + c.name}
+                            type="button"
+                            onClick={() => selectCommand(c)}
+                            onMouseEnter={() => setSkillIndex(i)}
+                            className={cn(
+                              "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                              i === skillIndex ? "bg-accent/60" : "hover:bg-accent/40"
+                            )}
+                          >
+                            <span className="mt-0.5 shrink-0 font-mono text-[10px] text-emerald-400">/</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-medium">{c.name}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">{c.desc}</span>
+                            </span>
+                          </button>
+                        ))}
+                        {cmdFiltered.length > 0 && skillFiltered.length > 0 ? (
+                          <div className="px-3 pb-0.5 pt-1.5 text-[10px] text-muted-foreground/60">技能</div>
+                        ) : null}
+                        {skillFiltered.length === 0 && cmdFiltered.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">无匹配命令或技能</div>
                         ) : (
                           skillFiltered.map((s, i) => (
                             <button
                               key={s.name}
                               type="button"
                               onClick={() => selectSkill(s)}
-                              onMouseEnter={() => setSkillIndex(i)}
+                              onMouseEnter={() => setSkillIndex(cmdFiltered.length + i)}
                               className={cn(
                                 "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-                                i === skillIndex ? "bg-accent/60" : "hover:bg-accent/40"
+                                cmdFiltered.length + i === skillIndex ? "bg-accent/60" : "hover:bg-accent/40"
                               )}
                             >
                               <span className="mt-0.5 shrink-0 font-mono text-[10px] text-primary">/</span>

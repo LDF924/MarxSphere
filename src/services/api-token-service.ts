@@ -37,6 +37,7 @@ export type TokenPermission =
   | "trace"        // Trace
   | "eval"         // 评测
   | "alerts"       // 告警
+  | "digest"       // 研究速递(2026-10-02): 用户自己的订阅与推送
   | "inbox"        // Inbox
   | "p2o"          // V395-11: PDF2Obsidian
   | "agent";       // V395-11: Agent控制台/任务
@@ -60,6 +61,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   graph: "图谱", sources: "数据源", policy: "政策库", vault: "资料库",
   skills: "技能", mcp: "MCP", docs: "文档中心", jobs: "Jobs", tasks: "任务",
   trace: "Trace", eval: "评测", alerts: "告警", inbox: "Inbox",
+  digest: "研究速递",
 };
 
 // 全部可选权限(设置页勾选列表)
@@ -68,6 +70,7 @@ export const ALL_PERMISSIONS: TokenPermission[] = [
   "education", "empirical", "truth", "memory", "documents", "graphiti", "cognee",
   "graph", "sources", "policy", "vault", "skills", "mcp", "docs", "jobs", "tasks",
   "trace", "eval", "alerts", "inbox",
+  "digest",        // 2026-10-02: 研究速递
   "p2o", "agent",  // V395-11: 导航对齐 — PDF2Obsidian / Agent控制台+任务
 ];
 

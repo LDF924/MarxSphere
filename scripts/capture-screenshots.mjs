@@ -91,6 +91,8 @@ const VIEWS = [
   { file: "sag-site-content.png",     hash: "#site-content",        expect: "站点" },
   { file: "sag-vault.png",            hash: "#vault",               expect: "资料" },
   { file: "sag-research-history.png", hash: "#research-history",    expect: "历史" },
+  { file: "sag-digest.png",           hash: "#digest",              expect: "研究速递" },
+  { file: "sag-notifications.png",    hash: "#notifications",       expect: "通知" },
 ];
 
 const W = 1600, H = 1000;

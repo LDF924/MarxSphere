@@ -167,6 +167,8 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   trace: { label: "Trace", hint: "OTEL 风格追踪瀑布：一次请求的完整 span" },
   eval: { label: "评测", hint: "评测工作台：指标、用例与回归趋势" },
   alerts: { label: "告警", hint: "任务巡检 / 降级 / 熔断 / 失败事件汇总" },
+  notifications: { label: "通知中心", hint: "给我的消息：任务完成/失败、积分变动、速递更新（区别于全局告警）" },
+  digest: { label: "研究速递", hint: "按订阅主题与期刊每日推送新文献；可设偏好、立即刷新、查看抓取台账" },
   im: { label: "IM接入", hint: "飞书 / 钉钉 / Telegram 机器人远程对话接入" },
   inbox: { label: "Inbox", hint: "待办事项" },
   billing: { label: "账户计费", hint: "套餐、用量与账单" },

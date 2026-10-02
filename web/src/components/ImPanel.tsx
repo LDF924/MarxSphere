@@ -35,6 +35,49 @@ export const ImPanel: FC = () => {
   });
   const [status, setStatus] = useState<ImStatus | null>(null);
   const [testText, setTestText] = useState("SocioSeek IM 测试消息 ✅");
+  // 2026-10-02: 飞书自建应用(区别于上面的自定义机器人 webhook)
+  const [fsApp, setFsApp] = useState({ appId: "", appSecret: "", verificationToken: "", encryptKey: "" });
+  const [fsStatus, setFsStatus] = useState<{ configured: boolean; appId?: string; hasSecret?: boolean; hasVerificationToken?: boolean; hasEncryptKey?: boolean } | null>(null);
+  const [fsAppMsg, setFsAppMsg] = useState("");
+
+  const loadFsAppStatus = useCallback(async () => {
+    try {
+      const r = await fetch("/api/im/feishu-app/status");
+      setFsStatus(await r.json());
+    } catch { /* 状态取不到不影响其他配置 */ }
+  }, []);
+
+  async function saveFeishuApp() {
+    setFsAppMsg("");
+    try {
+      // 只提交**填了的**字段 —— 后端按"传了才覆盖"处理, 留空表示不改这一项
+      const body: Record<string, string> = {};
+      if (fsApp.appId) body.appId = fsApp.appId;
+      if (fsApp.appSecret) body.appSecret = fsApp.appSecret;
+      if (fsApp.verificationToken) body.verificationToken = fsApp.verificationToken;
+      if (fsApp.encryptKey) body.encryptKey = fsApp.encryptKey;
+      const r = await fetch("/api/im/feishu-app/config", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setFsApp({ appId: "", appSecret: "", verificationToken: "", encryptKey: "" });
+      setFsAppMsg("已保存（输入框已清空，密钥不回显）");
+      await loadFsAppStatus();
+    } catch (e) {
+      setFsAppMsg(`保存失败: ${(e as Error).message}`);
+    }
+  }
+
+  async function testFeishuApp() {
+    setFsAppMsg("测试中…");
+    try {
+      const r = await fetch("/api/im/feishu-app/test", { method: "POST" });
+      const d = await r.json();
+      setFsAppMsg(d.ok ? "✅ 连通（App ID / Secret 有效）" : `❌ ${d.error || "失败"}`);
+    } catch (e) {
+      setFsAppMsg(`❌ ${(e as Error).message}`);
+    }
+  }
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -66,6 +109,7 @@ export const ImPanel: FC = () => {
     } catch {}
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadFsAppStatus(); }, [loadFsAppStatus]);
 
   const save = async () => {
     setBusy(true); setMsg("");
@@ -148,6 +192,54 @@ export const ImPanel: FC = () => {
             <input className={inputCls} placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" value={cfg.feishuWebhook}
               onChange={(e) => setCfg({ ...cfg, feishuWebhook: e.target.value })} />
           </div>
+          {/* 飞书自建应用(2026-10-02) —— 与上面的自定义机器人是**两条通道**:
+              webhook 只往配置的那个群推文本; 自建应用才能按人发(通知中心按人推送的前提)、
+              才能收事件订阅。企业微信那块是这个形态的现成范本。 */}
+          <div className="rounded border border-sky-400/20 bg-sky-400/[0.03] p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[11px] font-medium text-sky-300">飞书自建应用（按人推送 / 收事件订阅，区别于上面的群机器人）</span>
+              {fsStatus?.configured && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] text-emerald-300">已配置 {fsStatus.appId}</span>}
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[11px] text-muted-foreground">App ID</label>
+                <input className={inputCls} placeholder="cli_xxxxxxxxxxxx"
+                  value={fsApp.appId} onChange={(e) => setFsApp({ ...fsApp, appId: e.target.value })}
+                  data-control="im:feishu-app-id" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-muted-foreground">App Secret{fsStatus?.hasSecret ? "（已设置，留空不修改）" : ""}</label>
+                <input className={inputCls} type="password" placeholder="应用密钥"
+                  value={fsApp.appSecret} onChange={(e) => setFsApp({ ...fsApp, appSecret: e.target.value })}
+                  data-control="im:feishu-app-secret" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-muted-foreground">Verification Token{fsStatus?.hasVerificationToken ? "（已设置）" : ""}</label>
+                <input className={inputCls} placeholder="事件订阅校验令牌"
+                  value={fsApp.verificationToken} onChange={(e) => setFsApp({ ...fsApp, verificationToken: e.target.value })}
+                  data-control="im:feishu-verification-token" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-muted-foreground">Encrypt Key{fsStatus?.hasEncryptKey ? "（已设置）" : ""}</label>
+                <input className={inputCls} type="password" placeholder="事件加密密钥(启用加密时必填)"
+                  value={fsApp.encryptKey} onChange={(e) => setFsApp({ ...fsApp, encryptKey: e.target.value })}
+                  data-control="im:feishu-encrypt-key" />
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => void saveFeishuApp()} disabled={busy}
+                className="rounded border border-sky-400/40 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 disabled:opacity-40"
+                data-control="im:feishu-app-save">保存应用配置</button>
+              <button type="button" onClick={() => void testFeishuApp()} disabled={busy || !fsStatus?.configured}
+                className="rounded border border-border/50 px-2 py-1 text-[10px] text-muted-foreground disabled:opacity-40"
+                data-control="im:feishu-app-test">测试连通性</button>
+              <span className="text-[10px] text-muted-foreground">
+                测试只换取 tenant_access_token，**不发消息**（避免在你的群里留测试垃圾）
+              </span>
+            </div>
+            {fsAppMsg && <div className="mt-1 text-[10px] text-sky-300">{fsAppMsg}</div>}
+          </div>
+
           <div>
             <label className="mb-1 block text-[11px] text-muted-foreground">钉钉机器人 Webhook</label>
             <input className={inputCls} placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx" value={cfg.dingtalkWebhook}

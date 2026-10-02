@@ -124,6 +124,37 @@ if (process.env.SAG_RSS_REFRESH !== "0") {
   console.log("[rss] 订阅刷新已启动 (每 6 小时, 多副本下每轮仅一个副本执行)");
 }
 
+/**
+ * 研究速递 每日抓取 —— 2026-10-02 随「研究速递」加入。
+ *
+ * ⚠ 为什么**不走** agent-scheduler: 那套调度器默认 `AGENT_SCHEDULE_AUTO_RUN` 关着,
+ *   触发只创建 planning 任务、等用户从面板手动启动(设计如此, 防后台烧钱)。
+ *   速递抓取是**确定性抓取不是 LLM 任务**, 挂在那里永远不会自己跑。
+ *   所以照 journal-sync / rss-refresh 的形态: startupTask + setInterval + withRunLease。
+ *
+ * 每天一次(与 Respal 的 19:19 同一节奏)。抓的是**全体用户订阅的并集** ——
+ *   条目表是全局的, 按用户各抓一遍只是白耗源配额(见 collectAllSubscriptions 的说明)。
+ * 关闭: SAG_DIGEST=0
+ */
+if (process.env.SAG_DIGEST !== "0") {
+  const DIGEST_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const runDigest = async () => {
+    const { withRunLease } = await import("./services/singleton-scheduler.js");
+    const { runDailyDigest } = await import("./services/digest/digest-service.js");
+    // TTL 30 分钟: 抓取几十秒到几分钟, 给足余量但**短于周期**(租约自锁的教训见 singleton-scheduler)
+    const guarded = withRunLease("research-digest", async () => runDailyDigest(), 30 * 60_000);
+    const r = await guarded();
+    if (r) {
+      console.log(`[digest] 抓取完成: ${r.users} 个订阅, ${r.topics} 个主题 → 新增 ${r.inserted} 条`
+        + `(重复 ${r.dup}), 中文概括 ${r.summarized} 条${r.failedSummaries ? ` (失败 ${r.failedSummaries})` : ""}`);
+    }
+  };
+  // 启动后 90 秒再跑首次 —— 避开启动窗口(DB/迁移/其他 hook 都在这个窗口里抢资源)
+  startupTask("research-digest-first", runDigest, { delayMs: 90_000, maxAttempts: 2 });
+  setInterval(() => { void runDigest().catch((e) => console.warn("[digest] 抓取异常:", String(e).slice(0, 120))); }, DIGEST_INTERVAL_MS);
+  console.log("[digest] 研究速递抓取已启动 (每 24 小时, 多副本下每轮仅一个副本执行)");
+}
+
 // V6: Agent 评测集自动回归(启动即跑一次 + 每24小时, 通过率<50%告警)
 // 2026-09-03: 加 AGENT_EVAL_AUTO_ENABLED 开关(默认关) — 自动评测消耗真实
 // LLM token 且后端每次重启都会触发, 需用时在 .env 设 AGENT_EVAL_AUTO_ENABLED=true

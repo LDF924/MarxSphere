@@ -345,6 +345,11 @@ export interface SkillRecord {
   zhDescription?: string;
   version?: string;
   sourceUrl?: string;
+  // ── 云端分发元数据（2026-10-02, 对照 Respal 的 cloudSource/cloudId/cloudUpdated）──
+  // 三者可独立为空: 本地自建技能就是都没有。前端据此显示来源徽标与"可更新"提示。
+  cloudSource?: string;
+  cloudId?: string;
+  cloudUpdated?: string;
 }
 
 // ─── 技能自动更新检测 ───

@@ -99,7 +99,7 @@ import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream �
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
 const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history",
-  "ppt-workbench", "aigc-detect", "lit-import", "opinion"];
+  "ppt-workbench", "aigc-detect", "lit-import", "opinion", "digest", "notifications"];
 
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
@@ -172,6 +172,8 @@ import { ApiTokensPanel } from "./components/ApiTokensPanel";
 import { ServiceTokensPanel } from "./components/ServiceTokensPanel";
 import { DocsPanel } from "./components/DocsPanel";
 import { AlertsPanel } from "./components/AlertsPanel";
+import { NotificationsPanel } from "./components/NotificationsPanel";
+import { DigestPanel } from "./components/DigestPanel";
 import { ImPanel } from "./components/ImPanel";
 import { AlertToast } from "./components/AlertToast";
 import { MemoryPanel } from "./components/MemoryPanel";
@@ -192,7 +194,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history"
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "digest" | "notifications"
   // 2026-10-01: 自旧项目 AItoolman 移植的能力。**本体已融入既有 tab**, 这里保留
   //   4 个深链视图(不是导航项): 外部(`#ppt-workbench`/`#opinion`/`#aigc-detect`)
   //   与文献导入(`#lit-import`)。keyword-net / wordcloud / word-build 已被宿主
@@ -424,7 +426,33 @@ function AppShell() {
   const [chatStreamingText, setChatStreamingText] = useState("");
   const [chatReasoning, setChatReasoning] = useState("");
   const [chatRunningTool, setChatRunningTool] = useState<string | null>(null);
-  const [chatIsRunning, setChatIsRunning] = useState(false);
+  /**
+   * 并行运行(2026-10-02)。
+   *
+   * ═══ 为什么改 ═══
+   * 改前是一个全局布尔 `chatIsRunning`: 只要有一个会话在跑, 发送/新建/删除全被拦
+   * (实测 `if (!chatSessionId || chatIsRunning) return` 出现在 3 处)。长推理期间
+   * 用户想另开一个对话做别的事, 只能等 —— 而服务端(agent 队列、orchestrator 工人、
+   * 并行安全工具)本来就能同时跑多个, 是**前端把出口堵死了**。
+   *
+   * ═══ 不变量(改这个状态前先读) ═══
+   *   · 运行态**按会话 id 记**, 不是全局 —— 所以切走再切回来能正确显示"这个还在跑";
+   *   · 流式事件回到时**必须写进它自己的会话**(见 sendChatMessage 里的 owner 判断),
+   *     否则 A 会话的 token 会打进 B 会话的消息流 —— 这是并行化最容易出的错, 且
+   *     表现为"内容串台"而不是报错;
+   *   · `chatStreamingText` 等**只属于当前正在看的那个会话**。别的会话在跑时不渲染
+   *     它的流式文本(切过去时才由 openChatSession 从服务端拉回来)。
+   */
+  const [chatRunningIds, setChatRunningIds] = useState<Set<string>>(() => new Set());
+  /** 当前的 isRunning 只反映**正在看的这个会话** —— 传进 ChatPanel 的就是它 */
+  const chatIsRunning = chatSessionId ? chatRunningIds.has(chatSessionId) : false;
+  const markRunning = useCallback((id: string, on: boolean) => {
+    setChatRunningIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
   const [chatModel, setChatModel] = useState("");
   const [chatWebSearch, setChatWebSearch] = useState(false);
   /** V399: 深度模式 — 质量优先（文献必查/推理深化/轮次 20），Composer 开关 */
@@ -450,7 +478,15 @@ function AppShell() {
   });
   /** V399: 顶栏「项目」弹出面板 */
   const [projectPanelOpen, setProjectPanelOpen] = useState(false);
-  const chatAbortRef = useRef<AbortController | null>(null);
+  /** 按会话存 abort 控制器 —— 并行下"停止"必须只停那一个会话 */
+  const chatAbortsRef = useRef<Map<string, AbortController>>(new Map());
+  /**
+   * chatSessionId 的实时镜像。
+   * ⚠ 流式回调里**必须**读它而不是闭包里的 chatSessionId: 后者是发送那一刻的快照,
+   *   用户切走后仍是旧值, 判"是否还看得见"会永远为真 → 内容串台。
+   */
+  const chatSessionIdRef = useRef<string | null>(null);
+  useEffect(() => { chatSessionIdRef.current = chatSessionId; }, [chatSessionId]);
   /** V425: 会话切换请求序号 — 竞态防护：响应回来时若序号已过期（期间又切了会话）则丢弃 */
   const chatSessionReqSeqRef = useRef(0);
   /** V399: 流式落库清理 — assistant 消息追加后统一清空流式态（历史消息已渲染，无闪现） */
@@ -478,6 +514,29 @@ function AppShell() {
       window.localStorage.setItem("sag:theme:v1", next);
     } catch { /* ignore */ }
   }
+
+  // ═══ 命令面板的动作通道(2026-10-02) ═══
+  // MainWorkspaceTabs 的 paletteActions 派发 "sag:command", 这里落地成真实动作。
+  // ⚠ 用 ref 存最新的 handler: 如果直接把 toggleTheme 等放进依赖数组, 每次 theme/collapsed
+  //   变化都要重挂监听; 而 effect 只挂一次时闭包里的 toggleTheme 会**捕获旧的 theme**,
+  //   导致"切主题切不动"(经典 stale-closure)。用 ref 转发即可两全。
+  const cmdHandlerRef = useRef<(name: string) => void>(() => {});
+  cmdHandlerRef.current = (name: string) => {
+    switch (name) {
+      case "toggle-theme": toggleTheme(); break;
+      case "toggle-collapse": setChatCollapsed((v) => !v); break;
+      case "new-session": void createChatSession(); break;
+      case "digest-refresh": window.dispatchEvent(new CustomEvent("sag:digest-refresh")); break;
+    }
+  };
+  useEffect(() => {
+    const onCmd = (e: Event) => {
+      const d = (e as CustomEvent).detail as { name?: string } | undefined;
+      if (d?.name) cmdHandlerRef.current(d.name);
+    };
+    window.addEventListener("sag:command", onCmd);
+    return () => window.removeEventListener("sag:command", onCmd);
+  }, []);
 
   // 侧边栏折叠持久化
   useEffect(() => {
@@ -525,7 +584,11 @@ function AppShell() {
     // V425: 请求序号防竞态 — 慢响应回来时若已切到别的会话，丢弃旧数据
     const reqSeq = ++chatSessionReqSeqRef.current;
     setChatSessionId(sessionId);
-    chatAbortRef.current?.abort();
+    // ⚠ 2026-10-02 并行: **不要在这里 abort 离开的会话**。
+    //   改前这里是 `abort(chatSessionId)` —— 那是单会话时代的写法(切走就等于放弃它)。
+    //   但现在"切走"恰恰是并行的使用方式: 用户在 A 会话发一个长推理, 切到 B 做别的事,
+    //   再切回 A 看进度。切走就中止会让这个功能名存实亡, 而且**不报错** ——
+    //   表现为"A 明明发了却没反应", 极难定位。停止请走「停止」按钮(stopChatMessage)。
     setChatMessages([]);
     setChatToolCalls([]);
     setChatStreamingText("");
@@ -552,17 +615,24 @@ function AppShell() {
 
   // 发送消息
   async function sendChatMessage(content: string, images: ChatDraftImage[], webSearch: boolean, deepMode?: boolean, docs?: ChatDraftImage[]) {
-    if (!chatSessionId || chatIsRunning) return;
-    chatAbortRef.current?.abort();
+    // 2026-10-02 并行: 拦的是"**这个**会话已经在跑", 不是"有任何一个在跑"
+    const ownerId = chatSessionId;
+    if (!ownerId || chatRunningIds.has(ownerId)) return;
+    chatAbortsRef.current.get(ownerId)?.abort();
     const controller = new AbortController();
-    chatAbortRef.current = controller;
-    setChatIsRunning(true);
+    chatAbortsRef.current.set(ownerId, controller);
+    markRunning(ownerId, true);
     setChatPendingUser(content);
     setChatStreamingText("");
     setChatReasoning("");
     setChatRunningTool(null);
+    /** 流式回调是否还在"看得到的那个会话" —— 用户切走后不再往界面写 */
+    const isVisible = () => chatSessionIdRef.current === ownerId;
     try {
-      await api.streamChatMessage(chatSessionId, { content, images, webSearch, deepMode, reasoningEffort: chatReasoningEffort, docs }, (event) => {
+      await api.streamChatMessage(ownerId, { content, images, webSearch, deepMode, reasoningEffort: chatReasoningEffort, docs }, (event) => {
+        // ⚠ 归属判断: 用户切到别的会话时,**不能**再往当前界面写这个会话的流 ——
+        //   否则 B 会话的界面会显示 A 的内容。落库由服务端负责, 切回来时重新拉取。
+        if (!isVisible()) return;
         switch (event.type) {
           case "message":
             if (event.message.role === "user") {
@@ -612,18 +682,22 @@ function AppShell() {
         setError(String(err instanceof Error ? err.message : err));
       }
     } finally {
-      setChatIsRunning(false);
-      setChatPendingUser("");
-      setChatStreamingText("");
-      setChatReasoning("");
-      setChatRunningTool(null);
-      chatAbortRef.current = null;
+      markRunning(ownerId, false);
+      // 只清与"当前可见会话"相关的界面态 —— 若用户已经切走, 清它会误伤新会话的显示
+      if (isVisible()) {
+        setChatPendingUser("");
+        setChatStreamingText("");
+        setChatReasoning("");
+        setChatRunningTool(null);
+      }
+      // 只删自己那把; 用户可能已经切走又对同一会话发了新的请求(覆盖过 map)
+      if (chatAbortsRef.current.get(ownerId) === controller) chatAbortsRef.current.delete(ownerId);
     }
   }
 
   // 新建会话
   async function createChatSession() {
-    if (chatIsRunning) return;
+    // 2026-10-02 并行: 新建会话**不再**被"有会话在跑"拦住 —— 这正是并行要解决的问题
     try {
       const { session } = await api.createMcpSession({ kind: "chat" });
       setChatSessions((prev) => [session, ...prev]);
@@ -666,15 +740,18 @@ function AppShell() {
   }
 
   function stopChatMessage() {
-    chatAbortRef.current?.abort();
+    // 只停**当前这个**会话 —— 并行下别的会话可能也在跑, 一起停掉是用户没要求的
+    if (chatSessionId) chatAbortsRef.current.get(chatSessionId)?.abort();
   }
 
   /** V399: 撤回/删除任意消息（提问可撤回、AI 回答可删除） */
   async function recallChatMessage(messageId: string) {
-    if (!chatSessionId || chatIsRunning) return;
-    // 若删除的是当前正在发送/回复关联的消息，先中止
+    // 2026-10-02 并行: 原来条件是 `!chatSessionId || chatIsRunning`, 那个全局锁会让
+    // "别的会话在跑"时也无法撤回本会话的消息 —— 与本会话无关的忙碌不该拦这里
+    if (!chatSessionId || chatRunningIds.has(chatSessionId)) return;
+    // 若删除的是当前正在发送/回复关联的消息，先中止**本会话**的流
     if (messageId === chatMessages[chatMessages.length - 1]?.id) {
-      chatAbortRef.current?.abort();
+      chatAbortsRef.current.get(chatSessionId)?.abort();
     }
     try {
       await api.deleteMcpMessage(chatSessionId, messageId);
@@ -2535,6 +2612,10 @@ function AppShell() {
             ) : workspaceView === "opinion" ? (
               <ErrorBoundary><OpinionSearchPanel /></ErrorBoundary>            ) : workspaceView === "admin" ? (
               <AdminPanel />
+            ) : workspaceView === "notifications" ? (
+              <ErrorBoundary><NotificationsPanel /></ErrorBoundary>
+            ) : workspaceView === "digest" ? (
+              <ErrorBoundary><DigestPanel /></ErrorBoundary>
             ) : workspaceView === "alerts" ? (
               <AlertsPanel />
             ) : workspaceView === "im" ? (
@@ -3048,6 +3129,8 @@ function MainWorkspaceTabs(props: {
     policy: "hsl(28 70% 55%)", vault: "hsl(28 70% 55%)",
     skills: "hsl(280 50% 60%)", mcp: "hsl(280 50% 60%)",
     alerts: "hsl(25 90% 55%)",
+    notifications: "hsl(214 70% 60%)",
+    digest: "hsl(150 45% 50%)",
     // 后台/系统组（灰）: Jobs/任务/Trace/评测/Inbox/账户计费/运营管理/文档中心
     jobs: "hsl(220 10% 55%)", tasks: "hsl(220 10% 55%)", trace: "hsl(220 10% 55%)", eval: "hsl(220 10% 55%)", inbox: "hsl(220 10% 55%)", billing: "hsl(220 10% 55%)", admin: "hsl(220 10% 55%)", "agent-console": "hsl(220 10% 55%)", dream: "hsl(220 10% 55%)", docs: "hsl(220 10% 55%)", "site-content": "hsl(220 10% 55%)", "research-history": "hsl(220 10% 55%)",
     // 科研工具（绿，归文献研究组）: PDF2Obsidian/政经C刊科研/写作语料库
@@ -3074,6 +3157,7 @@ function MainWorkspaceTabs(props: {
       dot: "hsl(150 45% 50%)",
       items: [
         { value: "literature", label: t("文献库", "Library") },
+        { value: "digest", label: t("研究速递", "Digest") },
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照, 与文献库同族紧邻)
         { value: "sciverse", label: t("外部检索", "Sciverse") },
         { value: "scenarios", label: t("场景", "Scenarios") },
@@ -3157,6 +3241,7 @@ function MainWorkspaceTabs(props: {
         { value: "trace", label: t("Trace", "Trace") },
         { value: "eval", label: t("评测", "Eval") },
         { value: "alerts", label: t("告警", "Alerts") },
+        { value: "notifications", label: t("通知中心", "Notifications") },
         { value: "im", label: t("IM接入", "IM") },
         { value: "inbox", label: t("Inbox", "Inbox") },
         { value: "billing", label: t("账户计费", "Billing") },
@@ -3173,6 +3258,24 @@ function MainWorkspaceTabs(props: {
   /** 命令面板动作: 全视图跳转(categories 单一真源) */
   const paletteActions = useMemo<PaletteAction[]>(() => {
     const out: PaletteAction[] = [];
+    // ═══ 动作组(2026-10-02) ═══
+    // 改前这里**只有视图跳转** —— 是个"跳页器"不是命令面板(实测对照 Respal 的 Ctrl+P)。
+    // 动作命令走 **window CustomEvent** 而不是往 MainWorkspaceTabs 传一堆回调:
+    // 它当前的 props 只有 view/onChange, 为了几个跨层动作把主题、折叠、项目面板
+    // 全部透传下来会让签名迅速膨胀。事件是本仓已有的约定(App.tsx 里 4 处 CustomEvent)。
+    const emit = (name: string) => window.dispatchEvent(new CustomEvent("sag:command", { detail: { name } }));
+    out.push(
+      { id: "cmd:new-session", label: t("新建对话", "New chat"), group: t("动作", "Actions"),
+        keywords: "new session 新建 对话 chat", run: () => { props.onChange("assistant"); emit("new-session"); } },
+      { id: "cmd:toggle-theme", label: t("切换主题(深/浅)", "Toggle theme"), group: t("动作", "Actions"),
+        keywords: "theme dark light 主题 深色 浅色", run: () => emit("toggle-theme") },
+      { id: "cmd:toggle-collapse", label: t("折叠/展开会话栏", "Toggle sidebar"), group: t("动作", "Actions"),
+        keywords: "collapse sidebar 折叠 侧栏", run: () => emit("toggle-collapse") },
+      { id: "cmd:refresh-digest", label: t("研究速递: 立即抓取", "Digest: refresh"), group: t("动作", "Actions"),
+        keywords: "digest refresh 速递 抓取 刷新", run: () => { props.onChange("digest" as any); emit("digest-refresh"); } },
+      { id: "cmd:open-feishu", label: t("打开 IM 接入配置", "IM settings"), group: t("动作", "Actions"),
+        keywords: "im feishu 飞书 机器人", run: () => props.onChange("im") },
+    );
     for (const cat of categories) {
       for (const item of cat.items) {
         out.push({

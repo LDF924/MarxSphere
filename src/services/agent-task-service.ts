@@ -767,14 +767,24 @@ export async function runAgentTask(taskId: string, stepRunner: (step: AgentTaskS
         }
         clearWorkspaceSnapshot(taskId);
       } catch { /* 钩子失败不阻塞 */ }
-      // 差距M①(Codex notifications): 任务完成告警通知（前端 toast 轮询可见）
+      // 差距M①(Codex notifications): 任务完成通知。
+      //
+      // ⚠ 2026-10-02 修正: 原先这里写的是 `recordAlert({level:"info", category:"agent"})`,
+      //   而它**永远弹不出来也看不清** ——
+      //     · AlertToast.tsx:38 `alerts.filter(a => a.level !== "info")` 把 info 全部滤掉;
+      //     · AlertsPanel.tsx:27 的 CATEGORY_LABELS 没有 `agent` 键, 这一类显示裸英文。
+      //   根因是 alerts 是**全局运维表**(没有 user_id), 而"某个人的任务完成了"是
+      //   给特定用户的消息 —— 放错表了。现在改走 notifications(有 user_id)。
       try {
-        const { recordAlert } = await import("./alert-service.js");
-        await recordAlert({
-          level: "info", category: "agent", taskType: "agent",
-          taskId, message: `任务完成: ${latest.goal.slice(0, 30)}`,
-          detail: { status: "completed", loopCount: loop + 1, reflectScore: reflect.score },
-        });
+        const userRow = await pool.query(`select user_id from agent_tasks where id = $1`, [taskId]);
+        const ownerId = userRow.rows[0]?.user_id ? String(userRow.rows[0].user_id) : "";
+        if (ownerId) {
+          const { notifyTaskDone } = await import("./notification-service.js");
+          await notifyTaskDone({
+            userId: ownerId, taskId, goal: latest.goal,
+            reflectScore: typeof reflect?.score === "number" ? reflect.score : undefined,
+          });
+        }
       } catch { /* 通知失败不阻塞 */ }
       // V417: 技能效果回写 —— 这次任务成功的算到它用过的技能头上。
       // 按 taskId 从流水表反查(不靠内存传 id), 任务跨进程/重启也不丢。失败不阻塞。
