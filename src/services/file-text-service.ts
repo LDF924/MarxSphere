@@ -148,8 +148,7 @@ async function extractFromBuffer(buf: Buffer, fileName: string): Promise<{ text:
 }
 
 /** 读一行(带归属校验 —— 这张表里全是用户论文, 缺 owner 过滤就等于把别人的稿件交出去) */
-async function loadRow(userId: string, fileId: string): Promise<{ id: string; filename: string; storage_rel: string; text: string; extraction: string } | null> {
-  const r = await pool.query(
+async function loadRow(userId: string, fileId: string): Promise<{ id: string; filename: string; storage_rel: string; text: string; extraction: string } | null> {  const r = await pool.query(
     `select id, filename, storage_rel, text, extraction from user_files where id=$1 and user_id=$2`,
     [rawFileId(fileId), userId]);
   return r.rows[0] ?? null;
@@ -194,8 +193,88 @@ export async function ensureFileText(userId: string, fileId: string, opts: { for
 }
 
 /**
- * 把 OCR 结果写回文件的 text 列 —— 「识别文字」那条链跑完之后调这个。
+ * 表格文件的**结构化**读取(多 sheet + 列类型)。xlsx/xls 专用。
  *
+ * 由来(2026-10-02 对照 Respal 的表格预览): 改前 xlsx 只有一条路 ——
+ * `scripts/xlsx2csv.py` 把**首个含数据的 sheet** 转成 CSV 纯文本。两个后果都很难看:
+ *   · 一份"说明 / 变量表 / 数据"三 sheet 的问卷传进来, 用户只看到说明页, 数据根本没出现;
+ *   · 日期列变成数字或字符串, 前端还按"前 50 行数字占比"猜类型 —— 猜错的列会被
+ *     当成分类变量送进回归。
+ * 现在多 sheet 与列类型都由 openpyxl 直出(它本来就带着 Python 类型, 不用猜)。
+ *
+ * 边界: 每 sheet 只回前 `previewRows` 行。这是**预览**, 全量数据仍走
+ * `/api/files/{id}/content`(那时已是 CSV) —— 评估里动辄十万行的表不该塞进一个 JSON。
+ */
+export interface SheetPreview {
+  name: string;
+  empty: boolean;
+  columns: Array<{ name: string; type: string }>;
+  header: string[];
+  rows: Array<Array<string | number | boolean>>;
+  /** 预览只取了前 N 行, 真实行数比这多 */
+  truncated: boolean;
+  /** openpyxl 记的声明尺寸(拿来做"共约 N 行"的提示) */
+  declaredRows: number;
+}
+
+export async function readSpreadsheet(userId: string, fileId: string, opts: { previewRows?: number } = {}): Promise<
+  { ok: true; fileName: string; sheetNames: string[]; sheets: SheetPreview[] } | { ok: false; error: string }
+> {
+  const row = await loadRow(userId, fileId);
+  if (!row) return { ok: false, error: "文件不存在或不属于你" };
+
+  /**
+   * ⚠ 上传入口会把 xlsx **转成 CSV 再落库**(server.ts 的 /api/files/upload ——
+   *   统计台那条链读的是 CSV), 所以 storage_rel 指向的**不是原始 xlsx**。
+   *   直接拿它喂 openpyxl 只会得到 "File is not a zip file"(实测踩过)。
+   *   上传时已经解析好的多 sheet 预览存在 profile.sheets 里, 优先用它 ——
+   *   既正确, 也省掉一次几秒的 Python 往返。
+   */
+  const cached = await loadSheetPreview(userId, fileId);
+  if (cached) return { ok: true, fileName: row.filename, sheetNames: cached.sheets.map((s) => s.name), sheets: cached.sheets };
+
+  const buf = await getObject(String(row.storage_rel ?? ""));
+  if (!buf) return { ok: false, error: "文件字节已丢失(存储里找不到), 请重新上传" };
+  return readSpreadsheetFromBuffer(buf, row.filename, opts);
+}
+
+/** 读上传时存进 profile.sheets 的多 sheet 预览(没有则 null) */
+export async function loadSheetPreview(userId: string, fileId: string): Promise<{ sheets: SheetPreview[] } | null> {
+  const r = await pool.query(
+    `select profile from user_files where id=$1 and user_id=$2`,
+    [rawFileId(fileId), userId]);
+  const sheets = (r.rows[0]?.profile as { sheets?: SheetPreview[] } | undefined)?.sheets;
+  return Array.isArray(sheets) && sheets.length ? { sheets } : null;
+}
+
+/** 同上, 但直接吃字节 —— 资料库(vault)那条路没有 user_files 行, 只有磁盘上的文件 */export async function readSpreadsheetFromBuffer(buf: Buffer, fileName: string, opts: { previewRows?: number } = {}): Promise<
+  { ok: true; fileName: string; sheetNames: string[]; sheets: SheetPreview[] } | { ok: false; error: string }
+> {
+  const ext = extOf(fileName);
+  if (ext !== "xlsx" && ext !== "xls") return { ok: false, error: `不是表格文件(.${ext})` };
+
+  const tmp = path.join(os.tmpdir(), `sheet-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+  try {
+    writeFileSync(tmp, buf);
+    const out = await runPython([
+      path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py"), tmp, "--meta",
+    ], 60_000);
+    const parsed = JSON.parse(out) as { sheetNames: string[]; sheets: SheetPreview[] };
+    const limit = opts.previewRows ?? 200;
+    // 脚本侧已按 200 截断; 调用方要更少时在这里再切一刀(让"预览行数"是一个参数而不是常量)
+    const sheets = parsed.sheets.map((s) => (limit < 200 && !s.empty
+      ? { ...s, rows: s.rows.slice(0, limit), truncated: s.truncated || s.rows.length > limit }
+      : s));
+    return { ok: true, fileName, sheetNames: parsed.sheetNames, sheets };
+  } catch (e) {
+    return { ok: false, error: `表格读取失败: ${String((e as Error).message).slice(0, 160)}` };
+  } finally {
+    try { unlinkSync(tmp); } catch { /* 临时文件清理失败不影响结果 */ }
+  }
+}
+
+/**
+ * 把 OCR 结果写回文件的 text 列 —— 「识别文字」那条链跑完之后调这个。
  * 由来: OCR 的产物原本只落在 `ocr_jobs.text` 里, 而审稿/对话要的是「这个**上传文件**的正文」。
  * 不写回的话, 用户 OCR 完回到评审面板, 系统还是说"这份是扫描件"。
  */

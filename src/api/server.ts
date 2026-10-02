@@ -3246,6 +3246,19 @@ export function buildHttpServer() {
     return user;
   };
 
+  /**
+   * 模型价目表(公开) —— 让"这次扣了多少"变成可核对的数, 而不是只有运营看得见。
+   *
+   * 鉴权: 与 /api/billing/balance 同档(登录即可)。价目表本身不是秘密(用户有权知道
+   * 自己被按什么价计费); 但**平台成本**(MODEL_COGS / llm_model_prices)不在这里出 ——
+   * 那等于公开毛利率, 要看它请走 requireAdmin 的 /api/admin/cost-ledger。
+   */
+  app.get("/api/billing/pricing", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { pricingCatalog } = await import("../services/billing-service.js");
+    return pricingCatalog();
+  });
+
   app.get("/api/billing/balance", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const quota = await billingService.getSubscriptionQuota(user.id);
@@ -8486,6 +8499,33 @@ except Exception as e:
    *   本仓的老毛病就是"清单在多处各存一份"（工具登记四处、权限列表多处），
    *   这里直接给一个读取口，前端渲染它。
    */
+  /**
+   * 会话工作目录(2026-10-02)。
+   *
+   * 沙箱此前只有一个**全局**工作目录(`agent_workspace/`), 并行会话的产物混在一起,
+   * 也没法让某个任务待在自己的子目录。这里给它一个可选的子目录:
+   * 传名字就切过去(不存在则创建), 传空串回全局。
+   *
+   * ⚠ **只接受相对名字**, 不接受绝对路径 —— 校验在 setSessionWorkspace 里(正则 + resolve
+   *   后必须在 agent_workspace 之下)。原因是这个值会直接成为子进程的 cwd, 而沙箱只是
+   *   设 cwd + env, 没有 OS 级隔离; 放开绝对路径等于把围栏拆了。
+   */
+  app.get("/api/agent/workspace", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { currentSessionWorkspace } = await import("../services/code-sandbox-service.js");
+    return { dir: currentSessionWorkspace(), name: currentSessionWorkspace() ? path.basename(currentSessionWorkspace()) : "" };
+  });
+  app.put("/api/agent/workspace", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = (request.body ?? {}) as { name?: string };
+    const { setSessionWorkspace } = await import("../services/code-sandbox-service.js");
+    const r = setSessionWorkspace(String(body.name ?? ""));
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "BAD_WORKSPACE_NAME" });
+    // 只回名字不回绝对路径 —— 绝对路径含部署目录结构, 用户不需要, 而且它会顺着
+    // 错误信息/日志流出去。诊断要看路径时走本机管理面。
+    return { ok: true, name: r.dir ? path.basename(r.dir) : "" };
+  });
+
   app.get("/api/agent/sandbox-profiles", async () => {
     const { SANDBOX_PROFILE_LABELS, defaultSandboxProfile } = await import("../services/code-sandbox-service.js");
     return {
@@ -10105,6 +10145,21 @@ except Exception as e:
     return await testFeishuConnection();
   });
 
+  /**
+   * Python 运行时自检(2026-10-02) —— 把"哪条链缺哪个包"从"跑分析时才炸"提前到看得见。
+   *
+   * 此前有五条互不相干的探测路径, 且版本号是硬编码的(`existsSync ? "3.12" : "未安装"`)。
+   * 现在统一走 python-health-service: 真去问解释器要版本、真去 importlib 找包。
+   *
+   * 鉴权: 登录即可。它只泄露**本机**装了哪些 Python 包, 不含任何用户数据;
+   * 而这份信息恰恰是用户自己排障要用的(在他的机器上)。
+   */
+  app.get("/api/runtime/python", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { probePython } = await import("../services/python-health-service.js");
+    return await probePython();
+  });
+
   // ═══ 用户通知中心 (2026-10-02) ═══
   // 与 /api/alerts 的分工: alerts 是**全局运维事实**(无 user_id, 本机豁免);
   // 这里是**给某个登录用户的消息**(按 user.id 隔离, 必须登录)。
@@ -10137,6 +10192,24 @@ except Exception as e:
     const { clearReadNotifications } = await import("../services/notification-service.js");
     return { cleared: await clearReadNotifications(user.id) };
   });
+  /**
+   * 通知偏好(按分类静音) —— 2026-10-02。
+   *
+   * 静音判定放在**写入侧**(notification-service.notify), 所以关掉之后是"根本不写库",
+   * 而不是"写了但前端不显示" —— 后者换台设备就会看到一堆自己关过的通知。
+   */
+  app.get("/api/notifications/settings", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { getMutedCategories, NOTIFICATION_CATEGORIES } = await import("../services/notification-service.js");
+    return { muted: await getMutedCategories(user.id), categories: NOTIFICATION_CATEGORIES };
+  });
+  app.put("/api/notifications/settings", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = (request.body ?? {}) as { muted?: unknown };
+    const { setMutedCategories, NOTIFICATION_CATEGORIES } = await import("../services/notification-service.js");
+    // 不在白名单里的值被 setMutedCategories 丢掉(拼错的分类名会变成"静音了但其实没用"的假状态)
+    return { muted: await setMutedCategories(user.id, body.muted), categories: NOTIFICATION_CATEGORIES };
+  });
 
   // ═══ 研究速递 (2026-10-02) ═══
   // 条目表 digest_items 是**全局**的(无 user_id), 订阅与已读按用户分离;
@@ -10167,6 +10240,64 @@ except Exception as e:
     const coverage = await checkJournalCoverage(sub.preferredJournals).catch(() => ({ covered: [], uncovered: [] }));
     return { ...sub, uncoveredJournals: coverage.uncovered };
   });
+  /**
+   * 速递的**可选项目录**(2026-10-03)。
+   *
+   * 由来(用户要求"偏好设置里列有所有相关的研究主题和期刊选择, 直接点击勾选, 按学科全部分好"):
+   *   改前偏好设置是**两个 textarea**, 让用户自己按行手打主题与刊名, 还得"与本站期刊库一致"
+   *   (原文案自己都这么写) —— 打错了就静默收不到东西。而候选其实是**已知的**:
+   *   · 期刊: cjournal_journals 的 80 本, 每本都有 field(学科) 与 topic_tags;
+   *   · 主题: 那 80 本的 topic_tags 并集。
+   *   把它做成目录, 前端就能按学科分组渲染成可勾选的列表。
+   */
+  app.get("/api/digest/catalog", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const jr = await pool.query(
+      `select name, field, level, topic_tags, language
+         from cjournal_journals
+        where name is not null and name <> ''
+        order by field nulls last, name`);
+    // 学科(中文) → 刊名; 主题 → 出现次数(用于排序与"这个主题有几本刊覆盖")
+    const byField = new Map<string, Array<{ name: string; level: string }>>();
+    const topicCount = new Map<string, number>();
+    /**
+     * 主题 → 学科归属。一个主题可能横跨多个学科(如「政治经济学」既有经济学期刊也有马理论期刊),
+     * 取**出现最多的那个学科**作为主归属 —— 用户要的是"按学科分好", 主题只能落在一个格子里,
+     * 落错比落空好(而且主归属就是它最常出现的领域, 符合直觉)。
+     */
+    const topicField = new Map<string, Map<string, number>>();
+    for (const r of jr.rows) {
+      const field = String(r.field || "未分类");
+      if (!byField.has(field)) byField.set(field, []);
+      byField.get(field)!.push({ name: String(r.name), level: String(r.level || "") });
+      for (const t of (Array.isArray(r.topic_tags) ? r.topic_tags : [])) {
+        const k = String(t).trim();
+        if (!k) continue;
+        topicCount.set(k, (topicCount.get(k) ?? 0) + 1);
+        if (!topicField.has(k)) topicField.set(k, new Map());
+        const m = topicField.get(k)!;
+        m.set(field, (m.get(field) ?? 0) + 1);
+      }
+    }
+    const dominantField = (topic: string): string => {
+      const m = topicField.get(topic);
+      if (!m || !m.size) return "未分类";
+      return [...m.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    };
+    return {
+      // 学科分组 —— 前端直接渲染成"哲学 / 经济学 / 马克思主义 …"分组
+      fields: [...byField.entries()]
+        .map(([field, journals]) => ({ field, journals: journals.sort((a, b) => a.name.localeCompare(b.name, "zh-CN")) }))
+        .sort((a, b) => b.journals.length - a.journals.length),
+      // 主题候选: 期刊库 topic_tags 的并集, 按覆盖刊数降序(覆盖越广越可能是用户关心的)。
+      // 字段名用 journalCount 而不是 journals —— 上面 fields 里 journals 是**数组**,
+      // 同名会让 TS 把两处推断成同一形状(实测报 "Property 'length' does not exist on number")。
+      topics: [...topicCount.entries()]
+        .map(([name, count]) => ({ name, journalCount: count, field: dominantField(name) }))
+        .sort((a, b) => b.journalCount - a.journalCount || a.name.localeCompare(b.name, "zh-CN")),
+    };
+  });
+
   app.post("/api/digest/topics", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const body = (request.body ?? {}) as { topics?: unknown; preferredJournals?: unknown; days?: unknown };
@@ -10738,6 +10869,98 @@ except Exception as e:
   app.get("/api/skills", async () => ({
     skills: skillsService.listSkills()
   }));
+
+  /**
+   * 技能货架(2026-10-02) —— 把 200+ 个技能变成**可逛的目录**, 而不是一张平铺列表。
+   *
+   * 由来(对照 Respal 的 Skills 广场): 本仓技能面板此前能按分类折叠, 但没有
+   *   · 货架视图(卡片网格, 一眼看容量与分布)
+   *   · 版本/作者/标签/来源(这些字段 SKILL.md 里**一直有**, 只是没有任何代码读)
+   *   · 热度(算过、有路由、前端零调用 —— `/api/skills/usage` 从上线起就没人调)
+   *   结果: 用户面对 209 个技能只能靠搜索, 不知道哪些是常用的、哪些是自研的。
+   *
+   * 鉴权: 与 /api/skills 同档(都在 `skills` 权限桶里), 不额外收紧。
+   * 性能: 全量扫盘 + 读 SKILL.md, 与 /api/skills 同一次量级; 分类/标签统计在内存里做。
+   */
+  app.get("/api/skills/shelf", async (request, reply) => {
+    const q = request.query as { category?: string; tag?: string; q?: string; sort?: string; installed?: string };
+    const skills = skillsService.listSkills();
+
+    // 热度: 手动浏览/健康检查那侧没有埋点, 只有 Agent 任务会记(见 skill-usage-tracker 的说明)。
+    // 所以这是**辅助排序**而不是权威热度 —— 前端要如实标注它只覆盖 Agent 使用。
+    let usageBySkill = new Map<string, { useCount: number; successCount: number }>();
+    try {
+      const { listSkillUsage } = await import("../services/skill-usage-tracker.js");
+      const u = await listSkillUsage(200);
+      for (const row of u.rows) usageBySkill.set(String((row as { skillName?: string }).skillName ?? ""), {
+        useCount: Number((row as { useCount?: number }).useCount ?? 0),
+        successCount: Number((row as { successCount?: number }).successCount ?? 0),
+      });
+    } catch { /* 无埋点数据不影响货架 */ }
+
+    const withMeta = skills.map((s) => ({
+      name: s.name,
+      zhName: s.zhName,
+      description: s.description,
+      zhDescription: s.zhDescription,
+      zhCategory: s.zhCategory,
+      version: s.version,
+      author: s.author,
+      license: s.license,
+      tags: s.tags ?? [],
+      origin: s.origin,
+      whenToUse: s.whenToUse,
+      cloudSource: s.cloudSource,
+      hasHealthcheck: s.hasHealthcheck,
+      useCount: usageBySkill.get(s.name)?.useCount ?? 0,
+      successCount: usageBySkill.get(s.name)?.successCount ?? 0,
+    }));
+
+    // 分类与标签统计**基于过滤前**的全量 —— 侧栏要显示"每类多少个", 若按当前筛选算
+    // 则选中某类之后其他类都变成 0, 用户就再也切不回去了
+    const all = withMeta;
+    const categories = [...all.reduce((m, s) => {
+      const c = s.zhCategory || "未分类";
+      m.set(c, (m.get(c) ?? 0) + 1);
+      return m;
+    }, new Map<string, number>())].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    const tags = [...all.reduce((m, s) => {
+      for (const t of s.tags) m.set(t, (m.get(t) ?? 0) + 1);
+      return m;
+    }, new Map<string, number>())].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    const sources = [...all.reduce((m, s) => {
+      // 本地自建(cloudSource 为空)与"广场装的"要能分开 —— 这是货架最有用的一个维度。
+      // ⚠ origin 的值五花八门(实测见过 "github (HaipingXu/xxx)" / "github-fork (swaylq/yyy)" /
+      //   "self-made"), 整段当标签会出来一堆各不相同的"来源", 统计就失去意义。
+      //   取第一个词归一(括号里的仓库名丢掉), 仓库名对使用者没有区分价值。
+      const key = s.cloudSource || (s.origin ? s.origin.split(/[\s(]/)[0] : "本地自建");
+      m.set(key, (m.get(key) ?? 0) + 1);
+      return m;
+    }, new Map<string, number>())].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+    let rows = all;
+    // 先把查询参数取成局部常量 —— 闭包里 TS 不会保留 `if (q.tag)` 的窄化
+    const catFilter = q.category;
+    const tagFilter = q.tag;
+    const kwFilter = q.q?.toLowerCase();
+    if (catFilter) rows = rows.filter((s) => (s.zhCategory || "未分类") === catFilter);
+    if (tagFilter) rows = rows.filter((s) => s.tags.includes(tagFilter));
+    if (q.installed === "1") rows = rows.filter((s) => s.cloudSource);
+    if (kwFilter) {
+      rows = rows.filter((s) => `${s.name} ${s.zhName ?? ""} ${s.description} ${s.zhDescription ?? ""} ${s.tags.join(" ")}`.toLowerCase().includes(kwFilter));
+    }
+    if (q.sort === "name") rows = [...rows].sort((a, b) => (a.zhName || a.name).localeCompare(b.zhName || b.name, "zh-CN"));
+    else if (q.sort === "version") rows = [...rows].sort((a, b) => (b.version ?? "").localeCompare(a.version ?? "", "zh-CN"));
+    else if (q.sort === "hot") rows = [...rows].sort((a, b) => b.useCount - a.useCount);
+
+    return {
+      total: rows.length,
+      skills: rows,
+      categories,
+      tags: tags.slice(0, 60),
+      sources,
+    };
+  });
 
   // 技能审计（P1-2）— **实时扫描技能目录**（60 秒缓存）。
   // V327 时读的是 skill-audit-report.md 快照；V332 起不读文件了（快照已删）。
@@ -13177,6 +13400,16 @@ ${dataBlock}
   app.get("/api/auth/wechat/config", async (_request, reply) => {
     return await wechatAuth.getMpConfig(false);
   });
+  /**
+   * 微信连通性自检(2026-10-02) —— 管理面板此前只有"已启用"徽标, 那只反映配置齐不齐,
+   * 不反映通不通(appid 错 / 停用 / IP 未白名单 / token 被别处刷掉, 四种情况徽标都照样绿)。
+   * 只有管理员能触发: 它会真的往微信发请求, 可能触发频控。
+   */
+  app.post("/api/admin/wechat/test", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (user.role !== "admin") return reply.code(403).send({ error: "需要管理员权限" });
+    return await wechatAuth.testWechatConnectivity();
+  });
   app.post("/api/auth/wechat/qr", async (request, reply) => {
     // 生成扫码 ticket(登录场景, 免登录)
     const cfg = await wechatAuth.getMpConfig(false);
@@ -14340,6 +14573,16 @@ ${dataBlock}
     //   再把转换结果(或原字节)交给 blob-store 落库 —— 不要既写临时文件又写数据目录。
     let rawBuf = buf;
     const lower = String(body.filename ?? "").toLowerCase();
+    /**
+     * xlsx/xls: 走 openpyxl 拿**结构化**结果(多 sheet + 列类型), 再落两份东西 ——
+     *   ① 落库字节 = 首 sheet 的 CSV(既有行为, `/api/files/{id}/content` 与统计台都读它);
+     *   ② profile.sheets = 全部 sheet 的预览, 前端表格预览直接用它。
+     *
+     * ⚠ 改前只用兼容模式产出裸 CSV, **其余 sheet 全部丢弃**, 且列类型靠下面按
+     *   "前 50 行数字占比"猜(某列恰好前 50 行为空就被判成分类变量)。
+     *   现在类型来自 openpyxl 的 Python 类型, 日期也能认出来。
+     */
+    let sheetPreview: unknown = null;
     if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
       const os = await import("node:os");
       const tmpXlsx = path.join(os.tmpdir(), `sag-xlsx-${id}.xlsx`);
@@ -14347,15 +14590,18 @@ ${dataBlock}
         fs.writeFileSync(tmpXlsx, buf);
         const { execFile } = await import("node:child_process");
         const PY = process.env.EMPIRICAL_PYTHON || process.env.COGNEE_PYTHON || "python";
-        const csvText = await new Promise<string>((resolve, reject) => {
-          execFile(PY, [path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py"), tmpXlsx],
-            { timeout: 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
+        const script = path.join(process.env.SAG_ROOT || process.cwd(), "scripts", "xlsx2csv.py");
+        const runPy = (args: string[]) => new Promise<string>((resolve, reject) => {
+          execFile(PY, args, { timeout: 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
             (err, stdout, stderr) => {
               if (err) reject(new Error(stderr || err.message));
               else resolve(stdout);
             });
         });
+        const csvText = await runPy([script, tmpXlsx]);
         rawBuf = Buffer.from(csvText, "utf-8");
+        // 结构化预览失败**不阻断上传** —— 字节已经转好了, 预览是加分项
+        try { sheetPreview = JSON.parse(await runPy([script, tmpXlsx, "--meta"])); } catch { /* 见上 */ }
       } catch (e) {
         return reply.code(400).send({ error: `xlsx 解析失败: ${String((e as Error).message).slice(0, 160)}` });
       } finally {
@@ -14394,7 +14640,9 @@ ${dataBlock}
           colCount: cols.length, // 别名(viz 前端读 colCount)
           columns: cols.slice(0, 20),
           variables,
-          sampleRows: sample.slice(0, 20) // 前 20 行样例(viz 绑定数据/预览)
+          sampleRows: sample.slice(0, 20), // 前 20 行样例(viz 绑定数据/预览)
+          // 多 sheet 预览(仅 xlsx/xls): 上面这些字段只描述**首 sheet**, 其余 sheet 靠它带出去
+          ...(sheetPreview ? { sheets: (sheetPreview as { sheets?: unknown }).sheets ?? [] } : {})
         };
       }
     }
@@ -14433,6 +14681,107 @@ ${dataBlock}
       text: r.text, charCount: r.charCount, pageCount: r.pageCount,
       extraction: r.extraction, needsOcr: r.needsOcr, error: r.error,
     };
+  });
+
+  // 表格预览(多 sheet + 列类型) —— 预览面板用; xlsx/xls
+  app.get("/api/files/:fileId/sheets", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { fileId } = request.params as { fileId: string };
+    const q = request.query as { previewRows?: string };
+    const { readSpreadsheet } = await import("../services/file-text-service.js");
+    const r = await readSpreadsheet(user.id, fileId, {
+      previewRows: Math.min(Math.max(Number(q?.previewRows) || 200, 1), 1000),
+    });
+    if (!r.ok) {
+      const notFoundish = /不存在|不属于你|字节已丢失/.test(r.error);
+      return reply.code(notFoundish ? 404 : 400).send({ error: r.error, code: notFoundish ? "FILE_NOT_FOUND" : "SHEET_READ_FAILED" });
+    }
+    return { ok: true, filename: r.fileName, sheetNames: r.sheetNames, sheets: r.sheets };
+  });
+
+  // 资料库预览统一入口 —— 一份字节, 按扩展名分派成**结构化**结果(表格/幻灯片/图形)
+  //
+  // 由来(2026-10-02): 改前只有"抽纯文本"这一条路, pptx 出来是一坨 "[Slide 3]\n标题\n正文",
+  //   且 zip 里的条目顺序是 slide1, slide10, slide2 —— 页序都是错的; drawio 更是零实现。
+  //   前端于是只能对 Office 一律显示"浏览器不支持内联预览, 请下载", 连看一眼都做不到。
+  app.post("/api/preview/parse", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { path?: string; fileId?: string };
+    let buf: Buffer | null = null;
+    let name = "";
+    let fromFileId = "";
+    if (body?.path) {
+      try {
+        const f = vaultService.getBinary(body.path);
+        if (!f) return reply.code(404).send(notFound("VAULT_FILE_NOT_FOUND", "文件不存在"));
+        buf = f.data; name = f.name;
+      } catch (e) {
+        return reply.code(403).send(notFound("VAULT_ACCESS_DENIED", String((e as Error)?.message ?? e)));
+      }
+    } else if (body?.fileId) {
+      const { getObject } = await import("../services/blob-store.js");
+      const rawId = String(body.fileId).replace(/^file_/, "");
+      const r = await pool.query(`select filename, storage_rel from user_files where id=$1 and user_id=$2`, [rawId, user.id]);
+      if (!r.rows.length) return reply.code(404).send(notFound("FILE_NOT_FOUND", "文件不存在或不属于你"));
+      buf = await getObject(String(r.rows[0].storage_rel ?? ""));
+      name = String(r.rows[0].filename ?? "");
+      fromFileId = rawId;
+      if (!buf) return reply.code(404).send(notFound("FILE_NOT_FOUND", "文件字节已丢失, 请重新上传"));
+    } else {
+      return reply.code(400).send(notFound("BAD_REQUEST", "需要 path(资料库路径)或 fileId(上传文件)"));
+    }
+
+    const ext = (name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1]) ?? "";
+    if (ext === "pptx") {
+      const { readPptx } = await import("../services/office-preview-service.js");
+      const r = await readPptx(buf);
+      return r.ok ? { ok: true, kind: "slides", filename: name, slides: r.slides } : reply.code(422).send({ error: r.error, code: "PPTX_PARSE_FAILED" });
+    }
+    if (ext === "drawio" || ext === "xml") {
+      const { readDrawio } = await import("../services/office-preview-service.js");
+      const r = readDrawio(buf.toString("utf-8"));
+      return r.ok
+        ? { ok: true, kind: "diagram", filename: name, shapes: r.shapes, pageWidth: r.pageWidth, pageHeight: r.pageHeight, compressed: r.compressed }
+        : reply.code(422).send({ error: r.error, code: "DRAWIO_PARSE_FAILED" });
+    }
+    if (ext === "xlsx" || ext === "xls") {
+      const { readSpreadsheet, readSpreadsheetFromBuffer } = await import("../services/file-text-service.js");
+      // 上传文件走 readSpreadsheet —— 它认得"上传入口已把 xlsx 转成 CSV 落库"这件事,
+      // 会优先用 profile.sheets 里那次解析的结果; 直接拿存储字节喂 openpyxl 必然
+      // 得到 "File is not a zip file"(实测踩过)。资料库那条路的字节是**原始文件**, 直接解。
+      const r = fromFileId
+        ? await readSpreadsheet(user.id, fromFileId)
+        : await readSpreadsheetFromBuffer(buf, name);
+      return r.ok
+        ? { ok: true, kind: "sheets", filename: name, sheetNames: r.sheetNames, sheets: r.sheets }
+        // 200, 不是 422: "这是表格但读不出来"与"这不是表格"是两回事, 前者前端还要显示文件名与下载
+        : { ok: false, kind: "sheets", filename: name, error: r.error };
+    }
+    // 其余格式由各自的既有链路负责(pdf→PdfReader, 图片→<img>, md/txt→MarkdownReader, GIS→前端解析)。
+    // 这里明确回报"不归我管", 而不是静默返回空结构 —— 前端要据此决定走哪条路
+    return reply.code(400).send({ error: `预览解析不支持 .${ext}`, code: "UNSUPPORTED_PREVIEW", ext });
+  });
+
+  // 资料库内的表格预览 —— 与 /api/vault/binary(字节)互补: 这里出的是**解析结果**
+  app.get("/api/vault/sheets", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { path?: string; previewRows?: string };
+    if (!q.path) return reply.code(400).send(notFound("BAD_REQUEST", "缺少 path 参数"));
+    let file;
+    try {
+      file = vaultService.getBinary(q.path);
+    } catch (e) {
+      // 白名单外的路径要说清是"越界"而不是"没找到" —— 前者是拒绝访问, 后者是文件没了
+      return reply.code(403).send(notFound("VAULT_ACCESS_DENIED", String((e as Error)?.message ?? e)));
+    }
+    if (!file) return reply.code(404).send(notFound("VAULT_FILE_NOT_FOUND", "文件不存在"));
+
+    const { readSpreadsheetFromBuffer } = await import("../services/file-text-service.js");
+    const r = await readSpreadsheetFromBuffer(file.data, file.name, {
+      previewRows: Math.min(Math.max(Number(q?.previewRows) || 200, 1), 1000),
+    });
+    if (!r.ok) return reply.code(400).send({ error: r.error, code: "SHEET_READ_FAILED" });
+    return { ok: true, filename: r.fileName, sheetNames: r.sheetNames, sheets: r.sheets };
   });
 
   // 文件剖析(读库 profile)

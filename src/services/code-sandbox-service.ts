@@ -72,9 +72,59 @@ export function suggestSandboxEscalation(code: string, profile: SandboxProfile):
   return { suggested: profile, reason: "无需升级" };
 }
 
+/** 会话级工作目录(绝对路径)。空 = 沿用全局 agent_workspace。见 setSessionWorkspace */
+let sessionWorkspaceDir = "";
+
+/**
+ * 会话工作目录(2026-10-02)。
+ *
+ * 由来(对照 Respal 的"会话工作目录"): 本仓沙箱的 cwd 此前**与会话无关** ——
+ *   `workspace-write` 一律是 `agent_workspace/`, 其余一律是临时目录。于是同一台机器上
+ *   两个并行会话的产物混在一个目录里, 也没有任何办法让某个任务待在自己的子目录。
+ *
+ * ═══ 为什么只做到"可选的子目录"这一步 ═══
+ *   把 cwd 直接交给用户输入是危险的: 那条路径会成为子进程的工作目录, 而沙箱只是
+ *   设 cwd + env, **没有操作系统级隔离**(见本文件下方 codeEscapesWorkspace 的说明)。
+ *   所以这里只接受一个**相对名字**(如 `proj-a`), 并强制:
+ *     · 只允许字母/数字/连字符/下划线/点, 长度 ≤ 64;
+ *     · `..` 与绝对路径一律拒(否则 `../../src` 就逃出工作区了);
+ *     · 最终路径必须仍在 agent_workspace 之下 —— **这是兜底校验**, 不靠正则一条路。
+ *   换句话说: 用户能选"哪个房间", 不能选"出不出这栋楼"。
+ *
+ * 目录不存在就创建(这正是"新建工作目录"的语义)。名字为空则沿用全局工作区 ——
+ * 既有行为一字不变, 所以这是个纯增量开关。
+ */
+export function setSessionWorkspace(name: string): { ok: true; dir: string } | { ok: false; error: string } {
+  const raw = String(name ?? "").trim();
+  if (!raw) { sessionWorkspaceDir = ""; return { ok: true, dir: "" }; }
+  if (raw.length > 64) return { ok: false, error: "工作目录名过长（最多 64 字符）" };
+  if (!/^[A-Za-z0-9._-]+$/.test(raw) || raw === "." || raw === ".." || raw.includes("..")) {
+    return { ok: false, error: "工作目录名只能含字母、数字、连字符、下划线、点，且不能包含 .." };
+  }
+  const base = path.resolve(dataPath("agent_workspace"));
+  const dir = path.resolve(base, raw);
+  // 兜底: resolve 之后的路径必须仍在工作区之下。正则已经挡了 `..`, 但不能只靠它 ——
+  // Windows 的大小写/短名/符号链接都可能绕过纯字符串判断, 所以再核一次前缀。
+  if (dir !== base && !dir.startsWith(base + path.sep)) {
+    return { ok: false, error: "工作目录必须位于智能体工作区之内" };
+  }
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {
+    return { ok: false, error: `无法创建工作目录: ${String((e as Error).message).slice(0, 120)}` };
+  }
+  sessionWorkspaceDir = dir;
+  return { ok: true, dir };
+}
+
+/** 当前会话工作目录(空 = 用全局工作区)。供执行层与诊断读取 */
+export function currentSessionWorkspace(): string {
+  return sessionWorkspaceDir;
+}
+
 /** 按级别决定 cwd 与 env（read-only 用只读临时目录+禁网; workspace-write 允许 agent_workspace; full-access 保留代理白名单） */
 function sandboxCwd(profile: SandboxProfile): string {
   if (profile === "workspace-write") {
+    // 会话级子目录优先 —— 它一定在 agent_workspace 之内(见 setSessionWorkspace 的兜底校验)
+    if (sessionWorkspaceDir && fs.existsSync(sessionWorkspaceDir)) return sessionWorkspaceDir;
     const ws = dataPath("agent_workspace");
     try { fs.mkdirSync(ws, { recursive: true }); } catch { /* 目录创建失败 → 回退临时目录 */ }
     if (fs.existsSync(ws)) return ws;

@@ -14,7 +14,7 @@
 |---|---|
 | [项目概述](PROJECT-OVERVIEW.md) | 目标用户 / 痛点 / 功能 / 技术路线 / 创新 |
 | [功能规格详解](FEATURES-DETAILED.md) | 52 步推理逐步表 / 78 场景 / 158 工具 / 19 种实证计量方法 |
-| [技术架构](ARCHITECTURE.md) | 8 层管道 / 四源检索 / 科研工作台 19 / 评测体系 |
+| [技术架构](ARCHITECTURE.md) | 8 层管道 / 四源检索 / 科研工作台 18 / 评测体系 |
 | [Agent 能力档案](AGENT-CAPABILITIES.md) | 158 工具 / 191 编排能力 / 5 层安全 / 5 层记忆 |
 | [评测标准](SCORING_STANDARD.md) | 31 指标定义 / 双轨评测方法 |
 
@@ -26,7 +26,7 @@
 
 ## 📊 评测与基准
 
-- [Benchmarks](https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 1846 项
+- [Benchmarks](https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md) — 53 题综合分 0.884 / 消融体系 / 单元测试 1852 项
 - [合规披露](OPEN-SOURCE-DISCLOSURE.md) — 数据治理 / 商业 API / 风险提示
 
 ## 🖥 桌面端

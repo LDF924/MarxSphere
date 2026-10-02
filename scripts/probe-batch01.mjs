@@ -40,7 +40,7 @@ try {
 
   await cdp("Page.navigate", { url: BASE });
   await sleep(2500);
-  await evalTop(cdp, `localStorage.setItem("sag_token", ${JSON.stringify(token)}); localStorage.setItem("skf_auth_token", ${JSON.stringify(token)}); 1`);
+  await evalTop(cdp, `localStorage.setItem("sag_token", ${JSON.stringify(token)}); localStorage.setItem("skf_auth_token", ${JSON.stringify(token)}); localStorage.setItem('sag_onboarding_done_v1','1'); 1`);
   // ⚠ 必须先拉起写作舱视图: 外壳 hash 为空时不挂任何 iframe
   await evalTop(cdp, `(() => { location.hash = "#paper-outline"; return 1; })()`);
   await sleep(4000);

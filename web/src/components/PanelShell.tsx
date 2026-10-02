@@ -140,11 +140,19 @@ export function PanelCard({ title, icon, actions, children, className }: {
 /** 统一按钮 */
 export function PanelButton({
   children, onClick, disabled, variant = "primary", accent = "emerald", busy, size = "md", type = "button", title, className,
+  // ⚠ data-* 必须显式接住再透传(2026-10-02)。
+  //   React **不会**把调用方写的 `data-control` 自动送到这里的 <button> 上 ——
+  //   这个组件把 props 解构成了具名参数, 没接住的属性直接丢掉。症状很隐蔽:
+  //   按钮点得动、功能正常, 只是助理动作列表里**没有它**(实测 NotificationsPanel 的
+  //   "分类设置"按钮就是这种"能用但探测不到")。传 data-* 的调用点已有多处。
+  ...rest
 }: {
   children: ReactNode; onClick?: () => void; disabled?: boolean;
   variant?: "primary" | "ghost" | "outline";
   accent?: PanelAccent; busy?: boolean; size?: "sm" | "md"; type?: "button" | "submit"; title?: string;
   className?: string;
+  /** 透传给底层 button(data-control 等埋点属性) */
+  [key: `data-${string}`]: string | undefined;
 }) {
   const a = ACCENT[accent];
   const base = size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3.5 py-1.5 text-xs";
@@ -154,7 +162,7 @@ export function PanelButton({
       ? `border ${a.ring} bg-transparent hover:bg-accent/40`
       : "border border-border/60 bg-background/60 hover:bg-accent";
   return (
-    <button type={type} onClick={onClick} disabled={disabled || busy} title={title}
+    <button type={type} onClick={onClick} disabled={disabled || busy} title={title} {...rest}
       className={cn("inline-flex items-center gap-1.5 rounded-lg font-medium transition-all disabled:opacity-50", base, styles, className)}>
       {busy && <Loader2 className="h-3 w-3 animate-spin" />}
       {children}

@@ -14,6 +14,7 @@ import { AuthedImg } from "../lib/authed-image";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { MarkdownRich, MarkdownStreaming } from "./MarkdownRich";
+import { VoiceInput } from "./VoiceInput";
 
 export interface ChatDraftImage {
   dataUrl: string;
@@ -517,6 +518,38 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /**
+   * 右 Alt 语音快捷键(2026-10-02)。
+   *
+   * ═══ 为什么是"按住右 Alt"而不是"再点一次那个麦克风" ═══
+   * 语音按钮挂在输入区, 手在键盘上时去够鼠标是打断。语音的最高频用法是
+   * "想到一句, 说进去, 接着打字", 所以给它一个**双手不离键盘**的入口。
+   *
+   * ═══ 为什么必须是 **code === "AltRight"** ═══
+   * 不能用 `e.key === "Alt"` —— 左右两个 Alt 的 `key` 都是 "Alt", 分不开;
+   * 而左 Alt 在 Windows 上多数输入法是"临时切换中英", 抢过来会直接毁掉中文输入。
+   * `code` 才是物理键位, AltRight 只对应右侧那一个。
+   *
+   * ═══ 为什么是 toggle 而不是按住说话 ═══
+   * 按住说话要处理 keyup 丢失(切窗口/被别的快捷键吃掉), 一旦漏一个 keyup
+   * 麦克风就永远开着。toggle 的失败模式是"多按一下关掉", 代价小得多。
+   * 用 e.repeat 挡掉长按时的自动重复。
+   */
+  const [voiceKeyFlash, setVoiceKeyFlash] = useState(false);
+  /** 语音组件的实例方法 —— 快捷键与按钮**共用同一个实例**, 不各起一个(见右 Alt 说明) */
+  const voiceRef = useRef<{ toggle: () => void } | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "AltRight" || e.repeat || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      setVoiceKeyFlash(true);
+      voiceRef.current?.toggle();
+      window.setTimeout(() => setVoiceKeyFlash(false), 220);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const activeSession = props.sessions.find((s) => s.id === props.activeSessionId) ?? null;
 
@@ -1263,6 +1296,14 @@ export const ChatPanel: FC<ChatPanelProps> = (props) => {
                       </div>
                     </div>
                   ) : null}
+                </div>
+                {/* 语音输入 —— 按钮 + 右 Alt 快捷键共用同一个实例(见 voiceKeyFlash 说明) */}
+                <div className={cn("shrink-0 self-end", voiceKeyFlash && "rounded-md ring-2 ring-primary/60")}>
+                  <VoiceInput
+                    ref={voiceRef}
+                    disabled={props.isRunning}
+                    onText={(t) => setDraft((v) => (v ? `${v}${t}` : t))}
+                  />
                 </div>
                 <Button
                   className="h-9 shrink-0 self-end px-4"

@@ -24,9 +24,15 @@
 //      再 start recognition。只在用户手势里做权限申请, 不自动申请。
 //   ② **onend 之后不能复用实例**。识别结束(或一段静音自动停止)后再次 start 同一个
 //      实例在部分版本上静默失效, 所以每次用完都置空, 下次新建。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react";
 import { Mic, MicOff, Loader2 } from "lucide-react";
 import { cn } from "../lib/utils";
+
+/** 命令式句柄 —— 供快捷键(右 Alt)与外部按钮共用**同一个**识别实例 */
+export interface VoiceInputHandle {
+  /** 没在听就开始、在听就停 */
+  toggle: () => void;
+}
 
 /** 浏览器支持情况 —— 一次判定, 不每次调用都查 */
 function speechSupported(): boolean {
@@ -35,22 +41,28 @@ function speechSupported(): boolean {
   return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
 }
 
-export function VoiceInput({
-  onText,
-  lang = "zh-CN",
-  className,
-  disabled,
-}: {
+export const VoiceInput = forwardRef<VoiceInputHandle, {
   /** 识别出的文本(增量)。调用方决定是追加还是替换 —— 组件不猜。 */
   onText: (text: string) => void;
   lang?: string;
   className?: string;
   disabled?: boolean;
-}) {
+}>(function VoiceInput({
+  onText,
+  lang = "zh-CN",
+  className,
+  disabled,
+}, ref) {
   const [supported] = useState(() => speechSupported());
   const [listening, setListening] = useState(false);
   const [err, setErr] = useState("");
   const recRef = useRef<any>(null);
+  /** stop() 要能读到"此刻"的 listening —— 闭包里的那个是渲染时的快照,
+   *  快捷键在两次渲染之间连按会读错(第一次按下→开始, 还没重渲染就再按→本应停却因旧值又"开始")。 */
+  const listeningRef = useRef(false);
+  /** onText 同理: 快捷键注册在 useEffect([]) 里, 捕获的是首次渲染的 onText */
+  const onTextRef = useRef(onText);
+  useEffect(() => { onTextRef.current = onText; }, [onText]);
 
   // 组件卸载时停掉, 避免麦克风被一个已经不在界面上的按钮占着
   useEffect(() => () => {
@@ -85,7 +97,7 @@ export function VoiceInput({
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         text += ev.results[i][0]?.transcript || "";
       }
-      if (text.trim()) onText(text);
+      if (text.trim()) onTextRef.current(text);
     };
     rec.onerror = (ev: any) => {
       const code = String(ev?.error || "");
@@ -94,22 +106,31 @@ export function VoiceInput({
         setErr(code === "not-allowed" ? "麦克风权限被拒绝" : `识别失败: ${code}`);
       }
       setListening(false);
+      listeningRef.current = false;
     };
-    rec.onend = () => { setListening(false); recRef.current = null; };
+    rec.onend = () => { setListening(false); listeningRef.current = false; recRef.current = null; };
 
     try {
       rec.start();
       setListening(true);
+      listeningRef.current = true;
     } catch (e: any) {
       setErr(`启动失败: ${String(e?.message || e).slice(0, 60)}`);
       setListening(false);
+      listeningRef.current = false;
     }
   }
 
   function stop() {
     try { recRef.current?.stop(); } catch { /* 已经停了 */ }
     setListening(false);
+    listeningRef.current = false;
   }
+
+  // 快捷键与按钮走同一条路 —— 两处各写一份 toggle 逻辑必然会在"应该 stop 还是 start"上分叉
+  useImperativeHandle(ref, () => ({
+    toggle: () => { if (listeningRef.current) stop(); else void start(); },
+  }));
 
   if (!supported) {
     // 不支持时**不留一个哑按钮** —— 显示说明, 让用户知道有别的路可走
@@ -127,7 +148,9 @@ export function VoiceInput({
         type="button"
         onClick={listening ? stop : () => void start()}
         disabled={disabled}
-        title={listening ? "停止录音" : "语音输入(由浏览器识别, 音频不经本站服务器)"}
+        title={listening
+          ? "停止录音(右 Alt 同效)"
+          : "语音输入(右 Alt 同效; 由浏览器识别, 音频不经本站服务器)"}
         className={cn(
           "inline-flex h-8 w-8 items-center justify-center rounded-md border",
           listening ? "border-red-400/60 bg-red-500/15 text-red-300" : "border-border text-muted-foreground hover:bg-white/5",
@@ -140,6 +163,6 @@ export function VoiceInput({
       {err && <span className="text-[10px] text-red-300">{err}</span>}
     </span>
   );
-}
+});
 
 export default VoiceInput;

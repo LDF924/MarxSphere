@@ -17,6 +17,11 @@ import { cellText } from "./fmtCell";
 export interface ParsedData {
   columnOrder: string[];
   rows: (string | number | null)[][];
+  /**
+   * 后端解析表头时定下来的**列类型**(native → nominal/ordinal/scale/…)。
+   * 为可选: 仿真/粘贴数据没有这一栏, 那就由前端按前 50 行猜(见 inferVariables)。
+   */
+  columnTypes?: Array<{ name: string; type: string; label?: string }>;
 }
 
 interface PropShape {
@@ -143,6 +148,11 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
     });
   }
 
+  /** 后端变量类型 → 面板的 nominal/scale/unknown 口径(用 normalizeVarType 而不是自己映射, 免得两处漂移) */
+  function normalizeColumnTypes(cols: Array<{ name: string; type: string; label?: string }>): Array<{ name: string; type: string }> {
+    return cols.map((c) => ({ name: c.label || c.name, type: normalizeVarType(c.type) }));
+  }
+
   async function handleUpload(file: File) {
     setUploading(true);
     try {
@@ -155,8 +165,7 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
         body: JSON.stringify({ filename: file.name, base64: b64, mime: file.type || "text/csv" }),
       }).then((x) => x.json()).catch(() => null);
       if (!r?.fileId) { setMsg(`上传失败: ${r?.error ?? "未知错误"}`); return; }
-      // xlsx: 后端已转 CSV, 用 profile.sampleRows 无法重建全量 — 从 profile.columns + 后端转换后文件读回?
-      // 务实: xlsx 全量行经 /api/files/{id}/content 读回(此时内容已是 CSV)
+      // xlsx: 后端已转 CSV(首 sheet)。全量行经 /api/files/{id}/content 读回
       let text = rawText;
       if (isXlsx) {
         try {
@@ -166,8 +175,12 @@ export default function UnifiedWorkspace({ parsed, setParsed, csvText, setCsvTex
       }
       const p = parseCsvText(text);
       if (!p) { setMsg("无法解析数据文件(需含表头 CSV)"); return; }
+      // 上传响应里的变量类型是后端按**全部行**判的, 比 inferVariables 只看前 50 行准
+      // (50 行里某列恰好全空就会被误判成 nominal)。有就用后端的。
+      const nativeTypes = (r.profile?.variables ?? []) as Array<{ name: string; type: string; label?: string }>;
+      if (nativeTypes.length) p.columnTypes = nativeTypes;
       setParsed(p); setCsvText(text);
-      setVariables(inferVariables(p.columnOrder, p.rows));
+      setVariables(nativeTypes.length ? normalizeColumnTypes(nativeTypes) : inferVariables(p.columnOrder, p.rows));
       setFileId(r.fileId);
       setFileName(file.name);
       // 同步到 jupyter 沙箱(代码方法可读; xlsx 转换后的 CSV 存为 .csv)

@@ -13,6 +13,8 @@ interface Balance {
 interface BillRecord { id?: string; type: string; amount_cents: string; tokens_used: string | null; description: string; created_at: string; }
 interface Usage { endpoint: string; tin: string; tout: string; cost: string; day: string; }
 interface LlmConfig { provider: "platform" | "byok"; hasKey: boolean; }
+/** 模型价目表(后端 /api/billing/pricing) —— 让"这次扣了多少"可核对 */
+interface Pricing { models: Array<{ id: string; priceCnyPerM: number }>; defaultPriceCnyPerM: number; unit: string; }
 
 const PLANS = [
   { id: "free", name: "免费版", price: "0 元", quota: "5万 token/月" },
@@ -27,6 +29,7 @@ export const BillingPanel: FC = () => {
   const [balance, setBalance] = useState<Balance | null>(null);
   const [records, setRecords] = useState<BillRecord[]>([]);
   const [usage, setUsage] = useState<Usage[]>([]);
+  const [pricing, setPricing] = useState<Pricing | null>(null);
   const [rechargeAmt, setRechargeAmt] = useState(100);
   const [msg, setMsg] = useState<{ text: string; type: "ok" | "err" } | null>(null);
   const [llmCfg, setLlmCfg] = useState<LlmConfig>({ provider: "platform", hasKey: false });
@@ -73,6 +76,8 @@ export const BillingPanel: FC = () => {
       setRecords(r.records || []);
       const u = await (await fetch("/api/billing/usage", { headers: h })).json();
       setUsage(u.usage || []);
+      const p = await (await fetch("/api/billing/pricing", { headers: h })).json();
+      setPricing(p?.models?.length ? p : null);
       const c = await (await fetch("/api/user/llm-config", { headers: h })).json();
       setLlmCfg(c);
       const m = await (await fetch("/api/enterprise/members", { headers: h })).json();
@@ -417,6 +422,25 @@ export const BillingPanel: FC = () => {
             ))}
           </div>
         </div>
+
+        {/* 模型价目表 —— 2026-10-02: 此前单价只在后端内部流转, 用户看不到自己被按什么价计费 */}
+        {pricing ? (
+          <div className="rounded-lg border p-4">
+            <div className="mb-1 flex items-center gap-2 font-medium"><Coins className="h-4 w-4" /> 模型单价</div>
+            <div className="mb-3 text-xs text-muted-foreground">{pricing.unit}</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+              {pricing.models.map((m) => (
+                <div key={m.id} className="flex items-center justify-between rounded px-2 py-1 text-xs odd:bg-muted/30">
+                  <span className="font-mono">{m.id}</span>
+                  <span>¥{m.priceCnyPerM} / M</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 text-[11px] text-muted-foreground/70">
+              未收录的模型按 ¥{pricing.defaultPriceCnyPerM} / M 计。订阅额度内的用量不另扣费，超出部分才按上表从余额扣。
+            </div>
+          </div>
+        ) : null}
 
         {/* 用量 */}
         <div className="rounded-lg border p-4">

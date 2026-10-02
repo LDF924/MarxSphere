@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 import type { SkillRecord, SkillUpdateResult, DiscoverResult } from "../types";
+import { SkillShelfPanel } from "./SkillShelfPanel";
 
 interface HealthResult {
   status: string;
@@ -58,6 +59,8 @@ export function SkillsPanel() {
   const [candidates, setCandidates] = useState<Array<{ topic: string; count: number; lastQuery: string }>>([]);
   const [generating, setGenerating] = useState<string | null>(null);
   // 详情弹层
+  /** 列表 / 货架两种视图 —— 2026-10-02 加的货架是"逛"的形态, 与列表互补 */
+  const [view, setView] = useState<"list" | "shelf">("list");
   const [detailSkill, setDetailSkill] = useState<SkillRecord | null>(null);
   const [detail, setDetail] = useState<{ skillMd: string; zhDoc?: string; files: string[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -661,6 +664,35 @@ export function SkillsPanel() {
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>}
 
+        {/* 列表 / 货架切换 —— 货架是 2026-10-02 加的"逛"的形态(卡片+版本+标签+来源+热度),
+            列表是原有的"找"的形态(按分类折叠)。两者不互相替代, 所以并存。 */}
+        <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs" style={{ width: "fit-content" }}>
+          {([["list", "列表"], ["shelf", "货架"]] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              data-control={`skills:view-${v}`}
+              className={cn(
+                "rounded px-3 py-1",
+                view === v ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              )}
+            >{label}</button>
+          ))}
+        </div>
+
+        {view === "shelf" ? (
+          <SkillShelfPanel
+            onOpenDetail={(name) => {
+              const found = skills.find((x) => x.name === name);
+              // 货架的 name 与列表的 SkillRecord.name 同源(listSkills), 一定找得到;
+              // 找不到就去拉详情 —— openDetail 只需要 name+skillMdPath, 兜底构造一个
+              void openDetail(found ?? ({ name } as SkillRecord));
+            }}
+          />
+        ) : (
+        <>
+
         {/* 按分类分组：可折叠收纳（点标题展开/收起），按研究相关性排序 */}
         {(() => {
           const groups = new Map<string, typeof skills>();
@@ -716,6 +748,8 @@ export function SkillsPanel() {
             />
           ));
         })()}
+        </>
+        )}
 
         {/* 技能详情弹层 */}
         {detailSkill ? (

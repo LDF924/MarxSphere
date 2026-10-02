@@ -49,12 +49,17 @@ export async function seedDefaultPrices(): Promise<void> {
   const defaults: Array<[string, number, number]> = [
     ["deepseek-flash", 0.27, 1.1],       // USD×7.2 近似: 0.3/1.2 为别家; flash 官方价更低
     ["deepseek-v4-pro", 2.16, 8.64],
-    ["deepseek-flash", 2.16, 8.64],
+    // ⚠ 2026-10-02 删掉了这里重复的 ["deepseek-flash", 2.16, 8.64] 一行。
+    //   同一个 key 在表里出现两次, 配合下面的 `on conflict do nothing`, 后一行**永远不会生效**
+    //   (先插的先赢) —— 看起来像"flash 的真实成本是 2.16/8.64", 实际落库的是第一行的 0.27/1.1。
+    //   这种"死代码式的价格"最危险: 调价时改哪一行都可能改错。真值就是上面的 0.27/1.1。
     ["deepseek-reasoner", 2.16, 8.64],
     ["qwen-plus", 3.6, 12.6],
     ["qwen3.7-max", 10.8, 36.0],
-    ["text-embedding-v4", 0.5, 0.5],
-    ["qwen3-rerank", 0.5, 0.5],
+    // embedding/rerank 此前只有**进**单价被猜成 0.5(两列都给 0.5) —— 这两个模型不进 token 输出,
+    // 出价给 0 才是事实。给 0.5 会让"输出 token"这种不该存在的量计出成本。
+    ["text-embedding-v4", 0.5, 0],
+    ["qwen3-rerank", 0.5, 0],
   ];
   try {
     for (const [m, pIn, pOut] of defaults) {

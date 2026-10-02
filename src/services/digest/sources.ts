@@ -52,6 +52,11 @@ export interface FetchOptions {
   limit?: number;
   /** 额外限定的期刊名(用户订阅的刊)。空=不限 */
   journals?: string[];
+  /**
+   * 当前主题(可多个)。journal-updates 用它去**期刊库的 topic_tags** 里挑刊 ——
+   * 见 fetchJournalUpdates 里"按主题搜标题命中 0"那段实测说明。
+   */
+  topics?: string[];
 }
 
 /** 统一的取 JSON 帮助函数 —— 超时、UA、错误归一都在这里, 源适配器只管映射字段 */
@@ -98,8 +103,17 @@ export async function fetchOpenAlex(topic: string, opts: FetchOptions = {}): Pro
   //   两个都试过的结论是 default.search 已是当前最优, 但**相关性不能靠 OpenAlex**
   //   —— 所以速递的中文内容主要由本仓自有的期刊动态链路承担(见下方 fetchJournalUpdates),
   //   OpenAlex 只作英文/交叉补充。
+  /**
+   * ⚠ 排序: `relevance_score:desc`, **不是** publication_date(2026-10-03 实测修正)。
+   *
+   *   `default.search` 对中文是宽泛全文匹配 —— 查「马克思主义中国化」会返回
+   *   非遗民俗、音乐教育、土力学这类只是碰巧含相同词组的文献。按**日期**降序取前 25 条时,
+   *   下游 `isRelevant` 只能通过 **1 条**; 按**相关性**降序则通过 **5 条**(实测同一窗口)。
+   *   根因是"最新的"与"最相关的"在这类宽匹配里几乎是两批东西, 而我们要的是后者 ——
+   *   速递的价值是"跟我研究相关的新东西", 不是"全库最新的东西"。
+   */
   const url = `https://api.openalex.org/works?filter=${encodeURIComponent(filters.join(","))}`
-    + `&per-page=${limit}&sort=publication_date:desc&select=${OPENALEX_SELECT}`
+    + `&per-page=${limit}&sort=relevance_score:desc&select=${OPENALEX_SELECT}`
     + `&mailto=sag@socioseek.local`;
 
   const r = await getJson(url);
@@ -145,10 +159,18 @@ function parseYmd(s: string): Date | null {
 
 export async function fetchCrossref(topic: string, opts: FetchOptions = {}): Promise<FetchResult> {
   const limit = Math.min(opts.limit ?? 20, 50);
+  /**
+   * ⚠ 排序用 `score`(相关性), **不是** `published`(2026-10-03 实测修正)。
+   *
+   *   `query.bibliographic=马克思主义中国化` 在 Crossref 上 total≈57 万, 是个**宽松全文匹配** ——
+   *   按**出版日**降序取前 25 条, 下游 `isRelevant` 通过 **0 条**(全是"最新但不相干"); 按
+   *   **相关性**降序通过 **6 条**。与 OpenAlex 那边是同一个坑: 在这类宽匹配里
+   *   "最新的"与"最相关的"几乎是两批东西, 而速递要的是后者。
+   */
   const params = new URLSearchParams({
     "query.bibliographic": topic,
     rows: String(limit),
-    sort: "published",
+    sort: "score",
     order: "desc",
     select: "DOI,title,author,container-title,abstract,published,issued,type,URL",
     // 只要期刊论文 —— 不加这条会把书籍章节(「第七章 內地的離婚法律及程序」)
@@ -213,8 +235,40 @@ export async function fetchJournalUpdates(topic: string, opts: FetchOptions = {}
   try {
     const { pool } = await import("../../db/pool.js");
     const since = opts.since ?? new Date(Date.now() - 14 * 86_400_000);
-    const limit = Math.min(opts.limit ?? 20, 100);
+    /**
+     * ⚠ 默认上限 20 → 500(2026-10-03 实测修正)。
+     *
+     * 由来: 这里是**本地 SQL 查询**, 不花网络也不花额度, 而 daily cron 每天只在
+     * 7 天窗口里取最新的 20 条 —— 于是"新内容"永远只是最近那 20 条, 库里的存量
+     * 永远进不了速递。实测: 14 天窗口里有 **893 条**可用动态(覆盖 72 本刊),
+     * 而 digest_items 总共只有 19 条、来自 2 本刊。这正是用户看到的
+     * "研究速递是空的"的根因 —— 不是源没数据, 是**只搬了 2%**。
+     *
+     * `order by found_at desc` + limit 的形状本身没错(要最新的), 错在 limit 太小:
+     * 它把"每次搬一批"变成了"每天搬同一批最新的"。
+     */
+    const limit = Math.min(opts.limit ?? 500, 2000);
     const journals = (opts.journals ?? []).filter(Boolean);
+    /**
+     * 主题 → 该主题下的刊名(期刊库 cjournal_journals.topic_tags)。
+     *
+     * ⚠ 这是 2026-10-03 补的**第三条路**, 因为原文的两条路都不通:
+     *   ① 按刊名过滤(journals 非空)—— 只在用户订阅了期刊时生效;
+     *   ② 退化到"标题里搜主题词"—— 代码自己的注释就写明了实测「地方政府行为」在
+     *      4546 条里命中 **0**, 因为期刊目录的标题形如《X刊》2026年第3期目录,
+     *      **不含任何研究主题词**。
+     *   于是**没订阅期刊的用户永远拿不到期刊动态** —— 而那正是默认状态。
+     *   第三条路: 用期刊库已有的 topic_tags 反查刊名(80 本刊**全都**有 topic_tags),
+     *   再按刊名取动态。实测「马克思主义中国化」这类主题能稳定命中原生刊目动态。
+     */
+    let topicJournals: string[] = [];
+    if (!journals.length && (opts.topics ?? []).length) {
+      const tj = await pool.query(
+        `select name from cjournal_journals
+          where topic_tags is not null and topic_tags && $1::text[]`,
+        [opts.topics]);
+      topicJournals = tj.rows.map((r: any) => String(r.name)).filter(Boolean);
+    }
 
     // ⚠ 三条实测约束(写进 SQL 而不是留在文档里, 因为它们改变的是"取哪些行"):
     //   ① **排除 hotspot**: 实测热点条目的 title 就是一个光秃秃的标签
@@ -240,7 +294,7 @@ export async function fetchJournalUpdates(topic: string, opts: FetchOptions = {}
           )
         order by u.found_at desc
         limit $4`,
-      [since, journals.length ? journals : null, topic, limit]
+      [since, (journals.length ? journals : topicJournals).length ? (journals.length ? journals : topicJournals) : null, topic, limit]
     );
     const candidates = r.rows.map((row: any): DigestCandidate => ({
       source: "journal-updates",

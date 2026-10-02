@@ -143,6 +143,26 @@ export async function loginToken(username = "verify", password = "verify123456")
 }
 
 /**
+ * 把"这个浏览器是自动化环境, 别弹新手引导"这件事告诉页面(2026-10-02)。
+ *
+ * ═══ 为什么需要它 ═══
+ *   新加的新手引导是**全屏遮罩**, 而探针每次都用全新 user-data-dir(localStorage 空) ——
+ *   于是它一进页面就被挡住, 后面"按文字找按钮再点"的断言集体失败。
+ *
+ * ═══ 两道防线, 这里是有头浏览器那一道 ═══
+ *   产品侧 `OnboardingTour.shouldShowOnboarding()` 已经会跳过无头浏览器(判 UA 里的
+ *   HeadlessChrome), 所以 CI 与本机的默认探针都不会被挡 —— 那道防线是主防线。
+ *   这里再补一道的原因: **有人用有头浏览器跑门禁时**(调试用 `UI_VERIFY_BROWSER` 指定
+ *   真 Chrome), UA 里没有 HeadlessChrome, 主防线不生效, 遮罩又会回来。
+ *   探针注入 token 本来就是在模拟"已登录的老用户", 而老用户早看过引导了;
+ *   在共享入口写一次, 比在二十个探针里各写一遍可靠。
+ */
+export async function suppressOnboarding(ev) {
+  try { return await ev(`localStorage.setItem('sag_onboarding_done_v1','1'); 'ok'`); }
+  catch { return 'skip'; }
+}
+
+/**
  * 打开编辑器并展开「辅助工具」AI 面板, 返回 iframe 的 frameId。
  * 步骤都是**真实 DOM 点击**, 不碰框架内部属性。
  */
@@ -150,6 +170,7 @@ export async function openEditorWithAiPanel(ev, cdp, token) {
   await cdp("Page.navigate", { url: BASE });
   await sleep(3000);
   if (token) await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
+  await suppressOnboarding(ev);
   await ev(`location.hash = '#editor';`);
   await sleep(8000);
 

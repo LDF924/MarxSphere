@@ -12,7 +12,7 @@
 //   告警中心 = 运维事实(推理降级/熔断/巡检失败), 全站一份, 谁看都一样;
 //   通知中心 = 给我的消息(我的任务完成了/我的积分到账了), 每人一份。
 import { useEffect, useState, useCallback } from "react";
-import { Bell, CheckCheck, Trash2, ListTodo, Coins, CreditCard, Newspaper, Info } from "lucide-react";
+import { Bell, CheckCheck, Trash2, ListTodo, Coins, CreditCard, Newspaper, Info, BellOff, SlidersHorizontal } from "lucide-react";
 import { PanelHeader, PanelCard, PanelButton, PanelEmpty, PillGroup } from "./PanelShell";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -46,6 +46,9 @@ export function NotificationsPanel() {
   const [filter, setFilter] = useState<"all" | "unread">("unread");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  /** 静音偏好 —— 服务端存(users.notification_muted), 见迁移 179 的说明 */
+  const [muted, setMuted] = useState<string[]>([]);
+  const [showPrefs, setShowPrefs] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true); setErr("");
@@ -60,6 +63,31 @@ export function NotificationsPanel() {
   }, [filter]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch("/api/notifications/settings", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+        }).then((x) => x.json());
+        if (Array.isArray(r?.muted)) setMuted(r.muted.map(String));
+      } catch { /* 拉不到就按"都没静音"显示, 不阻断面板 */ }
+    })();
+  }, []);
+
+  async function toggleMute(cat: string) {
+    const next = muted.includes(cat) ? muted.filter((c) => c !== cat) : [...muted, cat];
+    setMuted(next); // 乐观更新 —— 开关类控件等一个来回会显得卡
+    try {
+      const r = await fetch("/api/notifications/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+        body: JSON.stringify({ muted: next }),
+      }).then((x) => x.json());
+      // 服务端会丢掉非法分类名, 以它返回的为准回写 —— 否则界面会显示一个实际没生效的开关
+      if (Array.isArray(r?.muted)) setMuted(r.muted.map(String));
+    } catch (e) { setErr((e as Error).message || "保存失败"); void load(); }
+  }
 
   async function markAll() {
     try { await api.notificationsRead([]); await load(); } catch (e) { setErr((e as Error).message || "标记失败"); }
@@ -92,7 +120,45 @@ export function NotificationsPanel() {
         <PanelButton onClick={() => void clearRead()} data-control="notifications:clear-read">
           <Trash2 className="h-3 w-3" />清理已读
         </PanelButton>
+        <PanelButton onClick={() => setShowPrefs((v) => !v)} data-control="notifications:prefs">
+          <SlidersHorizontal className="h-3 w-3" />{showPrefs ? "收起设置" : "分类设置"}
+          {muted.length > 0 ? <span className="ml-1 rounded bg-amber-400/20 px-1 text-[10px] text-amber-300">{muted.length} 类已静音</span> : null}
+        </PanelButton>
       </div>
+
+      {showPrefs ? (
+        <PanelCard>
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium">
+            <BellOff className="h-3.5 w-3.5" />不想收哪几类？
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(CATEGORY).map(([key, c]) => {
+              const CatIcon = c.icon;
+              const on = muted.includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => void toggleMute(key)}
+                  data-control={`notifications:mute-${key}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                    on ? "border-amber-400/40 bg-amber-400/10 text-amber-300" : "border-border text-muted-foreground hover:bg-accent"
+                  )}
+                  title={on ? `恢复接收「${c.label}」` : `静音「${c.label}」`}
+                >
+                  <CatIcon className="h-3 w-3" />
+                  {c.label}
+                  <span className="opacity-70">{on ? "已静音" : "接收中"}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-[10px] text-muted-foreground/70">
+            静音在服务端生效：被静音的分类根本不会写入通知表（不是写了再隐藏），换设备也一样。
+          </div>
+        </PanelCard>
+      ) : null}
 
       {busy && items.length === 0 && <div className="text-xs text-muted-foreground">加载中…</div>}
 

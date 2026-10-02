@@ -169,7 +169,7 @@ async function main() {
 
     await cdp("Page.navigate", { url: BASE }); await sleep(2200);
     await ev(`localStorage.setItem('sag:language-preference:v1','zh');`);
-    if (token) await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
+    if (token) await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)}); localStorage.setItem('sag_onboarding_done_v1','1');`);
     // ⚠ 写作舱的"当前项目"读 localStorage 指针, 不看 URL —— 不写它, 页面加载的是别的项目
     await ev(`localStorage.setItem('lastTask_workflow', ${JSON.stringify(pid)});`);
 

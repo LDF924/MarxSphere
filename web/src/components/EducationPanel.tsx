@@ -5,9 +5,10 @@
 import { useState, useEffect, useRef, type FC } from "react";
 import { Loader2, Play, GraduationCap, BookOpen, Stethoscope, CalendarClock, ClipboardList, HeartHandshake, ChevronDown, ChevronRight, File, FileText, FileImage, Download, X, Cpu } from "lucide-react";
 import { cn } from "../lib/utils";
-import { fetchBinaryObjectUrl } from "../lib/authed-image";
 import { LearningCanvas } from "./LearningCanvas";
 import { ToolRunner } from "./ToolRunner";
+import { VaultFilePreview } from "./VaultFilePreview";
+import { fileKind } from "../lib/file-kind";
 
 const API_BASE = "/api/education";
 
@@ -18,19 +19,14 @@ interface VaultTreeNode {
   children?: VaultTreeNode[];
 }
 
-const PREVIEWABLE_EXT = new Set([".md", ".markdown", ".txt", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
 
 function vaultFileIcon(name: string) {
-  const ext = name.toLowerCase().split(".").pop() || "";
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return <FileImage className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
-  if (["pdf"].includes(ext)) return <FileText className="h-3.5 w-3.5 shrink-0 text-red-400" />;
-  return <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+  const k = fileKind(name);
+  if (k === "pdf") return <FileText className="h-3 w-3 shrink-0 text-red-400" />;
+  if (k === "image") return <FileImage className="h-3 w-3 shrink-0 text-muted-foreground" />;
+  return <File className="h-3 w-3 shrink-0 text-muted-foreground" />;
 }
 
-function isPreviewable(name: string) {
-  const ext = "." + (name.toLowerCase().split(".").pop() || "");
-  return PREVIEWABLE_EXT.has(ext);
-}
 
 /** 轻量 Markdown 渲染（标题/粗体/列表/代码块） */
 function MarkdownPreview({ content }: { content: string }) {
@@ -84,8 +80,6 @@ function ObsidianVaultSidebar({ onCollapse }: { onCollapse?: () => void }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState("");
   const [file, setFile] = useState<{ content: string } | null>(null);
-  const [binaryUrl, setBinaryUrl] = useState<string | null>(null);
-  const [isOffice, setIsOffice] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,37 +93,15 @@ function ObsidianVaultSidebar({ onCollapse }: { onCollapse?: () => void }) {
     })();
   }, []);
 
-  const selectFile = async (filePath: string, fileName: string) => {
+  // 2026-10-02: 预览分派交给 VaultFilePreview(与资料库/政策面板同一个组件)
+  const selectFile = (filePath: string, fileName: string) => {
     setSelectedPath(filePath);
     setSelectedName(fileName);
-    setFile(null);
-    setBinaryUrl(null);
-    setIsOffice(false);
-    try {
-      if (isPreviewable(fileName)) {
-        if (fileName.toLowerCase().endsWith(".md") || fileName.toLowerCase().endsWith(".markdown") || fileName.toLowerCase().endsWith(".txt")) {
-          const r = await fetch(`/api/vault/file?path=${encodeURIComponent(filePath)}`);
-          const d = await r.json();
-          setFile(d.file);
-        } else {
-          // PDF 加 #view=FitH 适配水平宽度
-          const isPdf = fileName.toLowerCase().endsWith(".pdf");
-          // 同 PolicyPanel/VaultPanel: 裸路径在 <img>/<iframe> 里带不了 Authorization 头(局域网 401)
-          const objUrl = await fetchBinaryObjectUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`);
-          setBinaryUrl(isPdf ? `${objUrl}#view=FitH` : objUrl);
-        }
-      } else {
-        setIsOffice(true);
-      }
-    } catch { /* 忽略 */ }
   };
 
   const closePreview = () => {
     setSelectedPath(null);
     setSelectedName("");
-    setFile(null);
-    setBinaryUrl(null);
-    setIsOffice(false);
   };
 
   return (
@@ -153,30 +125,7 @@ function ObsidianVaultSidebar({ onCollapse }: { onCollapse?: () => void }) {
       {/* 预览区（占满剩余高度，宽满） */}
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {selectedPath ? (
-          <>
-            <div className="mb-1 flex items-center gap-1 text-[10px] font-medium">
-              {vaultFileIcon(selectedName)}
-              <span className="truncate">{selectedName}</span>
-              <a
-                href={`/api/vault/binary?path=${encodeURIComponent(selectedPath)}&download=1`}
-                className="ml-auto flex shrink-0 items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent"
-                title="下载"
-              >
-                <Download className="h-2.5 w-2.5" /> 下载
-              </a>
-              <button
-                onClick={closePreview}
-                className="flex shrink-0 items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground hover:bg-accent"
-                title="关闭预览"
-              >
-                <X className="h-2.5 w-2.5" /> 关闭
-              </button>
-            </div>
-            {file ? <MarkdownPreview content={file.content} />
-              : binaryUrl ? <iframe src={binaryUrl} title={selectedName} className="w-full rounded border border-border bg-white" style={{ height: "calc(100% - 28px)" }} />
-              : isOffice ? <div className="p-2 text-[10px] text-muted-foreground">Office 文档：点击上方「下载」打开</div>
-              : null}
-          </>
+          <VaultFilePreview path={selectedPath} name={selectedName} onClose={closePreview} />
         ) : (
           <div className="p-2 text-[10px] text-muted-foreground">← 选择左侧文件查看内容</div>
         )}

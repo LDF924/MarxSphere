@@ -26,9 +26,27 @@ function whitelistDirs(): string[] {
 }
 
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown"]);
+/**
+ * 目录树里会列出的**非 Markdown** 扩展名。
+ *
+ * ⚠ 2026-10-02 扩充: 原先只有 pdf/图片/Office/txt —— 于是 `.drawio` / `.geojson` /
+ *   `.csv` / `.kml` 这些**在前端已经能预览**的格式, 在资料库树里**压根不显示**
+ *   (buildTree 会把它们跳过)。我给预览器加了格式却忘了这里, 结果是"功能做了但够不着":
+ *   实测放进去的 4 个文件在树里一个都看不到。
+ *   (与"kind 静默降级"同型 —— 白名单不报错, 只是把东西悄悄藏起来。)
+ *
+ * 判据: 只要前端 `web/src/lib/file-kind.ts` 能认, 这里就要放行。
+ *   两边靠**这个注释**保持同步, 没有编译期约束 —— 改一边记得看另一边。
+ */
 const BINARY_EXTENSIONS = new Set([
-  ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
-  ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".epub", ".txt"
+  ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".avif",
+  ".doc", ".docx", ".xls", ".xlsx", ".xlsm", ".ppt", ".pptx", ".epub", ".txt",
+  // 表格与数据
+  ".csv", ".tsv", ".json", ".jsonl", ".log", ".tex", ".bib", ".rtf",
+  // 图形
+  ".drawio", ".xml",
+  // 空间数据
+  ".geojson", ".topojson", ".kml", ".gpx",
 ]);
 
 export interface VaultTreeNode {

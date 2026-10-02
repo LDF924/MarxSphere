@@ -28,6 +28,33 @@ export function priceFor(model: string): number {
   return PRICE_PER_MTOKEN[model] ?? DEFAULT_PRICE;
 }
 
+/**
+ * 价目表(可公开) —— 2026-10-02 新增。
+ *
+ * 由来(对照 Respal 的模型价格展示): 改前 `PRICE_PER_MTOKEN` 是**模块私有常量**,
+ *   `MODEL_COGS` 也只在内部用, 全仓没有任何一条路由把单价送到浏览器 ——
+ *   用户只能看到"这次扣了 86 分", 却不知道 86 分是按什么算的, 也无法预估下一个模型贵多少。
+ *
+ * ⚠ 这里**只出售价, 不出成本**。`models` 里带 `costCnyPerM` 的字段由调用方决定给不给 ——
+ *   默认不给: 暴露 COGS 等于公开毛利率, 那是运营决策不是技术默认。
+ *
+ * 单价的单位是「元 / 百万 token」, **进+出混合**一个价(与 calcCost 的口径一致);
+ * 真实成本那条口径是进/出分离的, 两者**不能混用**(见 pricing.ts:31-34 的说明)。
+ */
+export function pricingCatalog(): {
+  models: Array<{ id: string; priceCnyPerM: number }>;
+  defaultPriceCnyPerM: number;
+  unit: string;
+  plans: Array<{ id: string; priceCents: number; quotaTokens: number }>;
+} {
+  return {
+    models: Object.entries(PRICE_PER_MTOKEN).map(([id, priceCnyPerM]) => ({ id, priceCnyPerM })),
+    defaultPriceCnyPerM: DEFAULT_PRICE,
+    unit: "元 / 百万 token（输入+输出合计，订阅额度内不另计费）",
+    plans: Object.entries(PLANS).map(([id, p]) => ({ id, priceCents: p.priceCents, quotaTokens: p.quotaTokens })),
+  };
+}
+
 /** 计算一次 LLM 调用的成本(分) */
 export function calcCost(model: string, tokensIn: number, tokensOut: number): number {
   const perM = priceFor(model);

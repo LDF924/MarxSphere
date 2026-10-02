@@ -154,7 +154,7 @@ async function main() {
     // 登录态 + 中文界面(CI 的 chromium 没有中文 locale, 不钉死界面会是英文, 中文断言全落空)
     await cdp("Page.navigate", { url: BASE }); await sleep(2200);
     await ev(`localStorage.setItem('sag:language-preference:v1','zh');`);
-    if (token) await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
+    if (token) await ev(`localStorage.setItem('sag_token', ${JSON.stringify(token)}); localStorage.setItem('sag_onboarding_done_v1','1');`);
     /**
      * ⚠ **必须**把写作舱的项目指针指向探针刚建的课题。
      *   舱内"当前项目"读的是 `localStorage['lastTask_workflow']`(见 stores/workflow.ts 的

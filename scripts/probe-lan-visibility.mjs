@@ -37,7 +37,7 @@ try {
   await cdp("Page.navigate", { url: `${BASE}/` });
   await sleep(5000);
   // 局域网下要登录才能拿 token
-  await evalTop(cdp, `localStorage.setItem('sag_token', ${JSON.stringify(t)}); localStorage.setItem('skf_auth_token', ${JSON.stringify(t)});`);
+  await evalTop(cdp, `localStorage.setItem('sag_token', ${JSON.stringify(t)}); localStorage.setItem('skf_auth_token', ${JSON.stringify(t)}); localStorage.setItem('sag_onboarding_done_v1','1');`);
   await cdp("Page.reload");
   await sleep(6000);
 

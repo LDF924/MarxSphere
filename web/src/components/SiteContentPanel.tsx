@@ -8,10 +8,11 @@
 //   本次: ① 公告/帮助按 09-07~09-15 真实落地功能重写 ② 加 onNavigate, 帮助条目直接跳视图
 //   ③ 条款补上 2026-09-15 安全整改后的事实(AES-256-GCM/BYOK/外部令牌) ④ 资源导航对齐平台真接入
 import { useState, useEffect, type ReactNode } from "react";
-import { BookOpen, ChevronRight, ExternalLink, FileText, HelpCircle, Info, Landmark, Megaphone, Scale, ShieldCheck, ScrollText } from "lucide-react";
+import { Bell, BookOpen, ChevronRight, ExternalLink, FileText, HelpCircle, Info, Landmark, Megaphone, Scale, ShieldCheck, ScrollText } from "lucide-react";
+import { NotificationsPanel } from "./NotificationsPanel";
 import type { WorkspaceView } from "../App";
 
-type TabId = "announce" | "help" | "legal" | "resources";
+type TabId = "announce" | "help" | "legal" | "resources" | "notifications";
 
 /** 可跳转到的视图 = 除自身与"home"外的全部视图(含 settings —— 帮助里要引导生成外部接入令牌) */
 type NavTarget = Exclude<WorkspaceView, "home" | "site-content">;
@@ -22,6 +23,7 @@ const TAB_CONTROLS: Record<TabId, string> = {
   help: "site-content:help",
   legal: "site-content:legal",
   resources: "site-content:resources",
+  notifications: "site-content:notifications",
 };
 
 // ═══ 静态内容数据 ═══
@@ -206,6 +208,9 @@ export function SiteContentPanel({ onNavigate }: { onNavigate?: (view: Workspace
           {tabBtn("help", "帮助中心", <HelpCircle className="h-3 w-3" />)}
           {tabBtn("legal", "条款与隐私", <ScrollText className="h-3 w-3" />)}
           {tabBtn("resources", "学术资源导航", <BookOpen className="h-3 w-3" />)}
+          {/* 2026-10-03 用户要求: 通知中心并入站点内容(它此前挂在「系统管理」组, 与运维告警混在一起,
+              而通知是"给我的消息", 属于站点侧的内容而非系统运维)。 */}
+          {tabBtn("notifications", "通知中心", <Bell className="h-3 w-3" />)}
         </div>
       </div>
 
@@ -264,6 +269,8 @@ export function SiteContentPanel({ onNavigate }: { onNavigate?: (view: Workspace
             ))}
           </div>
         )}
+
+        {tab === "notifications" && <NotificationsPanel />}
 
         {tab === "resources" && (
           <div className="grid gap-4 lg:grid-cols-2">

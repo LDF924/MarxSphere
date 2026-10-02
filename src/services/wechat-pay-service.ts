@@ -62,11 +62,14 @@ async function loadConfig(): Promise<WxPayConfig> {
 
   let conf = fromEnv;
   try {
+    // 2026-10-02 修正: 原读的是 `ai_provider_settings(key, value)` —— 本表**没有这两列**
+    //   (003 迁移建的是 id + 固定业务列)。所以这里永远抛 column does not exist 并被吞掉,
+    //   表现为"后台存了支付配置但一直是模拟支付"。改读 metadata jsonb, 同 openaiKeys/appConfig。
     const r = await pool.query(
-      `select value from ai_provider_settings where key='wechat_pay'`);
-    if (r.rows[0]?.value) {
-      const v = typeof r.rows[0].value === "string"
-        ? JSON.parse(r.rows[0].value) : r.rows[0].value;
+      `select metadata->'wechatPay' as cfg from ai_provider_settings where id='global'`);
+    const cfg = r.rows[0]?.cfg;
+    if (cfg) {
+      const v = typeof cfg === "string" ? JSON.parse(cfg) : cfg;
       conf = {
         ...fromEnv,
         ...v,

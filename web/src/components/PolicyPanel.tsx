@@ -4,14 +4,13 @@
 import { useState, useEffect, type FC, type ReactNode } from "react";
 import { Landmark, Loader2, Search, FileText, FolderOpen, ChevronRight, ChevronDown, Save, RefreshCw, CheckCircle2, ExternalLink, Download, X } from "lucide-react";
 import { api } from "../lib/api";
-import { AuthedImg, fetchBinaryObjectUrl } from "../lib/authed-image";
 import { cn } from "../lib/utils";
 import { Card } from "../components/ui/card";
 import { DragHandle } from "../components/ui/DragHandle";
 import { Button } from "../components/ui/button";
-import { PdfReader } from "./PdfReader";
-import { MarkdownReader } from "./MarkdownReader";
-import type { PolicyTreeNode, VaultFileRecord } from "../types";
+import { VaultFilePreview } from "./VaultFilePreview";
+import { fileKind, VIEWABLE_HINT } from "../lib/file-kind";
+import type { PolicyTreeNode } from "../types";
 
 interface PolicyHit {
   title: string;
@@ -21,19 +20,12 @@ interface PolicyHit {
   summary?: string;
 }
 
-// 可预览的扩展名
-const PREVIEWABLE = [".md", ".markdown", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".txt"];
-
-function isPreviewable(name: string) {
-  const ext = "." + (name.toLowerCase().split(".").pop() || "");
-  return PREVIEWABLE.includes(ext);
-}
-
+// 2026-10-02: 类型判断收敛到 lib/file-kind.ts —— 本文件此前自己维护一份 PREVIEWABLE,
+// 与 VaultPanel/EducationPanel 各一份, 三份都把非 md/pdf/图片的文件报成"Office 文档"(错的)
 function fileIcon(name: string) {
-  const ext = name.toLowerCase().split(".").pop() || "";
-  if (["pdf"].includes(ext)) return <FileText className="h-3.5 w-3.5 shrink-0 text-red-400" />;
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
-  return <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+  return fileKind(name) === "pdf"
+    ? <FileText className="h-3.5 w-3.5 shrink-0 text-red-400" />
+    : <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
 }
 
 function TreeItem({ node, depth, onSelect }: { node: PolicyTreeNode; depth: number; onSelect: (path: string, name: string) => void }) {
@@ -76,10 +68,6 @@ export function PolicyPanel() {
   // 本地文件预览
   const [selectedName, setSelectedName] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [file, setFile] = useState<VaultFileRecord | null>(null);
-  const [binaryUrl, setBinaryUrl] = useState<string | null>(null);
-  const [isOffice, setIsOffice] = useState(false);
-  const [fileLoading, setFileLoading] = useState(false);
 
   const loadTree = async () => {
     setLoading(true);
@@ -133,39 +121,15 @@ export function PolicyPanel() {
     }
   };
 
-  const selectFile = async (filePath: string, fileName: string) => {
+  // 预览分派交给 VaultFilePreview(与资料库面板同一个组件)
+  const selectFile = (filePath: string, fileName: string) => {
     setSelectedPath(filePath);
     setSelectedName(fileName);
-    setFile(null);
-    setBinaryUrl(null);
-    setIsOffice(false);
-    setFileLoading(true);
-    try {
-      if (isPreviewable(fileName)) {
-        if (fileName.toLowerCase().endsWith(".md") || fileName.toLowerCase().endsWith(".markdown") || fileName.toLowerCase().endsWith(".txt")) {
-          const data = await api.getVaultFile(filePath);
-          setFile(data.file);
-        } else {
-          // 带鉴权取成 object URL —— 裸路径放进 <img>/<iframe> 是带不了 Authorization 头的,
-          // 该端点由**全局鉴权中间件**挡住(实测局域网 IP 401, 本机放行) → 远程部署下预览全白。
-          setBinaryUrl(await fetchBinaryObjectUrl(`/api/vault/binary?path=${encodeURIComponent(filePath)}`));
-        }
-      } else {
-        setIsOffice(true);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setFileLoading(false);
-    }
   };
 
   const closePreview = () => {
     setSelectedPath(null);
     setSelectedName("");
-    setFile(null);
-    setBinaryUrl(null);
-    setIsOffice(false);
   };
 
   return (
@@ -241,90 +205,12 @@ export function PolicyPanel() {
           </Card>
 
           <Card className="flex min-h-0 flex-col overflow-hidden p-4">
-            {fileLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />读取文件…</div>
-            ) : binaryUrl ? (
-              <div className="flex min-h-full flex-col">
-                <div className="mb-3 flex shrink-0 items-center justify-between gap-2 border-b border-border pb-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {fileIcon(selectedName)}
-                    <span className="truncate font-medium">{selectedName}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <a
-                      href={`/api/vault/binary?path=${encodeURIComponent(selectedPath ?? "")}&download=1`}
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                    >
-                      <Download className="h-3 w-3" /> 下载
-                    </a>
-                    <button
-                      type="button"
-                      onClick={closePreview}
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                      title="关闭预览"
-                    >
-                      <X className="h-3 w-3" /> 关闭
-                    </button>
-                  </div>
-                </div>
-                {/* PDF → PdfReader 深度阅读（xl+: flex-1 填满详情列; 窄屏: 固定高度防 Viewport 高度循环塌陷） */}
-                {selectedName.toLowerCase().endsWith(".pdf") ? (
-                  <div className="min-h-0 flex-1 max-lg:h-[50vh]">
-                    <PdfReader source={binaryUrl ?? ""} fileName={selectedName} />
-                  </div>
-                ) : (
-                  <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
-                    <AuthedImg path={binaryUrl} alt={selectedName} className="max-h-full max-w-full object-contain" />
-                  </div>
-                )}
-              </div>
-            ) : isOffice ? (
-              <div className="relative flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-                <button
-                  type="button"
-                  onClick={closePreview}
-                  className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                  title="关闭预览"
-                >
-                  <X className="h-3 w-3" /> 关闭
-                </button>
-                <FileText className="h-10 w-10 text-muted-foreground/50" />
-                <div className="text-sm font-medium">{selectedName}</div>
-                <div className="max-w-sm text-xs text-muted-foreground">
-                  Office 文档（Word/Excel/PPT）浏览器不支持内联预览，请下载后用本地 Office 打开。
-                </div>
-                <a
-                  href={`/api/vault/binary?path=${encodeURIComponent(selectedPath ?? "")}&download=1`}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  <Download className="h-3.5 w-3.5" /> 下载并打开
-                </a>
-              </div>
-            ) : file ? (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2 border-b border-border pb-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {fileIcon(file.name)}
-                    <span className="truncate font-medium">{file.name}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{Math.round(file.size / 1024)} KB</span>
-                    <button
-                      type="button"
-                      onClick={closePreview}
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                      title="关闭预览"
-                    >
-                      <X className="h-3 w-3" /> 关闭
-                    </button>
-                  </div>
-                </div>
-                <MarkdownReader content={file.content.slice(0, 20000)} />
-              </div>
+            {selectedPath ? (
+              <VaultFilePreview path={selectedPath} name={selectedName} onClose={closePreview} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
                 <div>选择左侧政策文件查看内容</div>
-                <div className="max-w-sm text-center text-xs">支持 md / PDF / 图片内联预览，Office 文档可下载打开</div>
+                <div className="max-w-md text-center text-xs">{VIEWABLE_HINT}</div>
               </div>
             )}
           </Card>

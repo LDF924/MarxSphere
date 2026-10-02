@@ -42,6 +42,23 @@ export interface SkillRecord {
   cloudId?: string;
   /** 服务端上次更新时刻(epoch 秒, 与 Respal 同口径存字符串) */
   cloudUpdated?: string;
+  // ── 货架展示用的元数据(2026-10-02) ──
+  // 为什么值得单独解析: SkillsPanel 此前**不显示版本/作者/标签**, 用户面对 170 多个技能
+  // 只能按分类翻。实测 ~/.claude/skills 下 version 有 39 个、tags 有 25 个、
+  // author/license 也有若干 —— 数据一直在文件里, 只是**没有任何代码读它**
+  // (skills-update-service:147 读过 version, 但那一路只用于上游比对, 不进 API 响应)。
+  /** 版本号(frontmatter version; 部分技能只有 metadata.version) */
+  version?: string;
+  /** 作者 */
+  author?: string;
+  /** 许可 */
+  license?: string;
+  /** 标签(frontmatter tags, 逗号或方括号数组两种写法都认) */
+  tags?: string[];
+  /** 何时该用它(when_to_use) —— 比 description 更接近用户的提问方式 */
+  whenToUse?: string;
+  /** 来源标记(origin): 自研 / GitHub 等 */
+  origin?: string;
 }
 
 interface Frontmatter {
@@ -54,6 +71,12 @@ interface Frontmatter {
   cloudSource?: string;
   cloudId?: string;
   cloudUpdated?: string;
+  version?: string;
+  author?: string;
+  license?: string;
+  tags?: string[];
+  whenToUse?: string;
+  origin?: string;
 }
 
 function parseFrontmatter(raw: string): Frontmatter {
@@ -81,6 +104,37 @@ function parseFrontmatter(raw: string): Frontmatter {
   if (cloudIdMatch) result.cloudId = cloudIdMatch[1].trim().replace(/^["']|["']$/g, "");
   const cloudUpdatedMatch = block.match(/^cloudUpdated:\s*(.+)$/m);
   if (cloudUpdatedMatch) result.cloudUpdated = cloudUpdatedMatch[1].trim().replace(/^["']|["']$/g, "");
+
+  // 货架元数据(2026-10-02)。三者都是"有就显示, 没有就不显示", 不编默认值 ——
+  // 给缺失的版本号填个 "1.0.0" 比不显示更糟(用户会以为技能有版本管理)。
+  const strip = (x: string) => x.trim().replace(/^["']|["']$/g, "");
+  const versionMatch = block.match(/^version:\s*(.+)$/m);
+  if (versionMatch) result.version = strip(versionMatch[1]);
+  const authorMatch = block.match(/^author:\s*(.+)$/m);
+  if (authorMatch) result.author = strip(authorMatch[1]);
+  const licenseMatch = block.match(/^license:\s*(.+)$/m);
+  if (licenseMatch) result.license = strip(licenseMatch[1]);
+  const originMatch = block.match(/^origin:\s*(.+)$/m);
+  if (originMatch) result.origin = strip(originMatch[1]);
+  const whenMatch = block.match(/^when_to_use:\s*(.+)$/m);
+  if (whenMatch) result.whenToUse = strip(whenMatch[1]);
+  // tags 两种写法都见过: `tags: a, b, c` 与 `tags: [a, b]`
+  const tagsMatch = block.match(/^tags:\s*(.+)$/m);
+  if (tagsMatch) {
+    result.tags = strip(tagsMatch[1])
+      .replace(/^\[|\]$/g, "")
+      .split(/[,，]/)
+      // ⚠ trim 要带上前导的 `-` 与 `*`: frontmatter 里见过两种写法 —— `tags: [a, b]`
+      //   与 YAML 列表(每个标签一行, 行首一个短横)。后者按逗号切完每项都带 "- "。
+      //   实测不处理会得到 "- LaTeX" 这种标签, 界面上点不着也搜不到。
+      .map((t) => t.trim().replace(/^[-*]\s*/, "").replace(/^["']|["']$/g, ""))
+      .filter(Boolean);
+  }
+  // version 也常见于嵌套的 metadata 块(缩进两格) —— 顶层没有才回退找它
+  if (!result.version) {
+    const nested = block.match(/^\s{2,}version:\s*(.+)$/m);
+    if (nested) result.version = strip(nested[1]);
+  }
 
   const descMatch = block.match(/^description:\s*(.+)$/m);
   if (descMatch) {
@@ -234,7 +288,13 @@ export function listSkills(): SkillRecord[] {
         zhDescription,
         cloudSource: fm.cloudSource,
         cloudId: fm.cloudId,
-        cloudUpdated: fm.cloudUpdated
+        cloudUpdated: fm.cloudUpdated,
+        version: fm.version,
+        author: fm.author,
+        license: fm.license,
+        tags: fm.tags,
+        whenToUse: fm.whenToUse,
+        origin: fm.origin
       });
     } catch {
       // 跳过解析失败的 skill
@@ -273,6 +333,12 @@ export function listSkills(): SkillRecord[] {
           cloudSource: fm.cloudSource,
           cloudId: fm.cloudId,
           cloudUpdated: fm.cloudUpdated,
+          version: fm.version,
+          author: fm.author,
+          license: fm.license,
+          tags: fm.tags,
+          whenToUse: fm.whenToUse,
+          origin: fm.origin,
         });
       } catch {
         // 跳过解析失败的嵌套 skill

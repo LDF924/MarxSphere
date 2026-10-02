@@ -145,7 +145,9 @@ export async function fetchAllForTopics(
     try {
       const hasJournals = (opts.journals ?? []).length > 0;
       const r = await journalSource.fetch(hasJournals ? "" : (topics[0] ?? ""), {
-        since: opts.since, journals: opts.journals, limit: opts.limit
+        since: opts.since, journals: opts.journals, limit: opts.limit,
+        // 期刊库 topic_tags 反查要**全部**主题, 不是只有第一个
+        topics,
       });
       results.push(r);
       // topics 留空 —— 由编排层放进"期刊桶", 不再冒充某个主题的成果
@@ -208,7 +210,19 @@ export async function runDigestFetch(
 ): Promise<{ runId: string; inserted: number; dup: number; perSource: any[] }> {
   const topics = input.topics.filter(Boolean).slice(0, 30);
   const days = Math.min(Math.max(input.days ?? DEFAULT_DAYS, 1), 30);
-  const since = new Date(Date.now() - days * 86_400_000);
+  /**
+   * ⚠ 抓取窗口与展示窗口**解耦**(2026-10-03)。
+   *
+   * 用户设的 `days` 决定**看到多久内的**(默认 7 天), 但它不该同时决定**去抓多久内的**。
+   * 实测: OpenAlex 按相关性排序后, 「马克思主义中国化」在 7 天窗口只有 0 条,
+   * 30 天 1 条, **90 天 5 条**; 「政治经济学」90 天有 14 条。原因是外文库对中文社科
+   * 的收录与索引都滞后 —— 只抓 7 天, 每天都会因为"这 7 天恰好没有"而抓到空。
+   *
+   * 抓取是幂等的(唯一索引去重), 所以扩大抓取窗口**不会**产生重复, 只是第一次会多搬一些。
+   * 展示仍由 getDigest 的 since 控制 —— 用户看到的还是他设的时长。
+   */
+  const fetchWindowDays = Math.max(days, 90);
+  const since = new Date(Date.now() - fetchWindowDays * 86_400_000);
   const startedAt = new Date();
 
   const ins = await pool.query(
@@ -314,12 +328,16 @@ export async function getDigest(
           -- 有主题的条目: 用户 topics 为空(未设订阅)则全给, 否则取交集
           (coalesce(array_length(i.topics, 1), 0) > 0
             and (coalesce(array_length($3::text[], 1), 0) = 0 or i.topics && $3::text[]))
-          -- 无主题的条目(订阅期刊的目录/征稿): **必须**按用户订阅的刊名过滤。
+          -- 无主题的条目(订阅期刊的目录/征稿): 按用户订阅的刊名过滤。
           -- 漏了这半边会让 A 用户看到 B 用户订阅的期刊动态 —— 速递条目是全局表,
           -- 隔离只能靠这条 where, 没有 user_id 兜底。
+          -- ⚠ 2026-10-03 修正: 原条件要求 preferredJournals 非空, 于是**没有任何订阅行的
+          --   用户(前端首次进面板就是这个状态)永远看到 0 条** —— 实测就是用户报的
+          --   "共 0 篇"。而上面主题分支的语义是"订阅为空则全给", 两边不对称。
+          --   现在对称: 没选期刊 = 不限制(期刊动态是**公开的刊物公告**, 不是谁的数据,
+          --   不存在跨用户泄露; 真正需要隔离的是"按订阅筛出来的视图", 也就是选了刊之后)。
           or (coalesce(array_length(i.topics, 1), 0) = 0
-            and coalesce(array_length($4::text[], 1), 0) > 0
-            and i.journal = any($4::text[]))
+            and (coalesce(array_length($4::text[], 1), 0) = 0 or i.journal = any($4::text[])))
         )
       order by i.fetched_at desc, i.published_at desc nulls last, i.id asc
       limit 500`,

@@ -57,10 +57,18 @@ const PLACEHOLDERS: Record<Tool, string> = {
 };
 
 import { OpinionSearchPanel } from "./OpinionSearchPanel";
+import { DigestPanel } from "./DigestPanel";
 
 export function SciversePanel({ onSendToWorkflow }: {
   onSendToWorkflow?: (text: string, title: string) => void;
 } = {}) {
+  /**
+   * 顶层分区(2026-10-03 用户要求): 外部检索 / 研究速递。
+   * 研究速递原本挂在「科研中心」组下, 但它实质是**对外部源(OpenAlex/Crossref/期刊官网/微信)
+   * 的定时抓取结果** —— 与「外部检索」是同一件事的两种时态: 一个是"我现在去查",
+   * 一个是"它自己送上来"。放一起才知道这两条路都存在。
+   */
+  const [section, setSection] = useState<"search" | "digest">("search");
   const [tool, setTool] = useState<Tool>("semantic_search");
   const [query, setQuery] = useState("");
   const [extra, setExtra] = useState("");
@@ -289,9 +297,40 @@ export function SciversePanel({ onSendToWorkflow }: {
     return { hits: [] };
   };
 
+  if (section === "digest") {
+    return (
+      <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+        <div className="mx-auto w-full max-w-[1400px] space-y-4">
+          <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-0.5">
+            {([["search", "外部检索"], ["digest", "研究速递"]] as const).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setSection(k)}
+                data-control={`sciverse:section-${k}`}
+                className={cn("rounded-md px-3 py-1.5 text-sm transition-colors",
+                  section === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* min-h-0 + flex-1: DigestPanel 自己是纵向可滚动布局, 外面这层不能再限制高度 */}
+          <div className="min-h-0"><DigestPanel /></div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-4">
+        <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-0.5">
+          {([["search", "外部检索"], ["digest", "研究速递"]] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setSection(k)}
+              data-control={`sciverse:section-${k}`}
+              className={cn("rounded-md px-3 py-1.5 text-sm transition-colors",
+                section === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+              {label}
+            </button>
+          ))}
+        </div>
         {/*
           舆情检索(2026-10-01): 单独一个工具分支, **不走论文检索那套输入/结果渲染**。
           早返回而不是嵌进下面的条件链, 是因为它的输入(关键词+时间窗)与输出(新闻条目+

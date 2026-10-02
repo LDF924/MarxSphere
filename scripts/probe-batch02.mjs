@@ -29,7 +29,7 @@ try {
   ({ cdp, close } = await startCdp({ preferredPort: 31210, label: "probe-batch02", windowSize: "1600,900" }));
   await cdp("Page.navigate", { url: BASE });
   await sleep(2500);
-  await evalTop(cdp, `localStorage.setItem("sag_token", ${JSON.stringify(token)}); localStorage.setItem("skf_auth_token", ${JSON.stringify(token)}); 1`);
+  await evalTop(cdp, `localStorage.setItem("sag_token", ${JSON.stringify(token)}); localStorage.setItem("skf_auth_token", ${JSON.stringify(token)}); localStorage.setItem('sag_onboarding_done_v1','1'); 1`);
   await evalTop(cdp, `(() => { location.hash = "#paper-outline"; return 1; })()`);
   await sleep(4000);
 

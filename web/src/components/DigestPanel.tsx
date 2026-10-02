@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later WITH SocioSeek-Exception
-// DigestPanel.tsx — 研究速递(2026-10-02)
+// DigestPanel.tsx — 研究速递(2026-10-02 初版; 2026-10-03 按用户要求重做)
 //
 // 由来: 对照旧项目 Respal 的「研究速递」测绘后补的。它每天 19:19 抓一次,
 //   按用户订阅的主题分组推送, 界面是「日期 + 主题 chip + 卡片流 + 偏好设置」。
 //
-// ═══ 三个**有意不照抄**的地方(都是它实测踩到的坑, 见 migrations/174 头注释) ═══
+// ═══ 2026-10-03 重做(用户列了 8 条要求, 这里是其中 5 条) ═══
+//   · 文章题目 / 作者 / 期刊名 / 摘要原文 / 可点击跳转正文 —— 卡片信息密度提高
+//   · **日期选择器**(可任意选时间) —— 改前只能滚 chip, 想"看上周三抓了什么"做不到
+//   · 偏好设置改为**勾选式**(主题 + 期刊, 按学科分组), 不再是两个让人手打的 textarea
+//   · 按学科分好中英文 —— 期刊库的 field 就是学科, 语言由条目的 lang 决定
+//
+// ═══ 三个**有意不照抄** Respal 的地方(都是它实测踩到的坑, 见 migrations/174 头注释) ═══
 //   ① 它按源 id 去重 → arXiv 同一篇因分类不同入库三次。本仓的去重在**服务端**
 //      (item_doi_key / item_title_key 两条部分唯一索引), 前端不参与, 也无从绕过。
 //   ② 它的中文刊不带 fetched_at → `ORDER BY fetched_at DESC` 撞上 NULLS LAST,
@@ -16,8 +22,8 @@
 //     的研究成果", 混在一个列表里会误导。
 //   · 明确显示**哪些订阅的刊取不到动态**(库外的刊), 否则空列表会被读成"没更新"。
 //   · 显示抓取批次台账 —— "今天为什么只有 3 条"必须能查到是源挂了还是真没内容。
-import { useEffect, useState, useCallback } from "react";
-import { Newspaper, RefreshCw, Settings, ExternalLink, CheckCheck, AlertTriangle, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Newspaper, RefreshCw, Settings, ExternalLink, CheckCheck, AlertTriangle, Loader2, CalendarDays, ChevronDown, ChevronRight, BookOpen, Languages } from "lucide-react";
 import { PanelHeader, PanelCard, PanelButton, PanelEmpty, panelInputCls, PanelNotice } from "./PanelShell";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -40,6 +46,11 @@ interface Digest {
   runs: Run[];
 }
 interface Sub { topics: string[]; preferredJournals: string[]; days: number; uncoveredJournals: string[] }
+/** 可选项目录(/api/digest/catalog): 期刊库按学科分组 + topic_tags 并集 */
+interface Catalog {
+  fields: Array<{ field: string; journals: Array<{ name: string; level: string }> }>;
+  topics: Array<{ name: string; journalCount: number; field: string }>;
+}
 
 /** 源的中文名 —— 显示给用户看的, 不是内部 id */
 const SOURCE_LABEL: Record<string, string> = {
@@ -49,26 +60,48 @@ const SOURCE_LABEL: Record<string, string> = {
   rss: "订阅源",
 };
 
+/** 期刊库的 field → 中文分类名(库里的值已经是中文, 这里只做归一与排序) */
+const FIELD_ORDER = ["马克思主义", "哲学", "经济学", "政治学", "党史党建", "社会学", "法学", "历史学", "综合"];
+
 function fmtDate(iso: string | null): string {
   if (!iso) return "日期未详";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "日期未详";
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function fmtDateLong(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+}
+/** 日期选择器的候选: 从抓取台账的批次时刻与条目抓取日里取并集, 倒序 */
+function dateChoices(digest: Digest | null, papers: Paper[]): string[] {
+  const set = new Set<string>();
+  for (const p of papers) if (p.fetchedAt) set.add(p.fetchedAt.slice(0, 10));
+  for (const r of digest?.runs ?? []) if (r.startedAt) set.add(r.startedAt.slice(0, 10));
+  return [...set].sort().reverse();
+}
 
 export function DigestPanel() {
   const [digest, setDigest] = useState<Digest | null>(null);
   const [sub, setSub] = useState<Sub | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [tab, setTab] = useState<string>("__all__");
   const [q, setQ] = useState("");
+  /** 日期筛选: "" = 不限; 否则只看这一天抓到的 */
+  const [onlyDate, setOnlyDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [showPrefs, setShowPrefs] = useState(false);
-  const [topicDraft, setTopicDraft] = useState("");
-  const [journalDraft, setJournalDraft] = useState("");
   const [days, setDays] = useState(7);
+  /** 勾选态草稿 —— 只在「保存」时提交, 取消就丢弃 */
+  const [pickTopics, setPickTopics] = useState<string[]>([]);
+  const [pickJournals, setPickJournals] = useState<string[]>([]);
+  const [expandedPaper, setExpandedPaper] = useState<string | null>(null);
+  /** 偏好设置里的折叠分组: 学科名或 "topics" */
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["topics"]));
 
   const load = useCallback(async () => {
     setBusy(true); setErr("");
@@ -87,10 +120,16 @@ export function DigestPanel() {
       setSub(s as Sub);
       setDays((s as Sub).days || 7);
       try { sessionStorage.setItem("sag_digest_cache_v1", JSON.stringify(d)); } catch { /* 配额满则跳过 */ }
+      // 目录(可选主题/期刊)只在首次拉 —— 它是静态的期刊库快照
+      if (!catalog) {
+        void fetch("/api/digest/catalog", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+        }).then((r) => r.json()).then((c) => { if (c?.fields) setCatalog(c as Catalog); }).catch(() => { /* 目录拉不到不影响主流程 */ });
+      }
     } catch (e) {
       setErr((e as Error).message || "加载失败");
     } finally { setBusy(false); }
-  }, [digest]);
+  }, [digest, catalog]);
 
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -105,14 +144,22 @@ export function DigestPanel() {
     } finally { setRefreshing(false); }
   }
 
+  function openPrefs() {
+    setPickTopics(sub?.topics ?? []);
+    setPickJournals(sub?.preferredJournals ?? []);
+    setShowPrefs((v) => !v);
+  }
+  function togglePick(list: string[], setList: (v: string[]) => void, value: string) {
+    setList(list.includes(value) ? list.filter((x) => x !== value) : [...list, value]);
+  }
   async function savePrefs() {
     try {
-      const topics = topicDraft.split(/[\n,，]/).map((s) => s.trim()).filter(Boolean);
-      const journals = journalDraft.split(/[\n,，]/).map((s) => s.trim()).filter(Boolean);
-      const r = await api.digestTopicsSet({ topics, preferredJournals: journals, days }) as Sub;
+      const r = await api.digestTopicsSet({
+        topics: pickTopics, preferredJournals: pickJournals, days,
+      }) as Sub;
       setSub(r);
       setShowPrefs(false);
-      setMsg("偏好已保存");
+      setMsg(`偏好已保存：${pickTopics.length} 个主题、${pickJournals.length} 本期刊`);
       await load();
     } catch (e) { setErr((e as Error).message || "保存失败"); }
   }
@@ -120,6 +167,15 @@ export function DigestPanel() {
   async function markAllRead() {
     try { await api.digestRead([]); await load(); } catch (e) { setErr((e as Error).message || "标记失败"); }
   }
+
+  /** 全部条目(去重) —— 日期选择器、学科分组、统计都要在**全量**上算, 不能只在当前 chip 上 */
+  const allPapers: Paper[] = useMemo(() => {
+    if (!digest) return [];
+    const m = new Map<string, Paper>();
+    for (const v of Object.values(digest.topics)) for (const p of v) m.set(p.id, p);
+    for (const v of Object.values(digest.journals)) for (const p of v) m.set(p.id, p);
+    return [...m.values()];
+  }, [digest]);
 
   /** 当前 tab 下要显示的列表。**主题 chip 切换是零请求的** —— 数据一次全取回,
    *  切换只改本地筛选(照 Respal 的接口形状: {topics:{主题:[Paper]}})。 */
@@ -135,9 +191,35 @@ export function DigestPanel() {
     ? lists.flatMap((l) => l.papers)
     : (lists.find((l) => l.key === tab)?.papers ?? []);
 
-  const filtered = q.trim()
-    ? active.filter((p) => `${p.title} ${p.journal} ${p.authors.join(" ")}`.toLowerCase().includes(q.trim().toLowerCase()))
-    : active;
+  const dateOptions = useMemo(() => dateChoices(digest, allPapers), [digest, allPapers]);
+
+  const filtered = useMemo(() => {
+    let rows = active;
+    if (onlyDate) rows = rows.filter((p) => (p.fetchedAt || "").slice(0, 10) === onlyDate);
+    if (q.trim()) {
+      const kw = q.trim().toLowerCase();
+      rows = rows.filter((p) => `${p.title} ${p.journal} ${p.authors.join(" ")} ${p.abstract}`.toLowerCase().includes(kw));
+    }
+    return rows;
+  }, [active, onlyDate, q]);
+
+  /**
+   * 按**语言**分组, 组内按日期倒序。
+   * 用户要的是"按学科全部分好为中英文" —— 学科由期刊的 field 承载(偏好设置里按学科分组),
+   * 条目这一层能可靠拿到的只有语言(lang), 所以这里分中英, 学科在偏好设置里分。
+   */
+  const grouped = useMemo(() => {
+    const zh = filtered.filter((p) => p.lang === "zh" || (!p.lang && /[一-龥]/.test(p.title)));
+    const en = filtered.filter((p) => !(p.lang === "zh" || (!p.lang && /[一-龥]/.test(p.title))));
+    const byDate = (a: Paper, b: Paper) => (b.publishedAt || b.fetchedAt).localeCompare(a.publishedAt || a.fetchedAt);
+    return [
+      { key: "zh", label: "中文文献", rows: [...zh].sort(byDate) },
+      { key: "en", label: "English / 外文", rows: [...en].sort(byDate) },
+    ].filter((g) => g.rows.length > 0);
+  }, [filtered]);
+
+  const fieldGroups = catalog?.fields ?? [];
+  const topicOptions = catalog?.topics ?? [];
 
   return (
     <div className="space-y-3">
@@ -150,19 +232,28 @@ export function DigestPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索标题 / 期刊 / 作者"
-          className={cn(panelInputCls, "w-64")}
+          placeholder="搜索标题 / 期刊 / 作者 / 摘要"
+          className={cn(panelInputCls, "w-56")}
           data-control="digest:search"
         />
+        {/* shrink-0 + whitespace-nowrap: 不加会被 flex 压到"日/期"竖排两行(实测截图) */}
+        <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+          <CalendarDays className="h-3.5 w-3.5" />日期
+          <select
+            value={onlyDate} onChange={(e) => setOnlyDate(e.target.value)}
+            className={cn(panelInputCls, "py-1")}
+            data-control="digest:date"
+            title="按抓取日期筛选（可选任意一天）"
+          >
+            <option value="">不限</option>
+            {dateOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </label>
         <PanelButton onClick={() => void doRefresh()} disabled={refreshing} data-control="digest:refresh">
           {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
           {refreshing ? "抓取中…" : "立即刷新"}
         </PanelButton>
-        <PanelButton onClick={() => {
-          setTopicDraft((sub?.topics ?? []).join("\n"));
-          setJournalDraft((sub?.preferredJournals ?? []).join("\n"));
-          setShowPrefs((v) => !v);
-        }} data-control="digest:prefs">
+        <PanelButton onClick={openPrefs} data-control="digest:prefs">
           <Settings className="h-3 w-3" />偏好设置
         </PanelButton>
         <PanelButton onClick={() => void markAllRead()} data-control="digest:mark-all-read">
@@ -170,50 +261,142 @@ export function DigestPanel() {
         </PanelButton>
         {digest && (
           <span className="text-xs text-muted-foreground">
-            {digest.date} · 共 {digest.total} 篇
-            {filtered.length !== active.length && ` · 筛选后 ${filtered.length} 篇`}
+            共 {digest.total} 篇
+            {onlyDate ? ` · ${onlyDate} 抓到 ${filtered.length} 篇` : filtered.length !== active.length ? ` · 筛选后 ${filtered.length} 篇` : ""}
           </span>
         )}
       </div>
 
-      {/* ── 偏好设置 ── */}
+      {/* ── 偏好设置: 勾选式(2026-10-03 重做) ── */}
       {showPrefs && (
         <PanelCard title="订阅偏好">
-          <div className="space-y-3 text-xs">
+          <div className="space-y-4 text-xs">
+            <p className="text-muted-foreground">
+              直接点选你要的主题与期刊。候选来自本站期刊库（{fieldGroups.reduce((n, f) => n + f.journals.length, 0)} 本，
+              按学科分组）—— 手打刊名很容易打错，打错了就静默收不到内容。
+            </p>
+
+            {/* 研究主题 */}
             <div>
-              <div className="mb-1 text-muted-foreground">研究主题(每行一个)</div>
-              <textarea
-                value={topicDraft} onChange={(e) => setTopicDraft(e.target.value)} rows={4}
-                className={cn(panelInputCls, "w-full")} placeholder={"地方政府行为\n政治经济学"}
-                data-control="digest:prefs-topics"
-              />
+              <button
+                type="button"
+                onClick={() => setOpenGroups((s) => { const n = new Set(s); n.has("topics") ? n.delete("topics") : n.add("topics"); return n; })}
+                className="mb-1.5 flex w-full items-center gap-1 text-left font-medium"
+              >
+                {openGroups.has("topics") ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                研究主题
+                <span className="ml-1 text-muted-foreground">已选 {pickTopics.length} / {topicOptions.length}</span>
+              </button>
+              {openGroups.has("topics") ? (
+                /* 主题**也按学科分组**(用户要求"按学科全部分好")。一个主题横跨多学科时
+                   归到它出现最多的那个(后端 dominantField), 见 /api/digest/catalog 的说明。 */
+                <div className="max-h-60 space-y-1 overflow-y-auto rounded border border-border p-1.5">
+                  {topicOptions.length === 0 ? (
+                    <span className="text-muted-foreground">目录加载中…（拉不到时可先保存，稍后重试）</span>
+                  ) : [...new Set(topicOptions.map((t) => t.field))].sort((a, b) => {
+                    const ia = FIELD_ORDER.indexOf(a), ib = FIELD_ORDER.indexOf(b);
+                    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+                  }).map((field) => {
+                    const list = topicOptions.filter((t) => t.field === field);
+                    const picked = list.filter((t) => pickTopics.includes(t.name)).length;
+                    return (
+                      <div key={field}>
+                        <div className="px-1 py-0.5 text-[10px] text-muted-foreground/70">
+                          {field} <span className="opacity-60">{list.length} 个主题{picked ? ` · 已选 ${picked}` : ""}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 px-1 pb-1">
+                          {list.map((t) => {
+                            const on = pickTopics.includes(t.name);
+                            return (
+                              <button
+                                key={t.name} type="button"
+                                onClick={() => togglePick(pickTopics, setPickTopics, t.name)}
+                                data-control="digest:pick-topic"
+                                title={`${t.journalCount} 本刊覆盖此主题`}
+                                className={cn(
+                                  "rounded-full border px-2 py-0.5 transition-colors",
+                                  on ? "border-violet-400/60 bg-violet-500/20 text-violet-200" : "border-border text-muted-foreground hover:bg-accent"
+                                )}
+                              >{on ? "✓ " : ""}{t.name} <span className="opacity-60">{t.journalCount}</span></button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
+
+            {/* 期刊: 按学科分组 */}
             <div>
-              <div className="mb-1 text-muted-foreground">
-                订阅期刊(每行一个, 刊名需与本站期刊库一致)
+              <div className="mb-1.5 font-medium">订阅期刊 <span className="ml-1 text-muted-foreground">已选 {pickJournals.length} 本</span></div>
+              <div className="max-h-72 space-y-1 overflow-y-auto rounded border border-border p-1.5">
+                {fieldGroups.length === 0 ? (
+                  <div className="text-muted-foreground">目录加载中…</div>
+                ) : [...fieldGroups].sort((a, b) => {
+                  const ia = FIELD_ORDER.indexOf(a.field), ib = FIELD_ORDER.indexOf(b.field);
+                  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+                }).map((g) => {
+                  const open = openGroups.has(g.field);
+                  const picked = g.journals.filter((j) => pickJournals.includes(j.name)).length;
+                  return (
+                    <div key={g.field}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenGroups((s) => { const n = new Set(s); n.has(g.field) ? n.delete(g.field) : n.add(g.field); return n; })}
+                        className="flex w-full items-center gap-1 rounded px-1 py-1 text-left hover:bg-accent/40"
+                      >
+                        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        <BookOpen className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium">{g.field}</span>
+                        <span className="text-muted-foreground">{g.journals.length} 本{picked ? ` · 已选 ${picked}` : ""}</span>
+                      </button>
+                      {open ? (
+                        <div className="flex flex-wrap gap-1 px-4 pb-1.5">
+                          {g.journals.map((j) => {
+                            const on = pickJournals.includes(j.name);
+                            return (
+                              <button
+                                key={j.name} type="button"
+                                onClick={() => togglePick(pickJournals, setPickJournals, j.name)}
+                                data-control="digest:pick-journal"
+                                title={j.level ? `收录级别：${j.level}` : undefined}
+                                className={cn(
+                                  "rounded border px-1.5 py-0.5 transition-colors",
+                                  on ? "border-violet-400/60 bg-violet-500/20 text-violet-200" : "border-border text-muted-foreground hover:bg-accent"
+                                )}
+                              >{on ? "✓ " : ""}{j.name}{j.level ? <span className="ml-1 opacity-55">{j.level}</span> : null}</button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
-              <textarea
-                value={journalDraft} onChange={(e) => setJournalDraft(e.target.value)} rows={3}
-                className={cn(panelInputCls, "w-full")} placeholder={"党政研究\n马克思主义研究"}
-                data-control="digest:prefs-journals"
-              />
             </div>
+
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">未读窗口</span>
+              <span className="text-muted-foreground">展示最近</span>
               <input
                 type="number" min={1} max={30} value={days}
                 onChange={(e) => setDays(Math.min(30, Math.max(1, Number(e.target.value) || 7)))}
                 className={cn(panelInputCls, "w-20")}
                 data-control="digest:prefs-days"
               />
-              <span className="text-muted-foreground">天</span>
+              <span className="text-muted-foreground">
+                天（抓取窗口固定至少 90 天 —— 外文库对中文社科索引滞后，只抓 7 天常常什么都抓不到）
+              </span>
             </div>
+
             {sub?.uncoveredJournals?.length ? (
               <PanelNotice type="warn">
                 以下期刊本站暂无动态数据, 订阅了也收不到内容: {sub.uncoveredJournals.join("、")}
                 。期刊库覆盖 80 本马理论相关刊物, 库外的刊请改用主题订阅。
               </PanelNotice>
             ) : null}
+
             <div className="flex gap-2">
               <PanelButton onClick={() => void savePrefs()} data-control="digest:prefs-save">保存</PanelButton>
               <PanelButton onClick={() => setShowPrefs(false)}>取消</PanelButton>
@@ -257,12 +440,11 @@ export function DigestPanel() {
       {!busy && filtered.length === 0 && (
         <PanelEmpty>
           {(() => {
-            // 空的原因有三种, **必须分开说** —— 只说"还没有内容"会让用户以为抓取坏了。
-            // 实测场景: 期刊条目按用户订阅的刊名过滤(条目表是全局的, 隔离靠这条 where),
-            // 所以一个没设过订阅的用户即使库里有一堆内容, 看到的也是 0。
+            // 空的原因有几种, **必须分开说** —— 只说"还没有内容"会让用户以为抓取坏了。
             if (!sub || (sub.topics.length === 0 && sub.preferredJournals.length === 0)) {
-              return "还没有设置订阅。点上方「偏好设置」添加研究主题或订阅期刊, 然后点「立即刷新」抓取。";
+              return "还没有设置订阅。点上方「偏好设置」勾选研究主题或订阅期刊, 然后点「立即刷新」抓取。";
             }
+            if (onlyDate) return `${onlyDate} 这一天没有抓到内容。换一个日期看看, 或选「不限」。`;
             if (sub.topics.length === 0) {
               return "你只订阅了期刊。期刊动态按刊推送, 若下方提示某些刊暂无数据, 可另外加几个研究主题。";
             }
@@ -274,48 +456,80 @@ export function DigestPanel() {
         </PanelEmpty>
       )}
 
-      <div className="space-y-2">
-        {filtered.map((p) => (
-          <PanelCard key={p.id + p.topics.join(",")}>
-            <div className="space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="text-sm font-medium leading-snug">{p.title}</div>
-                {!p.read && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" title="未读" />}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                {p.journal && <span>{p.journal}</span>}
-                {p.authors.length > 0 && <span>{p.authors.slice(0, 3).join("、")}{p.authors.length > 3 ? " 等" : ""}</span>}
-                {/* 出版日与抓取日**分开显示**: 期刊动态里常见"今天抓到 2021 年的目录",
-                    只显示一个日期会让用户以为那是新内容 */}
-                <span>{fmtDate(p.publishedAt)}</span>
-                <span className="rounded bg-white/5 px-1.5 py-0.5">{SOURCE_LABEL[p.source] || p.source}</span>
-              </div>
-              {p.cnSummary && <div className="text-xs leading-relaxed text-foreground/80">{p.cnSummary}</div>}
-              {!p.cnSummary && p.abstract && (
-                <div className="text-xs leading-relaxed text-foreground/60">
-                  {p.abstract.slice(0, 300)}{p.abstract.length > 300 ? "…" : ""}
+      {/* 按语言分组渲染 */}
+      {grouped.map((g) => (
+        <div key={g.key} className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Languages className="h-3.5 w-3.5" />
+            {g.label}
+            <span className="opacity-60">{g.rows.length} 篇</span>
+          </div>
+          {g.rows.map((p) => {
+            const expanded = expandedPaper === p.id;
+            const hasLongAbs = p.abstract.length > 220;
+            return (
+              <PanelCard key={p.id + p.topics.join(",")}>
+                <div className="space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-sm font-medium leading-snug">{p.title}</div>
+                    {!p.read && <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" title="未读" />}
+                  </div>
+
+                  {/* 作者 / 期刊 / 日期 / 来源 —— 用户点名要的字段 */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    {p.authors.length > 0 ? (
+                      <span className="text-foreground/70">{p.authors.slice(0, 3).join("、")}{p.authors.length > 3 ? ` 等 ${p.authors.length} 人` : ""}</span>
+                    ) : <span className="opacity-60">作者未详</span>}
+                    {p.journal && <span className="rounded bg-white/5 px-1.5 py-0.5">{p.journal}</span>}
+                    {/* 出版日与抓取日**分开显示**: 期刊动态里常见"今天抓到 2021 年的目录",
+                        只显示一个日期会让用户以为那是新内容 */}
+                    <span title="出版日期">{fmtDate(p.publishedAt)}</span>
+                    <span className="opacity-60" title="抓取日期">抓于 {p.fetchedAt.slice(0, 10)}</span>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5">{SOURCE_LABEL[p.source] || p.source}</span>
+                  </div>
+
+                  {/* 摘要原文 —— 优先显示中文概括, 没有则显示原文摘要 */}
+                  {p.cnSummary ? (
+                    <div className="text-xs leading-relaxed text-foreground/80">{p.cnSummary}</div>
+                  ) : null}
+                  {p.abstract ? (
+                    <div className="text-xs leading-relaxed text-foreground/60">
+                      {expanded ? p.abstract : p.abstract.slice(0, 220)}
+                      {hasLongAbs ? (
+                        <button
+                          onClick={() => setExpandedPaper(expanded ? null : p.id)}
+                          className="ml-1 text-violet-300 hover:underline"
+                          data-control="digest:expand-abstract"
+                        >{expanded ? "收起" : "展开全文"}</button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!p.abstract && !p.cnSummary ? (
+                    <div className="text-[11px] text-muted-foreground/60">该来源未提供摘要（期刊目录/征稿类条目通常只有标题与链接）</div>
+                  ) : null}
+
+                  {p.url && (
+                    <a
+                      href={p.url} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />跳转正文
+                    </a>
+                  )}
                 </div>
-              )}
-              {p.url && (
-                <a
-                  href={p.url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-violet-300 hover:underline"
-                >
-                  <ExternalLink className="h-3 w-3" />查看原文
-                </a>
-              )}
-            </div>
-          </PanelCard>
-        ))}
-      </div>
+              </PanelCard>
+            );
+          })}
+        </div>
+      ))}
 
       {/* ── 抓取台账 ── */}
       {digest?.runs?.length ? (
         <PanelCard title="抓取台账">
           <div className="space-y-1 text-[11px] text-muted-foreground">
-            {digest.runs.slice(0, 3).map((r, i) => (
+            {digest.runs.slice(0, 5).map((r, i) => (
               <div key={i} className="flex flex-wrap items-center gap-2">
-                <span>{r.startedAt.slice(0, 19).replace("T", " ")}</span>
+                <span>{fmtDateLong(r.startedAt)}</span>
                 <span className={r.ok ? "text-emerald-400" : "text-amber-400"}>{r.ok ? "成功" : "有源失败"}</span>
                 <span>新增 {r.inserted}</span>
                 {r.perSource.map((s) => (

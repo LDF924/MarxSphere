@@ -435,6 +435,9 @@ function OpsBlocks({ onMsg, onReload }: { onMsg: (m: string) => void; onReload: 
   const [wxConf, setWxConf] = useState<{ appId: string; enabled: boolean } | null>(null);
   const [wxAppId, setWxAppId] = useState("");
   const [wxSecret, setWxSecret] = useState("");
+  /** 连通性自检结果 —— 与"配置齐不齐"是两件事(见 /api/admin/wechat/test 的说明) */
+  const [wxTest, setWxTest] = useState<{ ok: boolean; mode: string; steps: Array<{ name: string; ok: boolean; detail: string }> } | null>(null);
+  const [wxTesting, setWxTesting] = useState(false);
   // API key 库
   const [keys, setKeys] = useState<Array<{ id: string; name: string; keyMasked: string }>>([]);
   const [newKeyName, setNewKeyName] = useState("");
@@ -514,8 +517,39 @@ function OpsBlocks({ onMsg, onReload }: { onMsg: (m: string) => void; onReload: 
         </div>
         <input value={wxSecret} onChange={(e) => setWxSecret(e.target.value)} placeholder="AppSecret(留空不更新)" type="password"
           className="mt-1.5 w-full rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs" />
-        <button onClick={() => void call("/api/admin/wechat/config", { appId: wxAppId, appSecret: wxSecret || undefined, enabled: !!wxAppId })}
-          className="mt-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white">保存配置(空 AppID=回 mock)</button>
+        <div className="mt-1.5 flex gap-1.5">
+          <button onClick={() => void call("/api/admin/wechat/config", { appId: wxAppId, appSecret: wxSecret || undefined, enabled: !!wxAppId })}
+            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white">保存配置(空 AppID=回 mock)</button>
+          <button
+            onClick={() => {
+              setWxTesting(true); setWxTest(null);
+              // body 必须是 "{}" —— h() 带了 Content-Type: application/json, 而 Fastify 在
+              // 声明了 JSON 却不给 body 时直接 500("Body cannot be empty…")。实测踩过。
+              void fetch("/api/admin/wechat/test", { method: "POST", headers: h(), body: "{}" })
+                .then((r) => r.json()).then(setWxTest).catch(() => setWxTest(null))
+                .finally(() => setWxTesting(false));
+            }}
+            disabled={wxTesting}
+            className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-50"
+          >{wxTesting ? "测试中…" : "测试连通性"}</button>
+        </div>
+        {wxTest ? (
+          <div className="mt-2 space-y-1 rounded border border-white/10 bg-black/20 p-2">
+            <div className={wxTest.ok ? "text-[11px] text-emerald-400" : "text-[11px] text-amber-400"}>
+              {wxTest.ok ? "连通（可以真扫码登录）" : "不通 —— 当前只能走 mock 演示扫码"}
+            </div>
+            {wxTest.steps.map((st, i) => (
+              <div key={i} className="flex gap-1.5 text-[10px]">
+                <span className={st.ok ? "text-emerald-400" : "text-red-400"}>{st.ok ? "✓" : "✗"}</span>
+                <span className="text-muted-foreground">{st.name}：{st.detail}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <p className="mt-1.5 text-[10px] text-muted-foreground/60">
+          「已启用」徽标只表示配置齐全，不代表通。appid/secret 写错、账号被停用、服务器 IP 没加进微信白名单，
+          这三种情况徽标都是绿的 —— 请点「测试连通性」。
+        </p>
       </div>
 
       {/* API Key 库 */}

@@ -9,6 +9,17 @@ import { pool } from "../db/pool.js";
 export interface WechatConfig { appId: string; appSecret: string; baseUrl: string; enabled: boolean; }
 
 let cachedConfig: WechatConfig | null = null;
+/**
+ * 2026-10-02 修正: 原读写的是 `ai_provider_settings(key, value)` —— **本表没有这两列**。
+ *   它建表时是 `id text primary key default 'global'` + 固定列(003 迁移), 没有任何
+ *   key/value 字段。所以 `select value ... where key='wechat_mp'` 永远抛
+ *   `column "value" does not exist`, 被下面的 catch 吞掉 → 表现为"保存了但一直是 mock",
+ *   而保存那侧(insert into (key,value))更是直接 500 —— **管理面板的微信配置从来没生效过**。
+ *   同型缺陷在 wechat-pay-service 的读侧(那里没有写侧, 所以只是永远读不到)。
+ *
+ *   改为存进**已有**的 metadata jsonb —— 同一张表的 openaiKeys / appConfig 就是这么放的
+ *   (server.ts:13282、13317), 跟着既有约定走比新开一张表好。
+ */
 async function loadConfig(): Promise<WechatConfig> {
   if (cachedConfig) return cachedConfig;
   let conf: WechatConfig = {
@@ -19,9 +30,10 @@ async function loadConfig(): Promise<WechatConfig> {
   };
   try {
     const r = await pool.query(
-      `select value from ai_provider_settings where key='wechat_mp'`);
-    if (r.rows[0]?.value) {
-      conf = { appId: "", appSecret: "", baseUrl: "", enabled: false, ...(typeof r.rows[0].value === "string" ? JSON.parse(r.rows[0].value) : r.rows[0].value) };
+      `select metadata->'wechatMp' as cfg from ai_provider_settings where id='global'`);
+    const v = r.rows[0]?.cfg;
+    if (v) {
+      conf = { appId: "", appSecret: "", baseUrl: "", enabled: false, ...(typeof v === "string" ? JSON.parse(v) : v) };
     }
   } catch { /* 表未就绪 */ }
   cachedConfig = conf;
@@ -30,8 +42,9 @@ async function loadConfig(): Promise<WechatConfig> {
 
 export async function setConfig(config: WechatConfig) {
   await pool.query(
-    `insert into ai_provider_settings (key, value) values ('wechat_mp', $1)
-     on conflict (key) do update set value=$1`,
+    `update ai_provider_settings
+        set metadata = jsonb_set(coalesce(metadata,'{}'), '{wechatMp}', $1::jsonb), updated_at = now()
+      where id = 'global'`,
     [JSON.stringify(config)]);
   cachedConfig = config;
   return { ok: true };
@@ -44,6 +57,90 @@ export async function getMpConfig(admin = false) {
 
 export function isMockMode() {
   return !cachedConfig?.enabled;
+}
+
+/**
+ * 微信公众号连通性自检(2026-10-02)。
+ *
+ * 由来: 管理面板此前只有一个「已启用 / mock 演示」徽标, 而那个徽标读的是
+ *   `wxConf.enabled` —— 那是**配置齐不齐**, 不是**通不通**。appid/secret 填错、
+ *   被停用、IP 白名单没加、access_token 已被别的进程刷新掉, 这四种情况下
+ *   徽标照样显示"已启用", 用户要到真去扫码时才发现是坏的。
+ *
+ * 做两件事, 而且**分开报告**:
+ *   ① 能不能换到 access_token(这一步就能覆盖上面四种故障)
+ *   ② 能不能拉一次用户标签列表(证明 token 确实有权限, 不只是格式对)
+ *   ②失败但①成功是**有意义的结果**: token 拿到了但账号没有该接口权限, 报出来比笼统说"失败"有用。
+ */
+export async function testWechatConnectivity(): Promise<{
+  ok: boolean;
+  configured: boolean;
+  baseUrl: string;
+  appId: string;
+  mode: "mock" | "live";
+  tokenOk: boolean;
+  apiOk: boolean;
+  steps: Array<{ name: string; ok: boolean; detail: string }>;
+}> {
+  const cfg = await loadConfig();
+  const steps: Array<{ name: string; ok: boolean; detail: string }> = [];
+  const configured = Boolean(cfg.appId && cfg.appSecret && cfg.baseUrl);
+
+  if (!configured) {
+    steps.push({ name: "配置", ok: false, detail: "未配置 AppID / AppSecret / 接口基址 —— 当前运行在 mock 演示模式，扫码登录走的是本地假票据。" });
+    return { ok: false, configured: false, baseUrl: cfg.baseUrl, appId: cfg.appId, mode: "mock", tokenOk: false, apiOk: false, steps };
+  }
+  steps.push({ name: "配置", ok: true, detail: `AppID ${cfg.appId}，接口基址 ${cfg.baseUrl}` });
+
+  // ① 换 access_token —— 微信公众号这一步就能同时验证 appid/secret 是否匹配、IP 是否在白名单
+  let token = "";
+  let tokenOk = false;
+  try {
+    const url = `${cfg.baseUrl.replace(/\/$/, "")}/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(cfg.appId)}&secret=${encodeURIComponent(cfg.appSecret)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const d = await r.json() as { access_token?: string; errcode?: number; errmsg?: string };
+    if (d.access_token) {
+      token = d.access_token;
+      tokenOk = true;
+      steps.push({ name: "获取 access_token", ok: true, detail: "已换到 access_token，凭据有效。" });
+    } else {
+      // errcode 要原样带出来 —— 40164(IP 不在白名单) 与 40001(secret 错) 的处置完全不同,
+      // 只报"失败"会让用户去改错的地方
+      steps.push({ name: "获取 access_token", ok: false, detail: `微信返回 errcode=${d.errcode ?? "?"} ${d.errmsg ?? ""}`.trim() });
+    }
+  } catch (e) {
+    steps.push({ name: "获取 access_token", ok: false, detail: `请求失败: ${String((e as Error).message).slice(0, 140)}` });
+  }
+
+  // ② 拿 token 调一个只读接口 —— 证明它有权限, 不只是拿到了一个字符串
+  let apiOk = false;
+  if (tokenOk) {
+    try {
+      const r = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/cgi-bin/tags/get?access_token=${encodeURIComponent(token)}`,
+        { signal: AbortSignal.timeout(8000) });
+      const d = await r.json() as { tags?: unknown[]; errcode?: number; errmsg?: string };
+      if (Array.isArray(d.tags)) {
+        apiOk = true;
+        steps.push({ name: "调用只读接口", ok: true, detail: `标签列表可读（${d.tags.length} 个标签）。` });
+      } else {
+        steps.push({ name: "调用只读接口", ok: false, detail: `errcode=${d.errcode ?? "?"} ${d.errmsg ?? ""} —— token 有效但该接口不可用，检查账号类型与接口权限。`.trim() });
+      }
+    } catch (e) {
+      steps.push({ name: "调用只读接口", ok: false, detail: `请求失败: ${String((e as Error).message).slice(0, 140)}` });
+    }
+  }
+
+  return {
+    ok: tokenOk,
+    configured: true,
+    baseUrl: cfg.baseUrl,
+    // 只回前 6 位 —— 面板要展示"测的是哪个号", 但 AppSecret 这类东西不进日志/响应
+    appId: cfg.appId.slice(0, 6) + (cfg.appId.length > 6 ? "…" : ""),
+    mode: "live",
+    tokenOk,
+    apiOk,
+    steps,
+  };
 }
 
 function newTicket(): string { return randomUUID().replace(/-/g, "").slice(0, 32); }

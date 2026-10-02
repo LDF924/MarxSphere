@@ -53,6 +53,8 @@ import { WordBuildPanel } from "./components/WordBuildPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatPanel, type ChatDraftImage } from "./components/ChatPanel";
 import { cn, formatDate, formatDuration, formatMessageDate, shortId, timeGapMinutes } from "./lib/utils";
+import { playSound, isSoundEnabled, setSoundEnabled, primeAudio } from "./lib/sound";
+import { OnboardingTour, shouldShowOnboarding, resetOnboarding } from "./components/OnboardingTour";
 import { MarkdownMessage, renderMarkdownLines, type MarkdownCitation } from "./lib/markdown";
 import type {
   ChunkRecord,
@@ -515,6 +517,9 @@ function AppShell() {
     } catch { /* ignore */ }
   }
 
+  /** 新手引导 —— 首次进入自动弹一次(见 OnboardingTour 的"只做一次"说明) */
+  const [tourOpen, setTourOpen] = useState(() => shouldShowOnboarding());
+
   // ═══ 命令面板的动作通道(2026-10-02) ═══
   // MainWorkspaceTabs 的 paletteActions 派发 "sag:command", 这里落地成真实动作。
   // ⚠ 用 ref 存最新的 handler: 如果直接把 toggleTheme 等放进依赖数组, 每次 theme/collapsed
@@ -622,6 +627,7 @@ function AppShell() {
     const controller = new AbortController();
     chatAbortsRef.current.set(ownerId, controller);
     markRunning(ownerId, true);
+    playSound("send");
     setChatPendingUser(content);
     setChatStreamingText("");
     setChatReasoning("");
@@ -680,9 +686,12 @@ function AppShell() {
     } catch (err) {
       if (!controller.signal.aborted) {
         setError(String(err instanceof Error ? err.message : err));
+        playSound("error");
       }
     } finally {
       markRunning(ownerId, false);
+      // 中止是用户主动按的"停止", 不该再"叮"一声说完成了 —— 只对真正跑完的播出完成音
+      if (!controller.signal.aborted) playSound("done");
       // 只清与"当前可见会话"相关的界面态 —— 若用户已经切走, 清它会误伤新会话的显示
       if (isVisible()) {
         setChatPendingUser("");
@@ -2729,6 +2738,12 @@ function AppShell() {
 
       {/* SocialSci P0-7: 全局悬浮助手(页面观察/导航引导/任务推荐/签到卡) */}
       <FloatingAssistantFAB workspaceView={workspaceView} onNavigate={(v) => setWorkspaceView(v as WorkspaceView)} />
+      {/* 新手引导(2026-10-02) —— 首次进入自动弹一次; 设置面板里可"再看一遍" */}
+      <OnboardingTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        onGoToView={(v) => navigateView(v as WorkspaceView)}
+      />
       </div>
       )}
     </>
@@ -3157,7 +3172,6 @@ function MainWorkspaceTabs(props: {
       dot: "hsl(150 45% 50%)",
       items: [
         { value: "literature", label: t("文献库", "Library") },
-        { value: "digest", label: t("研究速递", "Digest") },
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照, 与文献库同族紧邻)
         { value: "sciverse", label: t("外部检索", "Sciverse") },
         { value: "scenarios", label: t("场景", "Scenarios") },
@@ -3241,7 +3255,6 @@ function MainWorkspaceTabs(props: {
         { value: "trace", label: t("Trace", "Trace") },
         { value: "eval", label: t("评测", "Eval") },
         { value: "alerts", label: t("告警", "Alerts") },
-        { value: "notifications", label: t("通知中心", "Notifications") },
         { value: "im", label: t("IM接入", "IM") },
         { value: "inbox", label: t("Inbox", "Inbox") },
         { value: "billing", label: t("账户计费", "Billing") },
@@ -4802,6 +4815,32 @@ function SettingsPanel(props: {
       .catch(() => {});
   }, []);
   const [agentAutonomy, setAgentAutonomy] = useState("auto-edit");
+  /**
+   * 音效(2026-10-02) —— **默认关**, 存 localStorage 而非 /api/agent/settings。
+   * 理由见 lib/sound.ts 的文件头: 出不出声是这台设备的事, 不该跟账号跨设备同步。
+   */
+  const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
+  /**
+   * Python 运行时自检(2026-10-02)。
+   * 由「点按钮才跑」而不是进页面就跑 —— 它会起 2 个 Python 子进程, 每次进设置都跑
+   * 是白白花几百毫秒。用户想知道"能不能跑分析"时才点。
+   */
+  const [pyHealth, setPyHealth] = useState<null | {
+    path: string; exists: boolean; version: string | null; versionError: string; isProjectVenv: boolean;
+    installHint: string; ok: boolean;
+    packages: Array<{ name: string; usedBy: string; installed: boolean }>;
+  }>(null);
+  const [pyLoading, setPyLoading] = useState(false);
+  /** 会话工作目录(2026-10-02) —— 沙箱 cwd 此前只有一个全局目录, 并行会话的产物混在一起 */
+  const [wsName, setWsName] = useState("");
+  const [wsMsg, setWsMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  /** 设置里"再看一遍引导" —— 这里只需要一个能立刻弹出的开关 */
+  const [localTourOpen, setLocalTourOpen] = useState(false);
+  useEffect(() => {
+    void fetch("/api/agent/workspace", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+    }).then((r) => r.json()).then((d) => { if (typeof d?.name === "string") setWsName(d.name); }).catch(() => {});
+  }, []);
   useEffect(() => {
     void fetch("/api/agent/settings").then((r) => r.json()).then((d) => {
       const s = d.settings || {};
@@ -4909,7 +4948,163 @@ function SettingsPanel(props: {
         </div>
       </SettingsCard>
 
+      <SettingsCard title={t("声音与通知", "Sound & notices")} badge={soundOn ? t("已开", "On") : t("已关", "Off")}>
+        <div className="space-y-3 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={soundOn}
+              onChange={(event) => {
+                const on = event.target.checked;
+                setSoundOn(on);
+                setSoundEnabled(on);
+                // 打开时顺手把音频上下文唤醒 —— 这也是**唯一**能出声的时机:
+                // 自动播放策略要求 AudioContext 由用户手势创建(见 lib/sound.ts 文件头 ①)。
+                // 晚一点由事件触发的播放不再是手势, 那时才建 context 会被静默吃掉。
+                if (on) { primeAudio(); playSound("done"); }
+              }}
+              data-control="settings:sound-toggle"
+            />
+            {t("任务完成/出错时播放提示音", "Play a chime when a task finishes or fails")}
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">{t("试听：", "Preview:")}</span>
+            {(["send", "done", "error", "notify"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => { primeAudio(); playSound(kind); }}
+                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+              >
+                {{ send: t("已发送", "Sent"), done: t("完成", "Done"), error: t("出错", "Error"), notify: t("提醒", "Notice") }[kind]}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs leading-5 text-muted-foreground">
+            {t(
+              "默认关闭。音为本地合成(WebAudio), 不下载音频文件、不联网；开关只存本机浏览器。",
+              "Off by default. Tones are synthesized locally (WebAudio) — no audio files, no network. The switch is stored in this browser only."
+            )}
+          </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard title={t("运行时自检", "Runtime check")} badge={pyHealth ? (pyHealth.ok ? t("就绪", "Ready") : t("有缺项", "Incomplete")) : t("未检测", "Not checked")}>
+        <div className="space-y-3 md:col-span-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={pyLoading}
+              onClick={() => {
+                setPyLoading(true);
+                void fetch("/api/runtime/python", {
+                  headers: { Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+                }).then((r) => r.json()).then(setPyHealth).catch(() => setPyHealth(null)).finally(() => setPyLoading(false));
+              }}
+              className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              data-control="settings:python-check"
+            >{pyLoading ? t("检测中…", "Checking…") : t("检测 Python 环境", "Check Python")}</button>
+            <span className="text-xs text-muted-foreground">
+              {t("表格解析、Word/PPT 读写、实证统计都跑在 Python 上。缺包时这里会直接给出安装命令。",
+                 "Spreadsheets, Word/PPT and empirical stats all run on Python. Missing packages are reported with the exact install command.")}
+            </span>
+          </div>
+
+          {pyHealth ? (
+            <div className="space-y-2 rounded-md border border-border p-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={pyHealth.version ? "text-emerald-400" : "text-red-400"}>
+                  {pyHealth.version ? `Python ${pyHealth.version}` : t("解释器不可用", "Interpreter unavailable")}
+                </span>
+                <span className="text-muted-foreground">{pyHealth.isProjectVenv ? t("项目内置 venv", "Project venv") : t("系统 / 环境变量指定", "System or via env var")}</span>
+              </div>
+              <div className="break-all font-mono text-[11px] text-muted-foreground">{pyHealth.path}</div>
+              {!pyHealth.version && pyHealth.versionError ? (
+                <div className="text-red-300">{pyHealth.versionError}</div>
+              ) : null}
+              <div className="flex flex-wrap gap-1.5">
+                {pyHealth.packages.map((p) => (
+                  <span
+                    key={p.name}
+                    title={p.usedBy}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      p.installed ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-red-400/30 bg-red-400/10 text-red-300"
+                    )}
+                  >{p.installed ? "✓" : "✗"} {p.name}</span>
+                ))}
+              </div>
+              {pyHealth.installHint ? (
+                <div className="rounded border border-amber-400/25 bg-amber-400/[0.06] p-2">
+                  <div className="mb-1 text-amber-300">{t("有未安装的包，在终端执行：", "Missing packages. Run in your terminal:")}</div>
+                  <code className="block break-all font-mono text-[11px] text-foreground">{pyHealth.installHint}</code>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard title={t("会话工作目录", "Session workspace")} badge={wsName || t("默认", "Default")}>
+        <div className="space-y-2 md:col-span-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={wsName}
+              onChange={(e) => setWsName(e.target.value)}
+              placeholder={t("留空 = 用默认工作区；填名字 = 在该子目录下干活", "Empty = default workspace; a name = work inside that subdirectory")}
+              className="max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                void fetch("/api/agent/workspace", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("skf_auth_token") || localStorage.getItem("sag_token") || ""}` },
+                  body: JSON.stringify({ name: wsName.trim() }),
+                }).then(async (r) => {
+                  const d = await r.json();
+                  if (!r.ok) { setWsMsg({ kind: "err", text: d?.error || t("保存失败", "Save failed") }); return; }
+                  setWsName(d.name ?? "");
+                  setWsMsg({ kind: "ok", text: d.name ? t(`已切到工作目录「${d.name}」`, `Switched to “${d.name}”`) : t("已回到默认工作区", "Back to default workspace") });
+                }).catch((e) => setWsMsg({ kind: "err", text: String(e?.message || e).slice(0, 120) }));
+              }}
+              className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+              data-control="settings:workspace-save"
+            >{t("切换", "Switch")}</button>
+          </div>
+          {wsMsg ? (
+            <div className={cn("text-xs", wsMsg.kind === "ok" ? "text-emerald-400" : "text-red-300")}>{wsMsg.text}</div>
+          ) : null}
+          <div className="text-xs leading-5 text-muted-foreground">
+            {t(
+              "沙箱里跑的代码以这个目录为工作目录。名字只能含字母、数字、连字符、下划线和点，且必须位于智能体工作区之内——这是围栏，不是可选项。并行做几件事时给它们各起一个名字，产物就不会混在一起。",
+              "Sandboxed code runs with this as its working directory. Names may contain letters, digits, hyphens, underscores and dots, and must stay inside the agent workspace — that fence is not optional. Use one name per parallel job so outputs don't mix."
+            )}
+          </div>
+        </div>
+      </SettingsCard>
+
+      <OnboardingTour open={localTourOpen} onClose={() => setLocalTourOpen(false)} />
+
+      <SettingsCard title={t("新手上路", "Getting started")} badge="">
+        <div className="space-y-2 md:col-span-2">
+          <div className="text-xs leading-5 text-muted-foreground">
+            {t("引导只在首次进入时自动弹一次。想再看一遍就点下面。",
+               "The tour appears automatically once. Replay it any time below.")}
+          </div>
+          <button
+            type="button"
+            onClick={() => { resetOnboarding(); setLocalTourOpen(true); }}
+            className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
+            data-control="settings:replay-tour"
+          >{t("再看一遍新手引导", "Replay the tour")}</button>
+        </div>
+      </SettingsCard>
+
       <SettingsCard title="AI Provider" badge="302.ai">
+        {/* md:col-span-2: 内容区是两列 grid, 而这张卡里全是一行一个的长输入框
+            (URL / 模型名 / 密钥), 放进半宽列会被压到看不清 —— 用户反馈过"文字挤得溢出来"。 */}
+        <div className="space-y-3 md:col-span-2">
         <Field label={t("Embedding 接口地址", "Embedding API base URL")}>
           <Input value={embeddingBaseUrl} onChange={(event) => setEmbeddingBaseUrl(event.target.value)} />
         </Field>
@@ -5002,6 +5197,7 @@ function SettingsPanel(props: {
             placeholder={t("留空不修改", "Leave blank to keep unchanged")}
           />
         </Field>
+        </div>
       </SettingsCard>
 
       <SettingsCard title={t("检索", "Search")} badge={defaultSearchMode === "fast" ? t("极速", "Fast") : t("标准", "Standard")}>
@@ -5112,16 +5308,26 @@ function SettingsPanel(props: {
       </SettingsCard>
 
       {/* V395: Agent 运行时设置(全局沙箱级别 — 影响整个 AI Agent 工具执行) */}
+      {/*
+        ⚠ 布局坑(2026-10-02 用户反馈"文字都挤得溢出来了"):
+          SettingsCard 的内容区是 `grid gap-3 md:grid-cols-2` —— 也就是**两列**。
+          这张卡此前没写 `md:col-span-2`, 于是整块被塞进**半宽列**, 里面又用
+          `flex items-center` 把"下拉框 + 一整句后端说明"排在同一行 —— 两者都不可压缩,
+          结果就是文字溢出卡片。两个层面都要修:
+            ① 卡片占满两列(col-span-2);
+            ② 说明**另起一行**而不是与控件同行 —— 后端那几句是完整句子, 天生不适合同行。
+          顺带删掉原来那个"把后端整句再念一遍"的 span: 选项里已经写了,
+          同一句话出现两次只是噪音(而且它就是溢出的那一半)。
+      */}
       <SettingsCard title={t("Agent 运行时", "Agent runtime")} badge={t("全局", "Global")}>
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {t("沙箱级别控制 AI Agent 代码/命令执行的隔离强度(影响 run_code/run_command 全部工具)", "Sandbox level controls isolation strength for all Agent code/command execution (run_code / run_command)")}
-          </p>
-          <label className="flex items-center gap-2 text-sm">
+        <div className="space-y-4 md:col-span-2">
+          <div className="space-y-1.5">
+            <div className="text-sm font-medium">{t("沙箱级别", "Sandbox level")}</div>
             <select
               value={agentSandboxProfile}
               onChange={(e) => { setAgentSandboxProfile(e.target.value); saveAgentRuntime("sandbox_profile", e.target.value); }}
-              className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              data-control="settings:sandbox-profile"
             >
               {/*
                 ⚠ 选项文字**不再自己加括号** —— 后端标签本身已经是完整句子,
@@ -5132,26 +5338,31 @@ function SettingsPanel(props: {
                 ? sandboxProfiles
                 : [{ value: "read-only", label: "只读 — 禁止一切文件写/网络/进程操作" }]
               ).map((p) => (
-                <option key={p.value} value={p.value}>{p.value} — {p.label}</option>
+                <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            <span className="text-xs text-muted-foreground">
-              {/* 档位说明取自后端 —— 前端不再自己存一份(存了就会与实现漂移, 实测漂移过) */}
-              {sandboxProfiles.find((p) => p.value === agentSandboxProfile)?.label ?? "—"}
-            </span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t("控制 Agent 代码/命令执行的隔离强度，影响 run_code / run_command 全部工具。",
+                 "Controls isolation strength for all Agent code/command execution (run_code / run_command).")}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="text-sm font-medium">{t("自主级别", "Autonomy")}</div>
             <select
               value={agentAutonomy}
               onChange={(e) => { setAgentAutonomy(e.target.value); saveAgentRuntime("autonomy", e.target.value); }}
-              className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              data-control="settings:autonomy"
             >
-              <option value="suggest">suggest(建议)</option>
-              <option value="auto-edit">auto-edit(自动编辑)</option>
-              <option value="full-auto">full-auto(全自动)</option>
+              <option value="suggest">{t("suggest — 只建议，不自动改", "suggest — propose only")}</option>
+              <option value="auto-edit">{t("auto-edit — 自动改，高危需确认", "auto-edit — edit automatically, confirm risky ops")}</option>
+              <option value="full-auto">{t("full-auto — 全自动", "full-auto — fully automatic")}</option>
             </select>
-            <span className="text-xs text-muted-foreground">{t("自主级别: 高危操作的人工介入程度", "Autonomy: human-in-the-loop level for high-risk operations")}</span>
-          </label>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t("决定高危操作需要多少人工介入。", "How much human-in-the-loop is required for high-risk operations.")}
+            </p>
+          </div>
         </div>
       </SettingsCard>
 

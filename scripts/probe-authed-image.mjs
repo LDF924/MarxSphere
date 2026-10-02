@@ -99,7 +99,7 @@ try {
 
   await cdp("Page.navigate", { url: `${BASE}/` });
   await sleep(3500);
-  await evalTop(cdp, `localStorage.setItem('sag_token', ${JSON.stringify(token)});`);
+  await evalTop(cdp, `localStorage.setItem('sag_token', ${JSON.stringify(token)}); localStorage.setItem('sag_onboarding_done_v1','1');`);
   await cdp("Page.reload");
   await sleep(4000);
 

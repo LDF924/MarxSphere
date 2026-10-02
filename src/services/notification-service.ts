@@ -47,11 +47,47 @@ export interface NotifyInput {
   dedupeKey?: string;
 }
 
-/** 写一条通知。**失败不抛** —— 通知属于副作用, 不该让它把主流程(任务完成/支付到账)带崩。 */
+/** 全部类别 —— 设置界面与校验都用它, 不接受前端传任意串 */
+export const NOTIFICATION_CATEGORIES: NotificationCategory[] = ["task", "points", "payment", "digest", "system"];
+
+/** 读取用户静音了哪些分类(空数组 = 全部接收) */
+export async function getMutedCategories(userId: string): Promise<string[]> {
+  const r = await pool.query(`select notification_muted from users where id=$1`, [userId]);
+  const v = r.rows[0]?.notification_muted;
+  return Array.isArray(v) ? v.map(String) : [];
+}
+
+/**
+ * 设置静音分类。
+ *
+ * ⚠ 校验在服务端做: 只接受 NOTIFICATION_CATEGORIES 里的值。
+ *   不校验的话, 前端一个拼错的分类名("digests")会被原样存下 ——
+ *   既静音不了任何东西, 界面上又显示"已静音", 是个查不出来的假状态。
+ */
+export async function setMutedCategories(userId: string, muted: unknown): Promise<string[]> {
+  const clean = (Array.isArray(muted) ? muted : [])
+    .map(String)
+    .filter((c) => (NOTIFICATION_CATEGORIES as string[]).includes(c));
+  const deduped = [...new Set(clean)];
+  await pool.query(`update users set notification_muted=$2::jsonb where id=$1`, [userId, JSON.stringify(deduped)]);
+  return deduped;
+}
+
+/**
+ * 写一条通知。**失败不抛** —— 通知属于副作用, 不该让它把主流程(任务完成/支付到账)带崩。
+ *
+ * 静音判断在这里做(而不是前端过滤): 通知是服务端写的, 只有这里能"根本不写库"。
+ * 前端过滤只能做到"写了但不显示", 用户换个设备就会看到一堆自己关过的通知。
+ * 查询失败时**按不静音处理**(宁可多写一条, 也不要因为偏好表读不到就把真通知吞了)。
+ */
 export async function notify(input: NotifyInput): Promise<void> {
   if (!input.userId) return;
   const dedupeKey = input.dedupeKey || null;
   try {
+    try {
+      const muted = await getMutedCategories(input.userId);
+      if (muted.includes(input.category)) return;
+    } catch { /* 见上: 读不到偏好不阻断通知 */ }
     // ⚠ ON CONFLICT 必须**带上索引的 WHERE 子句**。
     //   175 迁移建的是**部分唯一索引** `(user_id, dedupe_key) where dedupe_key is not null`;
     //   而 `on conflict (user_id, dedupe_key)` 只按列匹配, 找不到一个"不含 where 的"唯一约束,
