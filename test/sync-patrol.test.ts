@@ -35,23 +35,33 @@ describe("① 脚本侧：push 的三种结局必须分开记", () => {
   });
 
   it("日志里四种结局分别可辨(不再全挤在 push=未执行)", () => {
-    const seg = SYNC.slice(SYNC.indexOf("pushOutcome === \"ok\""));
-    const body = seg.slice(0, 500);
-    expect(body).toMatch(/push=ok/);
+    // ⚠ 锚到日志里的 `"push=ok"` 字面量本身, 而不是 `pushOutcome === "ok"` ——
+    //   后者在文件里**先**出现在计数逻辑里, indexOf 会命中那一处, 窗口就切错了
+    const at = SYNC.indexOf('"push=ok"');
+    expect(at, "找不到日志格式化处").toBeGreaterThan(0);
+    const body = SYNC.slice(Math.max(0, at - 200), at + 400);
     expect(body).toMatch(/push=失败/);
     expect(body).toMatch(/push=跳过/);
     expect(body).toMatch(/push=未到/);
   });
 
-  it("连续失败要累加, 成功要清零", () => {
-    // 单看一次 failed 可能只是网络抖动; **连续 N 次**才是通道坏了
-    const seg = SYNC.slice(SYNC.indexOf("const failing = code !== 0"));
-    expect(seg.slice(0, 300)).toMatch(/consecutiveFailures = failing \? .*\+ 1 : 0/);
+  it("⚠ 计数按 pushOutcome 判, 不按 exitCode —— 没试过就不该清零", () => {
+    /**
+     * 2026-10-02 想清楚的一点: 无差异的运行(not-reached)与 `--push` 跳过(skipped)
+     * **根本没测试推送通道**。若按 exitCode 判, 它们都是 0, 会把计数清零 ——
+     * 等于声称"通道正常", 而实际一次都没试过。那正是原来那个盲点的变体。
+     * 所以只有**真的推成功(ok)**才清零, 失败累加, 没试过就保持不动。
+     */
+    const seg = SYNC.slice(SYNC.indexOf("const pushed = run.pushOutcome"));
+    const body = seg.slice(0, 500);
+    expect(body).toMatch(/pushed \? 0 : \(tried \? prevFailures \+ 1 : prevFailures\)/);
+    // 不能再用 exitCode 当判据
+    expect(body).not.toMatch(/const failing = code !== 0/);
   });
 
-  it("lastSuccessAt 在失败时**保持不动** —— 与 at 的差就是停了多久", () => {
+  it("lastSuccessAt 只在**真推成功**时推进", () => {
     const seg = SYNC.slice(SYNC.indexOf("lastSuccessAt:"));
-    expect(seg.slice(0, 200)).toMatch(/failing \? \(prev\.lastSuccessAt \?\? null\)/);
+    expect(seg.slice(0, 200)).toMatch(/pushed \? new Date\(\)\.toISOString\(\)/);
   });
 
   it("⚠ push 失败要用 pipe 抓 stderr, 不能用 inherit", () => {
