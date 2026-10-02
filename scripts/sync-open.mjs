@@ -93,12 +93,16 @@ function writeState(code, note) {
     /**
      * 连续失败计数 —— 这是"9 天没发现"那个问题的直接对策。
      *
-     * 单看一次 `push=failed`, 可能只是网络抖动; **连续 N 次**才是"通道坏了"。
-     * 用日历时间判断太脆(计划任务可能没跑), 用次数累积更稳:
-     * 成功即清零, 失败则累加, 平台侧按次数决定告警级别。
+     * ⚠ 判据是 **pushOutcome, 不是 exitCode** —— 2026-10-02 想清楚的一点:
+     *   无差异的运行(not-reached)与 `--push` 跳过(skipped)**根本没测试推送通道**。
+     *   用 exitCode 判的话, 它们都是 0, 会把计数清零 —— 等于声称"通道正常",
+     *   而实际一次都没试过。那正是原来那个盲点的变体。
+     *   所以只有**真的推成功(ok)**才清零, 失败累加, 没试过就不动(零信息)。
      */
-    const failing = code !== 0;
-    const consecutiveFailures = failing ? (Number(prev.consecutiveFailures) || 0) + 1 : 0;
+    const pushed = run.pushOutcome === "ok";
+    const tried = run.pushOutcome === "failed";
+    const prevFailures = Number(prev.consecutiveFailures) || 0;
+    const consecutiveFailures = pushed ? 0 : (tried ? prevFailures + 1 : prevFailures);
     const state = {
       at: new Date().toISOString(),
       exitCode: code,
@@ -110,8 +114,8 @@ function writeState(code, note) {
       pushError: run.pushError || null,
       ghosts: run.ghosts,
       consecutiveFailures,
-      /** 上次成功是什么时候 —— 与"上次运行"不同: 连续失败时它一直停在过去, 一眼看出停了多久 */
-      lastSuccessAt: failing ? (prev.lastSuccessAt ?? null) : new Date().toISOString(),
+      /** 上次**推送成功**是什么时候 —— 与"上次运行"不同: 连续失败时它停在过去, 一眼看出停了多久 */
+      lastSuccessAt: pushed ? new Date().toISOString() : (prev.lastSuccessAt ?? null),
       note: note || null,
     };
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + "\n", "utf8");
