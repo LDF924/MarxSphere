@@ -227,6 +227,20 @@ if (process.env.SAG_TOKEN_PATROL !== "0") {
   startupTask("service-token-patrol", () => startServiceTokenPatrolScheduler(), { delayMs: 90_000 });
 }
 
+// 同步链路巡检 —— 读 sync-open.mjs 落的状态文件, 连续失败就写告警。
+//   由来(2026-10-02): origin 被指到只读镜像 gh-proxy, push 一直失败, 而
+//   `.cache/sync-open.log` 里 09-23~10-01 连续 9 天写着 `push=未执行` ——
+//   因为"无差异就早退"从不走到 push, **"不需要推"和"推不上去"长得一模一样**,
+//   而那条计划任务没人看输出。现在把它变成告警中心里能响的东西。
+//   关闭: SAG_SYNC_PATROL=0
+import { runSyncPatrol } from "./services/sync-patrol-service.js";
+if (process.env.SAG_SYNC_PATROL !== "0") {
+  startupTask("sync-patrol", async () => {
+    const r = await runSyncPatrol();
+    if (r.written > 0) console.log(`[sync-patrol] 写入 ${r.written} 条告警: ${r.notes.join("; ")}`);
+  }, { delayMs: 100_000 });
+}
+
 // viz: 卡死绘图任务自愈 — 重启后遗留的 running/queued 没有执行者, 会让观察流永久挂住
 import { reapStaleVizJobs } from "./services/viz-job-service.js";
 startupTask("viz-stale-reap", () => reapStaleVizJobs(), { delayMs: 22000 });
