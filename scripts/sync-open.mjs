@@ -32,6 +32,25 @@ const OPEN = process.env.SAG_OPEN_ROOT || path.resolve(__dirname, "..", "..", "S
  */
 const LOG_FLAG = process.argv.indexOf("--log");
 const LOG_FILE = LOG_FLAG > -1 ? process.argv[LOG_FLAG + 1] : process.env.SAG_SYNC_LOG || "";
+
+/**
+ * 状态落点 —— 供**平台侧的巡检**读取并转成告警。
+ *
+ * 为什么不是让同步脚本自己写 alerts 表: 那会让一个纯文件同步的脚本
+ *   依赖 pg / .env / 数据库可达。网络或库不可用时, **同步本身会因此挂掉** ——
+ *   本末倒置。脚本只落一个 JSON, 读它、判断、告警都是平台的事。
+ *
+ * ⚠ 默认落点**从 `--log` 推导**(同目录的 `sync-open-state.json`), 这样:
+ *   ① 已有的计划任务不必改命令行 —— 它是 `--log ...\.cache\sync-open.log`,
+ *      而"日志"与"状态"本就该放在一起, 不可能只想要其中一个;
+ *   ② `--state` 仍然可以显式覆盖(worktree / 其它副本里调用时)。
+ *   若只给 `--state` 不给 `--log`, 状态照常写(反之亦然) —— 两者互不依赖。
+ */
+const STATE_FLAG = process.argv.indexOf("--state");
+const STATE_FILE = STATE_FLAG > -1
+  ? process.argv[STATE_FLAG + 1]
+  : process.env.SAG_SYNC_STATE
+    || (LOG_FILE ? path.join(path.dirname(LOG_FILE), "sync-open-state.json") : "");
 /** 本次运行的账 —— 各处只填事实, 最后**恰好写一次**(见 finish) */
 const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0, commit: "", pushed: false,
   /**
@@ -44,18 +63,6 @@ const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0,
   pushOutcome: /** @type {"ok"|"failed"|"skipped"|"not-reached"} */ ("not-reached"),
   /** 失败原因(push 失败时填) —— 只留 "失败" 两个字, 事后无从查起 */
   pushError: "" };
-
-/**
- * 状态落点 —— 供**平台侧的巡检**读取并转成告警。
- *
- * 为什么不是让同步脚本自己写 alerts 表: 那会让一个纯文件同步的脚本
- *   依赖 pg / .env / 数据库可达。网络或库不可用时, **同步本身会因此挂掉** ——
- *   本末倒置。脚本只落一个 JSON, 读它、判断、告警都是平台的事。
- *
- * 与 `--log` 那条同样的理由: 落点由调用方决定(脚本可能在 worktree 或其它副本里被调用)。
- */
-const STATE_FLAG = process.argv.indexOf("--state");
-const STATE_FILE = STATE_FLAG > -1 ? process.argv[STATE_FLAG + 1] : process.env.SAG_SYNC_STATE || "";
 /**
  * 收尾: 写日志 + 按原语义退出。
  *
