@@ -425,24 +425,29 @@ try {
   }
   if (!NO_PUSH) {
     try {
-      execSync(`git push origin main`, { cwd: OPEN, stdio: "inherit" });
+      /**
+       * ⚠ 用 `pipe` 抓 stderr, **不用 `inherit`** —— 2026-10-02 实测踩到:
+       *   `inherit` 把 stderr 直接送终端, execSync 的 error 上**拿不到内容**,
+       *   于是状态文件里只剩一句 `Command failed: git push origin main`。
+       *   而真正有用的是那句 `unable to access ... Could not connect` ——
+       *   把原因丢了, 告警就只剩"推失败了", 用户还是不知道该修什么。
+       *   成功的输出照样打出来(通常一两行), 不是静默。
+       */
+      const out = execSync(`git push origin main`, { cwd: OPEN, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
+      if (out.trim()) console.log(out.trim());
       run.pushOutcome = "ok";
       run.pushed = true;
       console.log("[sync-open] 已 push origin main");
     } catch (pushErr) {
-      /**
-       * ⚠ push 失败要**单独记清楚**, 不能只让外层 catch 记一句"git 操作失败"。
-       *
-       * 2026-10-02 实测: origin 被指向 gh-proxy(只读镜像)时, push 报
-       *   `remote: No anonymous write access` —— 而日志里只有一句 exit=1,
-       *   事后完全看不出是"推不上去"还是"提交就失败了"。
-       * 提交已经成功、只有推送失败, 这种状态最需要被说清楚:
-       *   内容已经固化在 open 仓本地, 只差推远端, **重试即可**。
-       */
       run.pushOutcome = "failed";
-      run.pushError = String(pushErr?.stderr || pushErr?.message || pushErr).replace(/\s+/g, " ").slice(0, 300);
-      console.error(`[sync-open] ❌ push 失败(提交已在 open 仓本地): ${run.pushError.slice(0, 160)}`);
-      finish(1, `push 失败: ${run.pushError.slice(0, 100)}`);
+      // 优先取 stderr(git 的报错都在那), 退而求其次 stdout, 最后才是 message
+      const detail = String(pushErr?.stderr || pushErr?.stdout || pushErr?.message || pushErr);
+      run.pushError = detail.replace(/\s+/g, " ").trim().slice(0, 300);
+      // 把 git 原话打出来 —— 终端上看得到, 状态文件里也留得住
+      if (pushErr?.stdout) process.stdout.write(String(pushErr.stdout));
+      if (pushErr?.stderr) process.stderr.write(String(pushErr.stderr));
+      console.error(`[sync-open] ❌ push 失败(提交已在 open 仓本地): ${run.pushError.slice(0, 200)}`);
+      finish(1, `push 失败: ${run.pushError.slice(0, 120)}`);
     }
   } else {
     run.pushOutcome = "skipped";
