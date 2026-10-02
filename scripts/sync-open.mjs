@@ -9,7 +9,7 @@
 //   node scripts/sync-open.mjs --dry-run # 只显示差异不复制
 //   node scripts/sync-open.mjs --push    # 同步+提交, 跳过 push
 import { execSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, statSync, appendFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, statSync, appendFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,7 +33,29 @@ const OPEN = process.env.SAG_OPEN_ROOT || path.resolve(__dirname, "..", "..", "S
 const LOG_FLAG = process.argv.indexOf("--log");
 const LOG_FILE = LOG_FLAG > -1 ? process.argv[LOG_FLAG + 1] : process.env.SAG_SYNC_LOG || "";
 /** 本次运行的账 —— 各处只填事实, 最后**恰好写一次**(见 finish) */
-const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0, commit: "", pushed: false };
+const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0, commit: "", pushed: false,
+  /**
+   * push 的三种结局, 必须分开记 —— 2026-10-02 踩到:
+   *   `pushed: false` 同时表示"没推成"和"根本没到 push 那一步"(无差异早退),
+   *   而这两件事的含义完全相反。日志里 09-23~10-01 连续 9 天写着 `push=未执行`,
+   *   看起来像"不需要推", 实际是**从来没走到 push**, 于是 gh-proxy 不可写这件事
+   *   藏了 9 天没被发现。
+   */
+  pushOutcome: /** @type {"ok"|"failed"|"skipped"|"not-reached"} */ ("not-reached"),
+  /** 失败原因(push 失败时填) —— 只留 "失败" 两个字, 事后无从查起 */
+  pushError: "" };
+
+/**
+ * 状态落点 —— 供**平台侧的巡检**读取并转成告警。
+ *
+ * 为什么不是让同步脚本自己写 alerts 表: 那会让一个纯文件同步的脚本
+ *   依赖 pg / .env / 数据库可达。网络或库不可用时, **同步本身会因此挂掉** ——
+ *   本末倒置。脚本只落一个 JSON, 读它、判断、告警都是平台的事。
+ *
+ * 与 `--log` 那条同样的理由: 落点由调用方决定(脚本可能在 worktree 或其它副本里被调用)。
+ */
+const STATE_FLAG = process.argv.indexOf("--state");
+const STATE_FILE = STATE_FLAG > -1 ? process.argv[STATE_FLAG + 1] : process.env.SAG_SYNC_STATE || "";
 /**
  * 收尾: 写日志 + 按原语义退出。
  *
@@ -42,7 +64,53 @@ const run = { t0: Date.now(), changed: 0, added: 0, ghosts: 0, excludedStale: 0,
  */
 function finish(code, note) {
   writeLog(code, note);
+  writeState(code, note);
   process.exit(code);
+}
+
+/**
+ * 把本次运行的结论写进状态文件 —— **平台侧巡检靠它发告警**。
+ *
+ * 与 `writeLog` 的关系: 日志是**追加**给人看的(每次一行), 状态是**覆盖**给机器读的
+ *   (只关心"最近一次怎么样")。两者都要, 但用途不同。
+ *
+ * ⚠ 这里**必须自己吞掉异常**: 留痕/上报绝不能反过来把同步搞挂 ——
+ *   写不进去只是少一条状态, 同步该成功还是成功。
+ */
+function writeState(code, note) {
+  if (!STATE_FILE) return;
+  try {
+    const prev = (() => {
+      try { return JSON.parse(readFileSync(STATE_FILE, "utf8")); } catch { return {}; }
+    })();
+    /**
+     * 连续失败计数 —— 这是"9 天没发现"那个问题的直接对策。
+     *
+     * 单看一次 `push=failed`, 可能只是网络抖动; **连续 N 次**才是"通道坏了"。
+     * 用日历时间判断太脆(计划任务可能没跑), 用次数累积更稳:
+     * 成功即清零, 失败则累加, 平台侧按次数决定告警级别。
+     */
+    const failing = code !== 0;
+    const consecutiveFailures = failing ? (Number(prev.consecutiveFailures) || 0) + 1 : 0;
+    const state = {
+      at: new Date().toISOString(),
+      exitCode: code,
+      mode: DRY ? "dry-run" : "sync",
+      changed: run.changed,
+      added: run.added,
+      commit: run.commit || null,
+      pushOutcome: run.pushOutcome,
+      pushError: run.pushError || null,
+      ghosts: run.ghosts,
+      consecutiveFailures,
+      /** 上次成功是什么时候 —— 与"上次运行"不同: 连续失败时它一直停在过去, 一眼看出停了多久 */
+      lastSuccessAt: failing ? (prev.lastSuccessAt ?? null) : new Date().toISOString(),
+      note: note || null,
+    };
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + "\n", "utf8");
+  } catch (e) {
+    console.error(`[sync-open] 写状态失败(${STATE_FILE}): ${String(e?.message || e).slice(0, 120)}`);
+  }
 }
 function writeLog(code, note) {
   if (!LOG_FILE) return;
@@ -54,7 +122,13 @@ function writeLog(code, note) {
     `${DRY ? "dry-run" : "sync"}`,
     `差异=${run.changed}改+${run.added}增`,
     run.commit ? `提交=${run.commit}` : "提交=无",
-    run.pushed ? "push=ok" : (NO_PUSH ? "push=跳过" : "push=未执行"),
+    // ⚠ 三态要分开写进日志 —— 原来只有 `push=ok` / `push=未执行` 两种,
+    //   而"无差异所以没推"和"--push 跳过"和"走到 push 但失败"全挤在"未执行"里,
+    //   连续 9 天的 `push=未执行` 因此看起来一切正常(2026-10-02 实测)。
+    run.pushOutcome === "ok" ? "push=ok"
+      : run.pushOutcome === "failed" ? "push=失败"
+      : run.pushOutcome === "skipped" ? "push=跳过"
+      : "push=未到(无差异)",
     `残留=${run.ghosts}`,
     `排除残留=${run.excludedStale}`,
     `${secs}s`,
@@ -343,10 +417,28 @@ try {
     console.log(`[sync-open] 已提交 open-source: ${COMMIT_MSG}`);
   }
   if (!NO_PUSH) {
-    execSync(`git push origin main`, { cwd: OPEN, stdio: "inherit" });
-    run.pushed = true;
-    console.log("[sync-open] 已 push origin main");
+    try {
+      execSync(`git push origin main`, { cwd: OPEN, stdio: "inherit" });
+      run.pushOutcome = "ok";
+      run.pushed = true;
+      console.log("[sync-open] 已 push origin main");
+    } catch (pushErr) {
+      /**
+       * ⚠ push 失败要**单独记清楚**, 不能只让外层 catch 记一句"git 操作失败"。
+       *
+       * 2026-10-02 实测: origin 被指向 gh-proxy(只读镜像)时, push 报
+       *   `remote: No anonymous write access` —— 而日志里只有一句 exit=1,
+       *   事后完全看不出是"推不上去"还是"提交就失败了"。
+       * 提交已经成功、只有推送失败, 这种状态最需要被说清楚:
+       *   内容已经固化在 open 仓本地, 只差推远端, **重试即可**。
+       */
+      run.pushOutcome = "failed";
+      run.pushError = String(pushErr?.stderr || pushErr?.message || pushErr).replace(/\s+/g, " ").slice(0, 300);
+      console.error(`[sync-open] ❌ push 失败(提交已在 open 仓本地): ${run.pushError.slice(0, 160)}`);
+      finish(1, `push 失败: ${run.pushError.slice(0, 100)}`);
+    }
   } else {
+    run.pushOutcome = "skipped";
     console.log("[sync-open] --push: 跳过 push");
   }
 } catch (e) {
