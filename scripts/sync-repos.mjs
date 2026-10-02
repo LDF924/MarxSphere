@@ -100,7 +100,24 @@ function collectFiles(dir, base = "", out = []) {
       collectFiles(abs, rel, out);
     } else {
       if (shouldExcludeFile(entry.name)) continue;
-      const hash = createHash("sha1").update(readFileSync(abs)).digest("hex");
+      /**
+       * ⚠ 算哈希前**归一化行尾** —— 2026-10-02 修一个永远为真的假警报。
+       *
+       * 两个仓库的 `core.autocrlf` 不同(主仓工作区 LF、open 仓 CRLF), 于是
+       * **同一份内容**在两边的原始字节不同。原来的 `sha1(readFileSync(abs))`
+       * 对原始字节算哈希, 于是:
+       *   · `--check` 每次都报"N 处差异 — 需人工检查!", 而逐个人工核完会发现内容一模一样;
+       *   · 更糟的是**同步模式**: 它按同一套哈希判"需要复制", 于是把 open 的 CRLF
+       *     写进主仓、下次又反过来 —— **两个方向来回改行尾**, 工作区永远是脏的。
+       * 实测: 6 个文件报差异, 归一化后**全部完全相同**(仅行尾不同)。
+       *
+       * 用 latin1 做字节级替换(而不是 utf8): 它把每个字节映成一个字符, 变换无损,
+       *   对图片/压缩包这类二进制文件也不会因为解码失败而算出无意义的哈希。
+       * 只影响"判等", 不改动文件本身。
+       */
+      const raw = readFileSync(abs);
+      const normalized = Buffer.from(raw.toString("latin1").replace(/\r\n/g, "\n"), "latin1");
+      const hash = createHash("sha1").update(normalized).digest("hex");
       out.push({ rel, abs, hash });
     }
   }

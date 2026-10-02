@@ -146,3 +146,35 @@ describe("③ 接入与配置", () => {
     expect(fs.readFileSync(main, "utf8")).toBe(fs.readFileSync(wt, "utf8"));
   });
 });
+
+describe("④ 一致性检查不能把行尾差异报成「落后」", () => {
+  const REPOS = read("scripts/sync-repos.mjs");
+  const SYNC = read("scripts/sync-open.mjs");
+
+  it("对比文件时归一化行尾(两个仓的 autocrlf 不同)", () => {
+    /**
+     * 实测(2026-10-02): `sync-repos.mjs --check` 每次报 "6 处差异 — 需人工检查!",
+     * 而逐个人工核完发现**内容完全相同**, 只是行尾不同(主仓工作区 LF / open CRLF)。
+     * 一个永远为真的警报 = 等于没有警报 —— 人会学会忽略它。
+     *
+     * 更糟的是**同步模式用同一套哈希**: 它把 open 的 CRLF 写进主仓、
+     * 下次又反过来, 工作区永远是脏的。
+     */
+    // 判据锚"归一化这个动作", 不锚具体转义写法 —— 后者改一下就会假失败
+    expect(REPOS).toMatch(/latin1/);
+    expect(REPOS).toMatch(/\\r\\n/);
+    expect(REPOS).toMatch(/createHash\("sha1"\)\.update\(normalized\)/);
+  });
+
+  it("两个脚本用同一条「算不算相同」的规则", () => {
+    // sync-open 早就归一化了(sameContent), sync-repos 此前没有 —— 两套规则必然打架
+    expect(SYNC).toMatch(/function sameContent/);
+    expect(SYNC).toMatch(/\\r\\n/);
+  });
+
+  it("归一化只影响判等, 不改动文件本身", () => {
+    // 复制走的仍是原文件(copyFile 用 f.src), 不是归一化后的内容
+    const seg = REPOS.slice(REPOS.indexOf("function copyFile"));
+    expect(seg.slice(0, 600)).toMatch(/cpSync|copyFileSync/);
+  });
+});
