@@ -95,7 +95,7 @@
 ```bash
 npx tsx scripts/eval-education.ts   # 教育场景 6 项技术指标
 npx tsx scripts/eval-32-metrics.ts  # 全系统 53 题评测（基线 0.884）
-npm test                            # 1862 项单元测试
+npm test                            # 1865 项单元测试
 ```
 
 教育综合场景分 = ①×0.25 + ②×0.25 + ③×0.15 + ④×0.15 + ⑤×0.10 + ⑥×0.10（由 eval-education.ts 输出，可复现）。

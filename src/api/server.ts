@@ -2405,6 +2405,46 @@ export function buildHttpServer() {
   });
 
   /** 按句子定位: "这句话出自哪一版哪一段" —— 段落偏移的用处就体现在这条上 */
+  /**
+   * 论断台账 —— 从**已归档的页面**里抽出可核对的具体值(价格/百分比/参数量/日期),
+   * 并把"同类同主体、值不一致、来源不同"的标成分歧。
+   *
+   * 为什么挂在归档上而不是新开一份数据: 归档里存的就是**已读全文**, 正是这个台账的输入。
+   *   (移植自开源项目 观澜/Guanlan 的 claim_ledger, MIT —— 见 THIRD_PARTY_NOTICES 第 9 节。)
+   * ⚠ 它**不判断真假**, 只报"这里需要人看一眼"。界面文案必须照这个口径说。
+   */
+  app.get("/api/archive/claims", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string; archiveId?: string };
+    const { pool } = await import("../db/pool.js");
+    // 每个归档取**最新一版**快照 —— 旧版本的数值分歧没有核对价值(它已经过期了)
+    const rows = q.archiveId
+      ? await pool.query(
+        `select s.markdown, s.title, a.url, s.fetched_at from web_snapshots s
+           join web_archives a on a.id = s.archive_id
+          where a.user_id=$1 and a.id=$2 order by s.fetched_at desc limit 1`, [user.id, q.archiveId])
+      : await pool.query(
+        `select distinct on (a.id) s.markdown, s.title, a.url, s.fetched_at
+           from web_archives a join web_snapshots s on s.archive_id = a.id
+          where a.user_id=$1 order by a.id, s.fetched_at desc limit 60`, [user.id]);
+    const { buildClaimLedger, formatLedgerMarkdown } = await import("../services/claim-ledger-service.js");
+    const items = rows.rows.map((r: any) => ({
+      text: String(r.markdown ?? "").slice(0, 60_000),
+      url: String(r.url ?? ""), title: String(r.title ?? ""),
+      // 归档是从**公开网页**抓的, 用 read 口径(读过全文), 置信度按来源角色算
+      evidenceKind: "read",
+      evidenceRole: /\.gov\.cn|gov\.cn/.test(String(r.url ?? "")) ? "official_primary" : "",
+      sourceType: /\.gov\.cn/.test(String(r.url ?? "")) ? "政府/部委" : "通用网页",
+      date: r.fetched_at ? new Date(r.fetched_at).toISOString().slice(0, 10) : "",
+    }));
+    const ledger = buildClaimLedger(items, { limit: Number(q.limit) || 48 });
+    const CAT: Record<string, string> = {
+      model_version: "模型版本", price: "价格", parameter_count: "数量/规模",
+      percentage_metric: "百分比", date: "日期",
+    };
+    return { ...ledger, markdown: formatLedgerMarkdown(ledger, CAT), categoryLabels: CAT };
+  });
+
   app.get("/api/archive/locate", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const q = request.query as { q?: string; limit?: string };

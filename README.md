@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1862%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1865%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -18,17 +18,17 @@
 **群学求真** — 全人文社科的 AI 科研平台
 
 > **一个 AI Agent 承载科研全流程**：文献入库 → 知识图谱 → 可溯源推理 → 选题论证 → 实证与统计 → 论文写作 → 质量评审。
-> 19 个科研工作台覆盖从**选题**到**投稿**的每一步；每一步的结论都绑得到原文切片。
+> 18 个科研工作台覆盖从**选题**到**投稿**的每一步；每一步的结论都绑得到原文切片。
 >
 > 教学是同一底座上的延伸（BKT 掌握度 / 自适应路径 / 教师备课），教学与科研共用知识体系，数据互通。
 
-**科研为主轴，而这条主轴的载体就是 19 个科研工作台** —— 从选题到投稿，每一步都有一个专门的台子，理由有三：
+**科研为主轴，而这条主轴的载体就是 18 个科研工作台** —— 从选题到投稿，每一步都有一个专门的台子，理由有三：
 
 1. **证据可溯源**（文献库 · 推理工作台 · 知识页 · 图谱）—— 自建文献库经三库图谱管理，52 步推理每一步绑定 `chunk → event → entities` 证据链，回答可点击回看原文切片
 2. **方法论成体系**（实证研究 · 数据分析台 · 引文核验 · 格式智能评测 · 论文质量评审）—— 实证 19 种计量方法（含 DID/PSM/断点回归/元分析）、统计 17 类分析、6 类论文格式模板、80 本期刊库，不是"能聊天"，是"能出稿"
 3. **全链路可审计**（评测 · 任务 · Trace · 账户计费）—— 31 项评测指标、真实 token 消耗、步骤级执行日志、成本回填，每一分钱与每一步都留痕
 
-> 18 个工作台见下方 [**科研工作台一览**](#-科研工作台一览科研中心-19-个-tab逐个列出)——文献库 / 文献管理 / 外部检索 / 场景 / 教育 / 实证研究 / 数据分析台 / 结构解析 / 引文核验 / 格式智能评测 / PDF2Obsidian / 政经C刊科研 / 写作语料库 / 研途写作舱 / 课题流程编排 / 论文质量评审 / 成果可视化工坊 / 学术文本工作台。
+> 18 个工作台见下方 [**科研工作台一览**](#-科研工作台一览科研中心-18-个-tab逐个列出)——文献库 / 文献管理 / 外部检索 / 场景 / 教育 / 实证研究 / 数据分析台 / 结构解析 / 引文核验 / 格式智能评测 / PDF2Obsidian / 政经C刊科研 / 写作语料库 / 研途写作舱 / 课题流程编排 / 论文质量评审 / 成果可视化工坊 / 学术文本工作台。
 
 **检索底座**：SAG 事件中心混合检索增强生成 —— **SAG（事件检索）+ Graphiti（超边/社区）+ Cognee（HYBRID 切片）+ PG（向量/词法）四源融合**，配合 52 步推理链路实现可溯源、可审计的科研问答。
 
@@ -75,7 +75,7 @@
 
 > 📖 **完整功能规格**：见 [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md)（52 步推理逐步表 / 78 场景清单 / 158 工具 / 实证与统计方法 / 桌面端细节 / 评测指标）
 
-### ✨ 科研工作台一览（科研中心 19 个 tab，逐个列出）
+### ✨ 科研工作台一览（科研中心 18 个 tab，逐个列出）
 
 | 工作台 | 做什么 |
 |---|---|
@@ -112,7 +112,7 @@
 
 | 能力 | 说明 |
 |---|---|
-| 🤖 **AI Agent** | 158 工具自主调度（含 Notebook 图表模板 / 桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
+| 🤖 **AI Agent** | 162 工具自主调度（含 Notebook 图表模板 / 桌面控制）/ 5 层安全 / 5 层记忆 / 任务 DAG / 审批门 / 执行租约 |
 | 💰 **成本可审计账本** | 轮级真实用量（按模型 / 来源三态）+ 平台成本审计面板 |
 | 🔀 **三档成本路由** | 规则 + 本地 ML 分类器（lite/deep）保守融合，**只升级不降级** |
 | 🔁 **B5 多模型集成** | 难题多模型并行成稿 + aggregator 融合，渐进呈现 / 超时截断 |
@@ -123,7 +123,7 @@
 | 🔑 **外部服务密钥** | 有效期登记 + 手动校验 + 每日巡检告警；上传扫描件自动 OCR 识别回填 |
 | 📂 **文件原语** | 上传文件按 fileId 取纯文本（审稿直投、对话读文件同一套底座） |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导（安装包 159MB） |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1862 单测 / 消融 21 算子 / CI |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1865 单测 / 消融 21 算子 / CI |
 
 ### 🏗 系统架构
 
@@ -152,7 +152,7 @@
 - **消息流**：用户 / AI 气泡分区，AI 回复支持代码块语法高亮、KaTeX 公式、Mermaid 图表、chart JSON 可视化、引用来源徽章、工具调用折叠卡，长回复滚动浏览
 - **思考过程**：DeepSeek 思考链（reasoning_content）独立固定块展示（DeepSeek 式「已深度思考」折叠区），实时滚动展开；思考强度三档可选（low / high / max）
 - **Agent 工具循环**：LLM 自主规划 → 选择工具 → 执行 → 循环（≤12 轮，深度模式 20 轮）→ 流式回答；工具链面板展示每步（中文名 + 数据源 + 耗时 + 决策思考）
-- **158 工具自主调度**：102 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量/写作舱/编排/评审/绘图/编辑器）+ 56 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，49 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
+- **162 工具自主调度**：106 个 Agent 工具（检索/推理/实证/写作/代码/联网/图片/文件/**教育能力**/格式评测/论文质量/写作舱/编排/评审/绘图/编辑器）+ 56 个视图工具（政策库/知识页/文献库/图谱/任务/评测/告警等，49 视图能力全覆盖）——教育 Agent 对话中可直接调用 `education_service` 触发学习规划/辅导/诊断/备课等能力
 - **命令语法**：`/` 弹出技能命令面板（209 个技能全量浏览搜索）；`@skill:技能名 任务` 加载技能执行；`@tool:工具名 任务` 强制指定工具
 - **底部输入区**：多行输入（Enter 发送 / Shift+Enter 换行）、模型下拉切换（DeepSeek / Qwen 全系）、联网开关（web_search 注入）、深度模式开关（轮次 12→20）、思考强度三档、附件上传（图片/PDF/Word/Excel/PPT/文本，服务端解析文字注入 LLM）
 - **图片视觉识别**：SenseNova 多模态模型（免费额度每 5 小时 1500 次），DeepSeek 纯文本模型经视觉桥接获得"眼睛"（配置 SENSENOVA_API_KEY 启用）
@@ -176,7 +176,7 @@
 | 任务 DAG | LLM 拆解子任务 → depends_on 依赖编排 → 队列并发（信号量）→ 进度 SSE |
 | 失败处理 | 工具超时熔断（90s）→ 指数重试退避 → 失败回流 → 错误分类（可恢复/不可恢复） |
 
-**② 工具矩阵（102 个 Agent 工具；另有 56 个视图工具，合计 158）**
+**② 工具矩阵（106 个 Agent 工具；另有 56 个视图工具，合计 162）**
 
 | 类别 | 工具 | 工程特性 |
 |---|---|---|
@@ -517,7 +517,7 @@ SocioSeek 的 10 个自研 Skill 覆盖"文献获取 → 转换 → 清洗 → �
 **Agent 轨迹评测**：计划遵循度 / 工具准确率 / 推理质量（judge 打分）+ 学习曲线
 **学习引擎**：显著性 / 归因 / 轨迹前缀 / 校准（kappa=1.0）/ 模型替换基建
 **消融体系**：21 个可消融算子（检索栈 12 + 推理链路 9），`scripts/ablation-eval.ts` 可逐项验证组件贡献
-**单元测试**：1862 项全绿(CI 持续)
+**单元测试**：1865 项全绿(CI 持续)
 
 ---
 
@@ -641,7 +641,7 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明，60 份）
 migrations/          PostgreSQL schema（165 个迁移）
 plugins/             Agent 插件目录
-test/                单元测试（1862 项）
+test/                单元测试（1865 项）
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选 / 上传文件 / 作业与可视化产物）
 ```
@@ -651,13 +651,13 @@ data/                运行时数据（金标候选 / 上传文件 / 作业与�
 ## 测试
 
 ```bash
-npm test                # 1862 项单元测试
+npm test                # 1865 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1862 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1865 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 
@@ -683,9 +683,9 @@ npm run typecheck       # 前后端类型检查
 | 🔧 接口文档（HTTP API / MCP） | [docs/api-reference.md](docs/api-reference.md) / [docs/agent-api.md](docs/agent-api.md) |
 | 🖥 桌面端安装包 | `npm run build:desktop` → `release/SocioSeek Setup <ver>.exe` |
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
-| 📊 运行截图 | [docs/assets/](docs/assets/)（57 个视图截图 + 架构图/痛点图/论文架构图） |
+| 📊 运行截图 | [docs/assets/](docs/assets/)（56 个视图截图 + 架构图/痛点图/论文架构图） |
 | 📈 评测报告样例 | `reports/`（4 份：显著性 / 失败归因 / 轨迹前缀 / 评判者校准，前端学习引擎面板读取）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
-| ✅ 单元测试 | `npm test`（1862 项, CI 全绿） |
+| ✅ 单元测试 | `npm test`（1865 项, CI 全绿） |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 评测：`gold_dataset.json`（53 题金标）· 图谱：`knowledge-graph/` |
 | 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |

@@ -2013,4 +2013,22 @@ export const apiWeb = {
   async deleteArchive(id: string) {
     return request<{ ok: boolean }>(`/api/archive/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
+  /** 论断台账 —— 从已归档页面里抽出可核对的值, 并标出跨源分歧(移植自观澜 claim_ledger) */
+  async archiveClaims(archiveId?: string) {
+    return request<{
+      claims: Array<{
+        claimId: string; category: string; value: string; subject: string;
+        sourceTitle: string; url: string; domain: string; evidenceRole: string;
+        date: string; confidence: number; conflictSet: string;
+      }>;
+      conflictSets: Array<{
+        conflictSet: string; category: string; values: string[]; claimIds: string[];
+        sources: Array<{ claimId: string; value: string; sourceTitle: string; url: string; date: string; evidenceRole: string; confidence: number }>;
+        severity: string;
+      }>;
+      byCategory: Record<string, number>;
+      markdown: string;
+      categoryLabels: Record<string, string>;
+    }>(`/api/archive/claims${archiveId ? `?archiveId=${encodeURIComponent(archiveId)}` : ""}`);
+  },
 };

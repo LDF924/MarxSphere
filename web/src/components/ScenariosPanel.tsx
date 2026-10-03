@@ -971,7 +971,7 @@ export const SCENARIOS: Scenario[] = [
     group: "学术情报与质检",
     key: "opinion",
     title: "政策与舆情检索",
-    desc: "把政策文件与舆情动态一起查：判断一个议题当下处在什么舆论与政策位置",
+    desc: "把政策文件与舆情动态一起查：外部检索的「舆情检索」分区里，关键词检索 + 15 个平台热榜 + 网页归档三合一",
     hint: "多源舆情 · 政策原文 · 可转成推理素材",
     icon: <Scale className="h-4.5 w-4.5" />,
     tag: "舆情",

@@ -25,7 +25,7 @@ const VIEWS = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask"
   "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "memory", "docs", "alerts", "im",
   "education", "empirical-research", "graphiti-ingest", "cogneee-ingest", "billing", "admin", "jupyter",
   "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent",
-  "editor", "site-content", "research-history", "digest", "notifications", "forum", "hotboard", "home"].filter((v) => v !== "cogneee-ingest");
+  "editor", "site-content", "research-history", "digest", "notifications", "forum", "home"].filter((v) => v !== "cogneee-ingest");
 
 // 有动作埋点的主功能页（断言这些页助手里必须列出动作）。
 // review-lab / policy 不在列: 它们唯一的主动作(开始审稿 / 检索)在初始状态下是 **disabled** 的,

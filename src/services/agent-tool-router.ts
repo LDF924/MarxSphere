@@ -55,6 +55,24 @@ export async function buildAgentTools(opts?: {
     const data: any = await res.json();
     return data?.trace?.hypothesis?.content || data?.content || data?.result || data?.error || JSON.stringify(data).slice(0, 500);
   };
+  /**
+   * 要**结构化响应**时用这个, 不要用 callApi。
+   *
+   * ⚠ callApi 会把响应压成一个字符串(取其 content/result/error), 那是给"返回一段文字的
+   *   老接口"设计的。观澜移植过来的这几个端点(热榜/阅读/归档/台账)返回的是**结构化 JSON**,
+   *   用 callApi 拿到的是一串 JSON 文本, 后面 `r.boards` 之类全是 undefined ——
+   *   而 TypeScript 会直接报"Property does not exist on type 'string'", 反而不容易踩坑。
+   *   带上 Authorization: 这几条端点都要登录(callApi 走的是本机豁免, 这里不能依赖)。
+   */
+  const callApiJson = async (path: string, body: Record<string, unknown> = {}): Promise<any> => {
+    const token = (globalThis as { __sagAgentToken?: string }).__sagAgentToken ?? "";
+    const res = await fetch(`${apiBase}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    return await res.json().catch(() => ({}));
+  };
   // V395-1: 多模态 PDF 工具（动态 import 避免启动开销）
   let pdfTool: AgentToolDef | null = null;
   let pdfConvertTool: AgentToolDef | null = null;
@@ -215,6 +233,83 @@ export async function buildAgentTools(opts?: {
       description: "检索政策法规原文与条文（政策库）",
       params: { keyword: { type: "string", required: true, desc: "政策关键词" } },
       run: async (a) => callApi("/api/reason/query", { query: `政策: ${a.keyword}`, mode: "adaptive" }),
+    },
+    // ═══ 中文互联网研究工具(2026-10-03, 移植自开源项目 观澜/Guanlan, MIT) ═══
+    //
+    // 这四个把观澜的核心能力接进 Agent: 热榜看此刻的注意力流向、读网页拿正文、
+    // 归档存快照、台账核数值。它们与 web_search/web_fetch 的分工是:
+    //   web_search 是**通用检索**(给关键词拿线索); 这四个负责"拿到之后怎么把它变成证据"。
+    {
+      name: "cn_hotboard", label: "中文热榜", risk: "safe",
+      description: "抓 15 个中文平台热榜(知乎/微博/百度/抖音/B站/贴吧/虎扑/澎湃/掘金/V2EX/少数派/IT之家/财联社/华尔街见闻/雪球)。回答『此刻中文互联网在议什么』。注意: 热榜是公众注意力样本, 不是事实 —— 每个榜带 evidenceRole 说明它在证据体系里的角色, 引用时必须保留这个限定",
+      params: {
+        platforms: { type: "string", desc: "逗号分隔的榜 id(留空=全部), 如 zhihu,weibo,cls-telegraph" },
+        limit: { type: "number", desc: "每个榜取几条(默认 15, 上限 50)" },
+      },
+      run: async (a) => {
+        const ids = String(a.platforms ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+        const r = await callApiJson("/api/hotboard/fetch", {
+          ids: ids.length ? ids : undefined,
+          limit: Math.min(Number(a.limit) || 15, 50),
+        });
+        const boards = (r?.boards ?? []).filter((b: any) => b.ok && b.items?.length);
+        if (!boards.length) return `（没抓到任何榜单 —— ${String(r?.boards?.[0]?.error ?? "外部聚合不可用")}）`;
+        const out: string[] = [];
+        for (const b of boards as any[]) {
+          out.push(`【${b.name}】(${b.evidenceRole}${b.stale ? ", 第三方缓存" : ""})`);
+          for (const it of b.items) out.push(`${it.rank}. ${it.title}`);
+        }
+        return out.join("\n");
+      },
+    },
+    {
+      name: "cn_read_page", label: "读中文网页", risk: "safe",
+      description: "把网页正文读成 Markdown, 并给阅读质量报告(字数/中文数/噪声命中/乱码/判定)。判定为 thin/failed 说明**没抽到正文**(强 JS 渲染或需登录) —— 此时要如实告诉用户, 不要替它编内容",
+      params: { url: { type: "string", required: true, desc: "网页地址(http/https)" } },
+      run: async (a) => {
+        const r = await callApiJson("/api/web/read", { url: String(a.url) });
+        if (!r?.ok) return `（读取失败: ${r?.error ?? "未知原因"}）`;
+        const q = r.quality ?? {};
+        const head = `【${r.title || a.url}】质量: ${q.label} ${q.score}分 · ${q.chars}字(中文${q.cjkChars})`
+          + (q.noiseHits?.length ? ` · 噪声命中: ${q.noiseHits.join("/")}` : "");
+        return head + "\n\n" + String(r.markdown ?? "").slice(0, 6000);
+      },
+    },
+    {
+      name: "cn_archive", label: "网页归档", risk: "review",
+      description: "把网页存成快照(存的是此刻的内容, 不是书签), 之后可对比它改了什么。政策会改、新闻会撤稿, 所以引用外部网页前应先归档。同一内容不会重复存版本",
+      params: {
+        url: { type: "string", required: true, desc: "网页地址" },
+        toVault: { type: "string", desc: "是否同时写入资料库(默认 1)" },
+      },
+      run: async (a) => {
+        const r = await callApiJson("/api/archive/add", { url: String(a.url), toVault: a.toVault !== "0" });
+        if (r?.status === "created") return `已存下一版快照${r.vault ? `, 并写入资料库(${r.vault.name})` : ""}`;
+        if (r?.status === "unchanged") return "内容与上一版相同, 已记录本次访问(未重复存版本)";
+        return `（归档失败: ${r?.error ?? "未知原因"} —— 有些平台会拦服务器抓取, 可让用户手动粘贴正文导入）`;
+      },
+    },
+    {
+      name: "cn_claim_ledger", label: "论断台账", risk: "safe",
+      description: "从已归档的网页里抽出可核对的具体值(价格/百分比/数量/日期), 并标出跨源分歧(同一件事不同来源给了不同的数)。用于核对『几份材料说法不一致』。它不判断真假, 只报需要人看一眼的地方",
+      params: {},
+      run: async () => {
+        const r = await callApiJson("/api/archive/claims");
+        const cs: any[] = r?.conflictSets ?? [];
+        const claims: any[] = r?.claims ?? [];
+        if (!claims.length) return "（还没有可核对的论断 —— 先用 cn_archive 归档几页有具体数字的材料）";
+        const parts: string[] = [];
+        if (cs.length) {
+          for (const c of cs) {
+            parts.push(`⚠ ${c.conflictSet} [${c.category}] ${c.values.join(" vs ")}`);
+            for (const s of c.sources) parts.push(`    ${s.value} — ${s.sourceTitle || s.url}（置信 ${s.confidence}）`);
+          }
+        } else {
+          parts.push("已抽出的值之间没有跨源分歧。");
+        }
+        parts.push("", `共 ${claims.length} 条论断。`);
+        return parts.join("\n");
+      },
     },
     // 教育能力调用（Agent 一句话触发教育功能）
     {
@@ -2352,6 +2447,11 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   llm_write: "analyst",
   concept_trace: "reader",
   policy_search: "reader",
+  // 2026-10-03 观澜移植: 热榜/读网页/台账只读; 归档会落盘(快照+可选写资料库) → analyst
+  cn_hotboard: "reader",
+  cn_read_page: "reader",
+  cn_claim_ledger: "reader",
+  cn_archive: "analyst",
   empirical_analysis: "analyst",
   review_output: "analyst",
   summarize: "reader",

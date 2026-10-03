@@ -59,6 +59,9 @@ export function HotboardPanel() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [history, setHistory] = useState<Array<{ id: string; fetchedAt: string; chars: number; passages: number; via: string; quality: { label?: string; score?: number } }>>([]);
   const [diff, setDiff] = useState<{ added: string[]; removed: string[]; unchanged: number } | null>(null);
+  /** 论断台账 —— 抽出的可核对值 + 跨源分歧(移植自观澜 claim_ledger) */
+  const [ledger, setLedger] = useState<Awaited<ReturnType<typeof apiWeb.archiveClaims>> | null>(null);
+  const [ledgerBusy, setLedgerBusy] = useState(false);
   const [locateQ, setLocateQ] = useState("");
   const [hits, setHits] = useState<Array<{ url: string; ord: number; startOffset: number; text: string; fetchedAt: string }>>([]);
 
@@ -138,6 +141,13 @@ export function HotboardPanel() {
   const doDiff = async (l: string, r: string) => {
     try { setDiff(await apiWeb.archiveDiff(l, r)); }
     catch (e) { setErr(String((e as Error)?.message ?? e).slice(0, 160)); }
+  };
+
+  const loadLedger = async () => {
+    setLedgerBusy(true); setErr("");
+    try { setLedger(await apiWeb.archiveClaims()); }
+    catch (e) { setErr(String((e as Error)?.message ?? e).slice(0, 160)); }
+    finally { setLedgerBusy(false); }
   };
 
   const doLocate = async () => {
@@ -300,6 +310,74 @@ export function HotboardPanel() {
             <button type="button" onClick={() => void refreshArchives()} className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-accent" data-control="archive:refresh">
               <RefreshCw className="h-3 w-3" />
             </button>
+          </div>
+
+          {/* 论断台账 —— 抽出的可核对值 + 跨源分歧 */}
+          <div className="rounded-md border border-border">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+              <GitCompare className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-medium">论断台账</span>
+              <span className="text-[11px] text-muted-foreground">
+                从已归档页面里抽出可核对的具体值，标出**跨源分歧**
+              </span>
+              <button type="button" onClick={() => void loadLedger()} disabled={ledgerBusy}
+                className="ml-auto rounded border border-border px-2 py-0.5 text-xs hover:bg-accent disabled:opacity-50"
+                data-control="archive:claims">
+                {ledgerBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : "生成台账"}
+              </button>
+            </div>
+            {ledger ? (
+              <div className="space-y-2 p-3">
+                {ledger.conflictSets.length ? (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-medium text-amber-300">
+                      需要人工核对的分歧（{ledger.conflictSets.length}）—— 冲突不等于有人错，只是要把依据翻出来
+                    </div>
+                    {ledger.conflictSets.map((cs) => (
+                      <div key={cs.conflictSet} className="rounded border border-amber-500/25 bg-amber-500/5 p-2" data-control="archive:conflict">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="rounded bg-amber-400/15 px-1.5 py-0.5 font-mono text-amber-200">{cs.conflictSet}</span>
+                          <span className="text-muted-foreground">{ledger.categoryLabels[cs.category] ?? cs.category}</span>
+                          <span className="font-medium">{cs.values.join("  vs  ")}</span>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {cs.sources.map((s) => (
+                            <div key={s.claimId} className="text-[11px] text-muted-foreground">
+                              <span className="font-medium text-foreground/85">{s.value}</span>
+                              {" — "}
+                              <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">{s.sourceTitle || s.url}</a>
+                              {s.evidenceRole ? <span className="ml-1 opacity-70">（{s.evidenceRole}）</span> : null}
+                              <span className="ml-1 opacity-60">置信 {s.confidence}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded border border-dashed border-border px-3 py-3 text-center text-[11px] text-muted-foreground">
+                    {ledger.claims.length
+                      ? "已抽出的值之间没有跨源分歧（同一数值、不同来源 —— 那才算分歧）"
+                      : "还没抽出可核对的值。先归档几页有具体数字的材料。"}
+                  </div>
+                )}
+                {ledger.claims.length ? (
+                  <div>
+                    <div className="mb-1 text-[11px] font-medium text-muted-foreground">全部论断（{ledger.claims.length}）</div>
+                    <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                      {ledger.claims.slice(0, 60).map((c) => (
+                        <div key={c.claimId} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">{ledger.categoryLabels[c.category] ?? c.category}</span>
+                          <span className="font-medium">{c.value}</span>
+                          <span className="truncate text-muted-foreground">{c.sourceTitle || c.domain}</span>
+                          {c.conflictSet ? <span className="rounded bg-amber-400/15 px-1 text-[10px] text-amber-300">⚠ {c.conflictSet}</span> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {/* 按句子定位 —— 段落偏移的用处 */}

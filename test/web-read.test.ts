@@ -99,3 +99,51 @@ describe("阅读质量判据", () => {
     expect(q.score).toBeGreaterThanOrEqual(90);
   });
 });
+
+/**
+ * 论断台账(移植观澜 claim_ledger)。
+ *
+ * 它失败的方式同样是静默的: 抽不到就是空列表, 界面上看起来像"这些材料里没有数字"。
+ * 实测踩到的是**正则的中文适配** —— 照搬原文之后:
+ *   ① 「2026 年 3 月」一条都抽不到(中文习惯在数字与单位间留空格, 原文要求紧邻);
+ *   ② 数量类只认英文单位(B/M/K), 中文的「亿/万」配「人/户/亩」全漏;
+ *   ③ 日期归一化没先收空格 → 变成 `2026 - 3`, 与「2026年3月」判成两个值, 冲突检测失效。
+ */
+describe("论断台账(观澜移植)", () => {
+  it("中文日期写法抽得到并归一到 YYYY-MM(回归: 空格版本曾一条都抽不到)", async () => {
+    const { buildClaimLedger } = await import("../src/services/claim-ledger-service.js");
+    const l = buildClaimLedger([
+      { text: "实施期为 2026 年 3 月，另一种写法 2026年3月 应归一到同一个值。", url: "https://a.example/1", title: "A" },
+    ]);
+    const dates = l.claims.filter((c) => c.category === "date").map((c) => c.value);
+    expect(dates.length, "「2026 年 3 月」没抽到 —— 多半是正则又要求数字与“年”紧邻了").toBeGreaterThan(0);
+    // 两种中文写法必须归一成同一个值, 否则同一份材料里自己跟自己"冲突"
+    expect(new Set(dates).size).toBe(1);
+    expect(dates[0]).toMatch(/^\d{4}-\d{2}$/);
+  });
+
+  it("数值分歧来自**不同来源**时才报冲突(同一篇里前后不一致不算)", async () => {
+    const { buildClaimLedger } = await import("../src/services/claim-ledger-service.js");
+    const same = buildClaimLedger([
+      { text: "补贴 30%。后面又说补贴 50%。", url: "https://a.example/1", title: "A" },
+    ]);
+    expect(same.conflictSets.length, "同一来源内的不一致不该报成跨源分歧").toBe(0);
+
+    const cross = buildClaimLedger([
+      { text: "补贴 30%。", url: "https://gov.example/1", title: "政策文件", evidenceRole: "official_primary" },
+      { text: "补贴 50%。", url: "https://news.example/2", title: "媒体报道", evidenceRole: "authoritative_report" },
+    ]);
+    expect(cross.conflictSets.length).toBe(1);
+    expect(cross.conflictSets[0].values.sort()).toEqual(["30%", "50%"]);
+    // 一手来源的置信度要高于媒体报道 —— 这是"该先信谁"的唯一线索
+    const conf = Object.fromEntries(cross.claims.map((c) => [c.sourceTitle, c.confidence]));
+    expect(conf["政策文件"]).toBeGreaterThan(conf["媒体报道"]);
+  });
+
+  it("抽不到就是空列表, 不硬凑(不假装有论断)", async () => {
+    const { buildClaimLedger } = await import("../src/services/claim-ledger-service.js");
+    const l = buildClaimLedger([{ text: "这一段没有任何具体数字，只有论述。", url: "https://a.example/1", title: "A" }]);
+    expect(l.claims).toEqual([]);
+    expect(l.conflictSets).toEqual([]);
+  });
+});

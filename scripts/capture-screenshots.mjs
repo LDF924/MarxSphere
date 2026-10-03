@@ -94,7 +94,8 @@ const VIEWS = [
   { file: "sag-digest.png",           hash: "#digest",              expect: "研究速递" },
   { file: "sag-notifications.png",    hash: "#notifications",       expect: "通知" },
   { file: "sag-forum.png",            hash: "#forum",               expect: "学友论坛" },
-  { file: "sag-hotboard.png",         hash: "#hotboard",            expect: "热榜" },
+  // 热榜与归档已并进「外部检索」的舆情分区(2026-10-03), 老深链 #hotboard 会映射过去
+  { file: "sag-hotboard.png",         hash: "#hotboard",            expect: "舆情检索|热榜" },
 ];
 
 const W = 1600, H = 1000;

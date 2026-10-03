@@ -60,7 +60,7 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   // ── 科研中心（文献） ──
   literature: { label: "文献库", hint: "本地文献检索：meta-catalog + meta-search 模式" },
   imports: { label: "文献管理", hint: "Zotero / RSS / 论文搜索 / S3 / SSH / 双链笔记 统一入口" },
-  sciverse: { label: "外部检索", hint: "全人文社科外部学术检索：工具选择 + 结果卡片 + read_content/relations" },
+  sciverse: { label: "外部检索", hint: "三个分区：外部检索（学术源）· 研究速递（订阅推送）· 舆情检索（关键词检索 + 15 个平台热榜 + 网页归档）" },
   scenarios: { label: "场景", hint: "科研场景全景：按研究阶段分组（选题构思 → 评审发表）" },
   education: { label: "教育", hint: "AI+教育六大能力：学习规划 / 课程辅导 / 学情诊断 / 预习复习 / 教师备课 / 学习陪伴" },
   structure: { label: "结构解析", hint: "自动定位论文里的图/表/公式/算法，四类分览 + 每块一键 AI 理解" },
@@ -176,7 +176,6 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   docs: { label: "文档中心", hint: "左侧章节导航 + Markdown 渲染" },
   "site-content": { label: "站点内容", hint: "公告 / 帮助 / 条款 / 学术资源导航" },
   forum: { label: "学友论坛", hint: "板块讨论区：发帖、回帖、赞同与收藏；科研路上的问题与经验互帮" },
-  hotboard: { label: "热榜与归档", hint: "15 个中文平台热榜（知乎/微博/百度/抖音/B站/贴吧/掘金/V2EX…）+ 网页归档：存下页面此刻的内容，之后对比它改了什么" },
   "research-history": { label: "历史记录", hint: "六模块历史分区；点击可恢复对应工作台条目" },
 
   // ── 兜底 ──

@@ -10,7 +10,9 @@ import { Card } from "../components/ui/card";
 import { Textarea } from "../components/ui/textarea";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 
-type Tool = "semantic_search" | "search_papers" | "relations" | "read_content" | "opinion";
+// ⚠ 2026-10-03: 舆情检索**不再是这里的工具** —— 它升成了并列分区(见 SECTIONS)。
+//   留着会让同一个面板在"工具"与"分区"两处各出现一次, 用户分不清该点哪个。
+type Tool = "semantic_search" | "search_papers" | "relations" | "read_content";
 type SciverseMode = "mock" | "online" | "auto";
 
 const MODE_KEY = "sciverse-mode";
@@ -45,7 +47,6 @@ const TOOL_LABELS: Record<Tool, string> = {
   read_content: "读全文",
   // 2026-10-01: 加"舆情检索" —— 与其余四项同族: 都是**检索外部信息**。
   //   区别是检索对象不是论文而是新闻/政策/公开榜单, 用于研究议题的媒体框架与舆论走向。
-  opinion: "舆情检索"
 };
 
 const PLACEHOLDERS: Record<Tool, string> = {
@@ -53,11 +54,42 @@ const PLACEHOLDERS: Record<Tool, string> = {
   search_papers: "查询词（可空）＋右侧过滤条件",
   relations: "输入论文 unique_id",
   read_content: "输入论文 doc_id",
-  opinion: "议题关键词，如「农村集体经济」"
 };
 
-import { OpinionSearchPanel } from "./OpinionSearchPanel";
 import { DigestPanel } from "./DigestPanel";
+import { OpinionSearchPanel } from "./OpinionSearchPanel";
+import { HotboardPanel } from "./HotboardPanel";
+
+/**
+ * 「外部检索」下的三个分区 —— **切换器只此一处, 加分区只动这里**。
+ *
+ * 由来(2026-10-03 用户): 「热榜与归档融入放入外部检索里的舆情检索」。
+ *   改前这三件事在导航里是并列的独立 tab, 而它们回答的其实是同一类问题 ——
+ *   "本站之外有什么": 外部检索看学术源, 研究速递看我订的刊与主题, 舆情检索看
+ *   此刻中文互联网在议什么(关键词检索 + 15 个平台热榜 + 网页归档快照)。
+ *   ⚠ 切换器原本**复制了两份**(search 与 digest 各一份), 那时加分区必须改两处 ——
+ *     第三个分区就是这么被漏掉的诱因。收到这里, 一份。
+ */
+const SECTIONS = [
+  ["search", "外部检索"],
+  ["digest", "研究速递"],
+  ["opinion", "舆情检索"],
+] as const;
+
+function SectionTabs({ section, onPick }: { section: string; onPick: (k: "search" | "digest" | "opinion") => void }) {
+  return (
+    <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-0.5">
+      {SECTIONS.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => onPick(k)}
+          data-control={`sciverse:section-${k}`}
+          className={cn("rounded-md px-3 py-1.5 text-sm transition-colors",
+            section === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function SciversePanel({ onSendToWorkflow }: {
   onSendToWorkflow?: (text: string, title: string) => void;
@@ -68,7 +100,18 @@ export function SciversePanel({ onSendToWorkflow }: {
    * 的定时抓取结果** —— 与「外部检索」是同一件事的两种时态: 一个是"我现在去查",
    * 一个是"它自己送上来"。放一起才知道这两条路都存在。
    */
-  const [section, setSection] = useState<"search" | "digest">("search");
+  /**
+   * 分区初值读 **hash**: `#opinion` → 舆情分区, `#hotboard` → 也落舆情分区(热榜已并入它)。
+   * ⚠ 这两个 hash 是**以前独立 tab 时留下的深链**(导航里还有别处在用), 直接删会让老链接
+   *   落到"外部检索"上 —— 需求说的正是"融进舆情检索", 所以把它们指向那个分区。
+   */
+  const [section, setSection] = useState<"search" | "digest" | "opinion">(() => {
+    if (typeof window === "undefined") return "search";
+    const h = window.location.hash.replace(/^#/, "");
+    if (h === "opinion" || h === "hotboard") return "opinion";
+    if (h === "digest") return "digest";
+    return "search";
+  });
   const [tool, setTool] = useState<Tool>("semantic_search");
   const [query, setQuery] = useState("");
   const [extra, setExtra] = useState("");
@@ -321,41 +364,12 @@ export function SciversePanel({ onSendToWorkflow }: {
   return (
     <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto w-full max-w-[1400px] space-y-4">
-        <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-0.5">
-          {([["search", "外部检索"], ["digest", "研究速递"]] as const).map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setSection(k)}
-              data-control={`sciverse:section-${k}`}
-              className={cn("rounded-md px-3 py-1.5 text-sm transition-colors",
-                section === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
-              {label}
-            </button>
-          ))}
-        </div>
+        <SectionTabs section={section} onPick={setSection} />
         {/*
           舆情检索(2026-10-01): 单独一个工具分支, **不走论文检索那套输入/结果渲染**。
           早返回而不是嵌进下面的条件链, 是因为它的输入(关键词+时间窗)与输出(新闻条目+
           情感/立场)跟论文结果完全不是一种形状, 混进同一条链只会到处塞 if。
         */}
-        {tool === "opinion" ? (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(TOOL_LABELS) as Tool[]).map((t) => (
-                <button key={t} type="button"
-                  className={cn("rounded-md border px-3 py-1.5 text-sm transition-colors",
-                    tool === t ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:bg-accent")}
-                  onClick={() => { setTool(t); setResults(null); }}>
-                  {t === "semantic_search" ? <Search className="mr-1 inline h-3.5 w-3.5" /> :
-                    t === "search_papers" ? <BookOpen className="mr-1 inline h-3.5 w-3.5" /> :
-                    t === "relations" ? <Link2 className="mr-1 inline h-3.5 w-3.5" /> :
-                    t === "opinion" ? <Newspaper className="mr-1 inline h-3.5 w-3.5" /> :
-                      <FileText className="mr-1 inline h-3.5 w-3.5" />}
-                  {TOOL_LABELS[t]}
-                </button>
-              ))}
-            </div>
-            <OpinionSearchPanel onSendToWorkflow={onSendToWorkflow} />
-          </>
-        ) : (
         <>
         <div className="flex items-center gap-2">
           <Database className="h-5 w-5 text-primary" />
@@ -459,7 +473,6 @@ export function SciversePanel({ onSendToWorkflow }: {
               {t === "semantic_search" ? <Search className="mr-1 inline h-3.5 w-3.5" /> :
                 t === "search_papers" ? <BookOpen className="mr-1 inline h-3.5 w-3.5" /> :
                 t === "relations" ? <Link2 className="mr-1 inline h-3.5 w-3.5" /> :
-                t === "opinion" ? <Newspaper className="mr-1 inline h-3.5 w-3.5" /> :
                   <FileText className="mr-1 inline h-3.5 w-3.5" />}
               {TOOL_LABELS[t]}
             </button>
@@ -674,7 +687,6 @@ export function SciversePanel({ onSendToWorkflow }: {
           </div>
         </Card>
         </>
-        )}
       </div>
     </section>
   );
