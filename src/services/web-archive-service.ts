@@ -79,6 +79,12 @@ export interface ArchiveSummary {
   snapshotCount: number;
   lastSeenAt: string;
   firstSeenAt: string;
+  /**
+   * 最新一版**抓取**的时间 —— 与 lastSeenAt 的区别很重要:
+   *   lastSeenAt 每次命中都会更新(哪怕内容没变), 所以它**不是内容的时间**。
+   *   要判"这条材料的时效"必须用 archivedAt, 否则一条 2024 年的政策会被当成今天的新鲜线索。
+   */
+  archivedAt: string;
   /** 最新一版的质量分 —— 列表页要能看出"这条证据干不干净" */
   qualityScore: number | null;
   qualityLabel: string;
@@ -209,14 +215,21 @@ export async function listArchives(userId: string, opts: { limit?: number; proje
   const params: unknown[] = [userId];
   const where = ["a.user_id = $1"];
   if (opts.projectId) { params.push(opts.projectId); where.push(`a.project_id = $${params.length}`); }
-  if (opts.q) { params.push(`%${opts.q}%`); where.push(`(a.title ilike $${params.length} or a.url ilike $${params.length})`); }
+  if (opts.q) {
+    params.push(`%${opts.q}%`);
+    // ⚠ tags 必须一起搜(2026-10-04 实测补): 原先只搜 title/url, 于是**按 tag 找不到东西** ——
+    //   归档时打了「土地流转」标签、标题里没有这四个字的材料, 搜索一律 0 命中。
+    //   这不是"搜得不全", 是同一份数据在写的时候认 tag、读的时候不认。
+    //   (表现: 每日简报按主题取归档永远取不到, 而归档列表里明明白白躺着那几条。)
+    where.push(`(a.title ilike $${params.length} or a.url ilike $${params.length} or a.tags::text ilike $${params.length})`);
+  }
   params.push(Math.min(Math.max(opts.limit ?? 50, 1), 200));
   const r = await pool.query(
     `select a.id, a.url, a.title, a.snapshot_count, a.first_seen_at, a.last_seen_at, a.tags,
-            s.quality
+            s.quality, s.fetched_at
        from web_archives a
        left join lateral (
-         select quality from web_snapshots ws where ws.archive_id = a.id order by ws.fetched_at desc limit 1
+         select quality, fetched_at from web_snapshots ws where ws.archive_id = a.id order by ws.fetched_at desc limit 1
        ) s on true
       where ${where.join(" and ")}
       order by a.last_seen_at desc
@@ -230,6 +243,7 @@ export async function listArchives(userId: string, opts: { limit?: number; proje
     snapshotCount: Number(x.snapshot_count) || 0,
     firstSeenAt: x.first_seen_at ? new Date(x.first_seen_at).toISOString() : "",
     lastSeenAt: x.last_seen_at ? new Date(x.last_seen_at).toISOString() : "",
+    archivedAt: x.fetched_at ? new Date(x.fetched_at).toISOString() : "",
     qualityScore: x.quality?.score ?? null,
     qualityLabel: String(x.quality?.label ?? ""),
     tags: Array.isArray(x.tags) ? x.tags.map(String) : [],

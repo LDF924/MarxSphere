@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1865%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1900%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -71,7 +71,7 @@
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 85 scenario catalog / 162-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 85 scenario catalog / 165-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
 
 ### ✨ Research Workbenches (all 18 tabs under Research)
 
@@ -123,7 +123,7 @@
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **162-tool dispatch**: 106 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 56 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 56-view coverage)
+- **165-tool dispatch**: 109 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 56 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 56-view coverage)
 - **Command syntax**: `/` opens the skill command palette (209 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
@@ -147,7 +147,7 @@
 | Task DAG | LLM decomposes subtasks → depends_on orchestration → concurrent queue (semaphore) → SSE progress |
 | Failure handling | tool timeout circuit breaker (90s) → exponential backoff → failure feedback loop → error classification (recoverable/unrecoverable) |
 
-**② Tool Matrix (106 Agent tools; plus 56 view tools = 162)**
+**② Tool Matrix (109 Agent tools; plus 56 view tools = 165)**
 
 | Category | Tools | Engineering |
 |---|---|---|
@@ -424,7 +424,7 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 1865 green (CI continuous)
+**Unit tests**: 1900 green (CI continuous)
 
 ---
 
@@ -541,7 +541,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
 | 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
 | 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
-| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1865 unit tests / 21-operator ablation / CI |
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1900 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -576,13 +576,13 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
-npm test                # 1865 unit tests
+npm test                # 1900 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1865 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1900 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -610,7 +610,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
-| ✅ Unit tests | `npm test` (1865, CI green) |
+| ✅ Unit tests | `npm test` (1900, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |

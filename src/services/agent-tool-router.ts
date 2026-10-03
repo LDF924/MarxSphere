@@ -311,6 +311,68 @@ export async function buildAgentTools(opts?: {
         return parts.join("\n");
       },
     },
+    // ═══ 主题 wiki 与每日简报(2026-10-04, 移植自开源项目 观澜/Guanlan, MIT) ═══
+    //
+    // 上面四个解决了"拿到一条证据"; 这三个解决"证据多了之后怎么办":
+    //   归档 → 聚成主题(wiki) / 归档 → 打成证据包喂模型(context) / 四条链 → 合成当期简报(daily)。
+    {
+      name: "cn_wiki_build", label: "主题wiki", risk: "review",
+      description: "把**本地已归档**的资料按主题聚成 wiki(core/candidate 两档), 可导出 Markdown/HTML, 或导出给本地模型/RAG 用的 llm-wiki 目录树。它只代表本地归档, **不是全网知识库** —— 没命中只能说本地没存过",
+      params: {
+        topic: { type: "string", desc: "主题关键词(留空=全部归档)" },
+        format: { type: "string", desc: "markdown(默认)|html|llm-wiki(给本地模型/RAG)|both" },
+        limit: { type: "number", desc: "最多纳入几篇(默认 200, 上限 500)" },
+        minQuality: { type: "number", desc: "低于此阅读质量分的降为 candidate(默认 60)" },
+      },
+      run: async (a) => {
+        const r = await callApiJson("/api/wiki/build", {
+          topic: String(a.topic ?? ""),
+          format: String(a.format ?? "markdown"),
+          limit: Number(a.limit) || undefined,
+          minQuality: a.minQuality === undefined ? undefined : Number(a.minQuality),
+        });
+        if (r?.error) return `（构建失败: ${r.error}）`;
+        return String(r?.summary ?? `已生成 ${r?.documents ?? 0} 篇文档 / ${r?.topics ?? 0} 个主题`);
+      },
+    },
+    {
+      name: "cn_wiki_context", label: "归档证据包", risk: "safe",
+      description: "把本地归档里与问题相关的材料打成**带边界的证据包**(标明每条是 core 还是 candidate、正文层级、质量分)。写带引用的答案前用它, 而不是凭记忆。没有命中时会明说「本地归档未命中」",
+      params: {
+        query: { type: "string", required: true, desc: "要查的问题/主题" },
+        limit: { type: "number", desc: "最多几条(默认 20)" },
+        minQuality: { type: "number", desc: "低于此分只作线索(默认 0=不过滤)" },
+      },
+      run: async (a) => {
+        const r = await callApiJson("/api/wiki/context", {
+          query: String(a.query),
+          limit: Number(a.limit) || undefined,
+          minQuality: a.minQuality === undefined ? undefined : Number(a.minQuality),
+        });
+        return String(r?.context ?? "（本地归档未命中）").slice(0, 12_000);
+      },
+    },
+    {
+      name: "cn_daily_brief", label: "每日简报", risk: "review",
+      description: "把舆情检索 / 热榜 / 本地归档合成一份**带主线的当期简报**: 今天有哪些线、每条的来源层级 A/B/C/D、哪条涉及风险、下一步该核什么。用户问『今天有什么』『最近这事进展』时用它。它也会落一期历史, 便于下次对比新增/延续/降温",
+      params: {
+        query: { type: "string", desc: "主题(留空=只看热榜与归档)" },
+        timeWindow: { type: "string", desc: "today|24h|3d(默认)|7d" },
+        edition: { type: "string", desc: "research(默认)|policy|market|teaching" },
+        limit: { type: "number", desc: "正文几条(默认 12, 上限 30)" },
+      },
+      run: async (a) => {
+        const r = await callApiJson("/api/daily/brief", {
+          query: String(a.query ?? ""),
+          timeWindow: a.timeWindow ? String(a.timeWindow) : undefined,
+          edition: a.edition ? String(a.edition) : undefined,
+          limit: Number(a.limit) || undefined,
+          compareDays: 7,
+        });
+        if (r?.error) return `（简报生成失败: ${r.error}）`;
+        return String(r?.markdown ?? "（没生成出简报）").slice(0, 14_000);
+      },
+    },
     // 教育能力调用（Agent 一句话触发教育功能）
     {
       name: "education_service", label: "教育能力", risk: "safe",
@@ -2398,6 +2460,8 @@ export const WRITE_TOOLS = new Set<string>([
   "patch_learner_profile", "record_learning_event", "education_service",
   // V419: 写作舱的两个生成工具(会落库 + 烧 LLM), 只读会话不该拿到
   "research_proposal_generate", "research_component_generate",
+  // 2026-10-04 观澜第二批: wiki 构建会往磁盘写一整个目录; 日报会落一期历史(表写) + 打外网
+  "cn_wiki_build", "cn_daily_brief",
   // V420: 四组新工具里的写/执行类(33 条) —— 只读(评审)会话不该拿到
   "viz_job_create",
   "viz_job_cancel",
@@ -2452,6 +2516,10 @@ const TOOL_MIN_ROLE: Record<string, AgentRole> = {
   cn_read_page: "reader",
   cn_claim_ledger: "reader",
   cn_archive: "analyst",
+  // 2026-10-04 观澜第二批: 证据包只读; 主题 wiki 会写文件、日报会落一期历史 → analyst
+  cn_wiki_context: "reader",
+  cn_wiki_build: "analyst",
+  cn_daily_brief: "analyst",
   empirical_analysis: "analyst",
   review_output: "analyst",
   summarize: "reader",

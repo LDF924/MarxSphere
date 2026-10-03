@@ -2452,6 +2452,100 @@ export function buildHttpServer() {
     return { hits: await locateInArchive(user.id, q.q ?? "", Number(q.limit) || 10) };
   });
 
+  // ═══════════════ 主题 Wiki(2026-10-04, 观澜 archive_wiki 移植) ═══════════════
+  /**
+   * 把归档聚成主题 wiki。
+   *
+   * ⚠ **不接受调用方传输出路径**: 目录由服务端 `TOPIC_WIKI_DIR` + buildId 推导。
+   *   一个能写文件的接口如果路径可控, 那就是任意写。
+   */
+  app.post("/api/wiki/build", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      topic: z.string().max(200).optional(),
+      format: z.enum(["markdown", "html", "llm-wiki", "both"]).optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+      minQuality: z.number().int().min(0).max(100).optional(),
+      includeCandidates: z.boolean().optional(),
+    }).parse(request.body ?? {});
+    const { buildTopicWiki, formatWikiBuildSummary } = await import("../services/topic-wiki-service.js");
+    const result = await buildTopicWiki(user.id, {
+      topic: body.topic, outputFormat: body.format, limit: body.limit,
+      minQuality: body.minQuality, includeCandidates: body.includeCandidates,
+    });
+    return { ...result, summary: formatWikiBuildSummary(result) };
+  });
+
+  app.get("/api/wiki/builds", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string };
+    const { listWikiBuilds } = await import("../services/topic-wiki-service.js");
+    return { builds: await listWikiBuilds(user.id, Number(q.limit) || 20) };
+  });
+
+  /** 归档证据包 —— 给 Agent / 本地模型直接吃的那一份(带 core/candidate 与回答规则) */
+  app.post("/api/wiki/context", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      query: z.string().max(500),
+      limit: z.number().int().min(1).max(80).optional(),
+      minQuality: z.number().int().min(0).max(100).optional(),
+      maxChars: z.number().int().min(200).max(20_000).optional(),
+    }).parse(request.body ?? {});
+    const { buildArchiveWikiContext } = await import("../services/topic-wiki-service.js");
+    return await buildArchiveWikiContext(user.id, body.query, {
+      limit: body.limit, minQuality: body.minQuality, maxChars: body.maxChars,
+    });
+  });
+
+  // ═══════════════ 每日简报(2026-10-04, 观澜 daily 移植) ═══════════════
+  /**
+   * 生成当期简报。
+   *
+   * ⚠ 这是一条**会真打外部站点**的接口(舆情检索 28 源 + 热榜 4 平台), 所以:
+   *   要登录(免得被当免费代理); `include*` 三个开关让人能只用本地归档跑(离线可用);
+   *   单条链失败不影响其他 —— `diagnostics` 里会明写哪条挂了, 而不是静默少几条。
+   */
+  app.post("/api/daily/brief", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      query: z.string().max(300).optional(),
+      timeWindow: z.enum(["today", "24h", "3d", "7d"]).optional(),
+      edition: z.enum(["research", "policy", "market", "teaching", "general"]).optional(),
+      limit: z.number().int().min(1).max(30).optional(),
+      overflowLimit: z.number().int().min(0).max(80).optional(),
+      hotBoards: z.array(z.string().max(60)).max(15).optional(),
+      sourceIds: z.array(z.string().max(60)).max(60).optional(),
+      includeOpinion: z.boolean().optional(),
+      includeHotboard: z.boolean().optional(),
+      includeArchive: z.boolean().optional(),
+      compareDays: z.number().int().min(0).max(60).optional(),
+      recordHistory: z.boolean().optional(),
+    }).parse(request.body ?? {});
+    const { buildDailyBrief, formatDailyMarkdown, formatDailyContext } = await import("../services/daily-brief-service.js");
+    const brief = await buildDailyBrief({ ...body, userId: user.id });
+    return { ...brief, markdown: formatDailyMarkdown(brief), context: formatDailyContext(brief) };
+  });
+
+  /** 往期简报的对比记录数(界面显示"有没有对比基准") */
+  app.get("/api/daily/history", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { q?: string; days?: string };
+    const { pool } = await import("../db/pool.js");
+    const days = Math.min(Math.max(Number(q.days) || 14, 1), 180);
+    const r = await pool.query(
+      `select count(*)::int as n, max(generated_at) as last from daily_brief_history
+        where user_id = $1 and ($2 = '' or query_key = $3)
+          and generated_at >= now() - ($4 || ' days')::interval`,
+      [user.id, String(q.q ?? "").toLowerCase().replace(/\s+/g, ""), String(q.q ?? "").toLowerCase().replace(/\s+/g, ""), String(days)]
+    );
+    return {
+      records: Number(r.rows[0]?.n ?? 0),
+      lastAt: r.rows[0]?.last ? new Date(r.rows[0].last).toISOString() : "",
+      days,
+    };
+  });
+
   app.delete("/api/archive/:id", async (request, reply) => {
     const user = await requireUser(request, reply); if (!user) return;
     const { id } = request.params as { id: string };

@@ -133,7 +133,50 @@ const SOURCE_PROFILE: Record<string, { authority: number; sample: number; freshn
   "sd-gov-info-quarterly": { authority: 0.9, sample: 0.05, freshness: 0.75, bestFor: "政府信息研究期刊", notFor: "同上" },
   "sd-china-economic-review": { authority: 0.9, sample: 0.05, freshness: 0.75, bestFor: "中国经济评论期刊", notFor: "同上" },
   "web-search": { authority: 0.4, sample: 0.4, freshness: 0.7, bestFor: "兜底: 上面都不覆盖时用", notFor: "通用检索**不定来源**, 引用前必须点回原站核对" },
+
+  /**
+   * ── 中文平台热榜(2026-10-04 补登记) ──
+   *
+   * ⚠ 为什么要补: 日报要按"来源属于什么"给条目分证据层级, 而它用的就是**这张表**。
+   *   热榜 15 个榜 id(`zhihu`/`weibo`/`baidu`…)原先一个都没登记, 于是每条热榜条目
+   *   都拿到中性默认值 0.5 —— 权威与样本两个维度**同时失真**。具体后果不是"分不对",
+   *   而是"某个东西被当成了不同于它本身的东西":
+   *     · 知乎热榜的权威被抬到 0.5(它实际是 0.2) → 一条提问看起来像半个媒体来源;
+   *     · 微博热搜的权威 0.95 全部来自"**这一类平台上什么受关注**"的推测,
+   *       它的**样本**价值是 0.9(人们真的在议), 而**权威**只有 0.15(热度是平台机制产物)。
+   *   登记后这两条价值才生效, 也才能被 `classify_daily_source` 用上。
+   *
+   * 取值口径: 综合/资讯类平台(authority 0.25-0.35, 它有编辑也有算法, 比纯社交通道高);
+   *   纯 UGC 社区 0.15-0.2; freshness 一律高(榜单本身就是"此刻"); sample 一律高(它是样本不是事实)。
+   */
+  zhihu: { authority: 0.2, sample: 0.85, freshness: 0.95, bestFor: "公众关注什么问题的样本", notFor: "高赞回答是自选择样本, 不能当事实或民意" },
+  weibo: { authority: 0.15, sample: 0.9, freshness: 0.95, bestFor: "**公众注意力**的样本(此刻大家在议什么)", notFor: "热搜是平台机制产物, 绝不等于事实或民意分布" },
+  baidu: { authority: 0.3, sample: 0.75, freshness: 0.95, bestFor: "搜索行为的聚合信号(大众在查什么)", notFor: "搜索热度受运营与推广影响, 不代表观点" },
+  douyin: { authority: 0.15, sample: 0.8, freshness: 0.95, bestFor: "短视频平台的注意力流向", notFor: "算法推荐主导, 样本高度偏斜" },
+  bilibili: { authority: 0.2, sample: 0.75, freshness: 0.9, bestFor: "青年向长视频社区的议题热度", notFor: "活跃用户结构偏年轻, 不能外推" },
+  "bilibili-hot-search": { authority: 0.2, sample: 0.75, freshness: 0.9, bestFor: "B站热搜的议题热度", notFor: "同 bilibili —— 用户结构偏年轻, 不能外推" },
+  tieba: { authority: 0.15, sample: 0.8, freshness: 0.9, bestFor: "兴趣社群里的讨论样本", notFor: "圈层化严重, 不代表公众" },
+  hupu: { authority: 0.15, sample: 0.75, freshness: 0.9, bestFor: "男性向体育社区的舆论样本", notFor: "用户结构单一, 不能外推" },
+  thepaper: { authority: 0.65, sample: 0.3, freshness: 0.9, bestFor: "主流媒体的热点选择", notFor: "热榜是编辑挑选, 反映媒介议程而非民意" },
+  juejin: { authority: 0.35, sample: 0.6, freshness: 0.9, bestFor: "开发者社区的技术议题", notFor: "技术圈层样本, 不覆盖公众" },
+  v2ex: { authority: 0.3, sample: 0.6, freshness: 0.9, bestFor: "开发者社区讨论样本", notFor: "小样本高活跃, 代表性有限" },
+  ithome: { authority: 0.45, sample: 0.4, freshness: 0.9, bestFor: "科技资讯站的热点选择", notFor: "科技垂类, 覆盖面有限" },
+  "cls-telegraph": { authority: 0.55, sample: 0.25, freshness: 0.98, bestFor: "财经快讯的时效信号", notFor: "快讯未经核实, 需回读原文" },
+  wallstreetcn: { authority: 0.55, sample: 0.25, freshness: 0.95, bestFor: "财经资讯的热点选择", notFor: "同上" },
+  xueqiu: { authority: 0.3, sample: 0.65, freshness: 0.9, bestFor: "投资者情绪样本", notFor: "持股者立场自带偏向, 不是市场事实" },
 };
+
+/**
+ * 已登记的源 id 列表。
+ *
+ * ⚠ 导出它是因为 `profileOf` 的"未登记"返回值**与登记值形状相同**(中性 0.5 + 一段中文说明),
+ *   调用方**分辨不出来**。2026-10-04 实测: 热榜的 15 个榜 id 与这 21 个画像键只有一个重合,
+ *   于是 14 个榜静默拿到中性值 —— 权威分那一项等于不存在, 且没有任何信号提示这件事。
+ *   有了这个集合, 调用方可以自己决定"查不到时要不要退到显示名/域名", 而不是默默吃默认值。
+ */
+export function registeredSourceIds(): string[] {
+  return Object.keys(SOURCE_PROFILE);
+}
 
 /** 给一条源取画像(未登记的给中性值, 不编造) */
 export function profileOf(sourceId: string) {

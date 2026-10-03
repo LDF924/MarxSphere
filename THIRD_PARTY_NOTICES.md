@@ -239,12 +239,57 @@ SOFTWARE.
     (本仓与其不同之处只有一处: 抓取走直连而非 Jina Reader, 因其主路在本网络环境不通。)
   - **网页归档**(`src/services/web-archive-service.ts` + `migrations/182_web_archive.sql`):
     快照序列 + 段落级偏移 + 差异比对的语义(其 `unchanged` 口径、`content_hash` 判据)。
+  - **每日简报**(第二批, 2026-10-04): **源码移植**自 `guanlan/daily.py`(1960 行),
+    逐函数转 TypeScript 写入 `src/services/daily-brief-service.ts` —— 采集归一
+    (`_normalize_*_items`) / 指纹去重(`_merge_daily_items` / `_daily_fingerprint` /
+    `_canonical_url`) / 打分排序(`_daily_score` / `_query_overlap_score` /
+    `_topic_match_strict`) / **栏目配额选稿**(`_select_daily_items` / `_daily_section_caps`) /
+    候补池(`_build_daily_overflow_items`) / 采编自检(`_build_editorial_health` /
+    `_build_daily_source_health`) / 边界与下一步(`_daily_boundaries` / `_daily_next_steps`) /
+    渲染(`format_daily_markdown` / `format_daily_context`)。配套移植:
+    `guanlan/daily_quality.py`(548 行)→ `src/services/daily-quality-service.ts`(来源分层 A/B/C/D、
+    时效分层、栏目归属、软 SEO 判据); `guanlan/daily_storylines.py`(409 行)→
+    `src/services/daily-storyline-service.ts`(主线聚类、风险标记、置信度、动作建议、编辑决策卡);
+    `guanlan/daily_history.py`(164 行)→ 同文件的 `buildHistoryDelta` / `recordDailyHistory`。
+    前端 `web/src/components/DailyBriefPanel.tsx` 对应其 `daily_renderers.py` 的章节结构。
+  - **主题 Wiki**(第二批, 2026-10-04): **源码移植**自 `guanlan/archive_wiki.py`(902 行),
+    → `src/services/topic-wiki-service.ts` —— `build_archive_wiki` / `_enrich_wiki_record`
+    (core/candidate 分档)/ `_group_by_topic` / `_wiki_record_priority` /
+    `build_archive_wiki_context` + `format_archive_wiki_context`(证据包与「回答规则」)/
+    `_write_llm_wiki` 及全部 `_render_llm_*`(purpose / schema / index / log /
+    graph.json / manifest)/ `_build_llm_wiki_graph` / `_llm_wiki_entities` /
+    `_record_entities`。前端 `web/src/components/TopicWikiPanel.tsx` 对应其 `_render_wiki_html`。
 - **未使用的部分**: Guanlan 的 `search` / `research` / `stock` 等模块**未采用** ——
   它们依赖 Exa MCP 等外部付费服务, 而本仓已有自己的检索 provider 抽象
   (`src/services/search-provider-registry.ts`: bocha / tavily / exa)。
+  其 `_run_daily_lane_searches`(同一 query 换 4 个 scope 各跑一遍的扇形检索)**未移植**:
+  本仓的舆情检索一次要跑 28 个源, 扇形就是 4×28 次请求, 而换来的只是同一批源上多几个
+  关键词变体。这是**有意的取舍**, 需要更宽覆盖时应在检索路由层做, 不在日报层叠请求。
+- **移植时按本仓语境改过的地方**(行为与原版**不同**, 逐条记明以便与上游对照):
+  1. **来源分层新增 `academic` 栏目**。原版栏目体系(A/B/C/D × official/ecosystem/community/
+     trust/other)里没有学术这一档, 对科研平台会让文献被挤进 "ecosystem"。本仓把
+     同行评审归 A、预印本归 B 并各自带边界文案。
+  2. **自有域名/仿冒域名表换成可配置项**。原版那份是品牌监测的自有域名(`wps.cn` 等),
+     本仓默认给政务与央媒 —— 对社科研究, A 层主体是"官方发布"而不是企业自述。
+  3. **风险词表从「一词即触发」改为「强词一个 / 弱词两个」**。原版是品牌监测口径,
+     通用检索下「安全」(行车安全/粮食安全)、「数据」这类词会导致近乎恒真的误报。
+  4. **风险词匹配前剥掉网页样板文字**(版权声明/免责声明/责任编辑…)。中文主流站的摘要
+     几乎全都带「版权所有」, 不剥的话 compliance 强词「版权」会把整个 B 层媒体判成合规风险。
+  5. **`reputation` 组去掉「道歉」「舆情」并降为 medium**。原版把"网上有人投诉"当品牌当天的
+     高风险事件; 对研究者「争议」只说明这事有分歧, 不构成风险。
+  6. **今日简报历史落表而非写文件**。原版写 `~/.guanlan/daily/history.jsonl`(单机单用户),
+     本仓是多用户服务, 落到 `daily_brief_history` 表按 user 隔离, 否则 A 用户的对比基准
+     会掺进 B 用户的采集记录。**判据一行业未改**。
+  7. **wiki 输出目录由服务端推导**(基目录 + buildId), 不接受调用方传路径 ——
+     原版是 CLI, 路径是用户参数; 本仓是服务端, 可写文件的接口路径可控即任意写。
+  8. **实体抽取去掉上游项目名**(「观澜」/guanlan), 否则每个 wiki 的头号实体都是它。
+  9. **Chinese 无分隔符标题的簇键**: 原版的 4 字滑窗是位置相关的, 同事件的转载会各成一条
+     主线(实测 2 条同事件标题聚成 2 条线); 本仓改用固定长度前缀(8 字)。
 - **MIT 义务履行**:
   - ✅ 版权与来源声明(本文件 + 上述各文件头部注释均注明"对照开源项目 观澜/Guanlan, MIT")
-  - ✅ 已登记**具体移植文件与函数名**(见上), 移植部分保留原文的判据与权重, 不改变其语义
+  - ✅ 已登记**具体移植文件与函数名**(见上), 移植部分保留原文的判据与权重;
+    上述 9 处**有意偏离**已逐条记明, 便于与上游对照与回溯
+- **许可文本**: `THIRD_PARTY_LICENSES/mit.txt`(与第 0/0.1 节共用同一 MIT 文本)
 
 > 本文件由 SocioSeek 团队维护(2026-10-04)。如有遗漏,请提交 issue 补充。
 

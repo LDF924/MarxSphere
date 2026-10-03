@@ -13,11 +13,13 @@
 import { useEffect, useState } from "react";
 import {
   Flame, Loader2, RefreshCw, Archive, Plus, ChevronRight, Clock, AlertTriangle,
-  GitCompare, Search, Trash2, BookOpen, ExternalLink,
+  GitCompare, Search, Trash2, BookOpen, ExternalLink, Sun, Library,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { api, apiWeb } from "../lib/api";
 import { PanelNotice, panelInputCls } from "./PanelShell";
+import { DailyBriefPanel } from "./DailyBriefPanel";
+import { TopicWikiPanel } from "./TopicWikiPanel";
 
 interface Board { id: string; name: string; category: string; evidenceRole: string }
 interface HotItem { rank: number; title: string; url: string; heat: number; summary?: string }
@@ -31,7 +33,7 @@ interface ArchiveRow {
 const CAT_ORDER = ["综合", "社区", "科技", "财经", "视频"];
 
 export function HotboardPanel() {
-  const [tab, setTab] = useState<"hot" | "archive">("hot");
+  const [tab, setTab] = useState<"hot" | "archive" | "brief" | "wiki">("hot");
 
   // ── 热榜 ──
   const [boards, setBoards] = useState<Board[]>([]);
@@ -70,7 +72,7 @@ export function HotboardPanel() {
   }, []);
 
   useEffect(() => {
-    if (tab !== "archive") return;
+    if (tab !== "archive" && tab !== "wiki") return;
     void refreshArchives();
   }, [tab]);
 
@@ -173,7 +175,7 @@ export function HotboardPanel() {
         </div>
         <span className="text-xs text-muted-foreground">此刻各平台在议什么</span>
         <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5 text-xs">
-          {([["hot", "热榜"], ["archive", "网页归档"]] as const).map(([k, label]) => (
+          {([["hot", "热榜"], ["archive", "网页归档"], ["brief", "每日简报"], ["wiki", "主题wiki"]] as const).map(([k, label]) => (
             <button key={k} type="button" onClick={() => setTab(k)} data-control={`hot:tab-${k}`}
               className={cn("rounded px-3 py-1", tab === k ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>
               {label}
@@ -276,6 +278,12 @@ export function HotboardPanel() {
             </div>
           )}
         </>
+      ) : tab === "brief" ? (
+        /* ═══════════ 每日简报(2026-10-04, 观澜 daily 移植) ═══════════ */
+        <DailyBriefPanel />
+      ) : tab === "wiki" ? (
+        /* ═══════════ 主题 wiki(2026-10-04, 观澜 archive_wiki 移植) ═══════════ */
+        <TopicWikiPanel />
       ) : (
         /* ═══════════ 网页归档 ═══════════ */
         <>

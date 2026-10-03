@@ -2031,4 +2031,93 @@ export const apiWeb = {
       categoryLabels: Record<string, string>;
     }>(`/api/archive/claims${archiveId ? `?archiveId=${encodeURIComponent(archiveId)}` : ""}`);
   },
+
+  // ═══ 主题 wiki 与每日简报(2026-10-04, 观澜 archive_wiki / daily 移植) ═══
+
+  /**
+   * 把本地归档聚成主题 wiki。
+   * ⚠ **不传输出路径** —— 目录由服务端推导, 能写文件的接口如果路径可控就是任意写。
+   */
+  async buildWiki(o: { topic?: string; format?: "markdown" | "html" | "llm-wiki" | "both"; limit?: number; minQuality?: number; includeCandidates?: boolean } = {}) {
+    return request<{
+      buildId: string; output: string; format: string; topic: string;
+      documents: number; coreDocuments: number; candidateDocuments: number; topics: number;
+      files: string[]; boundary: string;
+      graphSummary: { nodes: number; edges: number; topEntities: Array<{ name: string; count: number }> };
+      summary: string;
+    }>("/api/wiki/build", { method: "POST", body: JSON.stringify(o) });
+  },
+  async listWikiBuilds(limit = 20) {
+    return request<{
+      builds: Array<{
+        id: string; topic: string; format: string; outputDir: string;
+        documents: number; coreDocuments: number; candidateDocuments: number; topics: number;
+        files: string[]; graphSummary: { nodes?: number; edges?: number; topEntities?: Array<{ name: string; count: number }> };
+        createdAt: string;
+      }>;
+    }>(`/api/wiki/builds?limit=${limit}`);
+  },
+  /** 归档证据包 —— 带 core/candidate 状态与「回答规则」的那一份, 给本地模型/RAG 用 */
+  async wikiContext(o: { query: string; limit?: number; minQuality?: number; maxChars?: number }) {
+    return request<{
+      query: string;
+      records: Array<{ id: string; title: string; url: string; domain: string; wikiStatus: string; contentMode: string; qualityScore: number | null; topicLabel: string; contentExcerpt: string }>;
+      context: string;
+      boundary: string;
+    }>("/api/wiki/context", { method: "POST", body: JSON.stringify(o) });
+  },
+
+  /** 当期简报 —— 会真打外部站点(舆情检索 + 热榜), include* 三个开关能只用本地归档跑 */
+  async dailyBrief(o: {
+    query?: string; timeWindow?: "today" | "24h" | "3d" | "7d";
+    edition?: "research" | "policy" | "market" | "teaching" | "general";
+    limit?: number; overflowLimit?: number; hotBoards?: string[]; sourceIds?: string[];
+    includeOpinion?: boolean; includeHotboard?: boolean; includeArchive?: boolean;
+    compareDays?: number; recordHistory?: boolean;
+  } = {}) {
+    return request<{
+      schemaVersion: string; title: string; query: string; mode: string;
+      generatedAt: string; timeWindow: string; edition: string;
+      candidateCount: number; itemCount: number; overflowCount: number;
+      highlights: string[];
+      tierMix: Record<string, number>;
+      originMix: Record<string, number>;
+      diagnostics: Record<string, { status: string; count: number; error: string; limit: number; source?: string; note?: string }>;
+      sections: Array<{
+        key: string; title: string; summary: string;
+        items: Array<{
+          title: string; url: string; summary?: string; source?: string; origin?: string;
+          sourceTier: string; sourceTierLabel: string; sourceSection: string;
+          freshness: string; freshnessLabel: string; publishedAt?: string;
+          dailyScore?: number; sourceProfile: { boundary: string };
+        }>;
+      }>;
+      storylines: Array<{
+        id: string; headline: string; whatHappened: string; whyItMatters: string;
+        freshness: string; freshnessLabel: string; riskLevel: string; recommendedAction: string;
+        confidence: string; riskFlags: string[]; teams: string[];
+        storylineTypeLabel: string;
+        evidenceItems: Array<{ title: string; url: string; source: string; sourceTier: string; sourceTierLabel: string; freshness: string; freshnessLabel: string; summary: string }>;
+        sourceSpread: { tierCounts: Record<string, number>; domainCount: number };
+      }>;
+      overflowItems: Array<{ title: string; url: string; sourceTierLabel: string; source?: string; freshnessLabel: string }>;
+      editorialHealth: { status: string; coverage: Record<string, number>; warnings: string[] };
+      sourceHealth: { tierCounts: Record<string, number>; mainFreshnessCounts: Record<string, number>; warnings: string[] };
+      boundaries: string[]; nextSteps: string[];
+      historyDelta: {
+        enabled: boolean; compareDays: number; recordsChecked: number;
+        newStorylines: Array<{ headline: string }>; continuedStorylines: Array<{ headline: string }>;
+        cooledStorylines: Array<{ headline: string }>; persistentRisks: Array<{ headline: string }>;
+      };
+      boundary: string;
+      markdown: string;
+      context: string;
+      routePlan: { reason?: string; avoidAsPrimary?: string[]; lowConfidence?: boolean } | null;
+    }>("/api/daily/brief", { method: "POST", body: JSON.stringify(o) });
+  },
+  async dailyHistory(q = "", days = 14) {
+    const p = new URLSearchParams({ days: String(days) });
+    if (q) p.set("q", q);
+    return request<{ records: number; lastAt: string; days: number }>(`/api/daily/history?${p}`);
+  },
 };

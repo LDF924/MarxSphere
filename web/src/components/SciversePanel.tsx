@@ -340,20 +340,38 @@ export function SciversePanel({ onSendToWorkflow }: {
     return { hits: [] };
   };
 
+  if (section === "opinion") {
+    /**
+     * 舆情检索分区。
+     *
+     * ⚠⚠ 2026-10-04 修: 这一支**原本不存在**。三个分区的状态是通的(标签能切、`#opinion`
+     *   深链也落对), 但下面只渲染了学术检索那一支 —— 用户点「舆情检索」看到的还是
+     *   Sciverse 论文检索界面。`OpinionSearchPanel` 与 `HotboardPanel` 从 10-03 起
+     *   就 import 了却**从未被渲染**(全仓只有 import, 没有一处 JSX 用它们)。
+     *
+     *   这正是"判据看不到被测对象"那一类: 门禁只断言分区标签在、`#opinion` 能跳,
+     *   那两条都通过, 而分区内容一直是错的。所以这里的门禁断言必须锚到**各分区自己的
+     *   内容**(见 verify-fusion-tabs 的 sciverse 断言)。
+     *
+     * 两块放一起而不是各自一个分区: 它们本来就是一条动线 —— 关键词检索/热榜看此刻
+     * 在议什么, 归档把看中的页面存成快照, 台账核跨源数值分歧。
+     */
+    return (
+      <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+        <div className="mx-auto w-full max-w-[1400px] space-y-4">
+          <SectionTabs section={section} onPick={setSection} />
+          <OpinionSearchPanel onSendToWorkflow={onSendToWorkflow} />
+          <HotboardPanel />
+        </div>
+      </section>
+    );
+  }
+
   if (section === "digest") {
     return (
       <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <div className="mx-auto w-full max-w-[1400px] space-y-4">
-          <div className="flex w-fit gap-1 rounded-lg border border-border bg-card p-0.5">
-            {([["search", "外部检索"], ["digest", "研究速递"]] as const).map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setSection(k)}
-                data-control={`sciverse:section-${k}`}
-                className={cn("rounded-md px-3 py-1.5 text-sm transition-colors",
-                  section === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <SectionTabs section={section} onPick={setSection} />
           {/* min-h-0 + flex-1: DigestPanel 自己是纵向可滚动布局, 外面这层不能再限制高度 */}
           <div className="min-h-0"><DigestPanel /></div>
         </div>

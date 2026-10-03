@@ -246,6 +246,43 @@ for (const v of VIEWS) {
 t("没有视图名兜底成“工作台”", missing.length === 0, missing.length ? missing.join(", ") : "48/48 都有准确名字");
 t("每个视图都有功能说明", noHint === 0, noHint ? `${noHint} 个缺说明: ${noHintViews.slice(0, 6).join(", ")}` : "全部有说明");
 
+console.log("\n═══ ①·5 外部检索的三个分区**各自渲染自己的内容** ═══");
+{
+  /**
+   * ⚠ 为什么加这一段(2026-10-04): `OpinionSearchPanel` 与 `HotboardPanel` 从 2026-10-03 起
+   *   就被 import 进 SciversePanel, 但**从未被任何一处 JSX 渲染** —— 点「舆情检索」出来的
+   *   是学术检索界面。它躲过了当时所有断言, 因为那些断言查的是:
+   *     ① 分区标签在不在 ② `#opinion` 深链能跳到 ③ 助手报得出页面名
+   *   这三条**全都通过**, 而分区内容是错的。
+   *
+   *   这正是「判据看不到被测对象」: 断言锚在**导航**上, 而缺陷在**内容**里。
+   *   所以这里改成按 `data-control` 点进去, 再断言**该分区独有**的内容出现、
+   *   且**别的分区的内容不出现** —— 只查"在不在"会再次漏掉复制粘贴式的渲染错误。
+   */
+  await page.goto("about:blank");
+  await page.goto(`${BASE}/#sciverse`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.waitForTimeout(3200);
+  const sections = [
+    { key: "search", own: "外部学术检索", foreign: ["中文互联网热榜"] },
+    { key: "digest", own: "研究速递", foreign: ["中文互联网热榜"] },
+    { key: "opinion", own: "中文互联网热榜", foreign: ["外部学术检索"] },
+  ];
+  for (const s of sections) {
+    const clicked = await page.evaluate((k) => {
+      const b = document.querySelector(`[data-control="sciverse:section-${k}"]`);
+      if (!b) return false;
+      b.click();
+      return true;
+    }, s.key);
+    await page.waitForTimeout(900);
+    const txt = await page.evaluate(() => document.body.innerText);
+    const hasOwn = txt.includes(s.own);
+    const hitForeign = s.foreign.filter((f) => txt.includes(f));
+    t(`分区「${s.key}」渲染的是自己的内容`, clicked && hasOwn && hitForeign.length === 0,
+      !clicked ? "找不到分区标签" : !hasOwn ? `没找到它应有的「${s.own}」` : hitForeign.length ? `混进了别分区的内容: ${hitForeign.join(", ")}` : s.own);
+  }
+}
+
 console.log("\n═══ ② 主功能页的“当前页可执行” ═══");
 const noAct = [];
 for (const v of WITH_ACTIONS) {
