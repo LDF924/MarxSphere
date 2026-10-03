@@ -22,6 +22,16 @@ import { logger } from "../observability/logger.js";
 
 export type SubmissionStatus = "pending" | "approved" | "rejected" | "withdrawn";
 
+/**
+ * 列表项的状态 —— 比提交状态多一个 `local`。
+ *
+ * ⚠ 2026-10-03 用户: 「这个货架怎么还在, 技能货架改成 skill 广场啊」。
+ *   上一版我把广场**新加**成一个视图、货架留着当第三项 —— 那不是改名, 是加了个东西。
+ *   用户要的是**一个陈列**: 别人的和我自己的都在广场上, 我还没上架的那些也在这里,
+ *   只是标成"本机未上架"。所以 `local` 不是提交状态, 是"这个技能在本机、还没有提交记录"。
+ */
+export type PlazaStatus = SubmissionStatus | "local";
+
 /** 六步进度条 —— 前端按它渲染, 服务端按它算当前处于第几步 */
 export const PLAZA_STEPS = ["提交", "审核中", "审核结论", "上架", "被使用", "讨论"] as const;
 
@@ -34,7 +44,7 @@ export interface PlazaItem {
   tags: string[];
   origin: string;
   version: string;
-  status: SubmissionStatus;
+  status: PlazaStatus;
   reviewNote: string;
   reviewerId: string | null;
   ownerId: string;
@@ -47,6 +57,50 @@ export interface PlazaItem {
   installed: boolean;
   /** 作者是不是本人 / 当前用户是不是管理员 —— 前端据此显示"撤回""审核" */
   mine: boolean;
+  /** 本机技能的 Agent 召回热度(`local` 条目才有)。广场条目为 0 —— 两者不是一个东西 */
+  useCount?: number;
+}
+
+/**
+ * 本机技能(本仓 `data/skills`)合成广场条目 —— 让广场**一个列表陈列全部**。
+ *
+ * ⚠ 为什么要有这一步(2026-10-03): 上一版广场只显示 `skill_submissions` 里的行,
+ *   于是**平台自带的 209 个技能一个都不在广场上**, 用户看到的是一片空白 +
+ *   一个"管理员点收录"的提示 —— 而他要的是"打开广场就能看到有哪些技能"。
+ *   收录是**可选**的运营动作, 不该是广场能不能用的前提。
+ *
+ * 合成规则: 有提交记录的用记录(状态/安装数/讨论数都是真的), 没有的补一条 `local` 条目,
+ *   带真实的分类/标签/版本/作者与 Agent 召回热度。`local` 的 id 用 `local:<name>` ——
+ *   与 uuid 不会撞, 前端也一眼看得出这条不是库里的(它没有"审核"这回事)。
+ */
+function localItem(s: {
+  name: string; zhName?: string; description?: string; zhDescription?: string;
+  zhCategory?: string; version?: string; author?: string; tags?: string[];
+  origin?: string; useCount?: number; successCount?: number;
+}, viewerId: string, installedNames: Set<string>): PlazaItem {
+  return {
+    id: `local:${s.name}`,
+    slug: s.name,
+    title: s.zhName || s.name,
+    summary: s.zhDescription || s.description || "",
+    category: s.zhCategory || "未分类",
+    tags: s.tags ?? [],
+    origin: s.origin || "self-made",
+    version: s.version || "1.0.0",
+    status: "local",
+    reviewNote: "",
+    reviewerId: null,
+    ownerId: "",
+    ownerName: s.author || "本机",
+    installCount: 0,
+    // 本机技能只有 Agent 召回热度, 没有广场讨论 —— 如实给 0, 不拿召回数冒充
+    commentCount: 0,
+    submittedAt: "",
+    reviewedAt: null,
+    installed: installedNames.has(s.name),
+    mine: false,
+    useCount: s.useCount ?? 0,
+  };
 }
 
 /**
@@ -120,7 +174,13 @@ export async function listPlaza(opts: {
   q?: string;
   category?: string;
   sort?: "hot" | "new" | "name";
-}): Promise<{ items: PlazaItem[]; total: number; counts: { approved: number; pending: number; mine: number } }> {
+}): Promise<{
+  items: PlazaItem[];
+  total: number;
+  counts: { approved: number; pending: number; mine: number; local: number };
+  /** 侧栏统计(分类/标签/来源) —— 基于全量, 不是当前筛选结果 */
+  facets: { categories: Array<{ name: string; count: number }>; tags: Array<{ name: string; count: number }>; sources: Array<{ name: string; count: number }> };
+}> {
   const where: string[] = [];
   const params: unknown[] = [];
   const push = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -159,7 +219,67 @@ export async function listPlaza(opts: {
 
   const items: PlazaItem[] = r.rows.map((row: any) => toItem(row, opts.viewerId, Boolean(opts.isAdmin)));
 
-  // 三个角标数 —— 一次查询算完, 免得前端为每个 tab 各打一次
+  /**
+   * ⚠ 把**本机技能**也合成进来(2026-10-03 用户: 「这个货架怎么还在, 技能货架改成 skill 广场啊」)。
+   *
+   * 上一版广场只显示 `skill_submissions` 的行 —— 于是平台自带的 209 个技能**一个都不在**,
+   * 打开广场是一片空白 + 一句"管理员点收录"。用户要的是**一个陈列**: 别人的、我的、
+   * 本机还没上架的, 都在这里, 只是状态不同。收录只是可选的运营动作, 不该是广场能用的前提。
+   *
+   * 只在**广场/我的**视角合入; 「待审」不掺 —— 那一屏的语义就是"等我处理的"。
+   */
+  const scopeWantsLocal = opts.scope !== "pending" && opts.scope !== "mine";
+  let localItems: PlazaItem[] = [];
+  const installedNames = new Set<string>();
+  if (scopeWantsLocal) {
+    const submitted = new Set(items.map((x) => x.slug));
+    try {
+      const inst = await pool.query(
+        `select sub.slug from skill_installs i join skill_submissions sub on sub.id = i.submission_id where i.user_id = $1`,
+        [opts.viewerId]
+      );
+      for (const row of inst.rows as any[]) installedNames.add(String(row.slug));
+    } catch { /* 没有安装记录不影响 */ }
+    try {
+      const { listSkills } = await import("./skills-service.js");
+      const { listSkillUsage } = await import("./skill-usage-tracker.js");
+      const usage = new Map<string, { useCount: number }>();
+      try {
+        const u = await listSkillUsage(300);
+        for (const row of u.rows as any[]) usage.set(String(row.skillName ?? ""), { useCount: Number(row.useCount ?? 0) });
+      } catch { /* 热度取不到不影响列表 */ }
+
+      const q = (opts.q ?? "").trim().toLowerCase();
+      /**
+       * ⚠ 按 name 去重。`listSkills()` 会同时读 `~/.claude/skills` 与 `SAG_ROOT/skills`
+       *   两个目录, **同名技能会被各收一次**(实测 209 条里有 2 个重复:
+       *   `data-analysis` / `paper-writer`)。原货架面板把重名并成一个 key,
+       *   所以那个问题一直没显形; 换成卡片 grid 之后就是同一张卡出现两次。
+       *   在服务端去重而不是前端 map 一把: 重复项会让"全部 N 个"这个数字虚高。
+       */
+      const seenNames = new Set<string>();
+      localItems = listSkills()
+        .filter((s: any) => {
+          if (seenNames.has(s.name)) return false;
+          seenNames.add(s.name);
+          return true;
+        })
+        .filter((s: any) => !submitted.has(s.name))
+        .filter((s: any) => !opts.category || (s.zhCategory || "未分类") === opts.category)
+        .filter((s: any) => !q || `${s.name} ${s.zhName ?? ""} ${s.zhDescription ?? ""} ${s.description ?? ""}`.toLowerCase().includes(q))
+        .map((s: any) => localItem({ ...s, useCount: usage.get(s.name)?.useCount ?? 0 }, opts.viewerId, installedNames));
+    } catch { localItems = []; }
+  }
+
+  const all = [...items, ...localItems];
+  // 排序: 库里的按上面的 SQL 排好了, 本机那批按"热度 → 名称"插在后面并保持稳定
+  if (opts.sort === "hot") localItems.sort((a, b) => (b.useCount ?? 0) - (a.useCount ?? 0) || a.title.localeCompare(b.title, "zh-CN"));
+  else localItems.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"));
+  const merged = opts.sort === "name"
+    ? all.sort((a, b) => a.title.localeCompare(b.title, "zh-CN"))
+    : [...items, ...localItems];
+
+  // 角标数 —— 一次查询算完, 免得前端为每个 tab 各打一次
   const c = await pool.query(
     `select
        (select count(*)::int from skill_submissions where status='approved') as approved,
@@ -171,9 +291,39 @@ export async function listPlaza(opts: {
     approved: Number(c.rows[0]?.approved) || 0,
     pending: Number(c.rows[0]?.pending) || 0,
     mine: Number(c.rows[0]?.mine) || 0,
+    local: localItems.length,
   };
 
-  return { items, total: items.length, counts };
+  return { items: merged, total: merged.length, counts, facets: facetsOf(all) };
+}
+
+/**
+ * 侧栏统计(分类 / 标签 / 来源) —— **基于全量**, 不是当前筛选结果。
+ *
+ * ⚠ 必须全量: 若按筛选后的集算, 选中"实证分析"之后其他分类全变成 0, 用户就再也
+ *   切不回去了。这条是原货架面板踩过的坑, 抄统计逻辑时一并抄过来。
+ *   来源那一列做归一: origin 的值五花八门(实测见过 "github (HaipingXu/xxx)" /
+ *   "github-fork (swaylq/yyy)" / "self-made"), 整段当标签会出来一堆各不相同的"来源"。
+ */
+function facetsOf(items: PlazaItem[]): {
+  categories: Array<{ name: string; count: number }>;
+  tags: Array<{ name: string; count: number }>;
+  sources: Array<{ name: string; count: number }>;
+} {
+  const cat = new Map<string, number>();
+  const tag = new Map<string, number>();
+  const src = new Map<string, number>();
+  for (const it of items) {
+    const c = it.category || "未分类";
+    cat.set(c, (cat.get(c) ?? 0) + 1);
+    for (const t of it.tags) tag.set(t, (tag.get(t) ?? 0) + 1);
+    // 与货架同一套归一: 取第一个词, 括号里的仓库名丢掉(对使用者没有区分价值)
+    const key = it.origin === "official" ? "平台收录" : (it.origin ? it.origin.split(/[\s(]/)[0] : "本地自建");
+    src.set(key, (src.get(key) ?? 0) + 1);
+  }
+  const top = (m: Map<string, number>) =>
+    [...m].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  return { categories: top(cat), tags: top(tag), sources: top(src) };
 }
 
 function toItem(row: any, viewerId: string, isAdmin: boolean): PlazaItem {

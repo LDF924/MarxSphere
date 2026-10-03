@@ -1132,13 +1132,13 @@ export const SCENARIO_GUIDES: ScenarioGuide[] = [
   },
   {
     id: "S81",
-    title: "技能货架(找现成流程)",
+    title: "Skill 广场(找现成流程)",
     group: "学术情报与质检",
     goal: "别急着从零做 —— 先确认这两百多个技能里有没有已经做好的",
     steps: [
-      { title: "逛", desc: "按分类看有哪些类", tool: "skills", toolLabel: "技能货架 · 分类", how: "左侧分类给出每类的技能数与标签数。先扫一遍分类, 对'平台能做什么'有个整体印象。" },
-      { title: "筛", desc: "按标签/来源缩小范围", tool: "skills", toolLabel: "技能货架 · 标签", how: "点标签收窄(标签可以跨分类)。用「只看带标签的」排除掉元数据不全的老技能。" },
-      { title: "挑", desc: "看版本、作者、被用过几次", tool: "skills", toolLabel: "技能货架 · 卡片", how: "卡片上有版本号、作者与 Agent 召回次数。热度 0 不等于没人用 —— 它只统计 Agent 任务里的召回, 手动浏览不计数。" },
+      { title: "逛", desc: "按分类看有哪些类", tool: "skills", toolLabel: "Skill 广场 · 分类", how: "左侧分类给出每类的技能数与标签数。先扫一遍分类, 对'平台能做什么'有个整体印象。本机已有但还没人提交的技能也在这里, 标着「本机未提交」。" },
+      { title: "筛", desc: "按标签/来源缩小范围", tool: "skills", toolLabel: "Skill 广场 · 标签", how: "点标签收窄(标签可以跨分类)。用「只看带标签的」排除掉元数据不全的老技能。" },
+      { title: "挑", desc: "看版本、作者、被用过几次", tool: "skills", toolLabel: "Skill 广场 · 卡片", how: "卡片上有版本号、作者与 Agent 召回次数。热度 0 不等于没人用 —— 它只统计 Agent 任务里的召回, 手动浏览不计数。" },
       { title: "跑", desc: "进详情直接调用", tool: "skills", toolLabel: "技能详情", how: "点开卡片看完整说明与引导步骤, 再决定是手动跑还是交给 Agent。" }
     ]
   },

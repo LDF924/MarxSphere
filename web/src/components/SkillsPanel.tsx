@@ -9,7 +9,6 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 import type { SkillRecord, SkillUpdateResult, DiscoverResult } from "../types";
-import { SkillShelfPanel } from "./SkillShelfPanel";
 import { SkillPlazaPanel } from "./SkillPlazaPanel";
 
 interface HealthResult {
@@ -60,8 +59,14 @@ export function SkillsPanel() {
   const [candidates, setCandidates] = useState<Array<{ topic: string; count: number; lastQuery: string }>>([]);
   const [generating, setGenerating] = useState<string | null>(null);
   // 详情弹层
-  /** 列表 / 广场 / 货架 三态 —— 广场(2026-10-03)是社区门面, 货架是本机浏览 */
-  const [view, setView] = useState<"list" | "plaza" | "shelf">("list");
+  /**
+   * 列表 / 广场 两态。
+   *
+   * ⚠ 2026-10-03 用户第二次纠正: 「这个货架怎么还在, 技能货架改成 skill 广场啊」。
+   *   我第一版是"新增广场 + 保留货架", 那不是改名。货架已删除, 它的浏览能力
+   *   (分类/标签/来源筛选、版本/作者/热度徽章)并进了广场的筛选侧栏。
+   */
+  const [view, setView] = useState<"list" | "plaza">("list");
   const [detailSkill, setDetailSkill] = useState<SkillRecord | null>(null);
   const [detail, setDetail] = useState<{ skillMd: string; zhDoc?: string; files: string[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -665,12 +670,10 @@ export function SkillsPanel() {
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>}
 
-        {/* 列表 / 广场 / 货架 三态切换。
-            ⚠ 2026-10-03 用户: 「不应该命名为技能货架, 应该是 skill 广场」——
-              广场是**面向社区**的门面(别人的技能、审核进度、讨论区), 货架只是本机浏览,
-              两者不是同一件事, 所以广场在前、货架退到第三位并保留原名。 */}
+        {/* 列表 / 广场 两态 —— 广场就是原来的货架位置, 只是它现在是一个陈列:
+            别人的、我的、本机还没提交的, 全在一起。 */}
         <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs" style={{ width: "fit-content" }}>
-          {([["list", "列表"], ["plaza", "Skill 广场"], ["shelf", "货架"]] as const).map(([v, label]) => (
+          {([["list", "列表"], ["plaza", "Skill 广场"]] as const).map(([v, label]) => (
             <button
               key={v}
               type="button"
@@ -688,15 +691,6 @@ export function SkillsPanel() {
           <SkillPlazaPanel
             onOpenSkill={(name) => {
               const found = skills.find((x) => x.name === name);
-              void openDetail(found ?? ({ name } as SkillRecord));
-            }}
-          />
-        ) : view === "shelf" ? (
-          <SkillShelfPanel
-            onOpenDetail={(name) => {
-              const found = skills.find((x) => x.name === name);
-              // 货架的 name 与列表的 SkillRecord.name 同源(listSkills), 一定找得到;
-              // 找不到就去拉详情 —— openDetail 只需要 name+skillMdPath, 兜底构造一个
               void openDetail(found ?? ({ name } as SkillRecord));
             }}
           />

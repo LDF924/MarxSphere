@@ -135,6 +135,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/** 广场条目 —— 列表与详情共用; `status` 比提交状态多一个 `local`(本机有、还没提交) */
+export interface PlazaItemRecord {
+  id: string; slug: string; title: string; summary: string; category: string; tags: string[];
+  origin: string; version: string;
+  status: "pending" | "approved" | "rejected" | "withdrawn" | "local";
+  reviewNote: string; ownerId: string; ownerName: string;
+  installCount: number; commentCount: number;
+  submittedAt: string; reviewedAt: string | null;
+  installed: boolean; mine: boolean; useCount?: number;
+}
+
 export const api = {
   // ═══ Skill 广场(2026-10-03) ═══
   // 全都走 request()(自带 Authorization) —— 裸 fetch 漏鉴权头这个坑本轮已经踩过两次
@@ -146,28 +157,23 @@ export const api = {
     if (o.category) p.set("category", o.category);
     if (o.sort) p.set("sort", o.sort);
     return request<{
-      items: Array<{
-        id: string; slug: string; title: string; summary: string; category: string; tags: string[];
-        origin: string; version: string; status: "pending" | "approved" | "rejected" | "withdrawn";
-        reviewNote: string; ownerId: string; ownerName: string; installCount: number; commentCount: number;
-        submittedAt: string; reviewedAt: string | null; installed: boolean; mine: boolean;
-      }>;
-      total: number; counts: { approved: number; pending: number; mine: number };
+      items: PlazaItemRecord[];
+      total: number;
+      counts: { approved: number; pending: number; mine: number; local: number };
+      /** 侧栏统计 —— 服务端基于全量算(不是当前筛选结果) */
+      facets: {
+        categories: Array<{ name: string; count: number }>;
+        tags: Array<{ name: string; count: number }>;
+        sources: Array<{ name: string; count: number }>;
+      };
     }>(`/api/skills/plaza?${p}`);
   },
   async getSkillPlazaStats() {
     return request<{ approved: number; pending: number; installs: number; contributors: number; comments: number }>("/api/skills/plaza/stats");
   },
   async getSkillSubmission(id: string) {
-    return request<{
-      item: {
-        id: string; slug: string; title: string; summary: string; category: string; tags: string[];
-        origin: string; version: string; status: "pending" | "approved" | "rejected" | "withdrawn";
-        reviewNote: string; ownerId: string; ownerName: string; installCount: number; commentCount: number;
-        submittedAt: string; reviewedAt: string | null; installed: boolean; mine: boolean;
-      };
-      steps: string[]; currentStep: number;
-    }>(`/api/skills/plaza/${encodeURIComponent(id)}`);
+    return request<{ item: PlazaItemRecord; steps: string[]; currentStep: number }>(
+      `/api/skills/plaza/${encodeURIComponent(id)}`);
   },
   async submitSkill(input: { slug: string; title: string; summary?: string; category?: string; tags?: string[]; version?: string }) {
     return request<{ ok: boolean; id: string; status: string }>("/api/skills/plaza/submit", {

@@ -115,7 +115,8 @@ const READ_PANEL = `(() => {
   const ps = [...box.querySelectorAll(':scope > p')];
   const actions = [];
   for (const s of panel.querySelectorAll('span')) { const v = txt(s); if (v.startsWith('▶')) actions.push(v); }
-  return { ok: true, label, hint: ps.length > 1 ? txt(ps[1]) : '', actions };
+  return { ok: true, label, hint: ps.length > 1 ? txt(ps[1]) : '', actions,
+           hasIframe: !!document.querySelector('iframe') };
 })()`;
 
 /**
@@ -133,17 +134,101 @@ const READ_PANEL = `(() => {
 async function read(view, opts = {}) {
   await page.goto("about:blank");
   await page.goto(`${BASE}/#${view}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+
+  /**
+   * ⚠ **先等 iframe 子应用就绪, 再开始计时**。
+   *
+   * 由来(2026-10-03 实测): `assistant-coverage` 在编排页读到 **0 条动作**, 报
+   *   「同名动作按 id 去重 — 实际 0 条」。人工把等待放到 9 秒再读, 面板里
+   *   `▶ 🎬 演示` 明明白白在(去重也正确, 只有 1 条)。
+   *
+   * 根因: 那 7 个视图(dag-workbench / statistics / editor / review-lab / plot-agent /
+   *   cjournal / paper-outline)自己**不渲染任何东西** —— 它们挂的是 `/soc/` 里的
+   *   Vue 子应用 iframe。下面那 4000ms 预算是"等动作渲染", 而冷启动时它全被 Vue
+   *   自身的启动吃掉了, 动作还没轮到出场。机器一忙就更明显(单跑绿、整跑红)。
+   *
+   * 修法是**把等待锚在正确的对象上**: 先等 iframe 里真的渲染出按钮, 再开始计那 4 秒。
+   *   没有用"把 4000 调大"—— 那会把"按钮真的没了"这类回归一起放过去, 等于放宽判据。
+   */
+  await page.waitForFunction(() => {
+    const f = document.querySelector("iframe");
+    if (!f) return true;                     // 不是 iframe 视图, 立即就绪
+    try {
+      // 子应用与外壳同源(/soc/ 在本域下), 可以直读
+      return (f.contentWindow?.document?.querySelectorAll("button").length ?? 0) > 3;
+    } catch { return false; }                // 万一跨域: 等它超时, 退回旧行为
+  }, null, { timeout: 12000 }).catch(() => null);
+
   const t0 = Date.now();
   let last = { ok: false };
+  /** 上一次读到的动作数与时刻 —— 用来判"列表稳定了没有"(见下) */
+  let prevLen = -1;
+  let prevAt = 0;
   for (;;) {
     const r = await page.evaluate(READ_PANEL).catch(() => null);
     if (r && r.ok) {
       last = r;
-      if (!opts.needActions || r.actions.length > 0) return r;
+      if (!opts.needActions) return r;
+      /**
+       * ⚠ `needActions` 的判据是**列表稳定**, 不是"非空就收工"。
+       *
+       * 由来(2026-10-03 实测): 原判据 `actions.length > 0` 在编排页 **582ms** 就返回了,
+       *   读到的只有 `["▶ 学友论坛"]` —— 那是**外壳**自己注册的动作, 而 iframe 子应用
+       *   (Vue)那一批还没渲染出来。断言找的 `🎬 演示` 在子应用那批里, 于是读到 0 条、
+       *   报「实际 0 条」。人工等 9 秒再看, 四条动作齐齐全全。
+       *
+       *   根因不是"等得不够久", 是**判据盯错了时刻**: 动作是分两批(外壳 → 子应用)到的,
+       *   "非空"这个条件在第一批到达时就成了。所以改成"连续两次读到**同样的条数**才算稳定",
+       *   并在稳定后立刻返回 —— 快页面不受影响, 慢页面自然多等一会儿。
+       *   没有放宽任何断言, 只是让它读到**完整的**列表。
+       */
+      /**
+       * ⚠ 稳定窗口必须**大于两批动作之间的间隔**, 否则会把第一批当成全部。
+       *
+       * 实测时序(编排页): 481ms 到 `["▶ 学友论坛"]`(外壳自己注册的),
+       *   883ms 才补上子应用那批(`计划历史 / 开始执行 / 🎬 演示`)—— **间隔 400ms**。
+       *   我第一版把窗口设成 300ms, 于是 781ms 就判定"稳了"并返回, 拿到的只有 1 条,
+       *   断言找的「🎬 演示」不在里面 → 报 0 条。窗口 300 而间隔 400, 差的就是这一点。
+       *   取 700ms: 明显大于 400ms, 仍远小于 4000ms 总预算。
+       */
+      const STABLE_MS = 700;
+      const now = Date.now();
+      if (r.actions.length > 0 && r.actions.length === prevLen && now - prevAt >= STABLE_MS) {
+        /**
+         * ⚠ **iframe 页不提前收工**, 等满预算再取最后一次。
+         *
+         * 实测(2026-10-03): 那 7 个 iframe 视图(编排/评审/绘图/编辑器/统计/写作舱/政经C刊)
+         *   的动作由**两部分**合成 —— 外壳自己注册的 + 子应用 postMessage 上来的,
+         *   两者到达时间差可达数百毫秒到秒级(冷启动更久)。
+         *   任何"看着稳了就返回"的窗口都可能卡在两批之间: 我把窗口从 300 调到 700 之后
+         *   仍然偶发读到只有外壳那一条(主仓连跑 1 绿 1 红)。
+         *
+         *   与其继续猜间隔, 不如**不猜**: iframe 页一律轮询到预算用尽(见 IF_BUDGET_MS),
+         *   返回最后一次读到的完整列表。代价是这几个页每次都跑满预算 —— 它们本来就是
+         *   整套里最慢的, 而这是"判据预算"不是"断言", 放宽预算不放宽断言。
+         */
+        if (!r.hasIframe) return r;
+      }
+      if (r.actions.length !== prevLen) { prevLen = r.actions.length; prevAt = now; }
     }
-    // 上限 4000ms ≈ 原来的 3200 + 900 —— 最坏不快于旧行为
-    if (Date.now() - t0 >= 4000) return last;
-    await page.waitForTimeout(200);
+    /**
+     * 主动问一遍 iframe 子应用(与外壳 `FloatingAssistantFAB` 的 `query-actions` 同一机制)。
+     *
+     * 外壳只在 500/1500/3000ms 各问一次, 而实测编排页的动作是**分两批**到的:
+     *   481ms 只有外壳自己注册的「学友论坛」, 883ms 才补上子应用的
+     *   「计划历史 / 开始执行 / 🎬 演示」。外壳的第二次问在 1500ms —— 落在 4000ms 预算内,
+     *   但**机器一忙就滑出去了**(单跑绿、整跑红就是这么来的)。
+     *   探针自己每轮都问, 就不依赖外壳那三个固定时刻。
+     */
+    await page.evaluate(() => {
+      for (const f of Array.from(document.querySelectorAll("iframe"))) {
+        try { (f).contentWindow?.postMessage({ source: "socioseek-workbench", type: "query-actions" }, "*"); } catch { /* 跨源忽略 */ }
+      }
+    }).catch(() => null);
+    // 非 iframe 页沿用 4000ms(≈ 原来的 3200 + 900); iframe 页给到 9000ms
+    const budget = last.hasIframe ? 9000 : 4000;
+    if (Date.now() - t0 >= budget) return last;
+    await page.waitForTimeout(150);
   }
 }
 

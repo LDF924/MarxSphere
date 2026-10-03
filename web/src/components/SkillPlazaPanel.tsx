@@ -5,11 +5,11 @@
 //   有讨论区的; 大家可以上传自己的 skill; 平台搜集所有科研学术相关的 skill 放进来;
 //   加一个审核机制, 管理员审核通过才能上架, 用户这边有进度条可以查询」。
 //
-// ═══ 与原「货架」的关系 ═══
-//   原 SkillShelfPanel 是**只读的本地浏览**(分类/标签/来源筛选 + 版本热度),
-//   它回答的是"本机有哪些技能"。广场回答的是另一件事: **别人做了什么、谁在审、
-//   谁在用、大家在聊什么**。两者不互相替代, 所以各自保留 —— 货架归到「技能库」
-//   面板内部当浏览视图, 广场是它的门面。
+// ═══ 原「货架」去哪了(2026-10-03 用户第二次纠正) ═══
+//   我第一版把广场**新加**成一个视图、把货架留成第三项 —— 用户看到的是「货架怎么还在」。
+//   那不是改名, 是加了个东西。他要的是**一个陈列**: 别人的、我的、本机还没上架的,
+//   全在广场上, 只是状态不同。所以货架已删除, 它的能力(分类/标签/来源筛选、
+//   版本/作者/来源/热度徽章)全部并进这里。
 //
 // ═══ 三件用户点名要的能力, 各自的落点 ═══
 //   · **上传自己的 skill** → 「上传」按钮 → 从本机技能注册表里挑一个 → POST /plaza/submit
@@ -21,30 +21,25 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Store, Loader2, Upload, Search, MessagesSquare, Download, Check, X, Pin,
   AlertTriangle, Send, ShieldCheck, Sparkles, User as UserIcon, RefreshCw, ChevronRight,
+  Boxes, Tag, Star,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
+import { api, type PlazaItemRecord } from "../lib/api";
 import { PanelNotice, panelInputCls } from "./PanelShell";
-
-export interface PlazaItem {
-  id: string; slug: string; title: string; summary: string; category: string;
-  tags: string[]; origin: string; version: string;
-  status: "pending" | "approved" | "rejected" | "withdrawn";
-  reviewNote: string; ownerId: string; ownerName: string;
-  installCount: number; commentCount: number;
-  submittedAt: string; reviewedAt: string | null;
-  installed: boolean; mine: boolean;
-}
+/** 类型真源在 lib/api.ts —— 面板里再抄一份就会漂(这个仓已经吃过几次) */
+type PlazaItem = PlazaItemRecord;
 interface PlazaStats { approved: number; pending: number; installs: number; contributors: number; comments: number; }
 interface Comment {
   id: string; parentId: string | null; userId: string; author: string; body: string; createdAt: string;
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  pending: { label: "审核中", cls: "border-amber-500/40 bg-amber-500/10 text-amber-300" },
   approved: { label: "已上架", cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
+  pending: { label: "审核中", cls: "border-amber-500/40 bg-amber-500/10 text-amber-300" },
   rejected: { label: "已驳回", cls: "border-red-500/40 bg-red-500/10 text-red-300" },
   withdrawn: { label: "已撤回", cls: "border-border bg-muted/40 text-muted-foreground" },
+  // `local` = 本机有这个技能, 但还没有提交记录 —— 不是"没上架", 是"还没提交"
+  local: { label: "本机未提交", cls: "border-border bg-muted/30 text-muted-foreground" },
 };
 
 /**
@@ -90,8 +85,13 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"new" | "hot" | "name">("new");
   const [items, setItems] = useState<PlazaItem[]>([]);
-  const [counts, setCounts] = useState({ approved: 0, pending: 0, mine: 0 });
+  const [counts, setCounts] = useState({ approved: 0, pending: 0, mine: 0, local: 0 });
   const [stats, setStats] = useState<PlazaStats | null>(null);
+  /** 侧栏统计(分类/标签/来源) —— 服务端基于**全量**算, 不是当前筛选结果 */
+  const [facets, setFacets] = useState<{ categories: Array<{ name: string; count: number }>; tags: Array<{ name: string; count: number }>; sources: Array<{ name: string; count: number }> } | null>(null);
+  const [category, setCategory] = useState("");
+  const [tag, setTag] = useState("");
+  const [source, setSource] = useState("");
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -111,16 +111,23 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
   const load = async () => {
     setLoading(true); setErr("");
     try {
-      const r = await api.getSkillPlaza({ scope, q: q.trim(), sort });
+      const r = await api.getSkillPlaza({ scope, q: q.trim(), sort, category });
       setItems(r.items);
       setCounts(r.counts);
+      if (r.facets) setFacets(r.facets);
       const s = await api.getSkillPlazaStats().catch(() => null);
       if (s) setStats(s);
     } catch (e) {
       setErr(String((e as Error)?.message ?? e).slice(0, 160));
     } finally { setLoading(false); }
   };
-  useEffect(() => { void load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [scope, sort]);
+  useEffect(() => { void load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [scope, sort, category]);
+
+  /** 标签/来源是**前端二次筛**(服务端只按分类过滤) —— 标签可能跨分类, 来源是归一类目 */
+  const shown = useMemo(() => items
+    .filter((x) => !tag || x.tags.includes(tag))
+    .filter((x) => !source || (x.origin === "official" ? "平台收录" : (x.origin ? x.origin.split(/[\s(]/)[0] : "本地自建")) === source),
+    [items, tag, source]);
 
   // 管理员判定: 能拉到待审列表就说明有权限(服务端对非管理员会退化成公开列表, 所以另看一眼)
   useEffect(() => {
@@ -152,6 +159,21 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
       setMsg(r.already ? `「${it.title}」之前就装过了` : `已安装「${it.title}」`);
       await load();
       if (openId === it.id) await openDetail(it.id);
+    } catch (e) { setErr(String((e as Error)?.message ?? e).slice(0, 160)); }
+    finally { setBusy(false); }
+  };
+
+  /** 本机技能直接提交 —— 元信息卡片上都有, 不必再让它进上传表单挑一遍 */
+  const submitLocal = async (it: PlazaItem) => {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      await api.submitSkill({
+        slug: it.slug, title: it.title, summary: it.summary,
+        category: it.category, tags: it.tags, version: it.version,
+      });
+      setMsg(`「${it.title}」已提交，等待管理员审核`);
+      setScope("mine");
+      await load();
     } catch (e) { setErr(String((e as Error)?.message ?? e).slice(0, 160)); }
     finally { setBusy(false); }
   };
@@ -239,7 +261,6 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
     finally { setBusy(false); }
   };
 
-  const shown = useMemo(() => items, [items]);
 
   return (
     <div className="space-y-3">
@@ -279,6 +300,60 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
       {err ? <PanelNotice type="err">{err}</PanelNotice> : null}
       {msg ? <PanelNotice type="ok">{msg}</PanelNotice> : null}
 
+      {/* ── 侧栏式统计: 分类 / 标签 / 来源(原货架面板的那三栏, 并进广场) ──
+             统计基于**服务端算的全量**, 不是当前筛选结果 —— 否则选中某类后其他类都变 0,
+             用户就再也切不回去了。 */}
+      {facets ? (
+        <div className="grid gap-2 lg:grid-cols-3">
+          <div className="rounded-md border border-border p-2">
+            <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+              <Boxes className="h-3 w-3" />分类（{facets.categories.length}）
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <button type="button" onClick={() => setCategory("")} data-control="plaza:cat-all"
+                className={cn("rounded-full border px-2 py-0.5 text-[11px]", !category ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+                全部 {items.length}
+              </button>
+              {facets.categories.map((c) => (
+                <button key={c.name} type="button" onClick={() => setCategory(category === c.name ? "" : c.name)} data-control={`plaza:cat-${c.name}`}
+                  className={cn("rounded-full border px-2 py-0.5 text-[11px]", category === c.name ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+                  {c.name} <span className="opacity-60">{c.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col rounded-md border border-border p-2">
+            <div className="mb-1.5 flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
+              <Tag className="h-3 w-3" />标签（{facets.tags.length}）{tag ? <button className="ml-1 text-primary hover:underline" onClick={() => setTag("")}>清除</button> : null}
+            </div>
+            {/* 高度: 用 flex-1 + min-h 让框填满卡片, 而不是写死一个高度 ——
+                写死时卡片被同排最高的那张撑高, 框底下会空一截(滚动轨只跑一小段)。 */}
+            <div className="flex min-h-28 flex-1 flex-wrap content-start gap-1 overflow-y-auto pr-1">
+              {facets.tags.length === 0 ? <span className="text-[11px] text-muted-foreground/60">技能里还没有 tags 字段</span> : null}
+              {facets.tags.map((t) => (
+                <button key={t.name} type="button" onClick={() => setTag(tag === t.name ? "" : t.name)} data-control={`plaza:tag-${t.name}`}
+                  className={cn("rounded-full border px-2 py-0.5 text-[11px]", tag === t.name ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+                  {t.name} <span className="opacity-60">{t.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-md border border-border p-2">
+            <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+              <Star className="h-3 w-3" />来源{source ? <button className="ml-1 text-primary hover:underline" onClick={() => setSource("")}>清除</button> : null}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {facets.sources.map((s) => (
+                <button key={s.name} type="button" onClick={() => setSource(source === s.name ? "" : s.name)} data-control={`plaza:src-${s.name}`}
+                  className={cn("rounded-full border px-2 py-0.5 text-[11px]", source === s.name ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
+                  {s.name} <span className="opacity-60">{s.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── 上传表单 ── */}
       {uploadOpen ? (
         <div className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
@@ -301,7 +376,7 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
 
       {/* ── 视图切换 + 搜索 ── */}
       <div className="flex flex-wrap items-center gap-2">
-        {([["", `广场 ${counts.approved}`], ["mine", `我的提交 ${counts.mine}`]] as const).map(([k, label]) => (
+        {([["", `广场 ${counts.approved + counts.local}`], ["mine", `我的提交 ${counts.mine}`]] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setScope(k)} data-control={`plaza:scope-${k || "all"}`}
             className={cn("rounded-md border px-2.5 py-1 text-xs", scope === k ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent")}>
             {label}
@@ -366,9 +441,17 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
                   </div>
                 ) : null}
                 <div className="mt-auto flex items-center gap-2 pt-1 text-[10px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-0.5"><UserIcon className="h-2.5 w-2.5" />{it.ownerName}</span>
-                  <span className="inline-flex items-center gap-0.5"><Download className="h-2.5 w-2.5" />{it.installCount}</span>
-                  <span className="inline-flex items-center gap-0.5"><MessagesSquare className="h-2.5 w-2.5" />{it.commentCount}</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    <UserIcon className="h-2.5 w-2.5" />
+                    {/* 本机技能没有"作者"这一说 —— 显示"本机"会让每张卡片都挂一个无信息量的词, 不如显示来源 */}
+                    {it.status === "local" ? (it.origin || "本机") : it.ownerName}
+                  </span>
+                  {it.status === "local"
+                    ? <span title="被 Agent 任务召回次数（手动浏览不计数）">召回 {(it.useCount ?? 0)}</span>
+                    : <>
+                        <span className="inline-flex items-center gap-0.5"><Download className="h-2.5 w-2.5" />{it.installCount}</span>
+                        <span className="inline-flex items-center gap-0.5"><MessagesSquare className="h-2.5 w-2.5" />{it.commentCount}</span>
+                      </>}
                   <div className="ml-auto flex items-center gap-1">
                     {admin && it.status === "pending" ? (
                       <>
@@ -384,6 +467,14 @@ export function SkillPlazaPanel({ onOpenSkill }: { onOpenSkill?: (slug: string) 
                         className={cn("inline-flex items-center gap-0.5 rounded px-2 py-0.5", it.installed ? "border border-border text-muted-foreground" : "bg-primary text-primary-foreground")}
                         data-control={`plaza:install-${it.slug}`}>
                         {it.installed ? "已安装" : "安装"}
+                      </button>
+                    ) : null}
+                    {/* 本机有、还没提交的技能 —— 卡片上直接给"提交到广场", 不用再去别处找 */}
+                    {it.status === "local" ? (
+                      <button type="button" disabled={busy} onClick={() => void submitLocal(it)}
+                        className="inline-flex items-center gap-0.5 rounded border border-primary/40 bg-primary/10 px-2 py-0.5 text-primary hover:bg-primary/20 disabled:opacity-50"
+                        data-control={`plaza:submit-${it.slug}`}>
+                        <Upload className="h-3 w-3" />提交到广场
                       </button>
                     ) : null}
                   </div>
