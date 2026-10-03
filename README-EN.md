@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1852%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1862%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -424,7 +424,7 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 1852 green (CI continuous)
+**Unit tests**: 1862 green (CI continuous)
 
 ---
 
@@ -541,7 +541,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
 | 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
 | 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
-| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1852 unit tests / 21-operator ablation / CI |
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1862 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -576,13 +576,13 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
-npm test                # 1852 unit tests
+npm test                # 1862 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1852 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1862 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -610,7 +610,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
-| ✅ Unit tests | `npm test` (1852, CI green) |
+| ✅ Unit tests | `npm test` (1862, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |

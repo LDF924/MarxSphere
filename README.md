@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1852%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1862%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -123,7 +123,7 @@
 | 🔑 **外部服务密钥** | 有效期登记 + 手动校验 + 每日巡检告警；上传扫描件自动 OCR 识别回填 |
 | 📂 **文件原语** | 上传文件按 fileId 取纯文本（审稿直投、对话读文件同一套底座） |
 | 🖥 **桌面端** | Electron + NSIS 安装包，首次启动全量引导（安装包 159MB） |
-| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1852 单测 / 消融 21 算子 / CI |
+| 📈 **评测体系** | 53 题双轨评测 0.884 / 31 评分项 / 1862 单测 / 消融 21 算子 / CI |
 
 ### 🏗 系统架构
 
@@ -517,7 +517,7 @@ SocioSeek 的 10 个自研 Skill 覆盖"文献获取 → 转换 → 清洗 → �
 **Agent 轨迹评测**：计划遵循度 / 工具准确率 / 推理质量（judge 打分）+ 学习曲线
 **学习引擎**：显著性 / 归因 / 轨迹前缀 / 校准（kappa=1.0）/ 模型替换基建
 **消融体系**：21 个可消融算子（检索栈 12 + 推理链路 9），`scripts/ablation-eval.ts` 可逐项验证组件贡献
-**单元测试**：1852 项全绿(CI 持续)
+**单元测试**：1862 项全绿(CI 持续)
 
 ---
 
@@ -641,7 +641,7 @@ knowledge-graph/     知识图谱数据（实体/映射/规范化字典）
 docs/                文档（架构 / 规格 / 披露 / 使用说明，60 份）
 migrations/          PostgreSQL schema（165 个迁移）
 plugins/             Agent 插件目录
-test/                单元测试（1852 项）
+test/                单元测试（1862 项）
 vendor/              第三方组件（pdf2obsidian）
 data/                运行时数据（金标候选 / 上传文件 / 作业与可视化产物）
 ```
@@ -651,13 +651,13 @@ data/                运行时数据（金标候选 / 上传文件 / 作业与�
 ## 测试
 
 ```bash
-npm test                # 1852 项单元测试
+npm test                # 1862 项单元测试
 npm run typecheck       # 前后端类型检查
 ```
 
 ## 致谢（AI 辅助开发声明）
 
-本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1852 项单元测试全绿，53 题评测 0.884）。
+本项目由邓富（LDF924）开发。开发过程中使用 **DeepSeek**（LLM 推理/代码生成）与 **Claude Code**（AI 编码代理）辅助编写、审查与调试代码。AI 生成的代码均已由开发者人工审查、测试与验证（1862 项单元测试全绿，53 题评测 0.884）。
 
 ## License
 
@@ -685,7 +685,7 @@ npm run typecheck       # 前后端类型检查
 | 🐳 数据库容器 | `docker compose up -d`（pgvector/pgvector:pg16） |
 | 📊 运行截图 | [docs/assets/](docs/assets/)（57 个视图截图 + 架构图/痛点图/论文架构图） |
 | 📈 评测报告样例 | `reports/`（4 份：显著性 / 失败归因 / 轨迹前缀 / 评判者校准，前端学习引擎面板读取）· 历史结果在 `eval-archive/`（`evaluation/` 只在开源仓库） |
-| ✅ 单元测试 | `npm test`（1852 项, CI 全绿） |
+| ✅ 单元测试 | `npm test`（1862 项, CI 全绿） |
 | 🎬 演示脚本 | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts`（命令行演示）· `plugins/demo-calculator.ts`（插件示例）· 前端 `ask-demo` / `reason-demo` / `learning-demo`（界面演示数据）|
 | 📄 示例数据 | 问卷：`scripts/问卷演示数据*.csv`（seed=42）· 评测：`gold_dataset.json`（53 题金标）· 图谱：`knowledge-graph/` |
 | 🕸 知识图谱数据 | `knowledge-graph/`（实体映射/规范化字典） |

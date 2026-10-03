@@ -218,17 +218,25 @@ SOFTWARE.
 
 - **仓库**: https://github.com/shenyangs/Guanlan
 - **许可**: MIT License (Copyright (c) 2026 Guanlan Team)
-- **借鉴方式**: **按能力移植**(非整包 vendor)。Guanlan 是 Python CLI-first 的中文互联网研究底座
-  (约 10 万行), 我们只取其中**方法与数据设计**, 用 TypeScript 重写进本仓既有服务:
+- **使用方式**: **源码移植**(非整包 vendor)。Guanlan 是 Python CLI-first 的中文互联网研究底座
+  (约 10 万行), 我们取其**正文抽取与质量判据的实现**, 逐函数转成 TypeScript 写入本仓既有服务
+  (未整包引入, 未引入其 Python 运行时):
   - **信源路由**(`src/services/opinion-router.ts`): 意图 → 信源的映射思路, 以及
     "每个源标注 authority / sample / freshness 三维价值 + 「适合问什么 / 别拿它问什么」"的
     画像设计。**数据是我们自己的 28 个源**(Guanlan 的 50 域名/36 scope 与我们的源不重合)。
   - **热榜**(`src/services/hotboard-service.ts`): 榜单目录与 `evidence_role` 标注的设计
     (把"热榜是注意力样本、不是事实"做成结构化字段)。聚合端点 `newsnow.busiyi.world` 为
     Guanlan 所使用的公开第三方服务, 不属 Guanlan 代码。
-  - **网页阅读质量报告**(`src/services/web-read-service.ts`): `score / chars / cjk_chars /
-    noise_hits / mojibake / weak / label` 这一组判据字段(源自 Guanlan 公开的质量报告口径)。
-    **抽取实现是本仓自己写的** —— Guanlan 的主路依赖 Jina Reader, 与本仓的网络环境不符。
+  - **网页正文抽取 + 质量报告**(`src/services/web-read-service.ts`): **源码移植**自
+    `guanlan/web/_legacy_web_impl.py` 的 `_extract_article_text` / `_extract_density_text` /
+    `_text_body_score` / `_content_score` / `_content_candidates` / `_prefer_main_content` /
+    `_drop_noise_blocks` / `_is_noise_content_line`, 以及 `guanlan/web/_read_impl.py` 的
+    `assess_read_quality`(判据字段 `score / chars / cjk_chars / noise_hits / mojibake /
+    weak / label` 与评分权重照搬)。
+    ⚠ 移植时的一处**语义差异已在本仓注释与测试中记明**: 原文 `re.fullmatch(r"[\W_]+", line)`
+    依赖 Python 3 正则的 Unicode 感知(`\w` 含 CJK), 而 JS 的 `\w` 只有 `[A-Za-z0-9_]` ——
+    直译会让**所有中文行被判成噪声**。本仓改用 `/^[^\p{L}\p{N}]+$/u` 还原原语义。
+    (本仓与其不同之处只有一处: 抓取走直连而非 Jina Reader, 因其主路在本网络环境不通。)
   - **网页归档**(`src/services/web-archive-service.ts` + `migrations/182_web_archive.sql`):
     快照序列 + 段落级偏移 + 差异比对的语义(其 `unchanged` 口径、`content_hash` 判据)。
 - **未使用的部分**: Guanlan 的 `search` / `research` / `stock` 等模块**未采用** ——
@@ -236,7 +244,7 @@ SOFTWARE.
   (`src/services/search-provider-registry.ts`: bocha / tavily / exa)。
 - **MIT 义务履行**:
   - ✅ 版权与来源声明(本文件 + 上述各文件头部注释均注明"对照开源项目 观澜/Guanlan, MIT")
-  - ✅ 未复制其源代码(逐文件重写), 仅借鉴设计; 若后续直接移植代码片段, 需在此登记具体文件
+  - ✅ 已登记**具体移植文件与函数名**(见上), 移植部分保留原文的判据与权重, 不改变其语义
 
 > 本文件由 SocioSeek 团队维护(2026-10-04)。如有遗漏,请提交 issue 补充。
 

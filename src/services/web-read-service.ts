@@ -62,13 +62,196 @@ const NOISE_WORDS = [
 /**
  * HTML → 结构化 Markdown。
  *
- * ⚠ 为什么不引 readability/turndown: 那两个包要配 jsdom(几 MB + 解析整棵 DOM),
- *   而我们要处理的是**服务端抓回来的**、结构相当规整的新闻/政策页。
- *   这里用"块级切分 + 按块判正文"的办法, 零新增依赖 —— 与 office-preview-service 里
- *   "结构极浅就用正则, 不装解析器"是同一个判断。
- *   ⚠ 代价同样要写清: 遇到**强 JS 渲染**的页面(内容全靠前端拼)这套会抽空,
- *   那时 `quality.label` 会是 thin/failed, 界面如实说"抓不到正文", 而不是假装成功。
+ * ═══ 为什么是"正则"而不是 readability(2026-10-04 核实后改写的定论) ═══
+ * 我原先写的版本只做了**第一层**(删标签 + 块级转 Markdown), 实测在 IT 之家上
+ * 因为容器正则被嵌套 div 打败而抽出 0 字。回头核实开源项目 观澜/Guanlan(MIT) 的做法
+ * 才发现: **它也是正则的**, 没有 readability, 但比我多三层 ——
+ *   ① `_drop_noise_blocks`  按 id/class **属性**整块删导航/评论/推荐/广告(循环多轮, 因为
+ *      删外层会露出内层);
+ *   ② `_prefer_main_content` 取**多个候选**容器, 各自打分选最高的, 而不是"第一个命中的";
+ *   ③ `_extract_density_text` 第二套按段落密度抽取, 与主结果**比分数**, 取高的。
+ * 这三层才是"能行"的关键, 不是抽取器本身。所以这里把它们重写进来(判据照抄、代码自己写)。
+ *
+ * ⚠ 已知上限, 不假装全能: **强 JS 渲染**的页面(内容全靠前端拼)这套会抽空,
+ *   那时 quality.label 是 thin/failed, 界面如实说"抓不到正文", 而不是假装成功。
  */
+/**
+ * 以下正文抽取逻辑是 **从观澜/Guanlan 移植的代码**(MIT, https://github.com/shenyangs/Guanlan),
+ * 对应其 `guanlan/web/_legacy_web_impl.py` 的下列函数, 逐行转成 TypeScript:
+ *   `_extract_article_text` / `_extract_density_text` / `_text_body_score` / `_content_score` /
+ *   `_content_candidates` / `_prefer_main_content` / `_drop_noise_blocks` / `_is_noise_content_line`
+ * 见 THIRD_PARTY_NOTICES.md 第 9 节。
+ *
+ * ⚠ 我原先自己写的那版**漏了它的三层**(_drop_noise_blocks 整块删噪声 / _prefer_main_content
+ *   多候选打分选容器 / _extract_density_text 密度窗口双跑), 实测在一个常见的
+ *   "面包屑 + 正文 + 相关阅读" 嵌套结构上抽出 **0 字**。这三层才是它能用的原因, 不是抽取器本身。
+ */
+const NOISE_ATTR = "nav|navbar|menu|footer|header|sidebar|aside|breadcrumb|share|social|comment|"
+  + "recommend|related|relate|hot|popular|advert|ad-|ads|login|signin|signup|"
+  + "download|app|qrcode|qr-code|copyright|toolbar|pagination|下一篇|上一篇";
+
+/** 正文容器的属性名 —— 中文站各有各的约定(微信 js_content / 政府站 TRS_Editor / 门户 zoom…) */
+const MAIN_ATTR = "article|content|main|正文|内容|稿件|文章|详情|post|entry|detail|news|"
+  + "rich_media_content|js_content|main-content|article-content|article_content|"
+  + "article_body|articleBody|content_area|contentArea|detailContent|text_content|"
+  + "TRS_Editor|zoom|con_txt|news_txt|pages_content";
+
+/** 整块删噪声用到的标记词(与行级的 NOISE_WORDS 是两回事, 别合并) */
+const NOISE_LINE_MARKERS = [
+  "登录", "注册", "分享", "收藏", "点赞", "评论", "发表评论", "下载app", "下载 app",
+  "客户端", "扫码", "二维码", "广告", "推荐阅读", "相关阅读", "热门推荐", "返回首页",
+  "首页", "导航", "菜单", "上一页", "下一页", "上一篇", "下一篇", "版权所有", "copyright",
+  "icp", "京公网安备", "联系我们", "关于我们", "打开app", "打开 app", "展开全文",
+  "继续阅读", "点击查看", "点击下载", "微信扫一扫", "用微信扫码", "扫码关注",
+  "更多精彩", "特别声明", "免责声明",
+];
+
+/** 剥完标签后的文本(用于给候选打分) */
+function stripTags(frag: string): string {
+  return String(frag ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** 正文页面的行级噪声判据(移植 `_is_noise_content_line`) */
+function isNoiseContentLine(line: string): boolean {
+  if (!line) return true;
+  if (line.length <= 1) return true;
+  const lowered = line.toLowerCase();
+  if (line.length <= 28 && NOISE_LINE_MARKERS.some((m) => lowered.includes(m))) return true;
+  /**
+   * ⚠ **Python→JS 移植的经典陷阱, 必须写下来**(2026-10-04):
+   *
+   *   原文是 `re.fullmatch(r"[\W_]+", line)` —— 排除"纯符号行"。
+   *   我直译成 `/^[\W_]+$/`, 结果**所有中文行都被判成噪声**, 整篇抽出 **0 字**。
+   *
+   *   根因: Python 3 的 `str` 正则默认 **Unicode 感知**, `\w` 含 CJK;
+   *   而 JavaScript 的 `\w` 永远是 `[A-Za-z0-9_]` —— **中文全落在 `\W` 里**。
+   *   同一条规则在两种语言里含义相反。
+   *
+   *   还原 Python 语义要显式用 Unicode 属性转义: `\p{L}`(字母, 含中文) + `\p{N}`(数字)。
+   *   凡是从 Python 移植 `\w` / `\W` / `\b`(词边界同样基于 `\w`) 的地方, 都要这样核一遍。
+   */
+  if (/^[^\p{L}\p{N}]+$/u.test(line)) return true;
+  if (line.length <= 18 && /(首页|新闻|财经|科技|娱乐|体育|视频|图片|专题|登录|注册)/.test(line)) return true;
+  const punct = (line.match(/[，。；：、,.!?！？]/g) ?? []).length;
+  if (line.length <= 36 && punct === 0 && /(客户端|专题|频道|订阅|投稿|爆料|更多|排行|热搜)/.test(line)) return true;
+  return false;
+}
+
+/** 正文得分(移植 `_text_body_score`): 中文 ×2 + 标点 ×8 + 平均行长 − 噪声 ×80 */
+function bodyScore(text: string): number {
+  const t = String(text ?? "");
+  const cjk = (t.match(/[一-鿿]/g) ?? []).length;
+  const punct = (t.match(/[，。；：、！？,.!?]/g) ?? []).length;
+  const noise = ["登录", "注册", "打开APP", "推荐阅读", "相关阅读", "版权声明"].filter((x) => t.includes(x)).length;
+  const rows = t.split("\n").filter((x) => x.trim()).length || 1;
+  const collapsed = t.replace(/\s+/g, " ").trim();
+  return cjk * 2 + punct * 8 + collapsed.length / rows - noise * 80;
+}
+
+/**
+ * 按段落密度抽正文(移植 `_extract_density_text`)。
+ *
+ * ⚠ 关键在最后那一步**"保留最密的连续窗口"**: 不取全部段落, 而是滑一个 14 段的窗口,
+ *   取其中得分最高的那一段连续区间。理由是**侧栏**: 侧栏的文字零散分布在全页各处,
+ *   把全文所有段落合起来算分, 侧栏会跟着正文一起被算进去; 而正文是**连续**的,
+ *   侧栏不是 —— 取连续窗口正好把侧栏切掉。这一步我第一版没抄, 是白写的。
+ */
+function extractByDensity(raw: string): string {
+  let body = String(raw ?? "").replace(/<!--[\s\S]*?-->/g, " ");
+  body = body.replace(/<(script|style|noscript|svg|canvas|iframe|form)[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  const blocks: string[] = [];
+  for (const m of body.matchAll(/<(h[1-3]|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
+    const text = stripTags(m[2]).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
+    if (isNoiseContentLine(text)) continue;
+    // 过短的碎片不要, 除非它确实是中文长句(原文判据: len<12 且不是 中文+.{4,})
+    if (text.length < 12 && !/[一-鿿].{4,}/.test(text)) continue;
+    blocks.push(text);
+  }
+  if (!blocks.length) return "";
+
+  let best: string[] = [];
+  let bestScore = -1;
+  for (let start = 0; start < blocks.length; start++) {
+    const window: string[] = [];
+    for (const line of blocks.slice(start, start + 14)) {
+      window.push(line);
+      const score = bodyScore(window.join("\n"));
+      if (score > bestScore) { bestScore = score; best = [...window]; }
+    }
+  }
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const line of best) {
+    const k = line.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    cleaned.push(line);
+  }
+  return cleaned.join("\n\n");
+}
+
+/**
+ * 给一段 HTML 片段打"像不像正文"的分(移植 `_content_score`)。
+ *
+ * 判据: 总长 + 中文 ×2 + 段落数 × 40 − **链接文字 ×2**。
+ * 为什么链接文字要减: 导航条/相关阅读全是链接, 纯文本长度可能很大却毫无内容;
+ * 这个减项正是把"看着很长的导航"和"真正的正文"区分开的关键。
+ */
+function contentScore(frag: string): number {
+  const text = stripTags(frag);
+  if (!text) return 0;
+  const cjk = (text.match(/[一-鿿]/g) ?? []).length;
+  const paragraphs = (frag.match(/<\/p>|<br\b|<\/h[1-6]>/gi) ?? []).length;
+  const linkText = (frag.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) ?? []).join("");
+  return text.length + cjk * 2 + paragraphs * 40 - stripTags(linkText).length * 2;
+}
+
+/**
+ * 按 id/class 属性整块删噪声(移植 `_drop_noise_blocks`)。
+ * ⚠ 要**循环多轮**: 浅层正则删掉外层容器后, 原来嵌在里面的噪声块才暴露出来。
+ */
+function dropNoiseBlocks(html: string): string {
+  const re = new RegExp(
+    `<(div|section|ul|ol)\\b[^>]*(?:id|class|role)=["'][^"']*(?:${NOISE_ATTR})[^"']*["'][^>]*>[\\s\\S]*?<\\/\\1>`,
+    "gi"
+  );
+  let cur = html;
+  for (let i = 0; i < 4; i++) {
+    const next = cur.replace(re, " ");
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * 找主内容容器 —— **多候选 + 打分取最高**, 不是"命中第一个就用"。
+ *
+ * ⚠ 这条是我上一版抽搐的根因: 只取第一个 `<div class="…content…">`, 而它是面包屑导航
+ *   (263 字), 真正的正文在另一个容器里。多候选 + 打分能自动挑中正文那个 ——
+ *   因为导航虽然也带 "content" 字样, 但它的**链接文字占比极高**, 分数被减下去。
+ * 兜底: 最高分低于 120 就**不裁剪**(返回整篇), 宁可多带导航也不要赌错容器。
+ */
+function preferMainContent(body: string): string {
+  const cands: string[] = [];
+  const pats = [
+    /<article\b[^>]*>([\s\S]*?)<\/article>/gi,
+    /<main\b[^>]*>([\s\S]*?)<\/main>/gi,
+    new RegExp(`<div\\b[^>]*(?:id|class)=["'][^"']*(?:js_content|rich_media_content)[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>`, "gi"),
+    new RegExp(`<div\\b[^>]*(?:id|class)=["'][^"']*(?:${MAIN_ATTR})[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>`, "gi"),
+    new RegExp(`<section\\b[^>]*(?:id|class)=["'][^"']*(?:${MAIN_ATTR})[^"']*["'][^>]*>([\\s\\S]*?)<\\/section>`, "gi"),
+  ];
+  for (const p of pats) for (const m of body.matchAll(p)) if (m[1]) cands.push(m[1]);
+  if (!cands.length) return body;
+  let best = cands[0];
+  let bestScore = contentScore(best);
+  for (const c of cands.slice(1)) {
+    const s = contentScore(c);
+    if (s > bestScore) { best = c; bestScore = s; }
+  }
+  return bestScore >= 120 ? best : body;
+}
+
 export function htmlToMarkdown(html: string): { markdown: string; title: string; noiseHits: string[] } {
   const raw = String(html ?? "");
 
@@ -85,68 +268,64 @@ export function htmlToMarkdown(html: string): { markdown: string; title: string;
 
   let s = raw
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style|noscript|svg|head|nav|footer|form|iframe)\b[\s\S]*?<\/\1>/gi, "");
+    .replace(/<(script|style|noscript|svg|canvas|head|iframe)\b[\s\S]*?<\/\1>/gi, "");
+
+  // 三层加工: 删噪声块 → 选主容器。之后才轮到块级转 Markdown。
+  s = dropNoiseBlocks(s);
+  const article = preferMainContent(s);
 
   /**
-   * ⚠ 容器定位**不能用 `<div …>[\s\S]*?<\/div>` 这种正则** —— 第一版就是这么写的,
-   *   实测被**嵌套 div 打败**: 非贪婪匹配停在内层第一个 `</div>`, 只抓到 263 字的
-   *   面包屑导航("首页 > IT之家 > …"), 整车正文在容器外, 于是抽出来 0 字、
-   *   质量报告判 failed。而肉眼看上去"正则写得挺对"。
+   * ⚠ 顺序照抄原文, 但**我第一版把顺序弄反了**, 这一点必须写下来:
    *
-   *   只用**标题级语义标签**(article/main) —— 它们极少嵌套, 正则足够;
-   *   找不到就用整篇, 让"块级提取 + 噪声行过滤"去干本来的活。宁可多带一点导航,
-   *   也不要因为容器猜错而**整篇丢光**。
+   *   我原来写的是"先逐块正则匹配 `<p>`/`<div>`/… , 再逐个转" —— 而 `<div …>[\s\S]*?</div>`
+   *   会先匹配到**最外层**那个 div 并一路吃到它自己的闭合标签, 随后 `if (tag === "div") continue`
+   *   把它整块丢掉 → 里面所有段落一起消失。
+   *   实测在一个"面包屑 + 正文 + 相关阅读"的常见结构上: **抽出 0 字**。
+   *
+   *   原文的做法是**先做一次全局替换**: 把所有块级标签(含 div)换成换行符 ——
+   *   位置信息保住了, 也不存在"谁吃了谁"的问题; 之后才剥掉剩下的行内标签。
    */
-  const article = /<article\b[\s\S]*?<\/article>/i.exec(s)?.[0]
-    ?? /<main\b[\s\S]*?<\/main>/i.exec(s)?.[0]
-    ?? s;
+  let body = article
+    .replace(/<\/?(?:p|div|section|article|main|h[1-6]|li|blockquote|tr|br)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  body = body
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"").replace(/&#39;/g, "'")
+    // ⚠ `&` 必须最后解 —— 先解会把 `&amp;lt;` 变成 `<`(双重解码)
+    .replace(/&amp;/g, "&");
 
   const noiseHits: string[] = [];
   const lines: string[] = [];
-
-  const textOf = (frag: string) => frag
-    .replace(/<(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"").replace(/&#39;/g, "'")
-    // ⚠ `&` 必须最后解 —— 先解会把 `&amp;lt;` 变成 `<`(双重解码), 与 office-preview 同一条
-    .replace(/&amp;/g, "&")
-    .replace(/[ \t ]+/g, " ");
-
-  // 块级元素逐个转 —— 顺序即文档顺序
-  const blocks = article.match(/<(h[1-6]|p|li|blockquote|pre|td|div)[^>]*>[\s\S]*?<\/\1>/gi) ?? [];
-  for (const b of blocks) {
-    const tag = /^<(\w+)/.exec(b)?.[1]?.toLowerCase() ?? "";
-    if (tag === "div") continue;                     // div 只是容器, 内容由里面的块级元素给
-    const t = textOf(b).trim();
-    if (!t || t.length < 2) continue;
-    if (tag === "h1") lines.push(`# ${t}`);
-    else if (tag === "h2") lines.push(`## ${t}`);
-    else if (tag === "h3") lines.push(`### ${t}`);
-    else if (tag === "h4" || tag === "h5" || tag === "h6") lines.push(`#### ${t}`);
-    else if (tag === "li") lines.push(`- ${t}`);
-    else if (tag === "blockquote") lines.push(`> ${t}`);
-    else if (tag === "pre") lines.push("```\n" + t + "\n```");
-    else if (tag === "td") lines.push(`| ${t} `);
-    else lines.push(t);
+  const seenLine = new Set<string>();
+  for (const rawLine of body.split("\n")) {
+    const t = rawLine.replace(/^[\s\-•·|]+|[\s\-•·|]+$/g, "").replace(/\s+/g, " ").trim();
+    if (!t) continue;
+    if (isNoiseContentLine(t)) {
+      // 记下命中的噪声词 —— 质量报告要能说清"为什么判成 noisy"
+      const hit = NOISE_WORDS.find((w) => t.toLowerCase().includes(w));
+      if (hit && !noiseHits.includes(hit)) noiseHits.push(hit);
+      continue;
+    }
+    // 同一行出现两次(响应式布局常留一份隐藏副本) —— 去重, 否则正文会读着像复读
+    const k = t.toLowerCase();
+    if (seenLine.has(k)) continue;
+    seenLine.add(k);
+    lines.push(t);
   }
 
-  // 块级元素一个都没匹配到(结构异常的页面) → 退化成纯文本, 至少不空手而归
-  if (!lines.length) {
-    const t = textOf(article).split("\n").map((x) => x.trim()).filter((x) => x.length > 1);
-    lines.push(...t);
-  }
-
-  // 噪声行识别: 逐行看是否**短且命中噪声词**(长行里出现"登录"可能是正文在讲登录)
-  const kept: string[] = [];
-  for (const line of lines) {
-    const bare = line.replace(/^#+\s*|^-\s*|^>\s*/, "");
-    const hit = NOISE_WORDS.find((w) => bare.includes(w));
-    if (hit && bare.length <= 24) { if (!noiseHits.includes(hit)) noiseHits.push(hit); continue; }
-    kept.push(line);
-  }
-
-  const markdown = kept.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+  /**
+   * 第三层: **另一套抽取器独立跑一遍, 谁分高用谁**。
+   *
+   * 主路的块级解析对规整页面很好, 但中文站有一大类是"不规整"的 ——
+   * 段落不闭合、正文塞在 `<font>`/`<span>` 里、整页只有 `<br>` 换行。
+   * 这时块级解析会抽空或抽碎, 而"按段落密度"的路径照样能拿到正文。
+   * 两条路各自算分, 取高的那个 —— 而不是"主路失败才用备路"(那样备路永远慢一拍)。
+   * (判据 `_text_body_score` 与观澜同源: 中文 ×2 + 标点 ×8 + 行长 − 噪声 ×80。)
+   */
+  const primary = lines.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+  const density = extractByDensity(article);
+  const markdown = density && bodyScore(density) > bodyScore(primary) * 1.15 ? density : primary;
   return { markdown, title, noiseHits };
 }
 
