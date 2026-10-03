@@ -236,6 +236,50 @@ function saveStudyNote(input: { title: string; content: string; subject?: string
   } catch { return null; }
 }
 
+/**
+ * 网页归档 → 资料库(2026-10-03)。
+ *
+ * ⚠ 安全边界与 saveStudyNote **完全一样**: 只写 `课题研究/网页归档/` 这一个子目录,
+ *   文件名做去污, 且写入前再校验一次解析后的路径确实在该目录下。
+ *   为什么另开一个目录而不是塞进"学习记录": 学习记录是**我自己写的**, 网页归档是
+ *   **外部抓来的** —— 两者的可信度不同, 混在一起会让"哪些内容有出处"这件事变模糊。
+ *
+ * 放在 vault 里的意义: 它立刻出现在资料库树里、能被 /api/vault/search 检索到、
+ *   能被写作舱当素材引用 —— 这就是"归档联动资料库"。
+ */
+function saveWebArchive(input: {
+  title: string; url: string; markdown: string; fetchedAt: string; quality?: Record<string, unknown>;
+}): { path: string; name: string } | null {
+  try {
+    const root = resolveVaultRoot();
+    const dir = path.join(root, "课题研究", "网页归档");
+    // 二次校验: 解析后必须在 vault 根下(防 .. 之类)
+    if (!path.resolve(dir).startsWith(path.resolve(root))) return null;
+    fs.mkdirSync(dir, { recursive: true });
+
+    const safe = (x: string) => String(x || "").replace(/[\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim();
+    const day = String(input.fetchedAt || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+    const base = safe(input.title).slice(0, 60) || "未命名页面";
+    const fileName = `${day}_${base}.md`;
+    const filePath = path.join(dir, fileName);
+
+    const q = input.quality ?? {};
+    const body = [
+      `# ${input.title || "（无标题）"}`,
+      "",
+      `> 来源：${input.url}`,
+      `> 归档时间：${input.fetchedAt}`,
+      q.label ? `> 抽取质量：${q.label}（分 ${q.score ?? "?"}，${q.chars ?? 0} 字）` : "",
+      "",
+      "---",
+      "",
+      input.markdown,
+    ].filter((x) => x !== "").join("\n");
+    fs.writeFileSync(filePath, body, "utf-8");
+    return { path: filePath, name: fileName };
+  } catch { return null; }
+}
+
 /** V383: 删除 Obsidian 文件（白名单保护 + 只允许删学习记录目录） */
 function deleteVaultFile(filePath: string): boolean {
   try {
@@ -258,5 +302,6 @@ export const vaultService = {
   // V383: 学习联动
   searchVault,
   saveStudyNote,
+  saveWebArchive,
   deleteVaultFile,
 };

@@ -176,6 +176,7 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   docs: { label: "文档中心", hint: "左侧章节导航 + Markdown 渲染" },
   "site-content": { label: "站点内容", hint: "公告 / 帮助 / 条款 / 学术资源导航" },
   forum: { label: "学友论坛", hint: "板块讨论区：发帖、回帖、赞同与收藏；科研路上的问题与经验互帮" },
+  hotboard: { label: "热榜与归档", hint: "15 个中文平台热榜（知乎/微博/百度/抖音/B站/贴吧/掘金/V2EX…）+ 网页归档：存下页面此刻的内容，之后对比它改了什么" },
   "research-history": { label: "历史记录", hint: "六模块历史分区；点击可恢复对应工作台条目" },
 
   // ── 兜底 ──

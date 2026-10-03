@@ -444,6 +444,10 @@ export function buildHttpServer() {
     ["/api/literature", "literature"],
     ["/api/sciverse", "sciverse"],
     ["/api/scenarios", "scenarios"],
+    // 2026-10-03: 热榜/网页阅读/归档 —— 与舆情检索同级(都会真打外部站点, 但只读)
+    ["/api/hotboard", "scenarios"],
+    ["/api/web", "scenarios"],
+    ["/api/archive", "scenarios"],
     ["/api/education", "education"],
     ["/api/empirical", "empirical"],
     // 2026-10-03: 首页当前课题(suggest 会跑 LLM, 归到与速递同级的个人研究配置)
@@ -2276,6 +2280,147 @@ export function buildHttpServer() {
     useCache: z.boolean().optional(),
     analyzeSentiment: z.boolean().optional(),
   });
+  // ═══════════════ 信源路由(2026-10-03, 对照观澜/Guanlan 的信源路由, MIT) ═══════════════
+  //
+  // 为什么单独开一条 `route` 而不是塞进 search 的返回: 用户在**输入框里打字时**就该看到
+  // "这个问题会去哪些源查", 而不是点了检索才知道。这条是给**输入态**用的。
+  app.get("/api/opinion/route", async (request) => {
+    const q = (request.query as { q?: string })?.q ?? "";
+    const { route } = await import("../services/opinion-router.js");
+    return route(q);
+  });
+
+  /** 信源画像 —— 每个源的 authority/sample/freshness + "适合问什么/别拿它问什么" */
+  app.get("/api/opinion/matrix", async () => {
+    const { sourceMatrix } = await import("../services/opinion-router.js");
+    return { sources: sourceMatrix() };
+  });
+
+  // ═══════════════ 中文平台热榜(2026-10-03) ═══════════════
+  app.get("/api/hotboard/list", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { listBoards } = await import("../services/hotboard-service.js");
+    return { boards: listBoards() };
+  });
+
+  /**
+   * 抓热榜。⚠ 这是一条**会真打外部站点**的接口, 所以: 要登录(免得被当免费代理);
+   *   `ids` 可空(不传即全部 15 个榜); 单榜失败不影响其他 —— `ok:false` 是结果之一。
+   */
+  app.post("/api/hotboard/fetch", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      ids: z.array(z.string().max(60)).max(20).optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+    }).parse(request.body ?? {});
+    const { fetchBoards } = await import("../services/hotboard-service.js");
+    const boards = await fetchBoards(body.ids);
+    const lim = body.limit ?? 30;
+    return {
+      boards: boards.map((b) => ({ ...b, items: b.items.slice(0, lim) })),
+      okCount: boards.filter((b) => b.ok).length,
+      total: boards.length,
+      fetchedAt: new Date().toISOString(),
+    };
+  });
+
+  // ═══════════════ 网页阅读(2026-10-03) ═══════════════
+  app.post("/api/web/read", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      url: z.string().max(2000),
+      maxChars: z.number().int().min(500).max(500_000).optional(),
+    }).parse(request.body ?? {});
+    const { readWebPage } = await import("../services/web-read-service.js");
+    return await readWebPage(body.url, { maxChars: body.maxChars });
+  });
+
+  // ═══════════════ 网页归档(2026-10-03) ═══════════════
+  app.get("/api/archive/list", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { limit?: string; q?: string; projectId?: string };
+    const { listArchives } = await import("../services/web-archive-service.js");
+    return { items: await listArchives(user.id, { limit: Number(q.limit) || 50, q: q.q, projectId: q.projectId }) };
+  });
+
+  app.post("/api/archive/add", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = z.object({
+      url: z.string().max(2000),
+      text: z.string().max(500_000).optional(),
+      title: z.string().max(300).optional(),
+      tags: z.array(z.string().max(40)).max(20).optional(),
+      /** 抓完顺手写进 Obsidian 资料库(课题研究/网页归档/) —— 这就是"归档联动资料库" */
+      toVault: z.boolean().optional(),
+    }).parse(request.body ?? {});
+    const svc = await import("../services/web-archive-service.js");
+    const r = await svc.archiveUrl({
+      userId: user.id, url: body.url,
+      manualText: body.text, manualTitle: body.title, tags: body.tags,
+    });
+    let vault: { path: string; name: string } | null = null;
+    if (r.ok && body.toVault && r.snapshotId) {
+      const snap = await svc.getSnapshot(user.id, r.snapshotId);
+      if (snap) {
+        const { vaultService } = await import("../services/vault-service.js");
+        vault = vaultService.saveWebArchive({
+          title: snap.title || body.title || body.url,
+          url: body.url, markdown: snap.markdown,
+          fetchedAt: new Date().toISOString(),
+          quality: (r.quality ?? {}) as Record<string, unknown>,
+        });
+      }
+    }
+    return { ...r, vault };
+  });
+
+  app.get("/api/archive/history", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { id?: string };
+    if (!q.id) return reply.code(400).send(notFound("BAD_REQUEST", "缺少 id"));
+    const { archiveHistory } = await import("../services/web-archive-service.js");
+    const rows = await archiveHistory(user.id, q.id);
+    if (!rows) return reply.code(404).send(notFound("ARCHIVE_NOT_FOUND", "归档不存在"));
+    return { snapshots: rows };
+  });
+
+  app.get("/api/archive/snapshot", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { id?: string };
+    if (!q.id) return reply.code(400).send(notFound("BAD_REQUEST", "缺少 id"));
+    const { getSnapshot } = await import("../services/web-archive-service.js");
+    const s = await getSnapshot(user.id, q.id);
+    if (!s) return reply.code(404).send(notFound("SNAPSHOT_NOT_FOUND", "快照不存在"));
+    return s;
+  });
+
+  app.get("/api/archive/diff", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { left?: string; right?: string };
+    if (!q.left || !q.right) return reply.code(400).send(notFound("BAD_REQUEST", "缺少 left/right"));
+    const { diffSnapshots } = await import("../services/web-archive-service.js");
+    const d = await diffSnapshots(user.id, q.left, q.right);
+    if (!d) return reply.code(404).send(notFound("SNAPSHOT_NOT_FOUND", "快照不存在"));
+    return d;
+  });
+
+  /** 按句子定位: "这句话出自哪一版哪一段" —— 段落偏移的用处就体现在这条上 */
+  app.get("/api/archive/locate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { q?: string; limit?: string };
+    const { locateInArchive } = await import("../services/web-archive-service.js");
+    return { hits: await locateInArchive(user.id, q.q ?? "", Number(q.limit) || 10) };
+  });
+
+  app.delete("/api/archive/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { deleteArchive } = await import("../services/web-archive-service.js");
+    const ok = await deleteArchive(user.id, id);
+    if (!ok) return reply.code(404).send(notFound("ARCHIVE_NOT_FOUND", "归档不存在"));
+    return { ok: true };
+  });
+
   app.post("/api/opinion/search", async (request) => {
     const body = opinionSchema.parse(request.body);
     const { searchOpinion } = await import("../services/opinion-search-service.js");

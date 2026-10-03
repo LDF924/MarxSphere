@@ -94,6 +94,7 @@ const VIEWS = [
   { file: "sag-digest.png",           hash: "#digest",              expect: "研究速递" },
   { file: "sag-notifications.png",    hash: "#notifications",       expect: "通知" },
   { file: "sag-forum.png",            hash: "#forum",               expect: "学友论坛" },
+  { file: "sag-hotboard.png",         hash: "#hotboard",            expect: "热榜" },
 ];
 
 const W = 1600, H = 1000;

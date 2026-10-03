@@ -93,6 +93,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板�
 import FusionPanel, { type FusionTabDef } from "./components/FusionPanel"; // M1-M6 Vue 完整版融合容器(单一完整形态)
 import { FloatingAssistantFAB } from "./components/FloatingAssistantFAB"; // SocialSci P0-7: 全局悬浮助手
 import { ForumPanel } from "./components/ForumPanel"; // 2026-10-03: 学友论坛(贴吧/知乎式)
+import { HotboardPanel } from "./components/HotboardPanel"; // 2026-10-03: 中文互联网热榜 + 网页归档(观澜融入)
 import { SiteContentPanel } from "./components/SiteContentPanel"; // SocialSci P2: 站点内容(公告/帮助/条款/资源导航)
 import { ResearchHistoryPanel } from "./components/ResearchHistoryPanel"; // SocialSci UI审计: 历史记录中心(6模块分区)
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
@@ -103,7 +104,7 @@ import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream �
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
 const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history",
-  "ppt-workbench", "aigc-detect", "lit-import", "opinion", "digest", "notifications", "forum"];
+  "ppt-workbench", "aigc-detect", "lit-import", "opinion", "digest", "notifications", "forum", "hotboard"];
 
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
@@ -198,7 +199,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "digest" | "notifications" | "forum"
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "digest" | "notifications" | "forum" | "hotboard"
   // 2026-10-01: 自旧项目 AItoolman 移植的能力。**本体已融入既有 tab**, 这里保留
   //   4 个深链视图(不是导航项): 外部(`#ppt-workbench`/`#opinion`/`#aigc-detect`)
   //   与文献导入(`#lit-import`)。keyword-net / wordcloud / word-build 已被宿主
@@ -2613,6 +2614,8 @@ function AppShell() {
               <ErrorBoundary><SiteContentPanel onNavigate={(v) => navigateView(v)} /></ErrorBoundary>
             ) : workspaceView === "forum" ? (
               <ErrorBoundary><ForumPanel /></ErrorBoundary>
+            ) : workspaceView === "hotboard" ? (
+              <ErrorBoundary><HotboardPanel /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
               <ErrorBoundary><ResearchHistoryPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
             ) : workspaceView === "billing" ? (
@@ -3188,6 +3191,7 @@ function MainWorkspaceTabs(props: {
         { value: "literature", label: t("文献库", "Library") },
         { value: "imports", label: t("文献管理", "Imports") },            // 2026-08-27: Zotero/RSS/论文搜索/S3/SSH/双链笔记 (Agentero 对照, 与文献库同族紧邻)
         { value: "sciverse", label: t("外部检索", "Sciverse") },
+        { value: "hotboard", label: t("热榜与归档", "Trending") },   // 2026-10-03: 中文互联网热榜 + 网页归档
         { value: "scenarios", label: t("场景", "Scenarios") },
         { value: "education", label: t("教育", "Education") },
         { value: "empirical-research", label: t("实证研究", "Empirical") },

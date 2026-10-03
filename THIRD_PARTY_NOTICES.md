@@ -212,5 +212,31 @@ SOFTWARE.
 
 统一入口: `vendor/format-check/format-check-cli.py`(inspect / extract-text / extract-template 三子命令, 由 TS 后端 format-docx-service.ts 子进程调用)
 
-> 本文件由 SocioSeek 团队维护(2026-08-31)。如有遗漏,请提交 issue 补充。
+---
+
+## 9. 观澜 / Guanlan(MIT)— 中文互联网研究能力借鉴
+
+- **仓库**: https://github.com/shenyangs/Guanlan
+- **许可**: MIT License (Copyright (c) 2026 Guanlan Team)
+- **借鉴方式**: **按能力移植**(非整包 vendor)。Guanlan 是 Python CLI-first 的中文互联网研究底座
+  (约 10 万行), 我们只取其中**方法与数据设计**, 用 TypeScript 重写进本仓既有服务:
+  - **信源路由**(`src/services/opinion-router.ts`): 意图 → 信源的映射思路, 以及
+    "每个源标注 authority / sample / freshness 三维价值 + 「适合问什么 / 别拿它问什么」"的
+    画像设计。**数据是我们自己的 28 个源**(Guanlan 的 50 域名/36 scope 与我们的源不重合)。
+  - **热榜**(`src/services/hotboard-service.ts`): 榜单目录与 `evidence_role` 标注的设计
+    (把"热榜是注意力样本、不是事实"做成结构化字段)。聚合端点 `newsnow.busiyi.world` 为
+    Guanlan 所使用的公开第三方服务, 不属 Guanlan 代码。
+  - **网页阅读质量报告**(`src/services/web-read-service.ts`): `score / chars / cjk_chars /
+    noise_hits / mojibake / weak / label` 这一组判据字段(源自 Guanlan 公开的质量报告口径)。
+    **抽取实现是本仓自己写的** —— Guanlan 的主路依赖 Jina Reader, 与本仓的网络环境不符。
+  - **网页归档**(`src/services/web-archive-service.ts` + `migrations/182_web_archive.sql`):
+    快照序列 + 段落级偏移 + 差异比对的语义(其 `unchanged` 口径、`content_hash` 判据)。
+- **未使用的部分**: Guanlan 的 `search` / `research` / `stock` 等模块**未采用** ——
+  它们依赖 Exa MCP 等外部付费服务, 而本仓已有自己的检索 provider 抽象
+  (`src/services/search-provider-registry.ts`: bocha / tavily / exa)。
+- **MIT 义务履行**:
+  - ✅ 版权与来源声明(本文件 + 上述各文件头部注释均注明"对照开源项目 观澜/Guanlan, MIT")
+  - ✅ 未复制其源代码(逐文件重写), 仅借鉴设计; 若后续直接移植代码片段, 需在此登记具体文件
+
+> 本文件由 SocioSeek 团队维护(2026-10-04)。如有遗漏,请提交 issue 补充。
 

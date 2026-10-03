@@ -1956,3 +1956,61 @@ export const pptApi = {
     });
   },
 };
+
+// ═══ 中文互联网热榜 + 网页归档(2026-10-03) ═══
+// 与 api 对象分开导出, 因为它们是**后来的一组能力**(对照观澜/Guanlan), 不挤进主 api 命名空间
+export const apiWeb = {
+  async getHotBoards() {
+    return request<{ boards: Array<{ id: string; name: string; category: string; evidenceRole: string }> }>("/api/hotboard/list");
+  },
+  async fetchHotBoards(o: { ids?: string[]; limit?: number } = {}) {
+    return request<{
+      boards: Array<{
+        id: string; name: string; category: string; evidenceRole: string;
+        ok: boolean; via: string; stale: boolean; error?: string;
+        items: Array<{ rank: number; title: string; url: string; heat: number; summary?: string }>;
+      }>;
+      okCount: number; total: number; fetchedAt: string;
+    }>("/api/hotboard/fetch", { method: "POST", body: JSON.stringify(o) });
+  },
+  async readWebPage(url: string, maxChars?: number) {
+    return request<{
+      ok: boolean; url: string; finalUrl?: string; title: string; markdown: string; error?: string;
+      quality: { label: string; score: number; chars: number; cjkChars: number; noiseHits: string[]; mojibake: boolean; weak: boolean; lineCount: number; avgLineLen: number; noiseRatio: number };
+    }>("/api/web/read", { method: "POST", body: JSON.stringify({ url, maxChars }) });
+  },
+  async listArchives(o: { limit?: number; q?: string } = {}) {
+    const p = new URLSearchParams();
+    if (o.limit) p.set("limit", String(o.limit));
+    if (o.q) p.set("q", o.q);
+    return request<{
+      items: Array<{
+        id: string; url: string; title: string; snapshotCount: number;
+        firstSeenAt: string; lastSeenAt: string; qualityScore: number | null; qualityLabel: string; tags: string[];
+      }>;
+    }>(`/api/archive/list?${p}`);
+  },
+  async addArchive(o: { url: string; text?: string; title?: string; tags?: string[]; toVault?: boolean }) {
+    return request<{
+      ok: boolean; status: "created" | "unchanged" | "failed";
+      archiveId?: string; snapshotId?: string; error?: string;
+      vault: { path: string; name: string } | null;
+    }>("/api/archive/add", { method: "POST", body: JSON.stringify(o) });
+  },
+  async archiveHistory(id: string) {
+    return request<{
+      snapshots: Array<{ id: string; fetchedAt: string; chars: number; passages: number; via: string; quality: { label?: string; score?: number } }>;
+    }>(`/api/archive/history?id=${encodeURIComponent(id)}`);
+  },
+  async archiveDiff(left: string, right: string) {
+    return request<{ added: string[]; removed: string[]; unchanged: number }>(
+      `/api/archive/diff?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`);
+  },
+  async locateArchive(q: string) {
+    return request<{ hits: Array<{ url: string; ord: number; startOffset: number; text: string; fetchedAt: string }> }>(
+      `/api/archive/locate?q=${encodeURIComponent(q)}`);
+  },
+  async deleteArchive(id: string) {
+    return request<{ ok: boolean }>(`/api/archive/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+};

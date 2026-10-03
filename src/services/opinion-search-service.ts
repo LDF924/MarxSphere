@@ -28,6 +28,7 @@ import {
   PUBLIC_OPINION_SOURCES, enabledSources,
   type OpinionSourceSpec, type OpinionCategory,
 } from "./opinion-sources.js";
+import { route as routeOpinion, type RoutePlan } from "./opinion-router.js";
 import {
   analyzeSentimentBatch, distributionOf, calibrateWithLlm,
   type Sentiment, type Stance, type SentimentResult, type SentimentDistribution,
@@ -111,6 +112,8 @@ export interface OpinionSearchResult {
   cached: boolean;
   cacheAgeMs?: number;
   generatedAt: string;
+  /** 本次的信源路由计划(没开路由时为 null) —— 界面据此展示"按什么选的源 / 建议别拿谁当主要依据" */
+  route: RoutePlan | null;
 }
 
 export interface OpinionSearchInput {
@@ -121,6 +124,14 @@ export interface OpinionSearchInput {
   /** 指定源; 不给则用注册表里全部 enabled 的源 */
   sources?: string[];
   categories?: OpinionCategory[];
+  /**
+   * 开启信源路由(2026-10-03)。开了才按意图选源, 默认关。
+   *
+   * ⚠ 默认关是**有意的**: 路由是启发式的, 它能显著提速降噪, 但也可能对某个冷门主题
+   *   选错而漏掉唯一有货的源。默认关 = 行为与加这个功能之前**逐字节一致**,
+   *   谁想要谁显式开。路由结果会随结果一起返回(`route`), 界面如实展示按什么选的。
+   */
+  route?: boolean;
   granularity?: "day" | "week";
   limit?: number;
   /** 是否让 LLM 校准情感/立场(默认关: 研究场景优先可复现的规则结果) */
@@ -920,10 +931,19 @@ export async function searchOpinion(input: OpinionSearchInput): Promise<OpinionS
   const ttl = input.cacheTtlMs ?? DEFAULT_TTL_MS;
 
   const kw = keywordsFromQuery(query);
-  const sources = enabledSources({ ids: input.sources, categories: input.categories });
+  /**
+   * 选源: 三档优先 —— 显式指定 > 路由 > 全量。
+   * 显式指定永远最优先: 调用方说"我就查这两个源"时不该被路由改写。
+   */
+  const routed = input.route && !input.sources?.length && !input.categories?.length
+    ? routeOpinion(query)
+    : null;
+  const sources = routed
+    ? enabledSources({ ids: routed.preferredSourceIds })
+    : enabledSources({ ids: input.sources, categories: input.categories });
   const cacheParams = {
     since: since?.toISOString() ?? null, until: until?.toISOString() ?? null,
-    sources: input.sources ?? null, categories: input.categories ?? null,
+    sources: input.sources ?? (routed ? routed.preferredSourceIds : null), categories: input.categories ?? null,
     granularity, limit, llm: !!input.llmCalibrate,
   };
   const cacheKey = cacheKeyOf(userId, query, cacheParams);
@@ -1052,6 +1072,7 @@ export async function searchOpinion(input: OpinionSearchInput): Promise<OpinionS
     scaleSignals, scaleDistribution,
     sources: stats, softErrors, notes, llmCalibrated: calibrated,
     cached: false, generatedAt: new Date().toISOString(),
+    route: routed,
   };
   await writeCache(cacheKey, userId, query, cacheParams, result, ttl);
   return result;
@@ -1153,6 +1174,8 @@ export async function searchOpinionPool(input: {
     sources: bySource.map((s) => ({ sourceId: s.sourceId, name: s.name, category: s.category, lang: "zh" as Lang, fetched: s.count, kept: s.count })),
     softErrors: [], notes, llmCalibrated: 0,
     cached: false, generatedAt: new Date().toISOString(),
+    // 条目池这条路**不选源**(它查的是已经落库的历史条目), 所以没有路由计划
+    route: null,
   };
 }
 
