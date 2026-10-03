@@ -446,6 +446,8 @@ export function buildHttpServer() {
     ["/api/scenarios", "scenarios"],
     ["/api/education", "education"],
     ["/api/empirical", "empirical"],
+    // 2026-10-03: 首页当前课题(suggest 会跑 LLM, 归到与速递同级的个人研究配置)
+    ["/api/home", "digest"],
     ["/api/truth", "truth"],
     ["/api/memory", "memory"],
     ["/api/documents", "documents"],
@@ -456,6 +458,7 @@ export function buildHttpServer() {
     ["/api/policy", "policy"],
     ["/api/vault", "vault"],
     ["/api/skills", "skills"],
+    ["/api/forum", "skills"],       // 2026-10-03: 学友论坛 — 与技能广场同级(都是用户产出内容)
     ["/api/mcp", "mcp"],
     ["/api/docs", "docs"],
     ["/api/jobs", "jobs"],
@@ -4064,6 +4067,36 @@ export function buildHttpServer() {
    *   之前的 516,309 就是把 PG 的 event_entities 连接行加进了各引擎的关系数里。
    *   逐引擎报, 谁是谁一目了然。
    */
+  // ═══ 首页「当前课题」═══
+  //
+  // 由来(2026-10-03 用户): Hero 下那行关键词与「当前课题」横幅此前都是 HomePanel.tsx 里的
+  //   字面量 —— 用户要"可输入、可固定, 输入时自动列出关键词候选供勾选"。
+  //   读: 未设置返回**与改前硬编码一致**的兜底, 老用户观感不突变;
+  //   写: 一人一条 upsert(课题是账号级的研究主线, 不该只活在某台浏览器的 localStorage 里);
+  //   suggest: 点"识别关键词"才调 —— 它要跑全库分词 + 一次 LLM, 不能挂在页面加载路径上。
+  app.get("/api/home/topic", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { getHomeTopic } = await import("../services/home-topic-service.js");
+    return getHomeTopic(user.id);
+  });
+
+  app.put("/api/home/topic", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { title?: string; keywords?: string[] };
+    if (!body || typeof body !== "object") return reply.code(400).send({ error: "缺少请求体" });
+    const { setHomeTopic } = await import("../services/home-topic-service.js");
+    return setHomeTopic(user.id, body);
+  });
+
+  app.post("/api/home/topic/suggest", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { topic?: string };
+    const topic = String(body?.topic ?? "").trim();
+    if (topic.length < 2) return reply.code(400).send({ error: "课题名太短, 至少 2 个字" });
+    const { suggestTopicKeywords } = await import("../services/home-topic-service.js");
+    return suggestTopicKeywords(topic);
+  });
+
   app.get("/api/platform/stats", async (request) => {
     const { pool } = await import("../db/pool.js");
     const one = async (sql: string): Promise<number | null> => {
@@ -11236,6 +11269,232 @@ except Exception as e:
     return skillsUpdateService.dismissModification(input.name);
   });
 
+  // ═══════════════ 技能广场: 提交 → 审核 → 上架 → 安装 → 讨论 ═══════════════
+  //
+  // 由来(用户): 「不应该命名为技能货架, 应该是 skill 广场 —— 开放的、互动的、有讨论区的;
+  //   大家可以上传自己的 skill; 加审核机制, 管理员通过才能上架; 用户有进度条可查」。
+  //
+  // ⚠ 审核类接口一律用 `isAdminToken(request)` 判管理员, **不用 `user.isAdmin`** ——
+  //   requireUser 返回的 User 对象上没有那个字段(见 1938 行那段说明), 用它会让
+  //   管理员也被 403 挡掉, 且是静默的。
+  app.get("/api/skills/plaza", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { scope?: string; q?: string; category?: string; sort?: string };
+    const { listPlaza } = await import("../services/skill-plaza-service.js");
+    const scope = q.scope === "mine" || q.scope === "pending" ? q.scope : "";
+    return listPlaza({
+      viewerId: user.id,
+      isAdmin: isAdminToken(request),
+      scope,
+      q: q.q, category: q.category,
+      sort: q.sort === "hot" ? "hot" : q.sort === "name" ? "name" : "new",
+    });
+  });
+
+  app.get("/api/skills/plaza/stats", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { plazaStats } = await import("../services/skill-plaza-service.js");
+    return plazaStats();
+  });
+
+  app.post("/api/skills/plaza/submit", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as {
+      slug?: string; title?: string; summary?: string; category?: string;
+      tags?: string[]; origin?: string; version?: string;
+    };
+    const { submitSkill } = await import("../services/skill-plaza-service.js");
+    const r = await submitSkill({
+      ownerId: user.id,
+      slug: String(body?.slug ?? ""),
+      title: String(body?.title ?? ""),
+      summary: body?.summary, category: body?.category,
+      tags: Array.isArray(body?.tags) ? body.tags : [], origin: body?.origin, version: body?.version,
+    });
+    if (!r.ok) return reply.code(400).send(notFound("SUBMIT_FAILED", r.error));
+    return reply.code(201).send(r);
+  });
+
+  app.get("/api/skills/plaza/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { getSubmission } = await import("../services/skill-plaza-service.js");
+    const item = await getSubmission(id, user.id, isAdminToken(request));
+    if (!item) return reply.code(404).send(notFound("SUBMISSION_NOT_FOUND", "提交不存在或你看不到"));
+    // 进度条: 六步里当前在第几步 —— 由状态推出, 不让前端自己拼
+    const { PLAZA_STEPS } = await import("../services/skill-plaza-service.js");
+    const step = item.status === "pending" ? 1
+      : item.status === "rejected" ? 2
+      : item.status === "approved" ? (item.installCount > 0 ? 4 : 3)
+      : 2;
+    return { item, steps: PLAZA_STEPS, currentStep: step };
+  });
+
+  app.post("/api/skills/plaza/:id/review", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (!isAdminToken(request)) return reply.code(403).send(notFound("ADMIN_REQUIRED", "只有管理员能审核"));
+    const { id } = request.params as { id: string };
+    const body = request.body as { approve?: boolean; note?: string };
+    const { reviewSubmission } = await import("../services/skill-plaza-service.js");
+    const r = await reviewSubmission({ id, reviewerId: user.id, approve: Boolean(body?.approve), note: body?.note });
+    if (!r.ok) return reply.code(400).send(notFound("REVIEW_FAILED", r.error ?? "审核失败"));
+    return r;
+  });
+
+  app.post("/api/skills/plaza/:id/withdraw", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { withdrawSubmission } = await import("../services/skill-plaza-service.js");
+    const ok = await withdrawSubmission(id, user.id);
+    if (!ok) return reply.code(400).send(notFound("WITHDRAW_FAILED", "撤回失败(不是你的提交, 或状态不允许)"));
+    return { ok: true };
+  });
+
+  app.post("/api/skills/plaza/:id/install", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { version?: string };
+    const { installSkill } = await import("../services/skill-plaza-service.js");
+    const r = await installSkill({ id, userId: user.id, version: body?.version });
+    if (!r.ok) return reply.code(400).send(notFound("INSTALL_FAILED", r.error ?? "安装失败"));
+    return r;
+  });
+
+  app.get("/api/skills/plaza/:id/comments", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { listComments } = await import("../services/skill-plaza-service.js");
+    return { comments: await listComments(id) };
+  });
+
+  app.post("/api/skills/plaza/:id/comments", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const body = request.body as { body?: string; parentId?: string | null };
+    const { addComment } = await import("../services/skill-plaza-service.js");
+    const r = await addComment({ submissionId: id, userId: user.id, body: String(body?.body ?? ""), parentId: body?.parentId });
+    if (!r.ok) return reply.code(400).send(notFound("COMMENT_FAILED", r.error ?? "发表失败"));
+    return reply.code(201).send(r);
+  });
+
+  /**
+   * 管理员批量收录 —— 「平台搜集所有科研学术相关的 skill 放进来」。
+   * 传 { skills: [...] } 或空体(空体时自动从本仓技能注册表取全量)。
+   */
+  app.post("/api/skills/plaza/curate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (!isAdminToken(request)) return reply.code(403).send(notFound("ADMIN_REQUIRED", "只有管理员能收录"));
+    const body = (request.body ?? {}) as { skills?: Array<Record<string, unknown>> };
+    const { curateOfficialSkills } = await import("../services/skill-plaza-service.js");
+    let list = Array.isArray(body.skills) ? body.skills : [];
+    if (!list.length) {
+      // 从本仓技能注册表现取 —— 收录的是"平台已有的科研技能"
+      const all = skillsService.listSkills();
+      list = all.map((s: any) => ({
+        name: s.name, title: s.zhName || s.name, summary: s.zhDescription || s.description,
+        category: s.zhCategory || "", tags: s.tags, version: s.version,
+      }));
+    }
+    return curateOfficialSkills({
+      adminId: user.id,
+      skills: list.map((s: any) => ({
+        name: String(s.name ?? s.slug ?? ""),
+        title: s.title ? String(s.title) : undefined,
+        summary: s.summary ? String(s.summary) : undefined,
+        category: s.category ? String(s.category) : undefined,
+        tags: Array.isArray(s.tags) ? s.tags.map(String) : undefined,
+        version: s.version ? String(s.version) : undefined,
+      })),
+    });
+  });
+
+  // ═══════════════ 学友论坛 ═══════════════
+  app.get("/api/forum/boards", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { listBoards } = await import("../services/forum-service.js");
+    return { boards: await listBoards() };
+  });
+
+  app.get("/api/forum/stats", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { forumStats, recentActive } = await import("../services/forum-service.js");
+    return { stats: await forumStats(), recent: await recentActive(8) };
+  });
+
+  app.get("/api/forum/threads", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const q = request.query as { board?: string; q?: string; tag?: string; sort?: string; limit?: string };
+    const { listThreads } = await import("../services/forum-service.js");
+    const sort = (["active", "new", "hot", "digest", "starred", "mine"] as const)
+      .find((s) => s === q.sort) ?? "active";
+    return listThreads({
+      viewerId: user.id, boardSlug: q.board, q: q.q, tag: q.tag, sort,
+      limit: Number(q.limit) || 40,
+    });
+  });
+
+  app.post("/api/forum/threads", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { board?: string; title?: string; body?: string; tags?: string[] };
+    const { createThread } = await import("../services/forum-service.js");
+    const r = await createThread({
+      boardSlug: String(body?.board ?? ""), userId: user.id,
+      title: String(body?.title ?? ""), body: String(body?.body ?? ""),
+      tags: Array.isArray(body?.tags) ? body.tags.map(String) : [],
+    });
+    if (!r.ok) return reply.code(400).send(notFound("THREAD_FAILED", r.error ?? "发帖失败"));
+    return reply.code(201).send(r);
+  });
+
+  app.get("/api/forum/threads/:id", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const { getThread } = await import("../services/forum-service.js");
+    const r = await getThread(id, user.id);
+    if (!r) return reply.code(404).send(notFound("THREAD_NOT_FOUND", "帖子不存在"));
+    return r;
+  });
+
+  app.post("/api/forum/threads/:id/replies", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const { id } = request.params as { id: string };
+    const body = request.body as { body?: string; parentId?: string | null };
+    const { addReply } = await import("../services/forum-service.js");
+    const r = await addReply({ threadId: id, userId: user.id, body: String(body?.body ?? ""), parentId: body?.parentId });
+    if (!r.ok) return reply.code(400).send(notFound("REPLY_FAILED", r.error ?? "回复失败"));
+    return reply.code(201).send(r);
+  });
+
+  app.post("/api/forum/vote", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { targetType?: string; targetId?: string };
+    if (body?.targetType !== "thread" && body?.targetType !== "reply") {
+      return reply.code(400).send(notFound("BAD_REQUEST", "targetType 只能是 thread 或 reply"));
+    }
+    const { toggleVote } = await import("../services/forum-service.js");
+    return toggleVote({ userId: user.id, targetType: body.targetType, targetId: String(body?.targetId ?? "") });
+  });
+
+  app.post("/api/forum/star", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    const body = request.body as { threadId?: string };
+    const { toggleStar } = await import("../services/forum-service.js");
+    return toggleStar({ userId: user.id, threadId: String(body?.threadId ?? "") });
+  });
+
+  app.post("/api/forum/moderate", async (request, reply) => {
+    const user = await requireUser(request, reply); if (!user) return;
+    if (!isAdminToken(request)) return reply.code(403).send(notFound("ADMIN_REQUIRED", "只有管理员能管理帖子"));
+    const body = request.body as { threadId?: string; action?: string };
+    const action = (["pin", "unpin", "digest", "undigest", "delete"] as const).find((a) => a === body?.action);
+    if (!action) return reply.code(400).send(notFound("BAD_REQUEST", "action 不合法"));
+    const { moderateThread } = await import("../services/forum-service.js");
+    const r = await moderateThread({ threadId: String(body?.threadId ?? ""), adminId: user.id, action });
+    if (!r.ok) return reply.code(400).send(notFound("MODERATE_FAILED", r.error ?? "操作失败"));
+    return r;
+  });
+
+
   // ───── Vault 政策资料库 API ─────
   app.get("/api/vault/tree", async () => vaultService.getTree());
 
@@ -14860,6 +15119,21 @@ ${dataBlock}
       const { readPptx } = await import("../services/office-preview-service.js");
       const r = await readPptx(buf);
       return r.ok ? { ok: true, kind: "slides", filename: name, slides: r.slides } : reply.code(422).send({ error: r.error, code: "PPTX_PARSE_FAILED" });
+    }
+    if (ext === "docx") {
+      const { readDocx } = await import("../services/office-preview-service.js");
+      const r = await readDocx(buf);
+      return r.ok ? { ok: true, kind: "word", filename: name, html: r.html }
+        : reply.code(422).send({ error: r.error, code: "DOCX_PARSE_FAILED" });
+    }
+    // 旧版 .doc —— 2026-10-03 新开: 改前全链路写着"请另存为 .docx"(把解析器的短板转嫁用户),
+    // 而资料库里 .doc 比 .docx 还多(结题报告书/申报书这类公文模板至今仍是 .doc)。
+    // 只出**纯文本**: .doc 的版式在二进制格式里, 要还原得靠 LibreOffice 转档, 环境不保证有。
+    if (ext === "doc") {
+      const { readLegacyDoc } = await import("../services/office-preview-service.js");
+      const r = await readLegacyDoc(buf);
+      return r.ok ? { ok: true, kind: "word", filename: name, text: r.text, legacy: true }
+        : reply.code(422).send({ error: r.error, code: "DOC_PARSE_FAILED" });
     }
     if (ext === "drawio" || ext === "xml") {
       const { readDrawio } = await import("../services/office-preview-service.js");

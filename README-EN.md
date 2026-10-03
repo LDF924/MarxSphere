@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/github/actions/workflow/status/LDF924/SocioSeek/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
-  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1852%20passed-green" alt="Tests" /></a>
+  <a href="https://github.com/LDF924/SocioSeek/actions"><img src="https://img.shields.io/badge/tests-1853%20passed-green" alt="Tests" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/BENCHMARK.md"><img src="https://img.shields.io/badge/eval-0.884-blue" alt="Eval" /></a>
   <a href="https://github.com/LDF924/SocioSeek/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPLv3-blue" alt="License" /></a>
 </p>
@@ -22,14 +22,11 @@
 >
 > Teaching is an extension on the same substrate (BKT mastery / adaptive paths / lesson prep); teaching and research share one knowledge base.
 
-**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Six reasons:
+**Research is the axis — and the 18 research workbenches are where that axis lives.** Every step from topic choice to submission has a dedicated bench. Three reasons:
 
 1. **Traceable evidence** (Library · Reason Lab · Truth · Graph) — your library is managed as a three-engine graph; each of the 52 reasoning steps binds to a `chunk → event → entities` evidence chain you can click back to
 2. **Methodology, not chat** (Empirical · Statistics · Citation Verify · Format Eval · Review Studio) — 19 econometric methods (DID / PSM / RDD / meta-analysis, …), 17 statistical analyses, 6 paper-format templates, an 80-journal library
 3. **Auditable end to end** (Eval · Tasks · Trace · Billing) — 31 eval metrics, real token spend, step-level execution logs, cost write-back
-4. **Benches hand data to each other — no copy-paste between them** — a survey goes through reliability tests and imputation into regression, then lands in the evidence ledger; statistical results **flow back into manuscript sections** in one click; figures from Viz Studio become **Writing Studio material** in one click; empirical findings go through Citation Verify before entering the text. One dataset moves across benches — nothing re-keyed, nothing exported and re-imported
-5. **Chinese social science first, not an English tool translated** — methodology follows domestic C-journal practice (four-step topic selection / topic matrix / paradox framing / editorial three-criteria check / outward-review translation): an 80-journal Marxist-theory library, GB/T 7714 citation format, 6 Chinese thesis and promotion-paper templates, a three-engine Chinese literature graph. **Built for how Chinese social scientists actually work — not a generic English assistant with a Chinese skin**
-6. **From finished draft to submission is a closed loop, not "generate and stop"** (Writing Studio · Editor Studio · Review Studio · Flow Orchestrator) — Writing Studio binds the six-stage research ledger (materials / evidence / hypotheses / findings) to chapter sources; the finished draft goes to Review Studio for **sectional review** against a target journal, with per-dimension scorecards and in-text annotations, and **re-review is diffable**; export goes straight to **Word with a submission disclosure**. Flow Orchestrator turns the whole chain into a runnable DAG — nodes run singly, whole-chain, or pause-and-resume, state rebuilds from a snapshot after restart, and the event stream replays every step
 
 > All 18 benches are listed in [**Research Workbenches**](#-research-workbenches-all-18-tabs-under-research) below — Library / Imports / Sciverse / Scenarios / Education / Empirical / Statistics / Structure / Citation Verify / Format Eval / PDF2Obsidian / C-Journal / Corpus / Writing Studio / Flow Orchestrator / Review Studio / Viz Studio / Editor Studio.
 
@@ -74,7 +71,7 @@
 
 ## Feature Overview
 
-> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 78 scenario catalog / 158-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
+> 📖 **Full feature spec**: [docs/FEATURES-DETAILED.md](docs/FEATURES-DETAILED.md) (52-step reasoning walkthrough / 85 scenario catalog / 158-tool matrix (65 Agent + 22 view) / 17 empirical features / desktop details / eval metrics)
 
 ### ✨ Research Workbenches (all 18 tabs under Research)
 
@@ -105,18 +102,14 @@
 
 ### 🖼 UI at a Glance
 
-**Research workbenches first** — the first three rows are all benches under Research:
-
 | | | |
 |---|---|---|
-| **Library** (full-PDF deep read) | **Empirical Workbench** (19 econometric methods) | **Statistics** (17 analyses) |
-| ![Library](docs/assets/sag-literature.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Statistics](docs/assets/sag-statistics.png) |
-| **Review Studio** (sectional review + annotations) | **Writing Studio** (six stages) | **Editor Studio** (drafting + rollback) |
-| ![Review Studio](docs/assets/sag-review-lab.png) | ![Writing Studio](docs/assets/sag-paper-outline.png) | ![Editor Studio](docs/assets/sag-editor.png) |
-| **Flow Orchestrator** (one sentence → runnable DAG) | **Citation Verify** (three dimensions) | **Scenarios** (78 × 16 stages) |
-| ![Flow Orchestrator](docs/assets/sag-dag-workbench.png) | ![Citation Verify](docs/assets/sag-citation-verify.png) | ![Scenarios](docs/assets/sag-scenarios.png) |
-| **52-Step Reasoning** (evidence-bound) | **Ask Search** (18-step pipeline) | **Knowledge Graph** (three engines) |
-| ![Reasoning](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) | ![Graph](docs/assets/sag-graph.png) |
+| **AI Chat** (default home) | **52-Step Reasoning** | **Ask Search** |
+| ![AI Chat](docs/assets/sag-assistant.png) | ![Reasoning](docs/assets/sag-reason.png) | ![Ask](docs/assets/sag-ask.png) |
+| **Knowledge Graph** | **Literature Library** | **Research Scenario Workbench** |
+| ![Graph](docs/assets/sag-graph.png) | ![Library](docs/assets/sag-literature.png) | ![Scenarios](docs/assets/sag-scenarios.png) |
+| **Agent Console** | **Empirical Workbench** | **Evaluation** |
+| ![Agent](docs/assets/sag-agent-console.png) | ![Empirical](docs/assets/sag-empirical-research.png) | ![Eval](docs/assets/sag-eval.png) |
 
 > All 48 nav-tab screenshots live in [docs/assets/](docs/assets/) (`sag-*.png`).
 >
@@ -130,7 +123,7 @@
 - **Message stream**: user/AI bubbles; AI replies support syntax-highlighted code blocks, KaTeX formulas, Mermaid diagrams, chart-JSON visualization, citation badges, collapsible tool-call cards, scrollable long replies
 - **Thinking process**: DeepSeek reasoning chain (`reasoning_content`) shown in a dedicated fixed block (DeepSeek-style "deeply thought" collapsible area) that scrolls open in real time; three thinking-intensity levels (low / high / max)
 - **Agent tool loop**: LLM plans → picks tools → executes → loops (≤12 rounds, 20 in deep mode) → streams the answer; the tool-chain panel shows each step (Chinese label + data source + latency + decision rationale)
-- **158-tool dispatch**: 102 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 56 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 55-view coverage)
+- **158-tool dispatch**: 102 Agent tools (search/reason/empirical/writing/code/web/image/file/education/format-eval/paper-quality) + 56 view tools (policy library / knowledge pages / literature / graph / tasks / eval / alerts, etc. — full 56-view coverage)
 - **Command syntax**: `/` opens the skill command palette (209 skills, searchable); `@skill:name task` loads a skill; `@tool:name task` forces a specific tool
 - **Composer**: multi-line input (Enter to send / Shift+Enter for newline), model dropdown (DeepSeek / Qwen family), web-search toggle (web_search injection), deep-mode toggle (12→20 rounds), three thinking levels, attachments (image/PDF/Word/Excel/PPT/text — server parses text and injects into the LLM)
 - **Vision**: SenseNova multimodal model (free quota: 1500 calls / 5h); pure-text DeepSeek models get "eyes" via a vision bridge (enable with `SENSENOVA_API_KEY`)
@@ -266,7 +259,7 @@ Stage 4    Fusion generation (20 steps): Compiled Truth → multi-query variants
 
 **Reasoning modes**: template (fixed 52 steps, the eval-baseline mode) / adaptive (LLM picks operators dynamically; 4–6 steps for short questions).
 
-### 📚 Research Scenario Workbench (78 scenarios · 8 stages)
+### 📚 Research Scenario Workbench (85 scenarios · 8 stages)
 
 **Full scenario catalog (S01–S66; each scenario has a business description + capability badge + step-by-step guide + full-screen workbench)**:
 
@@ -387,7 +380,7 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 | **marx-cognee** | Cognee KG retrieval (17 strategies: HYBRID/semantic/graph traversal…) | ⑤ retrieval |
 | **marx-graphiti** | Graphiti knowledge retrieval (five-layer distillation + community discovery + hyperedge reasoning, 23 MCP tools) | ⑤ retrieval |
 | **marx-sag** | SAG reasoning workbench (52-step chain + token capture + eval, 53-question 0.884 baseline) | ⑥ reasoning |
-| **marx-agent** | Agent master entry (52-step reasoning + Ask + 78 scenarios + 209 skills) | ⑦ dispatch |
+| **marx-agent** | Agent master entry (52-step reasoning + Ask + 85 scenarios + 209 skills) | ⑦ dispatch |
 
 **Pipeline panorama**: `cnki acquire → pdf2obsidian convert → md-clean clean → marx-*-ingest three-library ingest → marx-cognee/marx-graphiti retrieve → marx-sag reason → marx-agent dispatch`
 
@@ -426,12 +419,12 @@ SocioSeek's 10 custom Skills ship with the repo (`skills/`), covering the full p
 | **Cognee** (chunks/coarse retrieval) | **22.8%** |
 | Paper location | 3.1% |
 
-> **Conclusion**: any single retrieval technique covers at most ~1/3 of retrieval needs — pure vector RAG loses graph relations (37%), pure GraphRAG loses chunk-level semantics (23%), pure lexical search loses vector semantics (37%). **Only the four-source fusion of SAG event structure + Graphiti hyperedges + Cognee chunks + PG vectors reaches 0.884 overall.** This is the foundation of the entire research workbench — it's what makes all 78 research scenarios viable.
+> **Conclusion**: any single retrieval technique covers at most ~1/3 of retrieval needs — pure vector RAG loses graph relations (37%), pure GraphRAG loses chunk-level semantics (23%), pure lexical search loses vector semantics (37%). **Only the four-source fusion of SAG event structure + Graphiti hyperedges + Cognee chunks + PG vectors reaches 0.884 overall.** This is the foundation of the entire research workbench — it's what makes all 85 research scenarios viable.
 
 **Agent trajectory evaluation**: plan adherence / tool accuracy / reasoning quality (judge-scored) + learning curves
 **Learning engine**: significance / attribution / trajectory prefixes / calibration (kappa=1.0) / model-swap infrastructure
 **Ablation system**: 21 ablatable operators (retrieval stack 12 + reasoning chain 9), `scripts/ablation-eval.ts`
-**Unit tests**: 1852 green (CI continuous)
+**Unit tests**: 1853 green (CI continuous)
 
 ---
 
@@ -548,7 +541,7 @@ npx tsx examples/seed-corpus/ingest-seed-corpus.ts   # one-command ingest of 50 
 | 🔑 **Service credentials** | Expiry registry + on-demand verification + daily patrol alerts; uploaded scans auto-OCR'd |
 | 📂 **File primitive** | Retrieve plain text from any uploaded file by fileId (shared by review-submission and chat file reading) |
 | 🖥 **Desktop app** | Electron + NSIS installer with full first-run guidance (159 MB) |
-| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1852 unit tests / 21-operator ablation / CI |
+| 📈 **Evaluation** | 53-question dual-track eval 0.884 / 31 scored metrics / 1853 unit tests / 21-operator ablation / CI |
 
 ## Tech Stack
 
@@ -583,13 +576,13 @@ data/                runtime data (gold candidates, uploads, job & visualization
 ## Testing
 
 ```bash
-npm test                # 1852 unit tests
+npm test                # 1853 unit tests
 npm run typecheck       # frontend + backend type checks
 ```
 
 ## Acknowledgements (AI-assisted development)
 
-Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1852 unit tests green; CI continuous; 53-question eval 0.884).
+Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and **Claude Code** (AI coding agent) were used to assist writing, reviewing, and debugging. All AI-generated code was manually reviewed, tested, and verified by the developer (1853 unit tests green; CI continuous; 53-question eval 0.884).
 
 ## License
 
@@ -617,7 +610,7 @@ Developed by Deng Fu (LDF924). **DeepSeek** (LLM reasoning/code generation) and 
 | 🐳 Database containers | `docker compose up -d` (pgvector/pgvector:pg16) |
 | 📊 Screenshots | [docs/assets/](docs/assets/) (home/chat/reasoning/Ask/library/graph/scenarios/empirical/Agent/eval) |
 | 📈 Eval report samples | `reports/` (4: significance / failure / trajectory-prefix / judge-calibration, read by the Learning Engine panel) · history in `eval-archive/` (`evaluation/` is open-source-repo only) |
-| ✅ Unit tests | `npm test` (1852, CI green) |
+| ✅ Unit tests | `npm test` (1853, CI green) |
 | 🎬 Demo scripts | `scripts/demo-ingest.ts` / `demo-search.ts` / `demo-agent.ts` (CLI demos) · `examples/` (same batch) · `plugins/demo-calculator.ts` (plugin example) · frontend `ask-demo` / `reason-demo` / `learning-demo` (UI demo data) |
 | 📚 Seed corpus | open-source repo only: `examples/seed-corpus/` (50 papers aligned with the eval gold set + `ingest-seed-corpus.ts`) |
 | 📄 Sample data | questionnaire: `scripts/问卷演示数据*.csv` (seed=42) · retrieval: `examples/seed-corpus/` (50 papers, open-source repo) · eval: `evaluation/gold_dataset.json` (53 gold Qs, open-source repo; locally use `eval_32metrics.json`) · graph: `knowledge-graph/` |

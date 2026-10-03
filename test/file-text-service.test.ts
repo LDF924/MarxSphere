@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { config as loadEnv } from "dotenv";
 import { pool } from "../src/db/pool.js";
@@ -184,11 +184,32 @@ describe.skipIf(!dbReady)("③ 扫描件给出路, 不是给失败", () => {
     expect(r.error).toMatch(/pdf|docx|txt/);
   });
 
-  it("旧版 .doc: 明确让用户另存为 .docx(此前是当纯文本读成乱码)", async () => {
-    const fid = await seed("老文档.doc", Buffer.from("随便什么"));
+  /**
+   * ⚠ 2026-10-03 反转了这条的判据, 因为**产品行为反了**: 改前是"劝用户另存为 .docx"
+   *   (把解析器的短板转嫁给用户), 现在是真读得出来。
+   *
+   * 为什么值得为它加一个真夹具: 这条以前断言的是"错误里要出现 .docx"—— 那是个
+   *   **负向**判据, 不管解析器写得多烂它都绿。而用户的资料库里 .doc 比 .docx 还多
+   *   (结题报告书/申报书这类公文模板至今仍是 .doc), 所以这里锁的是正向能力:
+   *   真 .doc 能取出真正文, 且**坏字节必须失败**(不能靠"读不到就当空文档"蒙混过关)。
+   */
+  it("旧版 .doc: 真的取出正文, 不再劝用户另存为 .docx", async () => {
+    const fixture = path.join(ROOT, "test", "fixtures", "sample-legacy.doc");
+    const fid = await seed("老文档.doc", readFileSync(fixture));
+    const r = await ensureFileText(userId, fid);
+    expect(r.ok, `解析失败: ${r.error}`).toBe(true);
+    expect(r.text).toContain("旧版 .doc 解析测试夹具");
+    expect(r.text).toContain("资本下乡");
+    expect(r.extraction).toBe("doc");
+  });
+
+  it("坏字节的 .doc: 明确失败, 不假装是空文档", async () => {
+    const fid = await seed("假的.doc", Buffer.from("随便什么"));
     const r = await ensureFileText(userId, fid);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/\.docx/);
+    expect(r.text).toBe("");
+    expect(r.error).toMatch(/\.doc/);
+    expect(r.error, "错误里不该出现英文内部栈").not.toMatch(/at \w+ \(|undefined/);
   });
 });
 

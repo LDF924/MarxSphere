@@ -58,7 +58,14 @@ const TOOL_NAMES: Record<ScenarioStep["tool"], string> = {
   statistics: "数据分析台",
   imports: "文献管理",
   "format-eval": "格式智能评测",
-  "citation-verify": "引文核验"
+  "citation-verify": "引文核验",
+  // 2026-10-03 补: 上一批把闭集扩到 21 时又落了六个视图在外面, 于是新能力(速递/舆情/
+  // 技能货架/PPT/AIGC 检测/文献导入)在场景向导里同样"指不到"。
+  digest: "研究速递",
+  opinion: "舆情检索",
+  "ppt-workbench": "PPT 工作台",
+  "aigc-detect": "AIGC 检测",
+  "lit-import": "文献导入"
 };
 
 interface Props {

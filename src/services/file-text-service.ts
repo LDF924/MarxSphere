@@ -34,7 +34,7 @@ import { extractPdfText, OCR_MIN_PAGES } from "./doc-text-extract.js";
 import { resolvePython } from "./py-path.js";
 
 /** 抽取方式。空串 = 还没抽过(与 user_files.extraction 的缺省一致) */
-export type FileExtraction = "" | "native" | "text-layer" | "mammoth" | "ocr" | "failed";
+export type FileExtraction = "" | "native" | "text-layer" | "mammoth" | "ocr" | "doc" | "failed";
 
 export interface FileTextResult {
   ok: boolean;
@@ -114,7 +114,28 @@ async function extractFromBuffer(buf: Buffer, fileName: string): Promise<{ text:
   }
 
   if (ext === "docx" || ext === "doc") {
-    if (ext === "doc") return { text: "", pageCount: null, extraction: "failed", needsOcr: false, error: "暂不支持旧版 .doc, 请先另存为 .docx" };
+    /**
+     * ⚠ 2026-10-03: .doc 不再直接拒绝。
+     *
+     * 改前这里是 `return { error: "暂不支持旧版 .doc, 请先另存为 .docx" }` —— 而这条分支
+     * 被**审稿建 job 的正文抽取**与**资料库预览**共用, 于是在这两条路上, 用户资料库里
+     * 那些结题报告书/申报书(至今仍是 .doc 的公文模板)**一处都读不到**。
+     *
+     * 现在走 office-preview-service 的 `readLegacyDoc`(word-extractor, MIT), 出纯文本。
+     * 代价必须说清: 表格会摊平成行、页眉混在开头、版式不还原 —— 但"能给 LLM/审稿读到的正文"
+     * 与"把版式还给用户"是两个目标, 这条路径要的是前者。
+     */
+    if (ext === "doc") {
+      try {
+        const { readLegacyDoc } = await import("./office-preview-service.js");
+        const r = await readLegacyDoc(buf);
+        return r.ok
+          ? { text: r.text, pageCount: null, extraction: "doc", needsOcr: false, error: "" }
+          : { text: "", pageCount: null, extraction: "failed", needsOcr: false, error: r.error };
+      } catch (e) {
+        return { text: "", pageCount: null, extraction: "failed", needsOcr: false, error: `.doc 解析失败: ${String((e as Error).message).slice(0, 160)}` };
+      }
+    }
     const tmp = path.join(os.tmpdir(), `filetext-${Date.now()}-${Math.random().toString(36).slice(2)}.docx`);
     try {
       writeFileSync(tmp, buf);
@@ -143,7 +164,7 @@ async function extractFromBuffer(buf: Buffer, fileName: string): Promise<{ text:
 
   return {
     text: "", pageCount: null, extraction: "failed", needsOcr: false,
-    error: `暂不支持 ${ext ? "." + ext : "这种"} 格式的文本抽取(支持 pdf/docx/txt/md/xlsx), 可改用「粘贴文本」。`,
+    error: `暂不支持 ${ext ? "." + ext : "这种"} 格式的文本抽取(支持 pdf/doc/docx/txt/md/xlsx), 可改用「粘贴文本」。`,
   };
 }
 

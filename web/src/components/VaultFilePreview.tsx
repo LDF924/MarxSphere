@@ -20,6 +20,7 @@ import { SheetViewer, CsvViewer } from "./SheetViewer";
 import { SlideViewer } from "./SlideViewer";
 import { DiagramViewer } from "./DiagramViewer";
 import { GeoViewer } from "./GeoViewer";
+import { WordViewer } from "./WordViewer";
 
 /** 下载链接 —— 三条路径(资料库 / 上传文件 / 无)统一成一个 */
 function downloadHref(opts: { path?: string; fileId?: string }): string {
@@ -98,7 +99,12 @@ export function VaultFilePreview({ path: vaultPath, fileId, name, onClose, heade
   }, [vaultPath, fileId, kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const body = (() => {
-    if (kind === "legacy-doc" || kind === "download-only") {
+    /**
+     * ⚠ 2026-10-03: `.doc` 从"看不了"变成**能看**(旧版 .doc 由服务端提取正文)。
+     *   `legacy-doc` 仍在 FileKind 里(它确实是个特殊类型 —— 版式不还原), 但它现在
+     *   和 `word` 走同一个 viewer, 所以不再落进下面那条"不支持"分支。
+     */
+    if (kind === "download-only") {
       return (
         <CenterNote
           icon={<AlertTriangle className="h-8 w-8 text-amber-400" />}
@@ -110,6 +116,8 @@ export function VaultFilePreview({ path: vaultPath, fileId, name, onClose, heade
     if (kind === "sheets") return <SheetViewer path={vaultPath} fileId={fileId} fileName={name} />;
     if (kind === "slides") return <SlideViewer path={vaultPath} fileId={fileId} fileName={name} />;
     if (kind === "diagram") return <DiagramViewer path={vaultPath} fileId={fileId} fileName={name} />;
+    // Word(.docx 结构化 / .doc 纯文本) —— 服务端解析, 见 WordViewer 的说明
+    if (kind === "word" || kind === "legacy-doc") return <WordViewer path={vaultPath} fileId={fileId} fileName={name} />;
     if (loading) return <CenterNote icon={<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />} title="读取文件…" />;
     if (err) return <CenterNote icon={<AlertTriangle className="h-6 w-6 text-amber-400" />} title={name} detail={err} />;
     if (kind === "pdf") {

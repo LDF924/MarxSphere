@@ -13,8 +13,28 @@ interface Balance {
 interface BillRecord { id?: string; type: string; amount_cents: string; tokens_used: string | null; description: string; created_at: string; }
 interface Usage { endpoint: string; tin: string; tout: string; cost: string; day: string; }
 interface LlmConfig { provider: "platform" | "byok"; hasKey: boolean; }
-/** 模型价目表(后端 /api/billing/pricing) —— 让"这次扣了多少"可核对 */
-interface Pricing { models: Array<{ id: string; priceCnyPerM: number }>; defaultPriceCnyPerM: number; unit: string; }
+/**
+ * 模型价目表(后端 /api/billing/pricing) —— 让"这次扣了多少"可核对。
+ *
+ * 2026-10-03 改成进/出分离: 改前后端给的是一个"进+出混合"的单价, 而输出通常比输入贵
+ * 3-4 倍, 合成一个数既对不上官网也解释不了账单。现在每个数都能在官网定价页逐字核对,
+ * `note` 里写着口径(哪个档位、哪个时段), `verifiedAt` 是抄录日期。
+ */
+interface Pricing {
+  models: Array<{
+    id: string;
+    priceCnyPerMIn: number;
+    priceCnyPerMOut: number;
+    cacheHitCnyPerM?: number;
+    offPeakCnyPerM?: { in: number; out: number };
+    note?: string;
+  }>;
+  defaultPriceCnyPerMIn: number;
+  defaultPriceCnyPerMOut: number;
+  unit: string;
+  verifiedAt: string;
+  source: string;
+}
 
 const PLANS = [
   { id: "free", name: "免费版", price: "0 元", quota: "5万 token/月" },
@@ -423,21 +443,40 @@ export const BillingPanel: FC = () => {
           </div>
         </div>
 
-        {/* 模型价目表 —— 2026-10-02: 此前单价只在后端内部流转, 用户看不到自己被按什么价计费 */}
+        {/* 模型价目表 —— 2026-10-02: 此前单价只在后端内部流转, 用户看不到自己被按什么价计费
+            2026-10-03: 与官网对齐(改前四个数全都高于官方标价), 并拆成进/出两列 */}
         {pricing ? (
           <div className="rounded-lg border p-4">
-            <div className="mb-1 flex items-center gap-2 font-medium"><Coins className="h-4 w-4" /> 模型单价</div>
+            <div className="mb-1 flex flex-wrap items-center gap-2 font-medium">
+              <Coins className="h-4 w-4" /> 模型单价
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                {pricing.verifiedAt} 核对 · {pricing.source}
+              </span>
+            </div>
             <div className="mb-3 text-xs text-muted-foreground">{pricing.unit}</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+            <div className="space-y-1">
               {pricing.models.map((m) => (
-                <div key={m.id} className="flex items-center justify-between rounded px-2 py-1 text-xs odd:bg-muted/30">
-                  <span className="font-mono">{m.id}</span>
-                  <span>¥{m.priceCnyPerM} / M</span>
+                <div key={m.id} className="rounded px-2 py-1.5 text-xs odd:bg-muted/30">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className="min-w-[9rem] font-mono">{m.id}</span>
+                    <span>输入 <b>¥{m.priceCnyPerMIn}</b> / M</span>
+                    <span>输出 <b>¥{m.priceCnyPerMOut}</b> / M</span>
+                    {m.cacheHitCnyPerM !== undefined ? (
+                      <span className="text-muted-foreground">缓存命中 ¥{m.cacheHitCnyPerM} / M</span>
+                    ) : null}
+                    {m.offPeakCnyPerM ? (
+                      <span className="text-emerald-300/90">
+                        空闲时段 ¥{m.offPeakCnyPerM.in} / ¥{m.offPeakCnyPerM.out}
+                      </span>
+                    ) : null}
+                  </div>
+                  {m.note ? <div className="mt-0.5 text-[10px] text-muted-foreground/70">{m.note}</div> : null}
                 </div>
               ))}
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground/70">
-              未收录的模型按 ¥{pricing.defaultPriceCnyPerM} / M 计。订阅额度内的用量不另扣费，超出部分才按上表从余额扣。
+              未收录的模型按 输入 ¥{pricing.defaultPriceCnyPerMIn} / 输出 ¥{pricing.defaultPriceCnyPerMOut} 每百万 token 估算。
+              订阅额度内的用量不另扣费，超出部分才按上表从余额扣。
             </div>
           </div>
         ) : null}

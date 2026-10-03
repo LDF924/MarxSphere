@@ -14,9 +14,10 @@ describe("cost-ledger SQL 契约", () => {
     db.query.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
-  it("calcLedgerCostCny: in/out 分价(默认 ¥2.16/8.64 每 1M)", () => {
-    // 1M in × 2.16 + 500K out × 8.64 = 2.16 + 4.32 = 6.48
-    expect(calcLedgerCostCny("deepseek-flash", 1_000_000, 500_000)).toBeCloseTo(6.48, 4);
+  it("calcLedgerCostCny: in/out 分价(兜底价取自官方定价表: ¥2/8 每 1M)", () => {
+    // 2026-10-03 前是 2.16/8.64(按 USD0.3/1.2 × 汇率 7.2 猜的), 现改为定价表的兜底档。
+    // 1M in × 2 + 500K out × 8 = 2 + 4 = 6
+    expect(calcLedgerCostCny("deepseek-flash", 1_000_000, 500_000)).toBeCloseTo(6, 4);
     expect(calcLedgerCostCny("x", 0, 0)).toBe(0);
   });
 

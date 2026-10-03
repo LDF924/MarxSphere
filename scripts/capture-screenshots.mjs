@@ -93,6 +93,7 @@ const VIEWS = [
   { file: "sag-research-history.png", hash: "#research-history",    expect: "历史" },
   { file: "sag-digest.png",           hash: "#digest",              expect: "研究速递" },
   { file: "sag-notifications.png",    hash: "#notifications",       expect: "通知" },
+  { file: "sag-forum.png",            hash: "#forum",               expect: "学友论坛" },
 ];
 
 const W = 1600, H = 1000;

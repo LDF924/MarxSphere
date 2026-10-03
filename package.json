@@ -107,6 +107,7 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^1.17.0",
     "mammoth": "^1.12.2",
+    "word-extractor": "^1.0.4",
     "marked": "^18.0.12",
     "mermaid": "^11.16.1",
     "motion": "^13.1.1",

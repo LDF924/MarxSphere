@@ -312,7 +312,8 @@ export const REVIEW_TOOLS: AgentToolDef[] = [
       const rows = r.rows as Array<Record<string, unknown>>;
       if (!rows.length) return "【稿件文件】还没有上传过文件 —— 到「论文评审」页上传稿件, 或直接 review_job_create 时用 text 传全文。";
       const cn: Record<string, string> = {
-        "": "待抽取", native: "文本", "text-layer": "PDF 文字层", mammoth: "Word", ocr: "OCR 识别", failed: "抽取失败",
+        "": "待抽取", native: "文本", "text-layer": "PDF 文字层", mammoth: "Word", ocr: "OCR 识别",
+        doc: "旧版 .doc", failed: "抽取失败",
       };
       const body = rows.map((f, i) => {
         const ext = String(f.extraction ?? "");

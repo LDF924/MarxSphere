@@ -24,7 +24,13 @@ export type ScenarioView =
   | "policy" | "vault" | "jobs" | "documents" | "cjournal"
   | "paper-outline" | "dag-workbench" | "review-lab" | "plot-agent" | "editor"
   | "education" | "corpus" | "statistics" | "imports"
-  | "format-eval" | "citation-verify";
+  | "format-eval" | "citation-verify"
+  // 2026-10-03 补: 10-02 落地的六个视图此前**写不进来**, 于是新能力在场景页集体缺席 ——
+  //   研究速递(订阅推送) / 舆情检索 / 技能货架 / PPT 工作台 / AIGC 检测 / 文献导入。
+  //   与 2026-09-29 那次是同一个病: tab 进了导航, 但进到它的入口没同步。
+  //   ⚠ 本段注释**不能出现成对的英文双引号** —— test/scenarios.test.ts 用正则从这个联合类型里
+  //     抓所有引号内的字符串当视图名, 注释里的引号会被当成一个不存在的视图而报死链。
+  | "digest" | "opinion" | "ppt-workbench" | "aigc-detect" | "lit-import";
 
 interface Scenario {
   id: string;
@@ -937,10 +943,98 @@ export const SCENARIOS: Scenario[] = [
     icon: <Database className="h-4.5 w-4.5" />,
     tag: "入库",
     capabilities: ["批量上传与去重", "PDF 解析", "三库入库", "元数据与引用维护"]
+  },
+
+  // ═══ 十七、学术情报与质检（2026-10-03 补）═══
+  //
+  // 由来(用户:「场景也应该更新新增的了」): 上一批 S67-S78 补到 2026-09-29 为止,
+  //   而 10-02/10-03 落地的六项能力**一条都没进场景** —— 研究速递、舆情检索、
+  //   技能货架、PPT 工作台、AIGC 检测、文献导入。它们在场景页里连**视图名都写不出来**
+  //   (ScenarioView 闭集里没有), 所以不是"忘了写一条", 是整类能力在场景层不存在。
+  //
+  // 与 S67-S78 那批的区别: 那批是"把活儿做完"的工具, 这批是**做活儿之前先看世界**的
+  //   工具 —— 订阅前沿、看舆情、找现成技能、检测自己写出的是不是像 AI 写的。
+  //   所以单独成组, 不并进"写作舱与工作台"。
+  {
+    id: "S79",
+    group: "学术情报与质检",
+    key: "digest",
+    title: "研究速递（订阅式前沿推送）",
+    desc: "按你的主题与订阅期刊自动抓取最新成果与刊物动态，形成每天可刷的速递流",
+    hint: "主题订阅 · 期刊目录/征稿 · 可接外部源(RSS/在线搜刊)",
+    icon: <BookOpen className="h-4.5 w-4.5" />,
+    tag: "速递",
+    capabilities: ["主题与期刊订阅", "三年/任意日期区间筛选", "期刊在线搜索(OpenAlex+Crossref)", "自定义 RSS/网页源", "未读与已读标记"]
+  },
+  {
+    id: "S80",
+    group: "学术情报与质检",
+    key: "opinion",
+    title: "政策与舆情检索",
+    desc: "把政策文件与舆情动态一起查：判断一个议题当下处在什么舆论与政策位置",
+    hint: "多源舆情 · 政策原文 · 可转成推理素材",
+    icon: <Scale className="h-4.5 w-4.5" />,
+    tag: "舆情",
+    capabilities: ["多源舆情检索", "政策文件定位", "结果转推理/写作素材"]
+  },
+  {
+    id: "S81",
+    group: "学术情报与质检",
+    key: "skills",
+    title: "技能货架（找现成流程）",
+    desc: "把两百多个技能当成货架来逛：按分类/标签/来源筛选，看版本与热度，直接开跑",
+    hint: "分类与标签统计 · 版本/作者/来源 · Agent 召回热度",
+    icon: <FolderOpen className="h-4.5 w-4.5" />,
+    tag: "技能",
+    capabilities: ["按分类/标签/来源浏览", "版本与作者可见", "Agent 召回热度", "一键进详情"]
+  },
+  {
+    id: "S82",
+    group: "学术情报与质检",
+    key: "ppt-workbench",
+    title: "汇报 PPT 生成",
+    desc: "把研究内容直接做成可讲的汇报稿：分页大纲→逐页内容→可编辑 pptx",
+    hint: "一句话出稿 · 分页可改 · 导出 pptx",
+    icon: <FileText className="h-4.5 w-4.5" />,
+    tag: "汇报",
+    capabilities: ["主题到大纲", "逐页内容生成", "在线编辑", "导出 pptx"]
+  },
+  {
+    id: "S83",
+    group: "学术情报与质检",
+    key: "aigc-detect",
+    title: "AIGC 检测与降 AI 味",
+    desc: "投稿前先自检：统计指标给判定，并给出改哪几句、怎么改的具体清单",
+    hint: "多维指标 · 判定分级 · 改写清单",
+    icon: <ShieldCheck className="h-4.5 w-4.5" />,
+    tag: "质检",
+    capabilities: ["多维 AIGC 指标", "分级判定", "具体改写建议", "结果转投稿流程"]
+  },
+  {
+    id: "S84",
+    group: "学术情报与质检",
+    key: "lit-import",
+    title: "文献批量导入",
+    desc: "从 Zotero / RIS / BibTeX / 文件夹一次性把文献搬进来，自动解析元数据",
+    hint: "Zotero/RIS/BibTeX · 批量解析 · 去重",
+    icon: <Database className="h-4.5 w-4.5" />,
+    tag: "导入",
+    capabilities: ["多格式导入", "元数据解析", "重复识别", "批量入库"]
+  },
+  {
+    id: "S85",
+    group: "学术情报与质检",
+    key: "format-eval",
+    title: "投稿前格式体检",
+    desc: "按目标期刊/学校模板逐条比对格式：页边距、字号、行距、引用体例给到具体位置",
+    hint: "规则引擎 + LLM · 定位到页 · 可自定义模板",
+    icon: <Target className="h-4.5 w-4.5" />,
+    tag: "格式",
+    capabilities: ["模板比对", "问题定位", "自定义模板导入", "与评审台联动"]
   }
 ];
 
-export const GROUPS = ["选题构思", "文献调研", "证据检索", "数据分析", "论文写作", "图表制作", "评审发表", "系统自动化", "经典文本研究", "学术研究", "论文写作研究", "论文写作输出", "论文质量检查", "理论思辨拓展", "政经C刊科研", "写作舱与工作台"];
+export const GROUPS = ["选题构思", "文献调研", "证据检索", "数据分析", "论文写作", "图表制作", "评审发表", "系统自动化", "经典文本研究", "学术研究", "论文写作研究", "论文写作输出", "论文质量检查", "理论思辨拓展", "政经C刊科研", "写作舱与工作台", "学术情报与质检"];
 
 const GROUP_ICONS: Record<string, React.ReactNode> = {
   "选题构思": <Lightbulb className="h-4 w-4" />,
@@ -958,7 +1052,8 @@ const GROUP_ICONS: Record<string, React.ReactNode> = {
   "论文质量检查": <ShieldCheck className="h-4 w-4" />,
   "理论思辨拓展": <Scale className="h-4 w-4" />,
   "政经C刊科研": <Target className="h-4 w-4" />,
-  "写作舱与工作台": <FlaskConical className="h-4 w-4" />
+  "写作舱与工作台": <FlaskConical className="h-4 w-4" />,
+  "学术情报与质检": <Sparkles className="h-4 w-4" />
 };
 
 export const ScenariosPanel: FC<ScenariosPanelProps> = ({ onChangeView }) => {

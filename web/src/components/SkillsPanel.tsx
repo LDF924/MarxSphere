@@ -10,6 +10,7 @@ import { Textarea } from "../components/ui/textarea";
 import { LlmModelSelector, TASK_ROLES } from "./LlmModelSelector";
 import type { SkillRecord, SkillUpdateResult, DiscoverResult } from "../types";
 import { SkillShelfPanel } from "./SkillShelfPanel";
+import { SkillPlazaPanel } from "./SkillPlazaPanel";
 
 interface HealthResult {
   status: string;
@@ -59,8 +60,8 @@ export function SkillsPanel() {
   const [candidates, setCandidates] = useState<Array<{ topic: string; count: number; lastQuery: string }>>([]);
   const [generating, setGenerating] = useState<string | null>(null);
   // 详情弹层
-  /** 列表 / 货架两种视图 —— 2026-10-02 加的货架是"逛"的形态, 与列表互补 */
-  const [view, setView] = useState<"list" | "shelf">("list");
+  /** 列表 / 广场 / 货架 三态 —— 广场(2026-10-03)是社区门面, 货架是本机浏览 */
+  const [view, setView] = useState<"list" | "plaza" | "shelf">("list");
   const [detailSkill, setDetailSkill] = useState<SkillRecord | null>(null);
   const [detail, setDetail] = useState<{ skillMd: string; zhDoc?: string; files: string[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -664,10 +665,12 @@ export function SkillsPanel() {
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>}
 
-        {/* 列表 / 货架切换 —— 货架是 2026-10-02 加的"逛"的形态(卡片+版本+标签+来源+热度),
-            列表是原有的"找"的形态(按分类折叠)。两者不互相替代, 所以并存。 */}
+        {/* 列表 / 广场 / 货架 三态切换。
+            ⚠ 2026-10-03 用户: 「不应该命名为技能货架, 应该是 skill 广场」——
+              广场是**面向社区**的门面(别人的技能、审核进度、讨论区), 货架只是本机浏览,
+              两者不是同一件事, 所以广场在前、货架退到第三位并保留原名。 */}
         <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs" style={{ width: "fit-content" }}>
-          {([["list", "列表"], ["shelf", "货架"]] as const).map(([v, label]) => (
+          {([["list", "列表"], ["plaza", "Skill 广场"], ["shelf", "货架"]] as const).map(([v, label]) => (
             <button
               key={v}
               type="button"
@@ -681,7 +684,14 @@ export function SkillsPanel() {
           ))}
         </div>
 
-        {view === "shelf" ? (
+        {view === "plaza" ? (
+          <SkillPlazaPanel
+            onOpenSkill={(name) => {
+              const found = skills.find((x) => x.name === name);
+              void openDetail(found ?? ({ name } as SkillRecord));
+            }}
+          />
+        ) : view === "shelf" ? (
           <SkillShelfPanel
             onOpenDetail={(name) => {
               const found = skills.find((x) => x.name === name);

@@ -497,3 +497,39 @@ export interface PolicyTreeNode {
   path: string;
   children?: PolicyTreeNode[];
 }
+
+/** 学友论坛主题帖 —— 列表与详情共用(详情只多给全文字段) */
+export interface ForumThread {
+  id: string;
+  boardId: string;
+  boardName: string;
+  authorId: string;
+  author: string;
+  title: string;
+  /** 列表给摘要, 详情给全文 */
+  excerpt: string;
+  tags: string[];
+  pinned: boolean;
+  digest: boolean;
+  replyCount: number;
+  viewCount: number;
+  voteCount: number;
+  starred: boolean;
+  voted: boolean;
+  mine: boolean;
+  lastReplyAt: string;
+  createdAt: string;
+}
+
+/** 楼层 —— parentId 非空即楼中楼(只做两层, 与贴吧/知乎一致) */
+export interface ForumReply {
+  id: string;
+  parentId: string | null;
+  authorId: string;
+  author: string;
+  body: string;
+  voteCount: number;
+  voted: boolean;
+  mine: boolean;
+  createdAt: string;
+}

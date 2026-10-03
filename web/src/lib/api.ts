@@ -34,7 +34,9 @@ import type {
   TruthPageRecord,
   UploadJobRecord,
   VaultFileRecord,
-  VaultTreeNode
+  VaultTreeNode,
+  ForumThread,
+  ForumReply
 } from "../types";
 
 
@@ -134,6 +136,135 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // ═══ Skill 广场(2026-10-03) ═══
+  // 全都走 request()(自带 Authorization) —— 裸 fetch 漏鉴权头这个坑本轮已经踩过两次
+  // (首页当前课题、Word 预览), 表现都是"界面上什么都没有, 而控制台不报错"。
+  async getSkillPlaza(o: { scope?: "" | "mine" | "pending"; q?: string; category?: string; sort?: "new" | "hot" | "name" } = {}) {
+    const p = new URLSearchParams();
+    if (o.scope) p.set("scope", o.scope);
+    if (o.q) p.set("q", o.q);
+    if (o.category) p.set("category", o.category);
+    if (o.sort) p.set("sort", o.sort);
+    return request<{
+      items: Array<{
+        id: string; slug: string; title: string; summary: string; category: string; tags: string[];
+        origin: string; version: string; status: "pending" | "approved" | "rejected" | "withdrawn";
+        reviewNote: string; ownerId: string; ownerName: string; installCount: number; commentCount: number;
+        submittedAt: string; reviewedAt: string | null; installed: boolean; mine: boolean;
+      }>;
+      total: number; counts: { approved: number; pending: number; mine: number };
+    }>(`/api/skills/plaza?${p}`);
+  },
+  async getSkillPlazaStats() {
+    return request<{ approved: number; pending: number; installs: number; contributors: number; comments: number }>("/api/skills/plaza/stats");
+  },
+  async getSkillSubmission(id: string) {
+    return request<{
+      item: {
+        id: string; slug: string; title: string; summary: string; category: string; tags: string[];
+        origin: string; version: string; status: "pending" | "approved" | "rejected" | "withdrawn";
+        reviewNote: string; ownerId: string; ownerName: string; installCount: number; commentCount: number;
+        submittedAt: string; reviewedAt: string | null; installed: boolean; mine: boolean;
+      };
+      steps: string[]; currentStep: number;
+    }>(`/api/skills/plaza/${encodeURIComponent(id)}`);
+  },
+  async submitSkill(input: { slug: string; title: string; summary?: string; category?: string; tags?: string[]; version?: string }) {
+    return request<{ ok: boolean; id: string; status: string }>("/api/skills/plaza/submit", {
+      method: "POST", body: JSON.stringify(input),
+    });
+  },
+  async reviewSkill(id: string, approve: boolean, note = "") {
+    return request<{ ok: boolean; status: string }>(`/api/skills/plaza/${encodeURIComponent(id)}/review`, {
+      method: "POST", body: JSON.stringify({ approve, note }),
+    });
+  },
+  async withdrawSkill(id: string) {
+    return request<{ ok: boolean }>(`/api/skills/plaza/${encodeURIComponent(id)}/withdraw`, { method: "POST", body: "{}" });
+  },
+  async installSkill(id: string) {
+    return request<{ ok: boolean; already?: boolean }>(`/api/skills/plaza/${encodeURIComponent(id)}/install`, { method: "POST", body: "{}" });
+  },
+  async getSkillComments(id: string) {
+    return request<{ comments: Array<{ id: string; parentId: string | null; userId: string; author: string; body: string; createdAt: string }> }>(
+      `/api/skills/plaza/${encodeURIComponent(id)}/comments`);
+  },
+  async addSkillComment(id: string, body: string, parentId?: string | null) {
+    return request<{ ok: boolean; id: string }>(`/api/skills/plaza/${encodeURIComponent(id)}/comments`, {
+      method: "POST", body: JSON.stringify({ body, parentId }),
+    });
+  },
+  async curateSkills() {
+    return request<{ added: number; skipped: number }>("/api/skills/plaza/curate", { method: "POST", body: "{}" });
+  },
+
+  // ═══ 学友论坛(2026-10-03) ═══
+  async getForumBoards() {
+    return request<{ boards: Array<{ id: string; slug: string; name: string; description: string; sortOrder: number; isBuiltin: boolean; threadCount: number; todayCount: number; lastReplyAt: string | null }> }>("/api/forum/boards");
+  },
+  async getForumStats() {
+    return request<{
+      stats: { boards: number; threads: number; replies: number; todayThreads: number; todayReplies: number; members: number };
+      recent: Array<{ threadId: string; title: string; author: string; at: string }>;
+    }>("/api/forum/stats");
+  },
+  async getForumThreads(o: { board?: string; q?: string; tag?: string; sort?: string; limit?: number } = {}) {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== "") p.set(k, String(v));
+    return request<{ threads: ForumThread[]; total: number }>(`/api/forum/threads?${p}`);
+  },
+  async createForumThread(input: { board: string; title: string; body: string; tags?: string[] }) {
+    return request<{ ok: boolean; id: string }>("/api/forum/threads", { method: "POST", body: JSON.stringify(input) });
+  },
+  async getForumThread(id: string) {
+    return request<{ thread: ForumThread; replies: ForumReply[] }>(`/api/forum/threads/${encodeURIComponent(id)}`);
+  },
+  async addForumReply(threadId: string, body: string, parentId?: string | null) {
+    return request<{ ok: boolean; id: string }>(`/api/forum/threads/${encodeURIComponent(threadId)}/replies`, {
+      method: "POST", body: JSON.stringify({ body, parentId }),
+    });
+  },
+  async voteForum(targetType: "thread" | "reply", targetId: string) {
+    return request<{ ok: boolean; voted: boolean; count: number }>("/api/forum/vote", {
+      method: "POST", body: JSON.stringify({ targetType, targetId }),
+    });
+  },
+  async starForum(threadId: string) {
+    return request<{ ok: boolean; starred: boolean }>("/api/forum/star", { method: "POST", body: JSON.stringify({ threadId }) });
+  },
+  async moderateForum(threadId: string, action: "pin" | "unpin" | "digest" | "undigest" | "delete") {
+    return request<{ ok: boolean }>("/api/forum/moderate", { method: "POST", body: JSON.stringify({ threadId, action }) });
+  },
+
+
+  /**
+   * 首页「当前课题」。
+   *
+   * ⚠ 必须走 `request()`(它带 Authorization), **不能**裸 `fetch` —— 这两条路由要登录,
+   *   而裸 fetch 不带 token, 结果是 401 被 `.catch(()=>{})` 吞掉, 首页上那块直接不渲染。
+   *   界面上看不出任何异常(服务器没报错、控制台没红字), 只有"那里什么都没有"。
+   *   我第一版正是这么写的, 实测首页课题块整个消失, 排查到才发现是缺鉴权头。
+   */
+  async getHomeTopic() {
+    return request<{ title: string; keywords: string[]; updatedAt: string }>("/api/home/topic");
+  },
+  async setHomeTopic(input: { title: string; keywords: string[] }) {
+    return request<{ title: string; keywords: string[]; updatedAt: string }>("/api/home/topic", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  async suggestHomeTopicKeywords(topic: string) {
+    return request<{
+      topic: string;
+      candidates: Array<{ text: string; origin: "corpus" | "llm"; from?: string }>;
+      sources: Array<{ id: string; ok: boolean; count: number; note?: string }>;
+    }>("/api/home/topic/suggest", {
+      method: "POST",
+      body: JSON.stringify({ topic }),
+    });
+  },
+
   async listProjects(includeArchived = false) {
     const query = includeArchived ? "?includeArchived=true" : "";
     return request<{ projects: SourceRecord[] }>(`/api/projects${query}`);

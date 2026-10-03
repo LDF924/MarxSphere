@@ -124,11 +124,24 @@ export function SkillShelfPanel({ onOpenDetail }: { onOpenDetail?: (name: string
               ))}
             </div>
           </div>
-          <div className="rounded-md border border-border p-2">
-            <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+          <div className="flex flex-col rounded-md border border-border p-2">
+            <div className="mb-1.5 flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground">
               <Tag className="h-3 w-3" />标签（{data.tags.length}）{tag ? <button className="ml-1 text-primary hover:underline" onClick={() => setTag("")}>清除</button> : null}
             </div>
-            <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+          {/**
+            * ⚠ 这里改过两轮, 两次都是"滚动轨高度不对", 但原因是两件事:
+            *
+            *  第一轮 `max-h-24`: 最大高度**小于内容高**时才生效, 而 overflow 会把
+            *    滚动轨一起裁掉 —— 出来是"只画了半截的滑轨"。
+            *  第二轮 `h-28`(固定 112px): 轨完整了, 但**卡片的高度不归它管** ——
+            *    三张卡在同一行 grid 里, 行高由最高的那张(分类)决定(实测 207px),
+            *    于是标签框底下空出 62px, 轨只跑了卡片的一截。用户报的正是这个。
+            *
+            *  正解是**让框去填卡片**: 卡片改成纵向 flex, 框 `flex-1` 吃掉标题之外的
+            *  全部高度, `min-h-28` 兜住"卡片本身很矮"的场合(否则会被压成一条)。
+            *  这样轨的上下端永远贴着卡片的可用高度。
+            */}
+            <div className="flex min-h-28 flex-1 flex-wrap content-start gap-1 overflow-y-auto pr-1">
               {data.tags.length === 0 ? <span className="text-[11px] text-muted-foreground/60">核心 SKILL.md 里还没有 tags 字段</span> : null}
               {data.tags.map((t) => (
                 <button key={t.name} type="button" onClick={() => setTag(tag === t.name ? "" : t.name)}

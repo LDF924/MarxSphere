@@ -4,6 +4,8 @@
 import { useEffect, useState, type FC } from "react";
 import { Library, Sparkles, ExternalLink, BookOpenCheck, Boxes, FolderOpen, ChevronRight, Search, MessageSquareText, Network, Scale, Database, FileUp, LayoutGrid, PenLine, BarChart3, FileText, Workflow, ShieldCheck, Table2 } from "lucide-react";
 import { SymbolLogo } from "./SymbolLogo";
+import { HomeTopicBanner } from "./HomeTopicBanner";
+import { api } from "../lib/api";
 import { SCENARIOS, GROUPS, type ScenarioView } from "./ScenariosPanel";
 import { JOB_TYPES } from "./JobsPanel";
 
@@ -91,6 +93,22 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
       .then((r) => r.json())
       .then((d) => { if (d?.pg && d?.engines) setPlatformStats(d as Stats); })
       .catch(() => { /* 取不到就显示占位, 不显示假数 */ });
+  }, []);
+
+  /**
+   * 当前课题 —— 2026-10-03 从**硬编码**改成账号级配置。
+   *
+   * 改前: 横幅上的基金项目名与 Hero 下那行关键词都是本文件里的字面量(两处各写死一份)。
+   * 现在课题存在后端(`user_home_topic`, 一人一条), 未设置时后端返回与改前一致的兜底值,
+   * 所以老用户看到的首页没有突变。编辑与关键词识别都在 `HomeTopicBanner` 里。
+   */
+  const [homeTopic, setHomeTopic] = useState<{ title: string; keywords: string[] } | null>(null);
+  useEffect(() => {
+    // ⚠ 走 `api.getHomeTopic()`(自带 Authorization)而不是裸 fetch —— 裸 fetch 不带 token,
+    //   401 会被下面的 catch 吞掉, 表现为"首页这块什么都不显示", 且没有任何报错。
+    api.getHomeTopic()
+      .then((d) => { if (typeof d?.title === "string") setHomeTopic({ title: d.title, keywords: Array.isArray(d.keywords) ? d.keywords : [] }); })
+      .catch(() => { /* 取不到就不显示课题块, 而不是显示一条写死的假课题 */ });
   }, []);
   const n = (v: number | null | undefined) => (typeof v === "number" ? v.toLocaleString("en-US") : "—");
   const engineNodes = (e: { connected: boolean; nodes: number | null }) => (e.connected ? n(e.nodes) : "未连接");
@@ -337,9 +355,14 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
           <p className="mx-auto mt-8 max-w-2xl text-xl leading-snug tracking-wide text-accent-foreground md:text-2xl">
             让 Agent 帮你真正读懂 <span className="font-bold text-foreground">全人文社科理论</span>
           </p>
-          <p className="mx-auto mt-4 text-base text-muted-foreground/80 md:text-lg">
-            农业农村现代化 · 资本下乡 · 工商资本 · 资本治理
-          </p>
+          {/* 关键词行 —— 2026-10-03 起与「当前课题」联动: 这里显示的就是课题里勾选的那几个。
+              改前是源码里写死的一条(农业农村现代化 · 资本下乡 · 工商资本 · 资本治理)。
+              未设置课题时不显示空行, 而不是回落到旧的那四个词 —— 那会让人以为课题还在。 */}
+          {homeTopic?.keywords.length ? (
+            <p className="mx-auto mt-4 text-base text-muted-foreground/80 md:text-lg" data-control="home:hero-keywords">
+              {homeTopic.keywords.join(" · ")}
+            </p>
+          ) : null}
           <p className="mx-auto mt-3 text-sm text-muted-foreground/70">
             面向全人文社科全域科研赋能
           </p>
@@ -362,27 +385,14 @@ export function HomePanel({ onChangeView }: HomePanelProps) {
             </button>
           </div>
 
-          {/* 当前课题：立项项目横幅（紧跟开始研究提问） */}
-          <div className="mt-6 w-full rounded-lg border border-primary/25 bg-gradient-to-r from-primary/10 via-background/40 to-primary/10 p-5 text-center transition-colors hover:border-primary/50">
-            <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-widest text-primary/70">
-              <Sparkles className="h-3.5 w-3.5" />
-              当前课题
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            <button
-              type="button"
-              onClick={() => onChangeView("reason")}
-              className="mt-2 flex w-full items-center justify-center gap-2 text-base font-semibold text-accent-foreground transition-colors hover:text-primary md:text-lg"
-              title="点击进入推理，围绕本课题提问"
-            >
-              <BookOpenCheck className="h-4 w-4 shrink-0 text-primary" />
-              <span className="whitespace-nowrap text-left leading-snug">
-                2026年广西研究生教育创新计划项目——<span className="text-primary">《农业农村现代化进程中工商资本规范与引导路径研究》</span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </button>
-            <p className="mt-1.5 text-xs text-muted-foreground/80">点击进入推理，围绕本课题开展研究</p>
-          </div>
+          {/* 当前课题：可输入 / 可固定 / 自动出关键词候选(2026-10-03 从硬编码改成账号级配置) */}
+          {homeTopic ? (
+            <HomeTopicBanner
+              topic={homeTopic}
+              onSaved={setHomeTopic}
+              onOpenReason={(title) => onChangeView("reason", { demo: title })}
+            />
+          ) : null}
         </div>
 
         {/* 数据带：研究规模（三库图谱真实数据） */}

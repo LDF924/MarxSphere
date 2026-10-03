@@ -18,6 +18,7 @@
 //   **1 积分 = ¥0.001, 即 ¥1 = 1000 积分**。
 //   为何不用行业常见的 ¥0.01: 实测单位成本仅 ¥0.0002~0.002, 若 1 积分 = ¥0.01
 //   则所有功能都进位到 1 积分, 失去区分度(评审与润色同价)。取 ¥0.001 后:
+import { MODEL_PRICES } from "./model-price-table.js";
 //     编辑器单次 1 积分 · 评审单次 5+ 积分 —— 档位可分辨。
 //   换算成订阅: ¥29/月 赠 10000~20000 积分, 与 Elicit/Ponder 的 ±$8/月 同档。
 //
@@ -28,21 +29,31 @@
 //   COGS 另加 FAILURE_BUFFER(5%) —— 失败/重试的调用也要摊到成功调用上
 //   (市场调研明确建议: "Add ~5% to effective COGS for failed/hallucinated calls you can't bill")
 //
-// ⚠ **COGS 与售价的区别**(2026-09-11 校正):
-//   billing-service 的 PRICE_PER_MTOKEN(flash 4.0) 注释写的是"成本", 实际已是**售价**(毛利约 83%);
-//   真实 COGS 在 llm_model_prices 表(flash 0.27 进 / 1.10 出)。本文件用**真实 COGS** 做基数,
-//   否则积分定价会虚高约 6 倍(billing 的售价已含利润, 再乘一次毛利就重复加价了)。
+// ⚠ **COGS 与售价的关系**(2026-10-03 重新对齐):
+//   改前这两者是**两套数** —— billing 的 PRICE_PER_MTOKEN 写 flash 4.0(注释却叫它"成本"),
+//   本文件的 COGS 写 0.27/1.10, 差 6 倍, 于是注释里得专门写一段解释哪个是哪个。
+//   那是口径分裂的症状, 不是设计。现在两者同源于 model-price-table.ts(官方原价),
+//   平台不加价 —— 要加价就在 billing 侧对**售价**做, 不要改这里的成本。
 export const POINTS_YUAN = 0.001;             // 1 积分 = ¥0.001
 export const TARGET_GROSS_MARGIN = 0.52;      // 目标毛利率
 export const FAILURE_BUFFER = 0.05;           // 失败调用摊销
 
-/** 模型真实成本(元/百万 token, 进/出分离) — 取自 llm_model_prices 表 */
-export const MODEL_COGS: Record<string, { in: number; out: number }> = {
-  "deepseek-flash": { in: 0.27, out: 1.10 },
-  "deepseek-v4-pro": { in: 2.16, out: 8.64 },
-  "qwen-plus": { in: 3.60, out: 12.60 },
-  "qwen3.7-max": { in: 10.80, out: 36.00 },
-};
+/**
+ * 模型真实成本(元/百万 token, 进/出分离)。
+ *
+ * ⚠ 2026-10-03 起**取自 model-price-table.ts**(官方定价页抄录), 不再是本文件里的一手副本。
+ *   改前这里硬编码 flash 0.27/1.10、v4-pro 2.16/8.64 —— 与 llm_model_prices 表的 seed 值
+ *   一起, 构成了与 billing-service 那张售价表的第二、第三套口径。用户报
+ *   「模型单价和官网不一致」时, 仓里对同一个模型有三种说法, 谁也说不清哪个对。
+ *
+ * ⚠ 这就是**平台实付的价钱**(官方原价, 平台不加价), billing 侧的按量计费也用同一个数 ——
+ *   改前两者差 6 倍(flash 4.0 vs 0.27/1.10), 界面公示的价与成本基数对不上, 用户核对账单时
+ *   无从下手。**积分定价**(featurePriceCny)在本成本之上按 TARGET_GROSS_MARGIN 加价,
+ *   那是有意的(积分是零售层), 不要把它与"公示单价"混起来看。
+ */
+export const MODEL_COGS: Record<string, { in: number; out: number }> = Object.fromEntries(
+  Object.entries(MODEL_PRICES).map(([id, p]) => [id, { in: p.in, out: p.out }])
+);
 
 /**
  * 各功能的实测单位成本模型。

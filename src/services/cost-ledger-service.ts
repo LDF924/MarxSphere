@@ -5,8 +5,9 @@
 // 与 billing-service 的职责边界:
 //   billing-service = 用户侧计费(订阅额度→超额扣余额, 含利润定价, 走 user_usage_log/billing_records)
 //   本服务         = 平台侧成本审计(真实消耗 → 估算成本, 走 llm_usage_ledger) — 两者独立, 互不替代
-// 兼容: 单价表无行 → 内置默认(USD0.3/1.2 × 7.2 汇率 → ¥2.16/8.64 每 1M); seed 不覆盖已有单价(admin 可调)
+// 兼容: 单价表无行 → 内置默认(与官方定价表同一来源, 见 DEFAULT_RATE); seed 会按官方价 upsert
 import { pool } from "../db/pool.js";
+import { DEFAULT_RATE, MODEL_PRICES } from "./model-price-table.js";
 
 export type CostSource = "provider_billed" | "estimate" | "byok";
 
@@ -23,9 +24,16 @@ export interface LedgerEntry {
   context?: string | null;
 }
 
-const USD_CNY = parseFloat(process.env.USD_CNY_RATE || "7.2");
-const DEFAULT_PRICE_IN = 0.3 * USD_CNY;   // ¥2.16 / 1M in (DeepSeek 近似)
-const DEFAULT_PRICE_OUT = 1.2 * USD_CNY;  // ¥8.64 / 1M out
+/**
+ * 兜底单价: 表里没有这个模型时用。
+ *
+ * ⚠ 2026-10-03 改成直接用 `model-price-table` 的 DEFAULT_RATE(元/百万 token)。
+ *   改前是 "USD0.3/1.2 × 汇率 7.2" = ¥2.16/8.64 —— 那是**早先自己猜的美元价**,
+ *   与官方人民币定价无关, 而且汇率一变这个"兜底"就跟着漂(与价格表里的数又不是一个口径)。
+ *   现在兜底与定价表同一个来源, 不再引入汇率这个变量。
+ */
+const DEFAULT_PRICE_IN = DEFAULT_RATE.in;
+const DEFAULT_PRICE_OUT = DEFAULT_RATE.out;
 
 /** 读模型单价(元/1M); 无行返回内置默认 */
 export async function getModelPrice(model: string): Promise<{ in: number; out: number }> {
@@ -46,26 +54,24 @@ export async function getModelPrice(model: string): Promise<{ in: number; out: n
 
 /** 首次启动 seed 平台默认单价(仅插缺省行, 不覆盖已有) */
 export async function seedDefaultPrices(): Promise<void> {
-  const defaults: Array<[string, number, number]> = [
-    ["deepseek-flash", 0.27, 1.1],       // USD×7.2 近似: 0.3/1.2 为别家; flash 官方价更低
-    ["deepseek-v4-pro", 2.16, 8.64],
-    // ⚠ 2026-10-02 删掉了这里重复的 ["deepseek-flash", 2.16, 8.64] 一行。
-    //   同一个 key 在表里出现两次, 配合下面的 `on conflict do nothing`, 后一行**永远不会生效**
-    //   (先插的先赢) —— 看起来像"flash 的真实成本是 2.16/8.64", 实际落库的是第一行的 0.27/1.1。
-    //   这种"死代码式的价格"最危险: 调价时改哪一行都可能改错。真值就是上面的 0.27/1.1。
-    ["deepseek-reasoner", 2.16, 8.64],
-    ["qwen-plus", 3.6, 12.6],
-    ["qwen3.7-max", 10.8, 36.0],
-    // embedding/rerank 此前只有**进**单价被猜成 0.5(两列都给 0.5) —— 这两个模型不进 token 输出,
-    // 出价给 0 才是事实。给 0.5 会让"输出 token"这种不该存在的量计出成本。
-    ["text-embedding-v4", 0.5, 0],
-    ["qwen3-rerank", 0.5, 0],
-  ];
+  /**
+   * ⚠ 2026-10-03: 这张表改成从 `model-price-table.ts` **推导**, 不再是手抄的第二份数字。
+   *   改前它抄的是"USD×7.2 近似"(0.3/1.2 → 2.16/8.64), 与官方定价、与 billing 的售价
+   *   三方都对不上 —— 用户报「模型单价和官网不一致」时, 仓里对同一模型有三种说法。
+   *   现在三方同源: 官方原价 → 计价(billing) / 记账(本表) / 积分基数(pricing)。
+   *   迁移 105 里那两个列默认值(2.16/8.64)是历史遗留, 有 seed 兜着, 不改迁移。
+   */
+  const defaults: Array<[string, number, number]> = Object.entries(MODEL_PRICES)
+    .map(([m, p]) => [m, p.in, p.out] as [string, number, number]);
   try {
     for (const [m, pIn, pOut] of defaults) {
       await pool.query(
         `insert into llm_model_prices (model, price_cny_per_m_in, price_cny_per_m_out)
-         values ($1, $2, $3) on conflict (model) do nothing`,
+         values ($1, $2, $3)
+         on conflict (model) do update set
+           price_cny_per_m_in = excluded.price_cny_per_m_in,
+           price_cny_per_m_out = excluded.price_cny_per_m_out,
+           updated_at = now()`,
         [m, pIn, pOut]
       );
     }

@@ -1101,5 +1101,93 @@ export const SCENARIO_GUIDES: ScenarioGuide[] = [
       { title: "用", desc: "在检索与写作里用起来", tool: "literature", toolLabel: "文献库", how: "到「文献库」按主题浏览, 用 Ask 检索提问; 写作时把关键文献挂成章节素材。" },
       { title: "维护", desc: "引用关系与元数据", tool: "citation-verify", toolLabel: "引文核验", how: "定期跑引文核验, 把对不上的引用修掉 —— 引用错误是审稿最容易被抓的硬伤。" }
     ]
+  },
+  // ═══ 十七、学术情报与质检(2026-10-03 补) ═══
+  // 这六条与前面所有场景的区别: 它们是**做活儿之前先看世界**的工具 ——
+  //   订阅前沿、看舆情、找现成流程、检测自己写出来的是不是像 AI 写的。
+  {
+    id: "S79",
+    title: "研究速递(订阅式前沿推送)",
+    group: "学术情报与质检",
+    goal: "把「有没有新东西」这件事从'靠记性去刷'变成'每天自动送到眼前'",
+    steps: [
+      { title: "定主题", desc: "订阅偏好里勾选研究主题", tool: "digest", toolLabel: "研究速递 · 偏好设置", how: "在「偏好设置」里点选主题(候选来自本仓期刊库的学科标签)。也可以手打自定义主题 —— 预设标签覆盖不到的方向直接输入。" },
+      { title: "定刊", desc: "订阅要跟的期刊", tool: "digest", toolLabel: "研究速递 · 偏好设置", how: "按学科分组勾选期刊。库里没有的刊用「在线搜刊」找(OpenAlex+Crossref 现查, 命中的会标出哪些本站已有动态)。" },
+      { title: "接外部源", desc: "自定义 RSS / 网页源", tool: "digest", toolLabel: "研究速递 · 偏好设置", how: "有常看的期刊官网或公众号转载页, 把 RSS 地址填进去并**先试抓** —— 试抓通过再保存, 免得存了个坏地址还以为是没更新。" },
+      { title: "刷速递", desc: "按期看、按日期筛", tool: "digest", toolLabel: "研究速递 · 列表", how: "日历选起止日期, 或用「近 7 天/近 30 天/本月」快选。每条卡片给标题、作者、期刊、摘要原文与跳正文的链接。" },
+      { title: "转成研究", desc: "看中的直接进写作舱", tool: "paper-outline", toolLabel: "研途写作舱", how: "把值得跟的条目挂成章节素材, 前沿就接上了自己的写作 —— 而不是看完就忘。" }
+    ]
+  },
+  {
+    id: "S80",
+    title: "政策与舆情检索",
+    group: "学术情报与质检",
+    goal: "判断一个议题当下处在什么舆论与政策位置",
+    steps: [
+      { title: "提议题", desc: "确定要观察的政策/舆情议题", tool: "opinion", toolLabel: "舆情检索", how: "输入议题(如「资本下乡」「农村集体经济」)。用议题词而不是整句问句, 检索命中的是**事件与评论**, 不是论文摘要。" },
+      { title: "看多源", desc: "横向比对不同来源的说法", tool: "opinion", toolLabel: "舆情检索 · 结果", how: "同一个议题在不同来源里的说法常常不同。先看来源与时间, 再判断哪个说法可信 —— 不要只看排第一的那条。" },
+      { title: "找原文", desc: "政策文件回到一手来源", tool: "policy", toolLabel: "政策库", how: "舆情里提到的政策文件, 到政策库找原文与条文位置。转述会失真, 论文里引的必须是原文。" },
+      { title: "形成判断", desc: "把政策与舆情接进论证", tool: "reason", toolLabel: "推理工作台", how: "把关键政策条文与舆情要点喂给推理链, 让它围绕「政策要求 vs 现实做法」的差距给论证。" }
+    ]
+  },
+  {
+    id: "S81",
+    title: "技能货架(找现成流程)",
+    group: "学术情报与质检",
+    goal: "别急着从零做 —— 先确认这两百多个技能里有没有已经做好的",
+    steps: [
+      { title: "逛", desc: "按分类看有哪些类", tool: "skills", toolLabel: "技能货架 · 分类", how: "左侧分类给出每类的技能数与标签数。先扫一遍分类, 对'平台能做什么'有个整体印象。" },
+      { title: "筛", desc: "按标签/来源缩小范围", tool: "skills", toolLabel: "技能货架 · 标签", how: "点标签收窄(标签可以跨分类)。用「只看带标签的」排除掉元数据不全的老技能。" },
+      { title: "挑", desc: "看版本、作者、被用过几次", tool: "skills", toolLabel: "技能货架 · 卡片", how: "卡片上有版本号、作者与 Agent 召回次数。热度 0 不等于没人用 —— 它只统计 Agent 任务里的召回, 手动浏览不计数。" },
+      { title: "跑", desc: "进详情直接调用", tool: "skills", toolLabel: "技能详情", how: "点开卡片看完整说明与引导步骤, 再决定是手动跑还是交给 Agent。" }
+    ]
+  },
+  {
+    id: "S82",
+    title: "汇报 PPT 生成",
+    group: "学术情报与质检",
+    goal: "把研究内容变成能站上去讲的汇报稿",
+    steps: [
+      { title: "给料", desc: "主题或已有材料", tool: "ppt-workbench", toolLabel: "PPT 工作台", how: "给一句话主题, 或直接把论文/报告贴进来。有材料时它会提炼, 没材料时它会先规划大纲。" },
+      { title: "定框架", desc: "确认分页大纲", tool: "ppt-workbench", toolLabel: "PPT 工作台 · 大纲", how: "先看大纲再生成正文 —— 页序错了后面全要返工。汇报的逻辑与论文不同: 结论要往前放。" },
+      { title: "逐页改", desc: "在线编辑每页内容", tool: "ppt-workbench", toolLabel: "PPT 工作台 · 编辑", how: "逐页改标题与正文。每页字数控制在能一眼看完的量, 细节留给口头讲。" },
+      { title: "导出", desc: "落地成可编辑 pptx", tool: "ppt-workbench", toolLabel: "PPT 工作台 · 导出", how: "导出 pptx 后用本地 PowerPoint/WPS 继续套模板 —— 平台管内容, 模板在本地改更顺手。" }
+    ]
+  },
+  {
+    id: "S83",
+    title: "AIGC 检测与降 AI 味",
+    group: "学术情报与质检",
+    goal: "投稿前先自己查一遍, 别等编辑部的检测报告",
+    steps: [
+      { title: "贴稿", desc: "把待检文本放进去", tool: "aigc-detect", toolLabel: "AIGC 检测", how: "贴正文(越长越准)。分段检测没有意义 —— 检测器看的是整篇的行文统计特征。" },
+      { title: "看判定", desc: "读多维指标与分级", tool: "aigc-detect", toolLabel: "AIGC 检测 · 结果", how: "不要只看总分: 展开每个维度看是**哪一类**特征偏高(套话密度? 句式整齐? 连接词堆砌?), 那决定了怎么改。" },
+      { title: "改", desc: "按清单逐条改", tool: "aigc-detect", toolLabel: "AIGC 检测 · 改写清单", how: "按给出的具体句子改, 不要整篇重写 —— 重写会把原本有信息量的句子也一起磨平。" },
+      { title: "复检并投", desc: "改完再跑一次, 然后进投稿流程", tool: "format-eval", toolLabel: "格式智能评测", how: "复检通过后把报告带到投稿流程: 格式体检要单独跑一遍, 两件事互不替代。" }
+    ]
+  },
+  {
+    id: "S84",
+    title: "文献批量导入",
+    group: "学术情报与质检",
+    goal: "把散在 Zotero/文件夹里的文献一次性搬进来",
+    steps: [
+      { title: "选来源", desc: "Zotero / RIS / BibTeX / 文件夹", tool: "lit-import", toolLabel: "文献导入", how: "按其导出格式选对应入口。Zotero 走导出文件最稳 —— 直接抓数据库在 Zotero 升级后容易失效。" },
+      { title: "看解析", desc: "确认元数据抽取结果", tool: "lit-import", toolLabel: "文献导入 · 预览", how: "导入前先预览解析出来的标题/作者/年份。中文文献的标题常被拆错, 错了就在这一步手工修。" },
+      { title: "去重", desc: "处理重复条目", tool: "lit-import", toolLabel: "文献导入 · 去重", how: "同一篇可能因 DOI 缺失而被判成两条。系统会标出疑似重复, 合并前确认一下年份与期刊是否真的相同。" },
+      { title: "入库", desc: "写入知识库", tool: "imports", toolLabel: "文献管理", how: "入库后到文献管理看整体状态。只导入不入库等于没做 —— 库外的文献检索与写作都读不到。" }
+    ]
+  },
+  {
+    id: "S85",
+    title: "投稿前格式体检",
+    group: "学术情报与质检",
+    goal: "把格式问题在投出去之前全部找出来",
+    steps: [
+      { title: "选模板", desc: "目标期刊或学校模板", tool: "format-eval", toolLabel: "格式评测 · 模板", how: "选目标期刊的模板; 没有就用学校模板或导入自定义模板。**没有模板就没有判据**, 规则引擎没法凭空判格式。" },
+      { title: "跑检查", desc: "规则引擎 + LLM 双跑", tool: "format-eval", toolLabel: "格式评测 · 检查", how: "规则引擎管页边距/字号/行距这类可量化的; LLM 管引用体例、结构完整性这类要看语义的。两边结果合并看。" },
+      { title: "按位置改", desc: "每条问题定位到页", tool: "editor", toolLabel: "学术文本工作台", how: "问题清单带位置, 回到编辑器按位置改。改完再跑一次确认 —— 格式改一处常会连带别的样式。" },
+      { title: "连同评审一起过", desc: "格式与内容两关都过", tool: "review-lab", toolLabel: "论文质量评审", how: "格式过了不等于内容能过。把这稿送进评审台按目标期刊标准走一遍, 两份清单一起改完再投。" }
+    ]
   }
 ];

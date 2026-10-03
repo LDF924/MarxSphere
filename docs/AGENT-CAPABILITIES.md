@@ -116,7 +116,7 @@ Agent 子系统的迁移从 068 起，**至今已到 165**（全库迁移总数�
 |---|---|
 | OpenAI Codex | 工具 registry/parallel、3级沙箱、guardian 策略、compact 预算、approval modes、AGENTS.md、网络审批、分派追踪、turn 元数据、prewarm |
 | DeepSeek Harness | goal-round checkpoint、subagent 调外部Agent、hooks、preset、apply_patch、todo、spill、subprocess、session-query、feedback、credentials |
-| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、78 科研场景 |
+| SAG 独有 | 三库知识图谱检索、学术语料库、四层记忆、实证工作台、主动研究、85 科研场景 |
 
 ## 十、验证状态（2026-08-16）
 

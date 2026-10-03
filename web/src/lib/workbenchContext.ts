@@ -175,6 +175,7 @@ export const WORKBENCH_CONTEXT: Record<string, WorkbenchContext> = {
   admin: { label: "运营管理", hint: "多租户与运营后台（仅 admin 可见）" },
   docs: { label: "文档中心", hint: "左侧章节导航 + Markdown 渲染" },
   "site-content": { label: "站点内容", hint: "公告 / 帮助 / 条款 / 学术资源导航" },
+  forum: { label: "学友论坛", hint: "板块讨论区：发帖、回帖、赞同与收藏；科研路上的问题与经验互帮" },
   "research-history": { label: "历史记录", hint: "六模块历史分区；点击可恢复对应工作台条目" },
 
   // ── 兜底 ──

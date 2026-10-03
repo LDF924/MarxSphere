@@ -35,7 +35,8 @@ import {
   Sun,
   Moon,
   UserRound,
-  LogOut
+  LogOut,
+  MessagesSquare
 } from "lucide-react";
 import { api } from "./lib/api";
 import { AuthGate, useAuth } from "./components/AuthGate";
@@ -91,6 +92,7 @@ import { TaskPanel } from "./components/TaskPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";  // 修复4: 面板级错误边界
 import FusionPanel, { type FusionTabDef } from "./components/FusionPanel"; // M1-M6 Vue 完整版融合容器(单一完整形态)
 import { FloatingAssistantFAB } from "./components/FloatingAssistantFAB"; // SocialSci P0-7: 全局悬浮助手
+import { ForumPanel } from "./components/ForumPanel"; // 2026-10-03: 学友论坛(贴吧/知乎式)
 import { SiteContentPanel } from "./components/SiteContentPanel"; // SocialSci P2: 站点内容(公告/帮助/条款/资源导航)
 import { ResearchHistoryPanel } from "./components/ResearchHistoryPanel"; // SocialSci UI审计: 历史记录中心(6模块分区)
 import { WritingCorpusPanel } from "./components/WritingCorpusPanel";
@@ -101,7 +103,7 @@ import { DreamPanel } from "./components/DreamPanel";  // V404-7: 记忆 Dream �
 // ── 科研中心 5 大 Vue 完整版 tab(M1-M6; 命名避开参考产品原名, 单一完整形态) ──
 // 合法的外壳视图名（hash 恢复 / popstate / 子应用 navigate 消息三处共用）
 const validViews: WorkspaceView[] = ["assistant", "chat", "documents", "graph", "mcp", "reason", "ask", "sciverse", "skills", "vault", "truth", "literature", "sources", "policy", "scenarios", "jobs", "inbox", "trace", "eval", "tasks", "agent-console", "dream", "p2o", "cjournal", "corpus", "paper-outline", "settings", "memory", "docs", "alerts", "im", "education", "empirical-research", "statistics", "graphiti-ingest", "cognee-ingest", "billing", "admin", "jupyter", "imports", "structure", "citation-verify", "format-eval", "dag-workbench", "review-lab", "plot-agent", "editor", "site-content", "research-history",
-  "ppt-workbench", "aigc-detect", "lit-import", "opinion", "digest", "notifications"];
+  "ppt-workbench", "aigc-detect", "lit-import", "opinion", "digest", "notifications", "forum"];
 
 const FUSION_TABS: Record<string, Omit<FusionTabDef, "onBack">> = {
   paperOutline: {
@@ -196,7 +198,7 @@ import { ImportsPanel } from "./components/ImportsPanel";
 import { EngineIngestPanel } from "./components/EngineIngestPanel";
 import { I18nProvider, useI18n, useLanguageController, type LanguagePreference, type SupportedLanguage } from "./i18n";
 
-export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "digest" | "notifications"
+export type WorkspaceView = "home" | "assistant" | "chat" | "documents" | "graph" | "mcp" | "reason" | "ask" | "sciverse" | "skills" | "vault" | "truth" | "literature" | "sources" | "policy" | "scenarios" | "jobs" | "inbox" | "trace" | "eval" | "tasks" | "agent-console" | "dream" | "p2o" | "cjournal" | "corpus" | "paper-outline" | "settings" | "memory" | "docs" | "alerts" | "im" | "education" | "empirical-research" | "statistics" | "graphiti-ingest" | "cognee-ingest" | "billing" | "admin" | "jupyter" | "imports" | "structure" | "citation-verify" | "format-eval" | "capability-tools" | "dag-workbench" | "review-lab" | "plot-agent" | "editor" | "site-content" | "research-history" | "digest" | "notifications" | "forum"
   // 2026-10-01: 自旧项目 AItoolman 移植的能力。**本体已融入既有 tab**, 这里保留
   //   4 个深链视图(不是导航项): 外部(`#ppt-workbench`/`#opinion`/`#aigc-detect`)
   //   与文献导入(`#lit-import`)。keyword-net / wordcloud / word-build 已被宿主
@@ -2161,7 +2163,7 @@ function AppShell() {
       {workspaceView === "home" ? (
         // V396-18: 父容器补 flex-col — HomePanel 的 flex-1 overflow-y-auto 依赖父级 flex 才生效
         <div className="relative z-10 flex h-dvh min-h-0 flex-col overflow-hidden">
-          <HomePanel onChangeView={(view) => navigateView(view)} />
+          <HomePanel onChangeView={(view, params) => navigateView(view, params)} />
         </div>
       ) : workspaceView !== "jupyter" && workspaceView !== "format-eval" && getRegisteredView(workspaceView) ? (
         // 架构A3: 插件面板（registerView 注册的视图优先渲染；未命中走下方硬编码 switch）
@@ -2567,7 +2569,8 @@ function AppShell() {
                 settings={mcpSettings}
               />
             ) : workspaceView === "reason" ? (
-              <ReasonPanel onReasonStart={() => {
+              // 首页「当前课题」点进来时带题面(预填进提问框, 不自动发起) —— 见 ReasonPanel 的说明
+              <ReasonPanel initialQuery={pendingDemoRef.current} onReasonStart={() => {
                 // V214: 推理开始时清空右侧面板——只展示本次推理的搜索过程和原始日志
                 setProcessSteps([]);
                 setModelLogs([]);
@@ -2608,6 +2611,8 @@ function AppShell() {
               <ErrorBoundary><FusionPanel panelKey="statistics" tab={{ ...FUSION_TABS.statistics, onBack: () => navigateView("empirical-research") }} /></ErrorBoundary>
             ) : workspaceView === "site-content" ? (
               <ErrorBoundary><SiteContentPanel onNavigate={(v) => navigateView(v)} /></ErrorBoundary>
+            ) : workspaceView === "forum" ? (
+              <ErrorBoundary><ForumPanel /></ErrorBoundary>
             ) : workspaceView === "research-history" ? (
               <ErrorBoundary><ResearchHistoryPanel onNavigate={(v) => navigateView(v as WorkspaceView)} /></ErrorBoundary>
             ) : workspaceView === "billing" ? (
@@ -3112,6 +3117,15 @@ type NavCategory = {
   label: string;
   icon: ReactNode;
   dot: string;             // 分类主色（与子项 GROUP_DOTS 同体系）
+  /**
+   * 直接点开就进那一屏, **不展开下拉**。
+   *
+   * 由来(2026-10-03 用户): 「学友论坛…作为独立的 tab, **放在系统管理的右侧**」。
+   *   它要的是一个和「系统管理」平级的顶层入口, 不是系统管理下拉里的第十四项。
+   *   用 `direct` 而不是"再加一个分类"来表达, 是因为它确实**不属于**任何分类 ——
+   *   硬塞进 system 会让它跟 Jobs/Trace 这些运维项混在一起, 与"学友论坛"的气质不符。
+   */
+  direct?: Exclude<WorkspaceView, "settings">;
   items: Array<{ value: Exclude<WorkspaceView, "settings">; label: string }>;
 };
 
@@ -3264,6 +3278,20 @@ function MainWorkspaceTabs(props: {
         { value: "research-history", label: t("历史记录", "History") },  // SocialSci UI审计: 6模块历史分区
       ],
     },
+    {
+      /**
+       * 学友论坛 —— 顶层直入项(没有下拉)。
+       *
+       * 用户要的是"放在系统管理的右侧", 即与它平级的独立 tab; 下拉里放一个同名项
+       * 只是把它藏进菜单, 那与原话不是一回事。
+       */
+      key: "forum",
+      label: t("学友论坛", "Forum"),
+      icon: <MessagesSquare className="h-3.5 w-3.5" />,
+      dot: "hsl(214 70% 60%)",
+      direct: "forum",
+      items: [],
+    },
   ];
 
   const currentCategory = categories.find((c) => c.items.some((item) => item.value === props.view));
@@ -3320,6 +3348,23 @@ function MainWorkspaceTabs(props: {
       className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-1"
     >
       {categories.map((cat, idx) => {
+        // 顶层直入项: 点一下就去那一屏, 没有下拉(mega menu 的整套交互对它都是多余的)
+        if (cat.direct) {
+          const active = props.view === cat.direct;
+          return (
+            <button
+              key={cat.key}
+              type="button"
+              className={cn("nav-pill flex items-center gap-1", active && "nav-pill-active")}
+              onClick={() => props.onChange(cat.direct as Exclude<WorkspaceView, "settings">)}
+              data-control={`nav:${cat.direct}`}
+            >
+              <span className="nav-dot" style={{ backgroundColor: cat.dot }} aria-hidden="true" />
+              {cat.icon}
+              {cat.label}
+            </button>
+          );
+        }
         const active = currentCategory?.key === cat.key;
         return (
           <div

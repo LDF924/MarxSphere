@@ -6,16 +6,23 @@
 // 单价: 按模型定价 (每 1M token 成本, 平台加价率)
 import { pool } from "../db/pool.js";
 
-// 价格表: 模型 → 每 1M token 成本(人民币, 平台定价含利润)
-const PRICE_PER_MTOKEN: Record<string, number> = {
-  "deepseek-flash": 4.0,   // 输入+输出混合估算(旧 deepseek-chat 的 2.0 已并入, 统一新名)
-  "deepseek-v4-pro": 16.0,
-  "qwen-plus": 8.0,
-  "qwen3.7-max": 60.0,
-  "text-embedding-v4": 0.5,
-  "qwen3-rerank": 0.5,
-};
-const DEFAULT_PRICE = 8.0; // 未收录模型默认单价
+// ═══ 平台价目表(2026-10-03 与官网对齐, 此前是拍脑袋值) ═══
+//
+// 由来(用户:「模型单价和官网不一致, 没有同步」—— 实测属实):
+//   改前是一张**模块私有、注释自称"混合估算"**的表(flash 4.0 / v4-pro 16 / qwen-plus 8 /
+//   qwen3.7-max 60 / 默认 8)。四个数全部高于官网标价, 其中 qwen3.7-max 高了 1.7 倍,
+//   默认档 8 更是"未收录模型"的下限 —— 用户被按一个高于公示价的数计费。
+//
+// 现在真源是 `model-price-table.ts`(官方定价页抄录 + 口径说明), 本文件只负责**用它计费**。
+// 那一份同时被 pricing.ts(积分定价)与 cost-ledger(记账)取用 —— 改前这三处各有一张表,
+// 同一件事三种说法, 核对账单时无从下手。
+import { MODEL_PRICES, DEFAULT_RATE, rateFor, type ModelRate } from "./model-price-table.js";
+
+/** 旧口径: 一个模型一个"混合单价"。保留导出以免调用方失配, 但值由官方进/出均价推出 */
+const PRICE_PER_MTOKEN: Record<string, number> = Object.fromEntries(
+  Object.entries(MODEL_PRICES).map(([id, p]) => [id, (p.in + p.out) / 2])
+);
+const DEFAULT_PRICE = (DEFAULT_RATE.in + DEFAULT_RATE.out) / 2;
 
 // 订阅计划: plan → 月费(分) + 月额度token
 export const PLANS: Record<string, { priceCents: number; quotaTokens: number }> = {
@@ -28,38 +35,64 @@ export function priceFor(model: string): number {
   return PRICE_PER_MTOKEN[model] ?? DEFAULT_PRICE;
 }
 
+/** 进/出分离的单价 + 口径说明; 未收录模型返回兜底价(带 estimated 标记) */
+function ratesFor(model: string): ModelRate & { estimated?: boolean } {
+  return rateFor(model);
+}
+
 /**
- * 价目表(可公开) —— 2026-10-02 新增。
+ * 价目表(可公开)。
  *
- * 由来(对照 Respal 的模型价格展示): 改前 `PRICE_PER_MTOKEN` 是**模块私有常量**,
- *   `MODEL_COGS` 也只在内部用, 全仓没有任何一条路由把单价送到浏览器 ——
- *   用户只能看到"这次扣了 86 分", 却不知道 86 分是按什么算的, 也无法预估下一个模型贵多少。
+ * 由来(对照 Respal 的模型价格展示): 改前单价是**模块私有常量**,
+ *   全仓没有任何一条路由把单价送到浏览器 —— 用户只能看到"这次扣了 86 分",
+ *   却不知道按什么算的, 也无法预估下一个模型贵多少。
  *
- * ⚠ 这里**只出售价, 不出成本**。`models` 里带 `costCnyPerM` 的字段由调用方决定给不给 ——
- *   默认不给: 暴露 COGS 等于公开毛利率, 那是运营决策不是技术默认。
+ * ⚠ 这里**只出售价, 不出成本**。暴露 COGS 等于公开毛利率, 那是运营决策不是技术默认。
  *
- * 单价的单位是「元 / 百万 token」, **进+出混合**一个价(与 calcCost 的口径一致);
- * 真实成本那条口径是进/出分离的, 两者**不能混用**(见 pricing.ts:31-34 的说明)。
+ * 2026-10-03 改成**进/出分开**并附口径说明(note)。改前是"进+出合成一个数",
+ *   而输出通常比输入贵 3-4 倍 —— 合成一个数必然两头都不准, 也正是用户看到
+ *   "单价和官网不一致"的原因之一。现在每个数都能在官网定价页上逐字对上, 出处写在源码里。
  */
 export function pricingCatalog(): {
-  models: Array<{ id: string; priceCnyPerM: number }>;
-  defaultPriceCnyPerM: number;
+  models: Array<{
+    id: string;
+    priceCnyPerMIn: number;
+    priceCnyPerMOut: number;
+    cacheHitCnyPerM?: number;
+    offPeakCnyPerM?: { in: number; out: number };
+    note?: string;
+  }>;
+  defaultPriceCnyPerMIn: number;
+  defaultPriceCnyPerMOut: number;
   unit: string;
+  /** 抄录日期 —— 价格会变, 界面据此显示"这是哪天核对的" */
+  verifiedAt: string;
+  source: string;
   plans: Array<{ id: string; priceCents: number; quotaTokens: number }>;
 } {
   return {
-    models: Object.entries(PRICE_PER_MTOKEN).map(([id, priceCnyPerM]) => ({ id, priceCnyPerM })),
-    defaultPriceCnyPerM: DEFAULT_PRICE,
-    unit: "元 / 百万 token（输入+输出合计，订阅额度内不另计费）",
+    models: Object.entries(MODEL_PRICES).map(([id, p]) => ({
+      id,
+      priceCnyPerMIn: p.in,
+      priceCnyPerMOut: p.out,
+      cacheHitCnyPerM: p.cacheHit,
+      offPeakCnyPerM: p.offPeak,
+      note: p.note,
+    })),
+    defaultPriceCnyPerMIn: DEFAULT_RATE.in,
+    defaultPriceCnyPerMOut: DEFAULT_RATE.out,
+    unit: "元 / 百万 token（输入、输出分别计价；订阅额度内不另计费）",
+    verifiedAt: "2026-10-03",
+    source: "DeepSeek / 阿里云百炼 官方定价页",
     plans: Object.entries(PLANS).map(([id, p]) => ({ id, priceCents: p.priceCents, quotaTokens: p.quotaTokens })),
   };
 }
 
-/** 计算一次 LLM 调用的成本(分) */
+/** 计算一次 LLM 调用的成本(分) —— **进/出分别计价**, 输出通常贵 3-4 倍, 合成一个数会两头都不准 */
 export function calcCost(model: string, tokensIn: number, tokensOut: number): number {
-  const perM = priceFor(model);
-  const totalTokens = tokensIn + tokensOut;
-  return Math.ceil((totalTokens * perM) / 1_000_000 * 100); // 元→分, 向上取整
+  const p = ratesFor(model);
+  const cny = (tokensIn / 1_000_000) * p.in + (tokensOut / 1_000_000) * p.out;
+  return Math.ceil(cny * 100); // 元→分, 向上取整
 }
 
 /** 查询用户订阅剩余额度(tokens) */
@@ -115,7 +148,8 @@ export async function chargeUser(userId: string, model: string, tokensIn: number
     const excessTokens = Math.max(0, tokensIn + tokensOut - remaining);
     let chargedCents = 0;
     if (excessTokens > 0) {
-      chargedCents = Math.ceil((excessTokens * priceFor(model)) / 1_000_000 * 100);
+      // 超额部分按**本次调用**的进/出分别计价(改前是把总 token × 混合均价, 两头都不准)
+      chargedCents = calcCost(model, tokensIn, tokensOut);
       const newBalance = Number(balance_cents) - chargedCents;
       if (newBalance < 0) {
         await client.query("ROLLBACK");

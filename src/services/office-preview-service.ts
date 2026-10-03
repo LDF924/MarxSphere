@@ -112,8 +112,187 @@ export async function readPptx(buf: Buffer): Promise<{ ok: true; slides: SlidePr
 }
 
 // ═══════════════════════════════════════════════════════════════
-// drawio(.drawio / .xml)
+// Word(.docx / .doc)
 // ═══════════════════════════════════════════════════════════════
+//
+// 由来(2026-10-03 用户: 「.docx、.doc 无法读取和显现出来进行查看」—— 实测属实且是**两条不同的断链**):
+//
+//   · **.docx**: 数据一直在。`/api/vault/file` 对 .docx 回 200(走 mammoth 那条路),
+//     但**前端预览器把 docx 当纯文本渲染** —— VaultFilePreview 直接 `MarkdownReader(content)`,
+//     content 是未渲染的 HTML 源码, 用户在预览里看到的是 `<p>正文</p>` 这样的标签。
+//     `/api/preview/parse` 更直接: 它对 docx 回 400 "预览解析不支持 .docx"。
+//   · **.doc**: 全链路都写着"请另存为 .docx"(file-text-service:117、editor 导入路由),
+//     于是老 .doc **一处都看不了**。而用户资料库里 .doc 比 .docx 还多 ——
+//     那些是结题报告书、申报书这类格式固定的公文, 恰恰最需要"点开看一眼"。
+//
+// 现在: .docx 走这里的 `readDocx`(OOXML → HTML), .doc 走 `readLegacyDoc`
+// (OLE 复合文档 → 按段落折行的纯文本, word-extractor, MIT)。
+
+/**
+ * .docx 的 XML 实体解码。
+ *
+ * ⚠ `&` **必须最后解** —— 先解会把 `&amp;lt;` 变成 `<`(双重解码),
+ *   正文里一个真实的 "&lt;" 会被吃成尖括号。
+ */
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** 一个 OOXML 文本节点的内容(`<w:t>` 里的字) */
+function runText(chunk: string): string {
+  return [...chunk.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+    .map((m) => decodeXmlEntities(m[1]))
+    .join("");
+}
+
+/** 段落属性里是不是"加粗/斜体" —— 值是 `1`/`true` 都算, `0`/`false` 不算 */
+function flagOn(attrs: string, name: string): boolean {
+  const m = new RegExp(`<w:${name}\\b([^>]*)/?>`).exec(attrs);
+  if (!m) return false;
+  const v = /\bw:val="([^"]*)"/.exec(m[1])?.[1];
+  return v !== "0" && v !== "false";
+}
+
+/**
+ * 一个 `<w:p>` → 一行 HTML。
+ *
+ * ⚠ 只认**段落级样式**(标题/正文/列表)与**行内粗斜体**, 不认: 字号、颜色、字体、
+ *   页眉页脚、脚注、批注、文本框、SmartArt、图表。
+ *   取舍理由: 预览要回答的是"这份文件里写了什么", 不是"排版是否还原" ——
+ *   要还原排版就该用 Word 打开。**不假装全支持**: 前端面板上如实写着这是"内容预览"。
+ *   将来若要还原版式, 应当换成真渲染器(mammoth 的 styleMap 或 LibreOffice 转换),
+ *   而不是在这里继续加正则 —— 与 pptx 那条注释同一个判断。
+ */
+function paragraphToHtml(pXml: string): string {
+  // 标题: w:pStyle 的值形如 Heading1 / 1 / 标题1
+  const style = /<w:pStyle\b[^>]*w:val="([^"]*)"/.exec(pXml)?.[1] ?? "";
+  const headingLevel = /^(?:Heading|heading)([1-6])$/.exec(style)?.[1]
+    ?? /^([1-6])$/.exec(style)?.[1]
+    ?? /^标题([1-6])$/.exec(style)?.[1];
+
+  // 行内: 按 run 走, 每个 run 自己判粗斜体
+  let inner = "";
+  for (const r of pXml.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/g)) {
+    const t = runText(r[0]);
+    if (!t) continue;
+    const rPr = /<w:rPr>([\s\S]*?)<\/w:rPr>/.exec(r[0])?.[1] ?? "";
+    let frag = t.replace(/\s+$/, "");
+    if (flagOn(rPr, "b")) frag = `<strong>${frag}</strong>`;
+    if (flagOn(rPr, "i")) frag = `<em>${frag}</em>`;
+    inner += frag;
+  }
+  if (!inner.trim()) return "";
+  const isList = /<w:numPr>/.test(pXml);
+  if (headingLevel) return `<h${headingLevel}>${inner}</h${headingLevel}>`;
+  if (isList) return `<p class="docx-li">· ${inner}</p>`;
+  return `<p>${inner}</p>`;
+}
+
+/** 一张 `<w:tbl>` → HTML 表格(逐行逐格, 每格再递归解析它自己的段落) */
+function tableToHtml(tblXml: string): string {
+  const rows: string[] = [];
+  for (const tr of tblXml.matchAll(/<w:tr[\s>][\s\S]*?<\/w:tr>/g)) {
+    const cells: string[] = [];
+    for (const tc of tr[0].matchAll(/<w:tc>[\s\S]*?<\/w:tc>/g)) {
+      const cell = [...tc[0].matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)]
+        .map((m) => paragraphToHtml(m[0]))
+        .join(" ")
+        // 单元格里再套 <p> 会让表格被撑得很高, 并成行内
+        .replace(/^<p>|<\/p>$/g, "");
+      cells.push(`<td>${cell}</td>`);
+    }
+    if (cells.length) rows.push(`<tr>${cells.join("")}</tr>`);
+  }
+  return rows.length ? `<table>${rows.join("")}</table>` : "";
+}
+
+/**
+ * .docx → HTML。
+ *
+ * 用 JSZip 自己解、自己拼 HTML, 而**不是**引 mammoth 到浏览器:
+ *   · mammoth 的默认输出带自己的内联样式(字号/颜色写死), 本应用是深色主题,
+ *     那些写死的色值会把正文变成看不清的深灰 —— 而我们要的恰好是**不带颜色**的结构化 HTML
+ *     (颜色交给所在主题的 CSS)。
+ *   · 服务端已有 mammoth 那条路(编辑器导入 / 纯文本抽取), 那是给 TipTap 与 LLM 用的,
+ *     与"预览要一份可主题化的结构"是两件事。
+ */
+export async function readDocx(buf: Buffer): Promise<{ ok: true; html: string } | { ok: false; error: string }> {
+  try {
+    const zip = await JSZip.loadAsync(buf);
+    const doc = zip.files["word/document.xml"];
+    if (!doc) {
+      // 极少见: 有些生成器把主文档放在别处。给一个能自证的错, 而不是空 HTML
+      return { ok: false, error: "这份 .docx 里没有 word/document.xml —— 可能不是 OOXML 文档" };
+    }
+    const xml = await doc.async("string");
+    const body = /<w:body>([\s\S]*)<\/w:body>/.exec(xml)?.[1] ?? xml;
+
+    // ⚠ 表格**不能**先摘出去再补回末尾(我第一版就是那么写的): 表格在正文里的**位置**是有意义的,
+    //   把三张表统统挪到文末, 读者看到的是"正文 + 一堆不知道插在哪的表"。
+    //   正确做法是按文档顺序**同步扫**段落与表格 —— 两者在 w:body 里本来就是平级的兄弟节点。
+    const parts: string[] = [];
+    const blocks = /<w:(p|tbl)(?:\s[^>]*)?>[\s\S]*?<\/w:\1>/g;
+    for (const m of body.matchAll(blocks)) {
+      const html = m[1] === "tbl" ? tableToHtml(m[0]) : paragraphToHtml(m[0]);
+      if (html) parts.push(html);
+    }
+    const html = parts.join("\n");
+    if (!html.trim()) return { ok: false, error: "这份 .docx 没有提取到正文(可能是空文档或只有图片)" };
+    return { ok: true, html };
+  } catch (e) {
+    return { ok: false, error: `Word 解析失败: ${String((e as Error).message).slice(0, 160)}` };
+  }
+}
+
+/**
+ * 旧版 .doc(OLE 复合文档)→ 纯文本。
+ *
+ * 为什么能做: `word-extractor`(MIT, 依赖 saxes + yauzl, 纯 JS 无原生模块)直接读
+ *   Word 97-2003 的二进制流并把正文、脚注、页眉分开取。
+ * 为什么以前不做: 改前全链路写的是"请另存为 .docx" —— 那是把解析器的短板转嫁给用户,
+ *   而用户资料库里 .doc 比 .docx 还多(结题报告书/申报书这类公文模板至今仍是 .doc)。
+ *
+ * ⚠ 这条只出**纯文本**: .doc 的样式信息藏在二进制格式里, 要还原排版得靠 LibreOffice 转档,
+ *   本机与环境都不一定有。前端把它当文本渲染, 并如实标注"旧版 .doc 仅提取正文,
+ *   版式不还原" —— 比"打不开"和"假装打开"都好。
+ */
+export async function readLegacyDoc(buf: Buffer): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  // word-extractor 只吃**磁盘路径**(它内部按随机访问读文件), 所以必须先落一个临时文件
+  const os = await import("node:os");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const tmp = path.join(os.tmpdir(), `sag-doc-${Date.now()}-${Math.random().toString(36).slice(2)}.doc`);
+  try {
+    fs.writeFileSync(tmp, buf);
+    const WordExtractor = (await import("word-extractor")).default;
+    const d = await new WordExtractor().extract(tmp);
+    const parts = [
+      String(d.getHeaders?.() ?? "").trim(),
+      String(d.getBody?.() ?? "").trim(),
+      String(d.getFootnotes?.() ?? "").trim(),
+    ].filter(Boolean);
+    const text = parts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+    if (!text) return { ok: false, error: "这份 .doc 没有提取到正文(可能是空文档或纯图片文档)" };
+    return { ok: true, text };
+  } catch (e) {
+    // ⚠ word-extractor 的报错是英文短句("Unable to read this type of file"), 直接透出去
+    //   用户只看到一行看不懂的英文。这里按**已知的那两种**翻译, 其余原样带出 ——
+    //   不认识的错不能硬套模板(那会把"磁盘满了"说成"文件损坏")。
+    const raw = String((e as Error)?.message ?? e).slice(0, 160);
+    const msg = /Unable to read this type of file|not a (valid )?(OLE|compound|word)/i.test(raw)
+      ? "这个 .doc 不是 Word 97-2003 格式(可能被改过扩展名, 或其实是 RTF/HTML 伪装成 .doc)"
+      : raw;
+    return { ok: false, error: `.doc 解析失败: ${msg}` };
+  } finally {
+    // 临时文件必须删 —— 它在系统 temp 里, 不删会随着每次预览堆积(正文可能含敏感内容)
+    try { fs.unlinkSync(tmp); } catch { /* 删不掉不该盖住真正的结果 */ }
+  }
+}
 
 export interface DrawioShape {
   id: string;

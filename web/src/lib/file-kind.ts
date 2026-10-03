@@ -53,9 +53,9 @@ export function fileKind(nameOrPath: string): FileKind {
   return KIND_BY_EXT[ext] ?? "download-only";
 }
 
-/** 支持"在应用内看一眼"的大类(不含 download-only 与 legacy-doc) */
+/** 支持"在应用内看一眼"的大类(不含 download-only) */
 const VIEWABLE = new Set<FileKind>([
-  "markdown", "text", "pdf", "image", "sheets", "csv", "slides", "diagram", "geo", "word",
+  "markdown", "text", "pdf", "image", "sheets", "csv", "slides", "diagram", "geo", "word", "legacy-doc",
 ]);
 
 export function isViewable(nameOrPath: string): boolean {
@@ -63,14 +63,16 @@ export function isViewable(nameOrPath: string): boolean {
 }
 
 /**
- * 该类型为什么看不了 / 会怎么被看 —— 给用户看的一句话。
- * 每个分支都必须**具体**: 上一版把 csv、geojson、shp、kml、drawio 一律说成
- * "Office 文档（Word/Excel/PPT）", 这是模板套错而不是信息。
+ * 该类型为什么看不了 —— 给用户看的一句话。
+ *
+ * ⚠ 2026-10-03: 删掉了 `legacy-doc` 那条"请另存为 .docx"。
+ *   那句在整个仓库里出现过五处(file-text-service、editor 导入、日志、agents 提示、这里),
+ *   每一处都是**把解析器的短板转嫁给用户**, 而用户的资料库里 .doc 比 .docx 还多
+ *   (结题报告书/申报书这类公文模板至今仍是 .doc)。现在 .doc 走服务端提取正文,
+ *   这条文案已经没有任何一个分支会用到 —— 留着只会让下一个人以为它还是"不支持"。
  */
 export function unsupportedReason(nameOrPath: string): string {
   switch (fileKind(nameOrPath)) {
-    case "legacy-doc":
-      return "旧版 .doc 是二进制格式，无法直接读取。请在 Word / WPS 里「另存为」.docx 后再上传。";
     case "download-only":
       return `.${extOf(nameOrPath) || "?"} 暂不支持在应用内预览，请下载后用本地软件打开。`;
     default:
@@ -79,4 +81,4 @@ export function unsupportedReason(nameOrPath: string): string {
 }
 
 /** 可内联预览类型的一句话清单(空态提示用, 与应用内实际支持保持一致) */
-export const VIEWABLE_HINT = "支持 Markdown / 文本 / CSV / 表格(xlsx) / PDF / 图片 / PPT / drawio 图 / GIS(GeoJSON/KML/GPX) 内联预览，其余可下载打开";
+export const VIEWABLE_HINT = "支持 Markdown / 文本 / CSV / 表格(xlsx) / PDF / 图片 / PPT / Word(docx/doc) / drawio 图 / GIS(GeoJSON/KML/GPX) 内联预览，其余可下载打开";

@@ -246,9 +246,23 @@ const reasonApi = {
   },
 };
 
-export const ReasonPanel: FC<{ onReasonStart?: () => void }> = ({ onReasonStart }) => {
+export const ReasonPanel: FC<{ onReasonStart?: () => void; initialQuery?: string | null }> = ({ onReasonStart, initialQuery }) => {
   const [sourceId, setSourceId] = useState("c609acbf-1d6e-4bd5-9ae1-92fa6c64021a");
   const [query, setQuery] = useState("");
+  /**
+   * 从首页「当前课题」进来时把课题名**预填**进提问框 —— 但不自动发起。
+   *
+   * 为什么不直接跑: 课题名(如《农业农村现代化进程中工商资本规范与引导路径研究》)是**领域**,
+   *   不是**问题**。拿它当提问发出, 推理链只能给一篇泛泛的综述, 烧掉一次完整 52 步的 token,
+   *   而用户真正想问的往往是"其中某个机制"。所以填进去让人改完再发 —— 少一次无效的全链路调用。
+   * 判据是 `!query`: 已经手输过内容就不覆盖(返回首页再点进来不该抹掉用户打的字)。
+   */
+  useEffect(() => {
+    const t = String(initialQuery ?? "").trim();
+    if (!t) return;
+    setQuery((cur) => (cur.trim() ? cur : `请围绕课题《${t}》展开研究:`));
+    // 只在题面本身变化时预填(重复点同一个课题不应反复覆盖)
+  }, [initialQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const [running, setRunning] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReasonDetail | null>(null);

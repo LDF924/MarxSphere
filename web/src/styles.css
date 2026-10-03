@@ -117,6 +117,45 @@ select {
   user-select: text !important;
 }
 
+/* ═══ 表单控件的原生外观跟随主题(2026-10-03) ═══
+ *
+ * 用户报「日期选择的配色怎么是白色的」—— 指的是 `<input type="date">` 的**日历弹层**。
+ *   根因不是我们的背景色写错了: 弹层是**浏览器渲染的原生控件**, 不继承页面 CSS,
+ *   它只看 `color-scheme`。默认 `light` ⇒ 深蓝页面里弹出一块白板。
+ *   同理, 日期框右侧那个打开日历的图标也是**原生的**, 用的是 `color-scheme` 推导出的
+ *   前景色 —— 在深色主题下它被画成深色(用户说的「黑色隐藏在了深蓝色里」),
+ *   我们只能显式重画它。同一份规则必须给两套主题各一份, 所以写在 `.light` 覆盖里而不是写死。
+ */
+:root {
+  color-scheme: dark;
+}
+.light {
+  color-scheme: light;
+}
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"] {
+  /* iOS 会把原生日期控件按内容宽度缩成一团; 显式给一个最小宽度才像"输入框" */
+  min-width: 9.5rem;
+}
+/* 日历图标: 原生那个在深色底上看不见, 换成一个跟着 foreground 走的矢量图标 */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.85;
+  /* currentColor 的 SVG 掩码 —— 图标形状自带, 颜色由 CSS 定, 亮暗主题都清晰 */
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+  -webkit-mask-size: 0.95rem 0.95rem;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* 细滚动条 */
 * {
   scrollbar-width: thin;
